@@ -13,10 +13,10 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build src/renderer",
     "start": "electron dist/main/main/index.js",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win"
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

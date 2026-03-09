@@ -20,6 +20,8 @@ mac:
       arch: [universal]
   hardenedRuntime: true
   gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
 
 win:
   target:
@@ -37,3 +39,5 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
+
+afterSign: scripts/notarize.js

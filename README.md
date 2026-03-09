@@ -188,13 +188,10 @@ export APPLE_API_KEY_ISSUER="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 export APPLE_API_KEY="/path/to/AuthKey_XXXXXXXXXX.p8"
 ```
 
-#### 3. Update electron-builder config
-
-Add to `electron-builder.yml`:
+#### 3. electron-builder config (already included in this repo)
 
 ```yaml
 mac:
-  identity: "Developer ID Application: MindsDB Inc (TEAMID)"
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -203,9 +200,9 @@ mac:
 afterSign: scripts/notarize.js
 ```
 
-#### 4. Create entitlements file
+#### 4. Entitlements file (already included)
 
-Create `build/entitlements.mac.plist`:
+`build/entitlements.mac.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -226,9 +223,9 @@ Create `build/entitlements.mac.plist`:
 
 > These entitlements are required because `node-pty` uses native code and JIT.
 
-#### 5. Create notarization script
+#### 5. Notarization script (already included)
 
-Create `scripts/notarize.js`:
+`scripts/notarize.js`:
 
 ```js
 const { notarize } = require('@electron/notarize');
@@ -258,7 +255,7 @@ exports.default = async function notarizing(context) {
 };
 ```
 
-Install the notarize package:
+If `@electron/notarize` is missing in your local install:
 ```bash
 npm install --save-dev @electron/notarize
 ```
@@ -281,6 +278,15 @@ xcrun stapler validate "release/Anton-0.1.0-universal.dmg"
 
 # If "Developer ID" identity not found, open Keychain Access
 # and verify the certificate is in "login" keychain, not expired
+```
+
+If you get `ModuleNotFoundError: No module named 'distutils'` while rebuilding `node-pty`:
+
+```bash
+# node-gyp@9.x requires Python <= 3.11
+export npm_config_python=/opt/homebrew/bin/python3.11
+npm rebuild node-pty
+npm run dist:mac
 ```
 
 ---
