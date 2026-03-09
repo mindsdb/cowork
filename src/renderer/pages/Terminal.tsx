@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { marked } from 'marked';
 
 interface Project {
   name: string;
@@ -22,6 +23,18 @@ export default function Terminal() {
   const [newProjectName, setNewProjectName] = useState('');
   const [projectError, setProjectError] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showMinds, setShowMinds] = useState(false);
+  const [mindsStatus, setMindsStatus] = useState<{
+    connected: boolean;
+    mindName?: string | null;
+    datasource?: string | null;
+    engine?: string | null;
+    url?: string;
+  }>({ connected: false });
+  const [confirmModal, setConfirmModal] = useState<{
+    type: 'delete-project' | 'disconnect-mind';
+    name: string;
+  } | null>(null);
   const newProjectInputRef = useRef<HTMLInputElement>(null);
 
   // Per-project terminal instances
@@ -32,6 +45,11 @@ export default function Terminal() {
 
   // Track cleanup functions for IPC listeners
   const ipcCleanupRef = useRef<(() => void) | null>(null);
+
+  const refreshMindsStatus = useCallback(async () => {
+    const status = await window.antontron.mindsStatus();
+    setMindsStatus(status);
+  }, []);
 
   const loadProjects = useCallback(async () => {
     const [list, active] = await Promise.all([
@@ -216,11 +234,9 @@ export default function Terminal() {
     await switchProject(result.name);
   }, [newProjectName, loadProjects, switchProject]);
 
-  const handleDeleteProject = useCallback(async (name: string) => {
+  const confirmDeleteProject = useCallback(async (name: string) => {
     if (name === 'default') return;
-    // Kill the process for this project
     window.antontron.killAnton(name);
-    // Clean up terminal instance
     const instance = terminalsRef.current.get(name);
     if (instance) {
       instance.term.dispose();
@@ -233,6 +249,12 @@ export default function Terminal() {
       await switchProject('default');
     }
   }, [activeProject, loadProjects, switchProject]);
+
+  const confirmDisconnectMind = useCallback(async () => {
+    await window.antontron.mindsDisconnect();
+    refreshMindsStatus();
+    restartAnton();
+  }, [refreshMindsStatus, restartAnton]);
 
   useEffect(() => {
     if (showNewProject && newProjectInputRef.current) {
@@ -286,6 +308,7 @@ export default function Terminal() {
     let cancelled = false;
     (async () => {
       const { active } = await loadProjects();
+      refreshMindsStatus();
       if (cancelled) return;
       await ensureAntonRunning(active);
       showTerminal(active);
@@ -347,7 +370,10 @@ export default function Terminal() {
                   {p.name !== 'default' && (
                     <button
                       className="project-delete"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteProject(p.name); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmModal({ type: 'delete-project', name: p.name });
+                      }}
                       title="Delete project"
                     >
                       &times;
@@ -379,6 +405,44 @@ export default function Terminal() {
               >
                 <span className="sidebar-btn-icon">+</span>
                 New Project
+              </button>
+            )}
+          </div>
+
+          <div className="sidebar-divider" />
+
+          {/* Minds */}
+          <div className="sidebar-section">
+            <div className="sidebar-label">MINDS</div>
+            {mindsStatus.connected ? (
+              <div className="project-list">
+                <div className="project-item active minds-item-sidebar">
+                  <button
+                    className="project-item-btn"
+                    onClick={() => setShowMinds(true)}
+                  >
+                    <div className="project-dot minds-dot" />
+                    <span className="project-name">{mindsStatus.mindName}</span>
+                  </button>
+                  <button
+                    className="project-delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmModal({ type: 'disconnect-mind', name: mindsStatus.mindName || 'this mind' });
+                    }}
+                    title="Disconnect mind"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="sidebar-btn new-project-btn"
+                onClick={() => setShowMinds(true)}
+              >
+                <span className="sidebar-btn-icon">+</span>
+                Connect
               </button>
             )}
           </div>
@@ -423,6 +487,66 @@ export default function Terminal() {
         <div className="settings-backdrop" onClick={() => setShowSettings(false)}>
           <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
             <SettingsPanel onClose={() => setShowSettings(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* Minds Panel */}
+      {showMinds && (
+        <div className="settings-backdrop" onClick={() => setShowMinds(false)}>
+          <div className="settings-panel minds-panel" onClick={(e) => e.stopPropagation()}>
+            <MindsPanel
+              onClose={() => setShowMinds(false)}
+              onStatusChange={refreshMindsStatus}
+              onRestartAnton={restartAnton}
+              currentStatus={mindsStatus}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <div className="settings-backdrop" onClick={() => setConfirmModal(null)}>
+          <div
+            className={`confirm-modal ${confirmModal.type === 'disconnect-mind' ? 'confirm-mind' : 'confirm-project'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="confirm-accent" />
+            <div className="confirm-body">
+              <div className="confirm-title">
+                {confirmModal.type === 'delete-project'
+                  ? 'Delete Project'
+                  : 'Disconnect Mind'}
+              </div>
+              <div className="confirm-name">{confirmModal.name}</div>
+              <div className="confirm-message">
+                {confirmModal.type === 'delete-project'
+                  ? 'This will remove all project data and stop the running process.'
+                  : 'Anton will restart without the connected mind.'}
+              </div>
+              <div className="confirm-actions">
+                <button
+                  className="confirm-cancel"
+                  onClick={() => setConfirmModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={`confirm-yes ${confirmModal.type === 'disconnect-mind' ? 'confirm-yes-mind' : ''}`}
+                  onClick={async () => {
+                    if (confirmModal.type === 'delete-project') {
+                      await confirmDeleteProject(confirmModal.name);
+                    } else {
+                      await confirmDisconnectMind();
+                    }
+                    setConfirmModal(null);
+                  }}
+                >
+                  {confirmModal.type === 'delete-project' ? 'Delete' : 'Disconnect'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -514,6 +638,349 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           {saved ? '\u2713 SAVED' : 'SAVE'}
         </button>
       </div>
+    </>
+  );
+}
+
+interface MindsStatus {
+  connected: boolean;
+  url?: string;
+  apiKey?: string;
+  mindName?: string | null;
+  datasource?: string | null;
+  engine?: string | null;
+}
+
+function MindsPanel({
+  onClose,
+  onStatusChange,
+  onRestartAnton,
+  currentStatus,
+}: {
+  onClose: () => void;
+  onStatusChange: () => void;
+  onRestartAnton: () => void;
+  currentStatus: MindsStatus;
+}) {
+  // Steps: 'credentials' | 'select-mind' | 'select-datasource' | 'info'
+  const [step, setStep] = useState<string>(currentStatus.connected ? 'info' : 'credentials');
+
+  // Credentials
+  const [url, setUrl] = useState(currentStatus.url || 'https://mdb.ai');
+  const [apiKey, setApiKey] = useState(currentStatus.apiKey || '');
+  const [sslVerify, setSslVerify] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Minds list
+  const [minds, setMinds] = useState<any[]>([]);
+  const [datasources, setDatasources] = useState<any[]>([]);
+
+  // Selected / processing
+  const [selectedMind, setSelectedMind] = useState<any>(null);
+  const [connectingMind, setConnectingMind] = useState<string | null>(null);
+
+  // Info view
+  const [mindDetails, setMindDetails] = useState<any>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Check if provider is Minds — skip credentials if so
+  useEffect(() => {
+    if (!currentStatus.connected) {
+      (async () => {
+        const config = await window.antontron.checkConfigured();
+        if (config.provider === 'minds') {
+          // Already have credentials from onboarding, go straight to mind selection
+          const status = await window.antontron.mindsStatus();
+          if (status.apiKey && status.url) {
+            setUrl(status.url);
+            setApiKey(status.apiKey);
+            await fetchMinds(status.url, status.apiKey);
+          }
+        }
+      })();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load mind details when showing info
+  useEffect(() => {
+    if (step === 'info' && currentStatus.connected && currentStatus.mindName) {
+      setLoadingDetails(true);
+      (async () => {
+        const res = await window.antontron.mindsGet(
+          currentStatus.url || 'https://mdb.ai',
+          currentStatus.apiKey || '',
+          currentStatus.mindName!
+        );
+        if (res.ok) setMindDetails(res.mind);
+        setLoadingDetails(false);
+      })();
+    }
+  }, [step, currentStatus]);
+
+  const fetchMinds = async (u: string, key: string) => {
+    setLoading(true);
+    setError('');
+    const res = await window.antontron.mindsList(u, key);
+    setLoading(false);
+    if (!res.ok) {
+      setError(res.error || 'Failed to connect');
+      return false;
+    }
+    setMinds(res.minds || []);
+    setStep('select-mind');
+    return true;
+  };
+
+  const handleConnect = async () => {
+    if (!url.trim() || !apiKey.trim()) return;
+    await fetchMinds(url.trim(), apiKey.trim());
+  };
+
+  // Normalize datasource ref: API may return strings or {name: "..."} objects
+  const dsRefName = (ref: any): string => typeof ref === 'string' ? ref : ref?.name || '';
+
+  const finishConnect = async (mindName: string, dsName: string | null, engine: string | null) => {
+    await window.antontron.mindsConnect(url, apiKey, mindName, dsName, engine, sslVerify);
+    onStatusChange();
+    onRestartAnton();
+    onClose();
+  };
+
+  const handleSelectMind = async (mind: any) => {
+    if (connectingMind) return;
+    setConnectingMind(mind.name);
+    setSelectedMind(mind);
+    try {
+      const rawDs: any[] = mind.datasources || [];
+      if (rawDs.length <= 1) {
+        const dsName = rawDs.length === 1 ? dsRefName(rawDs[0]) : null;
+        let engine: string | null = null;
+        if (dsName) {
+          const dsRes = await window.antontron.mindsListDatasources(url, apiKey);
+          if (dsRes.ok) {
+            const match = (dsRes.datasources || []).find((d: any) => d.name === dsName);
+            engine = match?.engine || null;
+          }
+        }
+        await finishConnect(mind.name, dsName, engine);
+      } else {
+        const dsRes = await window.antontron.mindsListDatasources(url, apiKey);
+        if (dsRes.ok) setDatasources(dsRes.datasources || []);
+        setStep('select-datasource');
+      }
+    } finally {
+      setConnectingMind(null);
+    }
+  };
+
+  const handleSelectDatasource = async (dsName: string) => {
+    if (connectingMind) return;
+    setConnectingMind(dsName);
+    try {
+      const match = datasources.find((d: any) => d.name === dsName);
+      const engine = match?.engine || null;
+      await finishConnect(selectedMind.name, dsName, engine);
+    } finally {
+      setConnectingMind(null);
+    }
+  };
+
+  const renderSystemPrompt = () => {
+    if (!mindDetails) return null;
+    const params = mindDetails.parameters || {};
+    const parts: string[] = [];
+    if (params.system_prompt) parts.push(params.system_prompt);
+    if (params.prompt_template) parts.push(params.prompt_template);
+    if (parts.length === 0) return <div className="minds-no-prompt">No system prompt configured</div>;
+
+    const raw = parts.join('\n\n---\n\n');
+    const html = marked.parse(raw, { async: false }) as string;
+    return (
+      <div
+        className="minds-system-prompt"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  };
+
+  return (
+    <>
+      <div className="settings-header">
+        <div className="settings-title">
+          {step === 'info' ? 'Mind Connection' : 'Connect to Mind'}
+        </div>
+        <button className="settings-close" onClick={onClose}>&times;</button>
+      </div>
+
+      <div className="settings-body minds-body">
+        {/* Step: Credentials */}
+        {step === 'credentials' && (
+          <>
+            <div className="settings-group">
+              <label className="settings-label">Minds Server URL</label>
+              <input
+                className="settings-input"
+                placeholder="https://mdb.ai"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+            </div>
+            <div className="settings-group">
+              <label className="settings-label">API Key</label>
+              <input
+                type="password"
+                className="settings-input"
+                placeholder="Enter your Minds API key"
+                value={apiKey}
+                onChange={(e) => { setApiKey(e.target.value); setError(''); }}
+                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
+              />
+            </div>
+            <div className="settings-group minds-ssl-group">
+              <label className="minds-ssl-label">
+                <input
+                  type="checkbox"
+                  checked={sslVerify}
+                  onChange={(e) => setSslVerify(e.target.checked)}
+                  className="minds-ssl-checkbox"
+                />
+                Verify SSL certificates
+              </label>
+              <div className="settings-hint">
+                Disable if the server uses self-signed certificates
+              </div>
+            </div>
+            {error && <div className="minds-error">{error}</div>}
+          </>
+        )}
+
+        {/* Step: Select Mind */}
+        {step === 'select-mind' && (
+          <>
+            <div className="minds-step-label">Select a Mind</div>
+            <div className="minds-list">
+              {minds.map((m: any) => (
+                <button
+                  key={m.name}
+                  className={`minds-item ${connectingMind === m.name ? 'minds-item-loading' : ''}`}
+                  onClick={() => handleSelectMind(m)}
+                  disabled={!!connectingMind}
+                >
+                  <div className="minds-item-name">
+                    {connectingMind === m.name ? 'Connecting...' : m.name}
+                  </div>
+                  <div className="minds-item-meta">
+                    {connectingMind === m.name
+                      ? ''
+                      : `${(m.datasources || []).length} datasource${(m.datasources || []).length !== 1 ? 's' : ''}`}
+                  </div>
+                </button>
+              ))}
+              {minds.length === 0 && (
+                <div className="minds-empty">No minds found on this server</div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Step: Select Datasource */}
+        {step === 'select-datasource' && selectedMind && (
+          <>
+            <div className="minds-step-label">
+              Select a datasource for <strong>{selectedMind.name}</strong>
+            </div>
+            <div className="minds-list">
+              {(selectedMind.datasources || []).map((dsRef: any) => {
+                const name = dsRefName(dsRef);
+                const match = datasources.find((d: any) => d.name === name);
+                return (
+                  <button
+                    key={name}
+                    className={`minds-item ${connectingMind === name ? 'minds-item-loading' : ''}`}
+                    onClick={() => handleSelectDatasource(name)}
+                    disabled={!!connectingMind}
+                  >
+                    <div className="minds-item-name">
+                      {connectingMind === name ? 'Connecting...' : name}
+                    </div>
+                    {match?.engine && !connectingMind && (
+                      <div className="minds-item-meta">{match.engine}</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Step: Info (connected) */}
+        {step === 'info' && (
+          <>
+            <div className="minds-info-grid">
+              <div className="minds-info-row">
+                <span className="minds-info-label">Mind</span>
+                <span className="minds-info-value">{currentStatus.mindName}</span>
+              </div>
+              {currentStatus.datasource && (
+                <div className="minds-info-row">
+                  <span className="minds-info-label">Datasource</span>
+                  <span className="minds-info-value">{currentStatus.datasource}</span>
+                </div>
+              )}
+              {currentStatus.engine && (
+                <div className="minds-info-row">
+                  <span className="minds-info-label">Engine</span>
+                  <span className="minds-info-value">{currentStatus.engine}</span>
+                </div>
+              )}
+              <div className="minds-info-row">
+                <span className="minds-info-label">Server</span>
+                <span className="minds-info-value">{currentStatus.url}</span>
+              </div>
+            </div>
+
+            <div className="sidebar-divider" style={{ margin: '16px 0' }} />
+
+            <div className="minds-step-label">System Prompt</div>
+            {loadingDetails ? (
+              <div className="minds-loading">Loading mind details...</div>
+            ) : (
+              renderSystemPrompt()
+            )}
+          </>
+        )}
+      </div>
+
+      {(step !== 'info') && (
+        <div className="settings-footer">
+          {step === 'credentials' && (
+            <button
+              className="btn-primary settings-save"
+              onClick={handleConnect}
+              disabled={loading || !url.trim() || !apiKey.trim()}
+            >
+              {loading ? 'Connecting...' : 'CONNECT'}
+            </button>
+          )}
+          {step === 'select-mind' && (
+            <button
+              className="sidebar-btn"
+              onClick={() => setStep('credentials')}
+            >
+              Back
+            </button>
+          )}
+          {step === 'select-datasource' && (
+            <button
+              className="sidebar-btn"
+              onClick={() => setStep('select-mind')}
+            >
+              Back
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }

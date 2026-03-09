@@ -54,6 +54,18 @@ contextBridge.exposeInMainWorld('antontron', {
   validateProvider: (provider: string, apiKey: string, baseUrl?: string) =>
     ipcRenderer.invoke(IPC.SETTINGS_VALIDATE, provider, apiKey, baseUrl),
 
+  // Minds
+  mindsStatus: () => ipcRenderer.invoke(IPC.MINDS_STATUS),
+  mindsList: (url: string, apiKey: string) =>
+    ipcRenderer.invoke(IPC.MINDS_LIST, url, apiKey),
+  mindsGet: (url: string, apiKey: string, mindName: string) =>
+    ipcRenderer.invoke(IPC.MINDS_GET, url, apiKey, mindName),
+  mindsListDatasources: (url: string, apiKey: string) =>
+    ipcRenderer.invoke(IPC.MINDS_LIST_DATASOURCES, url, apiKey),
+  mindsConnect: (url: string, apiKey: string, mindName: string, datasource: string | null, engine: string | null, sslVerify: boolean) =>
+    ipcRenderer.invoke(IPC.MINDS_CONNECT, url, apiKey, mindName, datasource, engine, sslVerify),
+  mindsDisconnect: () => ipcRenderer.invoke(IPC.MINDS_DISCONNECT),
+
   // Clipboard
   saveClipboardImage: (base64Data: string) =>
     ipcRenderer.invoke(IPC.CLIPBOARD_SAVE_IMAGE, base64Data),

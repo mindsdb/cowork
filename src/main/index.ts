@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, net } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -341,6 +341,137 @@ function setupIPC() {
     return filePath;
   });
 
+  // Minds
+  ipcMain.handle(IPC.MINDS_STATUS, async () => {
+    const vars = readEnvFile();
+    if (!vars.ANTON_MINDS_API_KEY) return { connected: false };
+    return {
+      connected: true,
+      url: vars.ANTON_MINDS_URL || 'https://mdb.ai',
+      apiKey: vars.ANTON_MINDS_API_KEY,
+      mindName: vars.ANTON_MINDS_MIND_NAME || null,
+      datasource: vars.ANTON_MINDS_DATASOURCE || null,
+      engine: vars.ANTON_MINDS_DATASOURCE_ENGINE || null,
+    };
+  });
+
+  ipcMain.handle(IPC.MINDS_LIST, async (_event, url: string, apiKey: string) => {
+    try {
+      const baseUrl = url.replace(/\/+$/, '');
+      const res = await httpRequest(`${baseUrl}/api/v1/minds/`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      });
+      if (res.status >= 200 && res.status < 300) {
+        return { ok: true, minds: JSON.parse(res.body) };
+      }
+      return { ok: false, error: `HTTP ${res.status}` };
+    } catch (err: any) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC.MINDS_GET, async (_event, url: string, apiKey: string, mindName: string) => {
+    try {
+      const baseUrl = url.replace(/\/+$/, '');
+      const res = await httpRequest(`${baseUrl}/api/v1/minds/${encodeURIComponent(mindName)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      });
+      if (res.status >= 200 && res.status < 300) {
+        return { ok: true, mind: JSON.parse(res.body) };
+      }
+      return { ok: false, error: `HTTP ${res.status}` };
+    } catch (err: any) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC.MINDS_LIST_DATASOURCES, async (_event, url: string, apiKey: string) => {
+    try {
+      const baseUrl = url.replace(/\/+$/, '');
+      const res = await httpRequest(`${baseUrl}/api/v1/datasources`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      });
+      if (res.status >= 200 && res.status < 300) {
+        return { ok: true, datasources: JSON.parse(res.body) };
+      }
+      return { ok: false, error: `HTTP ${res.status}` };
+    } catch (err: any) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle(IPC.MINDS_CONNECT, async (
+    _event,
+    url: string,
+    apiKey: string,
+    mindName: string,
+    datasource: string | null,
+    engine: string | null,
+    sslVerify: boolean
+  ) => {
+    // Read existing env, update minds vars, write back
+    const vars = readEnvFile();
+    vars.ANTON_MINDS_API_KEY = apiKey;
+    vars.ANTON_MINDS_URL = url;
+    vars.ANTON_MINDS_MIND_NAME = mindName;
+    vars.ANTON_MINDS_SSL_VERIFY = sslVerify ? 'true' : 'false';
+    if (datasource) vars.ANTON_MINDS_DATASOURCE = datasource;
+    else delete vars.ANTON_MINDS_DATASOURCE;
+    if (engine) vars.ANTON_MINDS_DATASOURCE_ENGINE = engine;
+    else delete vars.ANTON_MINDS_DATASOURCE_ENGINE;
+
+    const antonDir = path.join(os.homedir(), '.anton');
+    if (!fs.existsSync(antonDir)) fs.mkdirSync(antonDir, { recursive: true });
+    const envPath = path.join(antonDir, '.env');
+    const lines = Object.entries(vars).map(([k, v]) => `${k}=${v}`);
+    fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf-8');
+
+    // Write knowledge file for the mind's system prompt
+    try {
+      const baseUrl = url.replace(/\/+$/, '');
+      const res = await httpRequest(`${baseUrl}/api/v1/minds/${encodeURIComponent(mindName)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      });
+      if (res.status >= 200 && res.status < 300) {
+        const mind = JSON.parse(res.body);
+        const params = mind.parameters || {};
+        const parts: string[] = [];
+        if (params.system_prompt) parts.push(params.system_prompt);
+        if (params.prompt_template) parts.push(params.prompt_template);
+        if (parts.length > 0) {
+          // Write to active project's cortex
+          const state = readState();
+          const projectDir = path.join(getProjectsDir(), state.activeProject);
+          const topicDir = path.join(projectDir, '.anton', 'memory', 'cortex', 'hippocampus', 'project', 'topics');
+          fs.mkdirSync(topicDir, { recursive: true });
+          const content = `# Minds — ${mindName}\n\n${parts.join('\n\n')}\n`;
+          fs.writeFileSync(path.join(topicDir, 'minds-datasource.md'), content, 'utf-8');
+        }
+      }
+    } catch {}
+
+    return true;
+  });
+
+  ipcMain.handle(IPC.MINDS_DISCONNECT, async () => {
+    const vars = readEnvFile();
+    delete vars.ANTON_MINDS_API_KEY;
+    delete vars.ANTON_MINDS_URL;
+    delete vars.ANTON_MINDS_MIND_NAME;
+    delete vars.ANTON_MINDS_DATASOURCE;
+    delete vars.ANTON_MINDS_DATASOURCE_ENGINE;
+    delete vars.ANTON_MINDS_SSL_VERIFY;
+
+    const envPath = getAntonEnvPath();
+    const lines = Object.entries(vars).map(([k, v]) => `${k}=${v}`);
+    fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf-8');
+    return true;
+  });
+
   // Projects
   ipcMain.handle(IPC.PROJECTS_LIST, async () => {
     return listProjects();
@@ -368,7 +499,41 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     const dockIcon = nativeImage.createFromPath(getIconPath());
     app.dock.setIcon(dockIcon);
+
+    const template: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: app.name,
+        submenu: [
+          {
+            label: 'About Anton',
+            role: 'about',
+            click: () => {
+              app.setAboutPanelOptions({
+                applicationName: 'Anton',
+                applicationVersion: app.getVersion(),
+                copyright: 'By MindsDB',
+                credits: 'Autonomous AI Coworker\nhttps://mindsdb.com',
+              });
+              app.showAboutPanel();
+            },
+          },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
+      { role: 'editMenu' },
+      { role: 'viewMenu' },
+      { role: 'windowMenu' },
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
+
   ensureDefaultProject();
   setupIPC();
   createWindow();
@@ -382,7 +547,5 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   killAnton();
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
 });

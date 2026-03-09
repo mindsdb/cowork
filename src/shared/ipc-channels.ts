@@ -28,6 +28,14 @@ export const IPC = {
   PROJECTS_GET_ACTIVE: 'projects:get-active',
   PROJECTS_SET_ACTIVE: 'projects:set-active',
 
+  // Minds
+  MINDS_STATUS: 'minds:status',
+  MINDS_LIST: 'minds:list',
+  MINDS_GET: 'minds:get',
+  MINDS_LIST_DATASOURCES: 'minds:list-datasources',
+  MINDS_CONNECT: 'minds:connect',
+  MINDS_DISCONNECT: 'minds:disconnect',
+
   // Clipboard
   CLIPBOARD_SAVE_IMAGE: 'clipboard:save-image',
 

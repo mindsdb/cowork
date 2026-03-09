@@ -14,6 +14,24 @@ interface AntonTronAPI {
   onAntonData: (cb: (projectName: string, data: string) => void) => () => void;
   onAntonExit: (cb: (projectName: string, code: number) => void) => () => void;
 
+  mindsStatus: () => Promise<{
+    connected: boolean;
+    url?: string;
+    apiKey?: string;
+    mindName?: string | null;
+    datasource?: string | null;
+    engine?: string | null;
+  }>;
+  mindsList: (url: string, apiKey: string) =>
+    Promise<{ ok: boolean; minds?: any[]; error?: string }>;
+  mindsGet: (url: string, apiKey: string, mindName: string) =>
+    Promise<{ ok: boolean; mind?: any; error?: string }>;
+  mindsListDatasources: (url: string, apiKey: string) =>
+    Promise<{ ok: boolean; datasources?: any[]; error?: string }>;
+  mindsConnect: (url: string, apiKey: string, mindName: string, datasource: string | null, engine: string | null, sslVerify: boolean) =>
+    Promise<boolean>;
+  mindsDisconnect: () => Promise<boolean>;
+
   saveClipboardImage: (base64Data: string) => Promise<string>;
   saveSettings: (content: string) => Promise<boolean>;
   checkConfigured: () => Promise<{ configured: boolean; provider: string }>;

@@ -1,7 +1,8 @@
 {
   "name": "anton",
   "version": "0.1.0",
-  "description": "The slickest desktop app for Anton — autonomous AI coworker",
+  "description": "Anton by MindsDB — autonomous AI coworker",
+  "author": "MindsDB",
   "main": "dist/main/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\" \"npm run dev:electron\"",
@@ -32,6 +33,7 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
+    "marked": "^17.0.4",
     "node-pty": "^1.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
