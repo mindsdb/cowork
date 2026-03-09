@@ -13,6 +13,23 @@ export const IPC = {
   ANTON_INPUT: 'anton:input',
   ANTON_RESIZE: 'anton:resize',
   ANTON_EXIT: 'anton:exit',
+  ANTON_IS_RUNNING: 'anton:is-running',
+  ANTON_KILL: 'anton:kill',
+
+  // Settings / Onboarding
+  SETTINGS_SAVE: 'settings:save',
+  SETTINGS_CHECK_CONFIGURED: 'settings:check-configured',
+  SETTINGS_VALIDATE: 'settings:validate',
+
+  // Projects
+  PROJECTS_LIST: 'projects:list',
+  PROJECTS_CREATE: 'projects:create',
+  PROJECTS_DELETE: 'projects:delete',
+  PROJECTS_GET_ACTIVE: 'projects:get-active',
+  PROJECTS_SET_ACTIVE: 'projects:set-active',
+
+  // Clipboard
+  CLIPBOARD_SAVE_IMAGE: 'clipboard:save-image',
 
   // App
   APP_READY: 'app:ready',

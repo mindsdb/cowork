@@ -11,12 +11,19 @@ interface InstallStep {
   status: 'pending' | 'running' | 'done' | 'error' | 'skipped';
 }
 
-const STEPS: InstallStep[] = [
-  { id: 'git', label: 'Check for git', status: 'pending' },
-  { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
-  { id: 'anton', label: 'Install Anton', status: 'pending' },
-  { id: 'verify', label: 'Verify installation', status: 'pending' },
-];
+function getSteps(): InstallStep[] {
+  const steps: InstallStep[] = [];
+  if (process.platform === 'darwin') {
+    steps.push({ id: 'xcode', label: 'Xcode Command Line Tools', status: 'pending' });
+  }
+  steps.push(
+    { id: 'git', label: 'Check for git', status: 'pending' },
+    { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
+    { id: 'anton', label: 'Install Anton', status: 'pending' },
+    { id: 'verify', label: 'Verify installation', status: 'pending' },
+  );
+  return steps;
+}
 
 function getLocalBin(): string {
   if (process.platform === 'win32') {
@@ -115,13 +122,59 @@ function fileExists(p: string): boolean {
   }
 }
 
+function xcodeCliInstalled(): Promise<boolean> {
+  return new Promise((resolve) => {
+    // xcode-select -p returns 0 if CLT are installed
+    execFile('xcode-select', ['-p'], (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+function triggerXcodeInstall(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // This launches the macOS system dialog asking the user to install CLT
+    const proc = spawn('xcode-select', ['--install'], { stdio: 'ignore' });
+    proc.on('close', (code) => {
+      // code 0 = dialog launched, code 1 = already installed
+      resolve();
+    });
+    proc.on('error', reject);
+  });
+}
+
+function waitForXcodeInstall(win: BrowserWindow, timeoutMs: number = 600000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let elapsed = 0;
+    const interval = 3000;
+    const check = () => {
+      xcodeCliInstalled().then((installed) => {
+        if (installed) {
+          resolve(true);
+          return;
+        }
+        elapsed += interval;
+        if (elapsed >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        if (!win.isDestroyed()) {
+          sendLog(win, '.');
+        }
+        setTimeout(check, interval);
+      });
+    };
+    check();
+  });
+}
+
 export async function checkAntonInstalled(): Promise<boolean> {
   if (fileExists(getAntonBinary())) return true;
   return commandExists('anton');
 }
 
 export async function runInstaller(win: BrowserWindow): Promise<boolean> {
-  const steps = STEPS.map((s) => ({ ...s }));
+  const steps = getSteps();
 
   const setStep = (id: string, status: InstallStep['status']) => {
     const step = steps.find((s) => s.id === id);
@@ -130,6 +183,32 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
   };
 
   try {
+    // Step 0 (macOS only): Xcode Command Line Tools
+    if (process.platform === 'darwin') {
+      setStep('xcode', 'running');
+      sendLog(win, '--- Checking for Xcode Command Line Tools ---\n');
+      const hasXcode = await xcodeCliInstalled();
+      if (!hasXcode) {
+        sendLog(win, 'Xcode Command Line Tools not found.\n');
+        sendLog(win, 'Launching installer — please click "Install" in the system dialog.\n');
+        sendLog(win, 'Waiting for installation to complete');
+        await triggerXcodeInstall();
+        const installed = await waitForXcodeInstall(win);
+        sendLog(win, '\n');
+        if (!installed) {
+          setStep('xcode', 'error');
+          sendLog(win, 'ERROR: Xcode Command Line Tools installation timed out or was cancelled.\n');
+          sendLog(win, 'Please install manually by running: xcode-select --install\n');
+          win.webContents.send(IPC.INSTALL_ERROR, 'Xcode Command Line Tools are required');
+          return false;
+        }
+        sendLog(win, 'Xcode Command Line Tools installed.\n');
+      } else {
+        sendLog(win, 'Xcode Command Line Tools found.\n');
+      }
+      setStep('xcode', 'done');
+    }
+
     // Step 1: Check git
     setStep('git', 'running');
     sendLog(win, '--- Checking for git ---\n');

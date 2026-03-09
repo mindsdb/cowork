@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface Step {
   id: string;
@@ -70,7 +70,6 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
       <div className="logo-section">
         <pre className="logo-ascii">{`  ▄▀█ █▄ █ ▀█▀ █▀█ █▄ █
   █▀█ █ ▀█  █  █▄█ █ ▀█`}</pre>
-        <div className="logo-title">AntonTron</div>
         <div className="logo-subtitle">autonomous coworker</div>
       </div>
 
@@ -110,18 +109,52 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
         </>
       )}
 
-      {phase === 'done' && (
-        <>
-          <div className="success-section">
-            <div className="success-check">{'\u2713'}</div>
-            <div className="success-text">Anton is installed</div>
-            <div className="success-subtext">Ready to go</div>
-          </div>
-          <button className="btn-primary" onClick={onComplete}>
-            LAUNCH ANTON
-          </button>
-        </>
-      )}
+      {phase === 'done' && <DoneScreen onComplete={onComplete} />}
     </div>
+  );
+}
+
+function useTypewriter(text: string, speed: number = 40): string {
+  const [displayed, setDisplayed] = useState('');
+  useEffect(() => {
+    setDisplayed('');
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setDisplayed(text.slice(0, i));
+      if (i >= text.length) clearInterval(interval);
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text, speed]);
+  return displayed;
+}
+
+function DoneScreen({ onComplete }: { onComplete: () => void }) {
+  const typed = useTypewriter("Now let's teach Anton who to talk to...", 35);
+  const [showContinue, setShowContinue] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowContinue(true), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (showContinue) {
+      const auto = setTimeout(onComplete, 1500);
+      return () => clearTimeout(auto);
+    }
+  }, [showContinue, onComplete]);
+
+  return (
+    <>
+      <div className="success-section">
+        <div className="success-check">{'\u2713'}</div>
+        <div className="success-text">Anton is installed</div>
+        <div className="typewriter-line">
+          {typed}
+          <span className="typewriter-cursor">|</span>
+        </div>
+      </div>
+    </>
   );
 }

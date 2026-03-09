@@ -27,21 +27,43 @@ contextBridge.exposeInMainWorld('antontron', {
   },
 
   // Anton process
-  startAnton: (cols: number, rows: number) =>
-    ipcRenderer.invoke(IPC.ANTON_START, cols, rows),
-  sendInput: (data: string) => ipcRenderer.send(IPC.ANTON_INPUT, data),
-  resizeTerminal: (cols: number, rows: number) =>
-    ipcRenderer.send(IPC.ANTON_RESIZE, cols, rows),
-  onAntonData: (cb: (data: string) => void) => {
-    const listener = (_: any, data: string) => cb(data);
+  startAnton: (projectName: string, cols: number, rows: number) =>
+    ipcRenderer.invoke(IPC.ANTON_START, projectName, cols, rows),
+  isAntonRunning: (projectName: string) =>
+    ipcRenderer.invoke(IPC.ANTON_IS_RUNNING, projectName),
+  sendInput: (projectName: string, data: string) =>
+    ipcRenderer.send(IPC.ANTON_INPUT, projectName, data),
+  resizeTerminal: (projectName: string, cols: number, rows: number) =>
+    ipcRenderer.send(IPC.ANTON_RESIZE, projectName, cols, rows),
+  killAnton: (projectName: string) =>
+    ipcRenderer.send(IPC.ANTON_KILL, projectName),
+  onAntonData: (cb: (projectName: string, data: string) => void) => {
+    const listener = (_: any, projectName: string, data: string) => cb(projectName, data);
     ipcRenderer.on(IPC.ANTON_DATA, listener);
     return () => ipcRenderer.removeListener(IPC.ANTON_DATA, listener);
   },
-  onAntonExit: (cb: (code: number) => void) => {
-    const listener = (_: any, code: number) => cb(code);
+  onAntonExit: (cb: (projectName: string, code: number) => void) => {
+    const listener = (_: any, projectName: string, code: number) => cb(projectName, code);
     ipcRenderer.on(IPC.ANTON_EXIT, listener);
     return () => ipcRenderer.removeListener(IPC.ANTON_EXIT, listener);
   },
+
+  // Settings / Onboarding
+  saveSettings: (content: string) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, content),
+  checkConfigured: () => ipcRenderer.invoke(IPC.SETTINGS_CHECK_CONFIGURED),
+  validateProvider: (provider: string, apiKey: string, baseUrl?: string) =>
+    ipcRenderer.invoke(IPC.SETTINGS_VALIDATE, provider, apiKey, baseUrl),
+
+  // Clipboard
+  saveClipboardImage: (base64Data: string) =>
+    ipcRenderer.invoke(IPC.CLIPBOARD_SAVE_IMAGE, base64Data),
+
+  // Projects
+  listProjects: () => ipcRenderer.invoke(IPC.PROJECTS_LIST),
+  createProject: (name: string) => ipcRenderer.invoke(IPC.PROJECTS_CREATE, name),
+  deleteProject: (name: string) => ipcRenderer.invoke(IPC.PROJECTS_DELETE, name),
+  getActiveProject: () => ipcRenderer.invoke(IPC.PROJECTS_GET_ACTIVE),
+  setActiveProject: (name: string) => ipcRenderer.invoke(IPC.PROJECTS_SET_ACTIVE, name),
 
   // App
   getPlatform: () => process.platform,
