@@ -12,6 +12,7 @@ files:
   - "!node_modules/*/{CHANGELOG.md,README.md,readme.md}"
 
 mac:
+  icon: icon.icns
   category: public.app-category.developer-tools
   target:
     - target: dmg
@@ -20,6 +21,25 @@ mac:
       arch: [universal]
   hardenedRuntime: true
   gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  format: UDZO
+  background: dmg-background.png
+  iconSize: 120
+  iconTextSize: 14
+  window:
+    width: 1200
+    height: 800
+  contents:
+    - x: 300
+      y: 520
+      type: file
+    - x: 900
+      y: 520
+      type: link
+      path: /Applications
 
 win:
   target:
@@ -37,3 +57,5 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
+
+afterSign: scripts/notarize.js
