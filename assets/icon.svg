@@ -1,64 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0A0E1C"/>
-      <stop offset="100%" stop-color="#05070F"/>
-    </linearGradient>
-    <linearGradient id="aGrad" x1="260" y1="180" x2="760" y2="840">
-      <stop offset="0%" stop-color="#1CEBFF"/>
-      <stop offset="100%" stop-color="#39E2FF"/>
-    </linearGradient>
-    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="18" result="b"/>
-      <feMerge>
-        <feMergeNode in="b"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
+  <rect width="1024" height="1024" fill="#08131d"/>
 
-  <!-- Rounded dark tile, outside remains transparent -->
-  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
-  <rect width="1024" height="1024" rx="220" ry="220" fill="none" stroke="#26385C" stroke-width="3"/>
+  <g fill="#eef2f6">
+    <rect x="240" y="176" width="144" height="144"/>
+    <rect x="400" y="176" width="144" height="144"/>
+    <rect x="560" y="176" width="144" height="144"/>
 
-  <g filter="url(#glow)">
-    <!-- 6x7 pixel grid, 72px cell, centered -->
-    <rect x="368" y="260" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="440" y="260" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="512" y="260" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="584" y="260" width="68" height="68" fill="url(#aGrad)"/>
+    <rect x="80" y="336" width="144" height="144"/>
+    <rect x="240" y="336" width="144" height="144"/>
+    <rect x="560" y="336" width="144" height="144"/>
+    <rect x="720" y="176" width="144" height="304"/>
 
-    <rect x="296" y="332" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="368" y="332" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="584" y="332" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="656" y="332" width="68" height="68" fill="url(#aGrad)"/>
+    <rect x="80" y="560" width="144" height="144"/>
+    <rect x="240" y="560" width="144" height="144"/>
+    <rect x="400" y="560" width="144" height="144"/>
+    <rect x="560" y="560" width="144" height="144"/>
+    <rect x="720" y="560" width="144" height="144"/>
 
-    <rect x="296" y="404" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="368" y="404" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="584" y="404" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="656" y="404" width="68" height="68" fill="url(#aGrad)"/>
-
-    <rect x="296" y="476" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="368" y="476" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="440" y="476" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="512" y="476" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="584" y="476" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="656" y="476" width="68" height="68" fill="url(#aGrad)"/>
-
-    <rect x="296" y="548" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="368" y="548" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="584" y="548" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="656" y="548" width="68" height="68" fill="url(#aGrad)"/>
-
-    <rect x="296" y="620" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="368" y="620" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="584" y="620" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="656" y="620" width="68" height="68" fill="url(#aGrad)"/>
-
-    <rect x="296" y="692" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="368" y="692" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="584" y="692" width="68" height="68" fill="url(#aGrad)"/>
-    <rect x="656" y="692" width="68" height="68" fill="url(#aGrad)"/>
+    <rect x="80" y="720" width="144" height="144"/>
+    <rect x="720" y="720" width="144" height="144"/>
   </g>
 </svg>

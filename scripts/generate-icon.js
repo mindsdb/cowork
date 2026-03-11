@@ -1,6 +1,4 @@
-// Generate AntonTron app icon as PNG files for electron-builder
-// Uses raw pixel manipulation — no external image libs needed.
-// We'll create an SVG and convert via sips (macOS)
+// Render the checked-in app icon SVG into PNG/ICNS assets for packaging.
 
 const fs = require('fs');
 const path = require('path');
@@ -8,66 +6,12 @@ const { execSync } = require('child_process');
 
 const assetsDir = path.join(__dirname, '..', 'assets');
 
-// Create a slick SVG icon: stylized "A" with cyan/purple gradient on dark bg
-const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0a0a1a"/>
-      <stop offset="100%" stop-color="#12122a"/>
-    </linearGradient>
-    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#00e5ff"/>
-      <stop offset="100%" stop-color="#b388ff"/>
-    </linearGradient>
-    <linearGradient id="glow2" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#b388ff" stop-opacity="0.6"/>
-    </linearGradient>
-    <filter id="outerGlow">
-      <feGaussianBlur stdDeviation="12" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-    <filter id="softGlow">
-      <feGaussianBlur stdDeviation="25" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-  </defs>
-
-  <!-- Background with rounded corners -->
-  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
-
-  <!-- Subtle border -->
-  <rect width="1024" height="1024" rx="220" ry="220" fill="none" stroke="#2a2a5a" stroke-width="3"/>
-
-  <!-- Background glow circle -->
-  <circle cx="512" cy="480" r="280" fill="#00e5ff" opacity="0.04" filter="url(#softGlow)"/>
-
-  <!-- The "A" letterform — bold, geometric, futuristic -->
-  <g filter="url(#outerGlow)">
-    <!-- Left leg -->
-    <polygon points="320,760 440,760 540,340 460,340" fill="url(#glow)"/>
-    <!-- Right leg -->
-    <polygon points="704,760 584,760 484,340 564,340" fill="url(#glow)"/>
-    <!-- Crossbar -->
-    <rect x="380" y="560" width="264" height="64" rx="8" fill="url(#glow)"/>
-    <!-- Top peak accent -->
-    <polygon points="512,260 540,340 484,340" fill="url(#glow)"/>
-  </g>
-
-  <!-- Inner cutout on crossbar for style -->
-  <rect x="420" y="576" width="184" height="32" rx="4" fill="#0a0a1a" opacity="0.5"/>
-
-  <!-- Small accent dots -->
-  <circle cx="512" cy="850" r="8" fill="#00e5ff" opacity="0.8"/>
-  <circle cx="480" cy="850" r="4" fill="#b388ff" opacity="0.6"/>
-  <circle cx="544" cy="850" r="4" fill="#b388ff" opacity="0.6"/>
-</svg>`;
-
-// Write SVG
 const svgPath = path.join(assetsDir, 'icon.svg');
-fs.writeFileSync(svgPath, svg);
-console.log('Created icon.svg');
+if (!fs.existsSync(svgPath)) {
+  throw new Error(`Missing source SVG: ${svgPath}`);
+}
+
+console.log('Using icon.svg from assets');
 
 // Convert SVG to PNG using sips (macOS) — we need to go through a temp HTML render
 // Actually sips doesn't handle SVG. Let's use the qlmanage trick or a simple approach.
