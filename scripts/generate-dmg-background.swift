@@ -3,7 +3,7 @@ import Foundation
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
 let assets = root.appendingPathComponent("assets", isDirectory: true)
-let logoPath = assets.appendingPathComponent("logo.jpg").path
+let logoPath = assets.appendingPathComponent("banner.png").path
 let outPngPath = assets.appendingPathComponent("dmg-background.png").path
 let outTiffPath = assets.appendingPathComponent("dmg-background.tiff").path
 
@@ -68,7 +68,8 @@ if let gradient = CGGradient(colorsSpace: colorSpace, colors: gradientColors as 
 
 // Exact provided logo.
 if let logo = NSImage(contentsOfFile: logoPath) {
-  let logoRect = CGRect(x: 270, y: yFromTop(92, h: 190), width: 660, height: 190)
+  // Banner size is 728x285. With a width of 660, the height should be roughly 258.
+  let logoRect = CGRect(x: 270, y: yFromTop(58, h: 258), width: 660, height: 258)
   logo.draw(in: logoRect, from: .zero, operation: .sourceOver, fraction: 1.0)
 }
 

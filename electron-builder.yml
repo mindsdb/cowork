@@ -12,7 +12,7 @@ files:
   - "!node_modules/*/{CHANGELOG.md,README.md,readme.md}"
 
 mac:
-  icon: icon.icns
+  icon: icon.png
   category: public.app-category.developer-tools
   target:
     - target: dmg
@@ -42,6 +42,7 @@ dmg:
       path: /Applications
 
 win:
+  icon: icon.png
   target:
     - target: nsis
       arch: [x64, arm64]

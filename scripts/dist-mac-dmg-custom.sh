@@ -35,7 +35,7 @@ cat > "$SPEC_JSON" <<EOF
   "title": "$VOL_NAME",
   "filesystem": "HFS+",
   "format": "UDZO",
-  "icon": "$ROOT_DIR/assets/icon.icns",
+  "icon": "$ROOT_DIR/assets/icon.png",
   "background": "$ROOT_DIR/assets/dmg-background.png",
   "icon-size": 120,
   "window": {

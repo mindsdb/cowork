@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <rect width="1024" height="1024" fill="#08131d"/>
+  <rect x="64" y="64" width="896" height="896" rx="124" fill="#04071f" stroke="#5a5f73" stroke-width="8"/>
 
-  <g fill="#eef2f6">
-    <rect x="260" y="408" width="130" height="116"/>
-    <rect x="390" y="292" width="130" height="116"/>
-    <rect x="520" y="292" width="130" height="116"/>
-    <rect x="650" y="292" width="130" height="232"/>
+  <g fill="#f3f4f6">
+    <rect x="306" y="364" width="154" height="122"/>
+    <rect x="460" y="242" width="154" height="122"/>
+    <rect x="614" y="242" width="154" height="122"/>
+    <rect x="614" y="364" width="154" height="122"/>
 
-    <rect x="325" y="630" width="325" height="116"/>
-    <rect x="260" y="630" width="130" height="232"/>
-    <rect x="650" y="630" width="130" height="232"/>
+    <rect x="306" y="578" width="154" height="122"/>
+    <rect x="460" y="578" width="154" height="122"/>
+    <rect x="614" y="578" width="154" height="122"/>
+    <rect x="306" y="700" width="154" height="122"/>
+    <rect x="614" y="700" width="154" height="122"/>
   </g>
 </svg>
