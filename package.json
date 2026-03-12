@@ -16,6 +16,8 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac",
+    "dist:mac:unsigned": "bash ./scripts/dist-mac-unsigned.sh",
+    "dist:mac:dmg-custom": "bash ./scripts/dist-mac-dmg-custom.sh",
     "dist:win": "npm run build && electron-builder --win"
   },
   "devDependencies": {
@@ -23,7 +25,9 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "appdmg": "^0.6.6",
     "concurrently": "^9.0.0",
+    "create-dmg": "^8.0.0",
     "electron": "^34.0.0",
     "electron-builder": "^25.0.0",
     "typescript": "^5.7.0",

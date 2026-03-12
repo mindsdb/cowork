@@ -21,7 +21,6 @@ exports.default = async function notarizing(context) {
   }
 
   const appName = packager.appInfo.productFilename;
-
   const auth = hasApiKeyAuth
     ? {
         appleApiKey: process.env.APPLE_API_KEY,
