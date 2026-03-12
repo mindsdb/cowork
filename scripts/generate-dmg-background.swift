@@ -9,6 +9,12 @@ let outTiffPath = assets.appendingPathComponent("dmg-background.tiff").path
 
 let width = 1200
 let height = 800
+let dmgBackgroundColor = NSColor(
+  calibratedRed: 0x14 / 255.0,
+  green: 0x22 / 255.0,
+  blue: 0x32 / 255.0,
+  alpha: 1.0
+)
 
 guard let rep = NSBitmapImageRep(
   bitmapDataPlanes: nil,
@@ -39,32 +45,8 @@ func yFromTop(_ yTop: CGFloat, h: CGFloat) -> CGFloat {
   return CGFloat(height) - yTop - h
 }
 
-func backgroundColor(from imagePath: String) -> NSColor {
-  guard
-    let image = NSImage(contentsOfFile: imagePath),
-    let tiff = image.tiffRepresentation,
-    let bitmap = NSBitmapImageRep(data: tiff),
-    let sample = bitmap.colorAt(x: 0, y: 0)
-  else {
-    return NSColor(calibratedRed: 0x11 / 255.0, green: 0x20 / 255.0, blue: 0x31 / 255.0, alpha: 1)
-  }
-
-  return sample.usingColorSpace(.deviceRGB) ?? sample
-}
-
-let logoBackgroundColor = backgroundColor(from: logoPath)
-cg.setFillColor(logoBackgroundColor.cgColor)
+cg.setFillColor(dmgBackgroundColor.cgColor)
 cg.fill(CGRect(x: 0, y: 0, width: width, height: height))
-
-// Subtle vignette/gradient to avoid flat look.
-let gradientColors: [CGColor] = [
-  NSColor(calibratedRed: 0x06 / 255.0, green: 0x14 / 255.0, blue: 0x2D / 255.0, alpha: 0.35).cgColor,
-  NSColor(calibratedRed: 0x17 / 255.0, green: 0x24 / 255.0, blue: 0x33 / 255.0, alpha: 0.25).cgColor
-]
-let colorSpace = CGColorSpaceCreateDeviceRGB()
-if let gradient = CGGradient(colorsSpace: colorSpace, colors: gradientColors as CFArray, locations: [0.0, 1.0]) {
-  cg.drawLinearGradient(gradient, start: CGPoint(x: 0, y: CGFloat(height)), end: CGPoint(x: CGFloat(width), y: 0), options: [])
-}
 
 // Exact provided logo.
 if let logo = NSImage(contentsOfFile: logoPath) {
