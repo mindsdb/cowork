@@ -12,8 +12,15 @@ VOL_NAME="Anton Installer ${VERSION}"
 OUT_DMG="release/Anton-${VERSION}-universal-custom.dmg"
 SPEC_JSON="release/appdmg.json"
 
-export CSC_IDENTITY_AUTO_DISCOVERY=false
 export npm_config_python="${npm_config_python:-/opt/homebrew/bin/python3.11}"
+# Ensure we do not accidentally force unsigned mode from a parent shell.
+unset CSC_IDENTITY_AUTO_DISCOVERY || true
+
+if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
+  echo "Error: no valid 'Developer ID Application' identity found in keychain." >&2
+  echo "Run: security find-identity -v -p codesigning" >&2
+  exit 1
+fi
 
 npm run build
 
@@ -27,6 +34,9 @@ if [[ ! -d "$APP_PATH" ]]; then
   echo "Error: app bundle not found at $APP_PATH" >&2
   exit 1
 fi
+
+echo "Verifying app signature..."
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 rm -f "$OUT_DMG"
 

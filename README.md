@@ -33,6 +33,7 @@ npm run dev
 ```
 
 This runs three processes concurrently:
+
 1. `tsc --watch` for main process
 2. `vite dev` for renderer (port 5173)
 3. Electron with `VITE_DEV=1` flag
@@ -80,21 +81,21 @@ assets/
 
 All channels defined in `src/shared/ipc-channels.ts`:
 
-| Channel | Direction | Purpose |
-|---------|-----------|---------|
-| `install:check` | invoke | Check if Anton CLI is installed |
-| `install:start` | invoke | Run the installer |
-| `install:log/progress/done/error` | send | Installer status events |
-| `anton:start` | invoke | Start PTY for a project |
-| `anton:data` | send | PTY stdout data (tagged with projectName) |
-| `anton:input` | send | Write to PTY stdin |
-| `anton:resize` | send | Resize PTY |
-| `anton:exit` | send | PTY exit event |
-| `anton:kill` | send | Kill a project's PTY |
-| `minds:status/list/get/connect/disconnect` | invoke | Minds server integration |
-| `clipboard:save-image` | invoke | Save clipboard image to temp file |
-| `settings:save/check-configured/validate` | invoke | Settings & API key management |
-| `projects:list/create/delete/get-active/set-active` | invoke | Project CRUD |
+| Channel                                             | Direction | Purpose                                   |
+| --------------------------------------------------- | --------- | ----------------------------------------- |
+| `install:check`                                     | invoke    | Check if Anton CLI is installed           |
+| `install:start`                                     | invoke    | Run the installer                         |
+| `install:log/progress/done/error`                   | send      | Installer status events                   |
+| `anton:start`                                       | invoke    | Start PTY for a project                   |
+| `anton:data`                                        | send      | PTY stdout data (tagged with projectName) |
+| `anton:input`                                       | send      | Write to PTY stdin                        |
+| `anton:resize`                                      | send      | Resize PTY                                |
+| `anton:exit`                                        | send      | PTY exit event                            |
+| `anton:kill`                                        | send      | Kill a project's PTY                      |
+| `minds:status/list/get/connect/disconnect`          | invoke    | Minds server integration                  |
+| `clipboard:save-image`                              | invoke    | Save clipboard image to temp file         |
+| `settings:save/check-configured/validate`           | invoke    | Settings & API key management             |
+| `projects:list/create/delete/get-active/set-active` | invoke    | Project CRUD                              |
 
 ---
 
@@ -103,6 +104,7 @@ All channels defined in `src/shared/ipc-channels.ts`:
 Projects live in `{userData}/projects/`. Each project is a directory with its own `.anton/` folder (memory, episodes, secrets). The `default` project is always created and pinned to the top of the sidebar.
 
 State is tracked in `{userData}/state.json`:
+
 ```json
 { "activeProject": "default" }
 ```
@@ -165,6 +167,7 @@ npm run dist:win
 #### 1. Get certificates from Apple Developer portal
 
 You need two certificates:
+
 - **Developer ID Application** — signs the app binary
 - **Developer ID Installer** — signs the DMG/pkg (optional but recommended)
 
@@ -186,6 +189,29 @@ export APPLE_TEAM_ID="YOUR_TEAM_ID"
 export APPLE_API_KEY_ID="XXXXXXXXXX"
 export APPLE_API_KEY_ISSUER="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 export APPLE_API_KEY="/path/to/AuthKey_XXXXXXXXXX.p8"
+```
+
+Where to export them:
+
+```bash
+# Option A: Current terminal session only (recommended for local/manual release)
+export APPLE_ID="your@email.com"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+export APPLE_TEAM_ID="YOUR_TEAM_ID"
+npm run dist:mac:dmg-custom
+```
+
+```bash
+# Option B: Persist in zsh profile (loads in every new terminal)
+echo 'export APPLE_ID="your@email.com"' >> ~/.zshrc
+echo 'export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"' >> ~/.zshrc
+echo 'export APPLE_TEAM_ID="YOUR_TEAM_ID"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+```bash
+# Verify env vars are present
+env | rg '^APPLE_'
 ```
 
 #### 3. electron-builder config (already included in this repo)
@@ -228,19 +254,19 @@ afterSign: scripts/notarize.js
 `scripts/notarize.js`:
 
 ```js
-const { notarize } = require('@electron/notarize');
+const { notarize } = require("@electron/notarize");
 
 exports.default = async function notarizing(context) {
   const { electronPlatformName, appOutDir } = context;
-  if (electronPlatformName !== 'darwin') return;
+  if (electronPlatformName !== "darwin") return;
 
   const appName = context.packager.appInfo.productFilename;
 
-  console.log('Notarizing...');
+  console.log("Notarizing...");
   await notarize({
     // Use Apple ID auth:
-    tool: 'notarytool',
-    appBundleId: 'com.anton.app',
+    tool: "notarytool",
+    appBundleId: "com.anton.app",
     appPath: `${appOutDir}/${appName}.app`,
     appleId: process.env.APPLE_ID,
     appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
@@ -251,11 +277,12 @@ exports.default = async function notarizing(context) {
     // appleApiKeyId: process.env.APPLE_API_KEY_ID,
     // appleApiIssuer: process.env.APPLE_API_KEY_ISSUER,
   });
-  console.log('Notarization complete.');
+  console.log("Notarization complete.");
 };
 ```
 
 If `@electron/notarize` is missing in your local install:
+
 ```bash
 npm install --save-dev @electron/notarize
 ```
@@ -316,11 +343,13 @@ Microsoft's cloud signing service — recommended for CI/CD.
 
 1. Set up Azure Trusted Signing in Azure Portal
 2. Install the signing tool:
+
 ```bash
 dotnet tool install --global AzureSignTool
 ```
 
 3. Add to `electron-builder.yml`:
+
 ```yaml
 win:
   signingHashAlgorithms: [sha256]
@@ -328,12 +357,14 @@ win:
 ```
 
 4. Create `scripts/azure-sign.js`:
+
 ```js
 exports.default = async function sign(configuration) {
-  const { execSync } = require('child_process');
+  const { execSync } = require("child_process");
   const filePath = configuration.path;
 
-  execSync(`AzureSignTool sign \
+  execSync(
+    `AzureSignTool sign \
     -kvu "${process.env.AZURE_KEY_VAULT_URI}" \
     -kvi "${process.env.AZURE_CLIENT_ID}" \
     -kvs "${process.env.AZURE_CLIENT_SECRET}" \
@@ -341,7 +372,9 @@ exports.default = async function sign(configuration) {
     -kvc "${process.env.AZURE_CERT_NAME}" \
     -tr http://timestamp.digicert.com \
     -td sha256 \
-    "${filePath}"`, { stdio: 'inherit' });
+    "${filePath}"`,
+    { stdio: "inherit" },
+  );
 };
 ```
 
@@ -372,7 +405,7 @@ name: Build & Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 jobs:
   build-mac:
@@ -432,27 +465,28 @@ For Windows, electron-builder auto-converts `icon.png` to `.ico`.
 
 These are written to `~/.anton/.env` by the app and read by Anton at startup:
 
-| Variable | Source | Purpose |
-|----------|--------|---------|
-| `ANTON_ANTHROPIC_API_KEY` | Onboarding | Anthropic API key |
-| `ANTON_OPENAI_API_KEY` | Onboarding | Minds/OpenAI-compatible API key |
-| `ANTON_OPENAI_BASE_URL` | Onboarding | Minds server URL (as OpenAI base) |
-| `ANTON_MINDS_API_KEY` | Minds panel | Minds API key for datasources |
-| `ANTON_MINDS_URL` | Minds panel | Minds server URL |
-| `ANTON_MINDS_MIND_NAME` | Minds panel | Selected mind name |
-| `ANTON_MINDS_DATASOURCE` | Minds panel | Selected datasource |
-| `ANTON_MINDS_DATASOURCE_ENGINE` | Minds panel | Datasource engine type |
-| `ANTON_MINDS_SSL_VERIFY` | Minds panel | SSL cert verification (true/false) |
-| `ANTON_PLANNING_MODEL` | Settings | Model for planning tasks |
-| `ANTON_CODING_MODEL` | Settings | Model for coding tasks |
-| `ANTON_MEMORY_MODE` | Settings | Memory mode (autopilot/copilot/off) |
-| `ANTON_SUPPRESS_BANNER` | Auto-set | Suppresses ASCII art banner in PTY |
+| Variable                        | Source      | Purpose                             |
+| ------------------------------- | ----------- | ----------------------------------- |
+| `ANTON_ANTHROPIC_API_KEY`       | Onboarding  | Anthropic API key                   |
+| `ANTON_OPENAI_API_KEY`          | Onboarding  | Minds/OpenAI-compatible API key     |
+| `ANTON_OPENAI_BASE_URL`         | Onboarding  | Minds server URL (as OpenAI base)   |
+| `ANTON_MINDS_API_KEY`           | Minds panel | Minds API key for datasources       |
+| `ANTON_MINDS_URL`               | Minds panel | Minds server URL                    |
+| `ANTON_MINDS_MIND_NAME`         | Minds panel | Selected mind name                  |
+| `ANTON_MINDS_DATASOURCE`        | Minds panel | Selected datasource                 |
+| `ANTON_MINDS_DATASOURCE_ENGINE` | Minds panel | Datasource engine type              |
+| `ANTON_MINDS_SSL_VERIFY`        | Minds panel | SSL cert verification (true/false)  |
+| `ANTON_PLANNING_MODEL`          | Settings    | Model for planning tasks            |
+| `ANTON_CODING_MODEL`            | Settings    | Model for coding tasks              |
+| `ANTON_MEMORY_MODE`             | Settings    | Memory mode (autopilot/copilot/off) |
+| `ANTON_SUPPRESS_BANNER`         | Auto-set    | Suppresses ASCII art banner in PTY  |
 
 ---
 
 ## Troubleshooting
 
 ### `node-pty` build fails during install
+
 ```bash
 # Ensure Python setuptools is available (needed by node-gyp)
 pip3 install setuptools
@@ -462,6 +496,7 @@ npx electron-rebuild -f -w node-pty
 ```
 
 ### App shows blank white screen
+
 ```bash
 # Make sure both main and renderer are built
 npm run build
@@ -471,9 +506,11 @@ ls dist/renderer/index.html
 ```
 
 ### Anton shows "Disconnected" immediately after launch
+
 The packaged `.app` doesn't inherit shell PATH. This is handled by spawning through a login shell (`zsh -l -i -c anton`). If issues persist, check that Anton is in `~/.local/bin/` or on the default PATH.
 
 ### macOS Gatekeeper blocks unsigned app
+
 ```bash
 # Remove quarantine attribute (dev only)
 xattr -cr "/Applications/Anton.app"
@@ -483,16 +520,16 @@ xattr -cr "/Applications/Anton.app"
 
 ## Tech Stack
 
-| Layer | Tech |
-|-------|------|
-| Framework | Electron 34 |
-| Renderer | React 19 + TypeScript + Vite 6 |
-| Terminal | xterm.js 5 |
-| PTY | node-pty 1 |
-| Markdown | marked 17 |
-| Packaging | electron-builder 25 |
-| Styling | Pure CSS (custom dark cyberpunk theme) |
+| Layer     | Tech                                   |
+| --------- | -------------------------------------- |
+| Framework | Electron 34                            |
+| Renderer  | React 19 + TypeScript + Vite 6         |
+| Terminal  | xterm.js 5                             |
+| PTY       | node-pty 1                             |
+| Markdown  | marked 17                              |
+| Packaging | electron-builder 25                    |
+| Styling   | Pure CSS (custom dark cyberpunk theme) |
 
 ---
 
-*Built by MindsDB. Anton is the autonomous AI coworker.*
+_Built by MindsDB. Anton is the autonomous AI coworker._
