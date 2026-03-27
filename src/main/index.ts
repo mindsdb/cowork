@@ -122,6 +122,34 @@ async function validateMinds(
   }
 }
 
+async function validateOpenAICompatible(
+  apiKey: string,
+  baseUrl: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const normalizedBase = baseUrl.replace(/\/+$/, '');
+    const modelsUrl = normalizedBase.endsWith('/v1')
+      ? `${normalizedBase}/models`
+      : `${normalizedBase}/v1/models`;
+    const res = await httpRequest(modelsUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (res.status >= 200 && res.status < 300) {
+      return { ok: true };
+    }
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, error: 'Invalid API key' };
+    }
+    return { ok: false, error: `Server returned HTTP ${res.status}` };
+  } catch (err: any) {
+    return { ok: false, error: `Cannot connect: ${err.message}` };
+  }
+}
+
 // ─── Projects ────────────────────────────────────────────────
 interface Project {
   name: string;
@@ -334,6 +362,8 @@ function setupIPC() {
         return validateAnthropic(apiKey);
       } else if (provider === 'minds') {
         return validateMinds(apiKey, baseUrl || 'https://mdb.ai');
+      } else if (provider === 'openai-compatible') {
+        return validateOpenAICompatible(apiKey, baseUrl || 'https://api.openai.com/v1');
       }
       return { ok: false, error: 'Unknown provider' };
     }
