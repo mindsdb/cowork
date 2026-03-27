@@ -28,13 +28,14 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "appdmg": "^0.6.6",
     "concurrently": "^9.0.0",
-    "create-dmg": "^8.0.0",
     "electron": "^34.0.0",
     "electron-builder": "^25.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
+  },
+  "optionalDependencies": {
+    "appdmg": "^0.6.6"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
