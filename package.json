@@ -1,6 +1,6 @@
 {
   "name": "anton",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "Anton by MindsDB — autonomous AI coworker",
   "author": "MindsDB",
   "main": "dist/main/main/index.js",
@@ -18,20 +18,24 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:mac:unsigned": "bash ./scripts/dist-mac-unsigned.sh",
     "dist:mac:dmg-custom": "bash ./scripts/dist-mac-dmg-custom.sh",
-    "dist:win": "npm run build && electron-builder --win"
+    "release:mac:dmg-custom:notarized": "bash ./scripts/release-mac-custom-notarized.sh",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:win:all": "npm run build && electron-builder --win",
+    "release:win:local": "npm run dist:win"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "appdmg": "^0.6.6",
     "concurrently": "^9.0.0",
-    "create-dmg": "^8.0.0",
     "electron": "^34.0.0",
     "electron-builder": "^25.0.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
+  },
+  "optionalDependencies": {
+    "appdmg": "^0.6.6"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",

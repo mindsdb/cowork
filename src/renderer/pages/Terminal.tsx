@@ -306,6 +306,12 @@ export default function Terminal() {
     restartAnton();
   }, [refreshMindsStatus, restartAnton]);
 
+  const handleDataVaultConnect = useCallback(async () => {
+    await ensureAntonRunning(activeProject);
+    showTerminal(activeProject);
+    window.antontron.sendInput(activeProject, '/connect\n');
+  }, [activeProject, ensureAntonRunning, showTerminal]);
+
   const startRename = useCallback((name: string) => {
     setRenamingProject(name);
     setRenameValue(name);
@@ -544,40 +550,16 @@ export default function Terminal() {
 
           <div className="sidebar-divider" />
 
-          {/* Minds */}
+          {/* Data Vault */}
           <div className="sidebar-section">
-            <div className="sidebar-label">MINDS</div>
-            {mindsStatus.connected ? (
-              <div className="project-list">
-                <div className="project-item active minds-item-sidebar">
-                  <button
-                    className="project-item-btn"
-                    onClick={() => setShowMinds(true)}
-                  >
-                    <div className="project-dot minds-dot" />
-                    <span className="project-name">{mindsStatus.mindName}</span>
-                  </button>
-                  <button
-                    className="project-delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmModal({ type: 'disconnect-mind', name: mindsStatus.mindName || 'this mind' });
-                    }}
-                    title="Disconnect mind"
-                  >
-                    &times;
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                className="sidebar-btn new-project-btn"
-                onClick={() => setShowMinds(true)}
-              >
-                <span className="sidebar-btn-icon">+</span>
-                Connect
-              </button>
-            )}
+            <div className="sidebar-label">DATA VAULT</div>
+            <button
+              className="sidebar-btn new-project-btn"
+              onClick={handleDataVaultConnect}
+            >
+              <span className="sidebar-btn-icon">+</span>
+              Connect
+            </button>
           </div>
         </div>
 

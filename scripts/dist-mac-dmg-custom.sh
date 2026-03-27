@@ -27,8 +27,13 @@ npm run build
 # Generate deterministic 1200x800 DMG background from logo.jpg.
 swift ./scripts/generate-dmg-background.swift
 
-# Build the macOS app bundle only (no DMG from electron-builder)
-npx electron-builder --mac --universal --dir -c.afterSign=scripts/after-sign-noop.js
+# Build the macOS app bundle only (no DMG from electron-builder), unless caller
+# explicitly wants to reuse an existing prebuilt/pre-notarized app bundle.
+if [[ "${SKIP_APP_BUILD:-0}" != "1" ]]; then
+  npx electron-builder --mac --universal --dir -c.afterSign=scripts/after-sign-noop.js
+else
+  echo "Skipping app build (SKIP_APP_BUILD=1). Reusing existing $APP_PATH"
+fi
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "Error: app bundle not found at $APP_PATH" >&2

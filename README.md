@@ -151,12 +151,25 @@ npm run dist:mac
 ### Windows
 
 ```bash
-# Build NSIS installer (x64 + arm64)
+# Build NSIS installer (x64, recommended)
 npm run dist:win
 # Output: release/Anton-Setup-{version}.exe
 ```
 
+```bash
+# Alias for local/manual Windows release
+npm run release:win:local
+
+# If you explicitly need x64 + arm64
+npm run dist:win:all
+```
+
 > **Note**: Windows builds can be cross-compiled from macOS, but `node-pty` native modules require the target platform. For production Windows builds, build on a Windows machine or use CI.
+>
+> This repo now includes a dedicated Windows workflow:
+> `.github/workflows/windows-installer.yml`
+>
+> Trigger it from GitHub Actions (workflow_dispatch) or by pushing a `v*` tag (for example `v0.9.0`).
 
 ---
 
