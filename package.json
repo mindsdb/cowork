@@ -19,6 +19,7 @@
     "dist:mac:unsigned": "bash ./scripts/dist-mac-unsigned.sh",
     "dist:mac:dmg-custom": "bash ./scripts/dist-mac-dmg-custom.sh",
     "release:mac:dmg-custom:notarized": "bash ./scripts/release-mac-custom-notarized.sh",
+    "release:mac:pkg:notarized": "bash ./scripts/release-mac-pkg-notarized.sh",
     "dist:win": "npm run build && electron-builder --win --x64",
     "dist:win:all": "npm run build && electron-builder --win",
     "release:win:local": "npm run dist:win"
