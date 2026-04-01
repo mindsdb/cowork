@@ -223,10 +223,13 @@ export default function Terminal() {
     for (const [name, inst] of terminalsRef.current) {
       inst.container.style.display = name === projectName ? '' : 'none';
     }
-    // Fit the visible one
+    // Fit and focus the visible one
     const active = terminalsRef.current.get(projectName);
     if (active) {
-      setTimeout(() => active.fitAddon.fit(), 50);
+      setTimeout(() => {
+        active.fitAddon.fit();
+        active.term.focus();
+      }, 50);
     }
   }, []);
 
