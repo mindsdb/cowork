@@ -592,7 +592,7 @@ export default function Terminal() {
               onClick={handleDataVaultConnect}
             >
               <span className="sidebar-btn-icon">+</span>
-              Connect
+              Add Datasource
             </button>
           </div>
         </div>
@@ -661,16 +661,10 @@ export default function Terminal() {
             <VaultEditor
               engine={editingConnection.engine}
               name={editingConnection.name}
+              activeProject={activeProject}
+              ensureAntonRunning={ensureAntonRunning}
               onClose={() => setEditingConnection(null)}
-              onSaved={() => { refreshVault(); setEditingConnection(null); }}
-              onDeleted={() => { refreshVault(); setEditingConnection(null); }}
-              onTest={(slug) => {
-                setEditingConnection(null);
-                ensureAntonRunning(activeProject).then(() => {
-                  showTerminal(activeProject);
-                  window.antontron.sendInput(activeProject, `/test ${slug}\n`);
-                });
-              }}
+              onDone={() => { refreshVault(); setEditingConnection(null); }}
             />
           </div>
         </div>
@@ -755,7 +749,9 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [customModel, setCustomModel] = useState('');
   const [memoryMode, setMemoryMode] = useState('autopilot');
   const [proactiveDashboards, setProactiveDashboards] = useState(false);
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [openSection, setOpenSection] = useState<string>('llm');
   const [existingVars, setExistingVars] = useState<Record<string, string>>({});
 
   const models = llmProvider === 'anthropic' ? ANTHROPIC_MODELS_SETTINGS : OPENAI_MODELS_SETTINGS;
@@ -772,6 +768,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
       if (vars.ANTON_MINDS_URL) setMindsUrl(vars.ANTON_MINDS_URL);
       if (vars.ANTON_MEMORY_MODE) setMemoryMode(vars.ANTON_MEMORY_MODE);
       if (vars.ANTON_PROACTIVE_DASHBOARDS === 'true') setProactiveDashboards(true);
+      if (vars.ANTON_ANALYTICS_ENABLED === 'false') setAnalyticsEnabled(false);
 
       // Detect existing key
       if (detected === 'anthropic' && vars.ANTON_ANTHROPIC_API_KEY) setHasExistingKey(true);
@@ -842,6 +839,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
     merged.ANTON_MEMORY_MODE = memoryMode;
     merged.ANTON_PROACTIVE_DASHBOARDS = proactiveDashboards ? 'true' : 'false';
+    merged.ANTON_ANALYTICS_ENABLED = analyticsEnabled ? 'true' : 'false';
 
     const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
     window.antontron.saveSettings(lines.join('\n'));
@@ -857,99 +855,159 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="settings-body">
-        <div className="settings-group">
-          <label className="settings-label">LLM Provider</label>
-          <select
-            className="settings-select"
-            value={llmProvider}
-            onChange={(e) => handleProviderChange(e.target.value as LLMProvider)}
-          >
-            <option value="minds">Minds Cloud</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="openai">OpenAI</option>
-          </select>
+        {/* LLM */}
+        <div className="accordion">
+          <button className={`accordion-header ${openSection === 'llm' ? 'open' : ''}`} onClick={() => setOpenSection(openSection === 'llm' ? '' : 'llm')}>
+            <span className="accordion-chevron">{openSection === 'llm' ? '\u25BE' : '\u25B8'}</span>
+            LLM Provider
+          </button>
+          {openSection === 'llm' && (
+            <div className="accordion-body">
+              <div className="settings-group">
+                <label className="settings-label">Provider</label>
+                <select
+                  className="settings-select"
+                  value={llmProvider}
+                  onChange={(e) => handleProviderChange(e.target.value as LLMProvider)}
+                >
+                  <option value="minds">Minds Cloud</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                </select>
+              </div>
+
+              {llmProvider === 'minds' && (
+                <div className="settings-group">
+                  <label className="settings-label">Minds URL</label>
+                  <input
+                    type="text"
+                    className="settings-input"
+                    placeholder="https://mdb.ai"
+                    value={mindsUrl}
+                    onChange={(e) => setMindsUrl(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="settings-group">
+                <label className="settings-label">
+                  {llmProvider === 'minds' ? 'Minds API Key' : llmProvider === 'anthropic' ? 'Anthropic API Key' : 'OpenAI API Key'}
+                </label>
+                <input
+                  type="password"
+                  className="settings-input"
+                  placeholder={hasExistingKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (unchanged)' : llmProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...'}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+                <div className="settings-hint">Leave blank to keep current key</div>
+              </div>
+
+              {llmProvider !== 'minds' && (
+                <div className="settings-group">
+                  <label className="settings-label">Model</label>
+                  <select
+                    className="settings-select"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                  >
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                    <option value="__custom__">Custom...</option>
+                  </select>
+                  {model === '__custom__' && (
+                    <input
+                      type="text"
+                      className="settings-input"
+                      style={{ marginTop: 6 }}
+                      placeholder="Enter model ID..."
+                      value={customModel}
+                      onChange={(e) => setCustomModel(e.target.value)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {llmProvider === 'minds' && (
-          <div className="settings-group">
-            <label className="settings-label">Minds URL</label>
-            <input
-              type="text"
-              className="settings-input"
-              placeholder="https://mdb.ai"
-              value={mindsUrl}
-              onChange={(e) => setMindsUrl(e.target.value)}
-            />
-          </div>
-        )}
-
-        <div className="settings-group">
-          <label className="settings-label">
-            {llmProvider === 'minds' ? 'Minds API Key' : llmProvider === 'anthropic' ? 'Anthropic API Key' : 'OpenAI API Key'}
-          </label>
-          <input
-            type="password"
-            className="settings-input"
-            placeholder={hasExistingKey ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (unchanged)' : llmProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...'}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-          />
-          <div className="settings-hint">Leave blank to keep current key</div>
+        {/* Memory */}
+        <div className="accordion">
+          <button className={`accordion-header ${openSection === 'memory' ? 'open' : ''}`} onClick={() => setOpenSection(openSection === 'memory' ? '' : 'memory')}>
+            <span className="accordion-chevron">{openSection === 'memory' ? '\u25BE' : '\u25B8'}</span>
+            Memory
+          </button>
+          {openSection === 'memory' && (
+            <div className="accordion-body">
+              <div className="settings-group">
+                <label className="settings-label">Memory Mode</label>
+                <select
+                  className="settings-select"
+                  value={memoryMode}
+                  onChange={(e) => setMemoryMode(e.target.value)}
+                >
+                  <option value="autopilot">Autopilot</option>
+                  <option value="copilot">Copilot</option>
+                  <option value="off">Off</option>
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
-        {llmProvider !== 'minds' && (
-          <div className="settings-group">
-            <label className="settings-label">Model</label>
-            <select
-              className="settings-select"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-              <option value="__custom__">Custom...</option>
-            </select>
-            {model === '__custom__' && (
-              <input
-                type="text"
-                className="settings-input"
-                style={{ marginTop: 6 }}
-                placeholder="Enter model ID..."
-                value={customModel}
-                onChange={(e) => setCustomModel(e.target.value)}
-              />
-            )}
-          </div>
-        )}
-
-        <div className="settings-group">
-          <label className="settings-label">Memory Mode</label>
-          <select
-            className="settings-select"
-            value={memoryMode}
-            onChange={(e) => setMemoryMode(e.target.value)}
-          >
-            <option value="autopilot">Autopilot</option>
-            <option value="copilot">Copilot</option>
-            <option value="off">Off</option>
-          </select>
+        {/* Dashboards */}
+        <div className="accordion">
+          <button className={`accordion-header ${openSection === 'dashboards' ? 'open' : ''}`} onClick={() => setOpenSection(openSection === 'dashboards' ? '' : 'dashboards')}>
+            <span className="accordion-chevron">{openSection === 'dashboards' ? '\u25BE' : '\u25B8'}</span>
+            Dashboards
+          </button>
+          {openSection === 'dashboards' && (
+            <div className="accordion-body">
+              <div className="settings-group">
+                <label className="settings-label">Proactive Dashboards</label>
+                <label className="minds-ssl-label">
+                  <input
+                    type="checkbox"
+                    checked={proactiveDashboards}
+                    onChange={(e) => setProactiveDashboards(e.target.checked)}
+                    className="minds-ssl-checkbox"
+                  />
+                  Build dashboards automatically
+                </label>
+                <div className="settings-hint">
+                  When enabled, Anton proactively creates charts and dashboards when data warrants it
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="settings-group">
-          <label className="settings-label">Proactive Dashboards</label>
-          <label className="minds-ssl-label">
-            <input
-              type="checkbox"
-              checked={proactiveDashboards}
-              onChange={(e) => setProactiveDashboards(e.target.checked)}
-              className="minds-ssl-checkbox"
-            />
-            Build dashboards automatically
-          </label>
-          <div className="settings-hint">
-            When enabled, Anton proactively creates charts and dashboards when data warrants it
-          </div>
+        {/* Telemetry */}
+        <div className="accordion">
+          <button className={`accordion-header ${openSection === 'telemetry' ? 'open' : ''}`} onClick={() => setOpenSection(openSection === 'telemetry' ? '' : 'telemetry')}>
+            <span className="accordion-chevron">{openSection === 'telemetry' ? '\u25BE' : '\u25B8'}</span>
+            Telemetry
+          </button>
+          {openSection === 'telemetry' && (
+            <div className="accordion-body">
+              <div className="settings-group">
+                <label className="settings-label">Anonymous Analytics</label>
+                <label className="minds-ssl-label">
+                  <input
+                    type="checkbox"
+                    checked={analyticsEnabled}
+                    onChange={(e) => setAnalyticsEnabled(e.target.checked)}
+                    className="minds-ssl-checkbox"
+                  />
+                  Send anonymous usage events
+                </label>
+                <div className="settings-hint">
+                  Helps improve Anton. No personal data or code is ever sent.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1303,24 +1361,30 @@ function MindsPanel({
   );
 }
 
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+}
+
 function VaultEditor({
   engine,
   name,
+  activeProject,
+  ensureAntonRunning,
   onClose,
-  onSaved,
-  onDeleted,
-  onTest,
+  onDone,
 }: {
   engine: string;
   name: string;
+  activeProject: string;
+  ensureAntonRunning: (p: string) => Promise<void>;
   onClose: () => void;
-  onSaved: () => void;
-  onDeleted: () => void;
-  onTest: (slug: string) => void;
+  onDone: () => void;
 }) {
   const [fields, setFields] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [saved, setSaved] = useState(false);
+  const [phase, setPhase] = useState<'edit' | 'testing' | 'pass' | 'fail'>('edit');
+  const [testError, setTestError] = useState('');
+  const outputBuf = useRef('');
 
   useEffect(() => {
     (async () => {
@@ -1330,38 +1394,61 @@ function VaultEditor({
     })();
   }, [engine, name]);
 
+  const slug = `${engine}-${name}`;
+
   const handleSave = async () => {
     await window.antontron.vaultSave(engine, name, fields);
-    setSaved(true);
-    setTimeout(() => {
-      onSaved();
-    }, 600);
-  };
+    setPhase('testing');
+    setTestError('');
+    outputBuf.current = '';
 
-  const handleTest = async () => {
-    await window.antontron.vaultSave(engine, name, fields);
-    onTest(`${engine}-${name}`);
+    // Listen for test result in terminal output
+    const unsub = window.antontron.onAntonData((_proj, data) => {
+      outputBuf.current += stripAnsi(data);
+      const buf = outputBuf.current;
+      if (buf.includes('Connection test passed')) {
+        unsub();
+        setPhase('pass');
+      } else if (buf.includes('Connection test failed')) {
+        unsub();
+        // Extract error after "Error:"
+        const errorMatch = buf.match(/Error:\s*([\s\S]*)/);
+        setTestError(errorMatch ? errorMatch[1].trim().split('\n').slice(0, 5).join('\n') : 'Connection test failed');
+        setPhase('fail');
+      } else if (buf.includes('No test snippet defined') || buf.includes('Cannot test')) {
+        unsub();
+        // No test available — treat as save-only success
+        setPhase('pass');
+      }
+    });
+
+    // Timeout after 30s
+    setTimeout(() => {
+      if (outputBuf.current && !outputBuf.current.includes('test passed') && !outputBuf.current.includes('test failed')) {
+        unsub();
+        setTestError('Test timed out');
+        setPhase('fail');
+      }
+    }, 30000);
+
+    await ensureAntonRunning(activeProject);
+    window.antontron.sendInput(activeProject, `/test ${slug}\n`);
   };
 
   const handleDelete = async () => {
     await window.antontron.vaultDelete(engine, name);
-    onDeleted();
+    onDone();
   };
 
   const updateField = (key: string, value: string) => {
     setFields((prev) => ({ ...prev, [key]: value }));
   };
 
-  const addField = () => {
-    const key = `field_${Object.keys(fields).length + 1}`;
-    setFields((prev) => ({ ...prev, [key]: '' }));
-  };
-
   if (loading) {
     return (
       <>
         <div className="settings-header">
-          <div className="settings-title">{engine}-{name}</div>
+          <div className="settings-title"><span>{engine}</span> <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({name})</span></div>
           <button className="settings-close" onClick={onClose}>&times;</button>
         </div>
         <div className="settings-body" style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
@@ -1372,20 +1459,19 @@ function VaultEditor({
   }
 
   const fieldEntries = Object.entries(fields);
-  const secretKeys = new Set(['password', 'secret', 'token', 'api_key', 'apikey', 'private_key', 'ssl_key']);
-  const isSecret = (key: string) => secretKeys.has(key.toLowerCase()) || key.toLowerCase().includes('password') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('token');
+  const isSecret = (key: string) => /password|secret|token|api_key|apikey|private_key|ssl_key/i.test(key);
 
   return (
     <>
       <div className="settings-header">
-        <div className="settings-title">{engine}-{name}</div>
+        <div className="settings-title"><span>{engine}</span> <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({name})</span></div>
         <button className="settings-close" onClick={onClose}>&times;</button>
       </div>
 
       <div className="settings-body">
         {fieldEntries.length === 0 && (
           <div className="settings-hint" style={{ textAlign: 'center', padding: 16 }}>
-            No fields configured. Use the + button to add fields or use /edit {engine}-{name} in the terminal.
+            No fields configured. Use /edit {slug} in the terminal to add fields.
           </div>
         )}
 
@@ -1398,30 +1484,45 @@ function VaultEditor({
               value={value}
               onChange={(e) => updateField(key, e.target.value)}
               placeholder={isSecret(key) ? '\u2022\u2022\u2022\u2022\u2022\u2022' : `Enter ${key}...`}
+              disabled={phase === 'testing'}
             />
           </div>
         ))}
+
+        {/* Test result feedback */}
+        {phase === 'testing' && (
+          <div className="vault-test-status">
+            <div className="spinner" style={{ width: 16, height: 16 }} />
+            <span>Testing connection...</span>
+          </div>
+        )}
+        {phase === 'pass' && (
+          <div className="vault-test-status vault-test-pass">
+            <span>{'\u2713'} Connection test passed</span>
+          </div>
+        )}
+        {phase === 'fail' && (
+          <div className="vault-test-status vault-test-fail">
+            <span>{'\u2717'} Connection test failed</span>
+            {testError && <pre className="vault-test-error">{testError}</pre>}
+          </div>
+        )}
       </div>
 
       <div className="settings-footer" style={{ display: 'flex', gap: 8 }}>
         <button
           className="btn-primary settings-save"
           style={{ flex: 1 }}
-          onClick={handleSave}
+          onClick={phase === 'pass' ? onDone : handleSave}
+          disabled={phase === 'testing'}
         >
-          {saved ? '\u2713 SAVED' : 'SAVE'}
-        </button>
-        <button
-          className="btn-primary settings-save"
-          style={{ flex: 0, background: 'rgba(0,229,255,0.1)', color: 'var(--accent-cyan)', border: '1px solid rgba(0,229,255,0.25)' }}
-          onClick={handleTest}
-        >
-          TEST
+          {phase === 'testing' ? 'TESTING...' : phase === 'pass' ? 'DONE' : phase === 'fail' ? 'RETRY' : 'SAVE'}
         </button>
         <button
           className="btn-primary settings-save"
           style={{ flex: 0, background: 'rgba(255,82,82,0.15)', color: 'var(--accent-red)', border: '1px solid rgba(255,82,82,0.3)' }}
           onClick={handleDelete}
+          disabled={phase === 'testing'}
         >
           DELETE
         </button>

@@ -512,6 +512,8 @@ html, body, #root {
   font-size: 12px;
   cursor: pointer;
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .project-item.active .project-item-btn {
@@ -541,10 +543,66 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+.vault-test-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.vault-test-pass {
+  color: var(--accent-green);
+  background: rgba(105, 240, 174, 0.08);
+  border: 1px solid rgba(105, 240, 174, 0.2);
+}
+
+.vault-test-fail {
+  color: var(--accent-red);
+  background: rgba(255, 82, 82, 0.08);
+  border: 1px solid rgba(255, 82, 82, 0.2);
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.vault-test-error {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 6px;
+  max-height: 80px;
+  overflow-y: auto;
+  width: 100%;
+}
+
 .project-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.vault-conn-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.vault-engine {
+  color: var(--text-secondary);
+}
+
+.vault-name {
+  color: var(--text-muted);
+  margin-left: 2px;
+  font-size: 11px;
 }
 
 .project-delete {
@@ -794,6 +852,57 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Accordion */
+.accordion {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.accordion-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.accordion-header:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.accordion-header.open {
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+}
+
+.accordion-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 10px;
+  text-align: center;
+}
+
+.accordion-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: fadeIn 0.2s ease-out;
 }
 
 .settings-label {
