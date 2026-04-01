@@ -146,7 +146,6 @@ async function validateOpenAICompatible(
       },
       body: JSON.stringify({
         model: model || 'gpt-4o',
-        max_tokens: 1,
         messages: [{ role: 'user', content: 'ping' }],
       }),
     });

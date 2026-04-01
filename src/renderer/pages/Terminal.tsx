@@ -751,6 +751,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [proactiveDashboards, setProactiveDashboards] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [openSection, setOpenSection] = useState<string>('llm');
   const [existingVars, setExistingVars] = useState<Record<string, string>>({});
 
@@ -797,7 +799,47 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     setCustomModel('');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setSaveError('');
+    setValidating(true);
+    setSaved(false);
+
+    // Determine validation params — same logic as onboarding
+    let validationProvider: string;
+    let validationKey: string;
+    let validationBaseUrl: string | undefined;
+    let validationModel: string | undefined;
+
+    if (llmProvider === 'minds') {
+      validationProvider = 'minds';
+      validationKey = apiKey.trim() || existingVars.ANTON_MINDS_API_KEY || '';
+      validationBaseUrl = mindsUrl.trim();
+    } else if (llmProvider === 'anthropic') {
+      validationProvider = 'anthropic';
+      validationKey = apiKey.trim() || existingVars.ANTON_ANTHROPIC_API_KEY || '';
+      validationModel = resolvedModel;
+    } else {
+      validationProvider = 'openai-compatible';
+      validationKey = apiKey.trim() || existingVars.ANTON_OPENAI_API_KEY || '';
+      validationBaseUrl = 'https://api.openai.com/v1';
+      validationModel = resolvedModel;
+    }
+
+    // Validate connection
+    const result = await window.antontron.validateProvider(
+      validationProvider,
+      validationKey,
+      validationBaseUrl,
+      validationModel
+    );
+
+    if (!result.ok) {
+      setValidating(false);
+      setSaveError(result.error || 'Validation failed');
+      return;
+    }
+
+    // Validation passed — save settings
     const merged = { ...existingVars };
 
     // Clear old provider keys to avoid conflicts
@@ -810,26 +852,23 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
 
     if (llmProvider === 'minds') {
       const mindsBase = mindsUrl.trim().replace(/\/+$/, '');
-      const key = apiKey.trim() || existingVars.ANTON_MINDS_API_KEY || '';
-      merged.ANTON_OPENAI_API_KEY = key;
+      merged.ANTON_OPENAI_API_KEY = validationKey;
       merged.ANTON_OPENAI_BASE_URL = mindsBase + '/api/v1';
       merged.ANTON_PLANNING_PROVIDER = 'openai-compatible';
       merged.ANTON_CODING_PROVIDER = 'openai-compatible';
       merged.ANTON_PLANNING_MODEL = '_reason_';
       merged.ANTON_CODING_MODEL = '_code_';
       merged.ANTON_MINDS_ENABLED = 'true';
-      merged.ANTON_MINDS_API_KEY = key;
+      merged.ANTON_MINDS_API_KEY = validationKey;
       merged.ANTON_MINDS_URL = mindsBase;
     } else if (llmProvider === 'anthropic') {
-      const key = apiKey.trim() || existingVars.ANTON_ANTHROPIC_API_KEY || '';
-      merged.ANTON_ANTHROPIC_API_KEY = key;
+      merged.ANTON_ANTHROPIC_API_KEY = validationKey;
       merged.ANTON_PLANNING_PROVIDER = 'anthropic';
       merged.ANTON_CODING_PROVIDER = 'anthropic';
       merged.ANTON_PLANNING_MODEL = resolvedModel;
       merged.ANTON_CODING_MODEL = resolvedModel;
     } else {
-      const key = apiKey.trim() || existingVars.ANTON_OPENAI_API_KEY || '';
-      merged.ANTON_OPENAI_API_KEY = key;
+      merged.ANTON_OPENAI_API_KEY = validationKey;
       merged.ANTON_OPENAI_BASE_URL = 'https://api.openai.com/v1';
       merged.ANTON_PLANNING_PROVIDER = 'openai-compatible';
       merged.ANTON_CODING_PROVIDER = 'openai-compatible';
@@ -842,7 +881,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
     merged.ANTON_ANALYTICS_ENABLED = analyticsEnabled ? 'true' : 'false';
 
     const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
-    window.antontron.saveSettings(lines.join('\n'));
+    await window.antontron.saveSettings(lines.join('\n'));
+    setValidating(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1011,9 +1051,13 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
+      {saveError && (
+        <div className="error-message" style={{ margin: '0 24px 12px' }}>{saveError}</div>
+      )}
+
       <div className="settings-footer">
-        <button className="btn-primary settings-save" onClick={handleSave}>
-          {saved ? '\u2713 SAVED' : 'SAVE'}
+        <button className="btn-primary settings-save" onClick={handleSave} disabled={validating}>
+          {validating ? 'VALIDATING...' : saved ? '\u2713 SAVED' : 'SAVE'}
         </button>
       </div>
     </>
