@@ -21,6 +21,7 @@ export const IPC = {
   SETTINGS_SAVE: 'settings:save',
   SETTINGS_CHECK_CONFIGURED: 'settings:check-configured',
   SETTINGS_VALIDATE: 'settings:validate',
+  TERMS_ACCEPT: 'terms:accept',
 
   // Projects
   PROJECTS_LIST: 'projects:list',

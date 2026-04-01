@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { IPC } from '../shared/ipc-channels';
+import { sendEvent } from './analytics';
 
 interface InstallStep {
   id: string;
@@ -306,6 +307,7 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
     sendLog(win, 'Anton is ready!\n');
     setStep('verify', 'done');
 
+    sendEvent('ANTONAPP_INSTALLATION_SUCCESS');
     win.webContents.send(IPC.INSTALL_DONE);
     return true;
   } catch (err: any) {

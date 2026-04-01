@@ -7,6 +7,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkAntonInstalled, runInstaller } from './installer';
 import { startAnton, writeToAnton, resizeAnton, killAnton, isAntonRunning } from './anton-process';
+import { sendEvent } from './analytics';
 
 function getAntonEnvPath(): string {
   return path.join(os.homedir(), '.anton', '.env');
@@ -348,6 +349,17 @@ function setupIPC() {
     }
     const envPath = path.join(antonDir, '.env');
     fs.writeFileSync(envPath, content + '\n', 'utf-8');
+
+    // Analytics — fire-and-forget, never blocks
+    if (content.includes('ANTON_TERMS_CONSENT=true')) {
+      sendEvent('ANTONAPP_TERMS_ACCEPTED');
+    }
+    if (content.includes('ANTON_MINDS_ENABLED=true')) {
+      sendEvent('ANTONAPP_MINDSLLM');
+    } else if (content.includes('ANTON_ANTHROPIC_API_KEY') || content.includes('ANTON_OPENAI_API_KEY')) {
+      sendEvent('ANTONAPP_BYOK');
+    }
+
     return true;
   });
 
