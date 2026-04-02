@@ -132,15 +132,30 @@ function xcodeCliInstalled(): Promise<boolean> {
   });
 }
 
-function triggerXcodeInstall(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // This launches the macOS system dialog asking the user to install CLT
-    const proc = spawn('xcode-select', ['--install'], { stdio: 'ignore' });
+function triggerXcodeInstall(win: BrowserWindow): Promise<boolean> {
+  return new Promise((resolve) => {
+    // Try xcode-select --install first — needs stdio piped so the system dialog can launch
+    const proc = spawn('xcode-select', ['--install'], { stdio: 'pipe' });
+    let stderr = '';
+    proc.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
     proc.on('close', (code) => {
-      // code 0 = dialog launched, code 1 = already installed
-      resolve();
+      if (code === 0) {
+        // Dialog was launched successfully
+        resolve(true);
+        return;
+      }
+      // xcode-select --install failed (e.g. inside sandbox), try open(1) as fallback
+      sendLog(win, 'Trying alternate install method...\n');
+      const fallback = spawn('open', ['/System/Library/CoreServices/Install Command Line Developer Tools.app']);
+      fallback.on('close', (fbCode) => {
+        resolve(fbCode === 0);
+      });
+      fallback.on('error', () => resolve(false));
     });
-    proc.on('error', reject);
+    proc.on('error', () => {
+      // xcode-select binary not found — shouldn't happen on macOS but handle it
+      resolve(false);
+    });
   });
 }
 
@@ -192,8 +207,15 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
       if (!hasXcode) {
         sendLog(win, 'Xcode Command Line Tools not found.\n');
         sendLog(win, 'Launching installer — please click "Install" in the system dialog.\n');
+        const triggered = await triggerXcodeInstall(win);
+        if (!triggered) {
+          setStep('xcode', 'error');
+          sendLog(win, 'ERROR: Could not launch Xcode Command Line Tools installer.\n');
+          sendLog(win, 'Please open Terminal and run: xcode-select --install\n');
+          win.webContents.send(IPC.INSTALL_ERROR, 'Could not launch Xcode CLT installer. Please run "xcode-select --install" in Terminal.');
+          return false;
+        }
         sendLog(win, 'Waiting for installation to complete');
-        await triggerXcodeInstall();
         const installed = await waitForXcodeInstall(win);
         sendLog(win, '\n');
         if (!installed) {
