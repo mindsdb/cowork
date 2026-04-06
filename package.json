@@ -1,6 +1,6 @@
 {
   "name": "anton",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Anton by MindsDB — autonomous AI coworker",
   "author": "MindsDB",
   "main": "dist/main/main/index.js",

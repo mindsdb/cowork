@@ -7,7 +7,7 @@ import * as zlib from 'zlib';
 import { pipeline } from 'stream/promises';
 
 // Where we read latest.json from — GitHub Pages, no API rate limits
-const MANIFEST_URL = 'https://mindsdb.github.io/antontron/latest.json';
+const MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
 
 interface UIManifest {
   version: string;

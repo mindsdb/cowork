@@ -20,6 +20,7 @@ export default function Terminal() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState('default');
   const [showNewProject, setShowNewProject] = useState(false);
+  const [uiVersion, setUIVersion] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
   const [projectError, setProjectError] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -461,6 +462,13 @@ export default function Terminal() {
     return unsub;
   }, []);
 
+  // Fetch UI version on mount
+  useEffect(() => {
+    window.antontron.getUIVersion().then((info) => {
+      setUIVersion(info.ui);
+    }).catch(() => {});
+  }, []);
+
   const activeInstance = terminalsRef.current.get(activeProject);
   const connected = activeInstance?.connected ?? false;
   const streaming = activeInstance?.streaming ?? false;
@@ -613,6 +621,9 @@ export default function Terminal() {
             <span className="sidebar-btn-icon">&#x2699;</span>
             Settings
           </button>
+          {uiVersion && uiVersion !== 'bundled' && (
+            <div className="sidebar-version">UI {uiVersion}</div>
+          )}
         </div>
       </div>
 

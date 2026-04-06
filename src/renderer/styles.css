@@ -218,6 +218,8 @@ html, body, #root {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .step-row[data-status="running"] {
@@ -225,13 +227,54 @@ html, body, #root {
   box-shadow: var(--glow-cyan);
 }
 
+.step-row[data-status="running"]::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), var(--accent-purple), transparent);
+  border-radius: 2px;
+  animation: stepScan 1.5s ease-in-out infinite;
+}
+
+@keyframes stepScan {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
 .step-row[data-status="done"] {
   border-color: var(--accent-green);
   opacity: 0.85;
 }
 
+.step-row[data-status="done"]::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--accent-green);
+  border-radius: 2px;
+  opacity: 0.4;
+}
+
 .step-row[data-status="error"] {
   border-color: var(--accent-red);
+}
+
+.step-row[data-status="error"]::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--accent-red);
+  border-radius: 2px;
+  opacity: 0.4;
 }
 
 .step-icon {
@@ -242,6 +285,16 @@ html, body, #root {
   justify-content: center;
   font-size: 14px;
   flex-shrink: 0;
+}
+
+.step-row[data-status="done"] .step-icon {
+  color: var(--accent-green);
+  text-shadow: 0 0 8px rgba(105, 240, 174, 0.5);
+}
+
+.step-row[data-status="error"] .step-icon {
+  color: var(--accent-red);
+  text-shadow: 0 0 8px rgba(255, 82, 82, 0.5);
 }
 
 .step-label {
@@ -442,6 +495,15 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.sidebar-version {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 4px 0 2px;
+  letter-spacing: 1px;
+  opacity: 0.6;
 }
 
 .sidebar-btn {
