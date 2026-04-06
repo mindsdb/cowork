@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
 
 jobs:
   build-and-publish:
@@ -49,60 +48,52 @@ jobs:
           cd ../..
           sha256sum ui-bundle.tar.gz | awk '{print $1}' > ui-bundle.sha256
 
-      - name: Create GitHub Release
-        id: release
+      - name: Publish to antontron-releases
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="${{ steps.version.outputs.tag }}"
-
-          # Create tag if workflow_dispatch (tag might not exist yet)
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            git tag "$TAG" || true
-            git push origin "$TAG" || true
-          fi
-
-          gh release create "$TAG" \
-            --title "UI $VERSION" \
-            --notes "Renderer UI bundle v${VERSION}" \
-            ui-bundle.tar.gz
-
-          # Get the asset download URL
-          ASSET_URL=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name=="ui-bundle.tar.gz") | .url')
-          echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
-
-      - name: Build latest.json for GitHub Pages
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag }}"
           SHA256=$(cat ui-bundle.sha256)
+          DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
 
-          # Use the direct download URL that doesn't need API auth
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/ui-bundle.tar.gz"
+          # Clone the public releases repo
+          git clone "https://x-access-token:${RELEASES_TOKEN}@github.com/mindsdb/antontron-releases.git" releases-repo
 
-          mkdir -p gh-pages
-          cat > gh-pages/latest.json << EOF
+          # Create release with the bundle via gh CLI
+          cd releases-repo
+          gh release create "$TAG" \
+            --title "UI $VERSION" \
+            --notes "Renderer UI bundle v${VERSION}" \
+            ../ui-bundle.tar.gz \
+            || { echo "Release may already exist, uploading asset..."; gh release upload "$TAG" ../ui-bundle.tar.gz --clobber; }
+
+          # Update latest.json on gh-pages
+          git fetch origin gh-pages || git checkout --orphan gh-pages
+          git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
+
+          # Write manifest
+          cat > latest.json << MANIFEST
           {
             "version": "${VERSION}",
             "url": "${DOWNLOAD_URL}",
             "sha256": "${SHA256}"
           }
-          EOF
+          MANIFEST
 
-          # Clean up whitespace from heredoc indentation
           python3 -c "
-          import json, sys
-          with open('gh-pages/latest.json') as f:
+          import json
+          with open('latest.json') as f:
               data = json.load(f)
-          with open('gh-pages/latest.json', 'w') as f:
+          with open('latest.json', 'w') as f:
               json.dump(data, f, indent=2)
           print(json.dumps(data, indent=2))
           "
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./gh-pages
-          keep_files: true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add latest.json
+          git commit -m "UI ${VERSION}" || echo "No changes"
+          git push origin gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
