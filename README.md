@@ -416,43 +416,90 @@ npm run dist:win
 
 The desktop shell (Electron main process) handles PTY, IPC, and native OS integration — it changes rarely. The renderer (React UI) is where most iteration happens. Anton Desktop ships with an **OTA update system** that lets you push UI updates to every installed app without shipping a new `.dmg` or `.exe`.
 
+### Two-Repo Architecture
+
+Because `mindsdb/antontron` is **private**, the app can't fetch releases from it without baked-in tokens. Instead, OTA assets are published to a **separate public repo**: [`mindsdb/antontron-releases`](https://github.com/mindsdb/antontron-releases).
+
+```
+┌─────────────────────────────────────┐        ┌──────────────────────────────────┐
+│  mindsdb/antontron (PRIVATE)        │        │  mindsdb/antontron-releases      │
+│                                     │        │  (PUBLIC)                        │
+│  source code lives here             │        │                                  │
+│                                     │  push  │  GitHub Releases:                │
+│  .github/workflows/publish-ui.yml ──┼───────▶│    ui-v1.2.0/ui-bundle.tar.gz   │
+│                                     │        │                                  │
+│                                     │        │  GitHub Pages (gh-pages branch): │
+│                                     │        │    latest.json                   │
+└─────────────────────────────────────┘        └──────────────────────────────────┘
+                                                              ▲
+                                                              │ HTTPS (no auth)
+                                                              │
+                                                 ┌────────────┴─────────────┐
+                                                 │   Anton Desktop App      │
+                                                 │   (every user's machine) │
+                                                 └──────────────────────────┘
+```
+
 ### How It Works
 
-```
-┌──────────────┐    tag: ui-v1.2.0     ┌─────────────────┐
-│  Developer   │ ───────────────────▶   │  GitHub Actions  │
-└──────────────┘                        └────────┬────────┘
-                                                 │
-                                    builds renderer, tars,
-                                    computes SHA-256 hash
-                                                 │
-                              ┌──────────────────┼──────────────────┐
-                              ▼                                     ▼
-                   ┌─────────────────┐                   ┌──────────────────┐
-                   │ GitHub Releases  │                   │  GitHub Pages    │
-                   │ ui-bundle.tar.gz │                   │  latest.json     │
-                   └─────────────────┘                   └──────────────────┘
-                              ▲                                     ▲
-                              │          on every launch            │
-                              │     ┌───────────────────────┐      │
-                              └─────│   Anton Desktop App   │──────┘
-                                    │  (background check)   │
-                                    └───────────────────────┘
+1. Code is merged to `main` (or a `ui-v*` tag is pushed)
+2. The `publish-ui` workflow in the **private** repo builds the renderer
+3. It creates a `.tar.gz` bundle, computes a SHA-256 checksum
+4. Using a `RELEASES_TOKEN`, it pushes the bundle as a **GitHub Release** and updates `latest.json` on **GitHub Pages** — both on the **public** `antontron-releases` repo
+5. Every Anton Desktop launch, the app fetches `https://mindsdb.github.io/antontron-releases/latest.json` (static file, no auth, no API rate limits)
+6. If a newer version exists, it downloads the bundle, **verifies the SHA-256 checksum**, and caches it
+7. **Next launch** loads the updated UI — zero user interaction required
+
+### Automatic Deployment
+
+The workflow triggers automatically on three events:
+
+| Trigger | When | Version format | Example |
+| --- | --- | --- | --- |
+| **Push to `main`** | Any merge that changes `src/renderer/`, `src/shared/`, or `package.json` | `{pkg.version}-{sha}` | `1.0.1-a3b4c5d` |
+| **Tag push** | `git tag ui-v1.2.0 && git push origin ui-v1.2.0` | Clean version from tag | `1.2.0` |
+| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml) → Run workflow | Whatever you enter (or pkg.version + sha if empty) | `1.2.0` |
+
+This means **every merge to `main` that touches UI files automatically deploys to all users**. No manual tagging required for day-to-day work. Use explicit tags (`ui-v*`) for milestone releases.
+
+The workflow also checks if the version is already published and **skips duplicate releases** — safe to re-run.
+
+### Publishing Manually
+
+#### Option A: Command Line
+
+```bash
+git tag ui-v1.2.0
+git push origin ui-v1.2.0
 ```
 
-1. **Push a tag** → `git tag ui-v1.2.0 && git push origin ui-v1.2.0`
-2. **GitHub Actions** builds only the renderer, tars the output, computes a SHA-256 checksum
-3. **Publishes** the bundle to GitHub Releases and writes `latest.json` to GitHub Pages
-4. **Every Anton Desktop launch**, the main process fetches `latest.json` (static file — no API rate limits)
-5. If a newer version exists, it downloads the bundle, **verifies the SHA-256 checksum**, and caches it
-6. **Next launch** loads the updated UI — zero user interaction required
+#### Option B: GitHub UI
+
+1. Go to [**Actions → Publish UI Bundle**](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml)
+2. Click **"Run workflow"** (top right)
+3. Branch: `main`
+4. Version: `1.2.0` (leave empty to auto-generate from package.json)
+5. Click the green **"Run workflow"** button
+
+#### Option C: Just merge to `main`
+
+If your PR changes anything in `src/renderer/`, `src/shared/`, or `package.json`, merging it will automatically publish a new UI version.
+
+### Verifying a Deploy
+
+After the workflow completes:
+
+- **Manifest**: https://mindsdb.github.io/antontron-releases/latest.json — should show the new version, download URL, and SHA-256
+- **Release**: https://github.com/mindsdb/antontron-releases/releases — should show the new `ui-v*` release with `ui-bundle.tar.gz` attached
+- **In the app**: Launch Anton Desktop, then check **Anton → About Anton** — shows `1.0.1 (UI: 1.2.0)` when OTA is active
 
 ### Security
 
 - Every bundle is integrity-checked with **SHA-256** before extraction
-- Checksum misses → update is silently discarded, app loads last known good UI
+- Checksum mismatch → update is silently discarded, app loads last known good UI
 - Previous version is kept on disk for automatic **rollback** if the new UI fails to load
 - All downloads over HTTPS from GitHub's CDN
+- The `RELEASES_TOKEN` only has write access to the public `antontron-releases` repo — source code in the private repo is never exposed
 
 ### Boot Sequence
 
@@ -467,67 +514,9 @@ App starts
 
 The app **never blocks on a network request** — it always loads immediately from cache or bundled files, and downloads updates silently in the background.
 
-### Publishing a UI Update
-
-There are two ways to publish — from the command line or from the GitHub UI. Both do the same thing.
-
-#### Option A: Command Line
-
-```bash
-# Tag and push — the workflow triggers automatically
-git tag ui-v1.2.0
-git push origin ui-v1.2.0
-```
-
-#### Option B: GitHub UI (no git required)
-
-1. Go to [**Actions → Publish UI Bundle**](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml)
-2. Click the **"Run workflow"** dropdown (top right)
-3. Make sure **Branch** is set to `main`
-4. Enter the version number (e.g. `1.2.0` — without the `ui-v` prefix, the workflow adds it)
-5. Click the green **"Run workflow"** button
-6. Wait for the run to complete (usually under 2 minutes)
-
-After either method, the workflow:
-- Builds only the renderer (`npm run build:renderer`)
-- Creates a `.tar.gz` bundle with a SHA-256 checksum
-- Publishes the bundle as a **GitHub Release** asset (`ui-v1.2.0`)
-- Updates `latest.json` on **GitHub Pages** at `https://mindsdb.github.io/antontron/latest.json`
-
-Every running Anton Desktop will pick up the new version on its next launch.
-
-#### Verifying a Publish
-
-After the workflow completes, confirm both endpoints:
-
-- **Release**: https://github.com/mindsdb/antontron/releases — should show a new `ui-v1.2.0` release with `ui-bundle.tar.gz` attached
-- **Manifest**: https://mindsdb.github.io/antontron/latest.json — should return JSON with the new version, download URL, and SHA-256 hash
-
-### One-Time Setup
-
-This only needs to be done once when setting up the repo. If you're reading this, it's probably already done.
-
-1. Go to [**Settings → Pages**](https://github.com/mindsdb/antontron/settings/pages) in the GitHub repo
-2. Under **Build and deployment**, set **Source** to "Deploy from a branch"
-3. Set **Branch** to `gh-pages` / `/ (root)`
-4. Set **Visibility** to "Public" (the app needs to fetch `latest.json` without authentication)
-5. Type `mindsdb/antontron` to confirm
-6. Save
-
-> **Note**: The `gh-pages` branch is created automatically by the first workflow run. If it doesn't exist yet, either run the workflow first and come back to enable Pages, or create it manually:
-> ```bash
-> git checkout --orphan gh-pages
-> git reset --hard
-> git commit --allow-empty -m "init gh-pages"
-> git push origin gh-pages
-> git checkout main
-> ```
-
-The `publish-ui` workflow handles everything after this — writing `latest.json`, uploading release assets. You never need to touch the `gh-pages` branch manually.
-
 ### File Layout
 
-On disk, the OTA cache lives in the Electron `userData` directory:
+On disk (Electron `userData` directory):
 
 ```
 {userData}/ui-cache/
@@ -536,7 +525,7 @@ On disk, the OTA cache lives in the Electron `userData` directory:
   previous/             # Rollback copy of the prior version
 ```
 
-On GitHub:
+On GitHub (`mindsdb/antontron-releases`):
 
 ```
 gh-pages branch:
@@ -553,10 +542,63 @@ GitHub Releases:
 
 ### Workflows
 
-| Workflow | Trigger | What it does |
+| Workflow | Repo | Trigger | What it does |
+| --- | --- | --- | --- |
+| `publish-ui.yml` | `antontron` (private) | Push to `main` (renderer changes), `ui-v*` tag, or manual | Builds renderer, publishes to `antontron-releases` |
+| `windows-installer.yml` | `antontron` (private) | `v*` tag or manual | Builds Windows `.exe` installer with code signing |
+
+### Required Secrets
+
+These must be configured in [**antontron → Settings → Secrets → Repository secrets**](https://github.com/mindsdb/antontron/settings/secrets/actions):
+
+| Secret | Purpose | How to create |
 | --- | --- | --- |
-| `publish-ui.yml` | `ui-v*` tag or manual | Builds renderer, publishes bundle to Releases, updates `latest.json` on GitHub Pages |
-| `windows-installer.yml` | `v*` tag or manual | Builds Windows `.exe` installer with code signing |
+| `RELEASES_TOKEN` | GitHub PAT that can push releases and pages to `mindsdb/antontron-releases` | [Fine-grained token](https://github.com/settings/tokens?type=beta) scoped to `mindsdb/antontron-releases` with **Contents** (read/write) + **Metadata** (read) permissions |
+| `APPLE_ID` | Apple ID email for macOS notarization | Your Apple Developer account email |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for notarization | Generate at [appleid.apple.com](https://appleid.apple.com) → Security → App-Specific Passwords |
+| `APPLE_TEAM_ID` | Apple Developer Team ID | Found in Apple Developer portal → Membership |
+| `CSC_LINK` | Windows code signing certificate (base64 `.pfx`) | Export from your EV certificate |
+| `CSC_KEY_PASSWORD` | Password for the Windows signing certificate | Set when exporting the `.pfx` |
+
+> **Note**: Only `RELEASES_TOKEN` is required for OTA UI updates. The Apple and Windows signing secrets are only needed for building signed installers.
+
+### One-Time Setup
+
+This only needs to be done once. If you're reading this, it's probably already done.
+
+#### 1. Create the public releases repo
+
+Create [`mindsdb/antontron-releases`](https://github.com/mindsdb/antontron-releases) as a **public** repo. It only holds release assets and `latest.json` — no source code.
+
+#### 2. Create the `RELEASES_TOKEN`
+
+1. Go to [**GitHub → Settings → Developer settings → Fine-grained tokens**](https://github.com/settings/tokens?type=beta)
+2. Create a new token:
+   - **Name**: `antontron-releases-deploy`
+   - **Repository access**: Only select repositories → `mindsdb/antontron-releases`
+   - **Permissions**: Contents (read/write), Metadata (read)
+3. Copy the token
+4. Go to [**antontron → Settings → Secrets → Actions**](https://github.com/mindsdb/antontron/settings/secrets/actions)
+5. Add new repository secret: **Name** = `RELEASES_TOKEN`, **Value** = the token
+
+#### 3. Enable GitHub Pages on `antontron-releases`
+
+1. Go to [**antontron-releases → Settings → Pages**](https://github.com/mindsdb/antontron-releases/settings/pages)
+2. **Source**: "Deploy from a branch"
+3. **Branch**: `gh-pages` / `/ (root)`
+4. **Visibility**: Public
+5. Save
+
+> The `gh-pages` branch is created automatically by the first workflow run. If it doesn't exist yet, run the workflow first, then come back to enable Pages.
+
+#### 4. Test
+
+Trigger the workflow manually from [Actions → Publish UI Bundle](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml), then verify:
+
+```bash
+# Should return JSON with version, url, sha256
+curl https://mindsdb.github.io/antontron-releases/latest.json
+```
 
 ### GitHub Actions example (full platform builds)
 
