@@ -2,13 +2,19 @@ name: Publish UI Bundle
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - 'src/renderer/**'
+      - 'src/shared/**'
+      - 'package.json'
     tags:
-      - 'ui-v*'    # e.g. ui-v1.2.0
+      - 'ui-v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'UI version (e.g. 1.2.0)'
-        required: true
+        description: 'UI version (e.g. 1.2.0) — leave empty to use package.json'
+        required: false
 
 permissions:
   contents: write
@@ -18,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
@@ -32,16 +40,38 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=ui-v${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            # Manual dispatch with explicit version
+            VER="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/ui-v* ]]; then
+            # Tag push
+            VER="${GITHUB_REF#refs/tags/ui-v}"
           else
-            TAG="${GITHUB_REF#refs/tags/}"
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-            echo "version=${TAG#ui-v}" >> "$GITHUB_OUTPUT"
+            # Push to main — use package.json version + short sha for uniqueness
+            BASE_VER=$(node -p "require('./package.json').version")
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            VER="${BASE_VER}-${SHORT_SHA}"
+          fi
+
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "tag=ui-v$VER" >> "$GITHUB_OUTPUT"
+          echo "Publishing UI version: $VER"
+
+      - name: Check if version already published
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" --repo mindsdb/antontron-releases &>/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Version $TAG already published — skipping"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Package renderer bundle
+        if: steps.check.outputs.skip != 'true'
         run: |
           cd dist/renderer
           tar czf ../../ui-bundle.tar.gz .
@@ -49,6 +79,7 @@ jobs:
           sha256sum ui-bundle.tar.gz | awk '{print $1}' > ui-bundle.sha256
 
       - name: Publish to antontron-releases
+        if: steps.check.outputs.skip != 'true'
         env:
           RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
