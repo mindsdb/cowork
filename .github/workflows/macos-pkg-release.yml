@@ -1,0 +1,117 @@
+name: macOS PKG Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_s3:
+        description: "Upload signed pkg to S3"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-macos-pkg:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      GH_APPLE_ID: ${{ secrets.APPLE_ID }}
+      GH_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      GH_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      S3_RELEASE_BUCKET: ${{ secrets.S3_RELEASE_BUCKET }}
+      S3_RELEASE_PREFIX: ${{ secrets.S3_RELEASE_PREFIX }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --omit=optional
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild -f -w node-pty
+
+      - name: Import Apple signing certificates
+        env:
+          APPLE_DEV_ID_APP_CERT_B64: ${{ secrets.APPLE_DEV_ID_APP_CERT_B64 }}
+          APPLE_DEV_ID_APP_CERT_PASSWORD: ${{ secrets.APPLE_DEV_ID_APP_CERT_PASSWORD }}
+          APPLE_DEV_ID_INSTALLER_CERT_B64: ${{ secrets.APPLE_DEV_ID_INSTALLER_CERT_B64 }}
+          APPLE_DEV_ID_INSTALLER_CERT_PASSWORD: ${{ secrets.APPLE_DEV_ID_INSTALLER_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          APP_CERT_PATH="$RUNNER_TEMP/dev_app_cert.p12"
+          INSTALLER_CERT_PATH="$RUNNER_TEMP/dev_installer_cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          echo "$APPLE_DEV_ID_APP_CERT_B64" | base64 --decode > "$APP_CERT_PATH"
+          echo "$APPLE_DEV_ID_INSTALLER_CERT_B64" | base64 --decode > "$INSTALLER_CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          security import "$APP_CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_DEV_ID_APP_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+          security import "$INSTALLER_CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_DEV_ID_INSTALLER_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Build, sign and notarize pkg
+        run: npm run release:mac:pkg:notarized
+
+      - name: Generate checksum
+        run: |
+          shasum -a 256 release/*.pkg > release/pkg.sha256
+          cat release/pkg.sha256
+
+      - name: Upload pkg artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-pkg-release
+          path: |
+            release/*.pkg
+            release/pkg.sha256
+
+      - name: Configure AWS credentials
+        if: ${{ (inputs.upload_to_s3 == true || startsWith(github.ref, 'refs/tags/v')) && env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' && env.AWS_REGION != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload pkg to S3
+        if: ${{ (inputs.upload_to_s3 == true || startsWith(github.ref, 'refs/tags/v')) }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${S3_RELEASE_BUCKET:-}" ]]; then
+            echo "S3_RELEASE_BUCKET is empty. Skipping S3 upload."
+            exit 0
+          fi
+          if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" || -z "${AWS_REGION:-}" ]]; then
+            echo "AWS credentials are not configured. Skipping S3 upload."
+            exit 0
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREFIX="${S3_RELEASE_PREFIX:-desktop/macos}"
+          aws s3 cp release/ "s3://${S3_RELEASE_BUCKET}/${PREFIX}/${VERSION}/" \
+            --recursive \
+            --exclude "*" \
+            --include "*.pkg" \
+            --include "pkg.sha256"

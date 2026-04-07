@@ -11,18 +11,21 @@ APP_PATH="release/mac-universal/${PRODUCT_NAME}.app"
 APP_ZIP="release/${ARTIFACT_NAME}.app.zip"
 PKG_PATH="release/${ARTIFACT_NAME}-${VERSION}-universal-signed.pkg"
 
-INSTALLER_IDENTITY="Developer ID Installer: MindsDB Inc (498Y665994)"
+INSTALLER_IDENTITY="${INSTALLER_IDENTITY:-Developer ID Installer: MindsDB Inc (498Y665994)}"
 
-if [[ -z "${APPLE_ID:-}" || -z "${APPLE_TEAM_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+# CI-friendly fallback names so the script can read values injected from GitHub
+# Secrets with either APPLE_* or GH_APPLE_* names.
+APPLE_ID_VALUE="${APPLE_ID:-${GH_APPLE_ID:-}}"
+APPLE_TEAM_ID_VALUE="${APPLE_TEAM_ID:-${GH_APPLE_TEAM_ID:-}}"
+APPLE_APP_SPECIFIC_PASSWORD_VALUE="${APPLE_APP_SPECIFIC_PASSWORD:-${GH_APPLE_APP_SPECIFIC_PASSWORD:-}}"
+
+if [[ -z "${APPLE_ID_VALUE:-}" || -z "${APPLE_TEAM_ID_VALUE:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD_VALUE:-}" ]]; then
   echo "Error: missing Apple notarization env vars." >&2
-  echo "Required: APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD" >&2
+  echo "Required: APPLE_ID/ GH_APPLE_ID, APPLE_TEAM_ID/ GH_APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD/ GH_APPLE_APP_SPECIFIC_PASSWORD" >&2
   exit 1
 fi
 
 # Preserve notarization credentials for manual steps later in this script.
-APPLE_ID_VALUE="${APPLE_ID}"
-APPLE_TEAM_ID_VALUE="${APPLE_TEAM_ID}"
-APPLE_APP_SPECIFIC_PASSWORD_VALUE="${APPLE_APP_SPECIFIC_PASSWORD}"
 APPLE_API_KEY_VALUE="${APPLE_API_KEY:-}"
 APPLE_API_KEY_ID_VALUE="${APPLE_API_KEY_ID:-}"
 APPLE_API_KEY_ISSUER_VALUE="${APPLE_API_KEY_ISSUER:-}"

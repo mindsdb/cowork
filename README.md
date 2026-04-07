@@ -553,6 +553,32 @@ These must be configured in [**antontron → Settings → Secrets → Repository
 
 | Secret | Purpose | How to create |
 | --- | --- | --- |
+<<<<<<< workflow/macOS-release
+| `publish-ui.yml` | `ui-v*` tag or manual | Builds renderer, publishes bundle to Releases, updates `latest.json` on GitHub Pages |
+| `windows-installer.yml` | `v*` tag or manual | Builds Windows `.exe` installer with code signing |
+| `macos-pkg-release.yml` | `v*` tag or manual | Builds signed + notarized macOS `.pkg`, uploads artifact, optional upload to S3 |
+
+### Required GitHub Secrets (placeholders)
+
+Apple signing/notarization:
+
+- `APPLE_DEV_ID_APP_CERT_B64`
+- `APPLE_DEV_ID_APP_CERT_PASSWORD`
+- `APPLE_DEV_ID_INSTALLER_CERT_B64`
+- `APPLE_DEV_ID_INSTALLER_CERT_PASSWORD`
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
+- `APPLE_INSTALLER_IDENTITY` (example: `Developer ID Installer: Your Org (TEAMID)`)
+
+Optional S3 publish:
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+- `S3_RELEASE_BUCKET`
+- `S3_RELEASE_PREFIX` (example: `desktop/macos`)
+=======
 | `RELEASES_TOKEN` | GitHub PAT that can push releases and pages to `mindsdb/antontron-releases` | [Fine-grained token](https://github.com/settings/tokens?type=beta) scoped to `mindsdb/antontron-releases` with **Contents** (read/write) + **Metadata** (read) permissions |
 | `APPLE_ID` | Apple ID email for macOS notarization | Your Apple Developer account email |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for notarization | Generate at [appleid.apple.com](https://appleid.apple.com) → Security → App-Specific Passwords |
@@ -599,6 +625,7 @@ Trigger the workflow manually from [Actions → Publish UI Bundle](https://githu
 # Should return JSON with version, url, sha256
 curl https://mindsdb.github.io/antontron-releases/latest.json
 ```
+>>>>>>> main
 
 ### GitHub Actions example (full platform builds)
 
