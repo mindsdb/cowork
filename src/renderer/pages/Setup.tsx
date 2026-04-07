@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface Step {
   id: string;
   label: string;
-  status: 'pending' | 'running' | 'done' | 'error' | 'skipped';
+  status: 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'warning';
 }
 
 const STEP_ICONS: Record<string, string> = {
@@ -12,14 +12,21 @@ const STEP_ICONS: Record<string, string> = {
   done: '\u2713',
   error: '\u2717',
   skipped: '-',
+  warning: '!',
 };
 
-export default function Setup({ onComplete }: { onComplete: () => void }) {
+export default function Setup({
+  onComplete,
+}: {
+  onComplete: () => void;
+}) {
   const [phase, setPhase] = useState<'ready' | 'installing' | 'done' | 'error'>('ready');
   const [steps, setSteps] = useState<Step[]>([]);
   const [logs, setLogs] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const failedStep = steps.find((step) => step.status === 'error');
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -38,14 +45,24 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
 
     unsubs.push(
       window.antontron.onInstallDone(() => {
+        setIsCancelling(false);
         setPhase('done');
       })
     );
 
     unsubs.push(
       window.antontron.onInstallError((err) => {
+        setIsCancelling(false);
         setPhase('error');
         setErrorMsg(err);
+      })
+    );
+
+    unsubs.push(
+      window.antontron.onInstallCancelled(() => {
+        setIsCancelling(false);
+        setPhase('ready');
+        setErrorMsg('');
       })
     );
 
@@ -59,18 +76,33 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
   }, [logs]);
 
   const handleInstall = async () => {
+    setIsCancelling(false);
     setPhase('installing');
     setLogs('');
     setErrorMsg('');
     await window.antontron.startInstall();
   };
 
+  const handleCancel = async () => {
+    setIsCancelling(true);
+    await window.antontron.cancelInstall();
+    setLogs((prev) => `${prev}\nCancelling installation...\n`);
+  };
+
   return (
-    <div className="setup-content">
+    <div className={`setup-content ${phase === 'installing' || phase === 'error' ? 'setup-content-compact' : ''}`}>
       {phase === 'ready' && (
-        <button className="btn-primary" onClick={handleInstall}>
-          INSTALL ANTON
-        </button>
+        <div className="setup-actions">
+          <button className="btn-primary" onClick={handleInstall}>
+            INSTALL ANTON
+          </button>
+        </div>
+      )}
+
+      {phase === 'ready' && (
+        <div className="setup-note">
+          Anton must be installed to continue. This step prepares all required system dependencies.
+        </div>
       )}
 
       {(phase === 'installing' || phase === 'error') && (
@@ -89,16 +121,32 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
               </div>
             ))}
           </div>
+          {phase === 'error' && (
+            <>
+              {failedStep && (
+                <div className="error-context">
+                  Failed at step: <strong>{failedStep.label}</strong>
+                </div>
+              )}
+              <div className="error-message">{errorMsg}</div>
+              <div className="setup-actions">
+                <button className="btn-secondary" onClick={handleInstall}>
+                  Retry
+                </button>
+              </div>
+            </>
+          )}
+
           <div className="log-panel" ref={logRef}>
             <pre>{logs}</pre>
           </div>
-          {phase === 'error' && (
-            <>
-              <div className="error-message">{errorMsg}</div>
-              <button className="btn-secondary" onClick={handleInstall}>
-                Retry
+
+          {phase === 'installing' && (
+            <div className="setup-actions">
+              <button className="btn-secondary" onClick={handleCancel} disabled={isCancelling}>
+                {isCancelling ? 'Cancelling...' : 'Cancel install'}
               </button>
-            </>
+            </div>
           )}
         </>
       )}

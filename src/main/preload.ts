@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
+  cancelInstall: () => ipcRenderer.invoke(IPC.INSTALL_CANCEL),
   onInstallLog: (cb: (msg: string) => void) => {
     const listener = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.INSTALL_LOG, listener);
@@ -24,6 +25,11 @@ contextBridge.exposeInMainWorld('antontron', {
     const listener = (_: any, err: string) => cb(err);
     ipcRenderer.on(IPC.INSTALL_ERROR, listener);
     return () => ipcRenderer.removeListener(IPC.INSTALL_ERROR, listener);
+  },
+  onInstallCancelled: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on(IPC.INSTALL_CANCELLED, listener);
+    return () => ipcRenderer.removeListener(IPC.INSTALL_CANCELLED, listener);
   },
 
   // Anton process

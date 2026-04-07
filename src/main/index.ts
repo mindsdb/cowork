@@ -279,6 +279,7 @@ function getIconPath(): string {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let activeInstall: { cancelled: boolean } | null = null;
 
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
@@ -326,7 +327,22 @@ function setupIPC() {
 
   ipcMain.handle(IPC.INSTALL_START, async () => {
     if (!mainWindow) return false;
-    return runInstaller(mainWindow);
+    if (activeInstall) return false;
+    const state = { cancelled: false };
+    activeInstall = state;
+    try {
+      return await runInstaller(mainWindow, { shouldAbort: () => state.cancelled });
+    } finally {
+      if (activeInstall === state) {
+        activeInstall = null;
+      }
+    }
+  });
+
+  ipcMain.handle(IPC.INSTALL_CANCEL, async () => {
+    if (!activeInstall) return false;
+    activeInstall.cancelled = true;
+    return true;
   });
 
   ipcMain.handle(IPC.ANTON_START, async (_event, projectName: string, cols: number, rows: number) => {

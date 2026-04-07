@@ -9,7 +9,11 @@ import { sendEvent } from './analytics';
 interface InstallStep {
   id: string;
   label: string;
-  status: 'pending' | 'running' | 'done' | 'error' | 'skipped';
+  status: 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'warning';
+}
+
+interface InstallerOptions {
+  shouldAbort?: () => boolean;
 }
 
 function getSteps(): InstallStep[] {
@@ -18,7 +22,7 @@ function getSteps(): InstallStep[] {
     steps.push({ id: 'xcode', label: 'Xcode Command Line Tools', status: 'pending' });
   }
   steps.push(
-    { id: 'git', label: 'Check for git', status: 'pending' },
+    { id: 'git', label: 'Check for git (required)', status: 'pending' },
     { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
     { id: 'anton', label: 'Install Anton', status: 'pending' },
     { id: 'verify', label: 'Verify installation', status: 'pending' },
@@ -57,19 +61,29 @@ function getEnvPath(): string {
   return parts.join(path.delimiter);
 }
 
+function canSend(win: BrowserWindow): boolean {
+  return !win.isDestroyed() && !win.webContents.isDestroyed();
+}
+
 function sendLog(win: BrowserWindow, message: string) {
-  win.webContents.send(IPC.INSTALL_LOG, message);
+  if (!canSend(win)) return;
+  try {
+    win.webContents.send(IPC.INSTALL_LOG, message);
+  } catch {}
 }
 
 function sendProgress(win: BrowserWindow, steps: InstallStep[]) {
-  win.webContents.send(IPC.INSTALL_PROGRESS, JSON.parse(JSON.stringify(steps)));
+  if (!canSend(win)) return;
+  try {
+    win.webContents.send(IPC.INSTALL_PROGRESS, JSON.parse(JSON.stringify(steps)));
+  } catch {}
 }
 
 function runCommand(
   command: string,
   args: string[],
   win: BrowserWindow,
-  opts?: { shell?: boolean }
+  opts?: { shell?: boolean; shouldAbort?: () => boolean }
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     const env = { ...process.env, PATH: getEnvPath() };
@@ -81,6 +95,20 @@ function runCommand(
 
     let stdout = '';
     let stderr = '';
+    let resolved = false;
+
+    const finish = (code: number, out: string, err: string) => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(abortWatcher);
+      resolve({ code, stdout: out, stderr: err });
+    };
+
+    const abortWatcher = setInterval(() => {
+      if (!opts?.shouldAbort?.()) return;
+      stderr += 'Installation cancelled by user.\n';
+      proc.kill('SIGTERM');
+    }, 300);
 
     proc.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
@@ -95,12 +123,12 @@ function runCommand(
     });
 
     proc.on('close', (code) => {
-      resolve({ code: code ?? 1, stdout, stderr });
+      finish(code ?? 1, stdout, stderr);
     });
 
     proc.on('error', (err) => {
       sendLog(win, `Error: ${err.message}\n`);
-      resolve({ code: 1, stdout, stderr: err.message });
+      finish(1, stdout, err.message);
     });
   });
 }
@@ -159,11 +187,19 @@ function triggerXcodeInstall(win: BrowserWindow): Promise<boolean> {
   });
 }
 
-function waitForXcodeInstall(win: BrowserWindow, timeoutMs: number = 600000): Promise<boolean> {
+function waitForXcodeInstall(
+  win: BrowserWindow,
+  timeoutMs: number = 600000,
+  shouldAbort?: () => boolean
+): Promise<boolean> {
   return new Promise((resolve) => {
     let elapsed = 0;
     const interval = 3000;
     const check = () => {
+      if (shouldAbort?.()) {
+        resolve(false);
+        return;
+      }
       xcodeCliInstalled().then((installed) => {
         if (installed) {
           resolve(true);
@@ -184,13 +220,28 @@ function waitForXcodeInstall(win: BrowserWindow, timeoutMs: number = 600000): Pr
   });
 }
 
+function sendInstallError(win: BrowserWindow, message: string) {
+  if (!canSend(win)) return;
+  try {
+    win.webContents.send(IPC.INSTALL_ERROR, message);
+  } catch {}
+}
+
+function sendInstallCancelled(win: BrowserWindow) {
+  if (!canSend(win)) return;
+  try {
+    win.webContents.send(IPC.INSTALL_CANCELLED);
+  } catch {}
+}
+
 export async function checkAntonInstalled(): Promise<boolean> {
   if (fileExists(getAntonBinary())) return true;
   return commandExists('anton');
 }
 
-export async function runInstaller(win: BrowserWindow): Promise<boolean> {
+export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions): Promise<boolean> {
   const steps = getSteps();
+  const shouldAbort = opts?.shouldAbort ?? (() => false);
 
   const setStep = (id: string, status: InstallStep['status']) => {
     const step = steps.find((s) => s.id === id);
@@ -198,39 +249,60 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
     sendProgress(win, steps);
   };
 
+  const abortIfRequested = () => {
+    if (!shouldAbort()) return false;
+    const runningStep = steps.find((step) => step.status === 'running');
+    if (runningStep) {
+      runningStep.status = 'skipped';
+    }
+    for (const step of steps) {
+      if (step.status === 'pending') {
+        step.status = 'skipped';
+      }
+    }
+    sendProgress(win, steps);
+    sendLog(win, '\nInstallation cancelled by user.\n');
+    sendInstallCancelled(win);
+    return true;
+  };
+
   try {
+    if (abortIfRequested()) return false;
+
     // Step 0 (macOS only): Xcode Command Line Tools
     if (process.platform === 'darwin') {
       setStep('xcode', 'running');
       sendLog(win, '--- Checking for Xcode Command Line Tools ---\n');
       const hasXcode = await xcodeCliInstalled();
       if (!hasXcode) {
+        if (abortIfRequested()) return false;
         sendLog(win, 'Xcode Command Line Tools not found.\n');
-        sendLog(win, 'Launching installer — please click "Install" in the system dialog.\n');
+        sendLog(win, 'Attempting to launch installer — please click "Install" in the system dialog.\n');
         const triggered = await triggerXcodeInstall(win);
-        if (!triggered) {
-          setStep('xcode', 'error');
-          sendLog(win, 'ERROR: Could not launch Xcode Command Line Tools installer.\n');
-          sendLog(win, 'Please open Terminal and run: xcode-select --install\n');
-          win.webContents.send(IPC.INSTALL_ERROR, 'Could not launch Xcode CLT installer. Please run "xcode-select --install" in Terminal.');
-          return false;
+        if (triggered) {
+          sendLog(win, 'Installer launched. Continuing with dependency checks while CLT installs.\n');
+          sendLog(win, 'You can also install manually from Terminal: xcode-select --install\n');
+          const installedQuickly = await waitForXcodeInstall(win, 15000, shouldAbort);
+          if (installedQuickly) {
+            sendLog(win, 'Xcode Command Line Tools installed.\n');
+            setStep('xcode', 'done');
+          } else {
+            sendLog(win, 'Xcode Command Line Tools still installing in background (non-blocking).\n');
+            setStep('xcode', 'warning');
+          }
+        } else {
+          sendLog(win, 'Could not launch Xcode installer automatically.\n');
+          sendLog(win, 'Please run manually in Terminal: xcode-select --install\n');
+          sendLog(win, 'Alternative fallback: install Homebrew first, then run brew install git\n');
+          setStep('xcode', 'warning');
         }
-        sendLog(win, 'Waiting for installation to complete');
-        const installed = await waitForXcodeInstall(win);
-        sendLog(win, '\n');
-        if (!installed) {
-          setStep('xcode', 'error');
-          sendLog(win, 'ERROR: Xcode Command Line Tools installation timed out or was cancelled.\n');
-          sendLog(win, 'Please install manually by running: xcode-select --install\n');
-          win.webContents.send(IPC.INSTALL_ERROR, 'Xcode Command Line Tools are required');
-          return false;
-        }
-        sendLog(win, 'Xcode Command Line Tools installed.\n');
       } else {
         sendLog(win, 'Xcode Command Line Tools found.\n');
+        setStep('xcode', 'done');
       }
-      setStep('xcode', 'done');
     }
+
+    if (abortIfRequested()) return false;
 
     // Step 1: Check git
     setStep('git', 'running');
@@ -241,16 +313,18 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
       sendLog(win, '\nERROR: git is not installed.\n');
       if (process.platform === 'darwin') {
         sendLog(win, 'Install it with: xcode-select --install\n');
+        sendLog(win, 'Alternative: install Homebrew then run: brew install git\n');
       } else {
         sendLog(win, 'Install it from: https://git-scm.com/downloads/win\n');
       }
-      win.webContents.send(IPC.INSTALL_ERROR, 'git is required but not found');
+      sendInstallError(win, 'git is required but not found. Install CLT (xcode-select --install) or Homebrew git.');
       return false;
     }
     sendLog(win, 'git found.\n');
     setStep('git', 'done');
 
     // Step 2: Check/install uv
+    if (abortIfRequested()) return false;
     setStep('uv', 'running');
     sendLog(win, '\n--- Checking for uv ---\n');
     let hasUv = await commandExists('uv') || fileExists(getUvBinary());
@@ -262,11 +336,13 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
           'powershell',
           ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
            "& ([scriptblock]::Create((Invoke-RestMethod https://astral.sh/uv/install.ps1)))"],
-          win
+          win,
+          { shouldAbort }
         );
+        if (abortIfRequested()) return false;
         if (result.code !== 0) {
           setStep('uv', 'error');
-          win.webContents.send(IPC.INSTALL_ERROR, 'Failed to install uv');
+          sendInstallError(win, 'Failed to install uv');
           return false;
         }
       } else {
@@ -274,11 +350,12 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
           'sh',
           ['-c', 'curl -LsSf https://astral.sh/uv/install.sh | sh'],
           win,
-          { shell: false }
+          { shell: false, shouldAbort }
         );
+        if (abortIfRequested()) return false;
         if (result.code !== 0) {
           setStep('uv', 'error');
-          win.webContents.send(IPC.INSTALL_ERROR, 'Failed to install uv');
+          sendInstallError(win, 'Failed to install uv');
           return false;
         }
       }
@@ -287,7 +364,7 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
       if (!hasUv) {
         setStep('uv', 'error');
         sendLog(win, 'ERROR: uv installation completed but binary not found.\n');
-        win.webContents.send(IPC.INSTALL_ERROR, 'uv installation failed');
+        sendInstallError(win, 'uv installation failed');
         return false;
       }
       sendLog(win, 'uv installed successfully.\n');
@@ -297,6 +374,7 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
     setStep('uv', 'done');
 
     // Step 3: Install Anton
+    if (abortIfRequested()) return false;
     setStep('anton', 'running');
     sendLog(win, '\n--- Installing Anton ---\n');
 
@@ -304,37 +382,42 @@ export async function runInstaller(win: BrowserWindow): Promise<boolean> {
     const installResult = await runCommand(
       uvBin,
       ['tool', 'install', 'git+https://github.com/mindsdb/anton.git', '--force'],
-      win
+      win,
+      { shouldAbort }
     );
+    if (abortIfRequested()) return false;
 
     if (installResult.code !== 0) {
       setStep('anton', 'error');
       sendLog(win, '\nERROR: Failed to install Anton.\n');
-      win.webContents.send(IPC.INSTALL_ERROR, 'Anton installation failed');
+      sendInstallError(win, 'Anton installation failed');
       return false;
     }
     sendLog(win, 'Anton installed.\n');
     setStep('anton', 'done');
 
     // Step 4: Verify
+    if (abortIfRequested()) return false;
     setStep('verify', 'running');
     sendLog(win, '\n--- Verifying installation ---\n');
     const antonInstalled = await checkAntonInstalled();
     if (!antonInstalled) {
       setStep('verify', 'error');
       sendLog(win, 'ERROR: Anton binary not found after installation.\n');
-      win.webContents.send(IPC.INSTALL_ERROR, 'Verification failed');
+      sendInstallError(win, 'Verification failed');
       return false;
     }
     sendLog(win, 'Anton is ready!\n');
     setStep('verify', 'done');
 
     sendEvent('ANTONAPP_INSTALLATION_SUCCESS');
-    win.webContents.send(IPC.INSTALL_DONE);
+    if (canSend(win)) {
+      win.webContents.send(IPC.INSTALL_DONE);
+    }
     return true;
   } catch (err: any) {
     sendLog(win, `\nUnexpected error: ${err.message}\n`);
-    win.webContents.send(IPC.INSTALL_ERROR, err.message);
+    sendInstallError(win, err.message);
     return false;
   }
 }

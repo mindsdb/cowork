@@ -6,6 +6,8 @@ export const IPC = {
   INSTALL_PROGRESS: 'install:progress',
   INSTALL_DONE: 'install:done',
   INSTALL_ERROR: 'install:error',
+  INSTALL_CANCEL: 'install:cancel',
+  INSTALL_CANCELLED: 'install:cancelled',
 
   // Anton process
   ANTON_START: 'anton:start',

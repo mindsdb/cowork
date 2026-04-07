@@ -15,6 +15,9 @@
   --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.3);
   --glow-purple: 0 0 20px rgba(179, 136, 255, 0.3);
   --sidebar-width: 200px;
+  --scrollbar-thumb: rgba(0, 229, 255, 0.28);
+  --scrollbar-thumb-hover: rgba(0, 229, 255, 0.42);
+  --scrollbar-track: rgba(18, 18, 26, 0.75);
 }
 
 * {
@@ -31,6 +34,35 @@ html, body, #root {
   color: var(--text-primary);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Global scrollbar styling to avoid native white bars on macOS/Electron */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 /* Draggable title bar area for macOS */
@@ -113,6 +145,8 @@ html, body, #root {
   padding: 40px;
   padding-top: 60px;
   gap: 32px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .onboard-shell.top-pinned {
@@ -156,7 +190,26 @@ html, body, #root {
   align-items: center;
   gap: 32px;
   width: 100%;
+  padding-bottom: 24px;
   animation: fadeInUp 0.45s ease-out;
+}
+
+.setup-content.setup-content-compact {
+  gap: 16px;
+}
+
+.setup-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.setup-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  max-width: 520px;
 }
 
 /* Legal viewer as fixed overlay */
@@ -277,6 +330,22 @@ html, body, #root {
   opacity: 0.4;
 }
 
+.step-row[data-status="warning"] {
+  border-color: var(--accent-yellow);
+}
+
+.step-row[data-status="warning"]::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: var(--accent-yellow);
+  border-radius: 2px;
+  opacity: 0.4;
+}
+
 .step-icon {
   width: 22px;
   height: 22px;
@@ -295,6 +364,11 @@ html, body, #root {
 .step-row[data-status="error"] .step-icon {
   color: var(--accent-red);
   text-shadow: 0 0 8px rgba(255, 82, 82, 0.5);
+}
+
+.step-row[data-status="warning"] .step-icon {
+  color: var(--accent-yellow);
+  text-shadow: 0 0 8px rgba(255, 215, 64, 0.4);
 }
 
 .step-label {
@@ -324,7 +398,7 @@ html, body, #root {
 .log-panel {
   width: 100%;
   max-width: 480px;
-  height: 180px;
+  height: clamp(84px, 14vh, 110px);
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1605,6 +1679,22 @@ html, body, #root {
   background: rgba(255, 82, 82, 0.1);
   border: 1px solid rgba(255, 82, 82, 0.2);
   border-radius: 6px;
+}
+
+.error-context {
+  width: 100%;
+  max-width: 480px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 82, 82, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 82, 82, 0.08);
+  color: #ffb3b3;
+  font-size: 12px;
+  text-align: left;
+}
+
+.error-context strong {
+  color: #ffd4d4;
 }
 
 .minds-step-label {

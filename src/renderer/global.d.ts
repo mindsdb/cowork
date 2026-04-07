@@ -1,10 +1,12 @@
 interface AntonTronAPI {
   checkInstall: () => Promise<boolean>;
   startInstall: () => Promise<boolean>;
+  cancelInstall: () => Promise<boolean>;
   onInstallLog: (cb: (msg: string) => void) => () => void;
   onInstallProgress: (cb: (steps: any[]) => void) => () => void;
   onInstallDone: (cb: () => void) => () => void;
   onInstallError: (cb: (err: string) => void) => () => void;
+  onInstallCancelled: (cb: () => void) => () => void;
 
   startAnton: (projectName: string, cols: number, rows: number) => Promise<void>;
   isAntonRunning: (projectName: string) => Promise<boolean>;
