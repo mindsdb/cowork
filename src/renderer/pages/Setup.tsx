@@ -94,14 +94,14 @@ export default function Setup({
       {phase === 'ready' && (
         <div className="setup-actions">
           <button className="btn-primary" onClick={handleInstall}>
-            INSTALL ANTON
+            SETUP ANTON
           </button>
         </div>
       )}
 
       {phase === 'ready' && (
         <div className="setup-note">
-          Anton must be installed to continue. This step prepares all required system dependencies.
+          To continue, we need to install and prepare all required system dependencies. This will take just a few minutes.
         </div>
       )}
 

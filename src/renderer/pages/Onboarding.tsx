@@ -153,7 +153,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
 
   return (
     <div className="onboard-content-inner">
-      <div className="onboard-heading">Choose your LLM provider</div>
+      <div className="onboard-heading">Choose your setup</div>
 
       {/* Provider cards */}
       <div className="provider-cards">
@@ -166,17 +166,23 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
           <div className="provider-card-desc">Managed by MindsDB</div>
           <ul className="provider-card-benefits">
             <li>Smart model routing</li>
-            <li>Faster responses</li>
-            <li>Cost optimized</li>
             <li>Secure data connectors</li>
+            <li>Publish/share dashboards</li>
+            <li>Bring your own key <span className="perk-optional">(optional)</span></li>
           </ul>
+          <span
+            className="provider-card-link"
+            onClick={(e) => { e.stopPropagation(); window.antontron.openExternal('https://mdb.ai/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fmdb.ai'); }}
+          >
+            Get a free API key &rarr;
+          </span>
         </button>
         <button
           className={`provider-card ${provider === 'byok' ? 'selected' : ''}`}
           onClick={() => { setProvider('byok'); setPhase('choose'); setErrorMsg(''); setApiKey(''); }}
         >
-          <div className="provider-card-name">Bring Your Own Key</div>
-          <div className="provider-card-desc">Anthropic | OpenAI | Gemini | Custom</div>
+          <div className="provider-card-name">Skip Minds Cloud</div>
+          <div className="provider-card-desc">Bring your own LLM provider key</div>
           <div className="byok-icon-area">
             <svg className="byok-key-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
@@ -279,24 +285,12 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
           </div>
         )}
 
-        {provider === 'minds' && (
-          <div className="onboard-field">
-            <label className="onboard-label">Minds URL</label>
-            <input
-              type="text"
-              className="settings-input"
-              placeholder="https://mdb.ai"
-              value={mindsUrl}
-              onChange={(e) => setMindsUrl(e.target.value)}
-              disabled={phase === 'validating'}
-            />
-          </div>
-        )}
+        {/* Minds URL hidden during onboarding — defaults to https://mdb.ai */}
 
         <div className="onboard-field">
           <label className="onboard-label">
             {provider === 'minds'
-              ? 'Minds API Key'
+              ? 'Minds Cloud API Key'
               : byokProvider === 'anthropic'
                 ? 'Anthropic API Key'
                 : byokProvider === 'gemini'
@@ -309,7 +303,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
             type="password"
             className="settings-input"
             placeholder={provider === 'minds'
-              ? 'Your Minds API key'
+              ? 'Your Minds Cloud API key'
               : byokProvider === 'anthropic'
                 ? 'sk-ant-...'
                 : byokProvider === 'gemini'
@@ -326,6 +320,17 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
               }
             }}
           />
+          {provider === 'minds' && (
+            <div className="settings-hint">
+              Don't have a key?{' '}
+              <span
+                className="onboard-link"
+                onClick={() => window.antontron.openExternal('https://mdb.ai/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fmdb.ai')}
+              >
+                Sign up at mdb.ai for a free key
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

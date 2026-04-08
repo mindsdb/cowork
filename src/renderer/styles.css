@@ -1266,7 +1266,7 @@ html, body, #root {
   padding: 0;
   margin: 8px 0 0;
   font-size: 11px;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.65);
   text-align: left;
 }
 
@@ -1277,6 +1277,39 @@ html, body, #root {
 
 .provider-card.selected .provider-card-benefits li::before {
   color: var(--accent-green, #4ade80);
+}
+
+.perk-optional {
+  display: block;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-left: 0;
+  margin-top: 1px;
+}
+
+.provider-card-link {
+  font-size: 12px;
+  color: var(--cyan, #00e5ff) !important;
+  cursor: pointer;
+  margin-top: 6px;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+
+.provider-card-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.onboard-link {
+  color: var(--cyan, #00e5ff);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.onboard-link:hover {
+  text-decoration: underline;
+  opacity: 1;
 }
 
 .byok-icon-area {
