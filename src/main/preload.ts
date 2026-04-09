@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.ANTON_EXIT, listener);
     return () => ipcRenderer.removeListener(IPC.ANTON_EXIT, listener);
   },
+  getLatestExplainability: (projectName: string) =>
+    ipcRenderer.invoke(IPC.EXPLAINABILITY_LATEST, projectName),
 
   // Settings / Onboarding
   readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),

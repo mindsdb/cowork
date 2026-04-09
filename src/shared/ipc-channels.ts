@@ -17,6 +17,7 @@ export const IPC = {
   ANTON_EXIT: 'anton:exit',
   ANTON_IS_RUNNING: 'anton:is-running',
   ANTON_KILL: 'anton:kill',
+  EXPLAINABILITY_LATEST: 'explainability:latest',
 
   // Settings / Onboarding
   SETTINGS_READ: 'settings:read',

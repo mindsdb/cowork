@@ -271,6 +271,43 @@ function getActiveProjectPath(): string {
   return projectDir;
 }
 
+function getProjectPath(projectName: string): string {
+  return path.join(getProjectsDir(), projectName);
+}
+
+function clearLatestExplainability(projectName: string) {
+  const explainabilityPath = path.join(
+    getProjectPath(projectName),
+    '.anton',
+    'explainability',
+    'latest.json'
+  );
+  try {
+    if (fs.existsSync(explainabilityPath)) {
+      fs.unlinkSync(explainabilityPath);
+    }
+  } catch {
+    // ignore – file may already be gone
+  }
+}
+
+function readLatestExplainability(projectName: string) {
+  const explainabilityPath = path.join(
+    getProjectPath(projectName),
+    '.anton',
+    'explainability',
+    'latest.json'
+  );
+  if (!fs.existsSync(explainabilityPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(explainabilityPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
 // ─── Icons ───────────────────────────────────────────────────
 function getIconPath(): string {
   if (app.isPackaged) {
@@ -370,11 +407,16 @@ function setupIPC() {
     if (!fs.existsSync(projectDir)) {
       ensureDefaultProject();
     }
+    clearLatestExplainability(projectName);
     startAnton(mainWindow, cols, rows, projectName, projectDir);
   });
 
   ipcMain.handle(IPC.ANTON_IS_RUNNING, async (_event, projectName: string) => {
     return isAntonRunning(projectName);
+  });
+
+  ipcMain.handle(IPC.EXPLAINABILITY_LATEST, async (_event, projectName: string) => {
+    return readLatestExplainability(projectName);
   });
 
   ipcMain.on(IPC.ANTON_INPUT, (_event, projectName: string, data: string) => {

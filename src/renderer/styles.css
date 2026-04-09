@@ -829,6 +829,49 @@ html, body, #root {
   background: var(--bg-primary);
 }
 
+.explainability-bar {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.explainability-btn {
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  background: rgba(18, 18, 26, 0.92);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: var(--glow-cyan);
+  transition: transform 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.explainability-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--accent-cyan);
+}
+
+.explainability-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.explainability-meta {
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(22, 22, 42, 0.92);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 /* ─── Terminal ─── */
 .terminal-body {
   flex: 1;
@@ -950,6 +993,10 @@ html, body, #root {
   animation: slideInRight 0.3s ease-out;
 }
 
+.explainability-panel {
+  width: min(540px, 100vw);
+}
+
 @keyframes slideInRight {
   from { transform: translateX(100%); }
   to { transform: translateX(0); }
@@ -1005,6 +1052,123 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.explainability-body {
+  gap: 24px;
+}
+
+.explainability-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.explainability-summary {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.explainability-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.explainability-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.explainability-chip-meta {
+  color: var(--accent-cyan);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.explainability-empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.explainability-sql-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.explainability-sql-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.explainability-sql-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.explainability-sql-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.explainability-copy-btn {
+  min-width: auto;
+  padding: 8px 10px;
+}
+
+.explainability-code {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d7faff;
+  background: rgba(10, 10, 15, 0.75);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.explainability-error {
+  padding: 0 14px 14px;
+  color: var(--accent-red);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.explainability-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.explainability-step {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(18, 18, 26, 0.9);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* Accordion */

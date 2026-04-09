@@ -15,6 +15,23 @@ interface TerminalInstance {
   exitCode: number | null;
 }
 
+interface ExplainabilityRecord {
+  turn: number;
+  created_at: string;
+  user_message: string;
+  answer_text: string;
+  summary: string;
+  data_sources: { name: string; engine?: string | null }[];
+  sql_queries: {
+    datasource: string;
+    sql: string;
+    engine?: string | null;
+    status: string;
+    error_message?: string | null;
+  }[];
+  scratchpad_steps: string[];
+}
+
 export default function Terminal() {
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -25,6 +42,8 @@ export default function Terminal() {
   const [projectError, setProjectError] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showMinds, setShowMinds] = useState(false);
+  const [showExplainability, setShowExplainability] = useState(false);
+  const [latestExplainability, setLatestExplainability] = useState<ExplainabilityRecord | null>(null);
   const [mindsStatus, setMindsStatus] = useState<{
     connected: boolean;
     mindName?: string | null;
@@ -61,6 +80,11 @@ export default function Terminal() {
   const refreshVault = useCallback(async () => {
     const conns = await window.antontron.vaultList();
     setVaultConnections(conns);
+  }, []);
+
+  const refreshExplainability = useCallback(async (projectName: string) => {
+    const explainability = await window.antontron.getLatestExplainability(projectName);
+    setLatestExplainability(explainability);
   }, []);
 
   const loadProjects = useCallback(async () => {
@@ -333,7 +357,8 @@ export default function Terminal() {
     setActiveProject(name);
     await ensureAntonRunning(name);
     showTerminal(name);
-  }, [ensureAntonRunning, showTerminal]);
+    await refreshExplainability(name);
+  }, [ensureAntonRunning, showTerminal, refreshExplainability]);
 
   // Restart Anton for current project
   const restartAnton = useCallback(async () => {
@@ -344,6 +369,7 @@ export default function Terminal() {
     window.antontron.killAnton(activeProject);
     instance.connected = false;
     instance.exitCode = null;
+    setLatestExplainability(null);
 
     // Full reset and restart
     instance.term.reset();
@@ -353,8 +379,9 @@ export default function Terminal() {
       await window.antontron.startAnton(activeProject, cols, rows);
       instance.connected = true;
       rerender();
+      refreshExplainability(activeProject);
     }, 100);
-  }, [activeProject, rerender]);
+  }, [activeProject, rerender, refreshExplainability]);
 
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
@@ -492,6 +519,7 @@ export default function Terminal() {
         streamTimeouts.set(projectName, setTimeout(() => {
           instance.streaming = false;
           rerender();
+          refreshExplainability(projectName);
         }, 800));
       }
     });
@@ -504,6 +532,7 @@ export default function Terminal() {
         instance.exitCode = code;
         rerender();
       }
+      refreshExplainability(projectName);
     });
 
     ipcCleanupRef.current = () => {
@@ -516,7 +545,7 @@ export default function Terminal() {
     return () => {
       ipcCleanupRef.current?.();
     };
-  }, [rerender]);
+  }, [refreshExplainability, rerender]);
 
   // Initialize: load projects, create terminal for active, start Anton
   useEffect(() => {
@@ -528,6 +557,7 @@ export default function Terminal() {
       if (cancelled) return;
       await ensureAntonRunning(active);
       showTerminal(active);
+      await refreshExplainability(active);
     })();
     return () => {
       cancelled = true;
@@ -717,6 +747,21 @@ export default function Terminal() {
 
       {/* Main Terminal Area */}
       <div className="main-area" ref={mainAreaRef}>
+        {latestExplainability && (
+          <div className="explainability-bar">
+            <button
+              className="explainability-btn"
+              onClick={() => setShowExplainability(true)}
+              disabled={streaming}
+              title="Inspect the latest answer"
+            >
+              Explain this answer
+            </button>
+            <div className="explainability-meta">
+              Turn {latestExplainability.turn}
+            </div>
+          </div>
+        )}
         {showRestart && (
           <div className="restart-overlay">
             <div className="restart-card">
@@ -751,6 +796,17 @@ export default function Terminal() {
               onStatusChange={refreshMindsStatus}
               onRestartAnton={restartAnton}
               currentStatus={mindsStatus}
+            />
+          </div>
+        </div>
+      )}
+
+      {showExplainability && latestExplainability && (
+        <div className="settings-backdrop" onClick={() => setShowExplainability(false)}>
+          <div className="settings-panel explainability-panel" onClick={(e) => e.stopPropagation()}>
+            <ExplainabilityPanel
+              record={latestExplainability}
+              onClose={() => setShowExplainability(false)}
             />
           </div>
         </div>
@@ -822,6 +878,92 @@ export default function Terminal() {
 }
 
 type LLMProvider = 'minds' | 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
+
+function ExplainabilityPanel({
+  record,
+  onClose,
+}: {
+  record: ExplainabilityRecord;
+  onClose: () => void;
+}) {
+  const [copiedSqlIndex, setCopiedSqlIndex] = useState<number | null>(null);
+
+  const copySql = useCallback(async (sql: string, index: number) => {
+    await navigator.clipboard.writeText(sql);
+    setCopiedSqlIndex(index);
+    setTimeout(() => setCopiedSqlIndex((current) => (current === index ? null : current)), 1200);
+  }, []);
+
+  return (
+    <>
+      <div className="settings-header">
+        <div className="settings-title">Explain This Answer</div>
+        <button className="settings-close" onClick={onClose}>&times;</button>
+      </div>
+
+      <div className="settings-body explainability-body">
+        <div className="explainability-section">
+          <div className="sidebar-label">SUMMARY</div>
+          <p className="explainability-summary">{record.summary}</p>
+        </div>
+
+        <div className="explainability-section">
+          <div className="sidebar-label">DATA SOURCES USED</div>
+          {record.data_sources.length > 0 ? (
+            <div className="explainability-chip-list">
+              {record.data_sources.map((source) => (
+                <div key={`${source.name}-${source.engine || 'unknown'}`} className="explainability-chip">
+                  <span>{source.name}</span>
+                  {source.engine && <span className="explainability-chip-meta">{source.engine}</span>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="explainability-empty">No datasource or dataset was captured for this answer.</div>
+          )}
+        </div>
+
+        <div className="explainability-section">
+          <div className="sidebar-label">GENERATED SQL</div>
+          {record.sql_queries.length > 0 ? (
+            <div className="explainability-sql-list">
+              {record.sql_queries.map((query, index) => (
+                <div key={`${query.datasource}-${index}`} className="explainability-sql-card">
+                  <div className="explainability-sql-header">
+                    <div className="explainability-sql-title">
+                      <span>{query.datasource}</span>
+                      {query.engine && <span className="explainability-chip-meta">{query.engine}</span>}
+                    </div>
+                    <button className="sidebar-btn explainability-copy-btn" onClick={() => copySql(query.sql, index)}>
+                      {copiedSqlIndex === index ? 'Copied' : 'Copy SQL'}
+                    </button>
+                  </div>
+                  <pre className="explainability-code">{query.sql}</pre>
+                  {query.status === 'error' && query.error_message && (
+                    <div className="explainability-error">{query.error_message}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="explainability-empty">No SQL was generated for this answer.</div>
+          )}
+        </div>
+
+        {record.scratchpad_steps.length > 0 && (
+          <div className="explainability-section">
+            <div className="sidebar-label">STEPS</div>
+            <div className="explainability-steps">
+              {record.scratchpad_steps.map((step, index) => (
+                <div key={`${step}-${index}`} className="explainability-step">{step}</div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
 
 const ANTHROPIC_MODELS_SETTINGS = [
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },

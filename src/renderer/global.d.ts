@@ -15,6 +15,22 @@ interface AntonTronAPI {
   killAnton: (projectName: string) => void;
   onAntonData: (cb: (projectName: string, data: string) => void) => () => void;
   onAntonExit: (cb: (projectName: string, code: number) => void) => () => void;
+  getLatestExplainability: (projectName: string) => Promise<{
+    turn: number;
+    created_at: string;
+    user_message: string;
+    answer_text: string;
+    summary: string;
+    data_sources: { name: string; engine?: string | null }[];
+    sql_queries: {
+      datasource: string;
+      sql: string;
+      engine?: string | null;
+      status: string;
+      error_message?: string | null;
+    }[];
+    scratchpad_steps: string[];
+  } | null>;
 
   mindsStatus: () => Promise<{
     connected: boolean;
