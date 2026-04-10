@@ -49,6 +49,7 @@ export default function Terminal() {
 
   // Per-project terminal instances
   const terminalsRef = useRef<Map<string, TerminalInstance>>(new Map());
+  const restartingProjectsRef = useRef<Set<string>>(new Set());
   // Force re-renders when terminal state changes
   const [, forceUpdate] = useState(0);
   const rerender = useCallback(() => forceUpdate((n) => n + 1), []);
@@ -67,6 +68,9 @@ export default function Terminal() {
   }, []);
 
   const refreshExplainability = useCallback(async (projectName: string) => {
+    if (restartingProjectsRef.current.has(projectName)) {
+      return;
+    }
     const explainability = await window.antontron.getLatestExplainability(projectName);
     if (!explainability) {
       return;
@@ -94,6 +98,25 @@ export default function Terminal() {
         [projectName]: nextIndex,
       }));
     }
+  }, []);
+
+  const clearExplainabilityForProject = useCallback((projectName: string) => {
+    setExplainabilityHistoryByProject((current) => {
+      if (!(projectName in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[projectName];
+      return next;
+    });
+    setExplainabilityIndexByProject((current) => {
+      if (!(projectName in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[projectName];
+      return next;
+    });
   }, []);
 
   const loadProjects = useCallback(async () => {
@@ -375,9 +398,12 @@ export default function Terminal() {
     if (!instance) return;
 
     // Kill if running
+    restartingProjectsRef.current.add(activeProject);
     window.antontron.killAnton(activeProject);
     instance.connected = false;
     instance.exitCode = null;
+    clearExplainabilityForProject(activeProject);
+    setShowExplainability(false);
 
     // Full reset and restart
     instance.term.reset();
@@ -385,11 +411,12 @@ export default function Terminal() {
       instance.fitAddon.fit();
       const { cols, rows } = instance.term;
       await window.antontron.startAnton(activeProject, cols, rows);
+      restartingProjectsRef.current.delete(activeProject);
       instance.connected = true;
       rerender();
       refreshExplainability(activeProject);
     }, 100);
-  }, [activeProject, rerender, refreshExplainability]);
+  }, [activeProject, clearExplainabilityForProject, rerender, refreshExplainability]);
 
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
@@ -414,22 +441,13 @@ export default function Terminal() {
       instance.container.remove();
       terminalsRef.current.delete(name);
     }
-    setExplainabilityHistoryByProject((current) => {
-      const next = { ...current };
-      delete next[name];
-      return next;
-    });
-    setExplainabilityIndexByProject((current) => {
-      const next = { ...current };
-      delete next[name];
-      return next;
-    });
+    clearExplainabilityForProject(name);
     await window.antontron.deleteProject(name);
     await loadProjects();
     if (activeProject === name) {
       await switchProject('default');
     }
-  }, [activeProject, loadProjects, switchProject]);
+  }, [activeProject, clearExplainabilityForProject, loadProjects, switchProject]);
 
   const confirmDisconnectMind = useCallback(async () => {
     await window.antontron.mindsDisconnect();
