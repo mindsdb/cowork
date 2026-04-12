@@ -2,6 +2,7 @@ name: Windows Installer
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     tags:
       - "v*"
@@ -26,7 +27,14 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npx electron-rebuild -f -w node-pty
 
-      - name: Build Windows installer
+      - name: Build Windows installer (PR unsigned)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Build Windows installer (signed)
+        if: ${{ github.event_name != 'pull_request' }}
         run: npm run dist:win
         env:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}

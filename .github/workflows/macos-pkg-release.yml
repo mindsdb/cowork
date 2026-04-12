@@ -7,6 +7,7 @@ on:
         description: "Upload signed pkg to S3"
         type: boolean
         default: false
+  pull_request:
   push:
     tags:
       - "v*"
@@ -15,20 +16,6 @@ jobs:
   build-macos-pkg:
     runs-on: macos-latest
     timeout-minutes: 120
-    env:
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      GH_APPLE_ID: ${{ secrets.APPLE_ID }}
-      GH_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      GH_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      S3_RELEASE_BUCKET: ${{ secrets.S3_RELEASE_BUCKET }}
-      S3_RELEASE_PREFIX: ${{ secrets.S3_RELEASE_PREFIX }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +33,7 @@ jobs:
         run: npx electron-rebuild -f -w node-pty
 
       - name: Import Apple signing certificates
+        if: ${{ github.event_name != 'pull_request' }}
         env:
           APPLE_DEV_ID_APP_CERT_B64: ${{ secrets.APPLE_DEV_ID_APP_CERT_B64 }}
           APPLE_DEV_ID_APP_CERT_PASSWORD: ${{ secrets.APPLE_DEV_ID_APP_CERT_PASSWORD }}
@@ -72,7 +60,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      - name: Build unsigned test pkg
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          MAC_PKG_UNSIGNED: "true"
+        run: npm run release:mac:pkg:notarized
+
       - name: Build, sign and notarize pkg
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_APPLE_ID: ${{ secrets.APPLE_ID }}
+          GH_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          GH_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
         run: npm run release:mac:pkg:notarized
 
       - name: Generate checksum
@@ -88,16 +91,36 @@ jobs:
             release/*.pkg
             release/pkg.sha256
 
+      - name: Check S3 credentials
+        id: s3-creds
+        if: ${{ github.event_name != 'pull_request' && ((github.event_name == 'workflow_dispatch' && inputs.upload_to_s3 == true) || startsWith(github.ref, 'refs/tags/v')) }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" && -n "${AWS_REGION:-}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Configure AWS credentials
-        if: ${{ (inputs.upload_to_s3 == true || startsWith(github.ref, 'refs/tags/v')) && env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' && env.AWS_REGION != '' }}
+        if: ${{ steps.s3-creds.outputs.configured == 'true' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Upload pkg to S3
-        if: ${{ (inputs.upload_to_s3 == true || startsWith(github.ref, 'refs/tags/v')) }}
+        if: ${{ github.event_name != 'pull_request' && ((github.event_name == 'workflow_dispatch' && inputs.upload_to_s3 == true) || startsWith(github.ref, 'refs/tags/v')) }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_RELEASE_BUCKET: ${{ secrets.S3_RELEASE_BUCKET }}
+          S3_RELEASE_PREFIX: ${{ secrets.S3_RELEASE_PREFIX }}
         run: |
           set -euo pipefail
           if [[ -z "${S3_RELEASE_BUCKET:-}" ]]; then
