@@ -83,6 +83,7 @@ jobs:
       - name: Build, sign and notarize pkg
         if: ${{ github.event_name != 'pull_request' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'signed-macos-pkg') && github.event.pull_request.head.repo.full_name == github.repository) }}
         env:
+          CSC_FOR_PULL_REQUEST: "true"
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
