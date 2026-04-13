@@ -85,7 +85,17 @@ jobs:
         shell: pwsh
         run: |
           $exe = "${{ steps.installer.outputs.exe_path }}"
-          signtool verify /pa /v "$exe"
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          if ($signtool) {
+            & $signtool verify /pa /v "$exe"
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed with exit code $LASTEXITCODE" }
+          } else {
+            Write-Host "signtool.exe not found in Windows SDK path, using Get-AuthenticodeSignature fallback"
+            $signature = Get-AuthenticodeSignature -FilePath $exe
+            if ($signature.Status -ne 'Valid') {
+              throw "Signature verification failed. Status: $($signature.Status) - $($signature.StatusMessage)"
+            }
+          }
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
