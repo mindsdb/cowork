@@ -189,6 +189,61 @@ export default function Terminal() {
     term.loadAddon(webLinksAddon);
     term.open(container);
 
+    const copySelectionToClipboard = async () => {
+      const selection = term.getSelection();
+      if (!selection) return;
+      try {
+        await navigator.clipboard.writeText(selection);
+      } catch {
+        // Ignore clipboard write failures; native behavior may still work.
+      }
+    };
+
+    const pasteClipboardToTerminal = async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) return;
+        // Normalize Windows line endings before writing to PTY.
+        window.antontron.sendInput(projectName, text.replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
+      } catch {
+        // Ignore clipboard read failures.
+      }
+    };
+
+    // Ensure copy/paste shortcuts work consistently on Windows/Linux.
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== 'keydown') return true;
+      const key = e.key.toLowerCase();
+      const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform);
+      const primaryMod = isMac ? e.metaKey : e.ctrlKey;
+
+      if (primaryMod && key === 'c' && term.getSelection()) {
+        e.preventDefault();
+        void copySelectionToClipboard();
+        return false;
+      }
+
+      if (primaryMod && key === 'v') {
+        e.preventDefault();
+        void pasteClipboardToTerminal();
+        return false;
+      }
+
+      if (!isMac && e.shiftKey && key === 'insert') {
+        e.preventDefault();
+        void pasteClipboardToTerminal();
+        return false;
+      }
+
+      if (!isMac && e.ctrlKey && key === 'insert' && term.getSelection()) {
+        e.preventDefault();
+        void copySelectionToClipboard();
+        return false;
+      }
+
+      return true;
+    });
+
     // Drag-and-drop files → paste path into terminal
     // Use an invisible overlay that appears during drag — xterm's canvas
     // swallows pointer events, so we need a sibling on top to catch drops.
@@ -280,15 +335,14 @@ export default function Terminal() {
       copyBtn.textContent = 'Copy';
       copyBtn.disabled = !selection;
       copyBtn.onclick = () => {
-        navigator.clipboard.writeText(selection);
+        void copySelectionToClipboard();
         menu.remove();
       };
 
       const pasteBtn = document.createElement('button');
       pasteBtn.textContent = 'Paste';
       pasteBtn.onclick = async () => {
-        const text = await navigator.clipboard.readText();
-        if (text) window.antontron.sendInput(projectName, text);
+        await pasteClipboardToTerminal();
         menu.remove();
       };
 
