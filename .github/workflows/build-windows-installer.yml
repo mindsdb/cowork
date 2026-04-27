@@ -93,6 +93,32 @@ jobs:
             "has_uninstaller=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
 
+      - name: Pre-scan installer with SSL.com malware blocker
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: scan_code
+          username: ${{ secrets.SSL_USERNAME }}
+          password: ${{ secrets.SSL_PASSWORD }}
+          file_path: ${{ steps.installer.outputs.exe_path }}
+
+      - name: Pre-scan app executable with SSL.com malware blocker
+        if: steps.app_exe.outputs.has_app_exe == 'true'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: scan_code
+          username: ${{ secrets.SSL_USERNAME }}
+          password: ${{ secrets.SSL_PASSWORD }}
+          file_path: ${{ steps.app_exe.outputs.app_exe_path }}
+
+      - name: Pre-scan uninstaller with SSL.com malware blocker
+        if: steps.uninstaller.outputs.has_uninstaller == 'true'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: scan_code
+          username: ${{ secrets.SSL_USERNAME }}
+          password: ${{ secrets.SSL_PASSWORD }}
+          file_path: ${{ steps.uninstaller.outputs.uninstaller_path }}
+
       - name: Sign installer with SSL.com eSigner
         uses: sslcom/esigner-codesign@develop
         with:
