@@ -32,6 +32,14 @@ npm start
 npm run dev
 ```
 
+### Dev Mode With Inspector
+
+```bash
+npm run dev:debug
+```
+
+This opens the Electron app against the Vite dev server and auto-opens Chromium DevTools in a detached window.
+
 This runs three processes concurrently:
 
 1. `tsc --watch` for main process

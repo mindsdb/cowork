@@ -389,13 +389,12 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
             <li>Smart model routing</li>
             <li>Secure data connectors</li>
             <li>Publish/share dashboards</li>
-            <li>Bring your own key <span className="perk-optional">(optional)</span></li>
           </ul>
           <span
             className="provider-card-link"
             onClick={(e) => { e.stopPropagation(); window.antontron.openExternal(MINDS_REGISTER_URL); }}
           >
-            Get a free API key &rarr;
+            Get your first month free &rarr;
           </span>
         </button>
         <button
@@ -522,7 +521,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
                 className="onboard-link"
                 onClick={() => window.antontron.openExternal(MINDS_REGISTER_URL)}
               >
-                Sign up at mdb.ai for a free key
+                Sign up at mdb.ai for a free month
               </span>
             </div>
           )}

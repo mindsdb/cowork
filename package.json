@@ -6,9 +6,11 @@
   "main": "dist/main/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\" \"npm run dev:electron\"",
+    "dev:debug": "concurrently \"npm run dev:main\" \"npm run dev:renderer\" \"npm run dev:electron:debug\"",
     "dev:main": "tsc -p tsconfig.main.json --watch",
     "dev:renderer": "vite dev src/renderer",
     "dev:electron": "sleep 3 && VITE_DEV=1 electron dist/main/main/index.js",
+    "dev:electron:debug": "sleep 3 && VITE_DEV=1 ANTON_OPEN_DEVTOOLS=1 electron dist/main/main/index.js",
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build src/renderer",

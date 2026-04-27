@@ -1497,6 +1497,8 @@ html, body, #root {
   margin-top: 6px;
   opacity: 0.85;
   transition: opacity 0.15s;
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .provider-card-link:hover {

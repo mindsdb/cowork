@@ -398,6 +398,8 @@ let activeInstall: { cancelled: boolean } | null = null;
 
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
+  const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
+  const shouldOpenDevTools = process.env.ANTON_OPEN_DEVTOOLS === '1';
 
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -417,11 +419,16 @@ function createWindow() {
   });
 
   // In dev with Vite running, load from dev server; otherwise load built/cached files
-  const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
   } else {
     mainWindow.loadFile(getRendererPath());
+  }
+
+  if (isDev && shouldOpenDevTools) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow?.webContents.openDevTools({ mode: 'detach' });
+    });
   }
 
   // Open external links in the OS default browser instead of navigating Electron
@@ -899,6 +906,7 @@ app.whenReady().then(() => {
         submenu: [
           { role: 'reload' },
           { role: 'forceReload' },
+          { role: 'toggleDevTools' },
           { role: 'togglefullscreen' },
           { role: 'zoomIn' },
           { role: 'zoomOut' },
