@@ -169,10 +169,7 @@ npm run dist:win:all
 
 > **Note**: Windows builds can be cross-compiled from macOS, but `node-pty` native modules require the target platform. For production Windows builds, build on a Windows machine or use CI.
 >
-> This repo now includes a dedicated Windows workflow:
-> `.github/workflows/windows-installer.yml`
->
-> Trigger it from GitHub Actions (workflow_dispatch) or by pushing a `v*` tag (for example `v0.9.0`).
+> Production Windows installers are built by [`.github/workflows/prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which is fired automatically by the auto-release flow described in [Releasing](#releasing). Don't push `v*` tags manually — bump `"version"` in `package.json` and merge to `main` instead.
 
 ---
 
@@ -535,6 +532,35 @@ GitHub Releases:
   ui-v1.2.0/
     ui-bundle.tar.gz    # The renderer build output
 ```
+
+---
+
+## Releasing
+
+Anton Desktop uses an automated release flow. The single source of truth for the package version is [`package.json`](package.json) (`"version"`). Every build workflow reads this field, and the prod upload job ([`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml)) asserts it matches the release tag before publishing to S3.
+
+### How to ship a new version
+
+1. Open a PR that bumps `"version"` in [`package.json`](package.json) (e.g. `2.0.4` → `2.0.5`). Follow [SemVer](https://semver.org/).
+2. Get it reviewed and merge to `main`.
+3. That's it. On merge, [`.github/workflows/release.yml`](.github/workflows/release.yml) automatically:
+   - Creates the matching git tag (`v2.0.5`).
+   - Publishes a GitHub release with auto-generated notes.
+   - The `v*` tag push triggers [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which builds + signs + uploads the macOS `.pkg` and Windows `.exe` to `s3://anton-installer/anton/{mac,windows}/` and serves them at `https://downloads.mindsdb.com/anton/...`.
+
+### What you should NOT do
+
+- **Don't create GitHub releases manually.** The `v*` tag namespace is locked via a repo ruleset — only the release workflow can create them. Manual attempts will be rejected by GitHub.
+- **Don't push `v*` tags directly.** Same protection applies.
+- **Don't edit `"version"` in `package.json` outside a dedicated bump PR.** Keep version bumps small and reviewable so the auto-release diff is easy to audit.
+
+### Editing CI / workflows
+
+Anything under [`.github/`](.github/) is owned by `@mindsdb/devops` via [CODEOWNERS](.github/CODEOWNERS). PRs touching workflows, actions, or release configuration require their review before merge.
+
+### Hotfixes / out-of-band releases
+
+If you genuinely need to release outside the normal flow (e.g. an admin hotfix), coordinate with `@mindsdb/devops` to bypass the tag ruleset. The prod upload job's package.json-vs-tag guard at [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) will still verify the release tag matches `package.json` `"version"` and fail loudly on mismatch.
 
 ---
 
