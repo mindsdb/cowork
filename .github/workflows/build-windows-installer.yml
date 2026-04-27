@@ -100,7 +100,7 @@ jobs:
           username: ${{ secrets.SSL_USERNAME }}
           password: ${{ secrets.SSL_PASSWORD }}
           credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
-          file_path: ${{ steps.installer.outputs.exe_path }}
+          input_file_path: ${{ steps.installer.outputs.exe_path }}
 
       - name: Pre-scan app executable with SSL.com malware blocker
         if: steps.app_exe.outputs.has_app_exe == 'true'
@@ -110,7 +110,7 @@ jobs:
           username: ${{ secrets.SSL_USERNAME }}
           password: ${{ secrets.SSL_PASSWORD }}
           credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
-          file_path: ${{ steps.app_exe.outputs.app_exe_path }}
+          input_file_path: ${{ steps.app_exe.outputs.app_exe_path }}
 
       - name: Pre-scan uninstaller with SSL.com malware blocker
         if: steps.uninstaller.outputs.has_uninstaller == 'true'
@@ -120,7 +120,7 @@ jobs:
           username: ${{ secrets.SSL_USERNAME }}
           password: ${{ secrets.SSL_PASSWORD }}
           credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
-          file_path: ${{ steps.uninstaller.outputs.uninstaller_path }}
+          input_file_path: ${{ steps.uninstaller.outputs.uninstaller_path }}
 
       - name: Sign installer with SSL.com eSigner
         uses: sslcom/esigner-codesign@develop
