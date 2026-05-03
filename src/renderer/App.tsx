@@ -3,6 +3,7 @@ import TermsConsent from './pages/TermsConsent';
 import Setup from './pages/Setup';
 import Onboarding from './pages/Onboarding';
 import CoworkApp from './CoworkApp';
+import ThemeToggle from './components/ThemeToggle';
 import './styles.css';
 
 type Page = 'loading' | 'terms' | 'setup' | 'onboarding' | 'launching' | 'terminal';
@@ -115,6 +116,13 @@ export default function App() {
       )}
 
       {page === 'terminal' && <CoworkApp />}
+
+      {/* Floating theme toggle — present on every page (terms, setup,
+          onboarding, launching, terminal) so the user can flip light/dark
+          before they ever land in the cowork shell. The cowork-side
+          toggle inside CoworkApp will pick up the same localStorage value
+          when the user reaches it. */}
+      {page !== 'terminal' && <ThemeToggle />}
     </>
   );
 }

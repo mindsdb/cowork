@@ -1,23 +1,33 @@
+/* Antontron's legacy CSS variables. They used to hold hardcoded dark-mode
+   colours; now they alias the theme tokens defined in cowork/globals.css
+   so the onboarding screens (TermsConsent, Setup, Onboarding) follow
+   light/dark with no per-component edits.
+
+   --border maps to --border-strong because legacy code uses --border as
+   the visible button/input outline (not the hairline divider sense the
+   new system uses --border-subtle for). Same for --text-secondary →
+   --text-default: existing components expect "secondary" to be readable
+   body text, not muted captions. */
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #12121a;
-  --bg-tertiary: #1a1a2e;
-  --bg-card: #16162a;
-  --border: #2a2a4a;
-  --text-primary: #e0e0f0;
-  --text-secondary: #8888aa;
-  --text-muted: #555577;
-  --accent-cyan: #00e5ff;
-  --accent-purple: #b388ff;
-  --accent-green: #69f0ae;
-  --accent-red: #ff5252;
+  --bg-primary:    var(--surface-0);
+  --bg-secondary:  var(--surface-01);
+  --bg-tertiary:   var(--surface-02);
+  --bg-card:       var(--surface-glass);
+  --border:        var(--border-strong);
+  --text-primary:  var(--text-default);
+  --text-secondary: var(--text-default);
+  --text-muted:    var(--text-muted);
+  --accent-cyan:   var(--accent);
+  --accent-purple: var(--accent-strong);
+  --accent-green:  var(--sage-500);
+  --accent-red:    #ff5252;
   --accent-yellow: #ffd740;
-  --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.3);
-  --glow-purple: 0 0 20px rgba(179, 136, 255, 0.3);
+  --glow-cyan:     var(--glow);
+  --glow-purple:   var(--glow);
   --sidebar-width: 200px;
-  --scrollbar-thumb: rgba(0, 229, 255, 0.28);
-  --scrollbar-thumb-hover: rgba(0, 229, 255, 0.42);
-  --scrollbar-track: rgba(18, 18, 26, 0.75);
+  --scrollbar-thumb:       var(--border-strong);
+  --scrollbar-thumb-hover: var(--accent-soft);
+  --scrollbar-track:       transparent;
 }
 
 * {
@@ -438,56 +448,13 @@ body.gf-theme-dark  { background: #0a1426; }
   border-radius: 3px;
 }
 
-/* ─── Buttons ─── */
-.btn-primary {
-  padding: 14px 40px;
-  font-size: 15px;
-  font-weight: 600;
-  font-family: inherit;
-  border: 1px solid var(--accent-cyan);
-  border-radius: 8px;
-  cursor: pointer;
-  letter-spacing: 1px;
-  background: transparent;
-  color: var(--accent-cyan);
-  transition: all 0.2s ease;
-  -webkit-app-region: no-drag;
-}
-
-.btn-primary:hover {
-  background: rgba(0, 229, 255, 0.1);
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.15);
-}
-
-.btn-primary:active {
-  background: rgba(0, 229, 255, 0.18);
-}
-
-.btn-primary:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  box-shadow: none;
-  background: transparent;
-}
-
-.btn-secondary {
-  padding: 10px 24px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  transition: all 0.2s ease;
-  -webkit-app-region: no-drag;
-}
-
-.btn-secondary:hover {
-  border-color: var(--accent-cyan);
-  background: var(--bg-tertiary);
-}
+/* ─── Buttons ──────────────────────────────────────────────────────────
+   .btn-primary, .btn-secondary, .btn-ghost are now defined in
+   cowork/styles/globals.css as token-driven aliases of the canonical
+   .btn / .btn.primary / .btn.subtle classes. The legacy hex-based
+   versions that used to live here have been removed so the guideline
+   look applies uniformly across onboarding + cowork. */
+/* (button styling intentionally moved to globals.css) */
 
 /* ═══════════════════════════════════════════
    APP LAYOUT — Sidebar + Main

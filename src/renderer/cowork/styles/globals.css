@@ -37,12 +37,25 @@
   src: url('/fonts/InterDisplay-ExtraBold.woff2') format('woff2');
 }
 /* ─── Design System Tokens ───────────────────────────────────────────────── */
-:root {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-display: 'Inter Display', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'Roboto Mono', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
+/* ─── Font stack — three fonts, three jobs ─────────────────────────────────
+   Per the design guideline:
+     · Josefin Sans  — display only (heroes, taglines, app name moments)
+     · Inter         — every operable surface (H1–H3, body, buttons, lists)
+     · JetBrains Mono — strings (code, paths, IDs, kbd shortcuts, IDs)
+   All three are bundled at /fonts/ in the public dir. */
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/JetBrainsMono-400.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/JetBrainsMono-500.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/JetBrainsMono-700.woff2') format('woff2'); }
+@font-face { font-family: 'Josefin Sans';  font-style: normal; font-weight: 300; font-display: swap; src: url('/fonts/JosefinSans-300.woff2') format('woff2'); }
+@font-face { font-family: 'Josefin Sans';  font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/JosefinSans-400.woff2') format('woff2'); }
+@font-face { font-family: 'Josefin Sans';  font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/JosefinSans-700.woff2') format('woff2'); }
 
-  /* Aqua (primary) */
+:root {
+  --font-sans:    'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Josefin Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Aqua (primary) — palette base, used by both themes */
   --primary-50:  #CBF1F9;
   --primary-300: #25BBD3;
   --primary-400: #1F9CB0;
@@ -79,19 +92,134 @@
   --sage-500: #5D9287;
   --sage-600: #4D7A70;
   --sage-700: #3D6159;
+}
 
-  /* Semantic */
-  --surface-0:   #FFFFFF;
-  --surface-01:  var(--stone-100);
-  --surface-02:  var(--stone-150);
-  --surface-03:  var(--frost-100);
-  --border-0:    var(--stone-150);
-  --border-01:   var(--stone-200);
-  --border-02:   var(--stone-300);
-  --text-strong: #080B0C;
-  --text-primary: var(--frost-800);
-  --text-faint:   var(--frost-700);
-  --shadow-sm: 0px 1px 2px 0px rgba(0,0,0,0.05);
+/* ─── Light mode (default) ────────────────────────────────────────────────
+   Tokens follow the design guideline (type-and-buttons-light.html). */
+body, body[data-theme="light"] {
+  /* Guideline names — primary token surface for new code */
+  --bg:           #FAFAFA;
+  --surface:      #FFFFFF;
+  --surface-2:    #F4F4F4;
+  --surface-3:    #ECECEA;
+  --line:         #E4E4E1;
+  --line-2:       #D4D4D0;
+
+  --ink:          #0E0F10;   /* primary text */
+  --ink-2:        #3A3D40;   /* body */
+  --ink-3:        #6B6F73;   /* labels / secondary */
+  --ink-4:        #9B9FA3;   /* placeholders / tertiary */
+  --ink-5:        #C8CACC;   /* disabled */
+
+  --accent:       #1F9CB0;
+  --accent-2:     #115562;
+  --accent-3:     #0E4651;
+  --accent-bg:    #E5F4F7;
+  --accent-glow:  rgba(31, 156, 176, 0.30);
+
+  --danger:       #B91C1C;
+  --danger-bg:    #FEE2E2;
+
+  --r-sm:         4px;
+  --r:            6px;
+  --r-lg:         10px;
+  --r-xl:         16px;
+
+  --sh-1:         0 1px 0 rgba(15,16,17,0.04), 0 1px 2px rgba(15,16,17,0.05);
+  --sh-2:         0 1px 0 rgba(15,16,17,0.04), 0 4px 12px rgba(15,16,17,0.06);
+  --sh-3:         0 1px 0 rgba(15,16,17,0.04), 0 12px 28px rgba(15,16,17,0.08);
+  --ring:         0 0 0 3px rgba(31,156,176,0.30);
+
+  /* Legacy/cowork token aliases — keep existing components working */
+  --surface-0:      var(--surface);
+  --surface-01:     var(--surface-2);
+  --surface-02:     var(--surface-3);
+  --surface-03:     var(--surface-2);
+  /* Near-opaque so the macOS inactive traffic lights (light grey)
+     read against the sidebar background. 0.78 was too translucent —
+     the inactive grey blended into the gravity field below. */
+  --surface-glass:  rgba(255, 255, 255, 0.96);
+  --surface-glass-blur: 14px;
+  --border-0:       var(--line);
+  --border-01:      var(--line-2);
+  --border-02:      var(--line-2);
+  --border-subtle:  var(--line);
+  --border-strong:  var(--line-2);
+  --text-strong:    var(--ink);
+  --text-primary:   var(--ink-2);
+  --text-default:   var(--ink-2);
+  --text-muted:     var(--ink-3);
+  --text-faint:     var(--ink-4);
+  --accent-soft:    var(--accent-bg);
+  --accent-strong:  var(--accent-2);
+  --glow:           var(--sh-2);
+  --shadow-sm:      var(--sh-1);
+}
+
+/* ─── Dark mode ──────────────────────────────────────────────────────────
+   Tokens follow type-and-buttons-dark.html — deep-night surfaces, neon
+   cyan accent (#22D3EE), readable cool whites, glow on emphasis only. */
+body[data-theme="dark"] {
+  --bg:           #080d18;
+  --surface:      #0E1626;
+  --surface-2:    #131D31;
+  --surface-3:    #1A2640;
+  --line:         #1E2A44;
+  --line-2:       #2A3957;
+
+  --ink:          #F2F6FF;
+  --ink-2:        #C7D2E5;
+  --ink-3:        #8A97AE;
+  --ink-4:        #5C6B85;
+  --ink-5:        #3A465E;
+
+  --accent:       rgb(34, 211, 238);
+  --accent-2:     rgb(8, 178, 207);
+  --accent-3:     rgb(6, 145, 170);
+  --accent-bg:    rgba(34, 211, 238, 0.10);
+  --accent-glow:  rgba(34, 211, 238, 0.45);
+
+  --danger:       #F87171;
+  --danger-bg:    rgba(248, 113, 113, 0.12);
+
+  --sh-1:         0 1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.4);
+  --sh-2:         0 1px 0 rgba(0,0,0,0.4), 0 6px 18px rgba(0,0,0,0.5);
+  --sh-3:         0 1px 0 rgba(0,0,0,0.4), 0 18px 40px rgba(0,0,0,0.6);
+  --ring:         0 0 0 3px rgba(34, 211, 238, 0.35);
+
+  /* Legacy/cowork aliases — onto the same surfaces as the guideline */
+  --surface-0:      var(--surface);
+  --surface-01:     var(--surface-2);
+  --surface-02:     var(--surface-3);
+  --surface-03:     var(--surface-2);
+  --surface-glass:  rgba(14, 22, 38, 0.72);
+  --surface-glass-blur: 18px;
+  --border-0:       var(--line);
+  --border-01:      var(--line);
+  --border-02:      var(--line-2);
+  --border-subtle:  var(--line);
+  --border-strong:  var(--line-2);
+  --text-strong:    var(--ink);
+  --text-primary:   var(--ink-2);
+  --text-default:   var(--ink-2);
+  --text-muted:     var(--ink-3);
+  --text-faint:     var(--ink-4);
+  --accent-soft:    var(--accent-bg);
+  --accent-strong:  var(--accent-2);
+  --glow:           0 0 0 1px var(--accent),
+                    0 0 18px var(--accent-glow),
+                    0 4px 24px rgba(34, 211, 238, 0.10);
+  --shadow-sm:      var(--sh-1);
+}
+
+/* In dark mode, bold + emphasised inline text picks up a soft neon glow —
+   restrained but unmistakably "alive" per the guideline. */
+body[data-theme="dark"] strong,
+body[data-theme="dark"] b,
+body[data-theme="dark"] em {
+  color: var(--ink);
+  text-shadow: 0 0 14px var(--accent-glow);
+  font-style: normal;
 }
 
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
@@ -104,7 +232,8 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--surface-0);
+  /* No background here — kit's gf-theme-{light,dark} on body controls
+     window-level bg so the gravity-field canvas remains visible. */
   user-select: none;
 }
 button { font-family: inherit; cursor: pointer; }
@@ -1528,23 +1657,621 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 [data-coming-soon]:hover::after { opacity: 1; }
 
-/* ─── Primary action button ──────────────────────────────────────────────── */
+/* ─── Button system (per guideline) ──────────────────────────────────────
+   All variants share shape: transparent fill, colored border + label.
+   Each variant supplies --fg (the colour) and --glow (hover halo).
+   .btn is the canonical class name; .btn-primary / .btn-secondary stay as
+   backward-compat aliases that pin specific variants. */
+
+.btn {
+  --fg:    var(--ink);
+  --glow:  rgba(199, 210, 229, 0.22);
+  --bg-h:  color-mix(in srgb, var(--fg) 10%, transparent);
+  --bg-a:  color-mix(in srgb, var(--fg) 18%, transparent);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid currentColor;
+  box-shadow: var(--sh-1);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color .12s ease,
+    border-color .12s ease,
+    box-shadow .12s ease,
+    transform .04s ease,
+    color .12s ease;
+}
+.btn:hover {
+  background: var(--bg-h);
+  box-shadow: 0 0 0 1px var(--fg), 0 0 22px var(--glow);
+  text-shadow: 0 0 12px var(--glow);
+}
+.btn:active {
+  background: var(--bg-a);
+  transform: translateY(0.5px);
+  box-shadow: 0 0 0 1px var(--fg), 0 0 6px var(--glow);
+}
+.btn:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--fg), 0 0 0 4px var(--glow);
+}
+.btn:disabled, .btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Primary — accent action. Always-on idle glow, intensifies on hover. */
+.btn.primary,
 .btn-primary {
-  height: 32px; padding: 0 14px; border-radius: 8px;
-  background: var(--primary-700); color: #fff; border: 0;
-  font-size: 13px; font-weight: 500;
+  --fg:    var(--accent);
+  --glow:  var(--accent-glow);
+  font-weight: 600;
+  /* Apply .btn shape if the consumer omitted it (legacy callers used .btn-primary alone) */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid currentColor;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color .12s ease, border-color .12s ease,
+    box-shadow .12s ease, transform .04s ease, color .12s ease;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+body[data-theme="light"] .btn.primary,
+body[data-theme="light"] .btn-primary,
+body:not([data-theme="dark"]) .btn.primary,
+body:not([data-theme="dark"]) .btn-primary {
+  /* Light mode: no idle glow; ring + soft halo on hover only. */
+  box-shadow: var(--sh-1);
+}
+.btn.primary:hover,
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  box-shadow: 0 0 0 1px var(--fg), 0 0 28px var(--glow);
+}
+.btn.primary:active,
+.btn-primary:active {
+  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  transform: translateY(0.5px);
+}
+.btn.primary:disabled,
+.btn-primary:disabled,
+.btn.primary[aria-disabled="true"],
+.btn-primary[aria-disabled="true"] {
+  cursor: not-allowed; opacity: 0.55; pointer-events: none;
+}
+
+/* Subtle — borderless until hovered. Quietest variant. Aliased from
+   the older .btn-secondary / .btn-ghost classes. */
+.btn.subtle,
+.btn-secondary,
+.btn-ghost {
+  --fg:   var(--ink-3);
+  --glow: rgba(199, 210, 229, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid transparent;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition:
+    background-color .12s ease, border-color .12s ease,
+    box-shadow .12s ease, color .12s ease;
+}
+.btn.subtle:hover,
+.btn-secondary:hover,
+.btn-ghost:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  box-shadow: 0 0 0 1px var(--line-2), 0 0 18px rgba(199, 210, 229, 0.10);
+}
+
+/* Tinted — accent border + label, with a faint accent fill at rest. */
+.btn.tinted {
+  --fg:   var(--accent);
+  --glow: var(--accent-glow);
+  background: var(--accent-bg);
+  border-color: currentColor;
+}
+
+/* Danger */
+.btn.danger {
+  --fg:   var(--danger);
+  --glow: rgba(248, 113, 113, 0.45);
+}
+.btn.danger.primary {
+  font-weight: 600;
+  box-shadow: 0 0 14px rgba(248, 113, 113, 0.22);
+}
+
+/* Sizes */
+.btn.xs { height: 24px; padding: 0 8px;  font-size: 12px;   border-radius: var(--r-sm); gap: 4px; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; gap: 5px; }
+.btn.lg { height: 36px; padding: 0 16px; font-size: 14px; }
+.btn.xl { height: 44px; padding: 0 20px; font-size: 15px; border-radius: var(--r); }
+
+/* Icon-only */
+.btn.icon { width: 32px; padding: 0; }
+.btn.icon.sm { width: 28px; }
+.btn.icon.xs { width: 24px; }
+.btn.icon.lg { width: 36px; }
+
+/* Block */
+.btn.block { display: flex; width: 100%; }
+
+/* Embedded keyboard hint */
+.btn .kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 4px;
+  opacity: 0.9;
+}
+
+/* ─── Type scale (per guideline) ─────────────────────────────────────── */
+.s-display     { font-family: var(--font-sans); font-size: 44px;   line-height: 1.05; letter-spacing: -0.025em; font-weight: 600; color: var(--ink); }
+.s-h1          { font-family: var(--font-sans); font-size: 28px;   line-height: 1.15; letter-spacing: -0.02em;  font-weight: 600; color: var(--ink); }
+.s-h2          { font-family: var(--font-sans); font-size: 22px;   line-height: 1.2;  letter-spacing: -0.015em; font-weight: 600; color: var(--ink); }
+.s-h3          { font-family: var(--font-sans); font-size: 17px;   line-height: 1.3;  letter-spacing: -0.01em;  font-weight: 600; color: var(--ink); }
+.s-body        { font-family: var(--font-sans); font-size: 14px;   line-height: 1.55; font-weight: 400; color: var(--ink-2); }
+.s-body-strong { font-family: var(--font-sans); font-size: 14px;   line-height: 1.55; font-weight: 500; color: var(--ink); }
+.s-small       { font-family: var(--font-sans); font-size: 13px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
+.s-caption     { font-family: var(--font-sans); font-size: 12px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
+.s-overline    { font-family: var(--font-mono); font-size: 11px;   line-height: 1.6;  font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-3); }
+.s-mono        { font-family: var(--font-mono); font-size: 13px;   line-height: 1.5; color: var(--ink); }
+
+/* ─── Special title — Josefin Sans (display only) ─────────────────────── */
+.t-special {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  color: var(--ink);
+  line-height: 1.05;
+}
+.t-special.size-xl { font-size: 44px; letter-spacing: -0.005em; font-weight: 700; }
+.t-special.size-lg { font-size: 28px; letter-spacing: 0.02em;   font-weight: 400; }
+.t-special.size-md { font-size: 18px; letter-spacing: 0.06em;   font-weight: 400; }
+.t-special.size-sm { font-size: 12px; letter-spacing: 0.18em;   font-weight: 300; }
+
+/* ─── Form fields ──────────────────────────────────────────────────────── */
+.field-input,
+.field-textarea {
+  width: 100%;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+  padding: 8px 12px;
+  outline: 0;
+  transition: border-color .12s ease, box-shadow .15s ease, background .12s ease;
+}
+.field-input  { height: 34px; }
+.field-textarea { min-height: 84px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
+
+.field-input::placeholder,
+.field-textarea::placeholder {
+  color: var(--ink-4);
+}
+
+.field-input:hover,
+.field-textarea:hover {
+  border-color: var(--line-2);
+}
+.field-input:focus,
+.field-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.field-input:disabled,
+.field-textarea:disabled {
+  opacity: 0.55; cursor: not-allowed;
+}
+
+/* Mono variant — useful for paths, IDs, code-shaped values */
+.field-input.mono,
+.field-textarea.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0;
+}
+
+/* Compact size */
+.field-input.sm { height: 28px; padding: 4px 10px; font-size: 12.5px; border-radius: var(--r-sm); }
+
+/* Field label group helper */
+.field-label {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.field-hint {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--ink-4);
+  margin-top: 4px;
+}
+
+/* ─── Card / Bubble surfaces ───────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  padding: 24px;
+}
+
+.card.flat { box-shadow: none; }
+.card.compact { padding: 16px; }
+.card.snug    { padding: 12px; }
+
+/* Bubble — floating glassy container; slightly translucent so the
+   gravity-field shows behind. Radius slightly tighter than .card. */
+.bubble {
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(var(--surface-glass-blur));
+  backdrop-filter: blur(var(--surface-glass-blur));
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--sh-2);
+}
+
+/* Eyebrow — uppercase mono label sitting above headings (per guideline) */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin: 0 0 8px;
+  display: inline-block;
+}
+
+/* Hairline divider */
+.divider {
+  height: 1px; width: 100%;
+  background: var(--line);
+  border: 0;
+  margin: 0;
+}
+.divider.thick { height: 1px; background: var(--line-2); }
+
+/* Status pill — compact rounded label, accent-tinted */
+.pill {
   display: inline-flex; align-items: center; gap: 6px;
-  transition: background .12s;
+  height: 22px; padding: 0 8px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
-.btn-primary:hover { background: var(--primary-600); }
-.btn-secondary {
-  height: 28px; padding: 0 10px; border-radius: 7px;
-  background: var(--surface-0); color: var(--frost-800);
-  border: 1px solid var(--border-01);
-  font-size: 12px; font-weight: 500;
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+.pill.muted {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-3);
+  border-color: var(--line);
 }
-.btn-secondary:hover { background: var(--stone-100); color: var(--text-strong); }
+.pill.danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+/* ─── Anton sidebar (per anton-sidebar-{dark,light} guideline) ────────────
+   Token-driven; dark mode adds the cyan halo + glow on emphasis. */
+
+.anton-sidebar__chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 8px;
+}
+.anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; }
+.anton-sidebar__chrome-buttons { display: flex; gap: 2px; }
+
+.anton-sidebar__wordmark {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink);
+  padding-right: 4px;
+}
+body[data-theme="dark"] .anton-sidebar__wordmark {
+  text-shadow: 0 0 14px var(--accent-glow);
+}
+
+/* Cyan halo at the top of the sidebar — only in dark mode */
+body[data-theme="dark"] .app-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% -10%, rgba(34,211,238,0.10), transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+.app-sidebar { position: relative; }
+.app-sidebar > * { position: relative; z-index: 1; }
+
+/* New task CTA — outlined neon in dark, accent-bordered in light */
+.anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
+.btn-new-task {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s ease, color .12s ease, border-color .12s ease,
+              box-shadow .15s ease, transform .05s ease;
+}
+.btn-new-task:hover {
+  background: var(--accent-bg);
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.btn-new-task:active { transform: translateY(0.5px); }
+.btn-new-task__label { flex: 1; }
+.btn-new-task .kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+body[data-theme="dark"] .btn-new-task {
+  font-weight: 600;
+  text-shadow: 0 0 10px var(--accent-glow);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+body[data-theme="dark"] .btn-new-task:hover {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 28px var(--accent-glow);
+}
+
+/* Override existing .nav-item rules to follow the guideline shape */
+.app-sidebar .nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  height: auto;
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.3;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  transition: background .12s, color .12s;
+}
+.app-sidebar .nav-item:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+}
+.app-sidebar .nav-item.active {
+  color: var(--ink);
+  font-weight: 550;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+body[data-theme="dark"] .app-sidebar .nav-item.active {
+  background: var(--accent-bg);
+  text-shadow: 0 0 14px var(--accent-glow);
+}
+.app-sidebar .nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: -10px; top: 6px; bottom: 6px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+body[data-theme="dark"] .app-sidebar .nav-item.active::before {
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+.app-sidebar .nav-item.active span:first-child { color: var(--accent) !important; }
+
+/* Compact variant (inside Anton group) */
+.app-sidebar .nav-item.compact { padding: 6px 8px; }
+
+/* Section labels */
+.app-sidebar .section-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  font-weight: 600;
+  padding: 18px 14px 6px;
+  margin: 0;
+}
+
+/* Anton group — visually grouped panel */
+.anton-group {
+  position: relative;
+  margin: 0 10px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+body[data-theme="dark"] .anton-group {
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+}
+body[data-theme="dark"] .anton-group::before {
+  content: '';
+  position: absolute;
+  left: 12px; right: 12px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-dim, var(--accent)), transparent);
+  opacity: 0.5;
+}
+
+/* Pinned empty-state */
+.app-sidebar .sidebar-empty,
+.pinned-empty {
+  margin: 0 14px;
+  padding: 14px;
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--ink-4);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+  background: transparent;
+}
+body[data-theme="dark"] .pinned-empty,
+body[data-theme="dark"] .app-sidebar .sidebar-empty {
+  background: rgba(255,255,255,0.01);
+}
+
+/* Recent row — same shape, mono meta on the right */
+.app-sidebar .recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  height: auto;
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background .1s ease, color .12s ease;
+  border: 0; background: transparent; width: 100%; text-align: left;
+}
+.app-sidebar .recent-item:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+}
+
+/* Footer status bar */
+.anton-sidebar__footer {
+  border-top: 1px solid var(--line);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-2);
+}
+.status-pill { display: flex; align-items: center; gap: 8px; }
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 99px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+  flex: 0 0 auto;
+}
+body[data-theme="dark"] .status-dot {
+  box-shadow:
+    0 0 0 3px rgba(34,211,238,0.15),
+    0 0 12px var(--accent-glow);
+}
+.status-dot.offline {
+  background: var(--ink-4);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink-4) 18%, transparent);
+}
+.status-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.status-text__faded { color: var(--ink-3); }
+.status-text__live  { color: var(--accent); }
+body[data-theme="dark"] .status-text__live { text-shadow: 0 0 10px var(--accent-glow); }
+.anton-sidebar__footer-actions { display: flex; gap: 4px; }
+
+/* Small chrome button (used in footer + sidebar header where 22px is tight) */
+.chrome-btn--small {
+  width: 22px; height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background .12s, color .12s, box-shadow .15s;
+}
+.chrome-btn--small:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+body[data-theme="dark"] .chrome-btn--small:hover {
+  color: var(--accent);
+  background: transparent;
+  box-shadow: 0 0 16px rgba(34,211,238,0.25);
+}
 
 @media (max-width: 700px) {
   .app-sidebar {

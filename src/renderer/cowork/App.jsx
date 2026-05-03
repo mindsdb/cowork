@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Ico from './components/Icons';
 // OnboardingShell removed — antontron's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
@@ -138,6 +138,36 @@ function AppCore() {
     } catch { return 'dark'; }
   });
 
+  // Global keyboard shortcuts. Cmd/Ctrl+B toggles the sidebar,
+  // Cmd/Ctrl+K opens search, Cmd/Ctrl+N starts a new task.
+  useEffect(() => {
+    const onKey = (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key === 'b') {
+        e.preventDefault();
+        setSidebarCollapsed((c) => !c);
+      } else if (key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      } else if (key === 'n') {
+        e.preventDefault();
+        // Defined later in the function — access via closure (newTask).
+        // Use a microtask to escape the read-before-define order issue.
+        Promise.resolve().then(() => {
+          if (typeof newTaskRef.current === 'function') newTaskRef.current();
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Latest newTask handler kept in a ref so the keydown listener — bound
+  // once on mount — always invokes the up-to-date function.
+  const newTaskRef = useRef(null);
+
   useEffect(() => {
     try { window.localStorage.setItem('anton.theme', theme); } catch {}
     // Swap body class so kit's gf-theme-* page background colour applies.
@@ -237,6 +267,9 @@ function AppCore() {
     setComposerAttachments([]);
     setRoute('home');
   };
+  // Keep the ref synced so the Cmd/Ctrl+N keydown handler always calls
+  // the latest newTask closure (which captures fresh setRoute/setTasks).
+  useEffect(() => { newTaskRef.current = newTask; });
 
   const clearActive = useCallback(() => {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
@@ -551,7 +584,7 @@ function AppCore() {
     : models;
 
   return (
-    <div style={{ ...appStyle, ...accentCss, display: 'flex', gap: 6, padding: 6, position: 'relative' }}>
+    <div style={{ ...appStyle, ...accentCss, display: 'flex', gap: 9, padding: 9, position: 'relative' }}>
       {/*
         Floating hamburger — visible when the sidebar is collapsed. Sits
         right of the macOS traffic lights (window-x=14, so left=88 clears
@@ -581,54 +614,8 @@ function AppCore() {
         {Ico.menu(15)}
       </button>
 
-      {/*
-        Floating theme toggle (bottom-right). Sun in dark mode → click to
-        go light. Moon in light mode → click to go dark. Both icons stay
-        rendered, fading in/out with the same Apple-spring easing as the
-        sidebar transitions; the button frame also rotates 360° on every
-        toggle for a slick "spin to swap" feel.
-      */}
-      <button
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        className="icon-btn theme-toggle"
-        style={{
-          position: 'absolute',
-          bottom: 12, right: 12,
-          width: 36, height: 36, borderRadius: 12,
-          zIndex: 10,
-          WebkitAppRegion: 'no-drag',
-          background: theme === 'dark'
-            ? 'rgba(255,255,255,0.06)'
-            : 'rgba(0,0,0,0.04)',
-          color: theme === 'dark' ? '#E8EEF2' : '#3A464B',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.08)',
-          transition:
-            'background 240ms cubic-bezier(0.32, 0.72, 0, 1), ' +
-            'color 240ms cubic-bezier(0.32, 0.72, 0, 1), ' +
-            'transform 480ms cubic-bezier(0.32, 0.72, 0, 1)',
-          transform: `rotate(${theme === 'dark' ? 0 : 360}deg)`,
-        }}
-      >
-        <span style={{ position: 'relative', width: 16, height: 16, display: 'inline-flex' }}>
-          <span style={{
-            position: 'absolute', inset: 0,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            opacity: theme === 'dark' ? 1 : 0,
-            transform: `rotate(${theme === 'dark' ? 0 : -90}deg) scale(${theme === 'dark' ? 1 : 0.6})`,
-            transition: 'opacity 200ms cubic-bezier(0.32, 0.72, 0, 1), transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
-          }}>{Ico.sun(16)}</span>
-          <span style={{
-            position: 'absolute', inset: 0,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            opacity: theme === 'light' ? 1 : 0,
-            transform: `rotate(${theme === 'light' ? 0 : 90}deg) scale(${theme === 'light' ? 1 : 0.6})`,
-            transition: 'opacity 200ms cubic-bezier(0.32, 0.72, 0, 1), transform 320ms cubic-bezier(0.32, 0.72, 0, 1)',
-          }}>{Ico.moon(16)}</span>
-        </span>
-      </button>
+      {/* Theme toggle now lives inside the Sidebar footer per the design
+          guideline. The floating bottom-right version was removed. */}
       <Sidebar
         tasks={tasks}
         pins={pins}
@@ -644,6 +631,8 @@ function AppCore() {
         onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
         onPinTask={handlePinTask}
         onUnpinTask={handleUnpinTask}
+        theme={theme}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       />
 
       <main style={{
