@@ -237,6 +237,19 @@ function AppCore() {
     refreshData();
   }, [refreshData]);
 
+  // Whenever serverOnline flips from false → true (boot finishing,
+  // user manually starting, etc.), re-fetch everything. Without this,
+  // the initial refreshData() on a slow-cold-boot returns empties and
+  // the UI is stuck showing "configure anton" until the user cycles
+  // the toggle by hand.
+  const wasOnlineRef = useRef(false);
+  useEffect(() => {
+    if (serverOnline && !wasOnlineRef.current) {
+      refreshData();
+    }
+    wasOnlineRef.current = serverOnline;
+  }, [serverOnline, refreshData]);
+
   // Seed server state from main's truth on first paint so the toggle
   // button reflects reality (running OR starting) even before /health
   // has returned. While main is mid-start, show the spinner; poll
