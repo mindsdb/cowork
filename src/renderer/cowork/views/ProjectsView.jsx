@@ -16,6 +16,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 import { TaskList } from '../components/task';
+import { ProjectCard } from '../components/project';
 
 function PageHeader({ title, subtitle, action }) {
   return (
@@ -52,7 +53,7 @@ function timestampOf(task) {
   return Number.isFinite(t) ? t : 0;
 }
 
-function ProjectGrid({ projects, selectedProject, onOpenProject, onCreateProject }) {
+function ProjectGrid({ projects, selectedProject, tasks = [], scheduled = [], onOpenProject, onCreateProject, onDeleteProject }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -109,61 +110,17 @@ function ProjectGrid({ projects, selectedProject, onOpenProject, onCreateProject
         gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
         gap: 14,
       }}>
-        {projects.map((p) => {
-          const isSelected = selectedProject?.name === p.name;
-          return (
-            <button
-              key={p.name}
-              style={{
-                textAlign: 'left', background: 'var(--surface)',
-                border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--line)'}`,
-                borderRadius: 12, padding: 16, cursor: 'pointer',
-                transition: 'border-color .15s, box-shadow .15s',
-                boxShadow: 'var(--sh-1, 0 1px 0 rgba(0,0,0,0.04))',
-                display: 'flex', flexDirection: 'column', gap: 12,
-                minHeight: 120,
-                // Pin width so children with overflow:hidden + ellipsis
-                // actually clip — without this the grid item happily
-                // grows to fit its widest child (e.g. a long path).
-                minWidth: 0, width: '100%', overflow: 'hidden',
-              }}
-              onClick={() => onOpenProject?.(p)}
-              onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.borderColor = isSelected ? 'var(--accent)' : 'var(--line)'; }}
-            >
-              <div style={{
-                width: 36, height: 36, borderRadius: 10,
-                background: 'var(--surface-2)', color: 'var(--accent)',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {Ico.folder(18)}
-              </div>
-              {/* min-width:0 + width:100% so the inner ellipsis on
-                  the path actually triggers — without these the flex
-                  parent's min-width:auto lets the child expand to its
-                  natural content width and pushes the card wider. */}
-              <div style={{ minWidth: 0, width: '100%' }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  minWidth: 0,
-                }}>
-                  <div style={{
-                    fontFamily: 'var(--font-body)',
-                    fontSize: 14, fontWeight: 600, color: 'var(--ink)',
-                    flex: '1 1 0', minWidth: 0,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{p.name}</div>
-                </div>
-                <div title={p.path} style={{
-                  fontSize: 11.5, color: 'var(--ink-4)', marginTop: 4,
-                  fontFamily: 'var(--font-body)',
-                  minWidth: 0, maxWidth: '100%',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{p.path}</div>
-              </div>
-            </button>
-          );
-        })}
+        {projects.map((p) => (
+          <ProjectCard
+            key={p.name}
+            project={p}
+            isSelected={selectedProject?.name === p.name}
+            tasks={tasks}
+            scheduled={scheduled}
+            onOpen={onOpenProject}
+            onDelete={onDeleteProject}
+          />
+        ))}
       </div>
     </div>
   );
@@ -398,6 +355,7 @@ export default function ProjectsView({
   onSendInProject,
   onSelectTask,
   onDeleteTask,
+  onDeleteProject,
 }) {
   // Detail mode is local — App's selectedProject seeds it but the user
   // can flip back to the grid without losing their global selection.
@@ -409,7 +367,10 @@ export default function ProjectsView({
       <ProjectGrid
         projects={projects}
         selectedProject={selectedProject}
+        tasks={tasks}
+        scheduled={scheduled}
         onCreateProject={onCreateProject}
+        onDeleteProject={onDeleteProject}
         onOpenProject={(p) => {
           setDetailProject(p);
           onSelectProject?.(p);

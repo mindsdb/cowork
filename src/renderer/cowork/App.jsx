@@ -22,7 +22,8 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          attachProjectFile, deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
-         renameConversation, deleteConversation, moveConversation } from './api';
+         renameConversation, deleteConversation, moveConversation,
+         deleteProject } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 
 const ACCENT_VARS = {
@@ -134,6 +135,8 @@ function AppCore() {
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
+  // Pending project delete — same pattern but for entire projects.
+  const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
   const [models] = useState(MOCK_DATA.models);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Theme (light | dark) — persisted in localStorage so the choice
@@ -260,6 +263,39 @@ function AppCore() {
     }
     wasOnlineRef.current = serverOnline;
   }, [serverOnline, refreshData]);
+
+  // Default the new-task project to "general". If the projects list
+  // is loaded and it doesn't include "general", create it first. The
+  // server provisions general on startup, so this only fires on
+  // upgrades from an older build that didn't have that.
+  const generalDefaultRef = useRef(false);
+  useEffect(() => {
+    if (selectedProject) return;        // user has picked something — don't override
+    if (!serverOnline) return;          // wait for server
+    if (generalDefaultRef.current) return; // only run once per session
+    if (projects.length === 0) return;  // wait for projects to load
+    const general = projects.find((p) => p.name === 'general');
+    if (general) {
+      generalDefaultRef.current = true;
+      setSelectedProject(general);
+      return;
+    }
+    // No general project — bootstrap it then re-fetch + select.
+    generalDefaultRef.current = true;
+    (async () => {
+      try {
+        await createProject('general');
+        const fresh = await fetchProjects();
+        if (Array.isArray(fresh)) setProjects(fresh);
+        const created = (fresh || []).find((p) => p.name === 'general');
+        if (created) setSelectedProject(created);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[default-project] could not bootstrap general', e);
+        generalDefaultRef.current = false; // allow retry on next render
+      }
+    })();
+  }, [projects, selectedProject, serverOnline]);
 
   // Seed server state from main's truth on first paint so the toggle
   // button reflects reality (running OR starting) even before /health
@@ -753,6 +789,27 @@ function AppCore() {
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
 
+  const handleDeleteProject = (project) => {
+    if (!project?.name) return;
+    setPendingDeleteProject(project);
+  };
+  const performDeleteProject = async (project) => {
+    if (!project?.name) return;
+    // Optimistic — drop locally before the round-trip.
+    setProjects((prev) => prev.filter((p) => p.name !== project.name));
+    setTasks((prev) => prev.filter((t) =>
+      t.projectName !== project.name && t.projectPath !== project.path
+    ));
+    if (selectedProject?.name === project.name) setSelectedProject(null);
+    try { await deleteProject(project.name); } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[performDeleteProject] failed', e);
+    }
+    // Refresh from server to recover the canonical state.
+    fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
+    fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); }).catch(() => {});
+  };
+
   const handleMoveTaskToProject = async (taskId, projectName) => {
     // eslint-disable-next-line no-console
     console.log('[handleMoveTaskToProject]', taskId, '→', projectName);
@@ -1023,6 +1080,7 @@ function AppCore() {
             }}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
+            onDeleteProject={handleDeleteProject}
           />
         )}
 
@@ -1085,6 +1143,21 @@ function AppCore() {
           const id = pendingDeleteTaskId;
           setPendingDeleteTaskId(null);
           await performDeleteTask(id);
+        }}
+      />
+
+      <ConfirmModal
+        open={pendingDeleteProject != null}
+        title={`Delete project "${pendingDeleteProject?.name}"?`}
+        message="All conversations, scratchpad output, memory, and artifacts under this project will be removed from disk. This can't be undone."
+        confirmLabel="Delete project"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteProject(null)}
+        onConfirm={async () => {
+          const p = pendingDeleteProject;
+          setPendingDeleteProject(null);
+          await performDeleteProject(p);
         }}
       />
 

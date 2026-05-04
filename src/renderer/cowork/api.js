@@ -266,6 +266,21 @@ export async function createProject(name) {
   return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
+export async function deleteProject(name) {
+  // Idempotent: 404 = "already gone" = success.
+  const res = await fetch(BASE + `/projects/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (res.status === 404) return { status: 'gone', name };
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json())?.detail || ''; } catch {}
+    throw new Error(detail || `Delete failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function fetchActiveProject() {
   try {
     const data = await req('/projects/active');
