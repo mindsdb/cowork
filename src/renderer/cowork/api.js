@@ -441,7 +441,21 @@ export async function renameConversation(id, title) {
 }
 
 export async function deleteConversation(id) {
-  return req(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  // Idempotent — if the server says "not found", treat that as
+  // success. The conversation may have been removed by a previous
+  // attempt or a concurrent client; either way the desired end state
+  // ("gone from server") is achieved.
+  const res = await fetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (res.status === 404) return { status: 'gone', id };
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json())?.detail || ''; } catch {}
+    throw new Error(detail || `Delete failed (${res.status})`);
+  }
+  return res.json();
 }
 
 export async function moveConversation(id, projectName) {

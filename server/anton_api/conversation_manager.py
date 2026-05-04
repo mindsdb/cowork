@@ -462,6 +462,13 @@ def list_conversations(limit: int = 200, project: Optional[str] = None) -> list[
                 cid = name.removesuffix("_meta.json")
             elif name.endswith("_history.json"):
                 cid = name.removesuffix("_history.json")
+            elif name.endswith(".jsonl") and not name.endswith("_meta.json") and not name.endswith("_history.json"):
+                # Raw episode log — surface even when the manager
+                # didn't get a chance to write meta/history (e.g. an
+                # interrupted stream). Without this, the conversation
+                # appears in older list snapshots but the server can
+                # neither find nor delete it.
+                cid = name.removesuffix(".jsonl")
             else:
                 continue
             if any(c["id"] == cid for c in out):
@@ -506,11 +513,21 @@ def list_conversations(limit: int = 200, project: Optional[str] = None) -> list[
 
 
 def _find_conversation_dir(conversation_id: str) -> tuple[str, Path] | None:
-    """Return (project_name, episodes_dir) for a conversation id, if found."""
+    """Return (project_name, episodes_dir) for a conversation id, if found.
+
+    Conversations may exist as any combination of:
+      <id>_meta.json      cowork-side metadata (title, project, etc.)
+      <id>_history.json   chat history written by the manager
+      <id>.jsonl          raw episode log written by the anton library
+    Some flows (interrupted streams, legacy data) leave only the .jsonl
+    behind, so we look for any of the three.
+    """
     for project_name, ep_dir in _candidate_episode_dirs():
         if (ep_dir / f"{conversation_id}_meta.json").is_file():
             return project_name, ep_dir
         if (ep_dir / f"{conversation_id}_history.json").is_file():
+            return project_name, ep_dir
+        if (ep_dir / f"{conversation_id}.jsonl").is_file():
             return project_name, ep_dir
     return None
 
@@ -603,12 +620,15 @@ def update_conversation(conversation_id: str, **patch) -> dict | None:
 
 
 def delete_conversation(conversation_id: str) -> bool:
-    """Delete history + meta. Closes live session if any."""
+    """Delete history + meta + raw episode log. Closes live session if any."""
     found = False
     located = _find_conversation_dir(conversation_id)
     if located:
         _, ep = located
-        for suffix in ("_meta.json", "_history.json"):
+        # _meta.json + _history.json are written by the manager; the
+        # bare .jsonl is anton's raw episode log. All three need to go
+        # so the conversation truly disappears.
+        for suffix in ("_meta.json", "_history.json", ".jsonl"):
             p = ep / f"{conversation_id}{suffix}"
             if p.is_file():
                 try:
@@ -642,7 +662,9 @@ def move_conversation(conversation_id: str, target_project: str) -> dict | None:
     target_ep.mkdir(parents=True, exist_ok=True)
 
     moved = False
-    for suffix in ("_meta.json", "_history.json"):
+    # Move all three file flavors so a moved conversation looks
+    # identical to one created in the target project.
+    for suffix in ("_meta.json", "_history.json", ".jsonl"):
         src = src_ep / f"{conversation_id}{suffix}"
         if not src.is_file():
             continue

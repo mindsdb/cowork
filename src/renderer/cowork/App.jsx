@@ -983,6 +983,13 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+            onOpenProjectsList={() => {
+              // "Projects" crumb → projects grid view (no specific
+              // project selected). Clearing selectedProject ensures
+              // ProjectsView starts in grid mode rather than detail.
+              setSelectedProject(null);
+              setRoute('projects');
+            }}
             projects={projects}
             sidebarCollapsed={sidebarCollapsed}
           />

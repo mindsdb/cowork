@@ -462,6 +462,58 @@ function ContextSection({ attachments = [] }) {
   );
 }
 
+// ─── Header crumb helpers ────────────────────────────────────────────────
+function CrumbSep() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        color: T.ink4, fontFamily: FONT_DISPLAY, fontWeight: 400,
+        fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
+        userSelect: 'none',
+      }}
+    >›</span>
+  );
+}
+
+function CrumbButton({ label, onClick, title, maxWidth }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      // Explicit resets instead of `all: unset` — the latter wipes
+      // -webkit-app-region back to its initial which interacts badly
+      // with the chat outer's drag region. With explicit no-drag,
+      // clicks reliably reach the button.
+      style={{
+        cursor: 'pointer',
+        background: 'transparent',
+        border: 0,
+        outline: 0,
+        font: 'inherit',
+        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+        letterSpacing: '0.04em', color: T.ink3,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        maxWidth, flexShrink: 1,
+        padding: '2px 6px', borderRadius: 5,
+        transition: 'color 120ms ease, background 120ms ease',
+        WebkitAppRegion: 'no-drag',
+      }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.color = 'var(--ink)';
+        e.currentTarget.style.background = 'var(--surface-2)';
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.color = 'var(--ink-3)';
+        e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -480,6 +532,7 @@ export default function ChatView({
   onDeleteTask,
   onMoveTaskToProject,
   onOpenProject,
+  onOpenProjectsList,
   projects = [],
   sidebarCollapsed = false,
 }) {
@@ -638,29 +691,26 @@ export default function ChatView({
             minWidth: 0, flex: '1 1 0',
             overflow: 'hidden',
           }}>
+            {/* Projects › [project] › [task] — text-only crumb. The
+                separator is a typographic › (single right-pointing
+                angle quote) so we don't need any chevron SVGs. */}
+            <CrumbButton
+              label="Projects"
+              onClick={() => onOpenProjectsList?.()}
+              title="All projects"
+            />
             {project?.name && (
               <>
-                <button
-                  type="button"
+                <CrumbSep />
+                <CrumbButton
+                  label={project.name}
                   onClick={() => onOpenProject?.(project)}
                   title={`Open project: ${project.name}`}
-                  style={{
-                    all: 'unset', cursor: 'pointer',
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-                    letterSpacing: '0.04em', color: T.ink3,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    maxWidth: 200, flexShrink: 1,
-                    padding: '2px 4px', borderRadius: 5,
-                    transition: 'color 120ms ease, background 120ms ease',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-                >
-                  {project.name}
-                </button>
-                <span style={{ color: T.ink4, display: 'inline-flex', flexShrink: 0 }}>{Ico.chevRight(12)}</span>
+                  maxWidth={200}
+                />
               </>
             )}
+            <CrumbSep />
             <span title={task.title} style={{
               fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
               letterSpacing: '0.04em', color: T.ink,
@@ -670,7 +720,12 @@ export default function ChatView({
             }}>{task.title}</span>
           </div>
 
-          {/* Right side: settings (kebab) + rail toggle. */}
+          {/* Right side — pin status only. The kebab and rail toggle
+              both lived here previously but moved out: rail collapse
+              has its own button in the rail header (and a floating
+              expander on the conv column when collapsed); pin/rename/
+              delete/move/etc. are reachable via the sidebar's task
+              kebab on the same conversation. */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 4,
             flexShrink: 0,
@@ -681,50 +736,10 @@ export default function ChatView({
                 width: 22, height: 22, color: T.accent, flexShrink: 0,
               }}>{Ico.pin(13)}</span>
             )}
-            <button
-              ref={settingsBtnRef}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!settingsBtnRef.current) return;
-                setSettingsAnchor(settingsBtnRef.current.getBoundingClientRect());
-                setSettingsOpen((v) => !v);
-              }}
-              title="Task settings"
-              aria-label="Task settings"
-              style={{
-                all: 'unset', cursor: 'pointer',
-                width: 28, height: 28, borderRadius: 6,
-                display: 'inline-grid', placeItems: 'center',
-                color: T.ink3,
-                flexShrink: 0,
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-            >
-              {Ico.moreVert(15)}
-            </button>
-            <button
-              type="button"
-              onClick={() => setRailOpen((o) => !o)}
-              title={railOpen ? 'Hide side panel' : 'Show side panel'}
-              aria-label={railOpen ? 'Hide side panel' : 'Show side panel'}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                width: 28, height: 28, borderRadius: 6,
-                display: 'inline-grid', placeItems: 'center',
-                color: T.ink3,
-                border: `1px solid ${railOpen ? T.line2 : 'transparent'}`,
-                background: railOpen ? T.surface : 'transparent',
-                flexShrink: 0,
-              }}
-            >
-              {Ico.list(14)}
-            </button>
           </div>
         </div>
-        {/* Settings menu — Schedule (WIP) + Turn into skill +
-            Move to project / Pin / Rename / Delete. */}
+        {/* Settings menu kept mounted but hidden; reachable later if
+            we add another trigger for it. */}
         <TaskMenu
           task={task}
           projects={projects}
