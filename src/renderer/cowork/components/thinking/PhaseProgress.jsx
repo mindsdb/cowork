@@ -140,6 +140,10 @@ export function PhaseProgress({ steps = [], streamStatus = null, conversationId 
         // present-tense rotating phrase ("Crunching the numbers")
         // forever, which read as "still working" even though the
         // step had finished.
+        //
+        // Once complete we also drop the per-cell sublabel and the
+        // duration hint — the row collapses to just the past-tense
+        // headline, matching steps 1 and 3.
         const isComplete = step.status !== 'in_progress';
         return (
           <PhaseRow
@@ -148,8 +152,8 @@ export function PhaseProgress({ steps = [], streamStatus = null, conversationId 
             phaseKey={step.id}
             status={isComplete ? 'completed' : 'in_progress'}
             label={isComplete ? 'Worked through it' : null}
-            sublabel={step.data?.one_line_description || step.label}
-            hint={hint}
+            sublabel={isComplete ? null : (step.data?.one_line_description || step.label)}
+            hint={isComplete ? null : hint}
             onClick={onActivateStep ? () => onActivateStep(step) : undefined}
           />
         );

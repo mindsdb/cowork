@@ -314,6 +314,16 @@ function AppCore() {
     refreshData();
   }, [refreshData]);
 
+  // Allow descendants (e.g. ProjectsView's rename flow) to ask for a
+  // fresh projects list without prop-drilling a refetch handler.
+  useEffect(() => {
+    const handler = () => {
+      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+    };
+    window.addEventListener('anton:projects-changed', handler);
+    return () => window.removeEventListener('anton:projects-changed', handler);
+  }, []);
+
   // Whenever serverOnline flips from false → true (boot finishing,
   // user manually starting, etc.), re-fetch everything. Without this,
   // the initial refreshData() on a slow-cold-boot returns empties and
@@ -1193,8 +1203,9 @@ function AppCore() {
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text) => {
-              // Sending from project detail = same as home, but with
-              // selectedProject already pinned to this project.
+              // Sending from project detail = same path as home, but
+              // selectedProject is already pinned to this project so
+              // the new task lands in the right workspace.
               handleSendFromHome(text);
             }}
             onSelectTask={selectTask}

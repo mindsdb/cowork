@@ -1,51 +1,62 @@
-// Project card — bubble surface, accent stripe colored deterministically
-// per project name, prominent Josefin title, stats row, hover kebab
-// for delete. Inter throughout.
+// D1 "Quiet" project card — name-led, single supporting activity line,
+// demoted stats. No per-project tints, no folder colors, no path. Pin
+// + ⋯ kebab reveal on hover. Click anywhere → opens the project.
+//
+// Design source: docs/design-handoff/Anton Projects (D1 · Quiet).
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchMemory, fetchArtifacts } from '../../api';
 
-const FONT_BODY    = "var(--font-body)";
-const FONT_DISPLAY = "var(--font-display)";
+const FONT_BODY    = 'var(--font-body)';
+const FONT_DISPLAY = 'var(--font-display)';
+const FONT_MONO    = 'var(--font-mono)';
 
-// Deterministic tint per project — picks one of the theme's CSS-var
-// project tints (defined in globals.css :root + dark mode override),
-// so dark mode gets the neon family and light mode gets the deeper
-// saturated palette automatically. Same project always gets the same
-// slot regardless of theme.
-function stripeVar(name) {
-  let h = 5381;
-  for (let i = 0; i < (name || '').length; i++) {
-    h = ((h << 5) + h + name.charCodeAt(i)) | 0;
-  }
-  const idx = (Math.abs(h) % 6) + 1;
-  return `var(--tint-${idx})`;
+function relativeAge(input) {
+  if (!input) return null;
+  const ts = typeof input === 'number' ? input : Date.parse(input);
+  if (!Number.isFinite(ts)) return null;
+  const diff = Date.now() - ts;
+  if (diff < 60_000)        return 'just now';
+  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function StatTile({ label, value }) {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 3,
-      minWidth: 0, alignItems: 'flex-start',
-    }}>
-      <span style={{
-        fontFamily: FONT_DISPLAY, fontWeight: 600,
-        fontSize: 22, color: 'var(--ink)', lineHeight: 1,
-        fontVariantNumeric: 'tabular-nums',
-      }}>
-        {value}
-      </span>
-      <span style={{
-        fontFamily: FONT_BODY,
-        fontSize: 10.5, color: 'var(--ink-4)',
-        textTransform: 'uppercase', letterSpacing: '0.08em',
-        fontWeight: 500,
-      }}>
-        {label}
-      </span>
-    </div>
+function tasksFor(project, tasks) {
+  return (tasks || []).filter((t) =>
+    t.projectName === project?.name || t.projectPath === project?.path,
   );
+}
+
+// Compute "active" — at least one task in this project has a running
+// stream OR has been touched within the last hour.
+function isProjectActive(project, tasks) {
+  const list = tasksFor(project, tasks);
+  if (list.some((t) => t.status === 'active')) return true;
+  const HOUR = 60 * 60 * 1000;
+  return list.some((t) => {
+    const ts = Date.parse(t.updatedAt || t.subtitle || '');
+    return Number.isFinite(ts) && Date.now() - ts < HOUR;
+  });
+}
+
+// Pull the most recent task title as the activity line. The handoff
+// asks for ~50–80 chars clamped to 2 lines via -webkit-line-clamp.
+function activitySummary(project, tasks) {
+  const list = tasksFor(project, tasks);
+  if (list.length === 0) return null;
+  const sorted = [...list].sort((a, b) => {
+    const ta = Date.parse(a.updatedAt || '') || 0;
+    const tb = Date.parse(b.updatedAt || '') || 0;
+    return tb - ta;
+  });
+  const top = sorted[0];
+  return {
+    text: top?.title || 'Untitled task',
+    time: relativeAge(top?.updatedAt) || top?.subtitle || '',
+  };
 }
 
 function useProjectStats(project, { tasks = [], scheduled = [] }) {
@@ -59,7 +70,7 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
       if (cancelled) return;
       const total = (data?.sections || []).reduce(
         (n, s) => n + (s.files?.length || 0),
-        0
+        0,
       );
       setMemCount(total);
     }).catch(() => setMemCount(0));
@@ -77,20 +88,35 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
     return () => { cancelled = true; };
   }, [project?.path]);
 
-  const taskCount = (tasks || []).filter((t) =>
-    t.projectName === project?.name || t.projectPath === project?.path
-  ).length;
-
-  const schedCount = (scheduled || []).filter((s) =>
-    (s.project || s.projectName) === project?.name
-  ).length;
-
   return {
-    tasks: taskCount,
-    scheduled: schedCount,
-    memories: memCount ?? '–',
-    artifacts: artCount ?? '–',
+    tasks: tasksFor(project, tasks).length,
+    memories: memCount ?? 0,
+    schedules: (scheduled || []).filter((s) =>
+      (s.project || s.projectName) === project?.name,
+    ).length,
+    artifacts: artCount ?? 0,
   };
+}
+
+// Single mono stat. Zero values dim to ink-5 on both number and label
+// — the spec's visual cue for "nothing here yet". Spacing: 12 / 11 px.
+function D1Stat({ label, value }) {
+  const isZero = !value || value === 0;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'baseline', gap: 5,
+      fontFamily: FONT_MONO,
+    }}>
+      <span style={{
+        fontSize: 12, fontWeight: 500,
+        color: isZero ? 'var(--ink-5)' : 'var(--ink-2)',
+      }}>{value ?? 0}</span>
+      <span style={{
+        fontSize: 11, letterSpacing: '0.02em',
+        color: isZero ? 'var(--ink-5)' : 'var(--ink-4)',
+      }}>{label}</span>
+    </span>
+  );
 }
 
 export function ProjectCard({
@@ -98,181 +124,174 @@ export function ProjectCard({
   isSelected,
   tasks = [],
   scheduled = [],
+  pinned = false,
   onOpen,
-  onDelete,
+  onTogglePin,
+  onMenuOpen,
 }) {
   const stats = useProjectStats(project, { tasks, scheduled });
+  const summary = activitySummary(project, tasks);
+  const active = isProjectActive(project, tasks);
   const [hover, setHover] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef(null);
-  const menuRef = useRef(null);
-  const stripe = stripeVar(project?.name);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
-    const onClick = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target) && !triggerRef.current?.contains(e.target)) {
-        setMenuOpen(false);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('mousedown', onClick);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('mousedown', onClick);
-    };
-  }, [menuOpen]);
-
+  const showHoverActions = hover || pinned;
   const isReserved = project.name === 'general' || project.name === 'default';
-  const showKebab = hover || menuOpen;
+
+  const handleCardKey = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen?.(project);
+    }
+  };
 
   return (
     <div
-      style={{ position: 'relative' }}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen?.(project)}
+      onKeyDown={handleCardKey}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      style={{
+        cursor: 'pointer',
+        background: hover ? 'var(--surface-2)' : 'var(--surface)',
+        border: `1px solid ${isSelected ? 'var(--accent)' : (hover ? 'var(--line-2)' : 'var(--line)')}`,
+        borderRadius: 10,
+        padding: '14px 16px',
+        minHeight: 120,
+        display: 'flex', flexDirection: 'column', gap: 10,
+        transition: 'background .15s ease, border-color .15s ease',
+        position: 'relative',
+        outline: 'none',
+        font: 'inherit', color: 'inherit',
+      }}
     >
-      <button
-        type="button"
-        onClick={() => onOpen?.(project)}
-        style={{
-          cursor: 'pointer',
-          background: 'var(--surface)',
-          border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--line)'}`,
-          borderRadius: 14,
-          padding: '20px 22px 18px',
-          width: '100%',
-          textAlign: 'left',
-          display: 'flex', flexDirection: 'column', gap: 18,
-          minHeight: 180, minWidth: 0,
-          overflow: 'hidden',
-          position: 'relative',
-          transition: 'border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease',
-          boxShadow: hover
-            ? '0 1px 0 rgba(15,16,17,0.02), 0 12px 28px rgba(15,16,17,0.08)'
-            : '0 1px 0 rgba(15,16,17,0.02)',
-          transform: hover ? 'translateY(-2px)' : 'translateY(0)',
-          font: 'inherit', color: 'inherit',
-        }}
-      >
-        {/* Accent stripe — left edge, deterministic per project name */}
+      {/* Top row — folder + name + pin + ⋯ */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        minWidth: 0,
+      }}>
         <span style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0,
-          width: 4, background: stripe,
-          opacity: isSelected || hover ? 1 : 0.7,
-          transition: 'opacity 160ms ease',
-        }} />
-
-        {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, minWidth: 0, width: '100%' }}>
-          <span style={{
-            width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-            background: `color-mix(in srgb, ${stripe} 18%, var(--surface-2))`,
-            color: stripe,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            border: `1px solid color-mix(in srgb, ${stripe} 30%, transparent)`,
-          }}>
-            {Ico.folder(20)}
-          </span>
-          <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '0.005em',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {project.name}
-            </div>
-            <div title={project.path} style={{
-              fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-4)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              maxWidth: '100%',
-            }}>
-              {project.path}
-            </div>
-          </div>
-        </div>
-
-        {/* Stats — tabular-nums on the numbers, very faint hairline above */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 16,
-          marginTop: 'auto',
-          paddingTop: 14,
-          borderTop: '1px solid var(--line)',
+          display: 'inline-flex', flexShrink: 0,
+          color: 'var(--ink-3)',
         }}>
-          <StatTile label="Tasks" value={stats.tasks} />
-          <StatTile label="Memories" value={stats.memories} />
-          <StatTile label="Schedules" value={stats.scheduled} />
-          <StatTile label="Artifacts" value={stats.artifacts} />
-        </div>
-      </button>
+          {Ico.folder(14)}
+        </span>
+        <span style={{
+          flex: 1, minWidth: 0,
+          fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
+          letterSpacing: '-0.005em', color: 'var(--ink)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{project.name}</span>
 
-      {/* Hover kebab — top-right, only on user-deletable projects */}
-      {!isReserved && (
-        <>
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-            title="Project menu"
-            aria-label="Project menu"
-            style={{
-              position: 'absolute', top: 10, right: 10,
-              width: 28, height: 28, borderRadius: 6,
-              cursor: 'pointer', background: 'var(--surface)',
-              border: '1px solid var(--line)',
-              color: 'var(--ink-3)',
-              display: 'inline-grid', placeItems: 'center',
-              opacity: showKebab ? 1 : 0,
-              pointerEvents: showKebab ? 'auto' : 'none',
-              transition: 'opacity 140ms ease, color 140ms ease, background 140ms ease',
-              zIndex: 5, font: 'inherit',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'var(--surface)'; }}
-          >
-            {Ico.moreVert(15)}
-          </button>
-          {menuOpen && (
-            <div
-              ref={menuRef}
-              style={{
-                position: 'absolute', top: 42, right: 10, zIndex: 10,
-                width: 200,
-                background: 'var(--surface)',
-                border: '1px solid var(--line)',
-                borderRadius: 10,
-                boxShadow: '0 12px 32px rgba(15,16,17,0.18)',
-                padding: '4px 0',
-                fontFamily: FONT_BODY,
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete?.(project); }}
-                style={{
-                  cursor: 'pointer',
-                  background: 'transparent', border: 0,
-                  width: 'calc(100% - 8px)', margin: '0 4px',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 10px', borderRadius: 6,
-                  fontFamily: FONT_BODY, fontSize: 13,
-                  color: 'var(--danger)', textAlign: 'left',
-                  font: 'inherit',
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--danger) 12%, transparent)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-              >
-                <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--danger)' }}>{Ico.trash(14)}</span>
-                <span style={{ color: 'var(--danger)' }}>Delete project</span>
-              </button>
-            </div>
+        {/* Pin button — visible on hover for unpinned, always for pinned */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
+          title={pinned ? 'Unpin project' : 'Pin project'}
+          aria-label={pinned ? 'Unpin project' : 'Pin project'}
+          aria-pressed={pinned}
+          style={{
+            width: 26, height: 26, borderRadius: 6,
+            background: 'transparent', border: 0,
+            color: pinned ? 'var(--accent)' : 'var(--ink-4)',
+            opacity: pinned || showHoverActions ? 1 : 0,
+            display: 'inline-grid', placeItems: 'center',
+            cursor: 'pointer', flexShrink: 0,
+            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+            font: 'inherit',
+          }}
+          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
+          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          {Ico.pin(13)}
+        </button>
+
+        {/* ⋯ menu trigger */}
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = triggerRef.current?.getBoundingClientRect();
+            onMenuOpen?.(project, rect);
+          }}
+          title="Project menu"
+          aria-label="Project menu"
+          style={{
+            width: 26, height: 26, borderRadius: 6,
+            background: 'transparent', border: 0,
+            color: 'var(--ink-3)',
+            opacity: showHoverActions ? 1 : 0,
+            display: isReserved ? 'none' : 'inline-grid',
+            placeItems: 'center',
+            cursor: 'pointer', flexShrink: 0,
+            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+            font: 'inherit',
+          }}
+          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--ink)'; }}
+          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+        >
+          {Ico.moreVert(15)}
+        </button>
+      </div>
+
+      {/* Activity block — clamp 2 lines. Falls back to a soft prompt
+          when the project has nothing yet. */}
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column', gap: 4,
+        minWidth: 0,
+      }}>
+        {summary ? (
+          <span style={{
+            fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
+            color: 'var(--ink-2)',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}>
+            {summary.text}
+          </span>
+        ) : (
+          <span style={{
+            fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
+            color: 'var(--ink-4)', fontStyle: 'italic',
+          }}>
+            No activity yet
+          </span>
+        )}
+
+        <span style={{
+          display: 'inline-flex', alignItems: 'baseline', gap: 6,
+          fontFamily: FONT_MONO, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.04em',
+        }}>
+          {active && (
+            <span aria-hidden style={{
+              width: 5, height: 5, borderRadius: 99,
+              background: 'var(--success)',
+              boxShadow: '0 0 6px var(--success-glow)',
+              alignSelf: 'center',
+            }} />
           )}
-        </>
-      )}
+          <span>{summary?.time || '—'}</span>
+        </span>
+      </div>
+
+      {/* Stats row — short labels per spec, hairline divider above */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: 14,
+        alignItems: 'baseline',
+        borderTop: '1px solid var(--line)',
+        paddingTop: 10,
+      }}>
+        <D1Stat label="tasks" value={stats.tasks} />
+        <D1Stat label="mem"   value={stats.memories} />
+        <D1Stat label="sched" value={stats.schedules} />
+        <D1Stat label="art"   value={stats.artifacts} />
+      </div>
     </div>
   );
 }

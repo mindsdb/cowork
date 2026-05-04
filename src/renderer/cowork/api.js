@@ -266,6 +266,31 @@ export async function createProject(name) {
   return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
+// Rename — backed by PATCH /v1/projects/{name}. Server moves the
+// project directory and updates internal references; the response is
+// the renamed Project record.
+export async function renameProject(oldName, newName) {
+  return req(`/projects/${encodeURIComponent(oldName)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: newName }),
+  });
+}
+
+// Reveal a project's working folder in Finder. Same backend as
+// `revealArtifact` — the endpoint takes any path and dispatches it to
+// the OS's native "show in folder" handler.
+export async function revealProjectInFinder(projectPath) {
+  if (!projectPath) return null;
+  try {
+    return await req('/artifacts/reveal', {
+      method: 'POST',
+      body: JSON.stringify({ path: projectPath }),
+    });
+  } catch {
+    return null;
+  }
+}
+
 // publishArtifact + previewArtifact live further down in this file.
 // We only add the new unpublish endpoint here.
 export async function cancelScratchpad(name) {
