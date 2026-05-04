@@ -569,12 +569,25 @@ function AppCore() {
     }
     const effectiveProjectName = selectedProject?.name || 'general';
     const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
+
+    // Two-phase send so the new-task experience matches the in-chat
+    // send. Previously we shipped the user message + placeholder in the
+    // very same frame as the route change, which meant the activity
+    // placeholder (filtered out of the chat scroll, only visible in the
+    // rail) flashed in then vanished as soon as the first stream event
+    // replaced it with a still-empty `_streaming` row. Now:
+    //   1. Create an EMPTY task shell + route to it. ChatView mounts
+    //      cleanly with no messages.
+    //   2. On the next animation frame (after the chat view commits),
+    //      add the user message + thinking placeholder, then kick the
+    //      stream. From that point the flow is identical to
+    //      handleSendInTask.
     const newT = {
       id: tempId,
       title: text.length > 60 ? text.slice(0, 57) + '…' : text,
       subtitle: 'just now',
       status: 'active',
-      messages: withThinkingPlaceholder([{ role: 'user', content: text, attachments: sendingAttachments }]),
+      messages: [],
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
       model: selectedModel?.id ?? null,
@@ -605,7 +618,24 @@ function AppCore() {
       }));
     };
 
-    activeStreamCtrlRef.current = streamNewSession(text, {
+    // Phase 2 — runs after ChatView has mounted with the empty task.
+    // Append the user message + thinking placeholder, then start the
+    // stream. Two RAFs give React a guaranteed paint between phases
+    // (one to commit the route+task, one to commit the empty mount).
+    const startConversation = () => {
+      setTasks((prev) => prev.map((t) =>
+        t.id === tempId
+          ? {
+              ...t,
+              messages: withThinkingPlaceholder([
+                { role: 'user', content: text, attachments: sendingAttachments },
+              ]),
+            }
+          : t,
+      ));
+      activeStreamCtrlRef.current = streamNewSessionFn();
+    };
+    const streamNewSessionFn = () => streamNewSession(text, {
       projectName: effectiveProjectName,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
@@ -634,16 +664,22 @@ function AppCore() {
         // remains the source of truth for resolving conversation id.
       },
       onProgress(event, sid) {
+        // Track the resolved conversation id (in case onChunk hasn't
+        // run yet for this stream — onChunk does the same dance).
         if (sid && sid !== resolvedId) {
           const previousId = resolvedId;
           resolvedId = sid;
           setTasks((prev) => prev.map((t) => t.id === previousId || t.id === tempId ? { ...t, id: sid } : t));
           setActiveTaskId(sid);
         }
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== resolvedId && t.id !== tempId) return t;
-          return { ...t, messages: appendActivity(stripStreaming(t.messages), event) };
-        }));
+        // Intentionally a no-op for messages: every `response.in_progress`
+        // event already passed through onEvent → flushStreamingMessage,
+        // which is the source of truth for the streaming row + steps.
+        // The previous implementation appended an `activity` row here
+        // and stripped the `_streaming` row in the process — but the
+        // chat scroll filters activity rows out (they're never visible)
+        // while losing the streaming row blanked the AnswerTurn until
+        // the body deltas started.
       },
       onToolResult(event, sid) {
         if (sid && sid !== resolvedId) {
@@ -652,10 +688,8 @@ function AppCore() {
           setTasks((prev) => prev.map((t) => t.id === previousId || t.id === tempId ? { ...t, id: sid } : t));
           setActiveTaskId(sid);
         }
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== resolvedId && t.id !== tempId) return t;
-          return { ...t, messages: appendActivity(stripStreaming(t.messages), event) };
-        }));
+        // See onProgress comment — same reasoning. The adapter (via
+        // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
         activeStreamCtrlRef.current = null;
@@ -688,6 +722,14 @@ function AppCore() {
         fetchHealth().then((h) => setHealth(h));
       },
     });
+
+    // Schedule phase 2 after ChatView has had a chance to mount and
+    // paint with the empty task. Two RAFs is the safest pattern: the
+    // first fires after React commits the route change; the second
+    // fires after the browser has painted that commit. Only then do
+    // we add the user message + thinking placeholder and start the
+    // SSE stream — same shape as handleSendInTask from that point on.
+    requestAnimationFrame(() => requestAnimationFrame(startConversation));
   };
 
   // Send inside an existing task

@@ -79,12 +79,12 @@ export function TaskMenu({
   const moveItemRef = useRef(null);
   const [submenuPos, setSubmenuPos] = useState(null);
 
-  // Auto-close grace timer. Two cases handled:
-  //   - Menu opens and the user never moves the mouse into it. We
-  //     start an initial timer (1500ms) so the menu doesn't sit
-  //     forever after a stray click.
-  //   - Mouse enters then leaves. mouseenter cancels the timer;
-  //     mouseleave restarts a short one (450ms).
+  // Auto-close grace timer. Only fires after the user has entered
+  // the menu and then moved the cursor back out — never on the
+  // initial open. Click-outside / Esc handle the "never engaged"
+  // case without cutting off users who are still travelling toward
+  // the menu (the gap below the kebab made the old initial timer
+  // close menus mid-travel).
   const closeTimer = useRef(null);
   const cancelCloseTimer = () => {
     if (closeTimer.current) {
@@ -123,11 +123,6 @@ export function TaskMenu({
     // on the page (e.g. the row click that would re-open the menu).
     window.addEventListener('mousedown', onClick);
 
-    // Kick off an initial auto-close. If the user moves into the
-    // menu, mouseenter cancels it. If they never engage, the menu
-    // dismisses on its own.
-    scheduleClose(2200);
-
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousedown', onClick);
@@ -156,20 +151,26 @@ export function TaskMenu({
     setMeasured(false);
   }, [anchorRect, hideMoveToProject, hideRename, onPin, onUnpin, showHeaderActions, open]);
 
+  // Track which side we landed on so the invisible hover bridge
+  // can be placed against the trigger (above when below, below
+  // when flipped above).
+  const [flipped, setFlipped] = useState(false);
+
   // After render, read the actual height and flip above the trigger
-  // if it doesn't fit below.
+  // if it doesn't fit below. Sit flush against the trigger (no visible
+  // gap) so the cursor can't fall through dead space on the way to
+  // the menu — the hover bridge below covers any sub-pixel rounding.
   useLayoutEffect(() => {
     if (!open || !popoverRef.current || !anchorRect) return;
     const h = popoverRef.current.offsetHeight;
     const VH = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const spaceBelow = VH - 8 - (anchorRect.bottom + 4);
+    const spaceBelow = VH - 8 - anchorRect.bottom;
     const flip = h > spaceBelow;
-    // Flipped: menu bottom sits 4px above trigger top → top = anchor.top - 4 - h
-    // Normal:  menu top sits 4px below trigger bottom → top = anchor.bottom + 4
     const next = flip
-      ? Math.max(8, anchorRect.top - 4 - h)
-      : anchorRect.bottom + 4;
+      ? Math.max(8, anchorRect.top - h)
+      : anchorRect.bottom;
     setTop(next);
+    setFlipped(flip);
     setMeasured(true);
   }, [open, anchorRect, moveOpen]);
 
@@ -220,6 +221,19 @@ export function TaskMenu({
       }}
       onClick={(e) => e.stopPropagation()}
     >
+      {/* Invisible hover bridge — sits 8px outside the popover on
+          whichever side the trigger is on, so cursor travel from
+          kebab → menu (or menu → kebab) never crosses dead space.
+          The popover's onMouseEnter/Leave fire on this element too,
+          which keeps the close timer cancelled while traversing. */}
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute', left: 0, right: 0, height: 8,
+          top: flipped ? '100%' : -8,
+          background: 'transparent', pointerEvents: 'auto',
+        }}
+      />
       {showHeaderActions && (
         <>
           <MenuButton

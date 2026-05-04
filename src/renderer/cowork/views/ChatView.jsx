@@ -533,27 +533,55 @@ export default function ChatView({
               letterSpacing: '0.04em', color: T.ink,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               overflowWrap: 'anywhere',
-              minWidth: 0, flex: '1 1 0',
+              minWidth: 0,
             }}>{task.title}</span>
+
+            {/* Inline pin toggle — sits right after the task title.
+                Filled accent when pinned, faint outlined when not.
+                Hover lifts the unpinned state to make the affordance
+                obvious. Click toggles. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (task.pinned) onUnpinTask?.(task.id);
+                else onPinTask?.(task);
+              }}
+              title={task.pinned ? 'Unpin task' : 'Pin task'}
+              aria-label={task.pinned ? 'Unpin task' : 'Pin task'}
+              aria-pressed={!!task.pinned}
+              style={{
+                display: 'inline-grid', placeItems: 'center',
+                width: 24, height: 24, flexShrink: 0,
+                marginLeft: 2,
+                background: 'transparent',
+                border: 0, borderRadius: 6,
+                cursor: 'pointer', font: 'inherit',
+                color: task.pinned ? T.accent : 'var(--ink-4)',
+                transition: 'color 140ms ease, background 140ms ease',
+                WebkitAppRegion: 'no-drag',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = 'var(--surface-2)';
+                if (!task.pinned) e.currentTarget.style.color = 'var(--ink-2)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = task.pinned ? T.accent : 'var(--ink-4)';
+              }}
+            >
+              {Ico.pin(13)}
+            </button>
           </div>
 
-          {/* Right side — pin status only. The kebab and rail toggle
-              both lived here previously but moved out: rail collapse
-              has its own button in the rail header (and a floating
-              expander on the conv column when collapsed); pin/rename/
-              delete/move/etc. are reachable via the sidebar's task
-              kebab on the same conversation. */}
+          {/* Right side reserved for future header chips. The kebab
+              and rail toggle moved out; pin lives inline with the
+              title now (above) so it stays visually attached to the
+              task it acts on. */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 4,
             flexShrink: 0,
-          }}>
-            {task.pinned && (
-              <span title="Pinned" style={{
-                display: 'inline-grid', placeItems: 'center',
-                width: 22, height: 22, color: T.accent, flexShrink: 0,
-              }}>{Ico.pin(13)}</span>
-            )}
-          </div>
+          }} />
         </div>
         {/* Settings menu kept mounted but hidden; reachable later if
             we add another trigger for it. */}
@@ -652,10 +680,29 @@ export default function ChatView({
                     onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
                   />
                 )}
-                <div style={{ position: 'relative' }}>
-                  <TextBlock text={streamingMsg.content} id="streaming" complete={false} />
-                  <StreamCursor slotId="body:streaming" />
-                </div>
+                {/* Bridge state: between the first stream event arriving
+                    (which strips the activity placeholder) and the first
+                    step or body chunk landing, the AnswerTurn would
+                    otherwise render empty — the user sees the message
+                    "appear, vanish, then come back" once scratchpad
+                    output starts. Keep a soft "Thinking…" affordance
+                    visible whenever there are no steps and no body text
+                    yet. */}
+                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                  }}>
+                    <StreamCursor />
+                    <span>Thinking…</span>
+                  </div>
+                )}
+                {streamingMsg.content && (
+                  <div style={{ position: 'relative' }}>
+                    <TextBlock text={streamingMsg.content} id="streaming" complete={false} />
+                    <StreamCursor slotId="body:streaming" />
+                  </div>
+                )}
                 <StepArtifacts steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (

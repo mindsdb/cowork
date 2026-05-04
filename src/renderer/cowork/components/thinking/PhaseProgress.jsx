@@ -135,13 +135,19 @@ export function PhaseProgress({ steps = [], streamStatus = null, conversationId 
           else hint = formatDuration(totalMs);
         }
 
+        // Match the past-tense flip the Thinking and Reasoning rows
+        // get when they resolve. Without this the row keeps the
+        // present-tense rotating phrase ("Crunching the numbers")
+        // forever, which read as "still working" even though the
+        // step had finished.
+        const isComplete = step.status !== 'in_progress';
         return (
           <PhaseRow
             key={step.id}
             bank="working"
             phaseKey={step.id}
-            status={step.status === 'in_progress' ? 'in_progress' : 'completed'}
-            label={null}
+            status={isComplete ? 'completed' : 'in_progress'}
+            label={isComplete ? 'Worked through it' : null}
             sublabel={step.data?.one_line_description || step.label}
             hint={hint}
             onClick={onActivateStep ? () => onActivateStep(step) : undefined}
