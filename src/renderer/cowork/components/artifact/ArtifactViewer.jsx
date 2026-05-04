@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import Ico from '../Icons';
 import { mountArtifactPreview, publishArtifact, unpublishArtifact } from '../../api';
+import { copyText } from '../../lib/clipboard';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "'Josefin Sans', sans-serif";
@@ -20,9 +21,15 @@ function PathRow({ label, value, accent = false }) {
   if (!value) return null;
   const onCopy = async (e) => {
     e.stopPropagation();
-    try { await navigator.clipboard?.writeText?.(value); } catch {}
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1400);
+    // Use the shared helper so the execCommand fallback kicks in when
+    // `navigator.clipboard.writeText` is unavailable / blocked. Only
+    // flip the icon to "copied" if the copy actually succeeded —
+    // otherwise the check was misleading users into thinking it worked.
+    const ok = await copyText(value);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   };
   return (
     <div style={{

@@ -15,6 +15,7 @@ import { OrbitMorph } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
+import { copyText } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
@@ -75,17 +76,26 @@ function Divider({ label }) {
 function MessageActions({ getText }) {
   // Just Copy for now — refresh / thumbs up / thumbs down hidden until
   // the underlying actions are wired.
-  const onCopy = () => {
-    try {
-      const text = typeof getText === 'function' ? getText() : '';
-      if (text) navigator.clipboard?.writeText?.(text);
-    } catch {}
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    const text = typeof getText === 'function' ? getText() : '';
+    if (!text) return;
+    // Use the shared helper — `navigator.clipboard.writeText` was
+    // failing silently in Electron when the renderer's effective
+    // origin / focus state didn't satisfy the modern API gate. The
+    // helper falls back to execCommand which always works in Electron.
+    const ok = await copyText(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   };
   return (
     <div style={{ display: 'flex', gap: 4, marginTop: 4, color: T.ink4 }}>
       <button
         type="button"
-        title="Copy"
+        title={copied ? 'Copied' : 'Copy response'}
+        aria-label={copied ? 'Copied' : 'Copy response'}
         onClick={onCopy}
         style={{
           cursor: 'pointer',
@@ -94,10 +104,11 @@ function MessageActions({ getText }) {
           padding: 0,
           width: 26, height: 26, borderRadius: 6,
           display: 'grid', placeItems: 'center',
-          color: 'inherit',
+          color: copied ? 'var(--accent)' : 'inherit',
+          transition: 'color 140ms ease',
         }}
       >
-        {Ico.copy(13)}
+        {copied ? Ico.check(13) : Ico.copy(13)}
       </button>
     </div>
   );

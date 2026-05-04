@@ -467,11 +467,16 @@ function AppCore() {
     refreshData();
   }, [refreshData]);
 
-  // Allow descendants (e.g. ProjectsView's rename flow) to ask for a
-  // fresh projects list without prop-drilling a refetch handler.
+  // Allow descendants (e.g. ProjectsView's rename / create flow) to
+  // ask for a fresh projects list without prop-drilling a refetch
+  // handler. Also refetch sessions: a rename rewrites every
+  // conversation's _meta.json with the new project name, so the
+  // in-memory task list (which carries projectName per task) needs
+  // to re-read or else it keeps pointing at the old project.
   useEffect(() => {
     const handler = () => {
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+      fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); });
     };
     window.addEventListener('anton:projects-changed', handler);
     return () => window.removeEventListener('anton:projects-changed', handler);

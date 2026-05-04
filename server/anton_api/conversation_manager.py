@@ -426,8 +426,14 @@ async def _build_chat_session(
     from anton.core.memory.hippocampus import Hippocampus
     from anton.core.session import ChatSession, ChatSessionConfig, SystemPromptContext
     from anton.memory.history_store import HistoryStore
-    from anton.tools import CONNECT_DATASOURCE_TOOL, PUBLISH_TOOL
+    from anton.tools import CONNECT_DATASOURCE_TOOL
     from anton.workspace import Workspace
+    # Cowork override — anton's stock PUBLISH_TOOL prints to a Rich
+    # Console and pops a webbrowser, both of which die in the FastAPI
+    # process. The wrapper exposes the same schema to the LLM but
+    # routes through a server-aware handler.
+    from .cowork_tools import build_cowork_publish_tool
+    PUBLISH_TOOL = build_cowork_publish_tool()
 
     try:
         from anton.core.datasources.data_vault import LocalDataVault
@@ -904,3 +910,66 @@ def move_conversation(conversation_id: str, target_project: str) -> dict | None:
     # Drop the in-memory session — it's bound to the old project path.
     _live.pop(conversation_id, None)
     return meta
+
+
+def relabel_project(new_name: str) -> int:
+    """Rewrite every conversation's `_meta.json` under `new_name` so
+    its `project` field matches the project's current name on disk.
+
+    Called after `projects_store.rename_project` completes the
+    directory rename. Without this, every conversation that lived
+    under the old project keeps its stale `project: <old_name>` in
+    meta, which the listing route preserves as-is — so the UI shows
+    those tasks under a phantom project that no longer exists.
+
+    Also drops any live in-memory sessions whose project matches the
+    renamed one, so the next chat turn rebuilds the session against
+    the new on-disk path.
+
+    Returns the number of meta files that were updated.
+    """
+    if not new_name:
+        return 0
+    ep_dir = _episodes_dir(new_name)
+    if not ep_dir.is_dir():
+        return 0
+
+    rewrote = 0
+    for path in sorted(ep_dir.glob("*_meta.json")):
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(meta, dict):
+            continue
+        current = meta.get("project")
+        if current == new_name:
+            continue
+        meta["project"] = new_name
+        meta["updated_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            _atomic_write(path, meta)
+            rewrote += 1
+        except Exception:
+            logger.debug("Could not relabel %s", path, exc_info=True)
+
+    # Drop any live sessions associated with this renamed project so
+    # the next turn rebuilds them. We don't track project on the cache
+    # entry uniformly; safest is to drop everything whose cached
+    # project matches the new name (after rename, the live entry's
+    # project string is the *old* name — but we keyed cleanup off the
+    # path inside chat_session anyway). Cheap insurance: blow the
+    # whole cache; sessions are reconstituted on next turn from disk.
+    if _live:
+        # Only clear sessions that touch this project — but since we
+        # only stored `{session, project}` and the rename already
+        # updated projects_store, the simplest correct thing is to
+        # close any sessions whose stored project string changed.
+        for cid, entry in list(_live.items()):
+            if entry.get("project") == new_name:
+                continue
+            # Heuristic: close everything; ChatSessions are cheap to
+            # rebuild and we want zero stale path bindings.
+            _live.pop(cid, None)
+
+    return rewrote

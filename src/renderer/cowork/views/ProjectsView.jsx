@@ -8,7 +8,7 @@
 //
 // Design source: docs/design-handoff/Anton Projects (D1).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
@@ -371,6 +371,12 @@ function FilterRow({
 
 function ProjectMenu({ open, anchorRect, project, pinned, isReserved, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
   const ref = useRef(null);
+  // Measured layout for the flip-up-when-no-room-below trick — same
+  // pattern TaskMenu uses for the sidebar/header kebabs. Without this,
+  // a card on the bottom row of the grid opens its menu past the
+  // viewport and the destructive items get clipped.
+  const [layout, setLayout] = useState({ top: 0, measured: false, flipped: false });
+
   useEffect(() => {
     if (!open) return;
     const onClick = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
@@ -382,11 +388,33 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, onClose, o
       window.removeEventListener('keydown', onKey);
     };
   }, [open, onClose]);
+
+  // Reset measurement on every (re)open so a hidden->visible cycle
+  // re-runs the layout pass. We need the popover to mount once
+  // (visibility:hidden) so we can read its real offsetHeight.
+  useLayoutEffect(() => {
+    if (open) setLayout((l) => ({ ...l, measured: false }));
+  }, [open, anchorRect, isReserved, pinned]);
+
+  const VISIBLE_GAP = 4;
+  const VIEWPORT_PAD = 8;
+
+  useLayoutEffect(() => {
+    if (!open || !ref.current || !anchorRect) return;
+    const h = ref.current.offsetHeight;
+    const VH = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const spaceBelow = VH - VIEWPORT_PAD - anchorRect.bottom;
+    const flip = h + VISIBLE_GAP > spaceBelow;
+    const next = flip
+      ? Math.max(VIEWPORT_PAD, anchorRect.top - VISIBLE_GAP - h)
+      : anchorRect.bottom + VISIBLE_GAP;
+    setLayout({ top: next, measured: true, flipped: flip });
+  }, [open, anchorRect, isReserved, pinned]);
+
   if (!open || !anchorRect) return null;
 
   const MENU_W = 200;
   const left = Math.min(window.innerWidth - MENU_W - 8, Math.max(8, anchorRect.right - MENU_W));
-  const top = anchorRect.bottom + 4;
 
   const Item = ({ label, icon, onClick, danger }) => (
     <button
@@ -418,7 +446,7 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, onClose, o
     <div
       ref={ref}
       style={{
-        position: 'fixed', top, left, zIndex: 60,
+        position: 'fixed', top: layout.top, left, zIndex: 60,
         width: MENU_W,
         background: 'var(--surface)',
         border: '1px solid var(--line)',
@@ -426,6 +454,9 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, onClose, o
         boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
         padding: '4px 0',
         WebkitAppRegion: 'no-drag',
+        // Stay invisible while the layout effect is measuring height
+        // — prevents a one-frame flash at the wrong y when flipping.
+        visibility: layout.measured ? 'visible' : 'hidden',
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -449,12 +480,118 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, onClose, o
 
 // ─── Trailing "+ New project" card ───────────────────────────────────────
 
-function NewProjectCard({ onClick }) {
+// "+ New project" tile — clicking flips the card into an inline edit
+// mode with a focused input. Enter creates, Escape (or empty + blur)
+// cancels back to the dashed prompt. Same pattern as the rename
+// affordance on the regular cards. Replaces the previous
+// `window.prompt` flow which Electron renderers can silently disable.
+function NewProjectCard({ onCreate, creating, onCreatingChange }) {
   const [hover, setHover] = useState(false);
+  // Parent-driven editing state so the page header / empty-state CTA
+  // can flip the card open without it having to be clicked first.
+  const editing = !!creating;
+  const setEditing = (v) => onCreatingChange?.(v);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const id = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [editing]);
+
+  const submit = async () => {
+    const next = (inputRef.current?.value || '').trim();
+    if (!next) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onCreate?.(next);
+      setEditing(false);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[projects] create failed', e);
+      alert(`Could not create project: ${e?.message || e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = () => {
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div
+        style={{
+          minHeight: 120, borderRadius: 10,
+          padding: '14px 16px',
+          background: 'var(--surface)',
+          border: '1px solid var(--accent)',
+          display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center',
+          fontFamily: FONT_BODY,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-3)' }}>
+            {Ico.folder(14)}
+          </span>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Project name"
+            disabled={busy}
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submit();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancel();
+              }
+            }}
+            onBlur={() => {
+              // Blur commits if there's a value, otherwise cancels.
+              const val = (inputRef.current?.value || '').trim();
+              if (val) submit();
+              else cancel();
+            }}
+            style={{
+              flex: 1, minWidth: 0,
+              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
+              letterSpacing: '-0.005em', color: 'var(--ink)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 6,
+              padding: '4px 8px',
+              outline: 'none',
+            }}
+          />
+        </div>
+        <div style={{
+          fontFamily: FONT_MONO, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.04em',
+        }}>
+          {busy ? 'Creating…' : '↵ create · esc cancel'}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => setEditing(true)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -911,6 +1048,10 @@ export default function ProjectsView({
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const [menuFor, setMenuFor] = useState(null); // { project, rect }
+  // Card whose title is currently in inline-edit mode. Only one at a
+  // time — null means no card is editing. The card owns the input;
+  // we own the "which card" state.
+  const [editingProjectName, setEditingProjectName] = useState(null);
   const searchRef = useRef(null);
 
   // Detail-mode state — when a project is "open" the page swaps from
@@ -935,17 +1076,20 @@ export default function ProjectsView({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const handleNewProject = async () => {
-    const name = window.prompt('Name your project');
-    if (!name) return;
-    try {
-      if (onCreateProject) await onCreateProject({ name });
-      else await createProjectApi(name);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[projects] create failed', e);
-      alert(`Could not create project: ${e?.message || e}`);
-    }
+  // Inline create — the trailing dashed card flips into an input when
+  // creating=true. The header / empty-state CTAs toggle it; the card
+  // also self-toggles when clicked. Replaces the previous
+  // window.prompt flow which Electron renderers can silently block.
+  const [creating, setCreating] = useState(false);
+  const handleNewProject = () => {
+    if (view !== 'grid') setView('grid'); // ensure the card is visible
+    setCreating(true);
+  };
+  const handleCreateProject = async (name) => {
+    if (onCreateProject) await onCreateProject({ name });
+    else await createProjectApi(name);
+    // App-level listener refetches projects on this event.
+    window.dispatchEvent(new CustomEvent('anton:projects-changed'));
   };
 
   const handleOpen = (project) => {
@@ -953,14 +1097,22 @@ export default function ProjectsView({
     setDetailProject(project);
   };
 
-  const handleRename = async (project) => {
-    const next = window.prompt('Rename project', project.name);
-    if (!next || next === project.name) return;
+  // Inline rename — clicking "Rename…" in the kebab puts the card into
+  // edit mode. The card's title becomes an <input>; the parent owns
+  // the editing-target state so only one card edits at a time.
+  const handleRenameStart = (project) => {
+    setEditingProjectName(project.name);
+  };
+  const handleRenameCancel = () => {
+    setEditingProjectName(null);
+  };
+  const handleRenameSubmit = async (oldName, rawNext) => {
+    const next = (rawNext || '').trim();
+    setEditingProjectName(null);
+    if (!next || next === oldName) return;
     try {
-      await renameProject(project.name, next);
-      // Parent owns the projects list — there's no explicit refresh
-      // hook here, but reload-on-focus will catch it. As a fallback,
-      // dispatch a custom event so the App-level listener can refetch.
+      await renameProject(oldName, next);
+      // App-level listener refetches projects on this event.
       window.dispatchEvent(new CustomEvent('anton:projects-changed'));
     } catch (e) {
       alert(`Rename failed: ${e?.message || e}`);
@@ -1062,12 +1214,19 @@ export default function ProjectsView({
               tasks={tasks}
               scheduled={scheduled}
               pinned={pinned.has(p.name)}
+              editing={editingProjectName === p.name}
               onOpen={handleOpen}
               onTogglePin={(proj, next) => togglePin(proj.name, next)}
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+              onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
+              onRenameCancel={handleRenameCancel}
             />
           ))}
-          <NewProjectCard onClick={handleNewProject} />
+          <NewProjectCard
+            creating={creating}
+            onCreatingChange={setCreating}
+            onCreate={handleCreateProject}
+          />
         </div>
       ) : (
         <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
@@ -1095,7 +1254,7 @@ export default function ProjectsView({
         isReserved={menuFor?.project?.name === 'general' || menuFor?.project?.name === 'default'}
         onClose={() => setMenuFor(null)}
         onOpen={handleOpen}
-        onRename={handleRename}
+        onRename={handleRenameStart}
         onTogglePin={(proj, next) => togglePin(proj.name, next)}
         onReveal={handleReveal}
         onDelete={(proj) => onDeleteProject?.(proj)}

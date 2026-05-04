@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Anton CoWork API — Server Reference</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+  /* ───────────── Tokens (mirrored from orbit-morph.html) ───────────── */
+  :root {
+    color-scheme: light;
+    --ink:        #0E0F10;
+    --ink-2:      #2A2C2F;
+    --faded:      #6B6F73;
+    --line:       #D8D8D4;
+    --bg:         #ECECEA;
+    --surface:    #FFFFFF;
+    --surface-2:  #F4F4F0;
+    --chip:       #DDDDD8;
+    --accent:     #1F9CB0;
+    --accent-bg:  #E2F5FD;
+    --get:        #2E8B57;
+    --get-bg:     #E5F4EC;
+    --post:       #1F9CB0;
+    --post-bg:    #E2F5FD;
+    --put:        #B07A1F;
+    --put-bg:     #FAF2DF;
+    --patch:      #C28A2A;
+    --patch-bg:   #FBF2DF;
+    --delete:     #B33A3A;
+    --delete-bg:  #FBE7E7;
+  }
+
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+  *, *::before, *::after { box-sizing: border-box; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ───────────── Sticky header ───────────── */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(140%) blur(10px);
+    -webkit-backdrop-filter: saturate(140%) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1140px; margin: 0 auto; padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .brand {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--faded); font-weight: 600;
+  }
+  .brand strong { color: var(--ink); margin-right: 8px; }
+  .topbar .grow { flex: 1; }
+  .topbar a.toplink {
+    font-size: 12.5px; color: var(--faded);
+  }
+  .topbar a.toplink:hover { color: var(--ink); text-decoration: none; }
+
+  /* ───────────── Layout ───────────── */
+  .shell {
+    max-width: 1140px; margin: 0 auto;
+    padding: 56px 24px 120px;
+  }
+  @media (min-width: 1024px) {
+    .shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 56px;
+      padding-top: 64px;
+    }
+  }
+
+  /* ───────────── Side TOC (desktop) ───────────── */
+  .toc {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .toc {
+      display: block;
+      position: sticky; top: 88px; align-self: start;
+      max-height: calc(100vh - 110px); overflow: auto;
+    }
+  }
+  .toc-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--faded);
+    font-weight: 600; margin-bottom: 14px;
+  }
+  .toc nav { display: flex; flex-direction: column; border-left: 1px solid var(--line); padding-left: 16px; gap: 6px; }
+  .toc a { font-size: 13px; color: var(--ink-2); padding: 2px 0; }
+  .toc a:hover { color: var(--accent); text-decoration: none; }
+  .toc .toc-section {
+    margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line);
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--faded);
+  }
+  .toc .toc-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  /* ───────────── Mobile TOC dropdown ───────────── */
+  .toc-mobile {
+    margin-bottom: 24px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  @media (min-width: 1024px) { .toc-mobile { display: none; } }
+  .toc-mobile summary {
+    cursor: pointer; list-style: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    font-size: 13.5px; font-weight: 500; color: var(--ink);
+  }
+  .toc-mobile summary::-webkit-details-marker { display: none; }
+  .toc-mobile summary::after { content: '▾'; color: var(--faded); transition: transform .2s ease; }
+  .toc-mobile[open] summary::after { transform: rotate(180deg); }
+  .toc-mobile nav { display: flex; flex-direction: column; padding: 8px 16px 14px; gap: 4px; border-top: 1px solid var(--line); }
+  .toc-mobile a { font-size: 13px; color: var(--ink-2); padding: 6px 0; }
+  .toc-mobile a:hover { color: var(--accent); }
+
+  /* ───────────── Typography ───────────── */
+  .content { min-width: 0; }
+  .content h1.eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faded); margin: 0 0 10px;
+  }
+  .content h1.hero {
+    font-size: 38px; font-weight: 600; letter-spacing: -0.015em;
+    line-height: 1.08; margin: 0 0 16px; max-width: 22ch;
+  }
+  @media (max-width: 640px) {
+    .content h1.hero { font-size: 30px; }
+  }
+  .content p.lede {
+    font-size: 16px; line-height: 1.6; color: var(--ink-2); max-width: 64ch;
+    margin: 0 0 24px;
+  }
+  .content h2 {
+    font-size: 26px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 64px 0 8px; scroll-margin-top: 88px;
+  }
+  .content h3 {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--faded); margin: 28px 0 10px;
+  }
+  .content p {
+    font-size: 14.5px; line-height: 1.6; color: var(--ink-2);
+    max-width: 70ch; margin: 0 0 12px;
+  }
+  .content ul { font-size: 14.5px; line-height: 1.7; color: var(--ink-2); padding-left: 18px; max-width: 70ch; }
+  .content li { margin: 4px 0; }
+  .content code {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    background: var(--chip); padding: 1px 6px; border-radius: 4px; color: var(--ink);
+  }
+  hr { border: none; border-top: 1px solid var(--line); margin: 56px 0; }
+
+  /* ───────────── Key facts row ───────────── */
+  .keys {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px; margin: 28px 0 8px; max-width: 70ch;
+  }
+  @media (min-width: 720px) { .keys { grid-template-columns: repeat(4, 1fr); } }
+  .key {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .key .lbl {
+    display: block; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--faded);
+    margin-bottom: 6px; font-weight: 600;
+  }
+  .key .val {
+    font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: var(--ink);
+    word-break: break-all;
+  }
+
+  /* ───────────── Method badges ───────────── */
+  .verb {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 3px 7px; border-radius: 4px; min-width: 56px;
+    border: 1px solid transparent;
+  }
+  .verb-GET    { color: var(--get);    background: var(--get-bg);    border-color: color-mix(in srgb, var(--get) 25%, transparent); }
+  .verb-POST   { color: var(--post);   background: var(--post-bg);   border-color: color-mix(in srgb, var(--post) 25%, transparent); }
+  .verb-PUT    { color: var(--put);    background: var(--put-bg);    border-color: color-mix(in srgb, var(--put) 25%, transparent); }
+  .verb-PATCH  { color: var(--patch);  background: var(--patch-bg);  border-color: color-mix(in srgb, var(--patch) 25%, transparent); }
+  .verb-DELETE { color: var(--delete); background: var(--delete-bg); border-color: color-mix(in srgb, var(--delete) 25%, transparent); }
+
+  /* ───────────── Endpoint table ───────────── */
+  .endpoints {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; margin: 14px 0 4px;
+  }
+  .endpoint {
+    display: grid; gap: 10px 14px; align-items: start;
+    grid-template-columns: 64px minmax(0, 1fr);
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .endpoint:first-child { border-top: 0; }
+  @media (min-width: 720px) {
+    .endpoint {
+      grid-template-columns: 64px minmax(220px, 1.2fr) minmax(0, 1.6fr);
+      align-items: center;
+    }
+  }
+  .endpoint .path {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink);
+    word-break: break-all;
+  }
+  .endpoint .desc {
+    font-size: 13.5px; color: var(--ink-2); line-height: 1.5; max-width: 60ch;
+  }
+
+  /* ───────────── Code blocks ───────────── */
+  pre {
+    background: #0E0F10; color: #F2F6FF;
+    padding: 18px 22px; border-radius: 10px; overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.55;
+    margin: 14px 0 4px;
+    border: 1px solid #1A1F2E;
+  }
+  pre .kw  { color: #C792EA; }
+  pre .str { color: #C3E88D; }
+  pre .num { color: #F78C6C; }
+  pre .com { color: #6B6F73; font-style: italic; }
+  pre .tag { color: #82AAFF; }
+  pre .att { color: #FFCB6B; }
+  pre .pun { color: #8A97AE; }
+  pre .id  { color: #89DDFF; }
+
+  /* ───────────── Pills / chips ───────────── */
+  .pill {
+    display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px;
+    background: var(--chip); border-radius: 999px; color: var(--faded);
+  }
+  .pill.accent { background: var(--accent-bg); color: var(--accent); }
+
+  /* ───────────── Two-column event grid ───────────── */
+  .events {
+    display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0;
+  }
+  @media (min-width: 720px) { .events { grid-template-columns: 1fr 1fr; } }
+  .event {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .event .name { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent); font-weight: 500; }
+  .event .what { font-size: 13.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────────────────────────────  TOPBAR  ───────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand"><strong>Anton</strong>CoWork API</span>
+    <span class="grow"></span>
+    <a class="toplink" href="../README.md">Repo</a>
+    <a class="toplink" href="design-guidelines/orbit-morph.html">Components</a>
+  </div>
+</header>
+
+<div class="shell">
+
+<!-- ─────────────────────────────────────────────  TOC  ───────────────────────────────────────────── -->
+<aside class="toc" aria-label="Table of contents">
+  <div class="toc-label">On this page</div>
+  <nav>
+    <span class="toc-section">Get started</span>
+    <a href="#overview">Overview</a>
+    <a href="#health">Health</a>
+
+    <span class="toc-section">Chat</span>
+    <a href="#responses">Responses API</a>
+    <a href="#events">Streaming events</a>
+    <a href="#conversations">Conversations</a>
+
+    <span class="toc-section">Cowork</span>
+    <a href="#projects">Projects</a>
+    <a href="#settings">Settings</a>
+    <a href="#attachments">Attachments</a>
+    <a href="#artifacts">Artifacts</a>
+
+    <span class="toc-section">Tools</span>
+    <a href="#scratchpad">Scratchpad</a>
+    <a href="#memory">Memory</a>
+    <a href="#skills">Skills</a>
+    <a href="#datasources">Datasources</a>
+    <a href="#publish">Publish</a>
+
+    <span class="toc-section">Workspace</span>
+    <a href="#pins">Pins</a>
+    <a href="#schedules">Schedules</a>
+    <a href="#search">Search</a>
+    <a href="#browse">Browse</a>
+    <a href="#integrations">Integrations</a>
+
+    <span class="toc-section">Reference</span>
+    <a href="#errors">Error shape</a>
+  </nav>
+</aside>
+
+<!-- ─────────────────────────────────────────────  CONTENT  ───────────────────────────────────────────── -->
+<main class="content">
+
+<!-- Mobile TOC -->
+<details class="toc-mobile">
+  <summary>On this page</summary>
+  <nav>
+    <a href="#overview">Overview</a>
+    <a href="#health">Health</a>
+    <a href="#responses">Responses API</a>
+    <a href="#events">Streaming events</a>
+    <a href="#conversations">Conversations</a>
+    <a href="#projects">Projects</a>
+    <a href="#settings">Settings</a>
+    <a href="#attachments">Attachments</a>
+    <a href="#artifacts">Artifacts</a>
+    <a href="#scratchpad">Scratchpad</a>
+    <a href="#memory">Memory</a>
+    <a href="#skills">Skills</a>
+    <a href="#datasources">Datasources</a>
+    <a href="#publish">Publish</a>
+    <a href="#pins">Pins</a>
+    <a href="#schedules">Schedules</a>
+    <a href="#search">Search</a>
+    <a href="#browse">Browse</a>
+    <a href="#integrations">Integrations</a>
+    <a href="#errors">Error shape</a>
+  </nav>
+</details>
+
+<!-- HERO -->
+<h1 class="eyebrow">Server Reference</h1>
+<h1 class="hero">Anton CoWork API.</h1>
+<p class="lede">
+  A local FastAPI service that wraps Anton's Python core and exposes it as an OpenAI-compatible
+  HTTP surface — plus the cowork sidecar (projects, attachments, artifacts, schedules, integrations)
+  that powers the desktop app. The server runs alongside the renderer, scoped to loopback,
+  with no external auth.
+</p>
+
+<div class="keys">
+  <div class="key"><span class="lbl">Base URL</span><span class="val">http://127.0.0.1:26866</span></div>
+  <div class="key"><span class="lbl">Default port</span><span class="val">26866 <span class="pill" style="margin-left:6px;">ANTON / T9</span></span></div>
+  <div class="key"><span class="lbl">Auth</span><span class="val">none — loopback only</span></div>
+  <div class="key"><span class="lbl">Versions</span><span class="val">v1 · CoWork 1.0</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  OVERVIEW  ─────────────────────────────────────────── -->
+<h2 id="overview">Overview</h2>
+<p>
+  All resource endpoints live under <code>/v1/*</code>. Two unversioned endpoints sit at the root
+  for liveness checks. Every cowork-specific request carries an optional <code>project</code> field
+  that scopes work to a project folder; when omitted, the active project from
+  <code>GET /v1/projects/active</code> is used.
+</p>
+<p>
+  Override the host and port with environment variables before launching:
+</p>
+<pre><span class="com"># start the server</span>
+ANTON_SERVER_HOST=<span class="str">127.0.0.1</span> ANTON_SERVER_PORT=<span class="num">26866</span> python server/main.py</pre>
+<p>
+  CORS is locked to the renderer dev origin (<code>http://localhost:5173</code>),
+  the packaged-app origin (<code>app://-</code>), and an optional <code>VITE_RENDERER_URL</code>.
+  The desktop app talks to this server in-process — there is no external entry point.
+</p>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  HEALTH  ─────────────────────────────────────────── -->
+<h2 id="health">Health</h2>
+<div class="endpoints">
+  <div class="endpoint">
+    <span class="verb verb-GET">GET</span>
+    <span class="path">/health</span>
+    <span class="desc">Liveness + Anton install + provider/model state. Returns <code>config_ready</code>, <code>provider</code>, <code>live_conversations</code>, <code>live_pads</code>.</span>
+  </div>
+  <div class="endpoint">
+    <span class="verb verb-GET">GET</span>
+    <span class="path">/</span>
+    <span class="desc">Tiny banner with <code>anton_available</code>. Useful as a connectivity probe.</span>
+  </div>
+</div>
+
+<pre><span class="com"># sample response</span>
+<span class="pun">{</span>
+  <span class="att">"status"</span>: <span class="str">"ok"</span>,
+  <span class="att">"anton_available"</span>: <span class="kw">true</span>,
+  <span class="att">"mode"</span>: <span class="str">"anton"</span>,
+  <span class="att">"config_ready"</span>: <span class="kw">true</span>,
+  <span class="att">"provider"</span>: <span class="str">"anthropic"</span>,
+  <span class="att">"model"</span>: <span class="str">"claude-sonnet-4-6"</span>,
+  <span class="att">"provider_label"</span>: <span class="str">"Anthropic"</span>,
+  <span class="att">"live_conversations"</span>: <span class="pun">[]</span>,
+  <span class="att">"live_pads"</span>: <span class="pun">[]</span>
+<span class="pun">}</span></pre>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  RESPONSES  ─────────────────────────────────────────── -->
+<h2 id="responses">Responses API</h2>
+<p>
+  <code>POST /v1/responses</code> is the headline endpoint — a near-drop-in for OpenAI's Responses API
+  with cowork extensions for projects and attachments. Streaming is the default;
+  pass <code>stream: false</code> for one-shot JSON. The first event of a streamed response
+  carries the <code>conversation_id</code> the desktop app uses as its task id.
+</p>
+
+<div class="endpoints">
+  <div class="endpoint">
+    <span class="verb verb-POST">POST</span>
+    <span class="path">/v1/responses</span>
+    <span class="desc">Create a response. Streams SSE events for text deltas and thought activity.</span>
+  </div>
+</div>
+
+<h3>Request</h3>
+<pre><span class="kw">POST</span> <span class="str">/v1/responses</span>
+<span class="att">Content-Type</span>: <span class="str">application/json</span>
+
+<span class="pun">{</span>
+  <span class="att">"model"</span>: <span class="str">"anton"</span>,                     <span class="com">// optional; "anton" uses the configured default</span>
+  <span class="att">"input"</span>: <span class="str">"Summarize this quarter's roadmap"</span>,
+  <span class="att">"stream"</span>: <span class="kw">true</span>,                       <span class="com">// SSE; false → ResponseObject JSON</span>
+  <span class="att">"conversation"</span>: <span class="str">"task-2025-Q3"</span>,         <span class="com">// existing id, or omit to mint one</span>
+  <span class="att">"project"</span>: <span class="str">"acme-engineering"</span>,        <span class="com">// optional; defaults to active project</span>
+  <span class="att">"attachment_ids"</span>: <span class="pun">[</span><span class="str">"att_1a2b…"</span><span class="pun">]</span>      <span class="com">// uploaded via /v1/attachments/*</span>
+<span class="pun">}</span></pre>
+
+<h3>Streamed response</h3>
+<pre><span class="kw">event</span>: response.created
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"id"</span>:<span class="str">"resp-…"</span>, <span class="att">"conversation_id"</span>:<span class="str">"task-2025-Q3"</span><span class="pun">}</span>
+
+<span class="kw">event</span>: response.in_progress
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"thought_role"</span>:<span class="str">"thought.scratchpad.start"</span>, <span class="att">"label"</span>:<span class="str">"Reading roadmap.md"</span><span class="pun">}</span>
+
+<span class="kw">event</span>: response.output_text.delta
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"delta"</span>:<span class="str">"Q3 ships three things…"</span><span class="pun">}</span>
+
+<span class="kw">event</span>: response.completed
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"id"</span>:<span class="str">"resp-…"</span>, <span class="att">"output_text"</span>:<span class="str">"Q3 ships three things…"</span><span class="pun">}</span></pre>
+
+<!-- ───────────────────────────────────────────  EVENTS  ─────────────────────────────────────────── -->
+<h2 id="events">Streaming events</h2>
+<p>
+  The five top-level SSE events follow the OpenAI Responses contract. Anton's tool activity
+  rides on <code>response.in_progress</code> frames, tagged by <code>thought_role</code> so clients
+  can render an inline progress trail without parsing free-form text.
+</p>
+
+<div class="events">
+  <div class="event"><div class="name">response.created</div><div class="what">First event. Carries the response id and conversation id.</div></div>
+  <div class="event"><div class="name">response.in_progress</div><div class="what">Tool / phase / progress signals. Each frame has a <code>thought_role</code>.</div></div>
+  <div class="event"><div class="name">response.output_text.delta</div><div class="what">Streamed assistant text — incremental; concatenate to render.</div></div>
+  <div class="event"><div class="name">response.completed</div><div class="what">Terminal event with the full assembled <code>output_text</code>.</div></div>
+  <div class="event"><div class="name">response.failed</div><div class="what">Terminal error frame with <code>code</code> + <code>error</code>.</div></div>
+</div>
+
+<h3>Thought roles</h3>
+<div class="events">
+  <div class="event"><div class="name">thought.progress</div><div class="what">Phase change (planning, executing, summarizing).</div></div>
+  <div class="event"><div class="name">thought.scratchpad.start / progress / result / end</div><div class="what">Sandboxed code execution. <code>result</code> carries a preview.</div></div>
+  <div class="event"><div class="name">thought.memorize.start / end</div><div class="what">A long-term memory write.</div></div>
+  <div class="event"><div class="name">thought.recall.start / end</div><div class="what">A memory read; <code>end</code> includes the hits.</div></div>
+  <div class="event"><div class="name">thought.context_compacted</div><div class="what">Anton trimmed earlier turns to fit the model's context window.</div></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  CONVERSATIONS  ─────────────────────────────────────────── -->
+<h2 id="conversations">Conversations</h2>
+<p>
+  Conversations are the persistent backbone of every task. They survive restarts, carry the
+  full message history with attached thought events, and can be reassigned to other projects.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/conversations</span><span class="desc">List all conversations across the active project.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/projects/{name}/conversations</span><span class="desc">Scoped variant — list only within the named project.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/conversations/{id}</span><span class="desc">Conversation metadata (title, turns, preview, project).</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/conversations/{id}/messages</span><span class="desc">Full message log with role, content, and recorded thought frames.</span></div>
+  <div class="endpoint"><span class="verb verb-PATCH">PATCH</span><span class="path">/v1/conversations/{id}</span><span class="desc">Rename or move to another project. Body: <code>{ "title"?, "project"? }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/conversations/{id}</span><span class="desc">Remove the conversation and its history from disk.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  PROJECTS  ─────────────────────────────────────────── -->
+<h2 id="projects">Projects</h2>
+<p>
+  Projects are folders on disk. Each project owns its conversations, attachments, memory, and
+  generated artifacts. Exactly one project is active at a time; new tasks default to it.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/projects</span><span class="desc">List all projects.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/projects</span><span class="desc">Create a new project. Body: <code>{ "name": "…" }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/projects/active</span><span class="desc">Get the currently active project name.</span></div>
+  <div class="endpoint"><span class="verb verb-PUT">PUT</span><span class="path">/v1/projects/active</span><span class="desc">Switch the active project. Body: <code>{ "name": "…" }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-PATCH">PATCH</span><span class="path">/v1/projects/{name}</span><span class="desc">Rename a project. Body: <code>{ "name": "new-name" }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/projects/{name}</span><span class="desc">Delete a project. Cannot delete the only remaining project.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  SETTINGS  ─────────────────────────────────────────── -->
+<h2 id="settings">Settings</h2>
+<p>
+  Provider selection, default model, greeting, and other renderer-visible knobs.
+  Settings are written to <code>~/.anton/.env</code> and reloaded by the running server.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/settings</span><span class="desc">Current settings + derived <code>config_ready</code> / <code>config_error</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-PUT">PUT</span><span class="path">/v1/settings</span><span class="desc">Patch settings. Returns the new config status after persisting.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/settings/validate</span><span class="desc">Probe the configured provider for credentials / reachability without saving.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  ATTACHMENTS  ─────────────────────────────────────────── -->
+<h2 id="attachments">Attachments</h2>
+<p>
+  Attachments are files, snippets, URLs, or project-file references that augment a turn.
+  Upload first, then pass the returned ids in <code>attachment_ids</code> on
+  <code>POST /v1/responses</code>. Attachments are scoped to a project and attach to a
+  conversation as soon as one exists.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/attachments</span><span class="desc">List attachments, optionally filtered by <code>project</code> or <code>session_id</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/attachments/upload</span><span class="desc">Multipart upload. Files are extracted and indexed; status reports as <code>ready</code>, <code>processing</code>, or <code>failed</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/attachments/snippet</span><span class="desc">Attach raw text as a titled snippet. Body: <code>{ title, content, project_path?, session_id? }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/attachments/url</span><span class="desc">Attach a URL. Anton will fetch and extract content. Body: <code>{ url, project_path?, session_id? }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/attachments/project-files</span><span class="desc">Browse a project's working folder. Query: <code>project_path</code>, optional <code>q</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/attachments/project-file</span><span class="desc">Attach an existing file from the project's working folder.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/attachments/{id}</span><span class="desc">Drop a pending or attached attachment.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  ARTIFACTS  ─────────────────────────────────────────── -->
+<h2 id="artifacts">Artifacts</h2>
+<p>
+  Artifacts are files Anton generates during a task — reports, charts, generated code, dashboards.
+  They live in the project's <code>.anton/artifacts</code> directory and can be previewed
+  in the renderer or revealed in the OS file manager.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/artifacts</span><span class="desc">List artifacts for the active or queried project.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/artifacts/preview</span><span class="desc">Streamable preview metadata for an artifact.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/artifacts/preview-mount</span><span class="desc">Mount an artifact bundle behind a one-time token for in-app preview.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/artifacts/preview-asset/{token}/{path}</span><span class="desc">Serve a static asset from a mounted preview bundle.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/artifacts/open</span><span class="desc">Open an artifact in its associated app (default OS handler).</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/artifacts/reveal</span><span class="desc">Reveal an artifact in Finder / Explorer.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  SCRATCHPAD  ─────────────────────────────────────────── -->
+<h2 id="scratchpad">Scratchpad</h2>
+<p>
+  Anton's sandboxed Python runtime, exposed for direct use by the desktop app and external
+  clients. Each named scratchpad is a long-lived kernel with its own venv. Cells stream
+  stdout / stderr / display data over SSE.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/start</span><span class="desc">Open a named pad. Body sets the coding LLM to use for autocomplete.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/execute</span><span class="desc">Run a cell, return the final result as JSON.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/execute-stream</span><span class="desc">Run a cell, stream results as SSE (live stdout / display).</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/install</span><span class="desc">pip-install packages into the pad's venv.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/reset</span><span class="desc">Wipe in-memory state without destroying the venv.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/cancel</span><span class="desc">Interrupt a running cell.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/scratchpad/view</span><span class="desc">Rendered HTML view of all cells.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/scratchpad/notebook</span><span class="desc">Markdown notebook export.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/scratchpad/cells</span><span class="desc">Structured cells with code, outputs, timings.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/close</span><span class="desc">Close the kernel; preserves the venv.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/scratchpad/cleanup</span><span class="desc">Destroy the kernel and the venv.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/scratchpad/list</span><span class="desc">List active pads with last-used timestamps.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  MEMORY  ─────────────────────────────────────────── -->
+<h2 id="memory">Memory</h2>
+<p>
+  Long-term memory is per-project. Anton calls <code>/memory</code> internally during recall
+  and memorize phases; you can also seed or audit it directly.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/memory</span><span class="desc">List memory entries for the active project.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/memory</span><span class="desc">Insert a memory entry. Body: <code>{ name, description, type, content, project? }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/memory</span><span class="desc">Remove an entry by id or name.</span></div>
+</div>
+
+<!-- ───────────────────────────────────────────  SKILLS  ─────────────────────────────────────────── -->
+<h2 id="skills">Skills</h2>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/skills</span><span class="desc">List skills installed in the active project.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/skills</span><span class="desc">Install a skill from a manifest.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/skills/{label}</span><span class="desc">Uninstall a skill by its manifest label.</span></div>
+</div>
+
+<!-- ───────────────────────────────────────────  DATASOURCES  ─────────────────────────────────────────── -->
+<h2 id="datasources">Datasources</h2>
+<p>
+  The encrypted datavault — credentials for connectors Anton can use during scratchpad runs.
+  Validation calls the engine's connection probe without persisting.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/datasources</span><span class="desc">List configured connections (engine + name + display label).</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/datasources/validate</span><span class="desc">Test a connection without saving it.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/datasources</span><span class="desc">Save a connection. Body: <code>{ engine, name, params }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/datasources/{engine}/{name}</span><span class="desc">Remove a saved connection.</span></div>
+</div>
+
+<!-- ───────────────────────────────────────────  PUBLISH  ─────────────────────────────────────────── -->
+<h2 id="publish">Publish</h2>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/publish</span><span class="desc">List published artifacts for the active user.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/publish</span><span class="desc">Publish an artifact bundle to <code>4nton.ai</code>; returns the share URL.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/publish</span><span class="desc">Unpublish a previously published artifact.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  PINS  ─────────────────────────────────────────── -->
+<h2 id="pins">Pins</h2>
+<p>
+  Pinned tasks — the sidebar's "Pinned" rail. Pins are reorderable and capture a recent-visit
+  hint so the renderer can surface "where you left off."
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/pins</span><span class="desc">List pinned items.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/pins</span><span class="desc">Pin a task or project. Body: <code>{ kind, id, title }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/pins/{id}</span><span class="desc">Unpin.</span></div>
+  <div class="endpoint"><span class="verb verb-PUT">PUT</span><span class="path">/v1/pins/reorder</span><span class="desc">Set the pin order. Body: <code>{ ids: [...] }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/pins/{task_id}/visit</span><span class="desc">Record a visit. Auto-pins if <code>autoPin</code> is enabled.</span></div>
+</div>
+
+<!-- ───────────────────────────────────────────  SCHEDULES  ─────────────────────────────────────────── -->
+<h2 id="schedules">Schedules</h2>
+<p>
+  Cron-style automation. Each schedule fires a prompt against a project + model on its cadence;
+  the resulting conversation is saved like any other task.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/schedules</span><span class="desc">List all schedules with next-fire timestamps.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/schedules</span><span class="desc">Create a schedule. Body: <code>{ cron, prompt, project?, model? }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-PUT">PUT</span><span class="path">/v1/schedules/{id}</span><span class="desc">Replace a schedule's definition.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/schedules/{id}</span><span class="desc">Delete a schedule.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/schedules/{id}/pause</span><span class="desc">Pause without deleting.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/schedules/{id}/resume</span><span class="desc">Resume a paused schedule.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/schedules/{id}/run-now</span><span class="desc">Fire immediately, off-cycle.</span></div>
+</div>
+
+<!-- ───────────────────────────────────────────  SEARCH  ─────────────────────────────────────────── -->
+<h2 id="search">Search</h2>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/search</span><span class="desc">Full-text search across conversations, artifacts, attachments, and pins. Query: <code>q</code>.</span></div>
+</div>
+
+<!-- ───────────────────────────────────────────  BROWSE  ─────────────────────────────────────────── -->
+<h2 id="browse">Browse</h2>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/browse/status</span><span class="desc">Browser sandbox status — used by the renderer to enable web-aware tools.</span></div>
+</div>
+
+<!-- ───────────────────────────────────────────  INTEGRATIONS  ─────────────────────────────────────────── -->
+<h2 id="integrations">Integrations</h2>
+<p>
+  Third-party connectors. OAuth flows complete server-side; the renderer polls
+  <code>GET /v1/integrations</code> for the latest status.
+</p>
+<div class="endpoints">
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/integrations</span><span class="desc">List configured integrations and their connection state.</span></div>
+  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/integrations/google-drive/oauth/start</span><span class="desc">Begin the Google Drive OAuth dance; returns the consent URL.</span></div>
+  <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/integrations/google-drive/oauth/callback</span><span class="desc">OAuth redirect target; persists the refresh token.</span></div>
+</div>
+
+<hr />
+
+<!-- ───────────────────────────────────────────  ERRORS  ─────────────────────────────────────────── -->
+<h2 id="errors">Error shape</h2>
+<p>
+  FastAPI's default <code>HTTPException</code> shape, with a stable status code and a
+  human-readable detail string. Streaming endpoints emit <code>response.failed</code> with
+  the same status mapped into the <code>code</code> field.
+</p>
+<pre><span class="pun">{</span> <span class="att">"detail"</span>: <span class="str">"Anton is not installed in this desktop environment."</span> <span class="pun">}</span></pre>
+
+<ul>
+  <li><code>400</code> — invalid request body or missing required field.</li>
+  <li><code>404</code> — project, conversation, schedule, or pin not found.</li>
+  <li><code>409</code> — name collision (project create, schedule create).</li>
+  <li><code>503</code> — Anton is not installed in this environment, or the configured provider is unreachable.</li>
+</ul>
+
+</main>
+</div>
+
+<script>
+  // Smooth-scroll anchor jumps and dismiss the mobile TOC after a tap.
+  (function () {
+    const dropdown = document.querySelector('.toc-mobile');
+    document.querySelectorAll('.toc a, .toc-mobile a').forEach((a) => {
+      a.addEventListener('click', () => {
+        if (dropdown && dropdown.open) dropdown.open = false;
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

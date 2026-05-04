@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from anton_api import projects_store
+from anton_api import conversation_manager, projects_store
 
 
 router = APIRouter()
@@ -65,13 +65,28 @@ async def set_active_project(req: SetActiveRequest):
 @router.patch("/{name}")
 async def rename_project(name: str, req: RenameProjectRequest):
     try:
-        return projects_store.rename_project(name, req.name)
+        result = projects_store.rename_project(name, req.name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    # Walk the renamed directory and rewrite every conversation's
+    # `_meta.json` so the `project` field matches the new name. Without
+    # this, the listing route keeps reporting tasks under the old
+    # project name (which no longer exists), so the UI loses every
+    # task / conversation under the renamed project.
+    try:
+        conversation_manager.relabel_project(result["name"])
+    except Exception:
+        # Don't fail the rename on relabel issues — the directory move
+        # itself succeeded. Worst case the next list call shows stale
+        # project labels until something else triggers a rewrite.
+        logging.getLogger(__name__).debug("relabel_project failed", exc_info=True)
+
+    return result
 
 
 @router.delete("/{name}")

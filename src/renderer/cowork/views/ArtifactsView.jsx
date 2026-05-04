@@ -16,6 +16,7 @@ import {
   openArtifact, revealArtifact,
   publishArtifact, unpublishArtifact,
 } from '../api';
+import { copyText } from '../lib/clipboard';
 import { ArtifactViewer } from '../components/artifact';
 
 const FONT_BODY    = "var(--font-body)";
@@ -364,9 +365,14 @@ function PublishedUrlRow({ url, onOpen, onCopy }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async (e) => {
     e.stopPropagation();
-    await onCopy?.();
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1400);
+    // The parent's onCopy returns a boolean indicating whether the
+    // copy actually landed in the clipboard. Only flip the icon on
+    // success — otherwise we were lying to the user about it working.
+    const ok = await onCopy?.();
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   };
   const display = url.replace(/^https?:\/\//, '');
   return (
@@ -448,8 +454,8 @@ function ArtifactBubble({ artifact, onOpenViewer, onPublish: doPublish, onUnpubl
   const published = !!artifact.publishedUrl;
 
   const onCopyUrl = async () => {
-    if (!published) return;
-    try { await navigator.clipboard?.writeText?.(artifact.publishedUrl); } catch {}
+    if (!published) return false;
+    return copyText(artifact.publishedUrl);
   };
   const onOpenPublished = async () => {
     if (!published) return;
@@ -734,8 +740,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const project = projectNameOf(artifact, projects);
 
   const onCopyUrl = async () => {
-    if (!published) return;
-    try { await navigator.clipboard?.writeText?.(artifact.publishedUrl); } catch {}
+    if (!published) return false;
+    return copyText(artifact.publishedUrl);
   };
   const onRowOpen = () => {
     if (isHtml) onOpenViewer?.(artifact);

@@ -125,38 +125,67 @@ export function ProjectCard({
   tasks = [],
   scheduled = [],
   pinned = false,
+  editing = false,
   onOpen,
   onTogglePin,
   onMenuOpen,
+  onRenameSubmit,
+  onRenameCancel,
 }) {
   const stats = useProjectStats(project, { tasks, scheduled });
   const summary = activitySummary(project, tasks);
   const active = isProjectActive(project, tasks);
   const [hover, setHover] = useState(false);
   const triggerRef = useRef(null);
+  const renameInputRef = useRef(null);
 
   const showHoverActions = hover || pinned;
   const isReserved = project.name === 'general' || project.name === 'default';
 
+  // When entering edit mode, focus + select the entire name on the
+  // next paint so the user can type immediately to replace it (or
+  // arrow-key into the existing name to tweak).
+  useEffect(() => {
+    if (!editing) return;
+    const id = requestAnimationFrame(() => {
+      const el = renameInputRef.current;
+      if (!el) return;
+      el.focus();
+      try { el.select(); } catch {}
+    });
+    return () => cancelAnimationFrame(id);
+  }, [editing]);
+
   const handleCardKey = (e) => {
+    if (editing) return; // typing in the input — let the input handle it
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onOpen?.(project);
     }
   };
 
+  const handleCardClick = (e) => {
+    if (editing) return; // ignore card clicks while editing
+    onOpen?.(project);
+  };
+
+  const submitRename = () => {
+    const next = renameInputRef.current?.value ?? project.name;
+    onRenameSubmit?.(next);
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onOpen?.(project)}
+      onClick={handleCardClick}
       onKeyDown={handleCardKey}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        cursor: 'pointer',
-        background: hover ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${isSelected ? 'var(--accent)' : (hover ? 'var(--line-2)' : 'var(--line)')}`,
+        cursor: editing ? 'default' : 'pointer',
+        background: hover && !editing ? 'var(--surface-2)' : 'var(--surface)',
+        border: `1px solid ${editing ? 'var(--accent)' : (isSelected ? 'var(--accent)' : (hover ? 'var(--line-2)' : 'var(--line)'))}`,
         borderRadius: 10,
         padding: '14px 16px',
         minHeight: 120,
@@ -178,12 +207,46 @@ export function ProjectCard({
         }}>
           {Ico.folder(14)}
         </span>
-        <span style={{
-          flex: 1, minWidth: 0,
-          fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-          letterSpacing: '-0.005em', color: 'var(--ink)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{project.name}</span>
+        {editing ? (
+          <input
+            ref={renameInputRef}
+            type="text"
+            defaultValue={project.name}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitRename();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                onRenameCancel?.();
+              }
+            }}
+            onBlur={submitRename}
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            style={{
+              flex: 1, minWidth: 0,
+              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
+              letterSpacing: '-0.005em', color: 'var(--ink)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--accent)',
+              borderRadius: 6,
+              padding: '2px 6px',
+              outline: 'none',
+            }}
+          />
+        ) : (
+          <span style={{
+            flex: 1, minWidth: 0,
+            fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
+            letterSpacing: '-0.005em', color: 'var(--ink)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{project.name}</span>
+        )}
 
         {/* Pin button — visible on hover for unpinned, always for pinned */}
         <button
