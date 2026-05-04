@@ -15,6 +15,8 @@ import { OrbitMorph } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
+import { PhaseProgress } from '../components/thinking/PhaseProgress';
+import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -175,6 +177,31 @@ function TextBlock({ text, id, complete = true }) {
   // chartjs/chart support), links, etc. via react-markdown + our
   // MarkdownContent override map.
   return <MarkdownContent text={text} id={id} complete={complete} />;
+}
+
+// Convert an artifact step (from the SSE adapter, badge='Artifact')
+// into the shape ArtifactCard expects. Used to render inline cards
+// at the end of an assistant turn — like mdb-ai surfaces results.
+function artifactStepToCard(step) {
+  const data = step.data || {};
+  return {
+    title: data.title || step.label || 'Artifact',
+    kind: data.action ? `${data.action}` : 'live artifact',
+    icon: 'doc',
+    file_path: data.file_path,
+    preview: data.file_path ? [{ heading: data.file_path }] : [],
+  };
+}
+
+// Renders any badge='Artifact' steps as inline ArtifactCards.
+function StepArtifacts({ steps }) {
+  const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
+  if (artifacts.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+      {artifacts.map((s) => <ArtifactCard key={s.id} artifact={artifactStepToCard(s)} />)}
+    </div>
+  );
 }
 
 function ArtifactCard({ artifact }) {
@@ -424,6 +451,8 @@ export default function ChatView({
 }) {
   const scrollRef = useRef(null);
   const [railOpen, setRailOpen] = useState(true);
+  // Step id whose scratchpad cells are visible in the modal. null = closed.
+  const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
@@ -620,10 +649,16 @@ export default function ChatView({
               return (
                 <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} copyText={m.content}>
                   {m.steps?.length > 0 && (
-                    <ThinkingBlock steps={m.steps} startedAt={m.startedAt} isActive={false} />
+                    <ThinkingBlock
+                      steps={m.steps}
+                      startedAt={m.startedAt}
+                      isActive={false}
+                      onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+                    />
                   )}
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete />
                   {m.artifact && <ArtifactCard artifact={m.artifact} />}
+                  <StepArtifacts steps={m.steps} />
                 </AnswerTurn>
               );
             })}
@@ -635,12 +670,14 @@ export default function ChatView({
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
+                    onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
                   />
                 )}
                 <div style={{ position: 'relative' }}>
                   <TextBlock text={streamingMsg.content} id="streaming" complete={false} />
                   <StreamCursor slotId="body:streaming" />
                 </div>
+                <StepArtifacts steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false}>
@@ -705,7 +742,12 @@ export default function ChatView({
         WebkitAppRegion: 'no-drag',
       }}>
         <RailCard title="Progress" defaultOpen>
-          <ProgressList steps={railSteps} />
+          <PhaseProgress
+            steps={railSteps}
+            streamStatus={streamingMsg?.streamStatus || (railSteps.length ? 'done' : null)}
+            conversationId={task.id || ''}
+            onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+          />
         </RailCard>
         <RailCard title="Working folder" defaultOpen>
           <WorkingFolder project={project} files={[]} />
@@ -718,6 +760,19 @@ export default function ChatView({
       {/* keyframes for the streaming cursor */}
       <style>{`@keyframes cb { 0%,49%{opacity:1} 50%,100%{opacity:0} }`}</style>
       </OrbitProvider>
+
+      {/* Scratchpad viewer — pools steps from every assistant turn in
+          this task so tabs persist across the conversation, mirroring
+          mdb-ai's grouping by `name`. */}
+      <ScratchpadModal
+        open={openScratchpadStepId != null}
+        onClose={() => setOpenScratchpadStepId(null)}
+        steps={[
+          ...visibleMessages.flatMap((m) => m.steps || []),
+          ...(streamingMsg?.steps || []),
+        ]}
+        focusStepId={openScratchpadStepId}
+      />
     </div>
   );
 }

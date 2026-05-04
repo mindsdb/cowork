@@ -149,16 +149,24 @@ export function reduceStream(state, event, now = Date.now) {
 
   // New scratchpad cell starts. We push a placeholder step now so the
   // UI sees activity even before the .end event delivers the input.
+  // Reasoning starts here — it's the time anton spends deciding *what*
+  // code to run, before the runtime actually executes anything.
   if (role === 'thought.scratchpad.start') {
     const id = `step-${state.steps.length + 1}`;
+    const ts = now();
     const step = {
       id,
       label: 'Running code',
       badge: 'Script',
       icon: 'code',
       status: 'in_progress',
-      startedAt: now(),
+      startedAt: ts,
       completedAt: null,
+      // Fine-grained timing — used to split "reasoning" (LLM deciding
+      // what to do) from "execution" (runtime running the code).
+      reasoningStartedAt: ts,
+      executionStartedAt: null,
+      executionCompletedAt: null,
       data: null,
       output: null,
       result: null,
@@ -198,11 +206,19 @@ export function reduceStream(state, event, now = Date.now) {
     const stdout = bestEffortField(event.content, 'stdout');
     const stderr = bestEffortField(event.content, 'stderr');
     const parsed = safeJsonParse(event.content);
+    const ts = now();
+    // The result is also the canonical end of execution if we never
+    // got a `scratchpad_done` phase (some flows skip it).
+    const last = state.steps[state.steps.length - 1];
+    const executionCompletedAt = last?._isScratchpad
+      ? (last.executionCompletedAt || ts)
+      : ts;
     const steps = patchLastScratchpadStep(state.steps, {
       output: typeof stdout === 'string' ? stdout : null,
       result: parsed || { stdout, stderr, _truncated: true },
       status: 'completed',
-      completedAt: now(),
+      completedAt: ts,
+      executionCompletedAt,
       ...(typeof stderr === 'string' && stderr ? { stderr } : null),
     });
     return { ...state, steps };
@@ -216,21 +232,30 @@ export function reduceStream(state, event, now = Date.now) {
     // Cell finished — flip the trailing in-progress scratchpad to
     // completed if the .result hasn't arrived yet. (When .result does
     // come in, it'll carry the same status flip plus the output.)
+    // Either way, this is when execution wraps.
     if (phase === 'scratchpad_done') {
-      return { ...state, steps: closeOpenScratchpadStep(state.steps, now()) };
+      const ts = now();
+      const stepsClosed = closeOpenScratchpadStep(state.steps, ts);
+      const stepsTimed = patchLastScratchpadStep(stepsClosed, {
+        executionCompletedAt: ts,
+      });
+      return { ...state, steps: stepsTimed };
     }
 
     // Cell starting — already marked in_progress in .start, but if
     // somehow we missed .start (out-of-order), upsert a step now.
+    // Either way, mark execution start (reasoning is over).
     if (phase === 'scratchpad_start') {
       const last = state.steps[state.steps.length - 1];
+      const ts = now();
       if (!last || last.status !== 'in_progress') {
-        return reduceStream(state, {
+        const seeded = reduceStream(state, {
           type: 'response.in_progress',
           thought_role: 'thought.scratchpad.start',
         }, now);
+        return { ...seeded, steps: patchLastScratchpadStep(seeded.steps, { executionStartedAt: ts }) };
       }
-      return state;
+      return { ...state, steps: patchLastScratchpadStep(state.steps, { executionStartedAt: ts }) };
     }
 
     // 'publish_or_preview' is a two-event sequence — this one is just
