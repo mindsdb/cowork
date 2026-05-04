@@ -189,6 +189,22 @@ async def update_conversation(conversation_id: str, patch: ConversationPatch):
     return meta or {"id": conversation_id}
 
 
+@router.delete("/v1/conversations/{conversation_id}/turns/{turn_index}")
+async def delete_conversation_turn(conversation_id: str, turn_index: int):
+    """Delete one user→answer cycle from a conversation. The client
+    passes the 0-based displayable bubble index of the assistant
+    message; the server removes that user input + all assistant
+    messages anton produced in response, then reindexes the events
+    sidecar so subsequent turns shift down by one.
+    """
+    if turn_index < 0:
+        raise HTTPException(status_code=400, detail="turn_index must be non-negative")
+    result = conversation_manager.delete_turn(conversation_id, turn_index)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Turn not found")
+    return result
+
+
 @router.delete("/v1/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str):
     found = conversation_manager.delete_conversation(conversation_id)

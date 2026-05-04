@@ -22,7 +22,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          attachProjectFile, deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
-         renameConversation, deleteConversation, moveConversation,
+         renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
          deleteProject, cancelScratchpad } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 
@@ -244,6 +244,52 @@ function mergeConvTurns(cid, messages) {
   });
 }
 
+// Merge a fresh fetchSessions response with the existing tasks,
+// preserving any in-memory state the server hasn't seen yet.
+//
+// Why: anton flushes `_history.json` only at the end of a successful
+// turn. While a stream is in flight the user-typed message + the
+// assistant's `_streaming` row + any captured progress live ONLY in
+// React state. A naive `setTasks(serverData)` after fetchSessions
+// blows that away — most visibly when the user navigates to recents
+// during the very first turn of a new task and comes back: the
+// chat is empty and the title shows the raw conversation id.
+//
+// Strategy: take the server's tasks (authoritative for title /
+// project / status / order), but for each task that exists locally
+// AND is mid-stream OR has unsaved messages, keep the local
+// messages array.
+function mergeTasksFromServer(serverTasks, localTasks) {
+  const local = Array.isArray(localTasks) ? localTasks : [];
+  if (!Array.isArray(serverTasks)) return local;
+  const localById = new Map(local.map((t) => [t.id, t]));
+  const merged = serverTasks.map((server) => {
+    const l = localById.get(server.id);
+    if (!l) return server;
+    const lMessages = Array.isArray(l.messages) ? l.messages : [];
+    const isStreaming = lMessages.some((m) => m.role === '_streaming');
+    const hasLocalContent = lMessages.length > 0;
+    if (!isStreaming && !hasLocalContent) return server;
+    return {
+      ...server,
+      // Local wins for the live conversation surface.
+      messages: lMessages,
+      status: l.status || server.status,
+      // Preserve in-flight attachments tracked client-side.
+      attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
+        ? l.attachments
+        : server.attachments,
+    };
+  });
+  // Carry over local-only tasks the server hasn't seen yet (e.g. a
+  // tmp-id task whose first stream hasn't resolved a real cid).
+  const serverIds = new Set(serverTasks.map((t) => t.id));
+  for (const t of local) {
+    if (!serverIds.has(t.id)) merged.unshift(t);
+  }
+  return merged;
+}
+
 function appendActivity(messages, event) {
   const content = describeActivity(event);
   const cleaned = removeThinkingPlaceholder(messages);
@@ -441,7 +487,9 @@ function AppCore() {
       setHealth(h);
       setServerOnline(h.status === 'ok');
     });
-    fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); });
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     fetchPins().then((data) => setPins(data.pins || []));
@@ -476,7 +524,9 @@ function AppCore() {
   useEffect(() => {
     const handler = () => {
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
-      fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); });
+      fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    });
     };
     window.addEventListener('anton:projects-changed', handler);
     return () => window.removeEventListener('anton:projects-changed', handler);
@@ -611,7 +661,9 @@ function AppCore() {
       // Pin/unpin is now an explicit action via the task menu.
       recordTaskVisit(task, false).then(() => {
         fetchPins().then((data) => setPins(data.pins || []));
-        fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); });
+        fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    });
       }).catch(() => {});
 
       // If this task didn't get its messages preloaded (we only fan
@@ -1112,6 +1164,70 @@ function AppCore() {
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
 
+  // Pending delete-turn confirm payload — null when no modal is open.
+  // The user clicked the trash on the assistant message at this turn
+  // index of the conversation; we open ConfirmModal, then on confirm
+  // hit the API and re-hydrate the chat from the truncated history.
+  const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
+
+  const handleDeleteTurnRequest = (taskId, turnIndex) => {
+    if (!taskId || typeof turnIndex !== 'number') return;
+    setPendingDeleteTurn({ taskId, turnIndex });
+  };
+
+  const performDeleteTurn = async (taskId, turnIndex) => {
+    if (!taskId || typeof turnIndex !== 'number') return;
+    if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
+      // No server-side history yet — drop the local pair only.
+      setTasks((prev) => prev.map((t) => {
+        if (t.id !== taskId) return t;
+        let assistantSeen = -1;
+        let dropFromUserAt = -1;
+        let dropEnd = (t.messages || []).length;
+        for (let i = 0; i < (t.messages || []).length; i++) {
+          const m = t.messages[i];
+          if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
+            dropFromUserAt = i;
+          }
+          if (m.role === 'assistant') {
+            assistantSeen += 1;
+            if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
+              dropEnd = i;
+              break;
+            }
+          }
+        }
+        if (dropFromUserAt === -1) return t;
+        return {
+          ...t,
+          messages: [
+            ...t.messages.slice(0, dropFromUserAt),
+            ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
+          ],
+        };
+      }));
+      return;
+    }
+    try {
+      await deleteConversationTurn(taskId, turnIndex);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[performDeleteTurn] server delete failed', e);
+      alert(`Could not delete this exchange: ${e?.message || e}`);
+      return;
+    }
+    // Re-fetch the conversation so `tasks[].messages` reflects the
+    // truncated server history (and any reindexed events sidecar).
+    try {
+      const fresh = await fetchSession(taskId);
+      if (fresh && Array.isArray(fresh.messages)) {
+        setTasks((prev) => prev.map((t) =>
+          t.id === taskId ? { ...t, messages: fresh.messages } : t,
+        ));
+      }
+    } catch {}
+  };
+
   const handleDeleteProject = (project) => {
     if (!project?.name) return;
     setPendingDeleteProject(project);
@@ -1130,7 +1246,9 @@ function AppCore() {
     }
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
-    fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); }).catch(() => {});
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    }).catch(() => {});
   };
 
   const handleMoveTaskToProject = async (taskId, projectName) => {
@@ -1370,6 +1488,7 @@ function AppCore() {
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
+            onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
             onMoveTaskToProject={handleMoveTaskToProject}
             onStop={handleStopStream}
             onOpenProject={(p) => {
@@ -1471,6 +1590,21 @@ function AppCore() {
           const id = pendingDeleteTaskId;
           setPendingDeleteTaskId(null);
           await performDeleteTask(id);
+        }}
+      />
+
+      <ConfirmModal
+        open={pendingDeleteTurn != null}
+        title="Delete this exchange?"
+        message="This removes both your question and Anton's response from the conversation. Any scratchpad cells, artifacts, or memory writes anton produced as part of this turn stay on disk. This can't be undone."
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteTurn(null)}
+        onConfirm={async () => {
+          const payload = pendingDeleteTurn;
+          setPendingDeleteTurn(null);
+          if (payload) await performDeleteTurn(payload.taskId, payload.turnIndex);
         }}
       />
 

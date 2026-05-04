@@ -73,17 +73,14 @@ function Divider({ label }) {
   );
 }
 
-function MessageActions({ getText }) {
-  // Just Copy for now — refresh / thumbs up / thumbs down hidden until
-  // the underlying actions are wired.
+function MessageActions({ getText, onDelete }) {
+  // Copy + delete for now — refresh / thumbs up / thumbs down hidden
+  // until the underlying actions are wired.
   const [copied, setCopied] = useState(false);
+  const [deleteHover, setDeleteHover] = useState(false);
   const onCopy = async () => {
     const text = typeof getText === 'function' ? getText() : '';
     if (!text) return;
-    // Use the shared helper — `navigator.clipboard.writeText` was
-    // failing silently in Electron when the renderer's effective
-    // origin / focus state didn't satisfy the modern API gate. The
-    // helper falls back to execCommand which always works in Electron.
     const ok = await copyText(text);
     if (ok) {
       setCopied(true);
@@ -110,15 +107,87 @@ function MessageActions({ getText }) {
       >
         {copied ? Ico.check(13) : Ico.copy(13)}
       </button>
+      {onDelete && (
+        <button
+          type="button"
+          title="Delete this question and response"
+          aria-label="Delete this question and response"
+          onClick={onDelete}
+          onMouseEnter={() => setDeleteHover(true)}
+          onMouseLeave={() => setDeleteHover(false)}
+          style={{
+            cursor: 'pointer',
+            background: 'transparent',
+            border: 0,
+            padding: 0,
+            width: 26, height: 26, borderRadius: 6,
+            display: 'grid', placeItems: 'center',
+            color: deleteHover ? 'var(--danger)' : 'inherit',
+            transition: 'color 140ms ease',
+          }}
+        >
+          {Ico.trash(13)}
+        </button>
+      )}
     </div>
   );
 }
 
 // ─── User pill ───────────────────────────────────────────────────────────
-function UserTurn({ content, attachments, time }) {
+//
+// `onDelete` is set by the parent only when this user message is an
+// "orphan" — no assistant response followed it (e.g. the stream was
+// stopped before anton produced anything). For paired user→answer
+// cycles, the delete affordance lives on the assistant bubble's
+// MessageActions and removes both halves. The orphan case has no
+// assistant bubble, so we surface the delete here instead — a
+// hover-revealed trash glyph just outside the bubble's bottom-left.
+function UserTurn({ content, attachments, time, onDelete }) {
+  const [hover, setHover] = useState(false);
+  const [trashHover, setTrashHover] = useState(false);
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        position: 'relative',
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div style={{
+        maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8,
+        alignItems: 'flex-end',
+        position: 'relative',
+      }}>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            onMouseEnter={() => setTrashHover(true)}
+            onMouseLeave={() => setTrashHover(false)}
+            title="Delete this message"
+            aria-label="Delete this message"
+            style={{
+              position: 'absolute',
+              // Just outside the bubble's bottom-left edge.
+              left: -32,
+              bottom: time ? 18 : 0,
+              width: 24, height: 24, borderRadius: 6,
+              background: 'transparent',
+              border: 0,
+              display: 'inline-grid',
+              placeItems: 'center',
+              cursor: 'pointer',
+              color: trashHover ? 'var(--danger)' : 'var(--ink-4)',
+              opacity: hover ? 1 : 0,
+              pointerEvents: hover ? 'auto' : 'none',
+              transition: 'opacity 140ms ease, color 140ms ease',
+            }}
+          >
+            {Ico.trash(13)}
+          </button>
+        )}
         <div style={{
           background: T.surface,
           border: `1px solid ${T.line}`,
@@ -161,7 +230,7 @@ function UserTurn({ content, attachments, time }) {
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // `slotIdHeader` lets the parent register this turn's ANTON label as an
 // orb anchor (used while the request is "thinking" with no steps yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, slotIdHeader }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader }) {
   const headerRef = useOrbitSlot(slotIdHeader || `__none__:${Math.random()}`);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
@@ -181,7 +250,9 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
         )}
       </div>
       {children}
-      {showActions && state !== 'thinking' && <MessageActions getText={() => copyText || ''} />}
+      {showActions && state !== 'thinking' && (
+        <MessageActions getText={() => copyText || ''} onDelete={onDelete} />
+      )}
     </div>
   );
 }
@@ -405,6 +476,7 @@ export default function ChatView({
   onUnpinTask,
   onRenameTask,
   onDeleteTask,
+  onDeleteTurn,
   onMoveTaskToProject,
   onOpenProject,
   onOpenProjectsList,
@@ -694,14 +766,39 @@ export default function ChatView({
           }}>
             <Divider label={dividerLabel(new Date())} />
 
-            {visibleMessages.map((m, i) => {
+            {(() => {
+              // Track the assistant turn index inline so MessageActions
+              // knows which user→answer cycle to delete. The walker
+              // mirrors the server's `_count_displayable_assistant_bubbles`
+              // contract: each assistant entry counts once. We also
+              // count user-input messages so orphan users (stop before
+              // any assistant response) can carry their own delete
+              // affordance with the right turn index.
+              let assistantTurnIdx = -1;
+              let userInputIdx = -1;
+              const isOrphanUser = (atIdx) => {
+                // Walk forward from this user message — if we hit
+                // another user before any assistant, this one is an
+                // orphan. End-of-list with no assistant → orphan.
+                for (let j = atIdx + 1; j < visibleMessages.length; j++) {
+                  const role = visibleMessages[j]?.role;
+                  if (role === 'user') return true;
+                  if (role === 'assistant') return false;
+                }
+                return true;
+              };
+              return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
+                userInputIdx += 1;
+                const turnIdxForThisUser = userInputIdx;
+                const orphan = isOrphanUser(i);
                 return (
                   <UserTurn
                     key={i}
                     content={m.content}
                     attachments={m.attachments}
                     time={formatTime(m.createdAt)}
+                    onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
                   />
                 );
               }
@@ -721,8 +818,21 @@ export default function ChatView({
                   </AnswerTurn>
                 );
               }
+              assistantTurnIdx += 1;
+              // The server keys delete_turn by USER-INPUT index, not
+              // by assistant index. With orphans (stop before any
+              // assistant) those can drift apart, so we use the most
+              // recent user-input index as the turn id for the
+              // assistant — the user that started this cycle.
+              const turnIdxForThisBubble = userInputIdx;
               return (
-                <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} copyText={m.content}>
+                <AnswerTurn
+                  key={i}
+                  state="done"
+                  time={formatTime(m.createdAt)}
+                  copyText={m.content}
+                  onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
+                >
                   {m.steps?.length > 0 && (
                     <ThinkingBlock
                       steps={m.steps}
@@ -736,7 +846,8 @@ export default function ChatView({
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} />
                 </AnswerTurn>
               );
-            })}
+              });
+            })()}
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} slotIdHeader="header:streaming">

@@ -263,27 +263,16 @@ def _sanitize_history_for_anthropic(history: list[dict]) -> tuple[list[dict], in
     return fixed, repairs
 
 
-def repair_history_if_needed(project: Optional[str], conversation_id: str) -> int:
-    """Sanitize the on-disk history for a conversation and drop any
-    cached live session so the next turn rebuilds against the repaired
-    form. Returns the number of tool_use ids that were patched.
-    """
-    history = _load_history(project, conversation_id)
-    if not history:
-        return 0
-    fixed, repairs = _sanitize_history_for_anthropic(history)
-    if repairs == 0:
-        return 0
+def _write_history(path: Path, history: list[dict]) -> bool:
+    """Atomic-rename write for a history list. Returns True on success."""
     try:
-        path = _history_path(project, conversation_id)
-        # Direct write — _atomic_write expects a dict; histories are
-        # arrays. Same atomic-rename pattern, slightly inlined.
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(fixed, f, ensure_ascii=False, indent=2)
+                json.dump(history, f, ensure_ascii=False, indent=2)
             os.replace(tmp, str(path))
+            return True
         except Exception:
             try:
                 os.unlink(tmp)
@@ -291,16 +280,78 @@ def repair_history_if_needed(project: Optional[str], conversation_id: str) -> in
                 pass
             raise
     except Exception:
-        logger.debug("Could not write repaired history for %s", conversation_id, exc_info=True)
-        return 0
-    # Drop the cached session so the next call loads the freshly
-    # repaired history rather than the in-memory broken version.
-    _live.pop(conversation_id, None)
-    logger.info(
-        "Repaired %d unpaired tool_use block(s) in %s before resuming",
-        repairs, conversation_id,
-    )
-    return repairs
+        logger.debug("Could not write history to %s", path, exc_info=True)
+        return False
+
+
+def repair_history_if_needed(project: Optional[str], conversation_id: str) -> int:
+    """Sanitize history for a conversation across BOTH the cached
+    in-memory session and the on-disk file. Returns the total number
+    of tool_use ids that were patched (in-memory + disk).
+
+    Why both: anton only flushes `_history.json` at the end of a
+    successful turn (`_persist_history()` runs once at the tail of
+    `turn_stream`). If a previous turn was stopped or errored
+    mid-tool-use, the LIVE session's in-memory `_history` carries the
+    unpaired `tool_use` while disk still reflects the previous good
+    save. Anton sends `self._history` (the in-memory copy) to
+    Anthropic on the next call, which is what triggers the
+    `400 invalid_request_error: tool_use ids were found without
+    tool_result blocks` we kept seeing.
+
+    Strategy:
+      1. Sanitize the on-disk history; write back if changed.
+      2. If a session is cached, sanitize its in-memory `_history`
+         in place. If repairs were needed, also push the patched
+         version to disk via the session's HistoryStore so future
+         loads stay clean.
+      3. Drop the cached session if either path repaired anything,
+         forcing a clean reload on the next call.
+    """
+    total = 0
+
+    # Disk pass.
+    history = _load_history(project, conversation_id)
+    if isinstance(history, list):
+        fixed, repairs = _sanitize_history_for_anthropic(history)
+        if repairs:
+            if _write_history(_history_path(project, conversation_id), fixed):
+                total += repairs
+
+    # In-memory pass — the source of truth anton actually sends.
+    entry = _live.get(conversation_id)
+    session = entry.get("session") if isinstance(entry, dict) else None
+    if session is not None:
+        live_hist = getattr(session, "_history", None)
+        if isinstance(live_hist, list):
+            fixed_live, live_repairs = _sanitize_history_for_anthropic(live_hist)
+            if live_repairs:
+                # Mutate the existing list in place so any other
+                # reference anton holds (it's the single source) sees
+                # the fix immediately.
+                live_hist.clear()
+                live_hist.extend(fixed_live)
+                # Persist via the session's own store if available, so
+                # future loads (including from another process) stay
+                # consistent. Ignore failures — the in-memory fix is
+                # what saves the very next turn.
+                store = getattr(session, "_history_store", None)
+                sid = getattr(session, "_session_id", None) or conversation_id
+                if store is not None:
+                    try: store.save(sid, live_hist)
+                    except Exception: pass
+                total += live_repairs
+
+    if total > 0:
+        # Drop the cache so the next `_resolve_session` rebuilds from
+        # the now-clean disk history. Belt + suspenders alongside the
+        # in-place mutation above.
+        _live.pop(conversation_id, None)
+        logger.info(
+            "Repaired %d unpaired tool_use block(s) in %s before resuming",
+            total, conversation_id,
+        )
+    return total
 
 
 def _normalize_turns(payload: dict) -> tuple[dict, bool]:
@@ -509,6 +560,43 @@ def _ensure_meta(
     }
     _save_meta(project, conversation_id, meta)
     return meta
+
+
+def _seed_meta_from_user_input(
+    project: Optional[str],
+    conversation_id: str,
+    user_input: object,
+) -> None:
+    """Populate `title` + `preview` from the first user message of a
+    fresh conversation so the recents listing reflects the
+    conversation immediately, not just after the turn completes.
+
+    Idempotent: bails if the conversation already has a non-empty
+    title, so subsequent turns don't relabel a renamed conversation.
+    """
+    if not user_input:
+        return
+    text = user_input if isinstance(user_input, str) else str(user_input)
+    text = text.strip()
+    if not text:
+        return
+    meta = _load_meta(project, conversation_id) or {}
+    if meta.get("title"):
+        return
+    preview = text[:60]
+    now = datetime.now(timezone.utc).isoformat()
+    meta["id"] = conversation_id
+    meta["title"] = preview[:50] + ("..." if len(preview) > 50 else "")
+    meta["preview"] = preview
+    if not meta.get("project"):
+        try:
+            meta["project"], _ = projects_store.resolve_project(project)
+        except FileNotFoundError:
+            pass
+    if not meta.get("created_at"):
+        meta["created_at"] = now
+    meta["updated_at"] = now
+    _save_meta(project, conversation_id, meta)
 
 
 def _update_meta_after_turn(
@@ -754,6 +842,17 @@ async def chat_stream(
     cid = conversation_id or _new_conversation_id()
     _ensure_meta(project, cid)
 
+    # Seed the conversation's title + preview from the user's first
+    # message immediately, so the recents listing shows the right
+    # name even while the stream is in flight. Anton only flushes
+    # `_persist_history()` at the tail of a successful turn — so
+    # without this, navigating away mid-stream and coming back finds
+    # the conversation labelled with its raw id.
+    try:
+        _seed_meta_from_user_input(project, cid, user_input)
+    except Exception:
+        logger.debug("Could not seed meta from user input", exc_info=True)
+
     # If a previous turn was stopped or errored mid-tool-use, the
     # history may contain an assistant `tool_use` block without a
     # matching user `tool_result`. The Anthropic API rejects that
@@ -976,6 +1075,114 @@ def update_conversation(conversation_id: str, **patch) -> dict | None:
     except Exception:
         logger.debug("Could not update conversation meta", exc_info=True)
     return meta
+
+
+def _is_user_input_message(msg: object) -> bool:
+    """True iff this is a real user-typed message (vs a tool_result
+    user message that anton inserts mid-turn). User input messages
+    are the boundaries between displayable turns.
+    """
+    if not isinstance(msg, dict):
+        return False
+    if msg.get("role") != "user":
+        return False
+    content = msg.get("content")
+    if isinstance(content, str):
+        return bool(content)
+    if isinstance(content, list):
+        return any(
+            isinstance(b, dict) and b.get("type") == "text" and b.get("text")
+            for b in content
+        )
+    return False
+
+
+def delete_turn(conversation_id: str, turn_index: int) -> dict | None:
+    """Remove one user→answer cycle (the user's question + all
+    assistant messages anton produced in response, including any
+    intermediate tool_use / tool_result blocks) from a conversation.
+
+    `turn_index` is the 0-based displayable bubble index — the same
+    index `record_turn_events` keys the events sidecar by, and the
+    same index `_parse_for_display` exposes to the client. So when
+    the user clicks the trash on the Nth assistant bubble, we delete
+    the slice from the Nth user-input message through to (but not
+    including) the (N+1)th user-input message.
+
+    Side effects: rewrites `_history.json`, drops the matching entry
+    from `_turns.json` and reindexes higher entries down by one,
+    drops the live in-memory session so anton rebuilds against the
+    truncated history. Returns a summary dict, or None if the
+    conversation can't be located.
+    """
+    located = _find_conversation_dir(conversation_id)
+    if not located:
+        return None
+    project, ep = located
+    history = _load_history(project, conversation_id)
+    if not isinstance(history, list) or not history:
+        return None
+
+    # Find every user-input boundary in the raw history.
+    user_input_indices = [
+        i for i, m in enumerate(history) if _is_user_input_message(m)
+    ]
+    if turn_index < 0 or turn_index >= len(user_input_indices):
+        return None
+
+    start = user_input_indices[turn_index]
+    end = (
+        user_input_indices[turn_index + 1]
+        if turn_index + 1 < len(user_input_indices)
+        else len(history)
+    )
+
+    new_history = history[:start] + history[end:]
+    if not _write_history(_history_path(project, conversation_id), new_history):
+        return None
+
+    # Reindex the events sidecar — drop the matching entry, shift any
+    # higher indices down by one. Skip silently if the sidecar's
+    # missing or unreadable.
+    turns_path = ep / f"{conversation_id}_turns.json"
+    if turns_path.is_file():
+        try:
+            payload = json.loads(turns_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                by_turn = payload.get("by_assistant_turn") or {}
+                if isinstance(by_turn, dict):
+                    new_by_turn: dict = {}
+                    for k, v in by_turn.items():
+                        try:
+                            idx = int(k)
+                        except (ValueError, TypeError):
+                            continue
+                        if idx == turn_index:
+                            continue
+                        if idx > turn_index:
+                            idx -= 1
+                        new_by_turn[str(idx)] = v
+                    payload["by_assistant_turn"] = new_by_turn
+                    try:
+                        _atomic_write(turns_path, payload)
+                    except Exception:
+                        logger.debug(
+                            "Could not rewrite turns sidecar after delete",
+                            exc_info=True,
+                        )
+        except Exception:
+            logger.debug("Could not parse turns sidecar", exc_info=True)
+
+    # Drop the live session so anton rebuilds with the truncated
+    # history on the next chat call.
+    _live.pop(conversation_id, None)
+
+    return {
+        "conversation_id": conversation_id,
+        "turn_index": turn_index,
+        "removed_count": end - start,
+        "remaining_messages": len(new_history),
+    }
 
 
 def delete_conversation(conversation_id: str) -> bool:

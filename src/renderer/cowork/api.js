@@ -574,6 +574,28 @@ export async function renameConversation(id, title) {
   });
 }
 
+// Delete one user→answer cycle (the question + the assistant
+// response, including any internal tool_use/tool_result blocks
+// anton generated during the turn). `turnIndex` is the 0-based
+// displayable bubble index — same value used to look up events
+// in the per-turn sidecar.
+export async function deleteConversationTurn(id, turnIndex) {
+  const res = await fetch(
+    BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
+  if (res.status === 404) return { status: 'gone', id, turnIndex };
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json())?.detail || ''; } catch {}
+    throw new Error(detail || `Delete turn failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function deleteConversation(id) {
   // Idempotent — if the server says "not found", treat that as
   // success. The conversation may have been removed by a previous

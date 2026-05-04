@@ -80,7 +80,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
               Scratchpad
             </span>
             <span className="font-mono text-[11px] text-ink-4">
-              {tabs.length} pad{tabs.length === 1 ? '' : 's'} · {activeTab?.cells.length || 0} cell{activeTab?.cells.length === 1 ? '' : 's'}
+              {tabs.length} pad{tabs.length === 1 ? '' : 's'} · {activeTab?.cells.length || 0} step{activeTab?.cells.length === 1 ? '' : 's'}
             </span>
           </div>
           <button
@@ -125,7 +125,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
             />
           ))}
           {(!activeTab || activeTab.cells.length === 0) && (
-            <p className="p-8 text-body text-ink-4">No scratchpad cells in this turn.</p>
+            <p className="p-8 text-body text-ink-4">No steps in this turn.</p>
           )}
         </div>
       </div>
@@ -155,11 +155,11 @@ function CellView({ cell, index, total }) {
 
   return (
     <div className="border-b border-line px-6 py-5 last:border-b-0">
-      {/* Cell header */}
+      {/* Step header */}
       <div className="flex items-baseline justify-between gap-3">
         <div className="flex min-w-0 items-baseline gap-3">
           <span className="font-mono text-[10.5px] tracking-wider text-ink-4">
-            cell {index}/{total}
+            step {index}/{total}
           </span>
           <span className="truncate font-display text-[14px] font-semibold tracking-tight text-ink">
             {data.one_line_description || cell.label || 'Untitled'}
@@ -178,9 +178,9 @@ function CellView({ cell, index, total }) {
         </button>
       </div>
 
-      {/* Meta strip */}
+      {/* Meta strip — timing + packages only. No `action` chip; the
+          one-line description above already says what the step does. */}
       <div className="mt-1 flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
-        {data.action && <span>action: <span className="text-ink-3">{data.action}</span></span>}
         {fmtMs(reasoningMs) && <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs)}</span></span>}
         {fmtMs(executionMs) && <span>exec: <span className="text-ink-3">{fmtMs(executionMs)}</span></span>}
         {Array.isArray(data.packages) && data.packages.length > 0 && (
@@ -188,16 +188,15 @@ function CellView({ cell, index, total }) {
         )}
       </div>
 
-      {/* Output (always visible — that's the headline answer) */}
-      <Section label="Output" muted={!stdout}>
-        {stdout
-          ? (
-            <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">
+      {/* Output — render as a bare block without a section label, and
+          omit it entirely when the step produced no stdout. Steps that
+          only manipulate state (no print) shouldn't surface a "no
+          output" placeholder; the absence is the cleanest signal. */}
+      {stdout && (
+        <pre className="mt-4 overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">
 {stdout}
-            </pre>
-          )
-          : <p className="font-body text-[12.5px] italic text-ink-4">No stdout from this cell.</p>}
-      </Section>
+        </pre>
+      )}
 
       {/* Code + stderr — revealed by the toggle */}
       {showCode && (
