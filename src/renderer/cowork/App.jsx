@@ -157,20 +157,39 @@ function AppCore() {
       try { ctrl.abort(); } catch {}
       activeStreamCtrlRef.current = null;
     }
+    activeScratchpadRef.current = null;
+
     // 3) Roll the streaming placeholder into a final assistant
-    //    message marked as cancelled so the chat doesn't sit forever.
+    //    message. Drop the in-flight steps so the rail's Progress
+    //    + ThinkingBlock collapse cleanly, and leave a friendly
+    //    confirmation in place of any partial body text.
+    const STOP_MESSAGES = [
+      'Task stopped — let me know what to try next.',
+      'Got it, I stepped back. Want to take another angle?',
+      'Stopped here. What would you like me to do instead?',
+      'Paused as requested. Ready when you are.',
+      'All halted. Tell me how to proceed.',
+      'Done — execution stopped on your call.',
+      'Standing by. Send another prompt when you\'re ready.',
+      'Task halted gracefully. What\'s next?',
+    ];
+    const stoppedMsg = STOP_MESSAGES[Math.floor(Math.random() * STOP_MESSAGES.length)];
+
     setTasks((prev) => prev.map((t) => {
       const streaming = (t.messages || []).find((m) => m.role === '_streaming');
       if (!streaming) return t;
-      const others = t.messages.filter((m) => m.role !== '_streaming');
-      const finalContent = (streaming.content || '').trim() + (streaming.content ? '\n\n_(stopped)_' : '_(stopped)_');
+      const others = t.messages
+        .filter((m) => m.role !== '_streaming')
+        .filter((m) => m.role !== 'activity'); // also clear stale activity rows
       return {
         ...t,
         status: 'idle',
         messages: [...others, {
           role: 'assistant',
-          content: finalContent,
-          steps: streaming.steps || [],
+          content: stoppedMsg,
+          // Empty steps so Progress + ThinkingBlock stop rendering
+          // for this turn — the rail returns to its idle state.
+          steps: [],
           startedAt: streaming.startedAt,
         }],
       };
@@ -463,6 +482,12 @@ function AppCore() {
     }
     if (key === 'projects') {
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+      // Clicking "Projects" in the sidebar should always land on the
+      // grid of all projects, not the previously-selected project's
+      // detail. Clear the selection so ProjectsView starts in grid
+      // mode. The chat-header crumb routes through onOpenProject
+      // (which sets selectedProject AFTER routing) so it's unaffected.
+      setSelectedProject(null);
     }
     if (key === 'scheduled') {
       fetchSchedules().then((data) => setScheduled(data.schedules || []));

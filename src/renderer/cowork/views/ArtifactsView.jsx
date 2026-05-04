@@ -31,14 +31,12 @@ function PageHeader({ title, subtitle }) {
   );
 }
 
-function PublishedPill({ url, onOpen }) {
+function PublishedPill() {
+  // Static badge — the URL row below handles the click-to-open
+  // affordance, so the pill no longer doubles as a button.
   return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
-      title={`Open published URL: ${url}`}
+    <span
       style={{
-        cursor: 'pointer', font: 'inherit',
         background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
         border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
         color: 'var(--accent)',
@@ -47,11 +45,100 @@ function PublishedPill({ url, onOpen }) {
         display: 'inline-flex', alignItems: 'center', gap: 5,
         flexShrink: 0,
         letterSpacing: '0.04em', textTransform: 'uppercase',
+        fontFamily: FONT_BODY,
       }}
     >
       <span style={{ width: 5, height: 5, borderRadius: 99, background: 'var(--accent)' }} />
       Published
-    </button>
+    </span>
+  );
+}
+
+// URL row — a compact, theme-aware pill that holds the public URL
+// (truncated), an external-link affordance to open it in the browser,
+// and a copy button. Sits directly under the title for published
+// artifacts. Replaces the old Copy URL / Open URL buttons in the
+// action row.
+function PublishedUrlRow({ url, onOpen, onCopy }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async (e) => {
+    e.stopPropagation();
+    await onCopy?.();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  };
+  // Strip protocol for display only — keeps the pill short and the
+  // user can still see the host + path clearly.
+  const display = url.replace(/^https?:\/\//, '');
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 0,
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+        borderRadius: 8,
+        overflow: 'hidden',
+        minWidth: 0,
+      }}
+    >
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
+        title={`Open in browser: ${url}`}
+        style={{
+          flex: 1, minWidth: 0,
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          padding: '7px 10px',
+          background: 'transparent', border: 0, cursor: 'pointer',
+          font: 'inherit', fontFamily: FONT_BODY, fontSize: 12,
+          color: 'var(--ink-2)', textAlign: 'left',
+          transition: 'color 120ms ease, background 120ms ease',
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.color = 'var(--accent)';
+          e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 8%, transparent)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.color = 'var(--ink-2)';
+          e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--accent)' }}>
+          {Ico.externalLink(13)}
+        </span>
+        <span style={{
+          minWidth: 0, flex: 1,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {display}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={handleCopy}
+        title={copied ? 'Copied' : 'Copy URL'}
+        style={{
+          flexShrink: 0,
+          padding: '7px 10px',
+          background: 'transparent',
+          border: 0, borderLeft: '1px solid var(--line)',
+          cursor: 'pointer', font: 'inherit',
+          color: copied ? 'var(--accent)' : 'var(--ink-3)',
+          display: 'inline-flex', alignItems: 'center',
+          transition: 'color 120ms ease, background 120ms ease',
+        }}
+        onMouseOver={(e) => {
+          if (!copied) e.currentTarget.style.color = 'var(--ink)';
+          e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 8%, transparent)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.color = copied ? 'var(--accent)' : 'var(--ink-3)';
+          e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        {copied ? Ico.check(13) : Ico.copy(13)}
+      </button>
+    </div>
   );
 }
 
@@ -165,9 +252,7 @@ function ArtifactBubble({ artifact, onOpenViewer, onChange }) {
             color: 'var(--ink)', flex: 1, minWidth: 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{artifact.title}</span>
-          {published && (
-            <PublishedPill url={artifact.publishedUrl} onOpen={onOpenPublished} />
-          )}
+          {published && <PublishedPill />}
           {!published && artifact.live && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -180,6 +265,18 @@ function ArtifactBubble({ artifact, onOpenViewer, onChange }) {
             </span>
           )}
         </div>
+
+        {/* Published URL row — sits right under the title so the
+            link is the most visible secondary affordance. Replaces
+            the older Copy URL / Open URL action buttons. */}
+        {published && (
+          <PublishedUrlRow
+            url={artifact.publishedUrl}
+            onOpen={onOpenPublished}
+            onCopy={onCopyUrl}
+          />
+        )}
+
         <div style={{
           fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
         }}>
@@ -187,20 +284,16 @@ function ArtifactBubble({ artifact, onOpenViewer, onChange }) {
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {published ? (
-            <>
-              <ActionButton onClick={onCopyUrl} title="Copy public URL">Copy URL</ActionButton>
-              <ActionButton onClick={onOpenPublished} title="Open published URL">Open URL</ActionButton>
-              <ActionButton onClick={onUnpublish} danger title="Unpublish from Minds">
-                {busy ? 'Working…' : 'Unpublish'}
-              </ActionButton>
-            </>
+            <ActionButton onClick={onUnpublish} danger title="Unpublish from Minds">
+              {busy ? 'Working…' : 'Unpublish'}
+            </ActionButton>
           ) : isHtml ? (
             <ActionButton onClick={onPublish} primary title="Publish to Minds">
               {busy ? 'Publishing…' : 'Publish'}
             </ActionButton>
           ) : null}
-          <ActionButton onClick={() => openArtifact(artifact.path)} title="Open in OS">Open</ActionButton>
-          <ActionButton onClick={() => revealArtifact(artifact.path)} title="Reveal in finder">Reveal</ActionButton>
+          <ActionButton onClick={() => openArtifact(artifact.path)} title="Open file">Open</ActionButton>
+          <ActionButton onClick={() => revealArtifact(artifact.path)} title="Reveal in Finder">Reveal</ActionButton>
         </div>
       </div>
     </div>

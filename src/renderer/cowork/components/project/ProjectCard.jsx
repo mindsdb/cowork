@@ -9,16 +9,18 @@ import { fetchMemory, fetchArtifacts } from '../../api';
 const FONT_BODY    = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
 
-// Deterministic accent color per project — small touch that makes the
-// grid feel less repetitive without manual configuration.
-const STRIPE_HUES = [200, 220, 165, 280, 12, 95, 330, 250, 40, 188];
-function stripeColor(name) {
+// Deterministic tint per project — picks one of the theme's CSS-var
+// project tints (defined in globals.css :root + dark mode override),
+// so dark mode gets the neon family and light mode gets the deeper
+// saturated palette automatically. Same project always gets the same
+// slot regardless of theme.
+function stripeVar(name) {
   let h = 5381;
   for (let i = 0; i < (name || '').length; i++) {
     h = ((h << 5) + h + name.charCodeAt(i)) | 0;
   }
-  const hue = STRIPE_HUES[Math.abs(h) % STRIPE_HUES.length];
-  return `hsl(${hue}, 70%, 56%)`;
+  const idx = (Math.abs(h) % 6) + 1;
+  return `var(--tint-${idx})`;
 }
 
 function StatTile({ label, value }) {
@@ -104,7 +106,7 @@ export function ProjectCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
-  const stripe = stripeColor(project?.name);
+  const stripe = stripeVar(project?.name);
 
   useEffect(() => {
     if (!menuOpen) return;

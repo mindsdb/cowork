@@ -257,10 +257,28 @@ export default function Composer({
               title="Stop generation"
               aria-label="Stop generation"
               style={{
-                background: 'var(--danger)', borderColor: 'var(--danger)',
+                // Theme-aware "stop" treatment — uses the danger token
+                // on a soft tinted surface, with an outline that
+                // intensifies on hover. Matches the chat header
+                // unpublish button so the destructive vocabulary is
+                // consistent across surfaces.
+                background: 'var(--danger-bg)',
+                color: 'var(--danger)',
+                border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+                boxShadow: 'none',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = 'var(--danger)';
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.borderColor = 'var(--danger)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'var(--danger-bg)';
+                e.currentTarget.style.color = 'var(--danger)';
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--danger) 35%, transparent)';
               }}
             >
-              {Ico.stop(13)}
+              {Ico.stop(11)}
             </button>
           ) : (
             <button

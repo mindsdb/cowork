@@ -283,10 +283,11 @@ export default function Sidebar({
         {/* Anton group — visually grouped panel for the brain-style nav */}
         <div className="section-label">Anton</div>
         <div className="anton-group">
-          <NavItem icon={Ico.brain(15)}   label="Skills library" onClick={() => onNavigate('skills')}  active={activeRoute === 'skills'}  compact />
+          <NavItem icon={Ico.cube(15)}    label="Skills library" onClick={() => onNavigate('skills')}  active={activeRoute === 'skills'}  compact />
           <NavItem icon={Ico.brain(15)}   label="Memory"         onClick={() => onNavigate('memory')}  active={activeRoute === 'memory'}  compact />
           <NavItem icon={Ico.database(15)} label="Connect data"  onClick={() => onNavigate('connect')} active={activeRoute === 'connect'} compact />
-          <NavItem icon={Ico.upload(15)}  label="Publish"        onClick={() => onNavigate('publish')} active={activeRoute === 'publish'} compact />
+          {/* Publish nav item removed — publishing now happens
+              inline on each artifact card / inside the artifact viewer. */}
         </div>
 
         {/* Pinned */}
