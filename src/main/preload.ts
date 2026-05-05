@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('antontron', {
 
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
+  showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
   // Move a local file/folder to the OS Trash. Returns
   // { ok: true } on success or { ok: false, reason } on failure.
   trashItem:    (p: string) => ipcRenderer.invoke('shell:trash-item', p),

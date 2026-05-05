@@ -9,6 +9,7 @@ import json
 import logging
 import mimetypes
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -83,21 +84,77 @@ def _scan_output_dirs() -> list[Path]:
     return list(dirs.values())
 
 
+def _candidate_relative_artifacts(raw_path: str) -> list[Path]:
+    text = (raw_path or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    parts = [part for part in text.split("/") if part]
+    if not text or any(part in (".", "..") for part in parts):
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+
+    rels: list[str]
+    if text.startswith(".anton/output/"):
+        rels = [text[len(".anton/output/"):]]
+    elif text.startswith("anton/output/"):
+        # Compatibility shim for streamed display paths that omit the
+        # leading dot. Artifacts still live under `.anton/output`.
+        rels = [text[len("anton/output/"):]]
+    else:
+        rels = [text]
+
+    matches: dict[str, Path] = {}
+    for output_dir in _scan_output_dirs():
+        output_root = output_dir.resolve()
+        for rel in rels:
+            try:
+                target = (output_root / rel).resolve()
+                target.relative_to(output_root)
+            except ValueError:
+                continue
+            if target.is_file():
+                matches[str(target)] = target
+    return list(matches.values())
+
+
 def _resolve_artifact_path(raw_path: str) -> Path:
     try:
-        target = Path(raw_path).expanduser().resolve()
+        target = Path(raw_path).expanduser()
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid artifact path") from exc
 
-    for output_dir in _scan_output_dirs():
-        try:
-            output_root = output_dir.resolve()
-            target.relative_to(output_root)
-            if target.is_file():
-                return target
-        except ValueError:
-            continue
+    if not str(target).strip():
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+
+    if target.is_absolute():
+        resolved = target.resolve()
+        for output_dir in _scan_output_dirs():
+            try:
+                output_root = output_dir.resolve()
+                resolved.relative_to(output_root)
+                if resolved.is_file():
+                    return resolved
+            except ValueError:
+                continue
+        raise HTTPException(status_code=404, detail="Artifact is not in a known Anton output directory")
+
+    matches = _candidate_relative_artifacts(raw_path)
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Artifact path matches multiple Anton output directories; use an absolute path",
+        )
     raise HTTPException(status_code=404, detail="Artifact is not in a known Anton output directory")
+
+
+def _reveal_in_file_manager(artifact: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.run(["open", "-R", str(artifact)], check=False)
+    elif sys.platform == "win32":
+        subprocess.run(["explorer", f"/select,{artifact}"], check=False)
+    else:
+        subprocess.run(["xdg-open", str(artifact.parent)], check=False)
 
 
 TEXT_EXTENSIONS = {".html", ".md", ".txt", ".csv", ".json", ".py", ".js", ".ts", ".tsx", ".css", ".log"}
@@ -271,7 +328,7 @@ async def open_artifact(req: ArtifactAction):
 async def reveal_artifact(req: ArtifactAction):
     artifact = _resolve_artifact_path(req.path)
     try:
-        subprocess.run(["open", "-R", str(artifact)], check=False)
+        _reveal_in_file_manager(artifact)
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Could not reveal artifact") from exc
     return {"status": "ok", "path": str(artifact)}

@@ -23,6 +23,8 @@ const FONT_BODY    = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
 const FONT_MONO    = "var(--font-mono)";
 
+const EMPTY_ARTIFACTS = [];
+
 // ─── Header ──────────────────────────────────────────────────────────────
 
 function ArtifactsHeader() {
@@ -924,7 +926,7 @@ function Toast({ kind, message, onClose }) {
 
 // ─── Composed view ───────────────────────────────────────────────────────
 
-export default function ArtifactsView({ artifacts: initial = [], projects = [] }) {
+export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [] }) {
   const [list, setList] = useState(initial);
   const [viewer, setViewer] = useState(null);
   const [view, setView] = useState(() =>
@@ -940,10 +942,18 @@ export default function ArtifactsView({ artifacts: initial = [], projects = [] }
   const [toast, setToast] = useState(null); // { kind: 'ok'|'error', message }
   const searchRef = useRef(null);
 
-  // Reflect prop changes (parent may refresh on stream completion).
-  if (list !== initial && list.length === 0 && initial.length > 0) {
+  // Reflect parent refreshes exactly. The parent refetches when the
+  // route opens and after streams complete; if a file was trashed from
+  // another surface, the refreshed prop is the source of truth and the
+  // local grid must drop the stale card.
+  useEffect(() => {
     setList(initial);
-  }
+    setViewer((cur) => {
+      if (!cur) return cur;
+      const fresh = initial.find((a) => a.path === cur.path);
+      return fresh ? { ...cur, ...fresh } : null;
+    });
+  }, [initial]);
 
   // Persist view toggle.
   useEffect(() => { localStorage.setItem('anton:artifacts-view', view); }, [view]);
@@ -971,6 +981,11 @@ export default function ArtifactsView({ artifacts: initial = [], projects = [] }
   const updateOne = (updated) => {
     setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
     setViewer((cur) => (cur && cur.path === updated.path ? { ...cur, ...updated } : cur));
+  };
+
+  const removeOne = (path) => {
+    setList((prev) => prev.filter((a) => a.path !== path));
+    setViewer((cur) => (cur && cur.path === path ? null : cur));
   };
 
   const setBusy = (path, isBusy) => {
@@ -1136,6 +1151,7 @@ export default function ArtifactsView({ artifacts: initial = [], projects = [] }
         artifact={viewer}
         onClose={() => setViewer(null)}
         onChange={updateOne}
+        onDelete={removeOne}
       />
     </div>
   );

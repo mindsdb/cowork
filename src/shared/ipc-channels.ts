@@ -58,4 +58,5 @@ export const IPC = {
   APP_GET_PLATFORM: 'app:get-platform',
   APP_UI_VERSION: 'app:ui-version',
   OPEN_EXTERNAL: 'app:open-external',
+  SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
 } as const;

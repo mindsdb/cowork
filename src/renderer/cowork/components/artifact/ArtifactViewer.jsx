@@ -16,21 +16,27 @@ const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monosp
 // Single-row "label: value [copy]" — used twice in the header (local
 // path + remote URL when published). Tiny inline copy state flips the
 // glyph to a check for ~1.4s after a successful copy.
-function PathRow({ label, value, accent = false }) {
-  const [copied, setCopied] = useState(false);
+function PathRow({ label, value, copyValue, accent = false }) {
+  const [copyState, setCopyState] = useState('');
   if (!value) return null;
+  const valueToCopy = copyValue || value;
   const onCopy = async (e) => {
     e.stopPropagation();
     // Use the shared helper so the execCommand fallback kicks in when
     // `navigator.clipboard.writeText` is unavailable / blocked. Only
     // flip the icon to "copied" if the copy actually succeeded —
     // otherwise the check was misleading users into thinking it worked.
-    const ok = await copyText(value);
+    const ok = await copyText(valueToCopy);
     if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
+      setCopyState('copied');
+      setTimeout(() => setCopyState(''), 1400);
+    } else {
+      setCopyState('failed');
+      setTimeout(() => setCopyState(''), 1800);
     }
   };
+  const copied = copyState === 'copied';
+  const failed = copyState === 'failed';
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
@@ -51,23 +57,25 @@ function PathRow({ label, value, accent = false }) {
       <button
         type="button"
         onClick={onCopy}
-        title={copied ? 'Copied' : `Copy ${label}`}
-        aria-label={copied ? 'Copied' : `Copy ${label}`}
+        title={copied ? 'Copied' : failed ? 'Copy failed' : `Copy ${label}`}
+        aria-label={copied ? 'Copied' : failed ? 'Copy failed' : `Copy ${label}`}
         style={{
           flexShrink: 0,
           width: 20, height: 20, borderRadius: 4,
           background: 'transparent', border: 0,
           cursor: 'pointer',
-          color: copied ? 'var(--accent)' : 'var(--ink-4)',
+          color: copied ? 'var(--accent)' : failed ? 'var(--danger)' : 'var(--ink-4)',
           display: 'inline-grid', placeItems: 'center',
           transition: 'color 120ms ease, background 120ms ease',
         }}
         onMouseOver={(e) => {
-          if (!copied) e.currentTarget.style.color = 'var(--ink-2)';
+          e.currentTarget.style.color = copied
+            ? 'var(--accent)'
+            : failed ? 'var(--danger)' : 'var(--ink-2)';
           e.currentTarget.style.background = 'var(--surface-2)';
         }}
         onMouseOut={(e) => {
-          e.currentTarget.style.color = copied ? 'var(--accent)' : 'var(--ink-4)';
+          e.currentTarget.style.color = copied ? 'var(--accent)' : failed ? 'var(--danger)' : 'var(--ink-4)';
           e.currentTarget.style.background = 'transparent';
         }}
       >
@@ -159,6 +167,10 @@ function ActionsPopover({ open, anchorRect, onClose, items }) {
 }
 
 export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) {
+  const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
+  const displayPath = artifact?.displayPath || actionPath;
+  const disabledReason = artifact?.actionDisabledReason || '';
+  const hasActionPath = !!actionPath && !disabledReason;
   // Mounted preview URL — iframe loads this with `src=` so relative
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
@@ -189,26 +201,35 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // assets at sibling paths resolve naturally because they share the
   // same URL prefix.
   useEffect(() => {
-    if (!open || !artifact?.path) return;
+    if (!open || !artifact) return;
+    if (!hasActionPath) {
+      setPreviewUrl('');
+      setErr(disabledReason || 'This artifact does not have a local file path.');
+      return;
+    }
     setLoading(true);
     setErr('');
     setPreviewUrl('');
-    mountArtifactPreview(artifact.path)
+    mountArtifactPreview(actionPath)
       .then(({ url }) => {
         if (!url) throw new Error('Preview mount returned no URL');
         setPreviewUrl(url);
       })
       .catch((e) => setErr(e?.message || 'Could not load artifact'))
       .finally(() => setLoading(false));
-  }, [open, artifact?.path]);
+  }, [open, artifact?.path, actionPath, hasActionPath, disabledReason]);
 
   if (!open || !artifact) return null;
 
   const onPublish = async () => {
     if (busy) return;
+    if (!hasActionPath) {
+      setErr(disabledReason || 'This artifact does not have a local file path.');
+      return;
+    }
     setBusy(true);
     try {
-      const r = await publishArtifact(artifact.path);
+      const r = await publishArtifact(actionPath);
       if (r?.url) {
         setPublishedUrl(r.url);
         onChange?.({ ...artifact, publishedUrl: r.url });
@@ -221,9 +242,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   };
   const onUnpublish = async () => {
     if (busy) return;
+    if (!hasActionPath) {
+      setErr(disabledReason || 'This artifact does not have a local file path.');
+      return;
+    }
     setBusy(true);
     try {
-      await unpublishArtifact(artifact.path);
+      await unpublishArtifact(actionPath);
       setPublishedUrl('');
       onChange?.({ ...artifact, publishedUrl: '' });
     } catch (e) {
@@ -233,21 +258,34 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     }
   };
   const onOpenOS = async () => {
-    try { await window.antontron?.openPath?.(artifact.path); } catch {}
+    if (!hasActionPath) {
+      setErr(disabledReason || 'This artifact does not have a local file path.');
+      return;
+    }
+    try {
+      const result = await window.antontron?.openPath?.(actionPath);
+      if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
+    } catch (e) {
+      setErr(e?.message || 'Open failed');
+    }
   };
   const onTrash = async () => {
     if (busy) return;
+    if (!hasActionPath) {
+      setErr(disabledReason || 'This artifact does not have a local file path.');
+      return;
+    }
     // No confirmation modal — `shell.trashItem` is recoverable from the
     // user's Trash, so a click is reversible. The viewer closes once
     // the file is gone so we don't leave a dead preview on screen.
     setBusy(true);
     setErr('');
     try {
-      const result = await window.antontron?.trashItem?.(artifact.path);
+      const result = await window.antontron?.trashItem?.(actionPath);
       if (result && result.ok === false) {
         throw new Error(result.reason || 'Could not move to Trash.');
       }
-      onDelete?.(artifact.path);
+      onDelete?.(actionPath);
       onClose?.();
     } catch (e) {
       setErr(e?.message || 'Delete failed');
@@ -304,7 +342,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             }}>
               {artifact.title || artifact.path?.split('/').pop()}
             </div>
-            <PathRow label="local" value={artifact.path} />
+            <PathRow label="local" value={displayPath} copyValue={actionPath} />
             {publishedUrl && (
               <PathRow label="remote" value={publishedUrl} accent />
             )}
@@ -338,16 +376,16 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             <button
               type="button"
               onClick={onUnpublish}
-              disabled={busy}
-              title="Unpublish"
+              disabled={busy || !hasActionPath}
+              title={hasActionPath ? 'Unpublish' : disabledReason || 'No local artifact path'}
               style={{
-                cursor: busy ? 'progress' : 'pointer',
+                cursor: busy ? 'progress' : hasActionPath ? 'pointer' : 'not-allowed',
                 background: 'transparent',
                 border: '1px solid var(--line)',
                 color: 'var(--ink-2)',
                 padding: '6px 12px', borderRadius: 8,
                 fontSize: 12.5, fontWeight: 500,
-                opacity: busy ? 0.6 : 1,
+                opacity: busy || !hasActionPath ? 0.6 : 1,
               }}
             >
               Unpublish
@@ -356,15 +394,15 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             <button
               type="button"
               onClick={onPublish}
-              disabled={busy}
-              title="Publish"
+              disabled={busy || !hasActionPath}
+              title={hasActionPath ? 'Publish' : disabledReason || 'No local artifact path'}
               style={{
-                cursor: busy ? 'progress' : 'pointer',
+                cursor: busy ? 'progress' : hasActionPath ? 'pointer' : 'not-allowed',
                 background: 'var(--accent)', border: '1px solid var(--accent)',
                 color: '#fff',
                 padding: '6px 12px', borderRadius: 8,
                 fontSize: 12.5, fontWeight: 600,
-                opacity: busy ? 0.7 : 1,
+                opacity: busy || !hasActionPath ? 0.7 : 1,
               }}
             >
               {busy ? 'Publishing…' : 'Publish'}
@@ -416,12 +454,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             {
               label: 'Open in OS',
               icon: Ico.externalLink(13),
+              disabled: !hasActionPath,
               onClick: onOpenOS,
             },
             {
               label: publishedUrl ? 'Unpublish' : 'Publish',
               icon: Ico.upload(13),
-              disabled: busy,
+              disabled: busy || !hasActionPath,
               onClick: publishedUrl ? onUnpublish : onPublish,
             },
             { divider: true },
@@ -429,7 +468,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
               label: 'Delete',
               icon: Ico.trash(13),
               danger: true,
-              disabled: busy,
+              disabled: busy || !hasActionPath,
               onClick: onTrash,
             },
           ]}

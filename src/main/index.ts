@@ -898,6 +898,20 @@ function setupIPC() {
     }
   });
 
+  // Reveal a local file in the platform file manager. Unlike
+  // shell.openPath, this selects the artifact instead of opening it.
+  ipcMain.handle(IPC.SHOW_ITEM_IN_FOLDER, async (_event, p: string) => {
+    if (typeof p !== 'string' || !p) return { ok: false, reason: 'empty path' };
+    try {
+      const target = path.resolve(p);
+      if (!fs.existsSync(target)) return { ok: false, reason: 'file not found' };
+      shell.showItemInFolder(target);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, reason: e?.message || String(e) };
+    }
+  });
+
   // Move a local file/folder to the OS Trash. Recoverable from the
   // user's Trash/Recycle Bin — used by the artifact viewer's Delete
   // action so an accidental click is undoable.

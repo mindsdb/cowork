@@ -23,6 +23,7 @@ import { ArtifactViewer } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact } from '../api';
+import { normalizeArtifactRecord } from '../lib/artifactPaths';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -269,62 +270,115 @@ function TextBlock({ text, id, complete = true, conversationId = null }) {
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
 // into the shape ArtifactCard expects. Used to render inline cards
 // at the end of an assistant turn — like mdb-ai surfaces results.
-function artifactStepToCard(step) {
+function artifactStepToCard(step, projectPath) {
   const data = step.data || {};
   const path = data.file_path || data.path || '';
   // Lower-cased extension (no leading dot) for HTML detection downstream.
   const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
-  return {
+  const card = normalizeArtifactRecord({
     title: data.title || step.label || 'Artifact',
     kind: data.action ? `${data.action}` : 'live artifact',
     icon: 'doc',
     path,
     file_path: path,
     ext: ext ? `.${ext}` : '',
-    preview: path ? [{ heading: path }] : [],
+    preview: [],
+  }, projectPath);
+  return {
+    ...card,
+    preview: card.displayPath ? [{ heading: card.displayPath }] : [],
   };
 }
 
 // Renders any badge='Artifact' steps as inline ArtifactCards.
-function StepArtifacts({ steps, onOpen }) {
+function StepArtifacts({ steps, onOpen, projectPath }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       {artifacts.map((s) => (
-        <ArtifactCard key={s.id} artifact={artifactStepToCard(s)} onOpen={onOpen} />
+        <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
       ))}
     </div>
   );
 }
 
 function ArtifactCard({ artifact, onOpen }) {
-  const path = artifact.file_path || artifact.path;
+  const [status, setStatus] = useState(null);
+  const statusTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+  }, []);
+
+  const path = artifact.canonicalPath || artifact.file_path || artifact.path;
+  const displayPath = artifact.displayPath || path;
+  const disabledReason = artifact.actionDisabledReason || '';
+  const canAct = !!path && !disabledReason;
+  const platform = (() => {
+    try { return window.antontron?.getPlatform?.() || ''; } catch { return ''; }
+  })();
+  const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
+
+  const showStatus = (kind, text) => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    setStatus({ kind, text });
+    statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
+  };
+
   // Match the Working folder card's behavior: HTML opens the in-app
   // iframe viewer (so it can publish/unpublish + handle assets);
   // anything else goes to the OS handler via the Electron bridge.
   const isHtml = (artifact.ext || '').toLowerCase() === '.html'
     || (path || '').toLowerCase().endsWith('.html');
-  const handleOpen = () => {
-    if (!path) return;
+  const handleOpen = async () => {
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
     if (isHtml && onOpen) {
       onOpen(artifact);
       return;
     }
-    try { window.antontron?.openPath?.(path); }
+    try {
+      const result = await window.antontron?.openPath?.(path);
+      if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
+      showStatus('ok', 'Opened.');
+    }
     catch (e) {
       // eslint-disable-next-line no-console
       console.error('[artifact-open] failed', e);
+      showStatus('error', e?.message || 'Could not open artifact.');
     }
   };
-  const handleReveal = () => {
-    if (!path) return;
-    revealArtifact(path).catch((e) => {
+  const handleReveal = async () => {
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
+    let bridgeError = null;
+    try {
+      if (typeof window.antontron?.showItemInFolder === 'function') {
+        const result = await window.antontron.showItemInFolder(path);
+        if (result?.ok) {
+          showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
+          return;
+        }
+        bridgeError = result?.reason || 'Could not show artifact.';
+      }
+    } catch (e) {
+      bridgeError = e;
+    }
+
+    try {
+      await revealArtifact(path);
+      showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
+    } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[artifact-reveal] failed', e);
-    });
+      console.error('[artifact-reveal] failed', e || bridgeError);
+      showStatus('error', e?.message || bridgeError?.message || bridgeError || 'Could not show artifact.');
+    }
   };
-  const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || path;
+  const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: '64px 1fr auto', alignItems: 'center', gap: 16,
@@ -358,8 +412,24 @@ function ArtifactCard({ artifact, onOpen }) {
         )}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <SmallBtn onClick={handleReveal} title="Reveal in Finder">Reveal</SmallBtn>
-        <SmallBtn primary disabled={!path} onClick={handleOpen} title={path ? `Open ${path}` : 'No file path'}>
+        {status && (
+          <span aria-live="polite" style={{
+            alignSelf: 'center',
+            maxWidth: 180,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontFamily: FONT_BODY,
+            fontSize: 11.5,
+            color: status.kind === 'error' ? 'var(--danger)' : T.accent,
+          }}>
+            {status.text}
+          </span>
+        )}
+        <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
+          {revealLabel}
+        </SmallBtn>
+        <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? `Open ${path}` : disabledReason || 'No file path'}>
           Open
         </SmallBtn>
       </div>
@@ -382,6 +452,7 @@ function SmallBtn({ primary, children, onClick, title, disabled }) {
         color: primary ? '#fff' : T.ink,
         border: `1px solid ${primary ? T.accent : T.line2}`,
         fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
+        whiteSpace: 'nowrap',
         opacity: disabled ? 0.5 : 1,
       }}
     >{children}</button>
@@ -536,6 +607,7 @@ export default function ChatView({
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
+  const artifactProjectPath = task.projectPath || project?.path || '';
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
   // Source of truth for the rail Progress card: the live streaming
   // message's steps if a request is in flight, otherwise the steps
@@ -917,8 +989,13 @@ export default function ChatView({
                     />
                   )}
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
-                  {m.artifact && <ArtifactCard artifact={m.artifact} />}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} />
+                  {m.artifact && (
+                    <ArtifactCard
+                      artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
+                      onOpen={handleArtifactOpen}
+                    />
+                  )}
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                 </AnswerTurn>
               );
               });
@@ -957,7 +1034,7 @@ export default function ChatView({
                     <StreamCursor slotId="body:streaming" />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false}>
