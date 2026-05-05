@@ -96,6 +96,10 @@ class SlackBridge(ChatBridgeBase):
             secrets=channel_secrets,
         )
         self._setup: ChannelSetup | None = None
+        # Socket Mode connection — populated when an app_token is configured.
+        # Falls back to webhook ingress when None.
+        self._socket_task: Any = None
+        self._socket_client: Any = None
 
     # -----------------------------------------------------------------
     # ChannelAdapter Protocol
@@ -103,9 +107,37 @@ class SlackBridge(ChatBridgeBase):
 
     async def setup(self, setup: ChannelSetup) -> None:
         self._setup = setup
-        logger.info("SlackBridge ready for account=%s", self.account)
+        app_token = (self.secrets.get("app_token") or "").strip()
+        if app_token:
+            import asyncio
+            self._socket_task = asyncio.create_task(
+                self._run_socket_mode(app_token),
+                name=f"slack-socket-{self.account}",
+            )
+            logger.info(
+                "SlackBridge ready for account=%s (Socket Mode enabled)",
+                self.account,
+            )
+        else:
+            logger.info(
+                "SlackBridge ready for account=%s (webhook mode — set SLACK_APP_TOKEN to use Socket Mode)",
+                self.account,
+            )
 
     async def shutdown(self) -> None:
+        if self._socket_client is not None:
+            try:
+                await self._socket_client.disconnect()
+            except Exception:
+                logger.debug("Socket Mode disconnect failed", exc_info=True)
+            self._socket_client = None
+        if self._socket_task is not None and not self._socket_task.done():
+            self._socket_task.cancel()
+            try:
+                await self._socket_task
+            except (BaseException,):
+                pass
+        self._socket_task = None
         self._setup = None
 
     async def deliver(self, message: OutboundMessage) -> None:
@@ -175,6 +207,58 @@ class SlackBridge(ChatBridgeBase):
             signature=signature,
         )
 
+    def _normalize_event(self, event: dict) -> InboundEvent | None:
+        """Translate one Slack event dict into an :class:`InboundEvent`.
+
+        Returns None for events we should skip (bot echoes, edits/deletes,
+        non-chat event types). Shared by :meth:`parse_inbound` (webhook
+        path) and the Socket Mode listener so both ingress paths produce
+        identical InboundEvent shapes.
+        """
+        kind = event.get("type")
+        if kind not in ("message", "app_mention"):
+            return None
+        if event.get("bot_id") or event.get("subtype") in (
+            "bot_message",
+            "message_changed",
+            "message_deleted",
+        ):
+            return None
+
+        text = event.get("text", "") or ""
+        channel = event.get("channel", "") or ""
+        thread_ts = event.get("thread_ts")
+        ts = event.get("ts", "") or ""
+        user = event.get("user", "") or None
+
+        try:
+            timestamp = (
+                datetime.fromtimestamp(float(ts), timezone.utc)
+                if ts
+                else datetime.now(timezone.utc)
+            )
+        except (TypeError, ValueError):
+            timestamp = datetime.now(timezone.utc)
+
+        is_group = not channel.startswith("D")
+
+        return InboundEvent(
+            address=PlatformAddress(
+                channel_type="slack",
+                platform_id=channel,
+                thread_id=thread_ts,
+            ),
+            message=InboundMessage(
+                id=ts,
+                content=text,
+                timestamp=timestamp,
+                kind="chat",
+                sender_id=user,
+                is_mention=kind == "app_mention",
+                is_group=is_group,
+            ),
+        )
+
     async def parse_inbound(
         self,
         *,
@@ -187,50 +271,117 @@ class SlackBridge(ChatBridgeBase):
             return []
         if not isinstance(data, dict) or data.get("type") != "event_callback":
             return []
+        inbound = self._normalize_event(data.get("event") or {})
+        return [inbound] if inbound else []
 
-        event = data.get("event") or {}
-        kind = event.get("type")
-        if kind not in ("message", "app_mention"):
-            return []
-        # Skip bot echoes, edits, deletes, threaded broadcast subtypes.
-        if event.get("bot_id") or event.get("subtype") in (
-            "bot_message",
-            "message_changed",
-            "message_deleted",
-        ):
-            return []
+    # -----------------------------------------------------------------
+    # Socket Mode — alternative ingress path that doesn't need webhooks
+    # -----------------------------------------------------------------
 
-        text = event.get("text", "") or ""
-        channel = event.get("channel", "") or ""
-        thread_ts = event.get("thread_ts")  # None for top-level messages
-        ts = event.get("ts", "") or ""
-        user = event.get("user", "") or None
+    async def _run_socket_mode(self, app_token: str) -> None:
+        """Open and serve a Slack Socket Mode connection.
+
+        Slack pushes events down a WebSocket we initiate, so we don't need
+        a publicly reachable webhook URL. The listener feeds the same
+        ``setup.on_inbound`` callback the webhook route uses, so the
+        downstream router/orchestrator code is unchanged.
+
+        Reconnects automatically — slack-sdk's SocketModeClient handles
+        the disconnect/reconnect dance internally.
+        """
+        try:
+            from slack_sdk.socket_mode.aiohttp import SocketModeClient
+            from slack_sdk.socket_mode.request import SocketModeRequest
+            from slack_sdk.socket_mode.response import SocketModeResponse
+            from slack_sdk.web.async_client import AsyncWebClient
+        except ImportError:
+            logger.error(
+                "slack-sdk not installed; Socket Mode unavailable. "
+                "Add `slack-sdk` to requirements.txt."
+            )
+            return
+
+        bot_token = self.secrets.get("bot_token") or ""
+        if not bot_token:
+            logger.warning(
+                "Socket Mode requested but bot_token missing — skipping listener",
+            )
+            return
+
+        self._socket_client = SocketModeClient(
+            app_token=app_token,
+            web_client=AsyncWebClient(token=bot_token),
+        )
+
+        async def _listener(client: "SocketModeClient", req: "SocketModeRequest"):
+            # Surface every inbound envelope at INFO so we can see traffic
+            # without bumping slack_sdk's DEBUG (which is very noisy).
+            logger.info(
+                "Socket Mode received: type=%s envelope=%s",
+                req.type,
+                req.envelope_id,
+            )
+
+            # Always ack first — Slack expects an acknowledgement within 3s.
+            try:
+                await client.send_socket_mode_response(
+                    SocketModeResponse(envelope_id=req.envelope_id),
+                )
+            except Exception:
+                logger.debug("Socket Mode ack failed", exc_info=True)
+
+            if req.type != "events_api":
+                logger.info("Socket Mode skipped non-events_api: %s", req.type)
+                return
+            payload = req.payload or {}
+            event = payload.get("event") or {}
+            event_type = event.get("type") or "<no type>"
+            logger.info(
+                "Socket Mode events_api event: type=%s channel=%s user=%s",
+                event_type,
+                event.get("channel"),
+                event.get("user"),
+            )
+            inbound = self._normalize_event(event)
+            if inbound is None:
+                logger.info(
+                    "Socket Mode event skipped by _normalize_event (kind=%s subtype=%s bot_id=%s)",
+                    event_type,
+                    event.get("subtype"),
+                    event.get("bot_id"),
+                )
+                return
+            if self._setup is None:
+                logger.warning("Socket Mode received event but ChannelSetup is None")
+                return
+            try:
+                await self._setup.on_inbound(inbound)
+                logger.info(
+                    "Socket Mode dispatched to router: %s",
+                    inbound.message.id,
+                )
+            except Exception:
+                logger.exception(
+                    "router.on_inbound raised for slack socket-mode event %s",
+                    inbound.message.id,
+                )
+
+        self._socket_client.socket_mode_request_listeners.append(_listener)
 
         try:
-            timestamp = datetime.fromtimestamp(float(ts), timezone.utc) if ts else datetime.now(timezone.utc)
-        except (TypeError, ValueError):
-            timestamp = datetime.now(timezone.utc)
-
-        is_group = not channel.startswith("D")
-
-        return [
-            InboundEvent(
-                address=PlatformAddress(
-                    channel_type="slack",
-                    platform_id=channel,
-                    thread_id=thread_ts,
-                ),
-                message=InboundMessage(
-                    id=ts,
-                    content=text,
-                    timestamp=timestamp,
-                    kind="chat",
-                    sender_id=user,
-                    is_mention=kind == "app_mention",
-                    is_group=is_group,
-                ),
-            )
-        ]
+            await self._socket_client.connect()
+            # Block forever — connection lifetime is tied to the asyncio
+            # task, which gets cancelled in shutdown().
+            import asyncio
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            try:
+                await self._socket_client.disconnect()
+            except Exception:
+                pass
+            raise
+        except Exception:
+            logger.exception("Socket Mode connection error for account=%s", self.account)
 
     async def send_text(self, *, address: PlatformAddress, text: str) -> str:
         """Post a single chunk via Slack's ``chat.postMessage``."""
@@ -282,12 +433,58 @@ class SlackBridge(ChatBridgeBase):
 
 
 async def _slack_adapter_factory() -> ChannelAdapter | None:
-    """Build a SlackBridge if credentials are present; return None otherwise."""
-    account = os.environ.get("ANTON_SLACK_ACCOUNT", "default")
-    creds = load_channel_secrets("slack", account)
-    if not creds.get("bot_token") or not creds.get("signing_secret"):
-        return None
-    return SlackBridge(account=account, channel_secrets=creds)
+    """Build a SlackBridge from the first usable Slack connection.
+
+    Resolution order:
+      1. ``ANTON_SLACK_ACCOUNT`` env var pin — explicit account name.
+      2. Any ``slack-*`` entry in the local DataVault (the OAuth callback
+         saves under the workspace's team_id, e.g. ``slack-T0B0DG30BKL``).
+      3. ``DS_SLACK_DEFAULT__*`` env vars — for setups that prefer pure
+         env-var configuration without going through OAuth.
+
+    Reads the vault directly (env-var injection is too late at startup),
+    overlays env values on top so explicit env wins over stored.
+    """
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+        vault = LocalDataVault()
+        vault_conns = [
+            c for c in vault.list_connections() if c.get("engine") == "slack"
+        ]
+    except Exception:
+        vault, vault_conns = None, []
+
+    explicit = os.environ.get("ANTON_SLACK_ACCOUNT", "").strip()
+    if explicit:
+        candidates = [explicit]
+    elif vault_conns:
+        candidates = [c["name"] for c in vault_conns]
+    else:
+        candidates = ["default"]
+
+    # SLACK_APP_TOKEN is app-level (not workspace-scoped). Pull from env so
+    # any per-workspace bridge picks it up automatically and starts Socket
+    # Mode. Falls back through ~/.anton/.env via _slack_env_value.
+    app_token = _slack_env_value("SLACK_APP_TOKEN")
+
+    for name in candidates:
+        fields: dict[str, str] = {}
+        if vault is not None:
+            try:
+                stored = vault.load("slack", name) or {}
+                fields.update({k: str(v) for k, v in stored.items() if v})
+            except Exception:
+                pass
+        fields.update(load_channel_secrets("slack", name))
+        if app_token:
+            fields["app_token"] = app_token
+        if fields.get("bot_token") and fields.get("signing_secret"):
+            logger.info(
+                "SlackBridge factory selected account=%s (socket=%s)",
+                name, bool(app_token),
+            )
+            return SlackBridge(account=name, channel_secrets=fields)
+    return None
 
 
 register_channel_adapter("slack", _slack_adapter_factory)
@@ -298,13 +495,22 @@ register_channel_adapter("slack", _slack_adapter_factory)
 # ---------------------------------------------------------------------------
 
 
-SLACK_ENV_KEYS = ("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET", "SLACK_SIGNING_SECRET")
+SLACK_ENV_KEYS = (
+    "SLACK_CLIENT_ID",
+    "SLACK_CLIENT_SECRET",
+    "SLACK_SIGNING_SECRET",
+    # Socket Mode app-level token (xapp-…). When set, SlackBridge opens
+    # an outbound WebSocket to Slack instead of relying on a public
+    # webhook URL. Avoids ngrok/.localhost-reachability issues.
+    "SLACK_APP_TOKEN",
+)
 
 
 class SlackConfigPatch(BaseModel):
     client_id: str | None = None
     client_secret: str | None = None
     signing_secret: str | None = None
+    app_token: str | None = None
 
 
 def _slack_env_value(key: str) -> str:
@@ -323,7 +529,12 @@ async def slack_get_config():
         "client_id_set": flags["SLACK_CLIENT_ID"],
         "client_secret_set": flags["SLACK_CLIENT_SECRET"],
         "signing_secret_set": flags["SLACK_SIGNING_SECRET"],
+        "app_token_set": flags["SLACK_APP_TOKEN"],
+        # Webhook OAuth flow needs at minimum client_id + client_secret.
         "install_ready": flags["SLACK_CLIENT_ID"] and flags["SLACK_CLIENT_SECRET"],
+        # Socket Mode just needs the app-level token + an existing bot token
+        # (the OAuth callback or a manual save provides bot_token).
+        "socket_mode_ready": flags["SLACK_APP_TOKEN"],
     }
 
 
@@ -339,6 +550,7 @@ async def slack_put_config(patch: SlackConfigPatch):
         "SLACK_CLIENT_ID":      patch.client_id,
         "SLACK_CLIENT_SECRET":  patch.client_secret,
         "SLACK_SIGNING_SECRET": patch.signing_secret,
+        "SLACK_APP_TOKEN":      patch.app_token,
     }
 
     writes: dict[str, str] = {}

@@ -453,6 +453,87 @@ export async function startGoogleDriveAuth() {
   return req('/integrations/google-drive/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+// ─── Dispatch (channels + agent groups + wirings) ─────────────────────────────
+export async function fetchDispatchStatus() {
+  try {
+    return await req('/dispatch/status');
+  } catch {
+    return { ready: false, registered_channels: [], active_channels: [], agent_group_count: 0, wiring_count: 0 };
+  }
+}
+
+export async function fetchDispatchChannels() {
+  try {
+    const data = await req('/dispatch/channels');
+    return data.channels ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchAgentGroups() {
+  try {
+    const data = await req('/dispatch/agent-groups');
+    return data.agent_groups ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createAgentGroup({ name, workspace }) {
+  return req('/dispatch/agent-groups', { method: 'POST', body: JSON.stringify({ name, workspace }) });
+}
+
+export async function deleteAgentGroup(id) {
+  return req(`/dispatch/agent-groups/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function fetchWirings() {
+  try {
+    const data = await req('/dispatch/wirings');
+    return data.wirings ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createWiring(payload) {
+  return req('/dispatch/wirings', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function deleteWiring(mgId, agId) {
+  return req(`/dispatch/wirings/${encodeURIComponent(mgId)}/${encodeURIComponent(agId)}`, { method: 'DELETE' });
+}
+
+export async function startSlackOAuth(redirectUri) {
+  const params = new URLSearchParams({ redirect_uri: redirectUri });
+  return req(`/dispatch/slack/oauth/start?${params.toString()}`, { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function fetchSlackConfig() {
+  try {
+    return await req('/dispatch/slack/config');
+  } catch {
+    return {
+      client_id_set: false,
+      client_secret_set: false,
+      signing_secret_set: false,
+      app_token_set: false,
+      install_ready: false,
+      socket_mode_ready: false,
+    };
+  }
+}
+
+export async function saveSlackConfig({ clientId, clientSecret, signingSecret, appToken }) {
+  const payload = {};
+  if (clientId !== undefined)      payload.client_id      = clientId;
+  if (clientSecret !== undefined)  payload.client_secret  = clientSecret;
+  if (signingSecret !== undefined) payload.signing_secret = signingSecret;
+  if (appToken !== undefined)      payload.app_token      = appToken;
+  return req('/dispatch/slack/config', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
 export async function fetchMemory(projectPath) {
   const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
