@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
-import { isMac } from '../lib/host';
+import { isMac, isWeb } from '../lib/host';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal. host.isMac() works in both Electron
@@ -362,29 +362,34 @@ export default function Sidebar({
               )}
             </span>
           </div>
-          <div className="anton-sidebar__footer-actions">
-            <button
-              className={
-                'chrome-btn--small server-toggle' +
-                (serverOnline ? ' is-on' : '') +
-                (serverBusy ? ' is-busy' : '')
-              }
-              onClick={onToggleServer}
-              disabled={serverBusy}
-              title={
-                serverBusy
-                  ? `Backend ${serverBusyKind}…`
-                  : serverOnline ? 'Stop Anton backend' : 'Start Anton backend'
-              }
-              aria-label={serverOnline ? 'Stop backend' : 'Start backend'}
-              aria-busy={serverBusy ? 'true' : undefined}
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              {serverBusy
-                ? <Spinner intervalMs={70} />
-                : (serverOnline ? Ico.powerOff(13) : Ico.power(13))}
-            </button>
-          </div>
+          {/* Server-toggle hidden in web mode — the FastAPI is container/Lightsail
+              managed there, not user-controllable from the renderer. The status
+              pill above still surfaces connected/offline as a read-only signal. */}
+          {!isWeb && (
+            <div className="anton-sidebar__footer-actions">
+              <button
+                className={
+                  'chrome-btn--small server-toggle' +
+                  (serverOnline ? ' is-on' : '') +
+                  (serverBusy ? ' is-busy' : '')
+                }
+                onClick={onToggleServer}
+                disabled={serverBusy}
+                title={
+                  serverBusy
+                    ? `Backend ${serverBusyKind}…`
+                    : serverOnline ? 'Stop Anton backend' : 'Start Anton backend'
+                }
+                aria-label={serverOnline ? 'Stop backend' : 'Start backend'}
+                aria-busy={serverBusy ? 'true' : undefined}
+                style={{ WebkitAppRegion: 'no-drag' }}
+              >
+                {serverBusy
+                  ? <Spinner intervalMs={70} />
+                  : (serverOnline ? Ico.powerOff(13) : Ico.power(13))}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </aside>
