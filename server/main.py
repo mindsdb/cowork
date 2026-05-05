@@ -44,6 +44,13 @@ from routes.schedules import router as schedules_router, start_scheduler
 from routes.browse import router as browse_router
 from routes.integrations import router as integrations_router
 from routes.datavault import router as datavault_router
+from routes.dispatch import (
+    router as dispatch_router,
+    close_repo as close_dispatch_repo,
+    start_dispatch,
+    stop_dispatch,
+)
+from routes.dispatch_slack import router as dispatch_slack_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,7 +63,10 @@ logger = logging.getLogger("anton-server")
 async def lifespan(app: FastAPI):
     projects_store.ensure_default_project()
     start_scheduler()
+    await start_dispatch()
     yield
+    await stop_dispatch()
+    await close_dispatch_repo()
     await conversation_manager.close_all()
     await scratchpad_runtime.close_all()
 
@@ -94,6 +104,8 @@ app.include_router(schedules_router)
 app.include_router(browse_router)
 app.include_router(integrations_router, prefix="/v1/integrations", tags=["integrations"])
 app.include_router(datavault_router, prefix="/v1/datavault", tags=["datavault"])
+app.include_router(dispatch_router, prefix="/v1/dispatch", tags=["dispatch"])
+app.include_router(dispatch_slack_router, prefix="/v1/dispatch", tags=["dispatch-slack"])
 
 
 @app.get("/health")
