@@ -269,6 +269,8 @@
   <div class="topbar-inner">
     <span class="brand"><strong>Anton</strong>CoWork API</span>
     <span class="grow"></span>
+    <a class="toplink" href="index.html">Docs</a>
+    <a class="toplink" href="data-vault.html">Vault</a>
     <a class="toplink" href="../README.md">Repo</a>
     <a class="toplink" href="design-guidelines/orbit-morph.html">Components</a>
   </div>
@@ -300,6 +302,7 @@
     <a href="#memory">Memory</a>
     <a href="#skills">Skills</a>
     <a href="#datasources">Datasources</a>
+    <a href="#datavault">Datavault forms</a>
     <a href="#publish">Publish</a>
 
     <span class="toc-section">Workspace</span>
@@ -334,6 +337,7 @@
     <a href="#memory">Memory</a>
     <a href="#skills">Skills</a>
     <a href="#datasources">Datasources</a>
+    <a href="#datavault">Datavault forms</a>
     <a href="#publish">Publish</a>
     <a href="#pins">Pins</a>
     <a href="#schedules">Schedules</a>
@@ -496,6 +500,7 @@ ANTON_SERVER_HOST=<span class="str">127.0.0.1</span> ANTON_SERVER_PORT=<span cla
   <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/conversations/{id}</span><span class="desc">Conversation metadata (title, turns, preview, project).</span></div>
   <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/conversations/{id}/messages</span><span class="desc">Full message log with role, content, and recorded thought frames.</span></div>
   <div class="endpoint"><span class="verb verb-PATCH">PATCH</span><span class="path">/v1/conversations/{id}</span><span class="desc">Rename or move to another project. Body: <code>{ "title"?, "project"? }</code>.</span></div>
+  <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/conversations/{id}/turns/{turn_index}</span><span class="desc">Delete a single user→assistant turn pair. Repairs unpaired tool_use blocks afterwards so the next chat call doesn't 400.</span></div>
   <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/conversations/{id}</span><span class="desc">Remove the conversation and its history from disk.</span></div>
 </div>
 
@@ -617,8 +622,13 @@ ANTON_SERVER_HOST=<span class="str">127.0.0.1</span> ANTON_SERVER_PORT=<span cla
 <!-- ───────────────────────────────────────────  DATASOURCES  ─────────────────────────────────────────── -->
 <h2 id="datasources">Datasources</h2>
 <p>
-  The encrypted datavault — credentials for connectors Anton can use during scratchpad runs.
-  Validation calls the engine's connection probe without persisting.
+  Direct access to the data vault — credentials for connectors Anton can use during
+  scratchpad runs. Validation calls the engine's connection probe without persisting.
+</p>
+<p>
+  These endpoints back the legacy <em>Connect Apps and Data</em> form. The chat-driven
+  credential workflow lives at <a href="#datavault"><code>/v1/datavault/submissions</code></a>
+  and is described end-to-end in the <a href="data-vault.html">Data Vault docs</a>.
 </p>
 <div class="endpoints">
   <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/datasources</span><span class="desc">List configured connections (engine + name + display label).</span></div>
@@ -626,6 +636,69 @@ ANTON_SERVER_HOST=<span class="str">127.0.0.1</span> ANTON_SERVER_PORT=<span cla
   <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/datasources</span><span class="desc">Save a connection. Body: <code>{ engine, name, params }</code>.</span></div>
   <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/datasources/{engine}/{name}</span><span class="desc">Remove a saved connection.</span></div>
 </div>
+
+<!-- ───────────────────────────────────────────  DATAVAULT FORMS  ─────────────────────────────────────────── -->
+<h2 id="datavault">Datavault forms</h2>
+<p>
+  The chat-driven credential collection workflow. Anton emits a form via the
+  <code>request_credentials</code> tool; the renderer renders it; the user submits to
+  this endpoint, which streams a server-side agent's verdict back as SSE — same shape
+  as <code>/v1/responses</code>, so the existing client adapter consumes it natively.
+</p>
+<p>
+  The full architecture (agent, headless probe, patch dialect, UI) is on its own page —
+  see <a href="data-vault.html">Data Vault docs</a>.
+</p>
+
+<div class="endpoints">
+  <div class="endpoint">
+    <span class="verb verb-POST">POST</span>
+    <span class="path">/v1/datavault/submissions</span>
+    <span class="desc">Stage values + run the cowork agent. Returns SSE: text deltas, scratchpad lifecycle, and <code>data-vault-form-patch</code> blocks. Body: <code>{ form_id, conversation_id?, values, skipped, form_spec? }</code>.</span>
+  </div>
+  <div class="endpoint">
+    <span class="verb verb-GET">GET</span>
+    <span class="path">/v1/datavault/submissions/{submission_id}</span>
+    <span class="desc">Peek staged metadata + field <em>names</em> only. Values are intentionally redacted from this HTTP surface — only the agent-side <code>fetch_submission</code> tool reads them.</span>
+  </div>
+</div>
+
+<h3>Submit request</h3>
+<pre><span class="kw">POST</span> <span class="str">/v1/datavault/submissions</span>
+<span class="att">Content-Type</span>: <span class="str">application/json</span>
+
+<span class="pun">{</span>
+  <span class="att">"form_id"</span>: <span class="str">"fm_a3f9c2b41e"</span>,
+  <span class="att">"conversation_id"</span>: <span class="str">"task-2025-Q3"</span>,
+  <span class="att">"values"</span>: <span class="pun">{</span> <span class="att">"api_key"</span>: <span class="str">"phx_…"</span> <span class="pun">}</span>,
+  <span class="att">"skipped"</span>: <span class="pun">[]</span>,
+  <span class="att">"form_spec"</span>: <span class="pun">{</span> <span class="com">/* full spec the renderer holds, with auth_method spread in for multi-method */</span> <span class="pun">}</span>
+<span class="pun">}</span></pre>
+
+<h3>Streamed response</h3>
+<pre><span class="kw">event</span>: response.created
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"id"</span>:<span class="str">"resp-…"</span>, <span class="att">"model"</span>:<span class="str">"datavault-agent"</span><span class="pun">}</span>
+
+<span class="kw">event</span>: response.output_text.delta
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"delta"</span>:<span class="str">"Trying to connect to **posthog**…"</span><span class="pun">}</span>
+
+<span class="kw">event</span>: response.output_text.delta
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"delta"</span>:<span class="str">"\n\n```data-vault-form-patch\n{...}\n```\n\n"</span><span class="pun">}</span>
+
+<span class="kw">event</span>: response.in_progress
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"thought_role"</span>:<span class="str">"thought.scratchpad.start"</span><span class="pun">}</span>
+
+<span class="kw">event</span>: response.completed
+<span class="kw">data</span>: <span class="pun">{</span><span class="att">"id"</span>:<span class="str">"resp-…"</span>, <span class="att">"response"</span>:<span class="pun">{</span><span class="att">"status"</span>:<span class="str">"success"</span><span class="pun">}}</span></pre>
+
+<p>
+  <code>response.completed.response.status</code> is one of <code>success</code>,
+  <code>retry</code>, <code>needs_input</code>, or <code>failed</code>. The renderer doesn't
+  have to act on it — every meaningful state change rides on a
+  <code>data-vault-form-patch</code> block that flips the form to its appropriate UI.
+</p>
+
+<hr />
 
 <!-- ───────────────────────────────────────────  PUBLISH  ─────────────────────────────────────────── -->
 <h2 id="publish">Publish</h2>

@@ -1,0 +1,1105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Anton Data Vault — Architecture</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+  /* Tokens — same family as server-api.html. */
+  :root {
+    color-scheme: light;
+    --ink:        #0E0F10;
+    --ink-2:      #2A2C2F;
+    --ink-3:      #3F4145;
+    --faded:      #6B6F73;
+    --line:       #D8D8D4;
+    --bg:         #ECECEA;
+    --surface:    #FFFFFF;
+    --surface-2:  #F4F4F0;
+    --surface-3:  #ECECE6;
+    --chip:       #DDDDD8;
+    --accent:     #1F9CB0;
+    --accent-bg:  #E2F5FD;
+    --warn:       #B07A1F;
+    --warn-bg:    #FAF2DF;
+    --danger:     #B33A3A;
+    --danger-bg:  #FBE7E7;
+    --success:    #2E8B57;
+    --success-bg: #E5F4EC;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+  *, *::before, *::after { box-sizing: border-box; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Sticky header */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(140%) blur(10px);
+    -webkit-backdrop-filter: saturate(140%) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1140px; margin: 0 auto; padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .brand {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--faded); font-weight: 600;
+  }
+  .brand strong { color: var(--ink); margin-right: 8px; }
+  .topbar .grow { flex: 1; }
+  .topbar a.toplink { font-size: 12.5px; color: var(--faded); }
+  .topbar a.toplink:hover { color: var(--ink); text-decoration: none; }
+
+  /* Layout */
+  .shell { max-width: 1140px; margin: 0 auto; padding: 56px 24px 120px; }
+  @media (min-width: 1024px) {
+    .shell {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 56px;
+      padding-top: 64px;
+    }
+  }
+
+  /* TOC */
+  .toc { display: none; }
+  @media (min-width: 1024px) {
+    .toc {
+      display: block;
+      position: sticky; top: 88px; align-self: start;
+      max-height: calc(100vh - 110px); overflow: auto;
+    }
+  }
+  .toc-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--faded);
+    font-weight: 600; margin-bottom: 14px;
+  }
+  .toc nav { display: flex; flex-direction: column; border-left: 1px solid var(--line); padding-left: 16px; gap: 6px; }
+  .toc a { font-size: 13px; color: var(--ink-2); padding: 2px 0; }
+  .toc a:hover { color: var(--accent); text-decoration: none; }
+  .toc .toc-section {
+    margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line);
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--faded);
+  }
+  .toc .toc-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  .toc-mobile {
+    margin-bottom: 24px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; overflow: hidden;
+  }
+  @media (min-width: 1024px) { .toc-mobile { display: none; } }
+  .toc-mobile summary {
+    cursor: pointer; list-style: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; font-size: 13.5px; font-weight: 500; color: var(--ink);
+  }
+  .toc-mobile summary::-webkit-details-marker { display: none; }
+  .toc-mobile summary::after { content: '▾'; color: var(--faded); transition: transform .2s ease; }
+  .toc-mobile[open] summary::after { transform: rotate(180deg); }
+  .toc-mobile nav { display: flex; flex-direction: column; padding: 8px 16px 14px; gap: 4px; border-top: 1px solid var(--line); }
+  .toc-mobile a { font-size: 13px; color: var(--ink-2); padding: 6px 0; }
+  .toc-mobile a:hover { color: var(--accent); }
+
+  /* Typography */
+  .content { min-width: 0; }
+  .content h1.eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faded); margin: 0 0 10px;
+  }
+  .content h1.hero {
+    font-size: 38px; font-weight: 600; letter-spacing: -0.015em;
+    line-height: 1.08; margin: 0 0 16px; max-width: 22ch;
+  }
+  @media (max-width: 640px) { .content h1.hero { font-size: 30px; } }
+  .content p.lede {
+    font-size: 16px; line-height: 1.6; color: var(--ink-2); max-width: 64ch;
+    margin: 0 0 24px;
+  }
+  .content h2 {
+    font-size: 26px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 64px 0 8px; scroll-margin-top: 88px;
+  }
+  .content h3 {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--faded); margin: 28px 0 10px;
+  }
+  .content h4 {
+    font-size: 16px; font-weight: 600; margin: 20px 0 8px;
+    color: var(--ink);
+  }
+  .content p {
+    font-size: 14.5px; line-height: 1.6; color: var(--ink-2);
+    max-width: 70ch; margin: 0 0 12px;
+  }
+  .content ul, .content ol {
+    font-size: 14.5px; line-height: 1.7; color: var(--ink-2);
+    padding-left: 18px; max-width: 70ch;
+  }
+  .content li { margin: 4px 0; }
+  .content code {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    background: var(--chip); padding: 1px 6px; border-radius: 4px; color: var(--ink);
+  }
+  hr { border: none; border-top: 1px solid var(--line); margin: 56px 0; }
+
+  /* Key facts */
+  .keys {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px; margin: 28px 0 8px; max-width: 70ch;
+  }
+  @media (min-width: 720px) { .keys { grid-template-columns: repeat(4, 1fr); } }
+  .key {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .key .lbl {
+    display: block; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--faded);
+    margin-bottom: 6px; font-weight: 600;
+  }
+  .key .val {
+    font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: var(--ink);
+    word-break: break-all;
+  }
+
+  /* Code blocks */
+  pre {
+    background: #0E0F10; color: #F2F6FF;
+    padding: 18px 22px; border-radius: 10px; overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.55;
+    margin: 14px 0 4px;
+    border: 1px solid #1A1F2E;
+  }
+  pre .kw  { color: #C792EA; }
+  pre .str { color: #C3E88D; }
+  pre .num { color: #F78C6C; }
+  pre .com { color: #6B6F73; font-style: italic; }
+  pre .att { color: #FFCB6B; }
+  pre .pun { color: #8A97AE; }
+  pre .id  { color: #89DDFF; }
+
+  /* Pills */
+  .pill {
+    display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px;
+    background: var(--chip); border-radius: 999px; color: var(--faded);
+  }
+  .pill.accent  { background: var(--accent-bg);  color: var(--accent); }
+  .pill.warn    { background: var(--warn-bg);    color: var(--warn); }
+  .pill.danger  { background: var(--danger-bg);  color: var(--danger); }
+  .pill.success { background: var(--success-bg); color: var(--success); }
+
+  /* Component / actor cards (used in the actors section). */
+  .actors {
+    display: grid; gap: 14px; margin: 14px 0 4px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 720px) { .actors { grid-template-columns: 1fr 1fr; } }
+  .actor {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .actor .head {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px;
+  }
+  .actor .head .name {
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+    color: var(--accent); font-weight: 600;
+  }
+  .actor h4 {
+    font-size: 16.5px; font-weight: 600; letter-spacing: -0.005em;
+    margin: 0; color: var(--ink);
+  }
+  .actor .lives {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--faded); margin-bottom: 8px;
+  }
+  .actor p {
+    font-size: 13.5px; color: var(--ink-2); margin: 0; line-height: 1.55;
+  }
+
+  /* Tool list (same shape as the API endpoints) */
+  .tools {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; margin: 14px 0 4px;
+  }
+  .tool {
+    display: grid; gap: 8px 14px; align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .tool:first-child { border-top: 0; }
+  @media (min-width: 720px) {
+    .tool {
+      grid-template-columns: 220px minmax(0, 1.6fr);
+      align-items: start;
+    }
+  }
+  .tool .name {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink);
+    font-weight: 500;
+  }
+  .tool .desc {
+    font-size: 13.5px; color: var(--ink-2); line-height: 1.5; max-width: 60ch;
+  }
+
+  /* Diagram surface — mermaid renders into this. */
+  .diagram {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 22px 18px; margin: 18px 0;
+    overflow-x: auto;
+  }
+  .diagram .mermaid { font-family: 'Inter', sans-serif; }
+
+  /* Callout */
+  .callout {
+    background: var(--accent-bg);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius: 10px; padding: 14px 16px;
+    color: var(--ink-2); font-size: 13.5px; line-height: 1.55;
+    margin: 18px 0;
+  }
+  .callout strong { color: var(--accent); }
+
+  /* Two-column reference grid (events / patches). */
+  .grid2 {
+    display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0;
+  }
+  @media (min-width: 720px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+  .ref {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .ref .name { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent); font-weight: 500; }
+  .ref .what { font-size: 13.5px; color: var(--ink-2); margin-top: 4px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand"><strong>Anton</strong>Data Vault</span>
+    <span class="grow"></span>
+    <a class="toplink" href="index.html">Docs</a>
+    <a class="toplink" href="server-api.html">API</a>
+    <a class="toplink" href="../README.md">Repo</a>
+  </div>
+</header>
+
+<div class="shell">
+
+<aside class="toc" aria-label="Table of contents">
+  <div class="toc-label">On this page</div>
+  <nav>
+    <span class="toc-section">Concept</span>
+    <a href="#overview">Overview</a>
+    <a href="#why">Why a vault?</a>
+    <a href="#actors">Actors</a>
+
+    <span class="toc-section">Lifecycle</span>
+    <a href="#diagram">Architecture diagram</a>
+    <a href="#flow">End-to-end flow</a>
+
+    <span class="toc-section">Forms</span>
+    <a href="#spec">Form spec</a>
+    <a href="#multi-method">Multi-method forms</a>
+    <a href="#patch-dialect">Patch dialect</a>
+
+    <span class="toc-section">Probe</span>
+    <a href="#probe">Headless probe</a>
+    <a href="#probe-tools">Probe tools</a>
+    <a href="#verdicts">Verdicts</a>
+
+    <span class="toc-section">UI</span>
+    <a href="#ui">Form panel UI</a>
+
+    <span class="toc-section">Reference</span>
+    <a href="#endpoints">Endpoints</a>
+    <a href="#events">SSE events</a>
+    <a href="#security">Security model</a>
+    <a href="#files">File map</a>
+  </nav>
+</aside>
+
+<main class="content">
+
+<details class="toc-mobile">
+  <summary>On this page</summary>
+  <nav>
+    <a href="#overview">Overview</a>
+    <a href="#why">Why a vault?</a>
+    <a href="#actors">Actors</a>
+    <a href="#diagram">Architecture diagram</a>
+    <a href="#flow">End-to-end flow</a>
+    <a href="#spec">Form spec</a>
+    <a href="#multi-method">Multi-method forms</a>
+    <a href="#patch-dialect">Patch dialect</a>
+    <a href="#probe">Headless probe</a>
+    <a href="#probe-tools">Probe tools</a>
+    <a href="#verdicts">Verdicts</a>
+    <a href="#ui">Form panel UI</a>
+    <a href="#endpoints">Endpoints</a>
+    <a href="#events">SSE events</a>
+    <a href="#security">Security model</a>
+    <a href="#files">File map</a>
+  </nav>
+</details>
+
+<h1 class="eyebrow">Architecture</h1>
+<h1 class="hero">Data Vault.</h1>
+<p class="lede">
+  How Anton asks for credentials, tests them, and saves them — without ever letting the
+  values round-trip through chat history. The flow stitches together a chat tool, a
+  side-panel form, a server-side cowork agent, and a fresh headless instance of Anton
+  acting purely as a connection prober. This page documents how those pieces talk.
+</p>
+
+<div class="keys">
+  <div class="key"><span class="lbl">Endpoint</span><span class="val">/v1/datavault/submissions</span></div>
+  <div class="key"><span class="lbl">Storage</span><span class="val">~/.anton/vault</span></div>
+  <div class="key"><span class="lbl">Form dialect</span><span class="val">data-vault-form / -patch</span></div>
+  <div class="key"><span class="lbl">Probe budget</span><span class="val">90 seconds</span></div>
+</div>
+
+<hr />
+
+<h2 id="overview">Overview</h2>
+<p>
+  Anton runs locally. When the user asks to connect a service (Postgres, Gmail, PostHog,
+  Salesforce, anything), Anton calls a tool called <code>request_credentials</code>. The tool
+  emits a JSON form spec wrapped in a <code>data-vault-form</code> markdown block. The
+  renderer's markdown extension peels the block out, publishes the spec into a per-conversation
+  store, and the side panel mounts the form.
+</p>
+<p>
+  When the user submits, the panel posts to <code>/v1/datavault/submissions</code> — values
+  are staged in memory (never written to disk), and the response opens an SSE stream. The
+  cowork agent on the server is the boss of that stream: it spins up a separate, headless
+  Anton instance whose only job is to test the connection. The probe runs in the scratchpad,
+  reports back via four small tools, and the cowork agent translates those reports into:
+</p>
+<ul>
+  <li>tiny <code>data-vault-form-patch</code> blocks that update the panel live (a status bubble, per-field statuses, error/success state)</li>
+  <li>a brief verdict line in the chat bubble</li>
+  <li>a vault save (only on success)</li>
+</ul>
+
+<h2 id="why">Why a vault?</h2>
+<p>
+  Three constraints drive every decision in this document:
+</p>
+<ol>
+  <li><strong>Credentials never enter chat history.</strong> Form values stay on the user's machine, in <code>~/.anton/vault</code>. Anton's chat history (used as LLM context) only ever sees field <em>names</em> and a <code>submission_id</code>.</li>
+  <li><strong>Anton's chat instance never sees the probe.</strong> The probe runs in a fresh <code>ChatSession</code> with empty history and no persistence — its prompt, its scratchpad cells, and its verdict tools live and die entirely on the server.</li>
+  <li><strong>Any engine can be probed.</strong> There's no per-engine snippet registry. Anton picks the right client library at probe time. PostHog, custom HTTP APIs, weird internal services — all the same path.</li>
+</ol>
+
+<h2 id="actors">Actors</h2>
+<p>
+  Six pieces collaborate. None of them know about each other directly — they're glued by
+  the form spec, the patch dialect, and the SSE stream.
+</p>
+
+<div class="actors">
+  <div class="actor">
+    <div class="head"><span class="name">request_credentials</span></div>
+    <div class="lives">Cowork tool · <code>server/anton_api/cowork_tools.py</code></div>
+    <p>The tool Anton calls in chat to start a connection. Takes a form spec (engine, fields, optional methods). Returns a <code>data-vault-form</code> block to embed verbatim in the assistant message.</p>
+  </div>
+  <div class="actor">
+    <div class="head"><span class="name">DataVaultFormPanel</span></div>
+    <div class="lives">Renderer · <code>src/renderer/cowork/components/datavault/</code></div>
+    <p>Side-panel host. Subscribes to the per-conversation form store; renders the form, the live status toast, the per-field status spinners, the success and failure states. Submits via the streaming endpoint.</p>
+  </div>
+  <div class="actor">
+    <div class="head"><span class="name">datavault_submissions</span></div>
+    <div class="lives">In-memory · <code>server/anton_api/datavault_submissions.py</code></div>
+    <p>Short-TTL submission store. Holds the staged values keyed by <code>submission_id</code>. 24h TTL, never written to disk. Anton's <code>fetch_submission</code> tool reads it.</p>
+  </div>
+  <div class="actor">
+    <div class="head"><span class="name">datavault_agent</span></div>
+    <div class="lives">Cowork agent · <code>server/anton_api/datavault_agent.py</code></div>
+    <p>The boss. Runs as a single SSE stream — stages the values, runs the probe, translates probe events into form patches and chat deltas, persists the synthesized turn, and saves to vault on success.</p>
+  </div>
+  <div class="actor">
+    <div class="head"><span class="name">datavault_probe</span></div>
+    <div class="lives">Headless agent · <code>server/anton_api/datavault_probe.py</code></div>
+    <p>A fresh <code>ChatSession</code> with empty history, no <code>history_store</code>, no <code>session_id</code>. Has the standard scratchpad tool plus six probe-specific tools. Runs once per submission; nothing it does survives the call.</p>
+  </div>
+  <div class="actor">
+    <div class="head"><span class="name">LocalDataVault</span></div>
+    <div class="lives">Anton core · <code>~/.anton/vault</code></div>
+    <p>The actual credential store. Per-engine, per-name files. Anton uses <code>vault.inject_env(...)</code> to expose values as <code>DS_&lt;ENGINE&gt;_&lt;NAME&gt;__&lt;FIELD&gt;</code> environment variables in the scratchpad.</p>
+  </div>
+</div>
+
+<hr />
+
+<h2 id="diagram">Architecture diagram</h2>
+<p>
+  The full lifecycle, from <code>request_credentials</code> to a saved vault entry. The
+  cowork agent is the only component aware of every other piece — by design.
+</p>
+
+<div class="diagram">
+  <div class="mermaid">
+flowchart TB
+  classDef ui fill:#E2F5FD,stroke:#1F9CB0,stroke-width:1.5px,color:#0E0F10;
+  classDef chat fill:#F4F4F0,stroke:#6B6F73,stroke-width:1px,color:#0E0F10;
+  classDef agent fill:#FBF2DF,stroke:#B07A1F,stroke-width:1.5px,color:#0E0F10;
+  classDef probe fill:#FBE7E7,stroke:#B33A3A,stroke-width:1.5px,color:#0E0F10;
+  classDef store fill:#FFFFFF,stroke:#D8D8D4,stroke-width:1px,color:#0E0F10;
+  classDef vault fill:#E5F4EC,stroke:#2E8B57,stroke-width:1.5px,color:#0E0F10;
+
+  User([User in chat]):::ui
+
+  subgraph Anton[Conversation Anton]
+    direction TB
+    LLM[LLM<br/>turn]:::chat
+    RC["request_credentials<br/>(cowork tool)"]:::chat
+  end
+
+  subgraph Renderer[Renderer · React side panel]
+    direction TB
+    MD["MarkdownContent<br/>peels data-vault-form fence"]:::ui
+    Store["formStore<br/>per-conversation pub/sub"]:::ui
+    Panel["DataVaultFormPanel<br/>+ DataVaultForm"]:::ui
+  end
+
+  subgraph Cowork[Cowork server]
+    direction TB
+    Endpoint["POST /v1/datavault/<br/>submissions (SSE)"]:::agent
+    Subs["datavault_submissions<br/>(24h TTL, in-memory)"]:::store
+    Agent["datavault_agent<br/>process_submission_stream"]:::agent
+    EnvFile[".env temp file<br/>tempfile.mkstemp"]:::store
+  end
+
+  subgraph Probe[Probe · headless Anton]
+    direction TB
+    Sess["fresh ChatSession<br/>no history · no persistence"]:::probe
+    Pad["scratchpad cell<br/>parses .env, runs test"]:::probe
+    Tools["set_status · set_field_status<br/>request_extra_field<br/>switch_method · remove_field<br/>report_success · report_failure"]:::probe
+  end
+
+  Vault["LocalDataVault<br/>~/.anton/vault"]:::vault
+  Chat["chat history<br/>(values NEVER stored)"]:::store
+
+  User -- "asks to connect" --> LLM
+  LLM --> RC
+  RC -- "data-vault-form block<br/>(no values)" --> MD
+  MD -- "setForm(spec)" --> Store
+  Store -- "subscribe" --> Panel
+  Panel -- "user fills, clicks submit" --> Endpoint
+  Endpoint -- "stage values" --> Subs
+  Endpoint --> Agent
+  Agent -- "writes credentials" --> EnvFile
+  Agent -- "spawn + drive" --> Sess
+  Sess -- "scratchpad call" --> Pad
+  Pad -- "reads env file<br/>tries connection" --> Tools
+  Tools -- "set_status / patches" --> Agent
+  Agent -- "data-vault-form-patch<br/>SSE deltas" --> Panel
+  Agent -- "report_success" --> Vault
+  Agent -- "verdict line" --> Chat
+  Agent -- "delete temp file" --> EnvFile
+
+  linkStyle default stroke:#6B6F73,stroke-width:1px;
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Read the diagram top down.</strong> The conversation Anton issues a tool call;
+  the form lands in the renderer; the user submits; the cowork agent runs the probe
+  via a fresh Anton; patches stream back into the panel; on success, the vault gets
+  the only persistent write that ever happens.
+</div>
+
+<hr />
+
+<h2 id="flow">End-to-end flow</h2>
+<p>
+  Eight phases. Most are sub-second; the probe phase is the only one that takes user-visible
+  time, capped at 90 seconds.
+</p>
+
+<h3>1. Anton calls the tool</h3>
+<p>
+  In a normal chat turn, Anton sees the user wants to connect to a service and calls
+  <code>request_credentials</code> with a JSON spec. The tool returns an instruction to
+  emit the spec verbatim wrapped in a <code>data-vault-form</code> fence.
+</p>
+
+<h3>2. Markdown extension lifts the spec to the side panel</h3>
+<p>
+  The renderer's markdown extension recognises <code>data-vault-form</code> as a custom
+  language. <code>MarkdownCode.jsx</code> parses the JSON tolerantly (smart quotes,
+  trailing commas, JS comments), publishes the spec into <code>formStore</code> keyed by
+  conversation id, and renders nothing inside the chat bubble — a one-time pointer card
+  links the user to the side panel.
+</p>
+
+<h3>3. The form panel renders</h3>
+<p>
+  <code>DataVaultFormPanel</code> subscribes to <code>formStore</code> for the current
+  conversation. It mounts inside a <code>RailCard</code> (no chevron) with a × close
+  affordance. A subtle slide-up + fade animation runs on first appearance, never on
+  subsequent patches.
+</p>
+
+<h3>4. User submits</h3>
+<p>
+  The panel POSTs to <code>/v1/datavault/submissions</code> with form_id, the values, the
+  list of skipped field names, and the form spec (spread with <code>auth_method</code> /
+  <code>selected_method</code> when the user chose a method). The response is SSE.
+</p>
+
+<h3>5. Cowork agent runs</h3>
+<p>
+  <code>datavault_agent.process_submission_stream</code> opens a single SSE turn. Stages
+  the values in <code>datavault_submissions</code> (24h TTL, in-memory only). Validates
+  shape if the engine is registered (skipped for custom engines). Writes credentials to a
+  temp <code>.env</code> file at <code>tempfile.mkstemp(prefix='anton-vault-', suffix='.env')</code>.
+</p>
+
+<h3>6. Probe spins up</h3>
+<p>
+  <code>datavault_probe.run_probe</code> instantiates a fresh <code>ChatSession</code>
+  with the conversation's <code>llm_client</code> + <code>workspace</code> but no
+  <code>history_store</code>, no <code>session_id</code>, and an empty initial history.
+  Anton's standard scratchpad tool is auto-registered; six probe-specific tools are added
+  on top. The system prompt is a tight technical brief: where the .env is, what variable
+  names are inside, the field roster (with filled / empty / skipped state per field),
+  and instructions to call exactly one verdict tool before stopping.
+</p>
+
+<h3>7. Live updates flow back</h3>
+<p>
+  Each scratchpad cell, each <code>set_status</code> / <code>set_field_status</code>
+  call, each piece of prose anton emits — the cowork agent translates them into the
+  client's existing SSE vocabulary (<code>response.in_progress</code> for scratchpad,
+  <code>data-vault-form-patch</code> blocks for status, plain text deltas for prose).
+  The form panel's status toast updates live; per-field spinners appear and disappear;
+  the chat bubble fills incrementally.
+</p>
+
+<h3>8. Verdict lands</h3>
+<p>
+  Anton calls <code>report_success</code>, <code>report_failure</code>, or
+  <code>request_extra_field</code>. The cowork agent reacts:
+</p>
+<ul>
+  <li><strong>success</strong> → save to <code>LocalDataVault</code>, emit a final form patch flipping the panel to its celebratory state with two actions: <em>Close</em> + <em>View connectors →</em>.</li>
+  <li><strong>failure</strong> → leave the vault clean, patch the form with an error banner + the user-friendly diagnosis, restore the input grid for editing.</li>
+  <li><strong>needs_input</strong> → patch the form with new fields appended (scoped to the active method when multi-method), update the subtitle to the reason. The user re-submits with the merged credentials and the probe runs again.</li>
+</ul>
+<p>
+  In every branch, the temp .env file is unlinked in <code>finally</code>. The synthesized
+  turn (intro line + status patches + scratchpad events + verdict text) is persisted to the
+  conversation's <code>_history.json</code> + per-turn events sidecar so reload reproduces
+  exactly what the user saw.
+</p>
+
+<hr />
+
+<h2 id="spec">Form spec</h2>
+<p>
+  The shape Anton emits via <code>request_credentials</code>. Every field is optional except
+  <code>engine</code> and <code>title</code> — the absence of <code>fields</code> is
+  meaningful (it implies multi-method via the <code>methods</code> array).
+</p>
+
+<pre><span class="pun">{</span>
+  <span class="att">"form_id"</span>: <span class="str">"fm_a3f9c2b41e"</span>,        <span class="com">// stable id; reuse across patches</span>
+  <span class="att">"engine"</span>: <span class="str">"posthog"</span>,             <span class="com">// any string — registry-known or custom</span>
+  <span class="att">"logo"</span>: <span class="str">"key"</span>,                   <span class="com">// icon name (NOT a URL)</span>
+  <span class="att">"logo_color"</span>: <span class="str">"var(--accent)"</span>,
+  <span class="att">"title"</span>: <span class="str">"Connect to PostHog"</span>,
+  <span class="att">"subtitle"</span>: <span class="str">"Read-only access via personal API key."</span>,
+  <span class="att">"form_warning"</span>: <span class="kw">null</span>,             <span class="com">// optional amber banner</span>
+  <span class="att">"form_error"</span>: <span class="kw">null</span>,               <span class="com">// optional red banner</span>
+  <span class="att">"status_text"</span>: <span class="kw">null</span>,              <span class="com">// live status — set by patches</span>
+  <span class="att">"_is_probing"</span>: <span class="kw">false</span>,             <span class="com">// flips while the probe runs</span>
+  <span class="att">"fields"</span>: <span class="pun">[</span>
+    <span class="pun">{</span>
+      <span class="att">"name"</span>: <span class="str">"api_key"</span>,            <span class="com">// env-var-like; becomes DS_API_KEY</span>
+      <span class="att">"label"</span>: <span class="str">"Personal API key"</span>,
+      <span class="att">"type"</span>: <span class="str">"password"</span>,           <span class="com">// text|password|url|select|textarea|boolean</span>
+      <span class="att">"required"</span>: <span class="kw">true</span>,
+      <span class="att">"placeholder"</span>: <span class="str">"phx_…"</span>,
+      <span class="att">"help"</span>: <span class="str">"From posthog.com/settings"</span>,
+      <span class="att">"skipable"</span>: <span class="kw">false</span>             <span class="com">// every field is skipable by default</span>
+    <span class="pun">}</span>
+  <span class="pun">]</span>,
+  <span class="att">"actions"</span>: <span class="pun">[</span>                    <span class="com">// optional; default is Submit + Cancel</span>
+    <span class="pun">{</span> <span class="att">"id"</span>: <span class="str">"submit"</span>, <span class="att">"label"</span>: <span class="str">"Connect"</span>, <span class="att">"kind"</span>: <span class="str">"primary"</span> <span class="pun">}</span>
+  <span class="pun">]</span>
+<span class="pun">}</span></pre>
+
+<h3>Field types</h3>
+<ul>
+  <li><code>text</code> — single-line text input.</li>
+  <li><code>password</code> — masked input, monospace.</li>
+  <li><code>url</code> — same as text but uses <code>type="url"</code> for browser hints.</li>
+  <li><code>select</code> — dropdown; provide an <code>options</code> array of <code>{value, label}</code>.</li>
+  <li><code>textarea</code> — multiline, monospace (good for service-account JSON).</li>
+  <li><code>boolean</code> — checkbox; <code>checkbox_label</code> overrides the rendered label.</li>
+</ul>
+
+<h3>Per-field state</h3>
+<p>Three slots can be patched independently — set on a retry to call out per-field issues:</p>
+<ul>
+  <li><code>error</code> — red text under the input. Outcome (e.g. <em>Token rejected</em>).</li>
+  <li><code>warning</code> — amber text under the input.</li>
+  <li><code>status</code> — gray text + small spinner under the input. Activity (e.g. <em>Validating…</em>). Set transiently by the probe; cleared with <code>null</code>.</li>
+  <li><code>help</code> — muted helper text. Hidden when error / warning / status are set.</li>
+</ul>
+
+<hr />
+
+<h2 id="multi-method">Multi-method forms</h2>
+<p>
+  When a service supports several auth options, the form spec uses <code>methods[]</code>
+  instead of (or alongside) <code>fields[]</code>. The user picks a method first; the form
+  switches to that method's field list. Submission carries an <code>auth_method</code>
+  tag so the probe knows which path to test.
+</p>
+
+<pre><span class="pun">{</span>
+  <span class="att">"form_id"</span>: <span class="str">"fm_gmail_1"</span>,
+  <span class="att">"engine"</span>: <span class="str">"gmail"</span>,
+  <span class="att">"title"</span>: <span class="str">"Connect Gmail"</span>,
+  <span class="att">"selected_method"</span>: <span class="str">"app_password"</span>,   <span class="com">// optional pre-pick</span>
+  <span class="att">"methods"</span>: <span class="pun">[</span>
+    <span class="pun">{</span>
+      <span class="att">"id"</span>: <span class="str">"app_password"</span>,
+      <span class="att">"label"</span>: <span class="str">"App Password"</span>,
+      <span class="att">"description"</span>: <span class="str">"Easiest if you use Gmail with 2FA. 16-char key."</span>,
+      <span class="att">"recommended"</span>: <span class="kw">true</span>,
+      <span class="att">"help_url"</span>: <span class="str">"https://support.google.com/accounts/answer/185833"</span>,
+      <span class="att">"fields"</span>: <span class="pun">[</span>
+        <span class="pun">{</span> <span class="att">"name"</span>: <span class="str">"email"</span>, <span class="att">"label"</span>: <span class="str">"Email"</span>, <span class="att">"type"</span>: <span class="str">"text"</span>, <span class="att">"required"</span>: <span class="kw">true</span> <span class="pun">}</span>,
+        <span class="pun">{</span> <span class="att">"name"</span>: <span class="str">"app_password"</span>, <span class="att">"label"</span>: <span class="str">"App Password"</span>, <span class="att">"type"</span>: <span class="str">"password"</span>, <span class="att">"required"</span>: <span class="kw">true</span> <span class="pun">}</span>
+      <span class="pun">]</span>
+    <span class="pun">}</span>,
+    <span class="pun">{</span>
+      <span class="att">"id"</span>: <span class="str">"service_account"</span>,
+      <span class="att">"label"</span>: <span class="str">"Service Account"</span>,
+      <span class="att">"description"</span>: <span class="str">"Workspace only. Domain-wide delegation."</span>,
+      <span class="att">"fields"</span>: <span class="pun">[</span>
+        <span class="pun">{</span> <span class="att">"name"</span>: <span class="str">"service_account_json"</span>, <span class="att">"type"</span>: <span class="str">"textarea"</span>, <span class="att">"label"</span>: <span class="str">"JSON key"</span> <span class="pun">}</span>
+      <span class="pun">]</span>
+    <span class="pun">}</span>
+  <span class="pun">]</span>
+<span class="pun">}</span></pre>
+
+<h3>UX</h3>
+<ul>
+  <li>No <code>selected_method</code> → form panel renders a vertical stack of method cards (label + description + Recommended pill + How-to link). User clicks a card to pick.</li>
+  <li>Selected → small breadcrumb above the fields: <code>METHOD: App Password (change)</code>. Click <em>change</em> to re-open the picker. Per-(form, method) input state means switching back keeps what was typed.</li>
+  <li>On submit, the form spec is spread with <code>auth_method: &lt;id&gt;</code> + <code>selected_method: &lt;id&gt;</code> so the agent reads it from either key.</li>
+</ul>
+
+<hr />
+
+<h2 id="patch-dialect">Patch dialect</h2>
+<p>
+  Once a form is on screen, every subsequent update flows as a
+  <code>data-vault-form-patch</code> block. Patches are <strong>never</strong> rendered in
+  the chat bubble — the markdown extension routes them straight to the form store, and the
+  store merges them into the existing form by id.
+</p>
+<p>
+  Three nesting levels, three independent semantics for <code>null</code>:
+</p>
+
+<pre><span class="pun">{</span>
+  <span class="att">"form_id"</span>: <span class="str">"fm_a3f9c2b41e"</span>,
+  <span class="com">// 1) Top-level: overwrite. null clears the key.</span>
+  <span class="att">"subtitle"</span>: <span class="str">"Probe failed — fix the highlighted issue."</span>,
+  <span class="att">"status_text"</span>: <span class="kw">null</span>,             <span class="com">// clears the toast</span>
+  <span class="att">"_is_success"</span>: <span class="kw">true</span>,
+
+  <span class="com">// 2) Inside fields[]: name-keyed; object merges, null DELETES the field.</span>
+  <span class="att">"fields"</span>: <span class="pun">{</span>
+    <span class="att">"api_key"</span>: <span class="pun">{</span>                  <span class="com">// merges into existing field</span>
+      <span class="att">"error"</span>: <span class="str">"Token rejected"</span>,
+      <span class="att">"status"</span>: <span class="kw">null</span>               <span class="com">// clears just the status property</span>
+    <span class="pun">}</span>,
+    <span class="att">"region"</span>: <span class="kw">null</span>                  <span class="com">// removes the whole field</span>
+  <span class="pun">}</span>,
+
+  <span class="com">// 3) Inside methods[]: id-keyed; object merges, null DELETES the method.</span>
+  <span class="att">"methods"</span>: <span class="pun">{</span>
+    <span class="att">"app_password"</span>: <span class="pun">{</span>
+      <span class="att">"fields"</span>: <span class="pun">{</span>                <span class="com">// nested method.fields uses the same rules</span>
+        <span class="att">"app_password"</span>: <span class="pun">{</span> <span class="att">"error"</span>: <span class="str">"Wrong format — should start with phx_"</span> <span class="pun">}</span>
+      <span class="pun">}</span>
+    <span class="pun">}</span>
+  <span class="pun">}</span>
+<span class="pun">}</span></pre>
+
+<div class="callout">
+  <strong>Why three nesting levels matter.</strong> They give us three precise affordances:
+  remove a property, remove a field, remove a method — all without re-emitting the whole spec.
+  Re-emission would echo every field's <code>value</code>, which would put credentials in chat
+  history. Patches are append-only — values stay in the renderer's local state.
+</div>
+
+<hr />
+
+<h2 id="probe">Headless probe</h2>
+<p>
+  The probe is a <em>second</em> Anton, instantiated specifically to test one credential set.
+  It uses the conversation's LLM client + workspace, but starts with empty history and never
+  persists. Its <code>ChatSession</code> dies when the probe ends; the only side effect that
+  survives the call is the verdict.
+</p>
+
+<h3>Why a second Anton?</h3>
+<ul>
+  <li><strong>No prompt pollution.</strong> The technical "you are a connection prober" instructions never end up in the user's conversation history.</li>
+  <li><strong>No tool conflicts.</strong> Conversation Anton has tools like <code>request_credentials</code> and <code>publish</code>; the probe has only <code>scratchpad</code> + the six probe tools. Smaller surface, fewer ways to drift.</li>
+  <li><strong>Single-shot.</strong> The probe runs <code>turn_stream</code> once and exits. No retries, no continued multi-turn reasoning.</li>
+</ul>
+
+<h3>The .env handoff</h3>
+<p>
+  The cowork agent writes the user's submitted credentials to a tempfile in standard <code>.env</code>
+  format:
+</p>
+<pre>DS_EMAIL=<span class="str">"alice@example.com"</span>
+DS_APP_PASSWORD=<span class="str">"abcd efgh ijkl mnop"</span></pre>
+<p>
+  The path is the only credential channel that reaches the probe. The probe parses the file
+  inside the scratchpad (typically with <code>dotenv_values</code>) and uses the values to call
+  the engine's client. <strong>The probe is explicitly told never to print credential values</strong>
+  — they would otherwise leak into the right-rail scratchpad output. The cowork agent
+  unlinks the tempfile in <code>finally</code> regardless of outcome.
+</p>
+
+<h3>The prompt</h3>
+<p>
+  Built dynamically per probe. Includes the engine, the env path, the variable names,
+  and a roster of the form's fields with filled / empty / skipped state. For multi-method
+  forms it lists every method, marks the selected one, and indents each method's fields
+  separately so anton can choose to add fields to the right method.
+</p>
+
+<h2 id="probe-tools">Probe tools</h2>
+<p>
+  Six tools, plus the standard <code>scratchpad</code> tool that ChatSession auto-registers.
+  All accept a <code>method_id</code> parameter when relevant — multi-method forms scope
+  edits to a specific method's field list.
+</p>
+
+<div class="tools">
+  <div class="tool">
+    <span class="name">set_status(text)</span>
+    <span class="desc">Form-wide live status (the bar at the top of the panel). Use for overall phase: <em>"Loading credentials"</em>, <em>"Probing posthog"</em>. Renders as a dismissible toast.</span>
+  </div>
+  <div class="tool">
+    <span class="name">set_field_status(name, status, method_id?)</span>
+    <span class="desc">Per-field status line under one input. <code>status=null</code> clears. Used for granular feedback (<em>"Validating…"</em> under <code>api_key</code>).</span>
+  </div>
+  <div class="tool">
+    <span class="name">remove_field(name, method_id?)</span>
+    <span class="desc">Delete a field from the form (or from a specific method). For when a field is obsolete (e.g. user picked OAuth so password no longer applies).</span>
+  </div>
+  <div class="tool">
+    <span class="name">switch_method(method_id, reason)</span>
+    <span class="desc">Multi-method only. Flips the form's <code>selected_method</code>. The reason renders as a status toast so the user sees why anton suggests the swap.</span>
+  </div>
+  <div class="tool">
+    <span class="name">request_extra_field(fields, reason, method_id?)</span>
+    <span class="desc">Verdict — needs more from the user. Form re-opens with new fields appended (scoped to a method when given). User re-submits with the merged credentials.</span>
+  </div>
+  <div class="tool">
+    <span class="name">report_success(summary)</span>
+    <span class="desc">Verdict — connection works. Triggers vault save. Summary becomes the chat one-liner.</span>
+  </div>
+  <div class="tool">
+    <span class="name">report_failure(error, follow_up)</span>
+    <span class="desc">Verdict — connection broken. Vault stays clean. <code>error</code> is the user-friendly diagnosis; <code>follow_up</code> is a one-line hint about what to fix.</span>
+  </div>
+</div>
+
+<h2 id="verdicts">Verdicts</h2>
+<p>
+  Every probe ends with exactly one verdict. If anton stops without firing one (rare; usually
+  a timeout), the runner forces a <code>failure</code> with <em>"Probe ended without a verdict."</em>
+</p>
+
+<div class="grid2">
+  <div class="ref">
+    <div class="name">success <span class="pill success" style="margin-left:8px">save</span></div>
+    <div class="what">
+      Cowork agent saves credentials to <code>~/.anton/vault</code> via <code>LocalDataVault</code>.
+      Form flips to its celebratory state with two actions: <em>Close</em> + <em>View connectors →</em>.
+    </div>
+  </div>
+  <div class="ref">
+    <div class="name">failure <span class="pill danger" style="margin-left:8px">no save</span></div>
+    <div class="what">
+      Vault stays clean. Form gets <code>form_error</code> banner + restored input grid.
+      User edits and resubmits.
+    </div>
+  </div>
+  <div class="ref">
+    <div class="name">needs_input <span class="pill warn" style="margin-left:8px">extend form</span></div>
+    <div class="what">
+      Form gets the new fields appended (scoped to the active method when multi-method).
+      Subtitle becomes the reason. User resubmits with merged values; probe runs again.
+    </div>
+  </div>
+  <div class="ref">
+    <div class="name">timeout <span class="pill" style="margin-left:8px">90s</span></div>
+    <div class="what">
+      Treated as <code>failure</code>. <code>error</code> is <em>"Probe timed out after 90s."</em>
+      <code>follow_up</code> nudges the user to retry or check service reachability.
+    </div>
+  </div>
+</div>
+
+<hr />
+
+<h2 id="ui">Form panel UI</h2>
+<p>
+  The right-rail panel uses a <code>RailCard</code> with <code>noChevron</code> — the only
+  dismissal control is the × at the top right. Below the card header, four UI primitives
+  compose every state the form can be in:
+</p>
+
+<h3>Header</h3>
+<p>
+  Logo (icon name from the app palette — never a URL) + title + subtitle. Always rendered.
+</p>
+
+<h3>Status toast</h3>
+<p>
+  Sits between the header and the form body. Shows the current <code>status_text</code>
+  with a small accent-colored spinner and a × to dismiss. Dismissal only suppresses the
+  exact text the user closed — a <em>new</em> status update auto-resurfaces the toast.
+  This keeps the form layout from jumping while the probe streams progress.
+</p>
+
+<h3>Method picker / breadcrumb</h3>
+<p>
+  Multi-method only. Picker = vertical card stack; breadcrumb = single line above fields
+  with a "change" link. Per-(form, method) local state means the user can flip between
+  methods without losing typed values.
+</p>
+
+<h3>Fields + actions</h3>
+<p>
+  Every field has a label, an input, and three optional message slots (error / warning / status).
+  Per-field skip toggle (<em>skip / unskip</em>) on the right of every label. Actions row
+  at the bottom — primary button is the only filled style. While probing, inputs are
+  disabled (busy state) but still visible — no layout jumps.
+</p>
+
+<h3>Success state</h3>
+<p>
+  Triggered by <code>_is_success: true</code>. Replaces fields + actions with a green check,
+  the title, the subtitle (anton's success summary), and two default actions:
+</p>
+<ul>
+  <li><strong>Close</strong> — secondary; just dismisses the panel.</li>
+  <li><strong>View connectors →</strong> — primary; routes to the Connect Apps and Data page where the user can rename, remove, or attach the new connection.</li>
+</ul>
+
+<h3>Animation</h3>
+<p>
+  A subtle fade + slide-up + scale (320ms) on first appearance — re-fires only when a
+  <em>new</em> form_id arrives. Patches into the same form_id don't re-trigger it. The
+  spinner uses a 720ms linear rotation. Both keyframes inject into <code>document.head</code>
+  once at module load.
+</p>
+
+<hr />
+
+<h2 id="endpoints">Endpoints</h2>
+
+<h4>Submission stream</h4>
+<pre><span class="kw">POST</span> <span class="str">/v1/datavault/submissions</span>
+<span class="att">Content-Type</span>: <span class="str">application/json</span>
+
+<span class="pun">{</span>
+  <span class="att">"form_id"</span>: <span class="str">"fm_a3f9c2b41e"</span>,
+  <span class="att">"conversation_id"</span>: <span class="str">"task-2025-Q3"</span>,
+  <span class="att">"values"</span>: <span class="pun">{</span> <span class="att">"api_key"</span>: <span class="str">"phx_…"</span> <span class="pun">}</span>,
+  <span class="att">"skipped"</span>: <span class="pun">[]</span>,
+  <span class="att">"form_spec"</span>: <span class="pun">{</span> <span class="com">/* same shape Anton emitted, with auth_method spread in if multi-method */</span> <span class="pun">}</span>
+<span class="pun">}</span></pre>
+
+<p>
+  Returns a Server-Sent Events stream — same event vocabulary as <code>/v1/responses</code>
+  (so the renderer's existing SSE adapter consumes it natively). The stream emits the
+  cowork agent's text deltas, the probe's translated scratchpad events, and the
+  <code>data-vault-form-patch</code> blocks that drive the panel.
+</p>
+
+<h4>Submission peek (debug)</h4>
+<pre><span class="kw">GET</span> <span class="str">/v1/datavault/submissions/{submission_id}</span></pre>
+<p>
+  Returns metadata + field <em>names</em> for a staged submission. Values are intentionally
+  redacted from this endpoint — only the agent-side <code>fetch_submission</code> tool
+  reads them, via a different code path that doesn't go through HTTP.
+</p>
+
+<h4>Datasource CRUD</h4>
+<p>
+  Direct vault access (used by the Connect Apps and Data page, not the chat workflow):
+</p>
+<ul>
+  <li><code>GET /v1/datasources</code> — list saved connections.</li>
+  <li><code>POST /v1/datasources/validate</code> — shape-check without saving.</li>
+  <li><code>POST /v1/datasources</code> — save (used by the legacy connect form, not the chat-driven path).</li>
+  <li><code>DELETE /v1/datasources/{engine}/{name}</code> — remove a saved connection.</li>
+</ul>
+
+<h2 id="events">SSE events</h2>
+<p>
+  The submission stream uses the same five top-level events as <code>/v1/responses</code>:
+</p>
+
+<div class="grid2">
+  <div class="ref"><div class="name">response.created</div><div class="what">Opens the turn. Carries the synthesized response id.</div></div>
+  <div class="ref"><div class="name">response.in_progress</div><div class="what">Probe scratchpad lifecycle (<code>thought_role: scratchpad.start/end/result</code>) — feeds the right rail.</div></div>
+  <div class="ref"><div class="name">response.output_text.delta</div><div class="what">Cowork agent prose + the probe's prose + the <code>data-vault-form-patch</code> blocks.</div></div>
+  <div class="ref"><div class="name">response.completed</div><div class="what">Terminal. <code>response.status</code> reads <code>success</code>, <code>retry</code>, <code>needs_input</code>, or <code>failed</code>.</div></div>
+  <div class="ref"><div class="name">response.failed</div><div class="what">Terminal error frame. Never reached on a normal probe — only fires if the runner itself crashes.</div></div>
+</div>
+
+<hr />
+
+<h2 id="security">Security model</h2>
+
+<h3>Storage</h3>
+<ul>
+  <li>Saved credentials live at <code>~/.anton/vault/&lt;engine&gt;/&lt;name&gt;.json</code>. Read/write only via <code>LocalDataVault</code>.</li>
+  <li>Submission staging (<code>datavault_submissions</code>) is in-memory with a 24h TTL — never written to disk. Cleared on server restart.</li>
+  <li>The temp .env file lives in <code>tempfile.mkstemp(prefix='anton-vault-', suffix='.env')</code> for the duration of one probe (typically &lt; 60s). Always unlinked in <code>finally</code>.</li>
+</ul>
+
+<h3>Chat history</h3>
+<ul>
+  <li>Form submissions never echo values back into chat. The continuation message that hits Anton's chat history references the <code>submission_id</code> + the names of submitted/skipped fields only.</li>
+  <li>The cowork agent's synthesized turn (intro line + verdict text) is persisted, but no patches inside it carry values — the patch markdown is rendered as nothing in chat.</li>
+  <li>Anton's <code>fetch_submission</code> tool is the only read path. It runs server-side and returns values in the tool's response (which is part of LLM context for that one turn but isn't shown in the chat bubble).</li>
+</ul>
+
+<h3>Probe isolation</h3>
+<ul>
+  <li>The probe ChatSession has <code>history_store=None</code> and <code>session_id=None</code> — nothing it does survives the call.</li>
+  <li>Probe instructions explicitly forbid printing credential values. The scratchpad output is shown in the right rail, so leaks would be visible.</li>
+  <li>The probe has no access to <code>LocalDataVault</code> (passed as <code>data_vault=None</code>). Vault writes happen in the cowork agent, after <code>report_success</code>.</li>
+</ul>
+
+<h3>Trust boundaries</h3>
+<ul>
+  <li><strong>Loopback only.</strong> The cowork server binds to <code>127.0.0.1</code>; CORS is locked to the renderer origin. No external network entry point.</li>
+  <li><strong>Local credentials.</strong> Nothing is sent to Anthropic or any LLM provider unless anton's probe explicitly opts in (e.g. for an LLM-based connection like Anthropic's API as an "engine"). The probe prompt instructs anton not to.</li>
+</ul>
+
+<hr />
+
+<h2 id="files">File map</h2>
+<p>
+  Where each piece of the puzzle lives. Read in this order to follow the flow.
+</p>
+
+<div class="tools">
+  <div class="tool">
+    <span class="name">cowork_tools.py</span>
+    <span class="desc"><code>request_credentials</code> tool + <code>fetch_submission</code> + <code>update_form</code>. The chat-side surface; what the LLM sees.</span>
+  </div>
+  <div class="tool">
+    <span class="name">datavault.py (route)</span>
+    <span class="desc"><code>POST /v1/datavault/submissions</code> + <code>GET /v1/datavault/submissions/{id}</code>. Wraps <code>process_submission_stream</code> in a StreamingResponse.</span>
+  </div>
+  <div class="tool">
+    <span class="name">datavault_submissions.py</span>
+    <span class="desc">In-memory staging store. <code>stage_submission</code>, <code>get_submission</code>, <code>consume_submission</code>, lazy TTL purge.</span>
+  </div>
+  <div class="tool">
+    <span class="name">datavault_agent.py</span>
+    <span class="desc">The cowork agent. <code>process_submission_stream</code> orchestrates the probe and translates events into the SSE vocabulary the client speaks.</span>
+  </div>
+  <div class="tool">
+    <span class="name">datavault_probe.py</span>
+    <span class="desc"><code>run_probe</code> + tool definitions. Builds a fresh ChatSession, runs <code>turn_stream</code>, drives the probe-tools event loop, manages the temp .env file.</span>
+  </div>
+  <div class="tool">
+    <span class="name">formStore.js</span>
+    <span class="desc">Per-conversation pub/sub. <code>setForm</code>, <code>patchForm</code> (with the three-level merge semantics), <code>clearForm</code>, <code>subscribe</code>.</span>
+  </div>
+  <div class="tool">
+    <span class="name">DataVaultForm.jsx</span>
+    <span class="desc">The form renderer. Picker UI, breadcrumb, fields, actions, success state. Per-(form, method) local state.</span>
+  </div>
+  <div class="tool">
+    <span class="name">DataVaultFormPanel.jsx</span>
+    <span class="desc">Side-panel host. Status toast, panel × close, RailCard wrapper, appearance animation, navigate-to-connectors handler.</span>
+  </div>
+  <div class="tool">
+    <span class="name">MarkdownCode.jsx</span>
+    <span class="desc">Lifts <code>data-vault-form</code> + <code>-patch</code> blocks out of chat into the form store. Renders nothing for patches; one-time pointer card for full forms.</span>
+  </div>
+  <div class="tool">
+    <span class="name">parseFormSpec.js</span>
+    <span class="desc">Tolerant JSON parser. Handles smart quotes, trailing commas, JS comments, single vs double quotes — the LLM gets it wrong sometimes.</span>
+  </div>
+</div>
+
+</main>
+</div>
+
+<!-- Mermaid for the architecture diagram. Loaded only on this page. -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: 'Inter, sans-serif',
+      fontSize: '13px',
+      primaryColor: '#FFFFFF',
+      primaryBorderColor: '#D8D8D4',
+      primaryTextColor: '#0E0F10',
+      lineColor: '#6B6F73',
+      secondaryColor: '#F4F4F0',
+      tertiaryColor: '#ECECEA',
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 16,
+    },
+  });
+</script>
+
+<script>
+  (function () {
+    const dropdown = document.querySelector('.toc-mobile');
+    document.querySelectorAll('.toc a, .toc-mobile a').forEach((a) => {
+      a.addEventListener('click', () => {
+        if (dropdown && dropdown.open) dropdown.open = false;
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>
