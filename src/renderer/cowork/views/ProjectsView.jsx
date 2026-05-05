@@ -1,170 +1,941 @@
-// Projects view — two modes:
-//   Grid:   no project under view → list of all projects as cards.
-//   Detail: a project is selected → composer for new task in that
-//           project, list of all tasks/conversations under it (newest
-//           first), and a right sidebar with Working folder + Context
-//           + Scheduled (filtered to this project).
+// Projects page — D1 "Quiet" direction.
 //
-// Local detailProject state is seeded from `selectedProject` so the
-// chat-header crumb (which sets selectedProject + routes here) lands
-// directly in the detail view. The "← All projects" button clears the
-// local state to surface the grid again — without disturbing the app's
-// selectedProject (which the home composer reads independently).
+// Header (title + subtitle + accent "+ New project") • Filter row
+// (search ⌘K + sort + count + grid/list toggle) • Grid OR list. Each
+// card surfaces a single activity line, mono timestamp w/ active dot,
+// and a demoted stats row (tasks · mem · sched · art) with zero values
+// dimmed. Pin + ⋯ menu reveal on hover.
+//
+// Design source: docs/design-handoff/Anton Projects (D1).
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 import { TaskList } from '../components/task';
-import { ProjectCard } from '../components/project';
+import { ProjectCard } from '../components/project/ProjectCard';
+import {
+  createProject as createProjectApi,
+  renameProject,
+  revealProjectInFinder,
+  fetchMemory, fetchArtifacts,
+} from '../api';
 
-function PageHeader({ title, subtitle, action }) {
+const FONT_BODY    = 'var(--font-body)';
+const FONT_DISPLAY = 'var(--font-display)';
+const FONT_MONO    = 'var(--font-mono)';
+
+// ─── Pin persistence (localStorage) ──────────────────────────────────────
+//
+// The server doesn't track project pin state today, so we keep it client-
+// side. Format: a JSON array of project names. Reserved/missing keys are
+// ignored gracefully. Any caller that mutates the list re-emits a
+// 'storage' event-equivalent via a custom event so the components can
+// react without coupling to the storage primitive directly.
+const PIN_KEY = 'anton:pinned-projects';
+const PIN_EVENT = 'anton:pinned-projects:change';
+
+function readPinned() {
+  try {
+    const raw = localStorage.getItem(PIN_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writePinned(set) {
+  try {
+    localStorage.setItem(PIN_KEY, JSON.stringify([...set]));
+    window.dispatchEvent(new Event(PIN_EVENT));
+  } catch {
+    // Storage might be disabled (private browsing). Silently ignore —
+    // the pin state simply won't persist across reloads.
+  }
+}
+
+function usePinnedProjects() {
+  const [pinned, setPinned] = useState(() => readPinned());
+  useEffect(() => {
+    const sync = () => setPinned(readPinned());
+    window.addEventListener(PIN_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(PIN_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  const togglePin = (name, next) => {
+    const cur = readPinned();
+    if (next === undefined) next = !cur.has(name);
+    if (next) cur.add(name);
+    else cur.delete(name);
+    writePinned(cur);
+  };
+  return { pinned, togglePin };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
+function relativeAge(input) {
+  if (!input) return '—';
+  const ts = typeof input === 'number' ? input : Date.parse(input);
+  if (!Number.isFinite(ts)) return '—';
+  const diff = Date.now() - ts;
+  if (diff < 60_000)        return 'just now';
+  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function timestampOfProject(project, tasks) {
+  const list = (tasks || []).filter((t) =>
+    t.projectName === project?.name || t.projectPath === project?.path,
+  );
+  let max = 0;
+  for (const t of list) {
+    const ts = Date.parse(t.updatedAt || t.subtitle || '') || 0;
+    if (ts > max) max = ts;
+  }
+  return max;
+}
+
+function isActive(project, tasks) {
+  const list = (tasks || []).filter((t) =>
+    t.projectName === project?.name || t.projectPath === project?.path,
+  );
+  if (list.some((t) => t.status === 'active')) return true;
+  const HOUR = 60 * 60 * 1000;
+  const ts = timestampOfProject(project, tasks);
+  return ts > 0 && Date.now() - ts < HOUR;
+}
+
+function activitySummaryFor(project, tasks) {
+  const list = (tasks || []).filter((t) =>
+    t.projectName === project?.name || t.projectPath === project?.path,
+  );
+  if (list.length === 0) return null;
+  const sorted = [...list].sort((a, b) =>
+    (Date.parse(b.updatedAt || '') || 0) - (Date.parse(a.updatedAt || '') || 0),
+  );
+  return sorted[0];
+}
+
+// ─── Header ──────────────────────────────────────────────────────────────
+
+// Reuse the global `.btn-primary` styling — same accent button used for
+// "+ Schedule task" and the rest of the page-header CTAs. Keeps the
+// type, height, padding and accent-glow consistent across pages.
+function NewProjectButton({ onClick }) {
   return (
-    <div className="page-header">
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <h2 className="page-title">{title}</h2>
-        {subtitle && <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 4 }}>{subtitle}</div>}
+    <button type="button" className="btn-primary" onClick={onClick}>
+      {Ico.plus(14)} New project
+    </button>
+  );
+}
+
+function ProjectsHeader({ onNewProject }) {
+  return (
+    <div style={{
+      padding: '28px 32px 0',
+      display: 'flex', flexDirection: 'column', gap: 18,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        gap: 24, minWidth: 0,
+      }}>
+        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <h1 style={{
+            margin: 0,
+            fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 600,
+            letterSpacing: '-0.005em', color: 'var(--ink)',
+          }}>Projects</h1>
+          <p style={{
+            margin: 0, fontFamily: FONT_BODY, fontSize: 13.5,
+            color: 'var(--ink-3)', lineHeight: 1.5,
+          }}>
+            Workspaces Anton uses to group conversations, memory, and outputs.
+          </p>
+        </div>
+        <NewProjectButton onClick={onNewProject} />
       </div>
-      {action}
     </div>
   );
 }
 
-function relativeAge(iso) {
-  if (!iso) return '';
-  const d = typeof iso === 'string' ? new Date(iso) : new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  if (secs < 604800) return `${Math.floor(secs / 86400)}d ago`;
-  return `${Math.floor(secs / 604800)}w ago`;
+// ─── Filter row ──────────────────────────────────────────────────────────
+
+function SearchInput({ value, onChange, inputRef }) {
+  return (
+    <div style={{
+      flex: '0 1 320px', minWidth: 220,
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      padding: '7px 11px', borderRadius: 7,
+      background: 'var(--surface-2)',
+      border: '1px solid var(--line)',
+    }}>
+      <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-3)' }}>
+        {Ico.search(13)}
+      </span>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder="Search projects"
+        style={{
+          flex: 1, minWidth: 0,
+          background: 'transparent', border: 0, outline: 'none',
+          fontFamily: FONT_BODY, fontSize: 12.5,
+          color: 'var(--ink-2)',
+        }}
+      />
+      <span style={{
+        flexShrink: 0,
+        padding: '1px 5px', borderRadius: 3,
+        background: 'var(--surface-3)',
+        border: '1px solid var(--line-2)',
+        fontFamily: FONT_MONO, fontSize: 10,
+        color: 'var(--ink-4)',
+      }}>⌘K</span>
+    </div>
+  );
 }
 
-function timestampOf(task) {
-  // Best-effort sortable timestamp. The /conversations payload exposes
-  // updated_at / created_at as ISO strings; older shapes use subtitle
-  // ('5m ago') which we can't sort numerically — fall back to 0 so
-  // those land at the end.
-  const raw = task.updatedAt || task.updated_at || task.createdAt || task.created_at;
-  if (!raw) return 0;
-  const t = new Date(raw).getTime();
-  return Number.isFinite(t) ? t : 0;
+const SORT_OPTIONS = [
+  { id: 'recent',       label: 'Recent' },
+  { id: 'name',         label: 'Name' },
+  { id: 'most-active',  label: 'Most active' },
+  { id: 'least-active', label: 'Least active' },
+];
+
+function SortPill({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('mousedown', onClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  const current = SORT_OPTIONS.find((o) => o.id === value) || SORT_OPTIONS[0];
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '7px 11px', borderRadius: 7,
+          background: 'var(--surface-2)',
+          border: '1px solid var(--line)',
+          color: 'var(--ink-2)',
+          fontFamily: FONT_BODY, fontSize: 12.5,
+          cursor: 'pointer',
+        }}
+      >
+        <span style={{ color: 'var(--ink-4)', fontSize: 11.5 }}>Sort:</span>
+        <span>{current.label}</span>
+        <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>
+          {Ico.chevDown(11)}
+        </span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+          minWidth: 160, zIndex: 20,
+          background: 'var(--surface)',
+          border: '1px solid var(--line)',
+          borderRadius: 8,
+          boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+          padding: '4px 0',
+        }}>
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => { onChange?.(opt.id); setOpen(false); }}
+              style={{
+                display: 'flex', alignItems: 'center',
+                width: 'calc(100% - 8px)', margin: '0 4px',
+                padding: '7px 10px', borderRadius: 5,
+                background: opt.id === value ? 'var(--surface-2)' : 'transparent',
+                border: 0,
+                fontFamily: FONT_BODY, fontSize: 12.5,
+                color: 'var(--ink-2)', textAlign: 'left',
+                cursor: 'pointer',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = opt.id === value ? 'var(--surface-2)' : 'transparent'; }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
-function ProjectGrid({ projects, selectedProject, tasks = [], scheduled = [], onOpenProject, onCreateProject, onDeleteProject }) {
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
+function ViewToggle({ value, onChange }) {
+  const Btn = ({ id, icon, label }) => {
+    const active = value === id;
+    return (
+      <button
+        type="button"
+        onClick={() => onChange?.(id)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '5px 10px', borderRadius: 5,
+          background: active ? 'var(--surface-3)' : 'transparent',
+          color: active ? 'var(--ink)' : 'var(--ink-3)',
+          border: 0,
+          boxShadow: active ? 'inset 0 0 0 1px var(--line-2)' : 'none',
+          fontFamily: FONT_BODY, fontSize: 12,
+          cursor: 'pointer',
+          transition: 'background .15s ease, color .15s ease',
+        }}
+        title={label}
+      >
+        {icon}
+        <span>{label}</span>
+      </button>
+    );
+  };
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 0,
+      padding: 2, borderRadius: 7,
+      background: 'var(--surface-2)',
+      border: '1px solid var(--line)',
+    }}>
+      <Btn id="grid" icon={Ico.grid(12)} label="Grid" />
+      <Btn id="list" icon={Ico.list(12)} label="List" />
+    </div>
+  );
+}
+
+function FilterRow({
+  search, onSearchChange, sort, onSortChange, view, onViewChange,
+  total, filtered, pinnedCount, searchRef,
+}) {
+  const filterActive = (search || '').trim().length > 0;
+  // Count line — reflects the current filter state. When the user is
+  // searching we show "Showing N of T" so the partial result stays
+  // legible; otherwise just the total. Pinned count rides along as a
+  // soft accent stat when present.
+  const countText = filterActive
+    ? `Showing ${filtered} of ${total}`
+    : `${total} ${total === 1 ? 'project' : 'projects'}`;
+  return (
+    <div style={{
+      padding: '0 32px',
+      display: 'flex', flexDirection: 'column', gap: 6,
+    }}>
+      {/* Top row — search + sort on the left, view toggle on the right */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      }}>
+        <SearchInput value={search} onChange={onSearchChange} inputRef={searchRef} />
+        <SortPill value={sort} onChange={onSortChange} />
+        <span style={{ flex: 1 }} />
+        <ViewToggle value={view} onChange={onViewChange} />
+      </div>
+
+      {/* Count line — independent of the controls; updates on filter */}
+      <div style={{
+        fontFamily: FONT_MONO, fontSize: 11,
+        color: 'var(--ink-4)', letterSpacing: '0.04em',
+      }}>
+        {countText}
+        {pinnedCount > 0 && (
+          <>
+            {' · '}
+            <span style={{ color: 'var(--accent)' }}>{pinnedCount} pinned</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Project menu (kebab popover) ────────────────────────────────────────
+
+function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
+  const ref = useRef(null);
+  // Measured layout for the flip-up-when-no-room-below trick — same
+  // pattern TaskMenu uses for the sidebar/header kebabs. Without this,
+  // a card on the bottom row of the grid opens its menu past the
+  // viewport and the destructive items get clipped.
+  const [layout, setLayout] = useState({ top: 0, measured: false, flipped: false });
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('mousedown', onClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
+
+  // Reset measurement on every (re)open so a hidden->visible cycle
+  // re-runs the layout pass. We need the popover to mount once
+  // (visibility:hidden) so we can read its real offsetHeight.
+  useLayoutEffect(() => {
+    if (open) setLayout((l) => ({ ...l, measured: false }));
+  }, [open, anchorRect, isReserved, pinned]);
+
+  const VISIBLE_GAP = 4;
+  const VIEWPORT_PAD = 8;
+
+  useLayoutEffect(() => {
+    if (!open || !ref.current || !anchorRect) return;
+    const h = ref.current.offsetHeight;
+    const VH = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const spaceBelow = VH - VIEWPORT_PAD - anchorRect.bottom;
+    const flip = h + VISIBLE_GAP > spaceBelow;
+    const next = flip
+      ? Math.max(VIEWPORT_PAD, anchorRect.top - VISIBLE_GAP - h)
+      : anchorRect.bottom + VISIBLE_GAP;
+    setLayout({ top: next, measured: true, flipped: flip });
+  }, [open, anchorRect, isReserved, pinned]);
+
+  if (!open || !anchorRect) return null;
+
+  const MENU_W = 200;
+  const left = Math.min(window.innerWidth - MENU_W - 8, Math.max(8, anchorRect.right - MENU_W));
+
+  const Item = ({ label, icon, onClick, danger, disabled, title }) => (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (disabled) return;
+        onClick?.();
+        onClose?.();
+      }}
+      style={{
+        width: 'calc(100% - 8px)', margin: '0 4px',
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '8px 10px', borderRadius: 5,
+        background: 'transparent', border: 0,
+        fontFamily: FONT_BODY, fontSize: 13,
+        color: danger ? 'var(--danger)' : 'var(--ink-2)',
+        textAlign: 'left',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+      }}
+      onMouseOver={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.background = danger
+          ? 'color-mix(in srgb, var(--danger) 12%, transparent)'
+          : 'var(--surface-2)';
+      }}
+      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      {icon && <span style={{ display: 'inline-flex', flexShrink: 0, color: danger ? 'var(--danger)' : 'var(--ink-3)' }}>{icon}</span>}
+      <span style={{ flex: 1 }}>{label}</span>
+    </button>
+  );
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'fixed', top: layout.top, left, zIndex: 60,
+        width: MENU_W,
+        background: 'var(--surface)',
+        border: '1px solid var(--line)',
+        borderRadius: 8,
+        boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+        padding: '4px 0',
+        WebkitAppRegion: 'no-drag',
+        // Stay invisible while the layout effect is measuring height
+        // — prevents a one-frame flash at the wrong y when flipping.
+        visibility: layout.measured ? 'visible' : 'hidden',
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {!hideOpen && <Item label="Open" icon={Ico.folder(13)} onClick={() => onOpen?.(project)} />}
+      {!hidePin && (
+        <Item
+          label={pinned ? 'Unpin' : 'Pin'}
+          icon={Ico.pin(13)}
+          onClick={() => onTogglePin?.(project, !pinned)}
+        />
+      )}
+      {!isReserved && <Item label="Rename…" icon={Ico.edit(13)} onClick={() => onRename?.(project)} />}
+      <Item label="Show in Finder" icon={Ico.folder(13)} onClick={() => onReveal?.(project)} />
+      <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
+      <Item
+        label="Delete…"
+        icon={Ico.trash(13)}
+        danger
+        disabled={undeletable}
+        title={undeletable ? "The General project can't be deleted — it's the orphan-fallback workspace." : undefined}
+        onClick={() => onDelete?.(project)}
+      />
+    </div>
+  );
+}
+
+// ─── Trailing "+ New project" card ───────────────────────────────────────
+
+// "+ New project" tile — clicking flips the card into an inline edit
+// mode with a focused input. Enter creates, Escape (or empty + blur)
+// cancels back to the dashed prompt. Same pattern as the rename
+// affordance on the regular cards. Replaces the previous
+// `window.prompt` flow which Electron renderers can silently disable.
+function NewProjectCard({ onCreate, creating, onCreatingChange }) {
+  const [hover, setHover] = useState(false);
+  // Parent-driven editing state so the page header / empty-state CTA
+  // can flip the card open without it having to be clicked first.
+  const editing = !!creating;
+  const setEditing = (v) => onCreatingChange?.(v);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const inputRef = useRef(null);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setBusy(true); setError('');
+  useEffect(() => {
+    if (!editing) return;
+    const id = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [editing]);
+
+  const submit = async () => {
+    const next = (inputRef.current?.value || '').trim();
+    if (!next) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
     try {
-      await onCreateProject?.({ name: name.trim() });
-      setCreating(false); setName('');
-    } catch (err) {
-      setError(err?.message || 'Could not create project');
-    } finally { setBusy(false); }
+      await onCreate?.(next);
+      setEditing(false);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[projects] create failed', e);
+      alert(`Could not create project: ${e?.message || e}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  return (
-    <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto' }}>
-      <PageHeader
-        title="Projects"
-        subtitle="Workspaces Anton uses to group conversations, memory, and outputs."
-        action={
-          <button className="btn-primary" onClick={() => setCreating(true)}>
-            {Ico.plus(14)} New project
-          </button>
-        }
-      />
-      {creating && (
-        <form onSubmit={submit} style={{
-          margin: '20px 28px 0', padding: 16,
-          border: '1px solid var(--line)', borderRadius: 10,
+  const cancel = () => {
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div
+        style={{
+          minHeight: 120, borderRadius: 10,
+          padding: '14px 16px',
           background: 'var(--surface)',
-          display: 'grid', gridTemplateColumns: '1fr auto auto',
-          gap: 10, alignItems: 'center',
-        }}>
+          border: '1px solid var(--accent)',
+          display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center',
+          fontFamily: FONT_BODY,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-3)' }}>
+            {Ico.folder(14)}
+          </span>
           <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            ref={inputRef}
+            type="text"
             placeholder="Project name"
-            autoFocus
-            style={{ height: 34, border: '1px solid var(--line)', borderRadius: 7, padding: '0 10px', fontSize: 13 }}
+            disabled={busy}
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submit();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancel();
+              }
+            }}
+            onBlur={() => {
+              // Blur commits if there's a value, otherwise cancels.
+              const val = (inputRef.current?.value || '').trim();
+              if (val) submit();
+              else cancel();
+            }}
+            style={{
+              flex: 1, minWidth: 0,
+              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
+              letterSpacing: '-0.005em', color: 'var(--ink)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 6,
+              padding: '4px 8px',
+              outline: 'none',
+            }}
           />
-          <button className="btn-primary" disabled={busy}>{busy ? 'Creating' : 'Create'}</button>
-          <button type="button" className="icon-btn" onClick={() => { setCreating(false); setError(''); }} title="Cancel">{Ico.chevLeft(14)}</button>
-          {error && (
-            <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--danger)' }}>{error}</div>
-          )}
-        </form>
-      )}
+        </div>
+        <div style={{
+          fontFamily: FONT_MONO, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.04em',
+        }}>
+          {busy ? 'Creating…' : '↵ create · esc cancel'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        minHeight: 120, borderRadius: 10,
+        padding: '14px 16px',
+        background: 'transparent',
+        border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
+        color: hover ? 'var(--accent)' : 'var(--ink-3)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 8, cursor: 'pointer',
+        transition: 'border-color .15s ease, color .15s ease',
+      }}
+    >
+      <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
+      <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>New project</span>
+    </button>
+  );
+}
+
+// ─── List view ───────────────────────────────────────────────────────────
+
+const LIST_GRID = '1.6fr 2fr 70px 70px 70px 70px 110px 36px';
+
+function ListHeader() {
+  const Cell = ({ children, align }) => (
+    <div style={{
+      fontFamily: FONT_MONO, fontSize: 10.5,
+      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      textTransform: 'uppercase',
+      textAlign: align || 'left',
+    }}>{children}</div>
+  );
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
+      padding: '10px 14px',
+      borderBottom: '1px solid var(--line)',
+    }}>
+      <Cell>Name</Cell>
+      <Cell>Last activity</Cell>
+      <Cell align="right">Tasks</Cell>
+      <Cell align="right">Memories</Cell>
+      <Cell align="right">Sched.</Cell>
+      <Cell align="right">Artifacts</Cell>
+      <Cell>Updated</Cell>
+      <Cell />
+    </div>
+  );
+}
+
+function D1Num({ value }) {
+  const isZero = !value;
+  return (
+    <span style={{
+      fontFamily: FONT_MONO, fontSize: 12,
+      color: isZero ? 'var(--ink-5)' : 'var(--ink)',
+      textAlign: 'right',
+      fontVariantNumeric: 'tabular-nums',
+    }}>{value ?? 0}</span>
+  );
+}
+
+// Lazy memory + artifact counts per project, identical to the card.
+// We could lift this to a single fetch + share but per-row keeps the
+// list view drop-in simple.
+function useRowStats(project) {
+  const [mem, setMem] = useState(0);
+  const [art, setArt] = useState(0);
+  useEffect(() => {
+    if (!project?.path) return;
+    let cancelled = false;
+    fetchMemory(project.path).then((data) => {
+      if (cancelled) return;
+      const total = (data?.sections || []).reduce((n, s) => n + (s.files?.length || 0), 0);
+      setMem(total);
+    }).catch(() => {});
+    fetchArtifacts().then((data) => {
+      if (cancelled || !Array.isArray(data)) return;
+      const prefix = project.path.replace(/\/+$/, '') + '/';
+      setArt(data.filter((a) => a.path?.startsWith(prefix)).length);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [project?.path]);
+  return { mem, art };
+}
+
+function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen }) {
+  const [hover, setHover] = useState(false);
+  const triggerRef = useRef(null);
+  const { mem, art } = useRowStats(project);
+  const summary = activitySummaryFor(project, tasks);
+  const taskCount = (tasks || []).filter((t) => t.projectName === project.name || t.projectPath === project.path).length;
+  const schedCount = (scheduled || []).filter((s) => (s.project || s.projectName) === project.name).length;
+  const updated = relativeAge(timestampOfProject(project, tasks));
+  const active = isActive(project, tasks);
+  const isReserved = project.name === 'general' || project.name === 'default';
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen?.(project)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onKeyDown={(e) => { if (e.key === 'Enter') onOpen?.(project); }}
+      style={{
+        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
+        padding: '12px 14px',
+        background: hover ? 'var(--surface)' : 'transparent',
+        borderBottom: '1px solid var(--line)',
+        cursor: 'pointer',
+        transition: 'background .12s ease',
+        alignItems: 'center',
+        outline: 'none',
+      }}
+    >
+      {/* Name */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span aria-hidden style={{
+          width: 6, height: 6, borderRadius: 99,
+          background: active ? 'var(--success)' : 'var(--ink-5)',
+          boxShadow: active ? '0 0 6px var(--success-glow)' : 'none',
+          flexShrink: 0,
+        }} />
+        <span style={{ display: 'inline-flex', color: 'var(--ink-3)', flexShrink: 0 }}>
+          {Ico.folder(13)}
+        </span>
+        <span style={{
+          fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
+          color: 'var(--ink)', minWidth: 0,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{project.name}</span>
+        {pinned && (
+          <span style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>
+            {Ico.pin(11)}
+          </span>
+        )}
+      </div>
+
+      {/* Last activity */}
       <div style={{
-        padding: 28,
-        display: 'grid',
-        // Always two cards per row. minmax(0, 1fr) so the cell can
-        // shrink past content min-width and the path ellipsis kicks in.
-        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        gap: 14,
+        fontFamily: FONT_BODY, fontSize: 12.5,
+        color: 'var(--ink-2)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
-        {projects.map((p) => (
-          <ProjectCard
-            key={p.name}
-            project={p}
-            isSelected={selectedProject?.name === p.name}
-            tasks={tasks}
-            scheduled={scheduled}
-            onOpen={onOpenProject}
-            onDelete={onDeleteProject}
-          />
-        ))}
+        {summary?.title || <span style={{ color: 'var(--ink-4)', fontStyle: 'italic' }}>No activity yet</span>}
+      </div>
+
+      {/* Number cells */}
+      <D1Num value={taskCount} />
+      <D1Num value={mem} />
+      <D1Num value={schedCount} />
+      <D1Num value={art} />
+
+      {/* Updated */}
+      <div style={{
+        fontFamily: FONT_MONO, fontSize: 11,
+        color: 'var(--ink-4)', letterSpacing: '0.04em',
+      }}>{updated}</div>
+
+      {/* ⋯ menu */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = triggerRef.current?.getBoundingClientRect();
+            onMenuOpen?.(project, rect);
+          }}
+          aria-label="Project menu"
+          style={{
+            width: 26, height: 26, borderRadius: 6,
+            background: 'transparent', border: 0,
+            color: 'var(--ink-3)',
+            opacity: hover || isReserved ? 1 : 0,
+            display: isReserved ? 'none' : 'inline-grid',
+            placeItems: 'center',
+            cursor: 'pointer',
+            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+          }}
+          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+        >
+          {Ico.moreVert(15)}
+        </button>
       </div>
     </div>
   );
 }
 
-// TaskCard / turnsCount lived here previously; both now live in
-// components/task/ as the shared TaskCard + TaskList.
+// ─── Empty / loading ─────────────────────────────────────────────────────
 
-// MiniCard + ScheduledMini lived here previously. They've been
-// replaced by the shared rail boxes (WorkingFolderBox, ContextBox,
-// ScheduledBox) in components/rail/.
+function EmptyState({ onNewProject }) {
+  return (
+    <div style={{
+      flex: 1, minHeight: 360,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      gap: 14, padding: '40px 24px',
+    }}>
+      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>
+      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+        No projects yet
+      </div>
+      <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 360, textAlign: 'center' }}>
+        Create your first project to start grouping conversations and outputs.
+      </div>
+      <NewProjectButton onClick={onNewProject} />
+    </div>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div style={{
+      minHeight: 120, borderRadius: 10, padding: '14px 16px',
+      border: '1px solid var(--line)', background: 'var(--surface)',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ height: 14, width: '60%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ height: 11, width: '90%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+        <div style={{ height: 11, width: '70%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+      </div>
+      <div style={{ height: 12, width: '50%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+    </div>
+  );
+}
+
+// ─── Project detail (per-project workspace) ──────────────────────────────
+//
+// Same shape as ChatView. Header crumb is `Projects › [name]`; left
+// column is composer-on-top + per-project task list; right rail is
+// Working folder + Context + Scheduled. Restored after a brief detour
+// where I'd accidentally folded this into the home route — the user
+// wants the in-page detail view to stay.
+
+function Crumb({ label, onClick, title, maxWidth }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      style={{
+        cursor: 'pointer', background: 'transparent', border: 0, outline: 0,
+        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+        letterSpacing: '0.04em', color: 'var(--ink-3)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        maxWidth, flexShrink: 1,
+        padding: '2px 6px', borderRadius: 5,
+        transition: 'color 120ms ease, background 120ms ease',
+        WebkitAppRegion: 'no-drag',
+      }}
+      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+      onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CrumbSep() {
+  return (
+    <span aria-hidden="true" style={{
+      color: 'var(--ink-4)', fontFamily: FONT_DISPLAY,
+      fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
+      userSelect: 'none',
+    }}>›</span>
+  );
+}
 
 function ProjectDetail({
   project, projects, tasks, scheduled, models, onSend, onSelectTask,
-  onDeleteTask, onShowAll, onCreateProject,
+  onDeleteTask, onShowAll,
+  // Header kebab + inline rename — lets users rename / reveal / delete
+  // the active project without bouncing back to the grid. Pin is
+  // intentionally absent: the only pin store today is localStorage on
+  // the grid cards, and exposing the toggle here would imply the
+  // detail view participates in that state.
+  editing = false,
+  onRenameStart,
+  onRenameSubmit,
+  onRenameCancel,
+  onReveal,
+  onDelete,
 }) {
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
-    .sort((a, b) => timestampOf(b) - timestampOf(a));
+    .sort((a, b) => timestampOfProject(b, []) - timestampOfProject(a, []) || 0);
   const projectSchedules = (scheduled || [])
     .filter((s) => (s.project || s.projectName) === project.name);
 
-  // Rail collapse mirror of ChatView's behavior — same in-rail
-  // collapse button + floating expand button on the conv col.
   const [railOpen, setRailOpen] = useState(true);
+  const [titleHover, setTitleHover] = useState(false);
+  const [menuRect, setMenuRect] = useState(null);
+  const kebabRef = useRef(null);
+  const renameInputRef = useRef(null);
+  const isReserved = project.name === 'general' || project.name === 'default';
+  const showKebab = titleHover || !!menuRect;
+
+  // Focus + select-all the inline input on mount of the editing state.
+  useEffect(() => {
+    if (!editing) return;
+    const id = requestAnimationFrame(() => {
+      const el = renameInputRef.current;
+      if (!el) return;
+      el.focus();
+      try { el.select(); } catch {}
+    });
+    return () => cancelAnimationFrame(id);
+  }, [editing]);
+
+  const submitRename = () => {
+    const next = renameInputRef.current?.value ?? project.name;
+    onRenameSubmit?.(next);
+  };
 
   return (
     <div style={{
       flex: 1, minHeight: 0,
       display: 'grid',
-      // Same minmax(0, 1fr) trick ChatView uses to prevent grid track
-      // expansion when long unbreakable content lands in the conv col.
       gridTemplateColumns: railOpen ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr) 0px',
       gridTemplateRows: '1fr',
       transition: 'grid-template-columns 220ms cubic-bezier(.2,.7,.3,1)',
       background: 'transparent',
-      fontFamily: 'var(--font-body)',
+      fontFamily: FONT_BODY,
       color: 'var(--ink-2)',
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* ─── Conversation column ─── */}
       <div style={{
         position: 'relative', overflow: 'hidden',
         display: 'grid',
@@ -197,8 +968,7 @@ function ProjectDetail({
           {Ico.panelExpandLeft(15)}
         </button>
 
-        {/* Header — Projects › [project] crumb. Same layout/styling
-            as ChatView so the project view reads as a sibling. */}
+        {/* Header — Projects › [project] crumb */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 28px',
@@ -212,22 +982,100 @@ function ProjectDetail({
             minWidth: 0, flex: '1 1 0',
             overflow: 'hidden',
           }}>
-            <Crumb
-              label="Projects"
-              onClick={onShowAll}
-              title="All projects"
-            />
+            <Crumb label="Projects" onClick={onShowAll} title="All projects" />
             <CrumbSep />
-            <span title={project.name} style={{
-              fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14,
-              letterSpacing: '0.04em', color: 'var(--ink)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              minWidth: 0, flex: '1 1 0',
-            }}>{project.name}</span>
+            <div
+              onMouseEnter={() => setTitleHover(true)}
+              onMouseLeave={() => setTitleHover(false)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                minWidth: 0, flex: '1 1 0',
+              }}
+            >
+              {editing ? (
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  defaultValue={project.name}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitRename();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      onRenameCancel?.();
+                    }
+                  }}
+                  onBlur={submitRename}
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  style={{
+                    flex: '1 1 0', minWidth: 0,
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+                    letterSpacing: '0.04em', color: 'var(--ink)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: 5, padding: '2px 6px', outline: 'none',
+                  }}
+                />
+              ) : (
+                <span title={project.name} style={{
+                  fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+                  letterSpacing: '0.04em', color: 'var(--ink)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  minWidth: 0, flex: '0 1 auto',
+                }}>{project.name}</span>
+              )}
+              {!editing && (
+                <button
+                  ref={kebabRef}
+                  type="button"
+                  aria-label="Project menu"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = kebabRef.current?.getBoundingClientRect();
+                    setMenuRect(rect || null);
+                  }}
+                  style={{
+                    width: 22, height: 22, borderRadius: 5,
+                    background: 'transparent', border: 0,
+                    color: 'var(--ink-3)',
+                    display: 'inline-grid', placeItems: 'center',
+                    flexShrink: 0,
+                    opacity: showKebab ? 1 : 0,
+                    pointerEvents: showKebab ? 'auto' : 'none',
+                    cursor: 'pointer',
+                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+                    WebkitAppRegion: 'no-drag',
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                >
+                  {Ico.moreVert(13)}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Scrollable body — composer pinned at top, task list below */}
+        <ProjectMenu
+          open={!!menuRect}
+          anchorRect={menuRect}
+          project={project}
+          isReserved={isReserved}
+          undeletable={project.name === 'general'}
+          hideOpen
+          hidePin
+          onClose={() => setMenuRect(null)}
+          onRename={() => onRenameStart?.(project)}
+          onReveal={() => onReveal?.(project)}
+          onDelete={() => onDelete?.(project)}
+        />
+
         <div data-scroll="true" style={{
           minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
           padding: '32px 28px 60px',
@@ -267,7 +1115,6 @@ function ProjectDetail({
         </div>
       </div>
 
-      {/* ─── Right rail — same shape as ChatView, no Progress card ─── */}
       <aside style={{
         background: 'transparent',
         padding: '14px 14px 22px',
@@ -279,7 +1126,6 @@ function ProjectDetail({
         minWidth: 0,
         WebkitAppRegion: 'no-drag',
       }}>
-        {/* Rail header — collapse-to-right button at top-right */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
           flexShrink: 0,
@@ -310,41 +1156,7 @@ function ProjectDetail({
   );
 }
 
-// ── Header crumb helpers (mirror ChatView's CrumbButton/CrumbSep) ──
-function Crumb({ label, onClick, title, maxWidth }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      style={{
-        cursor: 'pointer', background: 'transparent', border: 0,
-        outline: 0, font: 'inherit',
-        fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function CrumbSep() {
-  return (
-    <span aria-hidden="true" style={{
-      color: 'var(--ink-4)', fontFamily: 'var(--font-display)',
-      fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-      userSelect: 'none',
-    }}>›</span>
-  );
-}
+// ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ProjectsView({
   projects = [],
@@ -352,47 +1164,253 @@ export default function ProjectsView({
   tasks = [],
   scheduled = [],
   models = [],
+  loading = false,
   onSelectProject,
   onCreateProject,
+  onDeleteProject,
   onSendInProject,
   onSelectTask,
   onDeleteTask,
-  onDeleteProject,
 }) {
-  // Detail mode is local — App's selectedProject seeds it but the user
-  // can flip back to the grid without losing their global selection.
+  const { pinned, togglePin } = usePinnedProjects();
+  const [view, setView] = useState(() =>
+    localStorage.getItem('anton:projects-view') === 'list' ? 'list' : 'grid'
+  );
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('recent');
+  const [menuFor, setMenuFor] = useState(null); // { project, rect }
+  // Card whose title is currently in inline-edit mode. Only one at a
+  // time — null means no card is editing. The card owns the input;
+  // we own the "which card" state.
+  const [editingProjectName, setEditingProjectName] = useState(null);
+  const searchRef = useRef(null);
+
+  // Detail-mode state — when a project is "open" the page swaps from
+  // the grid/list to the per-project workspace. Seeded from the
+  // app-level selectedProject so the chat-header crumb (which sets
+  // selectedProject + routes here) lands directly in detail.
   const [detailProject, setDetailProject] = useState(selectedProject || null);
   useEffect(() => { setDetailProject(selectedProject || null); }, [selectedProject]);
 
-  if (!detailProject) {
+  // Persist view preference.
+  useEffect(() => { localStorage.setItem('anton:projects-view', view); }, [view]);
+
+  // ⌘K focuses the search input.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Inline create — the trailing dashed card flips into an input when
+  // creating=true. The header / empty-state CTAs toggle it; the card
+  // also self-toggles when clicked. Replaces the previous
+  // window.prompt flow which Electron renderers can silently block.
+  const [creating, setCreating] = useState(false);
+  const handleNewProject = () => {
+    if (view !== 'grid') setView('grid'); // ensure the card is visible
+    setCreating(true);
+  };
+  const handleCreateProject = async (name) => {
+    if (onCreateProject) await onCreateProject({ name });
+    else await createProjectApi(name);
+    // App-level listener refetches projects on this event.
+    window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+  };
+
+  const handleOpen = (project) => {
+    onSelectProject?.(project);
+    setDetailProject(project);
+  };
+
+  // Inline rename — clicking "Rename…" in the kebab puts the card into
+  // edit mode. The card's title becomes an <input>; the parent owns
+  // the editing-target state so only one card edits at a time.
+  const handleRenameStart = (project) => {
+    setEditingProjectName(project.name);
+  };
+  const handleRenameCancel = () => {
+    setEditingProjectName(null);
+  };
+  const handleRenameSubmit = async (oldName, rawNext) => {
+    const next = (rawNext || '').trim();
+    setEditingProjectName(null);
+    if (!next || next === oldName) return;
+    try {
+      const result = await renameProject(oldName, next);
+      const finalName = result?.name || next;
+      const finalPath = result?.path || detailProject?.path;
+      // If we're sitting in detail mode for the renamed project, swap
+      // the local detailProject so the breadcrumb shows the new name
+      // immediately — App.jsx's selectedProject won't update until the
+      // user re-enters the project from the grid.
+      if (detailProject?.name === oldName) {
+        setDetailProject({ ...detailProject, name: finalName, path: finalPath });
+      }
+      // App-level listener refetches projects on this event.
+      window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+    } catch (e) {
+      alert(`Rename failed: ${e?.message || e}`);
+    }
+  };
+
+  const handleReveal = async (project) => {
+    if (!project?.path) return;
+    try { await revealProjectInFinder(project.path); } catch {}
+  };
+
+  // Filter + sort, with pinned items always at the top.
+  const visibleProjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = [...projects];
+    if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q));
+
+    const ts = (p) => timestampOfProject(p, tasks);
+    const taskCountOf = (p) => (tasks || []).filter((t) =>
+      t.projectName === p.name || t.projectPath === p.path,
+    ).length;
+
+    list.sort((a, b) => {
+      switch (sort) {
+        case 'name':         return a.name.localeCompare(b.name);
+        case 'most-active':  return taskCountOf(b) - taskCountOf(a);
+        case 'least-active': return taskCountOf(a) - taskCountOf(b);
+        case 'recent':
+        default:             return ts(b) - ts(a);
+      }
+    });
+
+    // Pinned to top, preserving relative sort within each group.
+    const pinnedList   = list.filter((p) => pinned.has(p.name));
+    const unpinnedList = list.filter((p) => !pinned.has(p.name));
+    return [...pinnedList, ...unpinnedList];
+  }, [projects, tasks, search, sort, pinned]);
+
+  if (detailProject) {
     return (
-      <ProjectGrid
+      <ProjectDetail
+        project={detailProject}
         projects={projects}
-        selectedProject={selectedProject}
         tasks={tasks}
         scheduled={scheduled}
-        onCreateProject={onCreateProject}
-        onDeleteProject={onDeleteProject}
-        onOpenProject={(p) => {
-          setDetailProject(p);
-          onSelectProject?.(p);
+        models={models}
+        onSend={onSendInProject}
+        onSelectTask={onSelectTask}
+        onDeleteTask={onDeleteTask}
+        onShowAll={() => setDetailProject(null)}
+        editing={editingProjectName === detailProject.name}
+        onRenameStart={handleRenameStart}
+        onRenameSubmit={(rawNext) => handleRenameSubmit(detailProject.name, rawNext)}
+        onRenameCancel={handleRenameCancel}
+        onReveal={handleReveal}
+        onDelete={(proj) => {
+          // Bounce back to the grid first so we don't render a detail
+          // page for a project that's about to disappear, then defer
+          // the destructive call to App.jsx's confirmation flow.
+          setDetailProject(null);
+          onDeleteProject?.(proj);
         }}
       />
     );
   }
 
   return (
-    <ProjectDetail
-      project={detailProject}
-      projects={projects}
-      tasks={tasks}
-      scheduled={scheduled}
-      models={models}
-      onSend={onSendInProject}
-      onSelectTask={onSelectTask}
-      onDeleteTask={onDeleteTask}
-      onShowAll={() => setDetailProject(null)}
-      onCreateProject={onCreateProject}
-    />
+    <div className="scroll-clean" style={{
+      flex: 1, overflowY: 'auto',
+      background: 'var(--bg)',
+      display: 'flex', flexDirection: 'column',
+    }}>
+      <ProjectsHeader onNewProject={handleNewProject} />
+
+      <div style={{ height: 18 }} />
+
+      <FilterRow
+        search={search}
+        onSearchChange={setSearch}
+        sort={sort}
+        onSortChange={setSort}
+        view={view}
+        onViewChange={setView}
+        total={projects.length}
+        filtered={visibleProjects.length}
+        pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
+        searchRef={searchRef}
+      />
+
+      {loading ? (
+        <div style={{
+          padding: '6px 32px 60px',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
+          marginTop: 18,
+        }}>
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      ) : projects.length === 0 ? (
+        <EmptyState onNewProject={handleNewProject} />
+      ) : view === 'grid' ? (
+        <div style={{
+          padding: '6px 32px 60px',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
+          marginTop: 18,
+        }}>
+          {visibleProjects.map((p) => (
+            <ProjectCard
+              key={p.name || p.path}
+              project={p}
+              isSelected={selectedProject?.name === p.name}
+              tasks={tasks}
+              scheduled={scheduled}
+              pinned={pinned.has(p.name)}
+              editing={editingProjectName === p.name}
+              onOpen={handleOpen}
+              onTogglePin={(proj, next) => togglePin(proj.name, next)}
+              onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+              onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
+              onRenameCancel={handleRenameCancel}
+            />
+          ))}
+          <NewProjectCard
+            creating={creating}
+            onCreatingChange={setCreating}
+            onCreate={handleCreateProject}
+          />
+        </div>
+      ) : (
+        <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
+          <ListHeader />
+          {visibleProjects.map((p) => (
+            <ListRow
+              key={p.name || p.path}
+              project={p}
+              tasks={tasks}
+              scheduled={scheduled}
+              pinned={pinned.has(p.name)}
+              onOpen={handleOpen}
+              onTogglePin={(proj, next) => togglePin(proj.name, next)}
+              onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+            />
+          ))}
+        </div>
+      )}
+
+      <ProjectMenu
+        open={!!menuFor}
+        anchorRect={menuFor?.rect}
+        project={menuFor?.project}
+        pinned={menuFor ? pinned.has(menuFor.project.name) : false}
+        isReserved={menuFor?.project?.name === 'general' || menuFor?.project?.name === 'default'}
+        onClose={() => setMenuFor(null)}
+        onOpen={handleOpen}
+        onRename={handleRenameStart}
+        onTogglePin={(proj, next) => togglePin(proj.name, next)}
+        onReveal={handleReveal}
+        onDelete={(proj) => onDeleteProject?.(proj)}
+      />
+    </div>
   );
 }

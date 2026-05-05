@@ -29,7 +29,26 @@ DEFAULT_PROJECT = "default"
 # task has no project assigned. We always keep it provisioned so the
 # UI can confidently route there.
 GENERAL_PROJECT = "general"
-_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+
+# Folder name policy. Whitelist letters/digits/dot/underscore/hyphen so a
+# single sanitizer is safe on macOS, Linux, and Windows. Anything outside
+# the whitelist is collapsed to a single hyphen; runs are deduped and
+# leading/trailing punctuation is stripped so we never emit names like
+# `..` or `-foo`.
+_NAME_DISALLOWED = re.compile(r"[^A-Za-z0-9._-]+")
+_NAME_HYPHEN_RUNS = re.compile(r"-{2,}")
+# Windows reserved device names (case-insensitive). A folder named CON,
+# PRN, NUL, COM1, etc. is rejected by NTFS even with no extension.
+_WIN_RESERVED = {
+    "con", "prn", "aux", "nul",
+    *(f"com{i}" for i in range(1, 10)),
+    *(f"lpt{i}" for i in range(1, 10)),
+}
+# Cap below the per-component limit so we always have room to append a
+# `-NN` collision suffix without crossing the 64-char practical ceiling
+# we want for clean URLs and ls output.
+_NAME_MAX_LEN = 48
+_NAME_FALLBACK = "untitled-project"
 
 
 class Project(TypedDict):
@@ -52,8 +71,45 @@ def project_path(name: str) -> Path:
 
 
 def sanitize_name(name: str) -> str:
-    cleaned = _NAME_RE.sub("-", (name or "").strip()).strip("-._")
-    return cleaned[:64]
+    """Map any user input to a folder-safe project name.
+
+    Always returns a non-empty string. Strange characters (`Hello, World!`,
+    `proj/2025`, emoji, etc.) collapse to single hyphens. Windows-reserved
+    names get an `-x` tail so NTFS will accept them. Names that sanitize
+    to nothing fall back to `untitled-project`.
+    """
+    raw = (name or "").strip()
+    cleaned = _NAME_DISALLOWED.sub("-", raw)
+    cleaned = _NAME_HYPHEN_RUNS.sub("-", cleaned)
+    cleaned = cleaned.strip("-._")
+    if len(cleaned) > _NAME_MAX_LEN:
+        cleaned = cleaned[:_NAME_MAX_LEN].rstrip("-._")
+    if not cleaned:
+        cleaned = _NAME_FALLBACK
+    if cleaned.lower() in _WIN_RESERVED:
+        cleaned = f"{cleaned}-x"
+    return cleaned
+
+
+def unique_name(base: str, *, exclude: str | None = None) -> str:
+    """Find a non-colliding folder name by appending `-2`, `-3`, …
+
+    `exclude` lets a rename keep its current folder name without treating
+    it as a collision (so renaming `foo` to `foo` is a no-op rather than
+    `foo-2`). Existence is checked against the actual filesystem, so this
+    honours macOS/Windows case-insensitivity automatically.
+    """
+    ensure_projects_dir()
+    if base != exclude and not project_path(base).exists():
+        return base
+    if base == exclude:
+        return base
+    i = 2
+    while True:
+        candidate = f"{base}-{i}"
+        if candidate == exclude or not project_path(candidate).exists():
+            return candidate
+        i += 1
 
 
 def ensure_projects_dir() -> Path:
@@ -97,39 +153,49 @@ def list_projects() -> list[Project]:
 
 def create_project(name: str) -> Project:
     sanitized = sanitize_name(name)
-    if not sanitized:
-        raise ValueError("Invalid project name")
-    ensure_projects_dir()
-    target = project_path(sanitized)
-    if target.exists():
-        raise FileExistsError("Project already exists")
+    final_name = unique_name(sanitized)
+    target = project_path(final_name)
     target.mkdir(parents=True)
     _scaffold(target)
-    return {"name": sanitized, "path": str(target)}
+    return {
+        "name": final_name,
+        "path": str(target),
+        "requested": name,
+        "renamed": final_name != (name or "").strip(),
+    }
 
 
 def rename_project(old_name: str, new_name: str) -> Project:
     if old_name == DEFAULT_PROJECT:
         raise ValueError("Cannot rename default project")
-    sanitized = sanitize_name(new_name)
-    if not sanitized:
-        raise ValueError("Invalid project name")
     old_dir = project_path(old_name)
-    new_dir = project_path(sanitized)
     if not old_dir.exists():
         raise FileNotFoundError("Project not found")
-    if new_dir.exists():
-        raise FileExistsError("Project already exists")
-    old_dir.rename(new_dir)
-    state = _read_state()
-    if state.get("activeProject") == old_name:
-        _write_state({"activeProject": sanitized})
-    return {"name": sanitized, "path": str(new_dir)}
+    sanitized = sanitize_name(new_name)
+    final_name = unique_name(sanitized, exclude=old_name)
+    new_dir = project_path(final_name)
+    if old_dir != new_dir:
+        old_dir.rename(new_dir)
+        state = _read_state()
+        if state.get("activeProject") == old_name:
+            _write_state({"activeProject": final_name})
+    return {
+        "name": final_name,
+        "path": str(new_dir),
+        "requested": new_name,
+        "renamed": final_name != (new_name or "").strip(),
+    }
 
 
 def delete_project(name: str) -> bool:
-    if name == DEFAULT_PROJECT:
-        raise ValueError("Cannot delete default project")
+    # `general` is the orphan-fallback project — the UI always needs a
+    # safe place to route unassigned tasks, so it can't be deleted.
+    # `default` used to be blocked too but it's now treated like any
+    # user project: deletable, recreated lazily by ensure_default_project
+    # on the next list call so the install never ends up with zero
+    # projects.
+    if name == GENERAL_PROJECT:
+        raise ValueError("Cannot delete the General project")
     target = project_path(name)
     if not target.exists():
         return False
@@ -137,6 +203,7 @@ def delete_project(name: str) -> bool:
     state = _read_state()
     if state.get("activeProject") == name:
         _write_state({"activeProject": DEFAULT_PROJECT})
+        ensure_default_project()
     return True
 
 

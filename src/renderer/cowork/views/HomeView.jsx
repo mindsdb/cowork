@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { OrbitMorph } from '../components/ui';
@@ -43,6 +44,15 @@ export default function HomeView({
   configReady, configError, onOpenSettings,
 }) {
   const blocked = configReady === false;
+  // OrbitMorph state is driven by composer typing + active tasks.
+  // Rendering: we stack two orbs (idle + thinking) and crossfade
+  // their opacities so the transition reads as one orb morphing
+  // into the other instead of an animation snap. Reversibility is
+  // free — CSS transitions interpolate from the current opacity to
+  // the new target whenever isTyping flips, so resuming typing
+  // mid-fade smoothly walks the orbs back the other way.
+  const [isTyping, setIsTyping] = useState(false);
+  const wantsThinking = isTyping || (activeTasks && activeTasks.length > 0);
 
   return (
     <div
@@ -65,11 +75,44 @@ export default function HomeView({
         animation: 'fadein-up .4s ease-out',
         display: 'flex', alignItems: 'center', gap: 16,
       }}>
-        <OrbitMorph
-          size={42}
-          state={activeTasks && activeTasks.length > 0 ? 'thinking' : 'idle'}
-          style={{ flexShrink: 0, marginLeft: -58 }}
-        />
+        {/* Stacked crossfade: render BOTH orbs (idle + thinking) in
+            the same slot and let CSS interpolate their opacity.
+            When the user starts typing, the thinking orb fades in
+            (1s) and the idle orb fades out (1s); when typing pauses
+            past the composer's 1s debounce, the thinking orb fades
+            out (2s) and the idle orb fades back in (2s).
+            CSS transitions interpolate from CURRENT value to the
+            new target, so resuming typing mid-fade smoothly walks
+            both orbs back the other way — no animation snap. */}
+        <span style={{
+          position: 'relative',
+          width: 42, height: 42,
+          flexShrink: 0, marginLeft: -58,
+          display: 'inline-block',
+        }}>
+          <OrbitMorph
+            size={42}
+            state="idle"
+            style={{
+              position: 'absolute', inset: 0,
+              opacity: wantsThinking ? 0 : 1,
+              transition: wantsThinking
+                ? 'opacity 1s ease-out'
+                : 'opacity 2s ease-in',
+            }}
+          />
+          <OrbitMorph
+            size={42}
+            state="thinking"
+            style={{
+              position: 'absolute', inset: 0,
+              opacity: wantsThinking ? 1 : 0,
+              transition: wantsThinking
+                ? 'opacity 1s ease-in'
+                : 'opacity 2s ease-out',
+            }}
+          />
+        </span>
         <span>{greeting}</span>
       </h1>
       {blocked ? (
@@ -110,6 +153,7 @@ export default function HomeView({
           onAttachConnector={onAttachConnector}
           onRemoveAttachment={onRemoveAttachment}
           hideModel
+          onTypingChange={setIsTyping}
         />
       )}
       <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />

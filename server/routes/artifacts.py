@@ -4,6 +4,7 @@ Scans all registered projects for output files.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import mimetypes
@@ -12,12 +13,21 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from anton_api import projects_store
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# In-memory registry mapping a short, deterministic token to the parent
+# directory of an HTML artifact. Used by the in-app iframe preview so
+# relative `<script src=…>` / `<link href=…>` references can resolve
+# against a real URL (srcdoc has no base URL → relative refs 404).
+# The token is sha256(parent_dir)[:16] — stable across calls so reopens
+# don't allocate fresh entries.
+_PREVIEW_MOUNTS: dict[str, Path] = {}
 
 KIND_MAP = {
     ".html": "Dashboard",
@@ -175,6 +185,72 @@ async def preview_artifact(path: str = Query(...)):
         "content": text[:200_000],
         "truncated": len(text) > 200_000,
     }
+
+
+# ─── Iframe preview mount ────────────────────────────────────────────────
+#
+# Two-step flow used by ArtifactViewer to render HTML with relative asset
+# references intact:
+#
+#   1. POST /v1/artifacts/preview-mount {path} → register the artifact's
+#      parent dir under a deterministic token, return the entry filename
+#      and a relative URL the iframe should load.
+#   2. GET  /v1/artifacts/preview-asset/{token}/{rel_path}  → serve files
+#      from that mounted dir, restricted to descendants of the parent so
+#      a malicious artifact can't traverse into the rest of the disk.
+#
+# The iframe loads the entry URL with `src=` (not srcdoc), so the
+# browser resolves relative refs against the asset URL — `chart.js`,
+# `style.css`, sibling images, etc. all load correctly.
+
+class PreviewMountRequest(BaseModel):
+    path: str
+
+
+@router.post("/preview-mount")
+async def preview_mount(req: PreviewMountRequest):
+    artifact = _resolve_artifact_path(req.path)
+    if artifact.suffix.lower() != ".html":
+        raise HTTPException(status_code=415, detail="Preview mount is only available for HTML artifacts")
+    parent = artifact.parent.resolve()
+    # Stable per-parent. No TTL — the registry naturally caps at a few
+    # entries since each project has at most one .anton/output dir.
+    token = hashlib.sha256(str(parent).encode("utf-8")).hexdigest()[:16]
+    _PREVIEW_MOUNTS[token] = parent
+    return {
+        "token": token,
+        "entry": artifact.name,
+        # Relative path the client can append to BASE; full URL is built
+        # client-side so we don't need to know the host here.
+        "relUrl": f"/artifacts/preview-asset/{token}/{artifact.name}",
+    }
+
+
+@router.get("/preview-asset/{token}/{rel_path:path}")
+async def preview_asset(token: str, rel_path: str):
+    parent = _PREVIEW_MOUNTS.get(token)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Preview mount has expired or is unknown")
+    try:
+        target = (parent / rel_path).resolve()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid asset path") from exc
+    # Path-traversal guard — the resolved target must remain inside
+    # the mounted parent directory.
+    try:
+        target.relative_to(parent)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Asset is outside the artifact directory")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    media_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    # Cache aggressively for assets — they're keyed by token (which is
+    # derived from the parent dir) and we expect them to be immutable
+    # for the life of the artifact. Browsers will revalidate on hard
+    # refresh anyway.
+    return FileResponse(target, media_type=media_type, headers={
+        "Cache-Control": "private, max-age=300",
+    })
 
 
 class ArtifactAction(BaseModel):

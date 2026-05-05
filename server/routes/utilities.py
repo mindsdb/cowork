@@ -551,8 +551,14 @@ async def unpublish_artifact(path: str = Query(..., description="Absolute path t
         raise HTTPException(status_code=500, detail="Could not read publish record")
 
     entry = published_map.get(artifact.name)
-    md5 = entry.get("last_md5") if isinstance(entry, dict) else None
-    if not md5:
+    # Match anton's CLI: prefer the report_id, fall back to last_md5.
+    # mdb.ai's `/delete/{id}` endpoint accepts the report_id directly,
+    # which is what the publish response gives us; the md5 is the
+    # version hash and isn't always recognized as a delete target.
+    identifier = None
+    if isinstance(entry, dict):
+        identifier = entry.get("report_id") or entry.get("last_md5") or None
+    if not identifier:
         raise HTTPException(status_code=404, detail="No published version on file")
 
     try:
@@ -562,14 +568,24 @@ async def unpublish_artifact(path: str = Query(..., description="Absolute path t
 
     try:
         unpublish(
-            md5,
+            identifier,
             api_key=api_key,
             publish_url=_get_env("ANTON_PUBLISH_URL", "https://4nton.ai"),
             ssl_verify=_get_env("ANTON_MINDS_SSL_VERIFY", "true").lower() == "true",
         )
     except Exception as exc:
-        logger.exception("Unpublishing failed")
-        raise HTTPException(status_code=502, detail="Unpublishing failed. Check your Minds credentials and try again.") from exc
+        logger.exception("Unpublishing failed (identifier=%s)", identifier)
+        # Surface the underlying error to the client so the toast is
+        # informative — it'll usually be a 401 (bad key) or a 404 (the
+        # report was already deleted upstream). We map "not found"
+        # specifically so the UI can treat it as success and clear the
+        # local record.
+        msg = str(exc) or "Unpublishing failed."
+        if "404" in msg or "not found" in msg.lower():
+            # Already gone upstream — clear the local record below.
+            pass
+        else:
+            raise HTTPException(status_code=502, detail=f"Unpublishing failed: {msg}") from exc
 
     # Strip from the per-folder map so the artifact is no longer
     # reported as published.

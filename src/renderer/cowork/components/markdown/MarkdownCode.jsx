@@ -6,21 +6,159 @@
 //                                        shows error placeholder.
 //   - everything else                  → plain <code> with our token style
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ChartLoadingState, ChartErrorState } from './ChartStates';
 import { MessageChart } from './MessageChart';
 import { parseChartIntent } from './utils';
+import Ico from '../Icons';
+import { patchForm, setForm } from '../datavault/formStore';
+import { parseFormSpec } from '../datavault/parseFormSpec';
 
 export function MarkdownCode(props) {
   const lang = props?.className?.replace('language-', '') || '';
   const text = String(props?.children ?? '');
   const id = props?.id;
   const complete = props?.complete !== false; // assume complete unless told otherwise
+  const conversationId = props?.conversationId || null;
+
+  // ── ALL HOOKS FIRST ───────────────────────────────────────────────
+  // Critical: every useMemo/useEffect must run on every render of
+  // this component instance, in the same order. The earlier version
+  // had `useMemo(formSpec)` + `useEffect` followed by an early return
+  // for `data-vault-form`, which meant `useMemo(chartIntent)` below
+  // ran on some renders and not others — that's a rules-of-hooks
+  // violation that React surfaces as a max-update-depth crash.
+  //
+  // We compute every memo up front, then branch on lang for the
+  // actual return. Each branch's logic is otherwise unchanged.
+
+  // Both `data-vault-form` (full spec) and `data-vault-form-patch`
+  // (partial update) parse the same way — just a JSON object. The
+  // difference is in how the form store consumes them: setForm
+  // replaces, patchForm merges.
+  const isFormLang = lang === 'data-vault-form' || lang === 'data-vault-form-patch';
+  const parseAttempt = useMemo(() => {
+    if (!isFormLang) return { spec: null, error: null };
+    if (!complete) return { spec: null, error: null };
+    return parseFormSpec(text);
+  }, [isFormLang, text, complete]);
+  const formSpec = parseAttempt.spec;
+  const parseError = parseAttempt.error;
 
   const chartIntent = useMemo(() => {
     if (lang === 'chart' && text) return parseChartIntent(text);
     return null;
   }, [lang, text]);
+
+  useEffect(() => {
+    if (!isFormLang || !conversationId || !complete) return;
+    if (formSpec) {
+      // Patch dialect merges into the existing form (preserves the
+      // user's typed values + only changes the bits Anton specified);
+      // the full dialect replaces.
+      if (lang === 'data-vault-form-patch') {
+        patchForm(conversationId, formSpec);
+      } else {
+        setForm(conversationId, formSpec);
+      }
+      return;
+    }
+    if (parseError) {
+      // Push a synthetic "parse error" spec into the form store so
+      // the side panel surfaces a retry affordance instead of just
+      // a dead inline error. The user clicks "Ask Anton to retry"
+      // → DataVaultFormPanel dispatches a recovery message.
+      setForm(conversationId, {
+        form_id: 'fm_parse_error',
+        title: 'Form did not parse',
+        subtitle: 'Anton sent a form spec that wasn’t valid JSON.',
+        logo: 'database',
+        logo_color: 'var(--danger)',
+        fields: [],
+        form_error: parseError,
+        actions: [
+          { id: 'retry', label: 'Ask Anton to retry', kind: 'primary' },
+          { id: 'dismiss', label: 'Dismiss', kind: 'cancel' },
+        ],
+        // Carry the raw text so the panel can offer a "show raw" peek.
+        _raw: text.length > 1000 ? text.slice(0, 1000) + '\n…' : text,
+        _is_error: true,
+      });
+    }
+  }, [isFormLang, lang, complete, formSpec, parseError, conversationId, text]);
+
+  // ── BRANCHES (no more hooks past this point) ──────────────────────
+
+  if (isFormLang) {
+    const isPatch = lang === 'data-vault-form-patch';
+    // Patches are pure side-channel updates (status_text changes,
+    // success/failure flips, field merges). The form panel reflects
+    // them live via the formStore subscription in the useEffect
+    // above — surfacing them in chat too would just produce a stack
+    // of "Form updated…" noise as the probe streams. So patches
+    // render NOTHING in chat. Full `data-vault-form` blocks (initial
+    // form appearance) still get a one-time pointer card.
+    if (isPatch) return null;
+    if (!complete) {
+      return (
+        <div style={{
+          margin: '8px 0',
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: 'var(--surface-2)',
+          border: '1px dashed var(--line-2)',
+          color: 'var(--ink-4)',
+          fontFamily: 'var(--font-body)', fontSize: 12.5,
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(13)}</span>
+          Preparing form…
+        </div>
+      );
+    }
+    if (!formSpec) {
+      return (
+        <div style={{
+          margin: '8px 0',
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: 'color-mix(in srgb, var(--danger) 10%, var(--surface))',
+          border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
+          color: 'var(--danger)',
+          fontFamily: 'var(--font-body)', fontSize: 12.5,
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          <strong style={{ fontWeight: 600 }}>Form spec did not parse.</strong>
+          {parseError && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+              {parseError}
+            </span>
+          )}
+          <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+            Use the side panel to ask Anton to retry.
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div style={{
+        margin: '8px 0',
+        padding: '10px 12px',
+        borderRadius: 8,
+        background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
+        border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+        color: 'var(--ink-2)',
+        fontFamily: 'var(--font-body)', fontSize: 12.5,
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(13)}</span>
+        <span>
+          <strong style={{ color: 'var(--ink)' }}>{formSpec.title || 'Form'}</strong>
+          {' — fill it out in the side panel →'}
+        </span>
+      </div>
+    );
+  }
 
   // Intent format — needs a server endpoint to compile JSON into a real
   // Chart.js config. We don't have that yet, so surface a clear message.

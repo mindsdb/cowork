@@ -54,6 +54,14 @@ export default function Composer({
   // Used on the home (new task) composer where we want the user to
   // pick a project but not fuss with model selection.
   hideModel = false,
+  // When true, the send button is replaced with a stop button that
+  // calls onStop (cancel the in-flight stream + scratchpad).
+  streaming = false,
+  onStop,
+  // Optional — invoked with `true` while the user is actively typing
+  // and `false` after a short idle window. The home view uses this
+  // to wake up the OrbitMorph from idle while the user is typing.
+  onTypingChange,
 }) {
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
@@ -65,6 +73,39 @@ export default function Composer({
   const taRef = useRef(null);
   const fileRef = useRef(null);
   const wrapRef = useRef(null);
+
+  // Typing notifier — fires `onTypingChange(true)` on input and
+  // `onTypingChange(false)` after ~1s of inactivity. The home view
+  // uses this to wake the OrbitMorph from idle while the user is
+  // composing. We hold the timer in a ref so re-renders don't reset
+  // it. Deliberately not gated on focus — pasting also counts.
+  const typingTimerRef = useRef(null);
+  const wasTypingRef = useRef(false);
+  const notifyTyping = (active) => {
+    if (typeof onTypingChange !== 'function') return;
+    if (wasTypingRef.current === active) return;
+    wasTypingRef.current = active;
+    try { onTypingChange(active); } catch {}
+  };
+  const bumpTyping = () => {
+    notifyTyping(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    // 1-second debounce — once the user pauses for ~1s, signal the
+    // host to start the fade-out animation. Resuming typing inside
+    // the fade reverses it (the host's CSS transitions handle the
+    // mid-flight reversal automatically).
+    typingTimerRef.current = setTimeout(() => notifyTyping(false), 1000);
+  };
+  useEffect(() => () => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    // On unmount, bring the orb back to idle if we were the ones who
+    // turned it on — otherwise a snapshot stuck in 'thinking' would
+    // outlive the component.
+    if (wasTypingRef.current) {
+      try { onTypingChange?.(false); } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const recognitionRef = useRef(null);
   const dictationBaseRef = useRef('');
 
@@ -220,7 +261,7 @@ export default function Composer({
           placeholder={placeholder}
           disabled={disabled}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => { setValue(e.target.value); bumpTyping(); }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={(e) => {
@@ -246,14 +287,46 @@ export default function Composer({
               wired through anton yet. We keep speechSupported state
               around so we can reinstate later by re-rendering the
               button (e.g. behind a `showMic` prop). */}
-          <button
-            className="send-btn"
-            disabled={disabled || !value.trim() || busy}
-            onClick={handleSend}
-            title="Send"
-          >
-            {Ico.send(15)}
-          </button>
+          {streaming && onStop ? (
+            <button
+              className="send-btn stop"
+              onClick={onStop}
+              title="Stop generation"
+              aria-label="Stop generation"
+              style={{
+                // Theme-aware "stop" treatment — uses the danger token
+                // on a soft tinted surface, with an outline that
+                // intensifies on hover. Matches the chat header
+                // unpublish button so the destructive vocabulary is
+                // consistent across surfaces.
+                background: 'var(--danger-bg)',
+                color: 'var(--danger)',
+                border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+                boxShadow: 'none',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = 'var(--danger)';
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.borderColor = 'var(--danger)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'var(--danger-bg)';
+                e.currentTarget.style.color = 'var(--danger)';
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--danger) 35%, transparent)';
+              }}
+            >
+              {Ico.stop(11)}
+            </button>
+          ) : (
+            <button
+              className="send-btn"
+              disabled={disabled || !value.trim() || busy}
+              onClick={handleSend}
+              title="Send"
+            >
+              {Ico.send(15)}
+            </button>
+          )}
         </div>
       </div>
 

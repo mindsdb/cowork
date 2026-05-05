@@ -30,9 +30,33 @@ const sanitizeSchema = {
   },
 };
 
-export function MarkdownContent({ text, id, complete = true }) {
+// Make sure ```data-vault-form fences always start on their own line.
+// LLMs frequently glue the opening fence to the end of a sentence
+// ("…fill in the form.```data-vault-form\n…"), which collapses the
+// block into inline code and skips our renderer entirely. We hunt
+// for the pattern wherever it appears and inject the missing
+// newlines around it so the markdown parser treats it as a real
+// fenced code block.
+function _normalizeFormFences(text) {
+  if (!text || typeof text !== 'string') return text;
+  // Catches both `data-vault-form` (full spec) and
+  // `data-vault-form-patch` (partial update) — the regex's lang
+  // pattern is broad enough to cover any future `data-vault-form*`
+  // variant we add without further changes.
+  return text.replace(
+    /([^\n])?(```data-vault-form[a-z\-]*\b[^\n]*\n[\s\S]*?\n[ \t]*```)([^\n])?/g,
+    (_match, before, block, after) => {
+      const prefix = before ? `${before}\n\n` : '';
+      const suffix = after ? `\n\n${after}` : '';
+      return `${prefix}${block}${suffix}`;
+    },
+  );
+}
+
+export function MarkdownContent({ text, id, complete = true, conversationId = null }) {
+  const normalized = useMemo(() => _normalizeFormFences(text), [text]);
   const components = useMemo(() => ({
-    code: (props) => <MarkdownCode id={id} complete={complete} {...props} />,
+    code: (props) => <MarkdownCode id={id} complete={complete} conversationId={conversationId} {...props} />,
     table: (props) => <MarkdownTable {...props} />,
     thead: TableHeader,
     tbody: TableBody,
@@ -70,7 +94,8 @@ export function MarkdownContent({ text, id, complete = true }) {
     em: (props) => <em className="italic text-ink-2" {...props} />,
     hr: () => <hr className="my-3 border-t border-line" />,
     pre: (props) => <pre className="my-2 overflow-x-auto" {...props} />,
-  }), [id, complete]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [id, complete, conversationId]);
 
   return (
     <div className="markdown-content space-y-2 break-words text-body text-ink-2">
@@ -79,7 +104,7 @@ export function MarkdownContent({ text, id, complete = true }) {
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
         components={components}
       >
-        {text || ''}
+        {normalized || ''}
       </Markdown>
     </div>
   );

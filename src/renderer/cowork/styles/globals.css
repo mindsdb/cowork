@@ -132,6 +132,24 @@ body, body[data-theme="light"] {
   --danger:       #B91C1C;
   --danger-bg:    #FEE2E2;
 
+  /* Active / online indicator (green dot on project cards + list rows).
+     Used with --success-glow as a soft halo when the project has live
+     activity. */
+  --success:      rgb(34, 160, 94);
+  --success-glow: rgba(34, 160, 94, 0.40);
+
+  /* Project tint palette — used by ProjectCard's accent stripe.
+     Light mode picks deeper, more saturated values that read against
+     the white surface. Dark-mode overrides below shift these toward
+     the brighter neon family. Pulled from the design guidelines
+     palettes in docs/design-guidelines/{light,dark}_mode.html. */
+  --tint-1:       #1F9CB0;  /* anton teal */
+  --tint-2:       #2F8A4A;  /* sage */
+  --tint-3:       #B98007;  /* warm amber */
+  --tint-4:       #B91C1C;  /* deep red */
+  --tint-5:       #6B5BA8;  /* iris */
+  --tint-6:       #115562;  /* depth teal */
+
   --r-sm:         4px;
   --r:            6px;
   --r-lg:         10px;
@@ -194,6 +212,20 @@ body[data-theme="dark"] {
 
   --danger:       #F87171;
   --danger-bg:    rgba(248, 113, 113, 0.12);
+
+  /* Dark-mode active indicator — neon mint with stronger glow so it
+     reads against the deep-blue surfaces. */
+  --success:      rgb(74, 222, 128);
+  --success-glow: rgba(74, 222, 128, 0.55);
+
+  /* Dark-mode project tints — brighter neon-family palette that
+     reads as luminous against the deep navy surfaces. */
+  --tint-1:       #22D3EE;  /* neon cyan (brand accent) */
+  --tint-2:       #6EE7B7;  /* mint */
+  --tint-3:       #E8C58E;  /* warm peach */
+  --tint-4:       #F87171;  /* coral */
+  --tint-5:       #C4B5FD;  /* lavender */
+  --tint-6:       #BEF264;  /* lime */
 
   --sh-1:         0 1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.4);
   --sh-2:         0 1px 0 rgba(0,0,0,0.4), 0 6px 18px rgba(0,0,0,0.5);
@@ -318,6 +350,25 @@ a[href],
 .typing-dot { animation: typing 1.2s ease-in-out infinite; }
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .typing-dot:nth-child(3) { animation-delay: 0.30s; }
+
+/* Projects-page skeleton card — soft horizontal shimmer over the
+   placeholder boxes while the projects list loads. Driven via the
+   `proj-shimmer` className on each placeholder shape. */
+@keyframes proj-shimmer {
+  0%   { background-position: -240px 0; }
+  100% { background-position: 240px 0; }
+}
+.proj-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface-3) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 240px 100%;
+  background-repeat: no-repeat;
+  animation: proj-shimmer 1.4s linear infinite;
+}
 
 /* ─── Nav / Sidebar ──────────────────────────────────────────────────────── */
 .nav-item {
@@ -526,6 +577,17 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   display: grid;
   grid-template-columns: 260px minmax(340px, 420px) minmax(0, 1fr);
   background: #faf9f6;
+  min-width: 0;
+}
+
+/* Two-pane variant — connectors list on the left, credentials /
+   connect form on the right. Used when the workflow renders inside
+   the Connect Apps and Data page (no left-rail subnav needed). */
+.customize-two-pane {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  background: var(--bg);
   min-width: 0;
 }
 

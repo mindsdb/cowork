@@ -83,6 +83,8 @@ interface AntonTronAPI {
   getPlatform: () => string;
   getUIVersion: () => Promise<{ app: string; ui: string }>;
   openExternal: (url: string) => Promise<void>;
+  openPath: (path: string) => Promise<{ ok: boolean; reason?: string }>;
+  trashItem: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   getPathForFile: (file: File) => string;
 }
 

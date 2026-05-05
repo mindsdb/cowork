@@ -3,6 +3,8 @@
 // keypad). Vite dev would proxy /v1 → backend; packaged Electron runs
 // from file:// or app:// and must address the loopback server directly.
 
+import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+
 const ANTON_SERVER_PORT = 26866;
 
 const API_ORIGIN = (() => {
@@ -83,17 +85,49 @@ function _humanTime(iso) {
   return `${Math.floor(secs / 604800)} weeks ago`;
 }
 
+// Replay the server-persisted SSE event log through the live stream
+// reducer to reconstruct `steps` + `startedAt` for each assistant
+// turn. The server saves raw events in a sidecar file and returns
+// them inline on `/conversations/{id}/messages`; doing the replay
+// here keeps reducer logic single-source (lib/responseStreamAdapter).
+function _hydrateAssistantEvents(messages) {
+  if (!Array.isArray(messages)) return messages || [];
+  return messages.map((m) => {
+    if (m?.role !== 'assistant') return m;
+    const events = m.events;
+    if (!Array.isArray(events) || events.length === 0) return m;
+    let state = initialStreamState();
+    for (const ev of events) {
+      try { state = reduceStream(state, ev); } catch {}
+    }
+    const { events: _drop, ...rest } = m;
+    if (!state.steps || state.steps.length === 0) return rest;
+    return {
+      ...rest,
+      steps: state.steps,
+      startedAt: rest.startedAt || state.startedAt || null,
+    };
+  });
+}
+
 function _conversationToTask(conv, messages = []) {
   // Server stores conversations under <project>/.anton/episodes/ and
   // returns the project NAME on each conversation meta. We carry both:
   //   projectName — the canonical id from the server
   //   projectPath — resolved later from the projects list (App.jsx)
+  //
+  // Each assistant message may carry an `events` array — the SSE log
+  // captured server-side for that turn. Replaying it through the live
+  // reducer gives us back `steps` + `startedAt` byte-for-byte. We do
+  // the replay at the api boundary so the rest of the app sees a
+  // consistent message shape regardless of whether the data came from
+  // a fresh stream or a server reload.
   return {
     id: conv.id,
     title: conv.title || conv.preview || conv.id || 'Untitled task',
     subtitle: _humanTime(conv.updated_at || conv.created_at),
     status: 'idle',
-    messages,
+    messages: _hydrateAssistantEvents(messages),
     projectName: conv.project || null,
     projectPath: conv.project_path || null,
     model: null,
@@ -266,8 +300,46 @@ export async function createProject(name) {
   return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
+// Rename — backed by PATCH /v1/projects/{name}. Server moves the
+// project directory and updates internal references; the response is
+// the renamed Project record.
+export async function renameProject(oldName, newName) {
+  return req(`/projects/${encodeURIComponent(oldName)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: newName }),
+  });
+}
+
+// Reveal a project's working folder in Finder. Same backend as
+// `revealArtifact` — the endpoint takes any path and dispatches it to
+// the OS's native "show in folder" handler.
+export async function revealProjectInFinder(projectPath) {
+  if (!projectPath) return null;
+  try {
+    return await req('/artifacts/reveal', {
+      method: 'POST',
+      body: JSON.stringify({ path: projectPath }),
+    });
+  } catch {
+    return null;
+  }
+}
+
 // publishArtifact + previewArtifact live further down in this file.
 // We only add the new unpublish endpoint here.
+export async function cancelScratchpad(name) {
+  if (!name) return null;
+  try {
+    return await req('/scratchpad/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  } catch {
+    // 404 = pad already gone, treat as success.
+    return { status: 'gone', name };
+  }
+}
+
 export async function unpublishArtifact(path) {
   // Idempotent — server 404 means "no record" which is the desired
   // end state.
@@ -323,6 +395,25 @@ export async function fetchArtifacts() {
 
 export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
+}
+
+// Mount an HTML artifact's parent directory for iframe preview. Returns
+// `{ token, entry, relUrl }` — `entry` is the filename, `relUrl` is the
+// path the iframe should load (relative to BASE). Use this so relative
+// `<script>` / `<link>` refs in the HTML resolve against a real URL.
+export async function mountArtifactPreview(path) {
+  const data = await req('/artifacts/preview-mount', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+  return {
+    token: data?.token,
+    entry: data?.entry,
+    // Absolute URL the iframe can load directly. The server returns a
+    // path without scheme; combine with BASE so the renderer doesn't
+    // need to know the API origin.
+    url: data?.relUrl ? `${BASE}${data.relUrl}` : '',
+  };
 }
 
 export async function openArtifact(path) {
@@ -410,6 +501,130 @@ export async function fetchPublishable() {
   return req('/publish');
 }
 
+// Submit a data-vault form and stream the cowork agent's response.
+//
+// Replaces the prior fire-and-forget POST. The agent endpoint:
+//   1. stages the values into the vault keyed by submission_id
+//   2. validates / probes the connection server-side
+//   3. emits a Response-API-compatible SSE stream with text deltas,
+//      a `data-vault-form-patch` block, and `response.completed` with
+//      a status field
+//
+// We pipe those events through the same callbacks the chat stream
+// uses, so the consumer (App.jsx) can treat the result as a fresh
+// assistant turn — no separate render path needed.
+//
+// Field VALUES never round-trip through the response.
+export function streamDataVaultSubmission({
+  formId, conversationId, formSpec, values, skipped,
+  onChunk, onProgress, onToolResult, onDone, onError, onEvent,
+} = {}) {
+  const ctrl = new AbortController();
+  (async () => {
+    try {
+      const res = await fetch(`${BASE}/datavault/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          form_id: formId,
+          conversation_id: conversationId || null,
+          values: values || {},
+          skipped: skipped || [],
+          form_spec: formSpec || null,
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw await responseError(res, `Form submit failed (${res.status})`);
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buffer = '';
+      let cid = conversationId || null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += dec.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+        for (const block of events) {
+          const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+          if (!dataLine) continue;
+          const raw = dataLine.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let msg;
+          try { msg = JSON.parse(raw); } catch { continue; }
+
+          onEvent?.(msg);
+
+          switch (msg.type) {
+            case 'response.created':
+              cid = msg.conversation_id || cid;
+              break;
+            case 'response.output_text.delta':
+              onChunk?.(msg.delta || '', cid);
+              break;
+            case 'response.in_progress': {
+              const role = msg.thought_role || '';
+              if (role === 'thought.scratchpad.result') {
+                onToolResult?.({
+                  type: 'tool_result',
+                  name: msg.tool_name || '',
+                  action: msg.tool_action || '',
+                  content: msg.content || '',
+                }, cid);
+              } else {
+                onProgress?.({
+                  type: 'progress',
+                  phase: msg.phase || role.replace(/^thought\./, '') || 'progress',
+                  message: msg.message || msg.content || '',
+                  thoughtRole: role,
+                }, cid);
+              }
+              break;
+            }
+            case 'response.completed':
+              onDone?.(cid, msg);
+              return;
+            case 'response.failed':
+              onError?.(msg.error || msg.message || 'Form processing failed', msg);
+              return;
+            default:
+              break;
+          }
+        }
+      }
+      onDone?.(cid);
+    } catch (err) {
+      if (err.name !== 'AbortError') onError?.(err.message);
+    }
+  })();
+  return ctrl;
+}
+
+// Backwards-compatible non-streaming wrapper — kept so callers that
+// just need to stage values without streaming back can still do so.
+// (Currently unused by the form panel; might disappear in a cleanup.)
+export async function submitDataVaultForm({ formId, conversationId, values, skipped, formSpec }) {
+  // Fire the streaming endpoint but only consume the JSON body of
+  // the response — useful for tests/probes that don't want SSE.
+  const res = await fetch(`${BASE}/datavault/submissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      form_id: formId,
+      conversation_id: conversationId || null,
+      values: values || {},
+      skipped: skipped || [],
+      form_spec: formSpec || null,
+    }),
+  });
+  if (!res.ok) throw await responseError(res, `Form submit failed (${res.status})`);
+  // Consume the stream and return a summary.
+  const text = await res.text();
+  return { status: 'streamed', body: text };
+}
+
 export async function publishArtifact(path) {
   return req('/publish', { method: 'POST', body: JSON.stringify({ path }) });
 }
@@ -481,6 +696,28 @@ export async function renameConversation(id, title) {
     method: 'PATCH',
     body: JSON.stringify({ title }),
   });
+}
+
+// Delete one user→answer cycle (the question + the assistant
+// response, including any internal tool_use/tool_result blocks
+// anton generated during the turn). `turnIndex` is the 0-based
+// displayable bubble index — same value used to look up events
+// in the per-turn sidecar.
+export async function deleteConversationTurn(id, turnIndex) {
+  const res = await fetch(
+    BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
+  if (res.status === 404) return { status: 'gone', id, turnIndex };
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json())?.detail || ''; } catch {}
+    throw new Error(detail || `Delete turn failed (${res.status})`);
+  }
+  return res.json();
 }
 
 export async function deleteConversation(id) {

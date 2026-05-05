@@ -32,9 +32,36 @@ def _strip_attachment_context(content: str) -> str:
     return content
 
 
-def _parse_for_display(history: list[dict]) -> list[dict]:
-    """Filter raw history into {role, content} pairs the UI can render."""
+def _parse_for_display(
+    history: list[dict],
+    *,
+    turns: dict | None = None,
+) -> list[dict]:
+    """Filter raw history into one displayable entry per user→answer
+    cycle and attach per-turn event metadata.
+
+    Anton's history often contains MULTIPLE assistant messages between
+    two user messages (a brief acknowledgement, then a tool-use phase,
+    then the final answer). During live streaming the client only sees
+    the final composed assistant turn, but `_history.json` keeps each
+    intermediate text response as its own entry. If we surfaced each
+    as a separate bubble the conversation would render very differently
+    after a reload than during streaming — most visibly, a brief intro
+    gets its own bubble, then the actual answer (with thinking +
+    artifacts) gets ANOTHER, when they should be one.
+
+    So we merge consecutive assistant text messages into a single
+    bubble with content joined by blank lines. The events sidecar lives
+    per "displayable turn" (matching `record_turn_events`'s filter), so
+    a merged bubble inherits the events of its last segment — which is
+    where scratchpad cells and artifacts actually came from.
+    """
+    by_assistant_turn = (
+        turns.get("by_assistant_turn", {}) if isinstance(turns, dict) else {}
+    )
+
     out: list[dict] = []
+    assistant_idx = 0
     for msg in history:
         if not isinstance(msg, dict):
             continue
@@ -55,7 +82,41 @@ def _parse_for_display(history: list[dict]) -> list[dict]:
             if role == "user"
             else str(content)
         )
-        out.append({"role": role, "content": text})
+        if role == "assistant":
+            # Merge with the previous bubble if it's also assistant —
+            # this is the same user→answer cycle, just split into
+            # multiple internal text emissions.
+            if out and out[-1]["role"] == "assistant":
+                prev = out[-1]
+                prev["content"] = f"{prev['content'].rstrip()}\n\n{text}"
+                # The events sidecar slot for this cycle is keyed by
+                # the merged bubble's index. record_turn_events writes
+                # at displayable_count - 1, which lines up with the
+                # current `assistant_idx - 1` since we just merged.
+                idx = max(0, assistant_idx - 1)
+                saved = by_assistant_turn.get(str(idx))
+                if isinstance(saved, dict):
+                    events = saved.get("events")
+                    started_at = saved.get("started_at")
+                    if isinstance(events, list) and events:
+                        prev["events"] = events
+                    if started_at is not None and "startedAt" not in prev:
+                        prev["startedAt"] = started_at
+                continue
+
+            entry: dict = {"role": role, "content": text}
+            saved = by_assistant_turn.get(str(assistant_idx))
+            assistant_idx += 1
+            if isinstance(saved, dict):
+                events = saved.get("events")
+                started_at = saved.get("started_at")
+                if isinstance(events, list) and events:
+                    entry["events"] = events
+                if started_at is not None:
+                    entry["startedAt"] = started_at
+            out.append(entry)
+        else:
+            out.append({"role": role, "content": text})
     return out
 
 
@@ -93,7 +154,13 @@ async def get_conversation_messages(conversation_id: str):
     messages = conversation_manager.get_messages(conversation_id)
     if messages is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return {"id": conversation_id, "messages": _parse_for_display(messages)}
+    # Sidecar may not exist for older conversations — that's fine, the
+    # client just won't see events on those turns.
+    turns = conversation_manager.load_turns(conversation_id)
+    return {
+        "id": conversation_id,
+        "messages": _parse_for_display(messages, turns=turns),
+    }
 
 
 @router.patch("/v1/conversations/{conversation_id}")
@@ -120,6 +187,22 @@ async def update_conversation(conversation_id: str, patch: ConversationPatch):
             raise HTTPException(status_code=404, detail="Conversation not found")
 
     return meta or {"id": conversation_id}
+
+
+@router.delete("/v1/conversations/{conversation_id}/turns/{turn_index}")
+async def delete_conversation_turn(conversation_id: str, turn_index: int):
+    """Delete one user→answer cycle from a conversation. The client
+    passes the 0-based displayable bubble index of the assistant
+    message; the server removes that user input + all assistant
+    messages anton produced in response, then reindexes the events
+    sidecar so subsequent turns shift down by one.
+    """
+    if turn_index < 0:
+        raise HTTPException(status_code=400, detail="turn_index must be non-negative")
+    result = conversation_manager.delete_turn(conversation_id, turn_index)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Turn not found")
+    return result
 
 
 @router.delete("/v1/conversations/{conversation_id}")

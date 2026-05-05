@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('antontron', {
 
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
+  // Move a local file/folder to the OS Trash. Returns
+  // { ok: true } on success or { ok: false, reason } on failure.
+  trashItem:    (p: string) => ipcRenderer.invoke('shell:trash-item', p),
   onInstallLog: (cb: (msg: string) => void) => {
     const listener = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.INSTALL_LOG, listener);

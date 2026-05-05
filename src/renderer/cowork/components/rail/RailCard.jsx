@@ -21,9 +21,15 @@ export function RailCard({
   defaultOpen = false,
   slim = false,
   maxBodyHeight = 320,
+  // When true, the header is a plain (non-clickable) label and the
+  // chevron disclosure widget is dropped. The body is always shown
+  // (defaultOpen is implicitly true). Used by the data-vault Connect
+  // panel where the only dismissal affordance should be the × in the
+  // outer wrapper, not a separate collapse control.
+  noChevron = false,
   children,
 }) {
-  const [open, setOpen] = useState(!!defaultOpen);
+  const [open, setOpen] = useState(!!defaultOpen || noChevron);
   return (
     <div style={{
       background: 'var(--surface)',
@@ -32,38 +38,57 @@ export function RailCard({
       overflow: 'hidden',
       flexShrink: 0,
     }}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          cursor: 'pointer',
-          background: 'transparent',
-          border: 0,
+      {noChevron ? (
+        <div style={{
           padding: '11px 14px',
           width: '100%',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           textAlign: 'left',
-          font: 'inherit',
-          color: 'inherit',
-        }}
-      >
-        <span style={{
-          fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em',
-          minWidth: 0, flex: 1,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
-          {title}
-        </span>
-        <span
-          style={{ color: 'var(--ink-4)', display: 'inline-flex', flexShrink: 0 }}
-          title={open ? 'Collapse' : 'Expand'}
+          <span style={{
+            fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
+            color: 'var(--ink)', letterSpacing: '-0.005em',
+            minWidth: 0, flex: 1,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {title}
+          </span>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            cursor: 'pointer',
+            background: 'transparent',
+            border: 0,
+            padding: '11px 14px',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            textAlign: 'left',
+            font: 'inherit',
+            color: 'inherit',
+          }}
         >
-          {open ? Ico.chevDown(12) : Ico.chevRight(12)}
-        </span>
-      </button>
+          <span style={{
+            fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
+            color: 'var(--ink)', letterSpacing: '-0.005em',
+            minWidth: 0, flex: 1,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {title}
+          </span>
+          <span
+            style={{ color: 'var(--ink-4)', display: 'inline-flex', flexShrink: 0 }}
+            title={open ? 'Collapse' : 'Expand'}
+          >
+            {open ? Ico.chevDown(12) : Ico.chevRight(12)}
+          </span>
+        </button>
+      )}
       {open && (
         <div style={{
           padding: '4px 14px 14px',

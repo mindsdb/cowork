@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import traceback
 
 from fastapi import APIRouter, HTTPException
@@ -75,6 +76,22 @@ async def create_response(req: ResponsesRequest):
     if req.stream:
         async def stream():
             assigned_for_new = False
+            cid: str | None = None
+            # Per-turn event capture for the cowork sidecar. The sink is
+            # called by `format_responses_stream` for every event before
+            # serialisation so we record exactly the SSE-shape dicts the
+            # client adapter consumes (no parsing back from the wire).
+            recorded_events: list[dict] = []
+            started_at_ms: int | None = None
+
+            def _record(event_type: str, data: dict) -> None:
+                nonlocal started_at_ms
+                if started_at_ms is None:
+                    started_at_ms = int(time.time() * 1000)
+                # Defensive copy so later mutations of `data` (rare but
+                # cheap to guard against) don't churn what we'll persist.
+                recorded_events.append({**data})
+
             try:
                 event_stream, cid = await conversation_manager.chat_stream(
                     final_input,
@@ -89,7 +106,10 @@ async def create_response(req: ResponsesRequest):
                     assigned_for_new = True
 
                 async for chunk in format_responses_stream(
-                    event_stream, model=req.model or "anton", conversation_id=cid,
+                    event_stream,
+                    model=req.model or "anton",
+                    conversation_id=cid,
+                    event_sink=_record,
                 ):
                     yield chunk
             except conversation_manager.AntonConfigurationError as exc:
@@ -108,6 +128,18 @@ async def create_response(req: ResponsesRequest):
                     "event: response.failed\n"
                     f"data: {json.dumps({'type': 'response.failed', 'code': 'server_error', 'error': str(exc), 'traceback': traceback.format_exc()})}\n\n"
                 )
+            finally:
+                # Persist whatever we captured so reopening the
+                # conversation rebuilds the Thinking block + scratchpad
+                # tabs. Runs even on failed/aborted streams so partial
+                # turns are still recoverable.
+                if cid and recorded_events:
+                    try:
+                        conversation_manager.record_turn_events(
+                            cid, started_at_ms, recorded_events,
+                        )
+                    except Exception:
+                        logger.debug("Could not record turn events", exc_info=True)
 
         return StreamingResponse(
             stream(),

@@ -15,9 +15,14 @@ import { OrbitMorph } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
+import { copyText } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
+import { ArtifactViewer } from '../components/artifact';
+import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
+import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
+import { revealArtifact } from '../api';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -70,20 +75,26 @@ function Divider({ label }) {
   );
 }
 
-function MessageActions({ getText }) {
-  // Just Copy for now — refresh / thumbs up / thumbs down hidden until
-  // the underlying actions are wired.
-  const onCopy = () => {
-    try {
-      const text = typeof getText === 'function' ? getText() : '';
-      if (text) navigator.clipboard?.writeText?.(text);
-    } catch {}
+function MessageActions({ getText, onDelete }) {
+  // Copy + delete for now — refresh / thumbs up / thumbs down hidden
+  // until the underlying actions are wired.
+  const [copied, setCopied] = useState(false);
+  const [deleteHover, setDeleteHover] = useState(false);
+  const onCopy = async () => {
+    const text = typeof getText === 'function' ? getText() : '';
+    if (!text) return;
+    const ok = await copyText(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   };
   return (
     <div style={{ display: 'flex', gap: 4, marginTop: 4, color: T.ink4 }}>
       <button
         type="button"
-        title="Copy"
+        title={copied ? 'Copied' : 'Copy response'}
+        aria-label={copied ? 'Copied' : 'Copy response'}
         onClick={onCopy}
         style={{
           cursor: 'pointer',
@@ -92,20 +103,93 @@ function MessageActions({ getText }) {
           padding: 0,
           width: 26, height: 26, borderRadius: 6,
           display: 'grid', placeItems: 'center',
-          color: 'inherit',
+          color: copied ? 'var(--accent)' : 'inherit',
+          transition: 'color 140ms ease',
         }}
       >
-        {Ico.copy(13)}
+        {copied ? Ico.check(13) : Ico.copy(13)}
       </button>
+      {onDelete && (
+        <button
+          type="button"
+          title="Delete this question and response"
+          aria-label="Delete this question and response"
+          onClick={onDelete}
+          onMouseEnter={() => setDeleteHover(true)}
+          onMouseLeave={() => setDeleteHover(false)}
+          style={{
+            cursor: 'pointer',
+            background: 'transparent',
+            border: 0,
+            padding: 0,
+            width: 26, height: 26, borderRadius: 6,
+            display: 'grid', placeItems: 'center',
+            color: deleteHover ? 'var(--danger)' : 'inherit',
+            transition: 'color 140ms ease',
+          }}
+        >
+          {Ico.trash(13)}
+        </button>
+      )}
     </div>
   );
 }
 
 // ─── User pill ───────────────────────────────────────────────────────────
-function UserTurn({ content, attachments, time }) {
+//
+// `onDelete` is set by the parent only when this user message is an
+// "orphan" — no assistant response followed it (e.g. the stream was
+// stopped before anton produced anything). For paired user→answer
+// cycles, the delete affordance lives on the assistant bubble's
+// MessageActions and removes both halves. The orphan case has no
+// assistant bubble, so we surface the delete here instead — a
+// hover-revealed trash glyph just outside the bubble's bottom-left.
+function UserTurn({ content, attachments, time, onDelete }) {
+  const [hover, setHover] = useState(false);
+  const [trashHover, setTrashHover] = useState(false);
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        position: 'relative',
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div style={{
+        maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8,
+        alignItems: 'flex-end',
+        position: 'relative',
+      }}>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            onMouseEnter={() => setTrashHover(true)}
+            onMouseLeave={() => setTrashHover(false)}
+            title="Delete this message"
+            aria-label="Delete this message"
+            style={{
+              position: 'absolute',
+              // Just outside the bubble's bottom-left edge.
+              left: -32,
+              bottom: time ? 18 : 0,
+              width: 24, height: 24, borderRadius: 6,
+              background: 'transparent',
+              border: 0,
+              display: 'inline-grid',
+              placeItems: 'center',
+              cursor: 'pointer',
+              color: trashHover ? 'var(--danger)' : 'var(--ink-4)',
+              opacity: hover ? 1 : 0,
+              pointerEvents: hover ? 'auto' : 'none',
+              transition: 'opacity 140ms ease, color 140ms ease',
+            }}
+          >
+            {Ico.trash(13)}
+          </button>
+        )}
         <div style={{
           background: T.surface,
           border: `1px solid ${T.line}`,
@@ -148,7 +232,7 @@ function UserTurn({ content, attachments, time }) {
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // `slotIdHeader` lets the parent register this turn's ANTON label as an
 // orb anchor (used while the request is "thinking" with no steps yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, slotIdHeader }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader }) {
   const headerRef = useOrbitSlot(slotIdHeader || `__none__:${Math.random()}`);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
@@ -168,16 +252,18 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
         )}
       </div>
       {children}
-      {showActions && state !== 'thinking' && <MessageActions getText={() => copyText || ''} />}
+      {showActions && state !== 'thinking' && (
+        <MessageActions getText={() => copyText || ''} onDelete={onDelete} />
+      )}
     </div>
   );
 }
 
-function TextBlock({ text, id, complete = true }) {
+function TextBlock({ text, id, complete = true, conversationId = null }) {
   // Full markdown rendering — GFM tables, lists, code blocks (with
-  // chartjs/chart support), links, etc. via react-markdown + our
-  // MarkdownContent override map.
-  return <MarkdownContent text={text} id={id} complete={complete} />;
+  // chartjs/chart and data-vault-form support), links, etc. via
+  // react-markdown + our MarkdownContent override map.
+  return <MarkdownContent text={text} id={id} complete={complete} conversationId={conversationId} />;
 }
 
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
@@ -185,27 +271,60 @@ function TextBlock({ text, id, complete = true }) {
 // at the end of an assistant turn — like mdb-ai surfaces results.
 function artifactStepToCard(step) {
   const data = step.data || {};
+  const path = data.file_path || data.path || '';
+  // Lower-cased extension (no leading dot) for HTML detection downstream.
+  const ext = (path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   return {
     title: data.title || step.label || 'Artifact',
     kind: data.action ? `${data.action}` : 'live artifact',
     icon: 'doc',
-    file_path: data.file_path,
-    preview: data.file_path ? [{ heading: data.file_path }] : [],
+    path,
+    file_path: path,
+    ext: ext ? `.${ext}` : '',
+    preview: path ? [{ heading: path }] : [],
   };
 }
 
 // Renders any badge='Artifact' steps as inline ArtifactCards.
-function StepArtifacts({ steps }) {
+function StepArtifacts({ steps, onOpen }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-      {artifacts.map((s) => <ArtifactCard key={s.id} artifact={artifactStepToCard(s)} />)}
+      {artifacts.map((s) => (
+        <ArtifactCard key={s.id} artifact={artifactStepToCard(s)} onOpen={onOpen} />
+      ))}
     </div>
   );
 }
 
-function ArtifactCard({ artifact }) {
+function ArtifactCard({ artifact, onOpen }) {
+  const path = artifact.file_path || artifact.path;
+  // Match the Working folder card's behavior: HTML opens the in-app
+  // iframe viewer (so it can publish/unpublish + handle assets);
+  // anything else goes to the OS handler via the Electron bridge.
+  const isHtml = (artifact.ext || '').toLowerCase() === '.html'
+    || (path || '').toLowerCase().endsWith('.html');
+  const handleOpen = () => {
+    if (!path) return;
+    if (isHtml && onOpen) {
+      onOpen(artifact);
+      return;
+    }
+    try { window.antontron?.openPath?.(path); }
+    catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[artifact-open] failed', e);
+    }
+  };
+  const handleReveal = () => {
+    if (!path) return;
+    revealArtifact(path).catch((e) => {
+      // eslint-disable-next-line no-console
+      console.error('[artifact-reveal] failed', e);
+    });
+  };
+  const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || path;
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: '64px 1fr auto', alignItems: 'center', gap: 16,
@@ -228,31 +347,44 @@ function ArtifactCard({ artifact }) {
         <span style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3 }}>
           {artifact.kind || 'live artifact'}
         </span>
-        {artifact.preview?.[0]?.text && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, marginTop: 2, letterSpacing: '0.04em' }}>
-            {artifact.preview[0].heading || artifact.preview[0].text}
+        {previewText && (
+          <span title={previewText} style={{
+            fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4,
+            marginTop: 2, letterSpacing: '0.04em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {previewText}
           </span>
         )}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <SmallBtn>View</SmallBtn>
-        <SmallBtn primary>Open</SmallBtn>
+        <SmallBtn onClick={handleReveal} title="Reveal in Finder">Reveal</SmallBtn>
+        <SmallBtn primary disabled={!path} onClick={handleOpen} title={path ? `Open ${path}` : 'No file path'}>
+          Open
+        </SmallBtn>
       </div>
     </div>
   );
 }
 
-function SmallBtn({ primary, children }) {
+function SmallBtn({ primary, children, onClick, title, disabled }) {
   return (
-    <button style={{
-      all: 'unset', cursor: 'pointer',
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '6px 10px', borderRadius: 7,
-      background: primary ? T.accent : T.surface,
-      color: primary ? '#fff' : T.ink,
-      border: `1px solid ${primary ? T.accent : T.line2}`,
-      fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-    }}>{children}</button>
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.(); }}
+      title={title}
+      disabled={disabled}
+      style={{
+        all: 'unset', cursor: disabled ? 'not-allowed' : 'pointer',
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '6px 10px', borderRadius: 7,
+        background: primary ? T.accent : T.surface,
+        color: primary ? '#fff' : T.ink,
+        border: `1px solid ${primary ? T.accent : T.line2}`,
+        fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >{children}</button>
   );
 }
 
@@ -346,9 +478,13 @@ export default function ChatView({
   onUnpinTask,
   onRenameTask,
   onDeleteTask,
+  onDeleteTurn,
+  onSubmitDataVaultForm,
+  onNavigateToConnectors,
   onMoveTaskToProject,
   onOpenProject,
   onOpenProjectsList,
+  onStop,
   projects = [],
   sidebarCollapsed = false,
 }) {
@@ -356,10 +492,45 @@ export default function ChatView({
   const [railOpen, setRailOpen] = useState(true);
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
+  // Inline ArtifactCard → viewer. HTML artifacts open in the in-app
+  // iframe modal (matching the Working folder card's behaviour); other
+  // types route through the Electron OS handler via openPath.
+  const [previewArt, setPreviewArt] = useState(null);
+  const handleArtifactOpen = (artifact) => {
+    // The card already routes non-HTML artifacts to the OS; this only
+    // fires for HTML, so we can dispatch straight to the viewer.
+    setPreviewArt(artifact);
+  };
   // Task settings menu (kebab in header).
   const settingsBtnRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsAnchor, setSettingsAnchor] = useState(null);
+  // Inline title rename — same affordance the project detail header
+  // uses. Hover surfaces the kebab; Rename in the menu flips the
+  // title span into an <input>; Enter commits, Esc cancels.
+  const [titleHover, setTitleHover] = useState(false);
+  const [titleEditing, setTitleEditing] = useState(false);
+  const titleInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!titleEditing) return;
+    const id = requestAnimationFrame(() => {
+      const el = titleInputRef.current;
+      if (!el) return;
+      el.focus();
+      try { el.select(); } catch {}
+    });
+    return () => cancelAnimationFrame(id);
+  }, [titleEditing]);
+
+  const submitTitleRename = () => {
+    const next = titleInputRef.current?.value ?? task.title ?? '';
+    const trimmed = next.trim();
+    setTitleEditing(false);
+    if (!trimmed || trimmed === (task.title || '').trim()) return;
+    onRenameTask?.(task.id, trimmed);
+  };
+  const cancelTitleRename = () => setTitleEditing(false);
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
@@ -527,48 +698,121 @@ export default function ChatView({
               </>
             )}
             <CrumbSep />
-            <span title={task.title} style={{
-              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-              letterSpacing: '0.04em', color: T.ink,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              overflowWrap: 'anywhere',
-              minWidth: 0, flex: '1 1 0',
-            }}>{task.title}</span>
+            <div
+              onMouseEnter={() => setTitleHover(true)}
+              onMouseLeave={() => setTitleHover(false)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                minWidth: 0, flex: '1 1 0',
+              }}
+            >
+              {titleEditing ? (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  defaultValue={task.title || ''}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitTitleRename();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      cancelTitleRename();
+                    }
+                  }}
+                  onBlur={submitTitleRename}
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  style={{
+                    flex: '1 1 0', minWidth: 0,
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+                    letterSpacing: '0.04em', color: T.ink,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: 5, padding: '2px 6px', outline: 'none',
+                  }}
+                />
+              ) : (
+                <span title={task.title} style={{
+                  fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+                  letterSpacing: '0.04em', color: T.ink,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  overflowWrap: 'anywhere',
+                  minWidth: 0, flex: '0 1 auto',
+                }}>{task.title}</span>
+              )}
+              {task.pinned && !titleEditing && (
+                <span aria-hidden style={{ display: 'inline-flex', flexShrink: 0, color: T.accent }}>
+                  {Ico.pin(11)}
+                </span>
+              )}
+              {!titleEditing && (
+                <button
+                  ref={settingsBtnRef}
+                  type="button"
+                  aria-label="Task menu"
+                  title="Task menu"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (settingsOpen) {
+                      setSettingsOpen(false);
+                      return;
+                    }
+                    const rect = settingsBtnRef.current?.getBoundingClientRect();
+                    setSettingsAnchor(rect || null);
+                    setSettingsOpen(true);
+                  }}
+                  style={{
+                    width: 22, height: 22, borderRadius: 5,
+                    background: settingsOpen ? 'var(--surface-2)' : 'transparent',
+                    border: 0,
+                    color: 'var(--ink-3)',
+                    display: 'inline-grid', placeItems: 'center',
+                    flexShrink: 0,
+                    opacity: (titleHover || settingsOpen) ? 1 : 0,
+                    pointerEvents: (titleHover || settingsOpen) ? 'auto' : 'none',
+                    cursor: 'pointer',
+                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+                    WebkitAppRegion: 'no-drag',
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.background = settingsOpen ? 'var(--surface-2)' : 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                >
+                  {Ico.moreVert(13)}
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Right side — pin status only. The kebab and rail toggle
-              both lived here previously but moved out: rail collapse
-              has its own button in the rail header (and a floating
-              expander on the conv column when collapsed); pin/rename/
-              delete/move/etc. are reachable via the sidebar's task
-              kebab on the same conversation. */}
+          {/* Right side reserved for future header chips. The kebab
+              and rail toggle moved out; pin lives inline with the
+              title now (above) so it stays visually attached to the
+              task it acts on. */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 4,
             flexShrink: 0,
-          }}>
-            {task.pinned && (
-              <span title="Pinned" style={{
-                display: 'inline-grid', placeItems: 'center',
-                width: 22, height: 22, color: T.accent, flexShrink: 0,
-              }}>{Ico.pin(13)}</span>
-            )}
-          </div>
+          }} />
         </div>
-        {/* Settings menu kept mounted but hidden; reachable later if
-            we add another trigger for it. */}
+        {/* Task menu — anchored to the kebab next to the title.
+            Items: Pin/Unpin · Rename · Delete. Move-to-project,
+            Schedule and Turn-into-skill are intentionally excluded
+            here — the focused three-action set matches the project
+            detail header's pattern. */}
         <TaskMenu
           task={task}
           projects={projects}
           open={settingsOpen}
           anchorRect={settingsAnchor}
-          showHeaderActions
+          hideRename={false}
+          hideMoveToProject
           onClose={() => setSettingsOpen(false)}
           onPin={() => onPinTask?.(task)}
           onUnpin={() => onUnpinTask?.(task.id)}
-          onRename={() => {
-            const next = window.prompt('Rename task', task.title || '');
-            if (next != null) onRenameTask?.(task.id, next);
-          }}
+          onRename={() => setTitleEditing(true)}
           onDelete={() => onDeleteTask?.(task.id)}
           onMoveToProject={(p) => onMoveTaskToProject?.(task.id, p.name)}
           onSchedule={() => {
@@ -597,14 +841,39 @@ export default function ChatView({
           }}>
             <Divider label={dividerLabel(new Date())} />
 
-            {visibleMessages.map((m, i) => {
+            {(() => {
+              // Track the assistant turn index inline so MessageActions
+              // knows which user→answer cycle to delete. The walker
+              // mirrors the server's `_count_displayable_assistant_bubbles`
+              // contract: each assistant entry counts once. We also
+              // count user-input messages so orphan users (stop before
+              // any assistant response) can carry their own delete
+              // affordance with the right turn index.
+              let assistantTurnIdx = -1;
+              let userInputIdx = -1;
+              const isOrphanUser = (atIdx) => {
+                // Walk forward from this user message — if we hit
+                // another user before any assistant, this one is an
+                // orphan. End-of-list with no assistant → orphan.
+                for (let j = atIdx + 1; j < visibleMessages.length; j++) {
+                  const role = visibleMessages[j]?.role;
+                  if (role === 'user') return true;
+                  if (role === 'assistant') return false;
+                }
+                return true;
+              };
+              return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
+                userInputIdx += 1;
+                const turnIdxForThisUser = userInputIdx;
+                const orphan = isOrphanUser(i);
                 return (
                   <UserTurn
                     key={i}
                     content={m.content}
                     attachments={m.attachments}
                     time={formatTime(m.createdAt)}
+                    onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
                   />
                 );
               }
@@ -624,8 +893,21 @@ export default function ChatView({
                   </AnswerTurn>
                 );
               }
+              assistantTurnIdx += 1;
+              // The server keys delete_turn by USER-INPUT index, not
+              // by assistant index. With orphans (stop before any
+              // assistant) those can drift apart, so we use the most
+              // recent user-input index as the turn id for the
+              // assistant — the user that started this cycle.
+              const turnIdxForThisBubble = userInputIdx;
               return (
-                <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} copyText={m.content}>
+                <AnswerTurn
+                  key={i}
+                  state="done"
+                  time={formatTime(m.createdAt)}
+                  copyText={m.content}
+                  onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
+                >
                   {m.steps?.length > 0 && (
                     <ThinkingBlock
                       steps={m.steps}
@@ -634,12 +916,13 @@ export default function ChatView({
                       onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
                     />
                   )}
-                  <TextBlock text={m.content} id={m.id || `msg-${i}`} complete />
+                  <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
                   {m.artifact && <ArtifactCard artifact={m.artifact} />}
-                  <StepArtifacts steps={m.steps} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} />
                 </AnswerTurn>
               );
-            })}
+              });
+            })()}
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} slotIdHeader="header:streaming">
@@ -651,11 +934,30 @@ export default function ChatView({
                     onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
                   />
                 )}
-                <div style={{ position: 'relative' }}>
-                  <TextBlock text={streamingMsg.content} id="streaming" complete={false} />
-                  <StreamCursor slotId="body:streaming" />
-                </div>
-                <StepArtifacts steps={streamingMsg.steps} />
+                {/* Bridge state: between the first stream event arriving
+                    (which strips the activity placeholder) and the first
+                    step or body chunk landing, the AnswerTurn would
+                    otherwise render empty — the user sees the message
+                    "appear, vanish, then come back" once scratchpad
+                    output starts. Keep a soft "Thinking…" affordance
+                    visible whenever there are no steps and no body text
+                    yet. */}
+                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                  }}>
+                    <StreamCursor />
+                    <span>Thinking…</span>
+                  </div>
+                )}
+                {streamingMsg.content && (
+                  <div style={{ position: 'relative' }}>
+                    <TextBlock text={streamingMsg.content} id="streaming" complete={false} conversationId={task.id} />
+                    <StreamCursor slotId="body:streaming" />
+                  </div>
+                )}
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false}>
@@ -699,6 +1001,8 @@ export default function ChatView({
             placeholder="Reply…"
             metaReadOnly
             hideMeta
+            streaming={isStreaming}
+            onStop={onStop}
           />
         </div>
       </div>
@@ -742,6 +1046,20 @@ export default function ChatView({
             {Ico.panelCollapseRight(15)}
           </button>
         </div>
+        {/* Data-vault form panel — mounts when the conversation has
+            an active data-vault-form spec; the form's submit/skip/
+            cancel actions become a synthetic chat continuation that
+            re-enters the stream so anton can iterate on the form.
+            Wrapped in an error boundary so a malformed form spec
+            (or render glitch) can't blank the chat surface. */}
+        <FormErrorBoundary>
+          <DataVaultFormPanel
+            conversationId={task.id || ''}
+            onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
+            onSubmit={onSubmitDataVaultForm}
+            onNavigateToConnectors={onNavigateToConnectors}
+          />
+        </FormErrorBoundary>
         <ProgressBox
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
@@ -771,6 +1089,16 @@ export default function ChatView({
           ...(streamingMsg?.steps || []),
         ]}
         focusStepId={openScratchpadStepId}
+      />
+
+      {/* Inline ArtifactCard viewer — same modal the Live artifacts
+          page and the Working folder card use. The card only routes
+          HTML here; non-HTML opens straight in the OS via openPath. */}
+      <ArtifactViewer
+        open={!!previewArt}
+        artifact={previewArt}
+        onClose={() => setPreviewArt(null)}
+        onChange={(updated) => setPreviewArt(updated)}
       />
     </div>
   );

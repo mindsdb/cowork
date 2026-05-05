@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable, Optional
 
 from .models import (
     ResponseObject,
@@ -46,8 +46,16 @@ async def format_responses_stream(
     response_id: str | None = None,
     message_id: str | None = None,
     conversation_id: str | None = None,
+    event_sink: Optional[Callable[[str, dict], None]] = None,
 ) -> AsyncIterator[str]:
-    """Yield Responses-API SSE strings derived from ChatSession events."""
+    """Yield Responses-API SSE strings derived from ChatSession events.
+
+    `event_sink` (optional) is called with `(event_type, payload_dict)` for
+    every event before it's serialised to SSE. Used by the responses
+    route to capture a per-turn event log to disk so the client can
+    rebuild the Thinking block + scratchpad cells when the conversation
+    is reopened (without keeping localStorage state).
+    """
     from anton.core.llm.provider import (
         StreamComplete,
         StreamContextCompacted,
@@ -66,6 +74,12 @@ async def format_responses_stream(
     collected_text: list[str] = []
 
     def _event(event_type: str, data: dict) -> str:
+        if event_sink is not None:
+            try:
+                event_sink(event_type, data)
+            except Exception:
+                # Recording is best-effort — never break the live stream.
+                pass
         return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
     tool_json_parts: dict[str, list[str]] = {}

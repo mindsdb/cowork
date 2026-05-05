@@ -195,6 +195,12 @@ export function WorkingFolderLive({ project, isStreaming, streamStartedAt }) {
           // pill (and any future indicator on the row) updates.
           setArtifacts((prev) => prev.map((a) => a.path === updated.path ? { ...a, publishedUrl: updated.publishedUrl } : a));
         }}
+        onDelete={(path) => {
+          // File is in Trash now — drop it from the live list so the
+          // working folder reflects reality without waiting for a
+          // refresh stream tick.
+          setArtifacts((prev) => prev.filter((a) => a.path !== path));
+        }}
       />
     </div>
   );

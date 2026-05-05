@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
+import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — antontron's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
@@ -18,12 +19,13 @@ import UtilitiesView from './views/UtilitiesView';
 import SearchModal from './components/SearchModal';
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
+         streamDataVaultSubmission,
          uploadAttachments, createSnippetAttachment, createUrlAttachment, fetchProjectFiles,
          attachProjectFile, deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
-         renameConversation, deleteConversation, moveConversation,
-         deleteProject } from './api';
+         renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
+         deleteProject, cancelScratchpad } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 
 const ACCENT_VARS = {
@@ -91,6 +93,205 @@ function describeActivity(event) {
   return phase ? `Anton is ${phase}` : 'Anton is working';
 }
 
+// ─── Per-turn step persistence ───────────────────────────────────────────
+//
+// Anton's history file (the canonical conversation record) only stores
+// {role, content}. The streaming adapter builds richer step data —
+// scratchpad cells, artifacts, reasoning timing — but those are dropped
+// on persistence and would be lost on conversation reload, leaving the
+// chat with no Thinking block, no inline artifact cards, and an empty
+// Scratchpad modal.
+//
+// We sidecar the full step list in localStorage keyed by conversation
+// id → assistant turn index. Persistence is local to this install
+// (fine for a desktop app); promote to a server-side sidecar later if
+// cross-device sync matters.
+//
+// Schema (per turn):
+//   { steps: ThinkingStep[], startedAt: number }
+//
+// ThinkingStep shape mirrors `responseStreamAdapter`'s output, including
+// the `_isScratchpad` / `_scratchpadTabId` markers the ScratchpadModal
+// keys off so tabs reattach when the conversation is reopened.
+const CONV_TURNS_KEY = (cid) => `anton:conv-turns:${cid}`;
+const LEGACY_ARTIFACTS_KEY = (cid) => `anton:conv-artifacts:${cid}`;
+
+function readConvTurns(cid) {
+  if (!cid) return null;
+  try {
+    const raw = localStorage.getItem(CONV_TURNS_KEY(cid));
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeConvTurns(cid, data) {
+  if (!cid) return;
+  try { localStorage.setItem(CONV_TURNS_KEY(cid), JSON.stringify(data)); }
+  catch {} // private mode / quota — fail silently
+}
+
+// One-time migration from the old artifact-only sidecar. Each entry
+// was an array of artifact-shape steps; promote it to the new shape.
+function migrateLegacyArtifacts(cid) {
+  if (!cid) return;
+  try {
+    const legacy = localStorage.getItem(LEGACY_ARTIFACTS_KEY(cid));
+    if (!legacy) return;
+    const map = JSON.parse(legacy);
+    if (!map || typeof map !== 'object') return;
+    const next = readConvTurns(cid) || {};
+    for (const [idx, arts] of Object.entries(map)) {
+      if (!Array.isArray(arts) || arts.length === 0) continue;
+      const existing = next[idx]?.steps || [];
+      next[idx] = { steps: [...existing, ...arts], startedAt: next[idx]?.startedAt || null };
+    }
+    writeConvTurns(cid, next);
+    localStorage.removeItem(LEGACY_ARTIFACTS_KEY(cid));
+  } catch {}
+}
+
+// Replay the server-persisted event log for one assistant turn
+// through the same reducer the live stream uses. The resulting
+// `steps` and `startedAt` are identical to what the client would
+// have built during a fresh stream — no parity drift.
+function reduceServerEvents(events, fallbackStartedAt) {
+  if (!Array.isArray(events) || events.length === 0) return null;
+  let state = initialStreamState();
+  for (const ev of events) {
+    try { state = reduceStream(state, ev); } catch {}
+  }
+  return {
+    steps: state.steps || [],
+    startedAt: state.startedAt || fallbackStartedAt || null,
+  };
+}
+
+// Walk a messages payload from the server and, for any assistant
+// turn that carries an `events` array (the new sidecar), derive
+// `steps`/`startedAt` via the live reducer. Drops the raw `events`
+// so React state doesn't carry the redundant log around.
+function hydrateMessagesFromServerEvents(messages) {
+  if (!Array.isArray(messages)) return messages;
+  return messages.map((m) => {
+    if (m.role !== 'assistant') return m;
+    const events = m.events;
+    if (!Array.isArray(events) || events.length === 0) return m;
+    const reduced = reduceServerEvents(events, m.startedAt);
+    const { events: _drop, ...rest } = m;
+    if (!reduced || reduced.steps.length === 0) return rest;
+    return {
+      ...rest,
+      steps: reduced.steps,
+      startedAt: rest.startedAt || reduced.startedAt,
+    };
+  });
+}
+
+// Persist the full step set for one assistant turn so reload restores
+// the Thinking block, scratchpad tabs, and inline artifact cards.
+// `turnIndex` is the 0-based position of this assistant message among
+// all assistant messages in the conversation.
+function persistTurnState(cid, turnIndex, steps, startedAt) {
+  if (!cid || !Array.isArray(steps) || steps.length === 0) return;
+  const map = readConvTurns(cid) || {};
+  // Strip any non-serialisable fields (refs, functions). The step
+  // shape is plain data otherwise.
+  const sanitized = steps.map((s) => ({
+    id: s.id,
+    label: s.label || null,
+    badge: s.badge || null,
+    icon: s.icon || null,
+    status: s.status || 'completed',
+    startedAt: s.startedAt ?? null,
+    completedAt: s.completedAt ?? null,
+    reasoningStartedAt: s.reasoningStartedAt ?? null,
+    executionStartedAt: s.executionStartedAt ?? null,
+    executionCompletedAt: s.executionCompletedAt ?? null,
+    data: s.data || null,
+    output: typeof s.output === 'string' ? s.output : null,
+    result: s.result || null,
+    stderr: s.stderr || null,
+    _isScratchpad: !!s._isScratchpad,
+    _scratchpadTabId: s._scratchpadTabId || null,
+  }));
+  map[turnIndex] = { steps: sanitized, startedAt: startedAt ?? null };
+  writeConvTurns(cid, map);
+}
+
+// Merge persisted step + timing data onto assistant messages by turn
+// index. Idempotent — if a message already has steps from a fresh
+// stream we don't overwrite (the live data is more accurate).
+function mergeConvTurns(cid, messages) {
+  if (!cid || !messages) return messages;
+  migrateLegacyArtifacts(cid);
+  const map = readConvTurns(cid);
+  if (!map) return messages;
+  let assistantIdx = 0;
+  return messages.map((m) => {
+    if (m.role !== 'assistant') return m;
+    const saved = map[assistantIdx];
+    assistantIdx += 1;
+    if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
+    const hasLiveSteps = Array.isArray(m.steps) && m.steps.length > 0;
+    if (hasLiveSteps) return m;
+    return {
+      ...m,
+      steps: saved.steps,
+      startedAt: m.startedAt || saved.startedAt || null,
+    };
+  });
+}
+
+// Merge a fresh fetchSessions response with the existing tasks,
+// preserving any in-memory state the server hasn't seen yet.
+//
+// Why: anton flushes `_history.json` only at the end of a successful
+// turn. While a stream is in flight the user-typed message + the
+// assistant's `_streaming` row + any captured progress live ONLY in
+// React state. A naive `setTasks(serverData)` after fetchSessions
+// blows that away — most visibly when the user navigates to recents
+// during the very first turn of a new task and comes back: the
+// chat is empty and the title shows the raw conversation id.
+//
+// Strategy: take the server's tasks (authoritative for title /
+// project / status / order), but for each task that exists locally
+// AND is mid-stream OR has unsaved messages, keep the local
+// messages array.
+function mergeTasksFromServer(serverTasks, localTasks) {
+  const local = Array.isArray(localTasks) ? localTasks : [];
+  if (!Array.isArray(serverTasks)) return local;
+  const localById = new Map(local.map((t) => [t.id, t]));
+  const merged = serverTasks.map((server) => {
+    const l = localById.get(server.id);
+    if (!l) return server;
+    const lMessages = Array.isArray(l.messages) ? l.messages : [];
+    const isStreaming = lMessages.some((m) => m.role === '_streaming');
+    const hasLocalContent = lMessages.length > 0;
+    if (!isStreaming && !hasLocalContent) return server;
+    return {
+      ...server,
+      // Local wins for the live conversation surface.
+      messages: lMessages,
+      status: l.status || server.status,
+      // Preserve in-flight attachments tracked client-side.
+      attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
+        ? l.attachments
+        : server.attachments,
+    };
+  });
+  // Carry over local-only tasks the server hasn't seen yet (e.g. a
+  // tmp-id task whose first stream hasn't resolved a real cid).
+  const serverIds = new Set(serverTasks.map((t) => t.id));
+  for (const t of local) {
+    if (!serverIds.has(t.id)) merged.unshift(t);
+  }
+  return merged;
+}
+
 function appendActivity(messages, event) {
   const content = describeActivity(event);
   const cleaned = removeThinkingPlaceholder(messages);
@@ -137,6 +338,69 @@ function AppCore() {
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
+
+  // Live stream control — refs to the active fetch's AbortController
+  // and the latest scratchpad name so we can fire a Stop that aborts
+  // both the SSE read and the in-flight scratchpad cell.
+  const activeStreamCtrlRef = useRef(null);
+  const activeScratchpadRef = useRef(null);
+
+  const handleStopStream = useCallback(async () => {
+    // 1) Cancel the running scratchpad (if any) so anton stops
+    //    executing user code mid-cell.
+    const padName = activeScratchpadRef.current;
+    if (padName) {
+      try { await cancelScratchpad(padName); } catch {}
+    }
+    // 2) Abort the SSE fetch so the renderer stops accumulating events.
+    const ctrl = activeStreamCtrlRef.current;
+    if (ctrl) {
+      try { ctrl.abort(); } catch {}
+      activeStreamCtrlRef.current = null;
+    }
+    activeScratchpadRef.current = null;
+
+    // 3) Roll the streaming placeholder into a final assistant
+    //    message. Drop the in-flight steps so the rail's Progress
+    //    + ThinkingBlock collapse cleanly, and leave a friendly
+    //    confirmation in place of any partial body text.
+    const STOP_MESSAGES = [
+      'Task stopped — let me know what to try next.',
+      'Got it, I stepped back. Want to take another angle?',
+      'Stopped here. What would you like me to do instead?',
+      'Paused as requested. Ready when you are.',
+      'All halted. Tell me how to proceed.',
+      'Done — execution stopped on your call.',
+      'Standing by. Send another prompt when you\'re ready.',
+      'Task halted gracefully. What\'s next?',
+    ];
+    const stoppedMsg = STOP_MESSAGES[Math.floor(Math.random() * STOP_MESSAGES.length)];
+
+    setTasks((prev) => prev.map((t) => {
+      const streaming = (t.messages || []).find((m) => m.role === '_streaming');
+      if (!streaming) return t;
+      const others = t.messages
+        .filter((m) => m.role !== '_streaming')
+        .filter((m) => m.role !== 'activity'); // also clear stale activity rows
+      return {
+        ...t,
+        status: 'idle',
+        messages: [...others, {
+          role: 'assistant',
+          content: stoppedMsg,
+          // Empty steps so Progress + ThinkingBlock stop rendering
+          // for this turn — the rail returns to its idle state.
+          steps: [],
+          startedAt: streaming.startedAt,
+        }],
+      };
+    }));
+  }, []);
+
+  // Per-task streaming state is derived inside ChatView (it has the
+  // task object via props). Don't compute it here — `activeTaskId` is
+  // declared further down and reading it before initialization throws
+  // a TDZ ReferenceError at first render.
   const [models] = useState(MOCK_DATA.models);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Theme (light | dark) — persisted in localStorage so the choice
@@ -225,7 +489,9 @@ function AppCore() {
       setHealth(h);
       setServerOnline(h.status === 'ok');
     });
-    fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); });
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     fetchPins().then((data) => setPins(data.pins || []));
@@ -250,6 +516,23 @@ function AppCore() {
   useEffect(() => {
     refreshData();
   }, [refreshData]);
+
+  // Allow descendants (e.g. ProjectsView's rename / create flow) to
+  // ask for a fresh projects list without prop-drilling a refetch
+  // handler. Also refetch sessions: a rename rewrites every
+  // conversation's _meta.json with the new project name, so the
+  // in-memory task list (which carries projectName per task) needs
+  // to re-read or else it keeps pointing at the old project.
+  useEffect(() => {
+    const handler = () => {
+      fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+      fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    });
+    };
+    window.addEventListener('anton:projects-changed', handler);
+    return () => window.removeEventListener('anton:projects-changed', handler);
+  }, []);
 
   // Whenever serverOnline flips from false → true (boot finishing,
   // user manually starting, etc.), re-fetch everything. Without this,
@@ -380,7 +663,9 @@ function AppCore() {
       // Pin/unpin is now an explicit action via the task menu.
       recordTaskVisit(task, false).then(() => {
         fetchPins().then((data) => setPins(data.pins || []));
-        fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); });
+        fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    });
       }).catch(() => {});
 
       // If this task didn't get its messages preloaded (we only fan
@@ -389,10 +674,27 @@ function AppCore() {
       if (!task.messages || task.messages.length === 0) {
         fetchSession(id).then((fresh) => {
           if (!fresh || !Array.isArray(fresh.messages) || fresh.messages.length === 0) return;
+          // Two layers of restoration, in order of trust:
+          //   1. Server sidecar (`{cid}_turns.json`) — events for each
+          //      assistant turn, replayed through the same reducer the
+          //      live stream uses. Survives any client reset and
+          //      anyone reading the conversation gets the same view.
+          //   2. localStorage sidecar — legacy fallback for turns
+          //      created before the server sidecar shipped.
+          const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
+          const enriched = mergeConvTurns(id, fromServer);
           setTasks((prev) => prev.map((t) =>
-            t.id === id ? { ...t, messages: fresh.messages } : t
+            t.id === id ? { ...t, messages: enriched } : t
           ));
         }).catch(() => {});
+      } else {
+        // Already preloaded — still hydrate once so reopening surfaces
+        // any data persisted in a prior session.
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== id) return t;
+          const fromServer = hydrateMessagesFromServerEvents(t.messages);
+          return { ...t, messages: mergeConvTurns(id, fromServer) };
+        }));
       }
     }
     setComposerAttachments([]);
@@ -404,6 +706,38 @@ function AppCore() {
     setActiveTaskId(null);
     setComposerAttachments([]);
     setRoute('home');
+  };
+
+  // "+ Connect" entry — opens a brand-new task whose first message
+  // is a synthesized assistant greeting (random pick from a small
+  // bank). The user replies to that, kicking off the normal
+  // handleSendInTask → request_credentials flow on the server. The
+  // greeting is a client-only display seed; on conversation reload
+  // it won't reappear (anton's history starts at the first real
+  // user input), but the form panel + saved connection survive.
+  const handleStartConnectChat = () => {
+    const tempId = 'tmp-connect-' + Date.now();
+    const welcome = pickConnectWelcome();
+    setTasks((prev) => [{
+      id: tempId,
+      title: 'New connection',
+      subtitle: 'just now',
+      status: 'idle',
+      messages: [{
+        role: 'assistant',
+        content: welcome,
+        // Marker so future code can distinguish synthesized greetings
+        // from real assistant turns if needed (e.g. skip persisting).
+        _client_only: true,
+      }],
+      projectName: selectedProject?.name || 'general',
+      projectPath: selectedProject?.path || null,
+      model: selectedModel?.id || null,
+      attachments: [],
+    }, ...prev]);
+    setActiveTaskId(tempId);
+    setComposerAttachments([]);
+    setRoute('task');
   };
   // Keep the ref synced so the Cmd/Ctrl+N keydown handler always calls
   // the latest newTask closure (which captures fresh setRoute/setTasks).
@@ -419,6 +753,12 @@ function AppCore() {
     }
     if (key === 'projects') {
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
+      // Clicking "Projects" in the sidebar should always land on the
+      // grid of all projects, not the previously-selected project's
+      // detail. Clear the selection so ProjectsView starts in grid
+      // mode. The chat-header crumb routes through onOpenProject
+      // (which sets selectedProject AFTER routing) so it's unaffected.
+      setSelectedProject(null);
     }
     if (key === 'scheduled') {
       fetchSchedules().then((data) => setScheduled(data.schedules || []));
@@ -500,12 +840,25 @@ function AppCore() {
     }
     const effectiveProjectName = selectedProject?.name || 'general';
     const effectiveProjectPath = selectedProject?.path || generalProject?.path || null;
+
+    // Two-phase send so the new-task experience matches the in-chat
+    // send. Previously we shipped the user message + placeholder in the
+    // very same frame as the route change, which meant the activity
+    // placeholder (filtered out of the chat scroll, only visible in the
+    // rail) flashed in then vanished as soon as the first stream event
+    // replaced it with a still-empty `_streaming` row. Now:
+    //   1. Create an EMPTY task shell + route to it. ChatView mounts
+    //      cleanly with no messages.
+    //   2. On the next animation frame (after the chat view commits),
+    //      add the user message + thinking placeholder, then kick the
+    //      stream. From that point the flow is identical to
+    //      handleSendInTask.
     const newT = {
       id: tempId,
       title: text.length > 60 ? text.slice(0, 57) + '…' : text,
       subtitle: 'just now',
       status: 'active',
-      messages: withThinkingPlaceholder([{ role: 'user', content: text, attachments: sendingAttachments }]),
+      messages: [],
       projectPath: effectiveProjectPath,
       projectName: effectiveProjectName,
       model: selectedModel?.id ?? null,
@@ -536,16 +889,34 @@ function AppCore() {
       }));
     };
 
-    streamNewSession(text, {
+    // Phase 2 — runs after ChatView has mounted with the empty task.
+    // Append the user message + thinking placeholder, then start the
+    // stream. Two RAFs give React a guaranteed paint between phases
+    // (one to commit the route+task, one to commit the empty mount).
+    const startConversation = () => {
+      setTasks((prev) => prev.map((t) =>
+        t.id === tempId
+          ? {
+              ...t,
+              messages: withThinkingPlaceholder([
+                { role: 'user', content: text, attachments: sendingAttachments },
+              ]),
+            }
+          : t,
+      ));
+      activeStreamCtrlRef.current = streamNewSessionFn();
+    };
+    const streamNewSessionFn = () => streamNewSession(text, {
       projectName: effectiveProjectName,
       projectPath: effectiveProjectPath,
       model: selectedModel?.id,
       attachmentIds,
       onEvent(ev) {
         streamState = reduceStream(streamState, ev);
-        // flushSync forces an immediate paint so the UI updates per
-        // event rather than batching everything into one render at
-        // the end of the SSE chunk.
+        // Track latest in-progress scratchpad so the Stop button
+        // can cancel anton's current cell, not just abort our stream.
+        const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
+        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreamingMessage());
       },
       onChunk(chunk, sid) {
@@ -564,16 +935,22 @@ function AppCore() {
         // remains the source of truth for resolving conversation id.
       },
       onProgress(event, sid) {
+        // Track the resolved conversation id (in case onChunk hasn't
+        // run yet for this stream — onChunk does the same dance).
         if (sid && sid !== resolvedId) {
           const previousId = resolvedId;
           resolvedId = sid;
           setTasks((prev) => prev.map((t) => t.id === previousId || t.id === tempId ? { ...t, id: sid } : t));
           setActiveTaskId(sid);
         }
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== resolvedId && t.id !== tempId) return t;
-          return { ...t, messages: appendActivity(stripStreaming(t.messages), event) };
-        }));
+        // Intentionally a no-op for messages: every `response.in_progress`
+        // event already passed through onEvent → flushStreamingMessage,
+        // which is the source of truth for the streaming row + steps.
+        // The previous implementation appended an `activity` row here
+        // and stripped the `_streaming` row in the process — but the
+        // chat scroll filters activity rows out (they're never visible)
+        // while losing the streaming row blanked the AnswerTurn until
+        // the body deltas started.
       },
       onToolResult(event, sid) {
         if (sid && sid !== resolvedId) {
@@ -582,19 +959,25 @@ function AppCore() {
           setTasks((prev) => prev.map((t) => t.id === previousId || t.id === tempId ? { ...t, id: sid } : t));
           setActiveTaskId(sid);
         }
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== resolvedId && t.id !== tempId) return t;
-          return { ...t, messages: appendActivity(stripStreaming(t.messages), event) };
-        }));
+        // See onProgress comment — same reasoning. The adapter (via
+        // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
+        activeStreamCtrlRef.current = null;
+        activeScratchpadRef.current = null;
         const finalId = sid || resolvedId;
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== tempId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+          // Count prior assistant turns BEFORE adding the new one so
+          // the persisted index lines up with what mergeConvTurns
+          // expects on reload (the merge walks assistant messages in
+          // the same order and looks up by index).
+          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           return finalContent
             ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
@@ -605,6 +988,14 @@ function AppCore() {
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
         setActiveTaskId(finalId);
+        // Persist all step data (scratchpad cells, artifacts, timing)
+        // so reopening the conversation restores the Thinking block,
+        // inline artifact cards, and scratchpad tabs. Anton's own
+        // history file doesn't carry step metadata, so this is a
+        // sidecar in localStorage.
+        if (finalContent) {
+          persistTurnState(finalId, assistantTurnIndex, finalSteps, finalStartedAt);
+        }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
@@ -616,6 +1007,14 @@ function AppCore() {
         fetchHealth().then((h) => setHealth(h));
       },
     });
+
+    // Schedule phase 2 after ChatView has had a chance to mount and
+    // paint with the empty task. Two RAFs is the safest pattern: the
+    // first fires after React commits the route change; the second
+    // fires after the browser has painted that commit. Only then do
+    // we add the user message + thinking placeholder and start the
+    // SSE stream — same shape as handleSendInTask from that point on.
+    requestAnimationFrame(() => requestAnimationFrame(startConversation));
   };
 
   // Send inside an existing task
@@ -666,13 +1065,15 @@ function AppCore() {
       }));
     };
 
-    streamMessage(id, text, {
+    activeStreamCtrlRef.current = streamMessage(id, text, {
       projectName: taskProjectName,
       projectPath: taskProjectPath,
       model: taskModel,
       attachmentIds,
       onEvent(ev) {
         streamState = reduceStream(streamState, ev);
+        const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
+        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
       onChunk(chunk) {
@@ -682,12 +1083,16 @@ function AppCore() {
         assistantContent += chunk;
       },
       onDone() {
+        activeStreamCtrlRef.current = null;
+        activeScratchpadRef.current = null;
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           return finalContent
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
@@ -697,6 +1102,10 @@ function AppCore() {
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
+        if (finalContent) {
+          // Sidecar — see persistTurnState comment for the full schema.
+          persistTurnState(id, assistantTurnIndex, finalSteps, finalStartedAt);
+        }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
@@ -706,6 +1115,92 @@ function AppCore() {
           return { ...t, status: 'error', messages: [...msgs, { role: 'error', content: message || 'Anton could not complete this task.', code: event?.code }] };
         }));
         fetchHealth().then((h) => setHealth(h));
+      },
+    });
+  };
+
+  // Submit a data-vault form. Drives a fresh assistant turn from the
+  // cowork agent endpoint instead of the LLM — same SSE stream shape,
+  // same React state machine. The user sees a normal Anton bubble
+  // appear after they submit; under the hood the LLM never read the
+  // values. Mirrors handleSendInTask but wired to streamDataVaultSubmission.
+  const handleSubmitDataVaultForm = ({ formId, formSpec, values, skipped }) => {
+    if (!currentTask) return;
+    const id = currentTask.id;
+
+    setTasks((prev) => prev.map((t) =>
+      t.id === id
+        ? { ...t, status: 'active' }
+        : t,
+    ));
+
+    let assistantContent = '';
+    let streamState = initialStreamState();
+
+    const flushStreaming = () => {
+      setTasks((prev) => prev.map((t) => {
+        if (t.id !== id) return t;
+        const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
+        return { ...t, messages: [...msgs, {
+          role: '_streaming',
+          content: streamState.bodyText || assistantContent,
+          steps: streamState.steps,
+          startedAt: streamState.startedAt,
+          streamStatus: streamState.status,
+        }] };
+      }));
+    };
+
+    activeStreamCtrlRef.current = streamDataVaultSubmission({
+      formId,
+      conversationId: id,
+      formSpec,
+      values,
+      skipped,
+      onEvent(ev) {
+        streamState = reduceStream(streamState, ev);
+        flushSync(() => flushStreaming());
+      },
+      onChunk(chunk) {
+        assistantContent += chunk;
+      },
+      onDone() {
+        activeStreamCtrlRef.current = null;
+        const finalContent = streamState.bodyText || assistantContent;
+        const finalSteps = streamState.steps;
+        const finalStartedAt = streamState.startedAt;
+        let assistantTurnIndex = 0;
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== id) return t;
+          const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
+          return finalContent
+            ? { ...t, status: 'idle', messages: [...msgs, {
+                role: 'assistant',
+                content: finalContent,
+                steps: finalSteps,
+                startedAt: finalStartedAt,
+              }] }
+            : { ...t, status: 'idle', messages: msgs };
+        }));
+        if (finalContent) {
+          persistTurnState(id, assistantTurnIndex, finalSteps, finalStartedAt);
+        }
+        // A successful save changes the connectors list — refetch
+        // so the Connect Apps and Data page reflects it immediately.
+        fetchDatasources()
+          .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+          .catch(() => {});
+      },
+      onError(message) {
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== id) return t;
+          const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+          return { ...t, status: 'error', messages: [...msgs, {
+            role: 'error',
+            content: message || 'Form submission failed.',
+          }] };
+        }));
       },
     });
   };
@@ -789,6 +1284,70 @@ function AppCore() {
     fetchPins().then((data) => setPins(data.pins || [])).catch(() => {});
   };
 
+  // Pending delete-turn confirm payload — null when no modal is open.
+  // The user clicked the trash on the assistant message at this turn
+  // index of the conversation; we open ConfirmModal, then on confirm
+  // hit the API and re-hydrate the chat from the truncated history.
+  const [pendingDeleteTurn, setPendingDeleteTurn] = useState(null);
+
+  const handleDeleteTurnRequest = (taskId, turnIndex) => {
+    if (!taskId || typeof turnIndex !== 'number') return;
+    setPendingDeleteTurn({ taskId, turnIndex });
+  };
+
+  const performDeleteTurn = async (taskId, turnIndex) => {
+    if (!taskId || typeof turnIndex !== 'number') return;
+    if (typeof taskId === 'string' && taskId.startsWith('tmp-')) {
+      // No server-side history yet — drop the local pair only.
+      setTasks((prev) => prev.map((t) => {
+        if (t.id !== taskId) return t;
+        let assistantSeen = -1;
+        let dropFromUserAt = -1;
+        let dropEnd = (t.messages || []).length;
+        for (let i = 0; i < (t.messages || []).length; i++) {
+          const m = t.messages[i];
+          if (m.role === 'user' && dropFromUserAt === -1 && assistantSeen + 1 === turnIndex) {
+            dropFromUserAt = i;
+          }
+          if (m.role === 'assistant') {
+            assistantSeen += 1;
+            if (dropFromUserAt !== -1 && assistantSeen > turnIndex) {
+              dropEnd = i;
+              break;
+            }
+          }
+        }
+        if (dropFromUserAt === -1) return t;
+        return {
+          ...t,
+          messages: [
+            ...t.messages.slice(0, dropFromUserAt),
+            ...t.messages.slice(dropEnd === t.messages.length ? dropEnd : dropEnd),
+          ],
+        };
+      }));
+      return;
+    }
+    try {
+      await deleteConversationTurn(taskId, turnIndex);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[performDeleteTurn] server delete failed', e);
+      alert(`Could not delete this exchange: ${e?.message || e}`);
+      return;
+    }
+    // Re-fetch the conversation so `tasks[].messages` reflects the
+    // truncated server history (and any reindexed events sidecar).
+    try {
+      const fresh = await fetchSession(taskId);
+      if (fresh && Array.isArray(fresh.messages)) {
+        setTasks((prev) => prev.map((t) =>
+          t.id === taskId ? { ...t, messages: fresh.messages } : t,
+        ));
+      }
+    } catch {}
+  };
+
   const handleDeleteProject = (project) => {
     if (!project?.name) return;
     setPendingDeleteProject(project);
@@ -807,7 +1366,9 @@ function AppCore() {
     }
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
-    fetchSessions().then((data) => { if (Array.isArray(data)) setTasks(data); }).catch(() => {});
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+    }).catch(() => {});
   };
 
   const handleMoveTaskToProject = async (taskId, projectName) => {
@@ -1047,7 +1608,11 @@ function AppCore() {
             onUnpinTask={handleUnpinTask}
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
+            onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
             onMoveTaskToProject={handleMoveTaskToProject}
+            onStop={handleStopStream}
+            onSubmitDataVaultForm={handleSubmitDataVaultForm}
+            onNavigateToConnectors={() => navigate('connect')}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
               setRoute('projects');
@@ -1074,8 +1639,9 @@ function AppCore() {
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
             onSendInProject={(text) => {
-              // Sending from project detail = same as home, but with
-              // selectedProject already pinned to this project.
+              // Sending from project detail = same path as home, but
+              // selectedProject is already pinned to this project so
+              // the new task lands in the right workspace.
               handleSendFromHome(text);
             }}
             onSelectTask={selectTask}
@@ -1101,7 +1667,7 @@ function AppCore() {
         )}
 
         {route === 'artifacts' && (
-          <ArtifactsView artifacts={artifacts} />
+          <ArtifactsView artifacts={artifacts} projects={projects} />
         )}
 
         {route === 'dispatch' && (
@@ -1109,7 +1675,11 @@ function AppCore() {
         )}
 
         {route === 'customize' && (
-          <CustomizeView onOpenSettings={() => setRoute('settings')} />
+          <CustomizeView
+            connectors={connectors}
+            onOpenSettings={() => setRoute('settings')}
+            onConnectNew={handleStartConnectChat}
+          />
         )}
 
         {route === 'settings' && (
@@ -1143,6 +1713,21 @@ function AppCore() {
           const id = pendingDeleteTaskId;
           setPendingDeleteTaskId(null);
           await performDeleteTask(id);
+        }}
+      />
+
+      <ConfirmModal
+        open={pendingDeleteTurn != null}
+        title="Delete this exchange?"
+        message="This removes both your question and Anton's response from the conversation. Any scratchpad cells, artifacts, or memory writes anton produced as part of this turn stay on disk. This can't be undone."
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteTurn(null)}
+        onConfirm={async () => {
+          const payload = pendingDeleteTurn;
+          setPendingDeleteTurn(null);
+          if (payload) await performDeleteTurn(payload.taskId, payload.turnIndex);
         }}
       />
 

@@ -43,6 +43,7 @@ from routes.pins import router as pins_router
 from routes.schedules import router as schedules_router, start_scheduler
 from routes.browse import router as browse_router
 from routes.integrations import router as integrations_router
+from routes.datavault import router as datavault_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,6 +93,7 @@ app.include_router(pins_router)
 app.include_router(schedules_router)
 app.include_router(browse_router)
 app.include_router(integrations_router, prefix="/v1/integrations", tags=["integrations"])
+app.include_router(datavault_router, prefix="/v1/datavault", tags=["datavault"])
 
 
 @app.get("/health")

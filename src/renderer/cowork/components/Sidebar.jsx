@@ -275,18 +275,22 @@ export default function Sidebar({
           <NavItem icon={Ico.folder(15)}  label="Projects"      onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled"     onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={scheduledCount || null} />
           <NavItem icon={Ico.sparkle(15)} label="Live artifacts" onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} />
-          {/* Dispatch hidden until the feature ships */}
-          <NavItem icon={Ico.slider(15)}  label="Customize"     onClick={() => onNavigate('customize')} active={activeRoute === 'customize'} />
-          <NavItem icon={Ico.settings(15)} label="Settings"     onClick={() => onNavigate('settings')}  active={activeRoute === 'settings'} />
+          {/* Connect Apps and Data — replaces "Customize". Reuses the
+              `customize` route key so existing in-flight links still
+              work. The page now lists connected apps + datasources in
+              a Projects-style grid. */}
+          <NavItem icon={Ico.link(15)}    label="Connect Apps and Data" onClick={() => onNavigate('customize')} active={activeRoute === 'customize'} />
         </div>
 
         {/* Anton group — visually grouped panel for the brain-style nav */}
         <div className="section-label">Anton</div>
         <div className="anton-group">
-          <NavItem icon={Ico.brain(15)}   label="Skills library" onClick={() => onNavigate('skills')}  active={activeRoute === 'skills'}  compact />
-          <NavItem icon={Ico.brain(15)}   label="Memory"         onClick={() => onNavigate('memory')}  active={activeRoute === 'memory'}  compact />
-          <NavItem icon={Ico.database(15)} label="Connect data"  onClick={() => onNavigate('connect')} active={activeRoute === 'connect'} compact />
-          <NavItem icon={Ico.upload(15)}  label="Publish"        onClick={() => onNavigate('publish')} active={activeRoute === 'publish'} compact />
+          <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
+          <NavItem icon={Ico.brain(15)}    label="Memory"         onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
+          {/* "Connect data" removed from the sidebar — the workflow
+              still lives at route='connect' and is reached via the
+              "+ Connect" button on the Connect Apps and Data page. */}
+          <NavItem icon={Ico.settings(15)} label="Settings"       onClick={() => onNavigate('settings')} active={activeRoute === 'settings'} compact />
         </div>
 
         {/* Pinned */}
