@@ -19,12 +19,12 @@ const TARGET = process.env.BUILD_TARGET === 'web' ? 'web' : 'electron';
 const ENTRY_HTML = TARGET === 'web' ? 'web.html' : 'index.html';
 const OUT_DIR = TARGET === 'web' ? '../../dist/web' : '../../dist/renderer';
 
-// Vite emits the entry HTML at the same name as the source (web.html →
-// dist/web/web.html). nginx wants `index.html` for SPA fallback. This
-// plugin renames the emitted HTML inside Vite's lifecycle so it works
-// for both one-shot builds and `--watch` mode (each rebuild fires
-// closeBundle, so the rename always runs). Replaces the previous
-// `&& mv …` hack in package.json which only ran once and broke watch.
+// Vite emits the entry HTML at the source name (web.html → dist/web/web.html).
+// nginx wants `index.html` for SPA fallback. Tried `generateBundle` to rename
+// in-bundle, but Vite handles HTML emits outside the standard Rollup bundle
+// map, so the rename has no effect there. Falling back to a `closeBundle`
+// rename — runs once per build, including each iteration of `--watch`, so
+// the output is always `index.html` regardless of mode.
 const renameWebEntryHtmlPlugin = () => ({
   name: 'rename-web-entry-html',
   closeBundle() {
