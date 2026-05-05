@@ -29,14 +29,10 @@ MANAGED_END = "# <<< Anton CoWork managed integrations <<<"
 USER_DATASOURCES_PATH = Path.home() / ".anton" / "datasources.md"
 GOOGLE_DRIVE_ENGINE = "google_drive"
 GOOGLE_DRIVE_OAUTH_SCOPES = (
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
 )
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
-GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 GOOGLE_OAUTH_STATE_KEY = "google_drive_oauth"
 
 GOOGLE_DRIVE_BLOCK = dedent(
@@ -202,20 +198,19 @@ def _clear_google_oauth_pending(**updates: Any) -> dict[str, Any]:
     return _write_google_oauth_meta(pending={}, **updates)
 
 
+GOOGLE_CLIENT_ID     = "1003802991864-dlkqdibet6vc9bakijhr1b53nncfhjvk.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET = "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"
+
+
 def _google_oauth_config() -> dict[str, str | bool]:
-    client_id = _get_env("ANTON_GOOGLE_CLIENT_ID", "").strip()
-    client_secret = _get_env("ANTON_GOOGLE_CLIENT_SECRET", "").strip()
-    missing = []
-    if not client_id:
-        missing.append("ANTON_GOOGLE_CLIENT_ID")
-    if not client_secret:
-        missing.append("ANTON_GOOGLE_CLIENT_SECRET")
-    ready = not missing
+    client_id = GOOGLE_CLIENT_ID.strip()
+    client_secret = GOOGLE_CLIENT_SECRET.strip()
+    ready = bool(client_id and client_secret)
     return {
         "ready": ready,
         "client_id": client_id,
         "client_secret": client_secret,
-        "error": "" if ready else f"Configure {', '.join(missing)} in ~/.anton/.env to enable Google Drive sign-in.",
+        "error": "" if ready else "Google OAuth credentials are not configured.",
     }
 
 
@@ -264,8 +259,8 @@ def _google_drive_oauth_connections(vault) -> list[dict[str, Any]]:
         fields = vault.load(GOOGLE_DRIVE_ENGINE, item["name"]) or {}
         if fields.get("auth_type") != "oauth":
             continue
-        display_name = fields.get("account_name", "").strip() or fields.get("account_email", "").strip() or item["name"]
-        subtitle = fields.get("account_email", "").strip() or item["name"]
+        display_name = item["name"]
+        subtitle = item["name"]
         connections.append(
             {
                 "engine": GOOGLE_DRIVE_ENGINE,
@@ -284,11 +279,6 @@ def _integration_item(vault) -> dict[str, Any]:
     oauth_config = _google_oauth_config()
     oauth_meta = _google_oauth_meta()
     drive_connections = _google_drive_oauth_connections(vault)
-    notes = [
-        "Click Connect Google Drive to open Google sign-in in your browser.",
-        "Anton stores the returned Google OAuth credentials in its local data vault under ~/.anton/data_vault/.",
-        "Google Drive only shows as connected after the OAuth callback succeeds.",
-    ]
     return {
         "id": GOOGLE_DRIVE_ENGINE,
         "title": "Google Drive",
@@ -299,7 +289,6 @@ def _integration_item(vault) -> dict[str, Any]:
         "connections": drive_connections,
         "connectionCount": len(drive_connections),
         "engineAvailable": True,
-        "notes": notes,
         "oauth": {
             "ready": oauth_config["ready"],
             "configError": oauth_config["error"],
@@ -324,6 +313,36 @@ async def list_integrations():
 
     vault = LocalDataVault()
     return {"items": [_integration_item(vault)]}
+
+
+@router.post("/google-drive/disconnect")
+async def disconnect_google_drive():
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+
+    vault = LocalDataVault()
+    removed = []
+    for item in vault.list_connections():
+        if item.get("engine") == GOOGLE_DRIVE_ENGINE:
+            vault.delete(GOOGLE_DRIVE_ENGINE, item["name"])
+            removed.append(item["name"])
+
+    _write_google_oauth_meta(pending={}, lastSuccessAt="", lastError="", lastErrorAt="")
+
+    if USER_DATASOURCES_PATH.exists():
+        try:
+            existing = USER_DATASOURCES_PATH.read_text(encoding="utf-8")
+            if MANAGED_BEGIN in existing and MANAGED_END in existing:
+                before, _, remainder = existing.partition(MANAGED_BEGIN)
+                _, _, after = remainder.partition(MANAGED_END)
+                cleaned = (before.rstrip() + "\n" + after.lstrip("\n")).strip()
+                USER_DATASOURCES_PATH.write_text(cleaned + "\n" if cleaned else "", encoding="utf-8")
+        except OSError:
+            pass
+
+    return {"status": "ok", "removed": removed}
 
 
 @router.post("/google-drive/oauth/start")
@@ -525,13 +544,7 @@ async def google_drive_oauth_callback(
         if not access_token:
             raise HTTPException(status_code=502, detail="Google OAuth token exchange did not return an access token.")
 
-        userinfo = _json_request(
-            GOOGLE_USERINFO_ENDPOINT,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        account_email = str(userinfo.get("email", "")).strip()
-        account_name = str(userinfo.get("name", "")).strip()
-        connection_name = account_email or "google_drive"
+        connection_name = f"google_drive_{secrets.token_hex(4)}"
         expires_in = int(token_data.get("expires_in", 0) or 0)
         expires_at = (
             datetime.now(timezone.utc) + timedelta(seconds=expires_in)
@@ -542,7 +555,11 @@ async def google_drive_oauth_callback(
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
 
-        LocalDataVault().save(
+        vault_instance = LocalDataVault()
+        for existing in vault_instance.list_connections():
+            if existing.get("engine") == GOOGLE_DRIVE_ENGINE:
+                vault_instance.delete(GOOGLE_DRIVE_ENGINE, existing["name"])
+        vault_instance.save(
             GOOGLE_DRIVE_ENGINE,
             connection_name,
             {
@@ -552,10 +569,6 @@ async def google_drive_oauth_callback(
                 "token_type": str(token_data.get("token_type", "Bearer")).strip(),
                 "scope": str(token_data.get("scope", "")).strip(),
                 "expires_at": expires_at,
-                "client_id": str(oauth_config["client_id"]).strip(),
-                "client_secret": str(oauth_config["client_secret"]).strip(),
-                "account_email": account_email,
-                "account_name": account_name,
             },
         )
     except HTTPException as exc:
@@ -576,6 +589,6 @@ async def google_drive_oauth_callback(
     _clear_google_oauth_pending(lastError="", lastErrorAt="", lastSuccessAt=_iso_now())
     return _callback_page(
         "Google Drive connected",
-        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton CoWork.",
+        "You can close this tab and return to Anton CoWork.",
         success=True,
     )

@@ -11,7 +11,7 @@ const PAGE_CONNECTORS = 'connectors';
 const DIRECTORY_MODE_CONNECTORS = 'connectors';
 const DIRECTORY_MODE_PLUGINS = 'plugins';
 const DESKTOP_CONNECTOR_IDS = ['anton_chrome', 'control_chrome', 'filesystem'];
-const EXTERNAL_CONNECTOR_IDS = ['github', 'google_drive', 'miro', 'asana', 'cloudflare', 'figma', 'gmail', 'google_calendar', 'hubspot', 'linear', 'notion', 'posthog', 'slack', 'supabase', 'zoominfo'];
+const EXTERNAL_CONNECTOR_IDS = ['github', 'google_drive', 'miro', 'asana', 'cloudflare', 'figma', 'gmail', 'hubspot', 'linear', 'notion', 'posthog', 'slack', 'supabase', 'zoominfo'];
 
 const CONNECTOR_LIBRARY = {
   github: {
@@ -169,8 +169,7 @@ const CONNECTOR_LIBRARY = {
 const DIRECTORY_CONNECTOR_CARDS = [
   { id: 'gmail', popularity: '#2 popular', desc: 'Draft replies, summarize threads, & search your inbox', action: 'add' },
   { id: 'google_drive', popularity: 'Most popular', desc: 'Search, read, and upload files instantly', action: 'add' },
-  { id: 'google_calendar', popularity: '#3 popular', desc: 'Manage your schedule and coordinate meetings effortlessly', action: 'add' },
-  { id: 'figma', popularity: '#5 popular', desc: 'Generate diagrams and better code from Figma context', action: 'add' },
+{ id: 'figma', popularity: '#5 popular', desc: 'Generate diagrams and better code from Figma context', action: 'add' },
   { id: 'hubspot', popularity: '#9 popular', desc: 'Chat with your CRM data to get personalized insights', action: 'add' },
   { id: 'notion', popularity: '#6 popular', desc: 'Connect your Notion workspace to search, update, and power workflows across tools', action: 'add' },
   { id: 'miro', popularity: '', desc: 'Access and create new content on Miro boards', action: 'add' },

@@ -453,6 +453,14 @@ export async function startGoogleDriveAuth() {
   return req('/integrations/google-drive/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export async function disconnectGoogleDrive() {
+  return req('/integrations/google-drive/disconnect', { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function saveGoogleDriveCredentials({ clientId, clientSecret }) {
+  return req('/integrations/google-drive/setup', { method: 'POST', body: JSON.stringify({ clientId, clientSecret }) });
+}
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
 export async function fetchMemory(projectPath) {
   const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';

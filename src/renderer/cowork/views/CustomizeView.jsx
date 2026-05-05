@@ -335,6 +335,14 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
   // state is correct throughout.
   const [showWorkflow, setShowWorkflow] = useState(false);
 
+  // Fetch fresh on mount so OAuth connections made via "Connect Apps"
+  // tab are visible without requiring a full app reload.
+  useEffect(() => {
+    fetchDatasources()
+      .then((data) => setList(Array.isArray(data?.connections) ? data.connections : []))
+      .catch(() => setList(Array.isArray(initialConnectors) ? initialConnectors : []));
+  }, []);
+
   // Keep local mirror in sync with prop changes — refresh after add /
   // remove flips the App-level state.
   useEffect(() => {
