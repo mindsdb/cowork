@@ -5,6 +5,9 @@ release/
 *.js.map
 .DS_Store
 Thumbs.db
+__pycache__/
+*.pyc
+*.pyo
 
 # Apple Developer
 CertificateSigningRequest.certSigningRequest
