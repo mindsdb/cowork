@@ -1266,23 +1266,29 @@ def delete_turn(conversation_id: str, turn_index: int) -> dict | None:
 
 def delete_conversation(conversation_id: str) -> bool:
     """Delete history + meta + raw episode log. Closes live session if any."""
-    found = False
-    located = _find_conversation_dir(conversation_id)
-    if located:
-        _, ep = located
-        # _meta.json + _history.json are written by the manager; the
-        # bare .jsonl is anton's raw episode log; _turns.json is the
-        # cowork-side per-turn event sidecar. All four need to go so
-        # the conversation truly disappears.
-        for suffix in ("_meta.json", "_history.json", "_turns.json", ".jsonl"):
-            p = ep / f"{conversation_id}{suffix}"
-            if p.is_file():
-                try:
-                    p.unlink()
-                    found = True
-                except Exception:
-                    pass
     _live.pop(conversation_id, None)
+    located = _find_conversation_dir(conversation_id)
+    if not located:
+        return False
+    _, ep = located
+    # Glob for every file whose name starts with "<id>." or "<id>_" so we
+    # catch the known suffixes (_meta.json, _history.json, _turns.json,
+    # .jsonl) plus any file the Anton library may write in the future.
+    # Using startswith checks instead of Path.glob avoids glob-escaping
+    # issues with conversation IDs that contain special characters.
+    dot_pfx = f"{conversation_id}."
+    under_pfx = f"{conversation_id}_"
+    found = False
+    for p in list(ep.iterdir()):
+        if not p.is_file():
+            continue
+        name = p.name
+        if name == conversation_id or name.startswith(dot_pfx) or name.startswith(under_pfx):
+            try:
+                p.unlink()
+                found = True
+            except Exception:
+                pass
     return found
 
 

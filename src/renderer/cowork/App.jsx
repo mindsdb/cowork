@@ -376,6 +376,9 @@ function AppCore() {
   });
 
   const [tasks, setTasks] = useState([]);
+  // IDs of tasks deleted this session. Used to filter them out of
+  // subsequent fetchSessions responses so zombies can't reappear.
+  const deletedTaskIdsRef = useRef(new Set());
   const [projects, setProjects] = useState([]);
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
@@ -543,7 +546,7 @@ function AppCore() {
       setServerOnline(h.status === 'ok');
     });
     fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -580,7 +583,7 @@ function AppCore() {
     const handler = () => {
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
       fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     };
     window.addEventListener('anton:projects-changed', handler);
@@ -717,7 +720,7 @@ function AppCore() {
       recordTaskVisit(task, false).then(() => {
         fetchPins().then((data) => setPins(data.pins || []));
         fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
       }).catch(() => {});
 
@@ -1380,7 +1383,7 @@ function AppCore() {
     } catch {
       // Reload from server on failure to recover the canonical title.
       const fresh = await fetchSessions();
-      if (Array.isArray(fresh)) setTasks(fresh);
+      if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }
   };
 
@@ -1396,6 +1399,7 @@ function AppCore() {
     if (!taskId) return;
     // eslint-disable-next-line no-console
     console.log('[performDeleteTask] confirmed', taskId);
+    deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // Optimistically remove from pins so the sidebar clears immediately.
     setPins((prev) => prev.filter((p) => p.id !== taskId));
@@ -1507,7 +1511,7 @@ function AppCore() {
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
     fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }).catch(() => {});
   };
 
@@ -1531,7 +1535,7 @@ function AppCore() {
     // Refresh sessions so the server's canonical project mapping wins
     // if our optimistic guess was wrong.
     const fresh = await fetchSessions();
-    if (Array.isArray(fresh)) setTasks(fresh);
+    if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
   };
 
   const refreshSchedules = async () => {
