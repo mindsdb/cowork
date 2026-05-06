@@ -5,8 +5,11 @@ release/
 *.js.map
 .DS_Store
 Thumbs.db
+logs/
+*.env
 
-# Apple Developer
+# Apple Developer credentials
 CertificateSigningRequest.certSigningRequest
 developerID_application.cer
---apple-id
+*.p12
+*.p8
