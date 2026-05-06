@@ -1746,7 +1746,7 @@ function AppCore() {
             onMoveTaskToProject={handleMoveTaskToProject}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
-            onNavigateToConnectors={() => navigate('connect')}
+            onNavigateToConnectors={() => navigate('customize')}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
               setRoute('projects');
@@ -1820,7 +1820,11 @@ function AppCore() {
           <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} />
         )}
 
-        {['memory', 'skills', 'connect', 'publish'].includes(route) && (
+        {/* Legacy 'connect' kind removed — Connect Apps and Data is now
+            the canonical surface for connector management (route
+            'customize'). UtilitiesView only carries memory / skills /
+            publish now. */}
+        {['memory', 'skills', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}
             project={selectedProject}

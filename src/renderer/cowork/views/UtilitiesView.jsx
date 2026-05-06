@@ -18,7 +18,10 @@ import {
 const TITLES = {
   memory: ['Memory', 'Rules, lessons, identity notes, and saved episodes Anton can reuse.'],
   skills: ['Skills library', 'Saved Anton skills and recall guidance.'],
-  connect: ['Connect data', 'Credential maps saved to Anton’s local data vault.'],
+  // 'connect' (legacy datasources page) is gone — Connect Apps and
+  // Data is the canonical surface. Kept the import paths for
+  // fetchDatasources / validateDatasource because they're still
+  // used by other call sites (the agent etc.).
   publish: ['Publish', 'HTML artifacts Anton can publish with Minds credentials.'],
 };
 
@@ -75,7 +78,6 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
     setStatus('');
     if (kind === 'memory') fetchMemory(project?.path).then(setData).catch((err) => setStatus(err.message));
     if (kind === 'skills') fetchSkills().then(setData).catch((err) => setStatus(err.message));
-    if (kind === 'connect') fetchDatasources().then(setData).catch((err) => setStatus(err.message));
     if (kind === 'publish') fetchPublishable().then(setData).catch((err) => setStatus(err.message));
   }, [kind, project?.path]);
 
@@ -106,7 +108,9 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
           setStatus={setStatus}
         />
       )}
-      {data && kind === 'connect' && <ConnectView data={data} setData={setData} setStatus={setStatus} />}
+      {/* The legacy 'connect' kind has been retired in favour of the
+          Connect Apps and Data page. ConnectView is no longer
+          rendered from here. */}
       {data && kind === 'publish' && <PublishView data={data} setData={setData} setStatus={setStatus} onRefreshArtifacts={onRefreshArtifacts} />}
     </div>
   );

@@ -323,9 +323,10 @@ export default function Sidebar({
         <div className="anton-group">
           <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
           <NavItem icon={Ico.brain(15)}    label="Memory"         onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
-          {/* "Connect data" removed from the sidebar — the workflow
-              still lives at route='connect' and is reached via the
-              "+ Connect" button on the Connect Apps and Data page. */}
+          {/* "Connect data" removed from the sidebar — the canonical
+              connector surface is the Connect Apps and Data page
+              (route='customize'). The legacy 'connect' route used to
+              render UtilitiesView/ConnectView and has been retired. */}
           <NavItem icon={Ico.settings(15)} label="Settings"       onClick={() => onNavigate('settings')} active={activeRoute === 'settings'} compact />
         </div>
 
