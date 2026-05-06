@@ -61,7 +61,7 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
-          python -c "
+          python3 -c "
           import os, re
           path = 'server/routes/integrations.py'
           content = open(path).read()
