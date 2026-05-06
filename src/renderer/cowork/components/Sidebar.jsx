@@ -443,7 +443,7 @@ export default function Sidebar({
                 </span>
               )}
             </span>
-          </div>
+          </button>
           {/* Server-toggle hidden in web mode — the FastAPI is container/Lightsail
               managed there, not user-controllable from the renderer. The status
               pill above still surfaces connected/offline as a read-only signal. */}
@@ -472,30 +472,6 @@ export default function Sidebar({
               </button>
             </div>
           )}
-          </button>
-          <div className="anton-sidebar__footer-actions">
-            <button
-              className={
-                'chrome-btn--small server-toggle' +
-                (serverOnline ? ' is-on' : '') +
-                (serverBusy ? ' is-busy' : '')
-              }
-              onClick={onToggleServer}
-              disabled={serverBusy}
-              title={
-                serverBusy
-                  ? `Backend ${serverBusyKind}…`
-                  : serverOnline ? 'Stop Anton backend' : 'Start Anton backend'
-              }
-              aria-label={serverOnline ? 'Stop backend' : 'Start backend'}
-              aria-busy={serverBusy ? 'true' : undefined}
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              {serverBusy
-                ? <Spinner intervalMs={70} />
-                : (serverOnline ? Ico.powerOff(13) : Ico.power(13))}
-            </button>
-          </div>
         </div>
       </div>
 
