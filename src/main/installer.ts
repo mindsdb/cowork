@@ -54,6 +54,35 @@ function getUvBinary(): string {
   return path.join(localBin, 'uv');
 }
 
+// Server runtime dependencies — version-pinned so the tool venv `uv`
+// resolves matches what `server/requirements.txt` was tested against.
+// Mirrors the requirements file: bumping one side without the other is
+// what causes "server starts on my machine, fails on user's box" reports.
+const SERVER_PYTHON_DEPS: Array<{ spec: string; importName: string }> = [
+  { spec: 'fastapi>=0.115.0',         importName: 'fastapi' },
+  { spec: 'uvicorn[standard]>=0.32.0', importName: 'uvicorn' },
+  // python-multipart is the package name, the import is `multipart`.
+  // FastAPI requires it for File()/Form()/UploadFile (attachments route).
+  { spec: 'python-multipart>=0.0.12', importName: 'multipart' },
+  // pydantic is a fastapi transitive dep, but the bundled server
+  // imports it directly (BaseModel + Field). Listing it explicitly
+  // future-proofs us against fastapi switching to pydantic-core only.
+  { spec: 'pydantic>=2.0.0',          importName: 'pydantic' },
+];
+
+// Path to the python interpreter inside the uv tool venv that
+// `uv tool install anton ...` populated. Mirrors the same lookup used
+// by server-process.ts so both files agree on which interpreter the
+// installer needs to write into.
+function getAntonToolPython(): string {
+  const dataHome = process.env.XDG_DATA_HOME ||
+    path.join(os.homedir(), process.platform === 'win32' ? 'AppData/Roaming' : '.local/share');
+  return path.join(
+    dataHome, 'uv', 'tools', 'anton',
+    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
+  );
+}
+
 function getEnvPath(): string {
   const localBin = getLocalBin();
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
@@ -374,25 +403,30 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     }
     setStep('uv', 'done');
 
-    // Step 3: Install Anton (with fastapi + uvicorn so the bundled server runs)
+    // Step 3: Install Anton (with fastapi + uvicorn + multipart + pydantic
+    // so the bundled FastAPI server in server/main.py can actually start).
     if (abortIfRequested()) return false;
     setStep('anton', 'running');
     sendLog(win, '\n--- Installing Anton (with server extras) ---\n');
+    sendLog(win, 'Server extras:\n');
+    for (const dep of SERVER_PYTHON_DEPS) {
+      sendLog(win, `  • ${dep.spec}\n`);
+    }
+
+    // Build the args list dynamically so the dep set lives in ONE place
+    // (SERVER_PYTHON_DEPS). Each spec is appended as a separate `--with`
+    // arg — `uv tool install` requires a flag per package.
+    const installArgs = [
+      'tool', 'install',
+      'git+https://github.com/mindsdb/anton.git',
+    ];
+    for (const dep of SERVER_PYTHON_DEPS) {
+      installArgs.push('--with', dep.spec);
+    }
+    installArgs.push('--force');
 
     const uvBin = fileExists(getUvBinary()) ? getUvBinary() : 'uv';
-    const installResult = await runCommand(
-      uvBin,
-      [
-        'tool', 'install',
-        'git+https://github.com/mindsdb/anton.git',
-        '--with', 'fastapi',
-        '--with', 'uvicorn[standard]',
-        '--with', 'python-multipart',
-        '--force',
-      ],
-      win,
-      { shouldAbort }
-    );
+    const installResult = await runCommand(uvBin, installArgs, win, { shouldAbort });
     if (abortIfRequested()) return false;
 
     if (installResult.code !== 0) {
@@ -405,6 +439,15 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     setStep('anton', 'done');
 
     // Step 4: Verify
+    //
+    // Two checks here, in order — the second one is the part most
+    // commonly missing in user reports of "server won't start":
+    //   (a) the `anton` CLI binary exists at the expected path
+    //   (b) the bundled server's Python deps are importable from the
+    //       same interpreter `server-process.ts` will spawn. A silent
+    //       failure mid-install (network blip, partial venv) leaves
+    //       (a) green and (b) red, which is exactly the symptom users
+    //       report ("Anton installed but the server never starts").
     if (abortIfRequested()) return false;
     setStep('verify', 'running');
     sendLog(win, '\n--- Verifying installation ---\n');
@@ -413,6 +456,40 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
       setStep('verify', 'error');
       sendLog(win, 'ERROR: Anton binary not found after installation.\n');
       sendInstallError(win, 'Verification failed');
+      return false;
+    }
+    sendLog(win, 'Anton CLI found.\n');
+
+    // (b) — import the server deps via the tool venv's python.
+    const toolPython = getAntonToolPython();
+    if (!fileExists(toolPython)) {
+      setStep('verify', 'error');
+      sendLog(win, `ERROR: tool python not found at ${toolPython}\n`);
+      sendInstallError(win, 'Tool venv missing');
+      return false;
+    }
+    sendLog(win, 'Verifying server dependencies…\n');
+    // Print version per dep so the install log is self-diagnosing
+    // when a user reports a problem; missing imports produce a
+    // single ImportError that surfaces the offending module.
+    const verifyScript = SERVER_PYTHON_DEPS.map((d) => (
+      `import ${d.importName} as _${d.importName}; ` +
+      `print(' ✓ ${d.importName}', getattr(_${d.importName}, '__version__', '?'))`
+    )).join(';\n');
+    const verifyDeps = await runCommand(toolPython, ['-c', verifyScript], win, { shouldAbort });
+    if (abortIfRequested()) return false;
+    if (verifyDeps.code !== 0) {
+      setStep('verify', 'error');
+      sendLog(win,
+        '\nERROR: server dependencies could not be imported.\n' +
+        'This usually means the previous install step finished with a ' +
+        'partial venv. Try re-running the installer; if it persists, ' +
+        'manually run:\n' +
+        `  uv tool install --force git+https://github.com/mindsdb/anton.git ${
+          SERVER_PYTHON_DEPS.map((d) => `--with '${d.spec}'`).join(' ')
+        }\n`
+      );
+      sendInstallError(win, 'Server dependencies missing');
       return false;
     }
     sendLog(win, 'Anton is ready!\n');

@@ -540,64 +540,123 @@ function MethodPicker({ methods, onPick, busy }) {
       }}>
         Pick how you want to connect:
       </div>
-      {methods.map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          disabled={busy}
-          onClick={() => onPick?.(m.id)}
-          style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'stretch', textAlign: 'left',
-            gap: 6,
-            padding: '12px 14px',
-            borderRadius: 9,
-            background: m.recommended
-              ? 'color-mix(in srgb, var(--accent) 8%, var(--surface))'
-              : 'var(--surface-2)',
-            border: m.recommended
-              ? '1px solid color-mix(in srgb, var(--accent) 35%, transparent)'
-              : '1px solid var(--line)',
-            color: 'var(--ink)',
-            cursor: busy ? 'not-allowed' : 'pointer',
-            fontFamily: FONT_BODY,
-            transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
-          }}
-          onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-        >
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-          }}>
-            <span style={{
-              fontWeight: 600, fontSize: 13.5, color: 'var(--ink)',
-              letterSpacing: '-0.005em',
-            }}>{m.label || m.id}</span>
-            {m.recommended && (
+      {methods.map((m) => {
+        const handleHelp = (e) => {
+          // Stop bubbling so the card's onClick doesn't also fire
+          // and select the method. Prevent default so the anchor
+          // doesn't try to navigate inside the Electron renderer
+          // (file:// origin) — we route through Electron's
+          // openExternal which hands the URL to the OS browser.
+          e.stopPropagation();
+          e.preventDefault();
+          if (m.help_url) {
+            try { window.antontron?.openExternal?.(m.help_url); }
+            catch { window.open(m.help_url, '_blank', 'noreferrer'); }
+          }
+        };
+        return (
+          <div
+            key={m.id}
+            role="button"
+            tabIndex={busy ? -1 : 0}
+            aria-disabled={busy || undefined}
+            onClick={() => { if (!busy) onPick?.(m.id); }}
+            onKeyDown={(e) => {
+              // Only treat Enter/Space as activation when the card
+              // itself is the focused element — when the inner help
+              // anchor has focus its own keyboard activation handles
+              // it, and we don't want to also select the method.
+              if (busy) return;
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onPick?.(m.id);
+              }
+            }}
+            style={{
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'stretch', textAlign: 'left',
+              gap: 6,
+              padding: '12px 14px',
+              borderRadius: 9,
+              background: m.recommended
+                ? 'color-mix(in srgb, var(--accent) 8%, var(--surface))'
+                : 'var(--surface-2)',
+              border: m.recommended
+                ? '1px solid color-mix(in srgb, var(--accent) 35%, transparent)'
+                : '1px solid var(--line)',
+              color: 'var(--ink)',
+              cursor: busy ? 'not-allowed' : 'pointer',
+              fontFamily: FONT_BODY,
+              transition: 'transform 120ms ease, background 120ms ease, border-color 120ms ease',
+              outline: 'none',
+            }}
+            onMouseOver={(e) => { if (!busy) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+            onFocus={(e) => {
+              // Only paint the focus ring when the card itself is
+              // focused — not when a child anchor is.
+              if (e.target === e.currentTarget) {
+                e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent)';
+              }
+            }}
+            onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            }}>
               <span style={{
-                fontSize: 10.5, fontFamily: FONT_MONO, letterSpacing: '0.04em',
-                color: 'var(--accent)',
-                padding: '2px 7px', borderRadius: 999,
-                background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                textTransform: 'uppercase',
-              }}>Recommended</span>
+                fontWeight: 600, fontSize: 13.5, color: 'var(--ink)',
+                letterSpacing: '-0.005em',
+              }}>{m.label || m.id}</span>
+              {m.recommended && (
+                <span style={{
+                  fontSize: 10.5, fontFamily: FONT_MONO, letterSpacing: '0.04em',
+                  color: 'var(--accent)',
+                  padding: '2px 7px', borderRadius: 999,
+                  background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                  textTransform: 'uppercase',
+                }}>Recommended</span>
+              )}
+            </div>
+            {m.description && (
+              <div style={{
+                fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.45,
+              }}>{m.description}</div>
+            )}
+            {m.help_url && (
+              <a
+                href={m.help_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleHelp}
+                onKeyDown={(e) => {
+                  // Don't let Enter/Space bubble up to the card's
+                  // own keyboard handler — the anchor's default
+                  // activation already calls onClick → handleHelp.
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                  }
+                }}
+                style={{
+                  alignSelf: 'flex-start',
+                  marginTop: 2,
+                  fontSize: 11.5,
+                  color: 'var(--accent)',
+                  textDecoration: 'none',
+                  fontWeight: 500,
+                  borderRadius: 4,
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                onMouseOut={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+              >
+                How to →
+              </a>
             )}
           </div>
-          {m.description && (
-            <div style={{
-              fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.45,
-            }}>{m.description}</div>
-          )}
-          {m.help_url && (
-            <div style={{
-              fontSize: 11.5, color: 'var(--accent)', marginTop: 2,
-            }}>
-              How to →
-            </div>
-          )}
-        </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
