@@ -29,10 +29,13 @@ MANAGED_END = "# <<< Anton CoWork managed integrations <<<"
 USER_DATASOURCES_PATH = Path.home() / ".anton" / "datasources.md"
 GOOGLE_DRIVE_ENGINE = "google_drive"
 GOOGLE_DRIVE_OAUTH_SCOPES = (
+    "openid",
+    "email",
     "https://www.googleapis.com/auth/drive",
 )
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 GOOGLE_OAUTH_STATE_KEY = "google_drive_oauth"
 
 GOOGLE_DRIVE_BLOCK = dedent(
@@ -544,7 +547,12 @@ async def google_drive_oauth_callback(
         if not access_token:
             raise HTTPException(status_code=502, detail="Google OAuth token exchange did not return an access token.")
 
-        connection_name = f"google_drive_{secrets.token_hex(4)}"
+        userinfo = _json_request(
+            GOOGLE_USERINFO_ENDPOINT,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        account_email = str(userinfo.get("email", "")).strip()
+        connection_name = f"google_drive_{account_email}" if account_email else f"google_drive_{secrets.token_hex(4)}"
         expires_in = int(token_data.get("expires_in", 0) or 0)
         expires_at = (
             datetime.now(timezone.utc) + timedelta(seconds=expires_in)
@@ -556,9 +564,6 @@ async def google_drive_oauth_callback(
             raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
 
         vault_instance = LocalDataVault()
-        for existing in vault_instance.list_connections():
-            if existing.get("engine") == GOOGLE_DRIVE_ENGINE:
-                vault_instance.delete(GOOGLE_DRIVE_ENGINE, existing["name"])
         vault_instance.save(
             GOOGLE_DRIVE_ENGINE,
             connection_name,

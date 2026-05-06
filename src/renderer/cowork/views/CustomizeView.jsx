@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import {
   deleteDatasource, fetchDatasources,
-  fetchIntegrations, startGoogleDriveAuth, disconnectGoogleDrive,
+  fetchIntegrations, startGoogleDriveAuth,
 } from '../api';
 
 const FONT_BODY    = "var(--font-body)";
@@ -33,8 +33,7 @@ function GoogleDriveLogo({ size = 36 }) {
 
 // ─── App tiles ───────────────────────────────────────────────────────────
 
-function AppTile({ title, logo, status, connecting, onConnect, onDisconnect }) {
-  const isConnected = status === 'connected';
+function AppTile({ title, logo, connecting, onConnect }) {
   return (
     <div style={{
       display: 'flex',
@@ -47,40 +46,19 @@ function AppTile({ title, logo, status, connecting, onConnect, onDisconnect }) {
     }}>
       <div style={{ flexShrink: 0 }}>{logo}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)', marginBottom: 3 }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>
           {title}
         </div>
       </div>
-      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        {isConnected ? (
-          <>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              fontSize: 12, fontWeight: 600, color: 'var(--success)',
-              background: 'rgba(34,160,94,0.1)',
-              border: '1px solid rgba(34,160,94,0.25)',
-              borderRadius: 20, padding: '4px 10px',
-            }}>
-              {Ico.check(12)} Connected
-            </span>
-            <button
-              className="btn"
-              onClick={onDisconnect}
-              style={{ fontSize: 12, padding: '4px 12px' }}
-            >
-              Disconnect
-            </button>
-          </>
-        ) : (
-          <button
-            className="btn btn-primary"
-            onClick={onConnect}
-            disabled={connecting}
-            style={{ fontSize: 13, padding: '6px 16px', opacity: connecting ? 0.7 : 1 }}
-          >
-            {connecting ? 'Connecting…' : 'Connect'}
-          </button>
-        )}
+      <div style={{ flexShrink: 0 }}>
+        <button
+          className="btn btn-primary"
+          onClick={onConnect}
+          disabled={connecting}
+          style={{ fontSize: 13, padding: '6px 16px', opacity: connecting ? 0.7 : 1 }}
+        >
+          {connecting ? 'Connecting…' : 'Connect'}
+        </button>
       </div>
     </div>
   );
@@ -404,7 +382,6 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
   const [list, setList]               = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch]           = useState('');
   const [sort, setSort]               = useState('recent');
-  const [integrations, setIntegrations] = useState([]);
   const [connectingId, setConnectingId] = useState(null);
   const [oauthError, setOauthError]   = useState(null);
   const searchRef = useRef(null);
@@ -421,20 +398,8 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
     }
   };
 
-  const loadIntegrations = async () => {
-    try {
-      const data  = await fetchIntegrations();
-      const items = data?.items || [];
-      setIntegrations(items);
-      return items;
-    } catch {
-      return integrations;
-    }
-  };
-
   useEffect(() => {
     loadDatasources();
-    loadIntegrations();
     return () => clearInterval(pollRef.current);
   }, []);
 
@@ -474,36 +439,20 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
           setConnectingId(null);
           return;
         }
-        const items = await loadIntegrations();
-        const item  = items.find((i) => i.id === integrationId);
-        const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
-        if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
-          clearInterval(pollRef.current);
-          setConnectingId(null);
-          loadDatasources();
-        }
+        try {
+          const data = await fetchIntegrations();
+          const item = (data?.items || []).find((i) => i.id === integrationId);
+          const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
+          if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
+            clearInterval(pollRef.current);
+            setConnectingId(null);
+            loadDatasources();
+          }
+        } catch { /* keep polling */ }
       }, POLL_INTERVAL_MS);
     } catch (e) {
       setOauthError(e?.message || 'Something went wrong.');
       setConnectingId(null);
-    }
-  };
-
-  const handleDisconnect = async (integrationId, disconnectFn) => {
-    clearInterval(pollRef.current);
-    setConnectingId(null);
-    setOauthError(null);
-    setIntegrations((prev) =>
-      prev.map((i) => i.id === integrationId
-        ? { ...i, status: 'available', connections: [], connectionCount: 0 }
-        : i)
-    );
-    try {
-      await disconnectFn();
-      await Promise.all([loadIntegrations(), loadDatasources()]);
-    } catch (e) {
-      setOauthError(e?.message || 'Disconnect failed.');
-      await Promise.all([loadIntegrations(), loadDatasources()]);
     }
   };
 
@@ -515,8 +464,6 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
       alert(`Could not disconnect: ${e?.message || e}`);
     }
   };
-
-  const gdrive = integrations.find((i) => i.id === 'google_drive');
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -571,10 +518,8 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
             <AppTile
               title="Google Drive"
               logo={<GoogleDriveLogo size={40} />}
-              status={gdrive?.status}
               connecting={connectingId === 'google_drive'}
               onConnect={() => handleConnect('google_drive', startGoogleDriveAuth)}
-              onDisconnect={() => handleDisconnect('google_drive', disconnectGoogleDrive)}
             />
             <ConnectWithAntonTile onClick={onConnectNew} />
           </div>
