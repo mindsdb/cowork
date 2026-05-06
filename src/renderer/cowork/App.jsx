@@ -1395,6 +1395,8 @@ function AppCore() {
     // eslint-disable-next-line no-console
     console.log('[performDeleteTask] confirmed', taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // Optimistically remove from pins so the sidebar clears immediately.
+    setPins((prev) => prev.filter((p) => p.id !== taskId));
     if (activeTaskId === taskId) {
       setActiveTaskId(null);
       setRoute('home');
@@ -1407,7 +1409,10 @@ function AppCore() {
       return;
     }
     try {
-      await deleteConversation(taskId);
+      await Promise.all([
+        deleteConversation(taskId),
+        unpinTask(taskId).catch(() => {}), // unpin is a no-op if not pinned
+      ]);
       // eslint-disable-next-line no-console
       console.log('[performDeleteTask] server delete ok');
     } catch (e) {
