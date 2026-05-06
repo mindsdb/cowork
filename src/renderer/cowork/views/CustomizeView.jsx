@@ -221,6 +221,14 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
   // state is correct throughout.
   const [showWorkflow, setShowWorkflow] = useState(false);
 
+  // Fetch fresh on every mount so connections made outside this view
+  // (e.g. browser OAuth flow from the chat panel) are always visible.
+  useEffect(() => {
+    fetchDatasources()
+      .then((data) => setList(Array.isArray(data?.connections) ? data.connections : []))
+      .catch(() => {});
+  }, []);
+
   // Keep local mirror in sync with prop changes — refresh after add /
   // remove flips the App-level state.
   useEffect(() => {

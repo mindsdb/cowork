@@ -8,9 +8,12 @@
 // onAction is the only handler we own: cancel → close, primary →
 // saveDatasource() → success state → close.
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DataVaultForm } from '../datavault/DataVaultForm';
-import { saveDatasource, fetchDatasources } from '../../api';
+import { saveDatasource, fetchDatasources, startGoogleDriveAuth, fetchIntegrations } from '../../api';
+
+const BROWSER_OAUTH_POLL_MS      = 3000;
+const BROWSER_OAUTH_TIMEOUT_MS   = 2 * 60 * 1000;
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 
@@ -26,6 +29,47 @@ export default function ConnectorFormPanel({
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [savedSpec, setSavedSpec] = useState(null);
+  const [oauthPending, setOauthPending] = useState(false);
+  const oauthStartedAt = useRef('');
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    if (!oauthPending) return;
+    const startedAt = oauthStartedAt.current;
+    const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
+    pollRef.current = setInterval(async () => {
+      if (Date.now() > deadline) {
+        clearInterval(pollRef.current);
+        setOauthPending(false);
+        setErrorMsg('Sign-in timed out. Please try again.');
+        setSavedSpec(null);
+        return;
+      }
+      try {
+        const data = await fetchIntegrations();
+        const item = (data?.items || []).find((i) => i.id === 'google_drive');
+        const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
+        if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
+          clearInterval(pollRef.current);
+          setOauthPending(false);
+          try {
+            const latest = await fetchDatasources();
+            onSaved?.(null, latest);
+          } catch {
+            onSaved?.(null, null);
+          }
+          setSavedSpec({
+            ...spec,
+            _is_success: true,
+            title: 'Google Drive connected',
+            subtitle: "Saved to Anton's data vault. Anton can now use this connection in tasks.",
+            actions: [{ id: 'dismiss', label: 'Close', kind: 'cancel' }],
+          });
+        }
+      } catch { /* keep polling */ }
+    }, BROWSER_OAUTH_POLL_MS);
+    return () => clearInterval(pollRef.current);
+  }, [oauthPending]);
 
   if (!open || !connector?.form) return null;
 
@@ -44,13 +88,31 @@ export default function ConnectorFormPanel({
       onClose?.();
       return;
     }
-    // OAuth methods don't yet have a real launch flow — skip the
-    // save (which would fail server-side because the data-vault
-    // engine validates against email + app_password regardless of
-    // the chosen authMethod) and surface a placeholder note. Once
-    // we wire the OAuth dance, replace this branch with the launch
-    // call.
     const methodId = action.authMethod || '';
+
+    // Built-in browser OAuth — calls our backend start endpoint and polls.
+    if (methodId === 'browser_oauth_builtin') {
+      setErrorMsg('');
+      setBusy(true);
+      try {
+        const result = await startGoogleDriveAuth();
+        if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
+        oauthStartedAt.current = result.startedAt || '';
+        window.open(result.authUrl, '_blank');
+        setOauthPending(true);
+        setSavedSpec({
+          ...spec,
+          form_warning: 'Google sign-in opened in your browser. Complete the flow there, then return here.',
+        });
+      } catch (err) {
+        setErrorMsg(err?.message || 'Could not start Google sign-in.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // OAuth methods without built-in flow — placeholder note.
     const isOAuthStub = methodId === 'oauth' && (!action.values || Object.keys(action.values).length === 0);
     if (isOAuthStub) {
       setErrorMsg('');

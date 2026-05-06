@@ -32,7 +32,7 @@ GOOGLE_DRIVE_OAUTH_SCOPES = (
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
 )
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
@@ -202,20 +202,21 @@ def _clear_google_oauth_pending(**updates: Any) -> dict[str, Any]:
     return _write_google_oauth_meta(pending={}, **updates)
 
 
+GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+
 def _google_oauth_config() -> dict[str, str | bool]:
-    client_id = _get_env("ANTON_GOOGLE_CLIENT_ID", "").strip()
-    client_secret = _get_env("ANTON_GOOGLE_CLIENT_SECRET", "").strip()
-    missing = []
-    if not client_id:
-        missing.append("ANTON_GOOGLE_CLIENT_ID")
-    if not client_secret:
-        missing.append("ANTON_GOOGLE_CLIENT_SECRET")
-    ready = not missing
+    client_id = GOOGLE_CLIENT_ID.strip()
+    client_secret = GOOGLE_CLIENT_SECRET.strip()
+    ready = bool(client_id and client_secret
+                 and client_id != "YOUR_CLIENT_ID_HERE"
+                 and client_secret != "YOUR_CLIENT_SECRET_HERE")
     return {
         "ready": ready,
         "client_id": client_id,
         "client_secret": client_secret,
-        "error": "" if ready else f"Configure {', '.join(missing)} in ~/.anton/.env to enable Google Drive sign-in.",
+        "error": "" if ready else "Google OAuth credentials are not configured.",
     }
 
 
