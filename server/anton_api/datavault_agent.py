@@ -105,11 +105,22 @@ def _save_connection(engine: str, name: str, credentials: dict, auth_method: str
     """Persist the connection to anton's data vault. Returns the saved
     slug. Custom engines (no engine_def) are saved verbatim; registered
     ones get field-whitelisted.
+
+    Honours the modify-flow sentinel merge: any incoming value equal
+    to `ANTON_VAULT_KEEP` is resolved against the existing vault
+    record so the chat-driven submission path picks up untouched
+    secrets the renderer pre-filled with sentinels. The same
+    `resolve_modify_merge` runs on every save — it's a no-op on
+    create paths where no prior record exists.
     """
-    from anton.core.datasources.data_vault import LocalDataVault
+    from anton.core.datasources.data_vault import (
+        LocalDataVault,
+        resolve_modify_merge,
+    )
 
     engine_def, _ = _validate_shape(engine, credentials, auth_method)
 
+    spec_secret_names: list[str] = []
     if engine_def is None:
         cleaned = {str(k).strip(): str(v) for k, v in credentials.items() if str(k).strip()}
     else:
@@ -117,10 +128,18 @@ def _save_connection(engine: str, name: str, credentials: dict, auth_method: str
         _, _, _, fields, _ = _validate_datasource_payload(engine, credentials, auth_method)
         known = {f.name for f in fields}
         cleaned = {k: v for k, v in credentials.items() if k in known}
+        spec_secret_names = [
+            getattr(f, "name", "") for f in fields
+            if getattr(f, "secret", False) and getattr(f, "name", "")
+        ]
 
     vault = LocalDataVault()
     save_name = (name or "").strip() or f"{engine}-{vault.next_connection_number(engine)}"
-    vault.save(engine, save_name, cleaned)
+    merged, secure_keys = resolve_modify_merge(
+        vault, engine, save_name, cleaned,
+        spec_secret_keys=spec_secret_names,
+    )
+    vault.save(engine, save_name, merged, secure_keys=secure_keys)
     return save_name
 
 

@@ -3104,14 +3104,9 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 
 /* ─── Scheduling ────────────────────────────────────────────────────────── */
-.catchup-banner {
-  display: flex; gap: 10px; align-items: flex-start;
-  margin: 20px 28px 0; padding: 12px 14px;
-  background: #FFF8E6; border: 1px solid #EAD49A;
-  border-radius: 10px; color: #694A09;
-}
-.catchup-banner span { display: inline-flex; margin-top: 2px; }
-.catchup-banner p { margin: 2px 0 0; font-size: 12.5px; }
+/* The `.catchup-banner` block was retired with the catchup-approval
+   flow — missed runs are now surfaced as informational counters on
+   each schedule card / row instead of an actionable banner. */
 .schedule-form {
   margin: 20px 28px 0; padding: 14px;
   border: 1px solid var(--border-01); border-radius: 12px;

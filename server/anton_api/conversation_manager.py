@@ -841,11 +841,13 @@ async def _build_chat_session(
     project_context = (
         f"You are operating in the project {project}."
         f"You have access to all of the files in the project at {str(base)} except for the .anton/ and .context/ directories."
-        "Do not mention the .anton/ and .context/ directories in your responses."
+        "They are off limits. Do not mention the .anton/ and .context/ directories in your responses."
         "You can perform operations on these files via the scratchpad."
         "You can freely read any of these project files."
         "If you need to perform any actions on these files, ask the user for permission first."
-        "You are forbidden from accessing any files outside of this project."
+        "The only other files that you are allowed to access are any items that are attached to the conversation."
+        "Access to any files not attached to the conversation or located outside the project is strictly forbidden."
+        "ALWAYS use the scratchpad to interact with files."
     )
     output_context = (
         # Anchor user-facing artifacts at .anton/output/ so the

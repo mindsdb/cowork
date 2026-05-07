@@ -247,13 +247,32 @@ def save_connector(connector_id: str, req: SaveConnectorRequest) -> dict:
         payload["_method"] = req.method
     payload["_connector_id"] = connector_id
 
+    # Modify-flow merge: resolves `ANTON_VAULT_KEEP` sentinels in the
+    # incoming payload against the existing vault record (no-op on
+    # create paths where no prior record exists), and computes the
+    # secure-key set to persist. Spec-marked secrets come from the
+    # connector JSON's `secret: true` field flag.
+    try:
+        from anton.core.datasources.data_vault import resolve_modify_merge
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+    spec_secret_names = [
+        f.get("name") for f in (fields or [])
+        if f.get("secret") and f.get("name")
+    ]
+
     vault = LocalDataVault()
     try:
-        # LocalDataVault.save(engine, name, values) is the canonical
-        # write path. Wrapping in a generic try so unexpected
-        # signature changes surface as a 500 with the actual error
-        # rather than the generic "Anton data vault is unavailable".
-        vault.save(connector_id, name, payload)
+        merged_payload, secure_keys = resolve_modify_merge(
+            vault, connector_id, name, payload,
+            spec_secret_keys=spec_secret_names,
+        )
+        # LocalDataVault.save(engine, name, values, secure_keys=…) is
+        # the canonical write path. Wrapping in a generic try so
+        # unexpected signature changes surface as a 500 with the
+        # actual error rather than the generic "Anton data vault is
+        # unavailable".
+        vault.save(connector_id, name, merged_payload, secure_keys=secure_keys)
     except AttributeError as exc:
         raise HTTPException(
             status_code=500,

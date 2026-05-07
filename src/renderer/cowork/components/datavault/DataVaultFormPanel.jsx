@@ -343,7 +343,18 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     ? (spec.methods.find((m) => m.id === resolvedActiveMethodId) || null)
     : null;
   const onBackToOptions = () => {
-    if (conversationId) setSelectedMethod(conversationId, null);
+    if (!conversationId) return;
+    setSelectedMethod(conversationId, null);
+    // Modify-flow opens directly on the saved method by stamping
+    // `selected_method` on the spec itself. Clearing the per-
+    // conversation override above isn't enough — the form's resolver
+    // falls back to `spec.selected_method` and stays on the same
+    // method. Patch the spec to drop it so the picker actually
+    // re-engages. No-op for create flows where `selected_method`
+    // wasn't set in the first place.
+    if (spec?.selected_method) {
+      patchForm(conversationId, { form_id: spec.form_id, selected_method: null });
+    }
   };
 
   return (

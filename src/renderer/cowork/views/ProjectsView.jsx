@@ -721,6 +721,11 @@ function CrumbSep() {
 function ProjectDetail({
   project, projects, tasks, scheduled, models, onSend, onSelectTask,
   onDeleteTask, onShowAll,
+  attachments = [],
+  connectors = [],
+  onAttachFiles,
+  onAttachConnector,
+  onRemoveAttachment,
   // Header kebab + inline rename — lets users rename / reveal / delete
   // the active project without bouncing back to the grid. Pin is
   // intentionally absent: the only pin store today is localStorage on
@@ -935,11 +940,11 @@ function ProjectDetail({
               onModelChange={() => {}}
               projects={projects || []}
               models={models || []}
-              attachments={[]}
-              connectors={[]}
-              onAttachFiles={() => {}}
-              onAttachConnector={() => {}}
-              onRemoveAttachment={() => {}}
+              attachments={attachments}
+              connectors={connectors}
+              onAttachFiles={onAttachFiles}
+              onAttachConnector={onAttachConnector}
+              onRemoveAttachment={onRemoveAttachment}
               hideModel
               metaReadOnly
               placeholder={`Start a new task in ${project.name}…`}
@@ -1012,6 +1017,11 @@ export default function ProjectsView({
   onSendInProject,
   onSelectTask,
   onDeleteTask,
+  attachments = [],
+  connectors = [],
+  onAttachFiles,
+  onAttachConnector,
+  onRemoveAttachment,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const [view, setView] = useState(() =>
@@ -1133,6 +1143,11 @@ export default function ProjectsView({
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
+        attachments={attachments}
+        connectors={connectors}
+        onAttachFiles={onAttachFiles}
+        onAttachConnector={onAttachConnector}
+        onRemoveAttachment={onRemoveAttachment}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}
@@ -1162,9 +1177,15 @@ export default function ProjectsView({
         title="Projects"
         subtitle="Workspaces Anton uses to group conversations, memory, and outputs."
         actions={<NewProjectButton onClick={handleNewProject} />}
+        // Bake the breathing room into the header itself rather than a
+        // sibling spacer. The previous 18px spacer div collapsed in
+        // some grid-view layouts (the flex column let it disappear
+        // under certain content heights), which made the gap between
+        // subtitle and the search bar look smaller in grid than in
+        // list. Embedding it as `marginBottom` on the subtitle makes
+        // the spacing immune to whatever the body below decides to do.
+        subtitleBottom={20}
       />
-
-      <div style={{ height: 18 }} />
 
       <FilterRow
         search={

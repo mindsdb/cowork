@@ -3,11 +3,12 @@
 // GET /projects/{name}/files as Working folder, but only `.context/`
 // rows appear here; everything else lives in Working folder only.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
   deleteMemory,
+  fetchAttachments,
   fetchMemory,
   isUnderContextDir,
   listProjectFiles,
@@ -67,6 +68,42 @@ function MemoryRow({ entry, onOpen }) {
 // Row for a project context file (anton.md or any uploaded file).
 // Same visual rhythm as MemoryRow but distinguishes the always-
 // present anton.md with a subtle "Project instructions" label.
+function attachmentKindIcon(kind) {
+  if (kind === 'url') return Ico.globe(13);
+  if (kind === 'snippet') return Ico.code(13);
+  if (kind === 'connector') return Ico.link(13);
+  return Ico.doc(13);
+}
+
+function SessionAttachmentRow({ item }) {
+  const label = item.name || item.id || 'Attachment';
+  const sub = item.textPreview
+    || (item.mime ? String(item.mime).split('/').pop() : '')
+    || (item.size ? `${Math.ceil(item.size / 1024)} KB` : '');
+  const when = item.updatedAt || item.createdAt;
+  return (
+    <div
+      className={clsx(
+        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
+        'border-0 bg-transparent w-full'
+      )}
+      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
+      title={item.note || item.textPreview || label}
+    >
+      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{attachmentKindIcon(item.kind)}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-[12.5px] text-ink">{label}</span>
+        {sub ? (
+          <span className="mt-0.5 block truncate text-[11px] text-ink-4">{sub}</span>
+        ) : null}
+      </span>
+      {when ? (
+        <span className="text-[10.5px] text-ink-4 mt-0.5">{relativeAge(when)}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function ContextFileRow({ file, onOpen }) {
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
   const isEmpty = !file.size || file.synthetic === true;
@@ -97,9 +134,12 @@ function ContextFileRow({ file, onOpen }) {
   );
 }
 
-export function ContextCard({ project }) {
+export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
+  const [sessionAttachments, setSessionAttachments] = useState([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsError, setAttachmentsError] = useState(null);
   // `openEntry` is a memory file; `openFile` is a project context
   // file. Both feed into `ContextFileModal` (one component, two
   // wirings) so the UX feels identical regardless of which surface
@@ -116,27 +156,83 @@ export function ContextCard({ project }) {
     return () => { cancelled = true; };
   }, [project?.path]);
 
-  const reloadFiles = () => {
+  // Ticket pattern: every listProjectFiles call (mount + reload-on-
+  // edit) bumps `loadVersion`. The async response only applies its
+  // result if its ticket is still the latest. Without this, saving a
+  // context edit and immediately switching projects could let the
+  // late response paint into the new project — the same shape of
+  // bug WorkingFolderLive had.
+  const loadVersion = useRef(0);
+
+  const reloadFiles = useCallback(() => {
     if (!project?.name) { setProjectFiles([]); return; }
+    const ticket = ++loadVersion.current;
     listProjectFiles(project.name)
       .then((data) => {
+        if (ticket !== loadVersion.current) return;
         const raw = Array.isArray(data?.files) ? data.files : [];
         setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
       })
-      .catch(() => setProjectFiles([]));
-  };
+      .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
+  }, [project?.name]);
+
   useEffect(() => {
+    if (!project?.name) {
+      setProjectFiles([]);
+      // Bump the ticket so any in-flight load from a prior project
+      // gets discarded when it finally lands.
+      loadVersion.current += 1;
+      return;
+    }
+    reloadFiles();
+  }, [project?.name, reloadFiles]);
+
+  const sessionRelevant = conversationId && !String(conversationId).startsWith('tmp-');
+
+  // `useEffect` runs after paint — switching tasks would briefly show the
+  // previous task's rows with "Loading attachments…". This runs first
+  // and clears before paint. Loading is only set here on conversation
+  // change (not on refreshKey), so same-task refetches stay quiet.
+  useLayoutEffect(() => {
+    if (!sessionRelevant) {
+      setSessionAttachments([]);
+      setAttachmentsError(null);
+      setAttachmentsLoading(false);
+      return;
+    }
+    setSessionAttachments([]);
+    setAttachmentsError(null);
+    setAttachmentsLoading(true);
+  }, [conversationId, sessionRelevant]);
+
+  useEffect(() => {
+    if (!sessionRelevant) {
+      return undefined;
+    }
     let cancelled = false;
-    if (!project?.name) { setProjectFiles([]); return undefined; }
-    listProjectFiles(project.name)
+    setAttachmentsError(null);
+    fetchAttachments(conversationId)
       .then((data) => {
         if (cancelled) return;
-        const raw = Array.isArray(data?.files) ? data.files : [];
-        setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
+        const raw = Array.isArray(data?.attachments) ? data.attachments : [];
+        const sorted = [...raw].sort((a, b) => {
+          const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+          const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+          return tb - ta;
+        });
+        setSessionAttachments(sorted);
       })
-      .catch(() => { if (!cancelled) setProjectFiles([]); });
+      .catch((err) => {
+        if (!cancelled) {
+          setSessionAttachments([]);
+          setAttachmentsError(err?.message || 'Could not load attachments');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAttachmentsLoading(false);
+      });
     return () => { cancelled = true; };
-  }, [project?.name]);
+  }, [sessionRelevant, conversationId, refreshKey]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {
@@ -157,7 +253,9 @@ export function ContextCard({ project }) {
   const totalMemoryFiles = useMemo(() => ordered.reduce((n, s) => n + s.files.length, 0), [ordered]);
   const hasProjectFiles = projectFiles.length > 0;
 
-  if (totalMemoryFiles === 0 && !hasProjectFiles) {
+  const blockGlobalEmpty = totalMemoryFiles === 0 && !hasProjectFiles && !sessionRelevant;
+
+  if (blockGlobalEmpty) {
     return (
       <p className="text-[12.5px] text-ink-4 px-1 pt-2 pb-1">
         Anton learns as you work — memories will appear here.
@@ -180,6 +278,31 @@ export function ContextCard({ project }) {
               onOpen={() => setOpenFile(f)}
             />
           ))}
+        </div>
+      )}
+
+      {sessionRelevant && (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            Uploads
+          </span>
+          {attachmentsLoading && (
+            <p className="text-[12px] text-ink-4 px-1 pb-0.5">Loading attachments…</p>
+          )}
+          {attachmentsError && (
+            <p className="text-[12px] px-1 pb-0.5" style={{ color: 'var(--danger-600, #b3261e)' }}>
+              {attachmentsError}
+            </p>
+          )}
+          {!attachmentsLoading && !attachmentsError && sessionAttachments.length === 0 && (
+            <p className="text-[12px] text-ink-4 px-1 pb-0.5">
+              No files attached to this task yet.
+            </p>
+          )}
+          {!attachmentsLoading
+            && sessionAttachments.map((item) => (
+              <SessionAttachmentRow key={item.id} item={item} />
+            ))}
         </div>
       )}
 

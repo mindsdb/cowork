@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from anton_api import conversation_manager
+from anton_api import conversation_manager, projects_store
 from .cowork_state import load_state, save_state, utc_now_iso
 
 
@@ -73,16 +73,65 @@ def _normalise_cadence(value: str) -> str:
 
 
 def _mark_missed(state: dict) -> bool:
+    """Advance schedules whose `nextRunAt` slipped while the app was closed.
+
+    Earlier behaviour: any missed run set `catchupPending = True`,
+    held the schedule, and required the user to manually approve a
+    catch-up run. The UX value of that gate was low — most users just
+    want the schedule to keep ticking and a small note about how many
+    runs were skipped — so this helper now:
+
+      * counts how many cadence cycles slipped while the app was off,
+      * fast-forwards `nextRunAt` to the next future tick,
+      * accumulates the count into `missedRuns` (cleared on the next
+        successful run via `_run_schedule`),
+      * for one-off schedules a missed run flips `enabled` off, since
+        there's no future occurrence to advance to.
+
+    `catchupPending` is forced to False so any stale state from before
+    this change (or older app versions writing the field) doesn't
+    block the runner.
+    """
     changed = False
     now = datetime.now(timezone.utc)
+    cadence_delta = {
+        "hourly": timedelta(hours=1),
+        "daily": timedelta(days=1),
+        "weekly": timedelta(days=7),
+    }
     for schedule in state.get("schedules", []):
+        # Always clear the legacy hold flag so old-version state
+        # files don't permanently block schedules in the new runner.
+        if schedule.get("catchupPending"):
+            schedule["catchupPending"] = False
+            changed = True
         if not schedule.get("enabled"):
             continue
-        if schedule.get("catchupPending"):
-            continue
         next_run = _parse_datetime(schedule.get("nextRunAt"))
-        if next_run and next_run < SERVER_STARTED_AT and next_run < now:
-            schedule["catchupPending"] = True
+        # Only count as "missed" what was already due before this
+        # server boot — runs that come due while the app is open get
+        # picked up by `_scheduler_loop` normally.
+        if not next_run or next_run >= SERVER_STARTED_AT or next_run >= now:
+            continue
+        cadence = schedule.get("cadence") or "once"
+        if cadence == "once":
+            # No future occurrence; flag the count and disable.
+            schedule["missedRuns"] = (schedule.get("missedRuns") or 0) + 1
+            schedule["enabled"] = False
+            schedule["updatedAt"] = utc_now_iso()
+            changed = True
+            continue
+        delta = cadence_delta.get(cadence)
+        if not delta:
+            continue
+        missed = 0
+        cursor = next_run
+        while cursor < now:
+            cursor += delta
+            missed += 1
+        if missed > 0:
+            schedule["missedRuns"] = (schedule.get("missedRuns") or 0) + missed
+            schedule["nextRunAt"] = cursor.isoformat()
             schedule["updatedAt"] = utc_now_iso()
             changed = True
     return changed
@@ -125,6 +174,7 @@ def _serialise_schedule(request: ScheduleRequest) -> dict:
         "lastResultSessionId": None,
         "lastError": None,
         "catchupPending": False,
+        "missedRuns": 0,
         "createdAt": now,
         "updatedAt": now,
     }
@@ -167,10 +217,18 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
     title = schedule.get("title") or _task_title(schedule.get("prompt", "Scheduled task"))
     started_at_iso = utc_now_iso()
     started_at_dt  = datetime.now(timezone.utc)
+
+    # Schedules with no project assigned previously fell through to
+    # `chat_stream(project=None)`, which resolves to the *active*
+    # project — so a Monday digest run under whatever the user last
+    # opened, "running under a random project". Pin orphan schedules
+    # to `general` (the orphan-fallback project provisioned by
+    # `ensure_general_project`) so they always land somewhere stable.
+    project_name = schedule.get("project") or projects_store.GENERAL_PROJECT
     task = {
         "title": title,
         "summary": "Scheduled Anton task",
-        "project": schedule.get("project"),
+        "project": project_name,
         "model": schedule.get("model"),
         "status": "running",
         "createdAt": started_at_iso,
@@ -192,7 +250,7 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
     try:
         event_stream, conversation_id = await conversation_manager.chat_stream(
             schedule.get("prompt", ""),
-            project=schedule.get("project"),
+            project=project_name,
             model=schedule.get("model"),
         )
         task["id"] = conversation_id
@@ -219,7 +277,11 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
     finished_at_dt  = datetime.now(timezone.utc)
     schedule["lastRunAt"] = finished_at_iso
     schedule["lastResultSessionId"] = conversation_id
+    # Once a successful run lands, the missed-runs informational
+    # counter resets. The legacy `catchupPending` flag is also
+    # cleared in case any old-version state still carries it.
     schedule["catchupPending"] = False
+    schedule["missedRuns"] = 0
     if not manual:
         _advance_schedule(schedule)
     schedule["updatedAt"] = finished_at_iso
@@ -250,7 +312,10 @@ async def _scheduler_loop() -> None:
         now = datetime.now(timezone.utc)
         changed = _mark_missed(state)
         for schedule in state.get("schedules", []):
-            if not schedule.get("enabled") or schedule.get("catchupPending"):
+            # `catchupPending` is no longer a hold flag — the runner
+            # only respects `enabled`. Missed runs are surfaced via
+            # `missedRuns` for the UI to display, not gated.
+            if not schedule.get("enabled"):
                 continue
             next_run = _parse_datetime(schedule.get("nextRunAt"))
             if not next_run or next_run > now:
@@ -308,7 +373,10 @@ def update_schedule(schedule_id: str, request: ScheduleUpdateRequest):
         if not next_run:
             raise HTTPException(status_code=400, detail="Next run time must be a valid ISO datetime.")
         schedule["nextRunAt"] = next_run.isoformat()
+        # Editing the next-run anchor is a reset — old missed-runs
+        # info is irrelevant to the new cadence cursor.
         schedule["catchupPending"] = False
+        schedule["missedRuns"] = 0
     if request.project is not None:
         schedule["project"] = request.project
     if request.model is not None:
@@ -317,6 +385,9 @@ def update_schedule(schedule_id: str, request: ScheduleUpdateRequest):
         schedule["enabled"] = request.enabled
         if request.enabled:
             schedule["catchupPending"] = False
+            # Re-enabling after a pause clears the missed counter so
+            # the user starts fresh from the new nextRunAt.
+            schedule["missedRuns"] = 0
     schedule["updatedAt"] = utc_now_iso()
     save_state(state)
     return {"schedule": schedule}

@@ -58,6 +58,10 @@ export default function ScheduledView({
   onResume,
   onRunNow,
   onOpenSchedule,
+  // Optional — receives the project object when a card or list row's
+  // "project:" label is clicked. Wired by App.jsx to setSelected
+  // Project + setRoute('projects'), the same path Live artifacts uses.
+  onOpenProject,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -69,8 +73,12 @@ export default function ScheduledView({
   // when the user comes back to this surface tomorrow.
   useEffect(() => { saveViewMode(viewMode); }, [viewMode]);
 
-  const pendingCatchup = useMemo(
-    () => scheduled.filter((item) => item.catchupPending),
+  // Total runs that slipped while the app was closed, summed across
+  // all schedules. Surfaced as a small subtitle next to the total
+  // count — informational only, no action required (the runner just
+  // catches up to the next scheduled occurrence).
+  const totalMissed = useMemo(
+    () => scheduled.reduce((n, item) => n + (Number(item.missedRuns) || 0), 0),
     [scheduled]
   );
 
@@ -134,8 +142,8 @@ export default function ScheduledView({
   return (
     <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <PageHeader
-        title="Scheduled tasks"
-        subtitle="Local scheduled Anton tasks run while Anton CoWork is open. Missed runs wait for approval."
+        title="Scheduled Tasks"
+        subtitle="Local scheduled Anton tasks run while Anton CoWork is open. Runs that slip while the app is closed are skipped — Anton resumes from the next scheduled occurrence."
         actions={
           <button className="btn-primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -162,27 +170,17 @@ export default function ScheduledView({
               {(search || '').trim().length > 0
                 ? `Showing ${visible.length} of ${scheduled.length}`
                 : `${scheduled.length} scheduled ${scheduled.length === 1 ? 'task' : 'tasks'}`}
-              {pendingCatchup.length > 0 && (
+              {totalMissed > 0 && (
                 <>
                   {' · '}
-                  <span style={{ color: 'var(--accent)' }}>
-                    {pendingCatchup.length} need{pendingCatchup.length === 1 ? 's' : ''} approval
+                  <span style={{ color: 'var(--ink-3)' }}>
+                    {totalMissed} missed run{totalMissed === 1 ? '' : 's'}
                   </span>
                 </>
               )}
             </>
           }
         />
-      )}
-
-      {pendingCatchup.length > 0 && (
-        <div className="catchup-banner">
-          <span>{Ico.clock(16)}</span>
-          <div>
-            <strong>{pendingCatchup.length} missed scheduled run{pendingCatchup.length === 1 ? '' : 's'} need approval</strong>
-            <p>Run each one manually from the list when you are ready.</p>
-          </div>
-        </div>
       )}
 
       {error && (
@@ -208,27 +206,32 @@ export default function ScheduledView({
             <ScheduleCard
               key={task.id}
               task={task}
+              projects={projects}
               busy={busyId === task.id}
               onOpen={() => onOpenSchedule?.(task)}
               onRunNow={() => runAction(task.id, onRunNow)}
               onPause={()  => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
               onEdit={()   => openEdit(task)}
+              onOpenProject={onOpenProject}
             />
           ))}
         </div>
       ) : (
-        <div style={{ padding: '8px 28px 28px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ padding: '8px 28px 28px' }}>
+          <ListHeaderRow />
           {visible.map((task) => (
             <ScheduleListRow
               key={task.id}
               task={task}
+              projects={projects}
               busy={busyId === task.id}
               onOpen={() => onOpenSchedule?.(task)}
               onRunNow={() => runAction(task.id, onRunNow)}
               onPause={()  => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
               onEdit={()   => openEdit(task)}
+              onOpenProject={onOpenProject}
             />
           ))}
         </div>
@@ -250,26 +253,83 @@ export default function ScheduledView({
 }
 
 
-// ── List row ──
+// ── List view ──
 //
-// Same data + handlers as the card, laid out as a single horizontal
-// row. Used when the user wants density over visuals.
+// Slick table that mirrors the rhythm used by Live Artifacts and
+// Projects: monospaced uppercase header, tight bordered rows, hover
+// reveals row-level actions in the right meta slot. Columns:
+//   • status dot
+//   • Title (with prompt subtitle)
+//   • Cadence
+//   • Project (clickable when resolved)
+//   • Next run
+//   • Last run
+//   • action menu (hover-revealed)
 
-function ScheduleListRow({ task, busy, onOpen, onRunNow, onPause, onResume, onEdit }) {
+const FONT_DISPLAY = 'var(--font-display)';
+const FONT_MONO    = 'var(--font-mono)';
+
+// 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
+// 110px last · fixed-width actions slot.
+//
+// The action column needs a *fixed* width because each row is its
+// own CSS-grid, not a child of one shared grid — `auto` would size
+// the header's empty slot to 0 while the rows' slot would size to
+// the inline action buttons (~190px), throwing the columns off by
+// the difference. Width is chosen to fit Run + Pause/Resume + Edit
+// without wrapping.
+const LIST_GRID = '24px minmax(0, 2.2fr) 90px minmax(0, 1.1fr) 130px 110px 190px';
+
+function ListHeaderRow() {
+  const Cell = ({ children, align }) => (
+    <div style={{
+      fontFamily: FONT_MONO, fontSize: 10.5,
+      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      textTransform: 'uppercase',
+      textAlign: align || 'left',
+    }}>{children}</div>
+  );
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
+      padding: '10px 14px',
+      borderBottom: '1px solid var(--line)',
+    }}>
+      <Cell />
+      <Cell>Title</Cell>
+      <Cell>Cadence</Cell>
+      <Cell>Project</Cell>
+      <Cell>Next run</Cell>
+      <Cell>Last run</Cell>
+      <Cell />
+    </div>
+  );
+}
+
+function ScheduleListRow({
+  task, busy, projects = [], onOpen,
+  onRunNow, onPause, onResume, onEdit, onOpenProject,
+}) {
   const [hover, setHover] = useState(false);
   const open = () => onOpen?.(task);
   const stop = (e) => { e.stopPropagation(); };
 
   const status = (() => {
-    if (task.catchupPending) return { label: 'Catch up', dot: 'var(--accent)' };
     if (!task.enabled)       return { label: 'Paused',   dot: 'var(--ink-4)' };
     if (task.lastError)      return { label: 'Failed',   dot: 'var(--danger)' };
     return { label: 'Active', dot: 'var(--success)' };
   })();
+  const missedRuns = Number(task.missedRuns) || 0;
 
   const cadenceLabel = {
     once: 'Once', hourly: 'Hourly', daily: 'Daily', weekly: 'Weekly',
   }[task.cadence] || task.cadence;
+
+  const projectName = task.project || task.projectName || '';
+  const projectMatch = projectName
+    ? projects.find((p) => p.name === projectName) || null
+    : null;
+  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
     <div
@@ -280,33 +340,52 @@ function ScheduleListRow({ task, busy, onOpen, onRunNow, onPause, onResume, onEd
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        display: 'grid',
-        gridTemplateColumns: '14px minmax(0, 2.4fr) 80px 1.4fr 1.2fr auto',
-        alignItems: 'center', gap: 14,
-        padding: '10px 14px',
-        background: hover ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${hover ? 'var(--accent)' : 'var(--line)'}`,
-        borderRadius: 10,
+        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
+        padding: '12px 14px',
+        background: hover ? 'var(--surface)' : 'transparent',
+        borderBottom: '1px solid var(--line)',
         cursor: 'pointer',
-        font: 'inherit', color: 'inherit', textAlign: 'left',
+        transition: 'background .12s ease',
+        alignItems: 'center',
         outline: 'none',
-        transition: 'background 120ms ease, border-color 120ms ease',
       }}
     >
-      <span aria-hidden style={{
-        width: 10, height: 10, borderRadius: '50%',
-        background: status.dot,
-      }} title={status.label} />
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <span aria-hidden title={status.label} style={{
+          width: 8, height: 8, borderRadius: 99,
+          background: status.dot,
+          boxShadow: status.dot === 'var(--success)'
+            ? '0 0 6px var(--success-glow)'
+            : 'none',
+        }} />
+      </div>
 
       <div style={{ minWidth: 0 }}>
         <div style={{
-          fontFamily: 'var(--font-display)', fontSize: 13.5, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{task.title || 'Untitled schedule'}</div>
+          display: 'flex', alignItems: 'center', gap: 8,
+          minWidth: 0,
+        }}>
+          <span style={{
+            fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
+            color: 'var(--ink)', letterSpacing: '-0.005em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{task.title || 'Untitled schedule'}</span>
+          {/* Missed-runs annotation — shows alongside the title so the
+              user sees how many cadence ticks were skipped while the
+              app was off. Cleared on the next successful run. */}
+          {missedRuns > 0 && (
+            <span style={{
+              fontFamily: FONT_MONO, fontSize: 10.5,
+              color: 'var(--ink-4)', letterSpacing: '0.04em',
+              flexShrink: 0,
+            }}>
+              missed {missedRuns}
+            </span>
+          )}
+        </div>
         {task.prompt && (
           <div style={{
-            fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
+            fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-4)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             marginTop: 2,
           }}>{task.prompt}</div>
@@ -314,26 +393,59 @@ function ScheduleListRow({ task, busy, onOpen, onRunNow, onPause, onResume, onEd
       </div>
 
       <div style={{
-        fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-2)',
+        fontFamily: FONT_MONO, fontSize: 11,
+        color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
       }}>{cadenceLabel}</div>
 
       <div style={{
-        fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-2)',
+        fontFamily: FONT_BODY, fontSize: 12.5,
+        color: 'var(--ink-2)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        minWidth: 0,
       }}>
-        Next · {formatAbsolute(task.nextRunAt)}
+        {projectName ? (
+          canOpenProject ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              title={`Open ${projectMatch.name}`}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                color: 'var(--ink-2)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                maxWidth: '100%', display: 'inline-block',
+                transition: 'color 120ms ease',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = 'var(--accent)';
+                e.currentTarget.style.textDecoration = 'underline';
+                e.currentTarget.style.textUnderlineOffset = '2px';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = 'var(--ink-2)';
+                e.currentTarget.style.textDecoration = 'none';
+              }}
+            >{projectName}</button>
+          ) : projectName
+        ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
       </div>
 
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-3)',
+      <div title={absoluteFull(task.nextRunAt)} style={{
+        fontFamily: FONT_MONO, fontSize: 11,
+        color: 'var(--ink-3)', letterSpacing: '0.04em',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {task.lastRunAt ? `Last · ${formatAbsolute(task.lastRunAt)}` : '—'}
-      </div>
+      }}>{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
+
+      <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} style={{
+        fontFamily: FONT_MONO, fontSize: 11,
+        color: 'var(--ink-4)', letterSpacing: '0.04em',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{task.lastRunAt ? formatAbsolute(task.lastRunAt) : '—'}</div>
 
       <div onClick={stop} onMouseDown={stop}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
+          justifyContent: 'flex-end',
           opacity: hover ? 1 : 0,
           transition: 'opacity 140ms ease',
           pointerEvents: hover ? 'auto' : 'none',
@@ -347,6 +459,16 @@ function ScheduleListRow({ task, busy, onOpen, onRunNow, onPause, onResume, onEd
       </div>
     </div>
   );
+}
+
+function absoluteFull(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
 }
 
 function formatAbsolute(iso) {

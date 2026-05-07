@@ -47,6 +47,38 @@ async function rootReq(path, options = {}) {
   return res.json();
 }
 
+// In-flight single-flight cache. When several call sites ask for
+// the same endpoint at the same time (e.g. WorkingFolderLive and
+// ContextCard both mounting at once and both calling
+// `listProjectFiles(name)`, or the projects list view fanning N
+// rows that all want `fetchArtifacts`), we collapse the duplicates
+// into one network request and share its promise.
+//
+// Behaviour:
+//   - First caller for a given key starts the request.
+//   - Concurrent callers receive the SAME promise.
+//   - Once the promise settles (resolve or reject) the entry is
+//     deleted so the next call will re-fetch — i.e. NO long-lived
+//     cache, just request coalescing within the same tick / async
+//     window. Streaming polls keep working.
+//
+// The keys are constructed by callers; convention is the URL path
+// plus any query params, so different projects never collide.
+const _inflight = new Map();
+function dedupe(key, factory) {
+  const existing = _inflight.get(key);
+  if (existing) return existing;
+  const p = (async () => {
+    try {
+      return await factory();
+    } finally {
+      _inflight.delete(key);
+    }
+  })();
+  _inflight.set(key, p);
+  return p;
+}
+
 async function responseError(res, fallback) {
   let detail = '';
   try {
@@ -396,7 +428,14 @@ export function isUnderAntonDir(relPath) {
 
 export async function listProjectFiles(projectName) {
   if (!projectName) return { files: [] };
-  return req(`/projects/${enc(projectName)}/files`);
+  // Coalesced — see `dedupe` notes above. WorkingFolderLive +
+  // ContextCard mount in the same rail and both call this on open,
+  // so without coalescing every project switch fires two identical
+  // requests. The cache entry releases on settle, so subsequent
+  // streaming polls hit the network normally.
+  return dedupe(`projects/${projectName}/files`, () =>
+    req(`/projects/${enc(projectName)}/files`),
+  );
 }
 
 export async function readProjectFile(projectName, path) {
@@ -469,12 +508,20 @@ export async function setActiveProject(name) {
 }
 
 // ─── Artifacts ────────────────────────────────────────────────────────────────
+// Returns the full system-wide artifact list. Heavy enough that
+// callers need to be careful not to fan out: ProjectsView's row
+// stats hook calls this from each visible project row, and prior to
+// the `dedupe` wrapper that meant N copies of the same request on
+// every list render. With coalescing, one network request fans out
+// to all subscribers and the cache entry releases on settle.
 export async function fetchArtifacts() {
-  try {
-    return await req('/artifacts');
-  } catch {
-    return [];
-  }
+  return dedupe('artifacts', async () => {
+    try {
+      return await req('/artifacts');
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function previewArtifact(path) {
@@ -549,7 +596,10 @@ export async function startGoogleCalendarAuth() {
 // ─── Anton Utilities ────────────────────────────────────────────────────────
 export async function fetchMemory(projectPath) {
   const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
-  return req(`/memory${suffix}`);
+  // Coalesced per project. ContextCard, ProjectCard, and the list
+  // view's row-stats hook can all ask for the same project's memory
+  // listing at the same moment; this collapses the duplicates.
+  return dedupe(`memory${suffix}`, () => req(`/memory${suffix}`));
 }
 
 export async function saveMemory(payload) {
@@ -589,6 +639,30 @@ export async function validateDatasource(payload) {
 export async function deleteDatasource(engine, name) {
   return req(`/datasources/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
+
+// Modify-flow read: returns the saved connection as
+//   {
+//     engine, name, createdAt, updatedAt,
+//     secureKeys: string[],                  // names of secret fields
+//     fields: { ... },                       // non-secret values verbatim,
+//                                            // secret slots replaced with
+//                                            // ANTON_VAULT_KEEP sentinel
+//   }
+// The renderer pre-fills the form with `fields`. On submit, any
+// field still carrying the sentinel resolves server-side against
+// the prior record (the modify merge — see anton-core's
+// `resolve_modify_merge`). Empty string means "explicitly clear".
+export async function fetchSavedConnection(engine, name) {
+  return req(`/datasources/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`);
+}
+
+// Sentinel string used in the modify-flow round-trip. Mirrors the
+// constant in `anton.core.datasources.data_vault.ANTON_VAULT_KEEP` —
+// they MUST stay in sync. The form panel uses this to detect "user
+// hasn't touched this secret field" on submit; any field whose
+// value is still this exact string is sent back as-is and resolved
+// server-side against the prior record.
+export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 
 // ─── Connector registry ─────────────────────────────────────────────
 //
@@ -778,12 +852,23 @@ export async function uploadAttachments(files, { projectPath, sessionId } = {}) 
   return res.json();
 }
 
-export async function createSnippetAttachment(payload) {
-  return req('/attachments/snippet', { method: 'POST', body: JSON.stringify(payload) });
+export async function fetchAttachments(sessionId, ids) {
+  if (!sessionId && (!ids || !ids.length)) {
+    return { attachments: [] };
+  }
+  const qs = new URLSearchParams();
+  if (sessionId) qs.set('session_id', sessionId);
+  if (Array.isArray(ids) && ids.length) {
+    for (const id of ids) {
+      if (id) qs.append('ids', id);
+    }
+  }
+  const q = qs.toString();
+  return req(`/attachments${q ? `?${q}` : ''}`);
 }
 
-export async function createUrlAttachment(payload) {
-  return req('/attachments/url', { method: 'POST', body: JSON.stringify(payload) });
+export async function createSnippetAttachment(payload) {
+  return req('/attachments/snippet', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 export async function deleteAttachment(id) {
