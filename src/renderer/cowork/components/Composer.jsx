@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 
 function AttachmentChip({ attachment, onRemove }) {
@@ -66,6 +66,8 @@ export default function Composer({
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  /** Attach menu opens above the composer by default; flip down when clipped (e.g. project view composer at scroll top). */
+  const [attachMenuBelow, setAttachMenuBelow] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -73,6 +75,11 @@ export default function Composer({
   const taRef = useRef(null);
   const fileRef = useRef(null);
   const wrapRef = useRef(null);
+  const composerStageRef = useRef(null);
+  const attachMenuRef = useRef(null);
+
+  /** Space we want cleared above the composer before opening the menu upward (~collapsed height + margin). */
+  const ATTACH_MENU_TOP_RESERVE_PX = 200;
 
   // Typing notifier — fires `onTypingChange(true)` on input and
   // `onTypingChange(false)` after ~1s of inactivity. The home view
@@ -130,6 +137,20 @@ export default function Composer({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const updateAttachPlacement = () => {
+    const stage = composerStageRef.current;
+    if (!stage) return;
+    const r = stage.getBoundingClientRect();
+    const measured = attachMenuRef.current?.offsetHeight;
+    const reserve = Math.max(measured ?? 0, ATTACH_MENU_TOP_RESERVE_PX) + 24;
+    setAttachMenuBelow(r.top < reserve);
+  };
+
+  useLayoutEffect(() => {
+    if (openMenu !== 'attach') return;
+    updateAttachPlacement();
+  }, [openMenu, connectorsOpen, busy, disabled]);
 
   async function handleAttachFiles(files) {
     if (!files?.length || !onAttachFiles) return;
@@ -246,92 +267,114 @@ export default function Composer({
         onChange={(event) => handleAttachFiles(event.target.files)}
       />
 
-      <div className={`composer-wrap${focused ? ' focused' : ''}`}>
-        {attachments.length > 0 && (
-          <div className="attachment-strip">
-            {attachments.map((attachment) => (
-              <AttachmentChip key={attachment.id} attachment={attachment} onRemove={onRemoveAttachment} />
-            ))}
-          </div>
-        )}
-
-        <textarea
-          ref={taRef}
-          className="composer-textarea"
-          placeholder={placeholder}
-          disabled={disabled}
-          value={value}
-          onChange={(e) => { setValue(e.target.value); bumpTyping(); }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onKeyDown={(e) => {
-            if (!disabled && e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          rows={1}
-        />
-
-        <div className="composer-toolbar">
-          <button
-            className="composer-icon"
-            title="Add context"
-            disabled={disabled || busy}
-            onClick={() => setOpenMenu(openMenu === 'attach' ? null : 'attach')}
-          >
-            {Ico.plus(15)}
-          </button>
-          <div style={{ flex: 1 }} />
-          {/* Mic / voice input intentionally hidden — voice flow isn't
-              wired through anton yet. We keep speechSupported state
-              around so we can reinstate later by re-rendering the
-              button (e.g. behind a `showMic` prop). */}
-          {streaming && onStop ? (
-            <button
-              className="send-btn stop"
-              onClick={onStop}
-              title="Stop generation"
-              aria-label="Stop generation"
-              style={{
-                // Theme-aware "stop" treatment — uses the danger token
-                // on a soft tinted surface, with an outline that
-                // intensifies on hover. Matches the chat header
-                // unpublish button so the destructive vocabulary is
-                // consistent across surfaces.
-                background: 'var(--danger-bg)',
-                color: 'var(--danger)',
-                border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-                boxShadow: 'none',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = 'var(--danger)';
-                e.currentTarget.style.color = '#fff';
-                e.currentTarget.style.borderColor = 'var(--danger)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = 'var(--danger-bg)';
-                e.currentTarget.style.color = 'var(--danger)';
-                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--danger) 35%, transparent)';
-              }}
-            >
-              {Ico.stop(11)}
-            </button>
-          ) : (
-            <button
-              className="send-btn"
-              disabled={disabled || !value.trim() || busy}
-              onClick={handleSend}
-              title="Send"
-            >
-              {Ico.send(15)}
-            </button>
+      <div ref={composerStageRef} style={{ position: 'relative', width: '100%' }}>
+        <div className={`composer-wrap${focused ? ' focused' : ''}`}>
+          {attachments.length > 0 && (
+            <div className="attachment-strip">
+              {attachments.map((attachment) => (
+                <AttachmentChip key={attachment.id} attachment={attachment} onRemove={onRemoveAttachment} />
+              ))}
+            </div>
           )}
-        </div>
-      </div>
 
-      {openMenu === 'attach' && (
-        <div className="menu" style={{ left: 0, bottom: 'calc(100% + 6px)', minWidth: 240 }}>
+          <textarea
+            ref={taRef}
+            className="composer-textarea"
+            placeholder={placeholder}
+            disabled={disabled}
+            value={value}
+            onChange={(e) => { setValue(e.target.value); bumpTyping(); }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onKeyDown={(e) => {
+              if (!disabled && e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            rows={1}
+          />
+
+          <div className="composer-toolbar">
+            <button
+              className="composer-icon"
+              title="Add context"
+              disabled={disabled || busy}
+              onClick={() => {
+                if (openMenu === 'attach') {
+                  setOpenMenu(null);
+                  return;
+                }
+                const stage = composerStageRef.current;
+                if (stage) {
+                  const r = stage.getBoundingClientRect();
+                  setAttachMenuBelow(r.top < ATTACH_MENU_TOP_RESERVE_PX + 24);
+                } else setAttachMenuBelow(false);
+                setOpenMenu('attach');
+              }}
+            >
+              {Ico.plus(15)}
+            </button>
+            <div style={{ flex: 1 }} />
+            {/* Mic / voice input intentionally hidden — voice flow isn't
+                wired through anton yet. We keep speechSupported state
+                around so we can reinstate later by re-rendering the
+                button (e.g. behind a `showMic` prop). */}
+            {streaming && onStop ? (
+              <button
+                className="send-btn stop"
+                onClick={onStop}
+                title="Stop generation"
+                aria-label="Stop generation"
+                style={{
+                  // Theme-aware "stop" treatment — uses the danger token
+                  // on a soft tinted surface, with an outline that
+                  // intensifies on hover. Matches the chat header
+                  // unpublish button so the destructive vocabulary is
+                  // consistent across surfaces.
+                  background: 'var(--danger-bg)',
+                  color: 'var(--danger)',
+                  border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+                  boxShadow: 'none',
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = 'var(--danger)';
+                  e.currentTarget.style.color = '#fff';
+                  e.currentTarget.style.borderColor = 'var(--danger)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'var(--danger-bg)';
+                  e.currentTarget.style.color = 'var(--danger)';
+                  e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--danger) 35%, transparent)';
+                }}
+              >
+                {Ico.stop(11)}
+              </button>
+            ) : (
+              <button
+                className="send-btn"
+                disabled={disabled || !value.trim() || busy}
+                onClick={handleSend}
+                title="Send"
+              >
+                {Ico.send(15)}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {openMenu === 'attach' && (
+          <div
+            ref={attachMenuRef}
+            className={`menu${attachMenuBelow ? ' menu--drop-down' : ''}`}
+            style={{
+              left: 0,
+              minWidth: 240,
+              ...(attachMenuBelow
+                ? { top: 'calc(100% + 6px)' }
+                : { bottom: 'calc(100% + 6px)' }),
+            }}
+          >
           <button className="menu-item" onClick={() => fileRef.current?.click()}>
             {Ico.attach(14)} Attach files or photos
           </button>
@@ -379,7 +422,8 @@ export default function Composer({
             <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--danger-600, #b3261e)' }}>{error}</div>
           )}
         </div>
-      )}
+        )}
+      </div>
 
       {!hideMeta && (
         <div className="meta-row">

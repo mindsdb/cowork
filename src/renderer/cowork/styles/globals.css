@@ -261,6 +261,20 @@ body[data-theme="dark"] {
                     0 0 18px var(--accent-glow),
                     0 4px 24px rgba(34, 211, 238, 0.10);
   --shadow-sm:      var(--sh-1);
+
+  /* Light-only neutrals in :root — list rows, icon buttons, composer tools,
+     and menus still reference --stone-* for hovers. Without remaps those
+     stay #F5F5F4 etc., washing out light icons and label text. */
+  --stone-50:  var(--surface);
+  --stone-100: var(--surface-2);
+  --stone-150: color-mix(in srgb, var(--surface-2) 55%, var(--surface-3) 45%);
+  --stone-200: var(--surface-3);
+  --stone-300: var(--line-2);
+  --stone-400: var(--ink-4);
+
+  /* Primary-tinted chips / nav.primary hover still point at the light
+     --primary-50 ice colour; swap to the dark accent wash. */
+  --primary-50: var(--accent-bg);
 }
 
 /* In dark mode, bold + emphasised inline text picks up a soft neon glow —
@@ -337,6 +351,10 @@ a[href],
 /* ─── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadein-up {
   from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadein-down {
+  from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes pulse-dot {
@@ -524,6 +542,9 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 12px 28px -8px rgba(0,0,0,0.18);
   padding: 6px; min-width: 200px; z-index: 50;
   animation: fadein-up .14s ease-out;
+}
+.menu.menu--drop-down {
+  animation: fadein-down .14s ease-out;
 }
 
 /* ─── Customize ───────────────────────────────────────────────────────────── */
