@@ -151,7 +151,7 @@ def attachment_context(ids: list[str] | None) -> str:
 
 @router.get("")
 def list_attachments(
-    session_id: str | None = None,
+    session_id: str | None = Query(default=None),
     ids: list[str] | None = Query(default=None),
 ):
     attachments = get_attachments(ids)
