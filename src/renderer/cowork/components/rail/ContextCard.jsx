@@ -16,6 +16,8 @@ import {
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 import ContextFileModal from '../project/ContextFileModal';
+import { ArtifactViewer } from '../artifact';
+import { host } from '../../../platform/host';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -75,21 +77,49 @@ function attachmentKindIcon(kind) {
   return Ico.doc(13);
 }
 
-function SessionAttachmentRow({ item }) {
+/** Shape expected by `ArtifactViewer` / working-folder open — matches WorkingFolderLive.fileEntryToRow. */
+function attachmentToPreviewArtifact(item) {
+  const path = item.path && String(item.path);
+  if (!path) return null;
+  const base = path.split(/[/\\]/).pop() || '';
+  const lower = base.toLowerCase();
+  const ext = lower.includes('.') ? `.${lower.split('.').pop()}` : '';
+  const stem = base.includes('.') ? base.slice(0, base.lastIndexOf('.')) : base;
+  const title = stem
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return {
+    path,
+    title: title || base || item.name || 'Attachment',
+    ext,
+    updated: 0,
+    size: Number.isFinite(item.size) ? item.size : 0,
+    publishedUrl: '',
+  };
+}
+
+function sessionAttachmentIsOpenable(item) {
+  const path = item.path && String(item.path).trim();
+  if (item.kind === 'file' && path) return true;
+  const text = (item.text && String(item.text).trim()) || (item.textPreview && String(item.textPreview).trim());
+  return !!text;
+}
+
+function SessionAttachmentRow({ item, onOpen, openable }) {
   const label = item.name || item.id || 'Attachment';
   const sub = item.textPreview
     || (item.mime ? String(item.mime).split('/').pop() : '')
     || (item.size ? `${Math.ceil(item.size / 1024)} KB` : '');
   const when = item.updatedAt || item.createdAt;
-  return (
-    <div
-      className={clsx(
-        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
-        'border-0 bg-transparent w-full'
-      )}
-      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
-      title={item.note || item.textPreview || label}
-    >
+  const title = item.note || item.textPreview || label;
+  const rowClass = clsx(
+    'group grid items-start gap-2 rounded-md px-1 py-1 text-left w-full border-0 bg-transparent',
+    openable && 'cursor-pointer transition-colors hover:bg-surface-2',
+    !openable && 'cursor-default',
+  );
+  const grid = { gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' };
+  const inner = (
+    <>
       <span className="mt-0.5 text-ink-4 inline-flex flex-none">{attachmentKindIcon(item.kind)}</span>
       <span className="min-w-0">
         <span className="block truncate text-[12.5px] text-ink">{label}</span>
@@ -100,6 +130,18 @@ function SessionAttachmentRow({ item }) {
       {when ? (
         <span className="text-[10.5px] text-ink-4 mt-0.5">{relativeAge(when)}</span>
       ) : null}
+    </>
+  );
+  if (openable) {
+    return (
+      <button type="button" className={rowClass} style={grid} title={title} onClick={onOpen}>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div className={rowClass} style={grid} title={title}>
+      {inner}
     </div>
   );
 }
@@ -147,6 +189,25 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const [openEntry, setOpenEntry] = useState(null);
   const [openFile, setOpenFile] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  const [previewUploadArtifact, setPreviewUploadArtifact] = useState(null);
+  const [readOnlySnippet, setReadOnlySnippet] = useState(null);
+
+  const handleOpenSessionAttachment = useCallback((item) => {
+    const path = item.path && String(item.path).trim();
+    if (item.kind === 'file' && path) {
+      const art = attachmentToPreviewArtifact(item);
+      if (!art) return;
+      const lower = path.toLowerCase();
+      const isHtml = (art.ext || '').toLowerCase() === '.html' || lower.endsWith('.htm');
+      if (isHtml) setPreviewUploadArtifact(art);
+      else void host.openPath(path);
+      return;
+    }
+    const text = (item.text && String(item.text)) || (item.textPreview && String(item.textPreview)) || '';
+    if (text.trim()) {
+      setReadOnlySnippet({ title: item.name || item.id || 'Attachment', text });
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,7 +362,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
           )}
           {!attachmentsLoading
             && sessionAttachments.map((item) => (
-              <SessionAttachmentRow key={item.id} item={item} />
+              <SessionAttachmentRow
+                key={item.id}
+                item={item}
+                openable={sessionAttachmentIsOpenable(item)}
+                onOpen={() => handleOpenSessionAttachment(item)}
+              />
             ))}
         </div>
       )}
@@ -382,6 +448,24 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
         onClose={() => setOpenFile(null)}
         onChanged={() => reloadFiles()}
+      />
+
+      <ArtifactViewer
+        open={!!previewUploadArtifact}
+        artifact={previewUploadArtifact}
+        onClose={() => setPreviewUploadArtifact(null)}
+        onChange={(updated) => setPreviewUploadArtifact(updated)}
+      />
+
+      <ContextFileModal
+        open={!!readOnlySnippet}
+        title={readOnlySnippet?.title}
+        subtitle="Upload"
+        initialContent={readOnlySnippet?.text ?? ''}
+        readOnly
+        dense
+        emptyMessage="(empty)"
+        onClose={() => setReadOnlySnippet(null)}
       />
     </div>
   );

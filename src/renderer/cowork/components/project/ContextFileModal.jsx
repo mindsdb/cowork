@@ -59,6 +59,7 @@ export default function ContextFileModal({
   placeholder,     // optional textarea placeholder
   emptyMessage,    // optional message shown when content is empty + not editing
   dense,           // pass-through to MarkdownContent — smaller type for memory previews
+  readOnly,        // view-only: no Edit / Save / Delete (e.g. snippet attachment preview)
   onClose,
   onChanged,       // called after a successful save / delete so callers can refresh
 }) {
@@ -102,6 +103,15 @@ export default function ContextFileModal({
   // so we always get a clean string here.
   useEffect(() => {
     if (!open) return;
+    if (readOnly) {
+      setError('');
+      setLoading(false);
+      const seed = initialContent != null ? String(initialContent) : '';
+      setContent(seed);
+      setDraft(seed);
+      setEditing(false);
+      return undefined;
+    }
     if (!genericMode && (!filePath || !projectName)) return;
     let cancelled = false;
     setError('');
@@ -133,7 +143,7 @@ export default function ContextFileModal({
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode]);
+  }, [open, readOnly, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode]);
 
   // Esc closes when not busy.
   useEffect(() => {
@@ -173,7 +183,7 @@ export default function ContextFileModal({
 
   // Delete is hidden when the caller passes `remover === null` OR
   // when this is anton.md (always-present project instructions).
-  const canDelete = remover !== null && !isAnton;
+  const canDelete = !readOnly && remover !== null && !isAnton;
 
   const handleDelete = async () => {
     if (!canDelete) return;
@@ -245,7 +255,7 @@ export default function ContextFileModal({
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {!editing && !loading && (
+            {!readOnly && !editing && !loading && (
               <button
                 type="button"
                 onClick={() => setEditing(true)}
