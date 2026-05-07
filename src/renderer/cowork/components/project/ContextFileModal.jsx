@@ -229,7 +229,6 @@ export default function ContextFileModal({
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 18px',
-          borderBottom: '1px solid var(--line)',
         }}>
           <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'baseline', gap: 10 }}>
             <h2 style={{
@@ -310,13 +309,16 @@ export default function ContextFileModal({
                 width: '100%',
                 padding: '12px 14px', borderRadius: 8,
                 background: 'var(--surface-2)',
-                border: '1px solid var(--line)',
+                // Transparent border — content panel blends into the
+                // modal body instead of nesting a hard rectangle. The
+                // border is kept (rather than removed) so the panel
+                // keeps its layout footprint identical to the
+                // markdown viewer below; both must size identically
+                // for the view↔edit swap to feel seamless.
+                border: '1px solid transparent',
                 color: 'var(--ink)',
                 fontFamily: FONT_MONO, fontSize: 13, lineHeight: 1.55,
                 outline: 'none',
-                // No vertical resize handle — modal is fixed-height,
-                // dragging would create a "is this the same modal?"
-                // moment we just designed away.
                 resize: 'none',
                 boxSizing: 'border-box',
               }}
@@ -330,7 +332,7 @@ export default function ContextFileModal({
               flex: 1, minHeight: 0,
               padding: '14px 18px',
               background: 'var(--surface-2)',
-              border: '1px solid var(--line)',
+              border: '1px solid transparent',
               borderRadius: 8,
               overflowY: 'auto',
             }}>
@@ -344,7 +346,7 @@ export default function ContextFileModal({
               margin: 0,
               padding: '14px 16px',
               background: 'var(--surface-2)',
-              border: '1px solid var(--line)',
+              border: '1px solid transparent',
               borderRadius: 8,
               fontFamily: FONT_MONO, fontSize: 13, lineHeight: 1.55,
               color: 'var(--ink-2)',
@@ -359,7 +361,6 @@ export default function ContextFileModal({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: 8,
           padding: '12px 18px',
-          borderTop: '1px solid var(--line)',
           background: 'var(--surface)',
         }}>
           <div>

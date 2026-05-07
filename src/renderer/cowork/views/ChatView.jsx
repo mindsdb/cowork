@@ -715,6 +715,49 @@ export default function ChatView({
     return [];
   })();
 
+  // Per-message stable key for prefixing step ids in the scratchpad
+  // pool. Each message generates step ids that start over at "step-1"
+  // for that message — so two messages can share an id like "step-1".
+  // Without prefixing, the pooled list passed to ScratchpadModal has
+  // duplicate keys (React warning + occasional render glitch) AND the
+  // focus-step lookup `steps.find(s => s.id === focusStepId)` returns
+  // the FIRST match, which can be the wrong message's step. Prefixing
+  // makes the pool unique and keeps focus correlation tight.
+  const messageKey = (m, i) =>
+    `m:${m?.id || `idx-${i}`}`;
+  const streamingKey = streamingMsg
+    ? `streaming:${streamingMsg.id || 'live'}`
+    : null;
+  const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
+  const railMsgKey = (() => {
+    if (streamingMsg && streamingMsg.steps?.length) return streamingKey;
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      const m = visibleMessages[i];
+      if (m.role === 'assistant' && m.steps?.length) return messageKey(m, i);
+    }
+    return null;
+  })();
+  // Build the unified scratchpad pool with prefixed ids. The modal
+  // groups by `_scratchpadTabId` so each tab still only contains its
+  // own cells; this prefix is purely for global-uniqueness of step
+  // ids across the conversation's pooled history.
+  const scratchpadStepsPool = useMemo(() => {
+    const out = [];
+    visibleMessages.forEach((m, i) => {
+      const msgKey = messageKey(m, i);
+      (m.steps || []).forEach((s) => {
+        out.push({ ...s, id: prefixId(msgKey, s.id) });
+      });
+    });
+    if (streamingMsg && streamingKey) {
+      (streamingMsg.steps || []).forEach((s) => {
+        out.push({ ...s, id: prefixId(streamingKey, s.id) });
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleMessages, streamingMsg]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [task.messages.length, isStreaming]);
@@ -1091,7 +1134,7 @@ export default function ChatView({
                       steps={m.steps}
                       startedAt={m.startedAt}
                       isActive={false}
-                      onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+                      onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     />
                   )}
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
@@ -1114,7 +1157,7 @@ export default function ChatView({
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
-                    onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
                 {/* Bridge state: between the first stream event arriving
@@ -1248,7 +1291,9 @@ export default function ChatView({
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
           conversationId={task.id || ''}
-          onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+          onActivateStep={(step) => railMsgKey
+            ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
+            : null}
         />
         {!formActive && (
           <WorkingFolderBox
@@ -1269,10 +1314,7 @@ export default function ChatView({
       <ScratchpadModal
         open={openScratchpadStepId != null}
         onClose={() => setOpenScratchpadStepId(null)}
-        steps={[
-          ...visibleMessages.flatMap((m) => m.steps || []),
-          ...(streamingMsg?.steps || []),
-        ]}
+        steps={scratchpadStepsPool}
         focusStepId={openScratchpadStepId}
       />
 

@@ -115,15 +115,18 @@ const _SIZES = {
     ol: 'list-decimal pl-5 my-2 text-body text-ink-2 space-y-1',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2',
   },
+  // `dense` is the memory-preview density. Trimmed one notch off
+  // chat defaults (and a comfortable line-height) for an elegant
+  // reading column without sacrificing readability.
   dense: {
-    root: 'markdown-content space-y-1 break-words text-[11px] leading-[1.5] text-ink-2',
-    p: 'font-body text-[11px] leading-[1.5] text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[13px] font-semibold text-ink mt-2.5 mb-1',
-    h2: 'font-display text-[12px] font-semibold text-ink mt-2.5 mb-1',
-    h3: 'font-display text-[10.5px] font-semibold uppercase tracking-wider text-ink-3 mt-2 mb-0.5',
-    ul: 'list-disc pl-4 my-1 text-[11px] leading-[1.5] text-ink-2 space-y-0.5',
-    ol: 'list-decimal pl-4 my-1 text-[11px] leading-[1.5] text-ink-2 space-y-0.5',
-    blockquote: 'border-l-2 border-line pl-2 italic text-ink-3 my-1 text-[11px]',
+    root: 'markdown-content space-y-2 break-words text-[12.5px] leading-[1.65] text-ink-2',
+    p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
+    h1: 'font-display text-[16px] font-semibold text-ink mt-3.5 mb-1.5 tracking-[-0.005em]',
+    h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5 tracking-[-0.005em]',
+    h3: 'font-display text-[12px] font-semibold uppercase tracking-wider text-ink-3 mt-2.5 mb-1',
+    ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
+    ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
+    blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2 text-[12.5px]',
   },
 };
 

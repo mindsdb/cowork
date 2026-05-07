@@ -111,14 +111,21 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
           </button>
         </div>
 
-        {/* Tab strip — only when more than one pad. Bottom-border
-            underline indicator instead of pill buttons; matches the
-            segmented-control language used elsewhere in the app
-            (e.g. the connector picker's filter row). Each tab shows
-            the pad name + a small count badge so the user can see
-            the cell distribution at a glance. */}
+        {/* Tab strip — only when more than one pad. Inline styles via
+            CSS variables (instead of Tailwind utility classes) so the
+            tab chrome inherits the same dark / light theming the rest
+            of the modals use; the previous Tailwind `bg-accent/15`
+            etc. didn't have dark-mode partners and rendered as too-
+            saturated stripes against the navy surface. */}
         {tabs.length > 1 && (
-          <div className="flex flex-none gap-1 overflow-x-auto border-b border-line bg-surface px-2">
+          <div style={{
+            display: 'flex', flex: '0 0 auto',
+            gap: 2,
+            padding: '0 8px',
+            background: 'var(--surface)',
+            borderBottom: '1px solid var(--line)',
+            overflowX: 'auto',
+          }}>
             {tabs.map((t) => {
               const active = t.id === activeTabId;
               return (
@@ -126,21 +133,55 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTabId(t.id)}
-                  className={clsx(
-                    'relative flex flex-none cursor-pointer items-center gap-2 px-3 py-2.5',
-                    'font-display text-[12.5px] font-medium tracking-tight',
-                    'transition-colors',
-                    active ? 'text-ink' : 'text-ink-3 hover:text-ink-2'
-                  )}
+                  style={{
+                    position: 'relative',
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    flexShrink: 0,
+                    padding: '10px 12px',
+                    background: 'transparent',
+                    border: 0,
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    letterSpacing: '-0.005em',
+                    color: active ? 'var(--ink)' : 'var(--ink-3)',
+                    transition: 'color 120ms ease',
+                  }}
+                  onMouseOver={(e) => {
+                    if (!active) e.currentTarget.style.color = 'var(--ink-2)';
+                  }}
+                  onMouseOut={(e) => {
+                    if (!active) e.currentTarget.style.color = 'var(--ink-3)';
+                  }}
                 >
-                  <span className="truncate max-w-[180px]" title={t.name}>{t.name}</span>
-                  <span className={clsx(
-                    'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5',
-                    'font-mono text-[10.5px] font-medium tabular-nums',
-                    active ? 'bg-accent/15 text-accent' : 'bg-surface-2 text-ink-4'
-                  )}>{t.cells.length}</span>
+                  <span style={{
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    maxWidth: 180,
+                  }} title={t.name}>{t.name}</span>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    minWidth: 18, height: 18,
+                    padding: '0 6px',
+                    borderRadius: 999,
+                    background: active
+                      ? 'color-mix(in srgb, var(--accent) 15%, transparent)'
+                      : 'var(--surface-2)',
+                    color: active ? 'var(--accent)' : 'var(--ink-4)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10.5,
+                    fontWeight: 500,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>{t.cells.length}</span>
                   {active && (
-                    <span className="absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent" />
+                    <span aria-hidden style={{
+                      position: 'absolute',
+                      left: 8, right: 8,
+                      bottom: -1,
+                      height: 2,
+                      borderRadius: 1,
+                      background: 'var(--accent)',
+                    }} />
                   )}
                 </button>
               );
@@ -234,63 +275,48 @@ function CellView({ cell, index, total, focused = false }) {
         'transition-colors duration-700',
       )}
     >
-      {/* Step header — `step x/y` badge on the left, then a stacked
-          column with the description + timing meta. The meta strip
-          sits in the same column so reason/exec align under the
-          description text rather than under the step badge. */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-baseline gap-3">
-          <span className="font-mono text-[10.5px] tracking-wider text-ink-4 flex-none">
-            step {index}/{total}
-          </span>
-          <div className="min-w-0 flex flex-col gap-1">
+      {/* Two-column grid: step-badge | content. Everything visible
+          for the cell — description, timing meta, code/output/stderr
+          sections, and the toggle — lives in the right column, so
+          all those blocks share a single left edge that's aligned
+          with the description text rather than with the step
+          counter. The badge stays on the left, baseline-aligned to
+          the first row of the description. */}
+      <div
+        className="grid items-start"
+        style={{ gridTemplateColumns: 'auto 1fr', columnGap: 12 }}
+      >
+        <span className="font-mono text-[10.5px] tracking-wider text-ink-4 pt-[2px]">
+          step {index}/{total}
+        </span>
+
+        <div className="min-w-0 flex flex-col gap-1">
+          {/* Title row — description on the left, code toggle on the
+              right. The toggle stays inline with the description so
+              hitting "Code" lands at eye level, not floated above
+              the badge. */}
+          <div className="flex items-baseline justify-between gap-3">
             <span className="truncate font-display text-[14px] font-semibold tracking-tight text-ink">
               {data.one_line_description || cell.label || 'Untitled'}
             </span>
-            {/* Always render reason + exec, even when timing data is
-                missing — a "—" placeholder reads as "no data" without
-                the meta strip going missing entirely. */}
-            <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
-              <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
-              <span>exec: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
-            </div>
-          </div>
-        </div>
-        {code && (
-          <button
-            type="button"
-            onClick={() => setShowCode((v) => !v)}
-            className={clsx(
-              'flex flex-none cursor-pointer items-center gap-1 rounded-md px-2 py-1',
-              'font-body text-[11.5px] font-medium',
-              'transition-colors',
-              showCode
-                ? 'bg-surface-2 text-ink hover:bg-surface-3'
-                : 'text-ink-3 hover:text-ink hover:bg-surface-2'
+            {code && (
+              <CodeToggle checked={showCode} onChange={setShowCode} />
             )}
-          >
-            {showCode ? 'Hide code' : 'Show code'}
-          </button>
-        )}
-      </div>
+          </div>
 
-      {/* Output — render as a bare block without a section label, and
-          omit it entirely when the step produced no stdout. Steps that
-          only manipulate state (no print) shouldn't surface a "no
-          output" placeholder; the absence is the cleanest signal. */}
-      {stdout && (
-        <pre className="mt-4 overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">
-{stdout}
-        </pre>
-      )}
+          {/* Always render reason + exec, even when timing data is
+              missing — a "—" placeholder reads as "no data" without
+              the meta strip going missing entirely. */}
+          <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
+            <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
+            <span>exec: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
+          </div>
 
-      {/* Code + stderr — revealed by the toggle (or auto-revealed
-          when there's an error). The Code section only renders when
-          we actually have code; otherwise we'd print "No code
-          captured" above the stderr block, which adds nothing. */}
-      {showCode && (
-        <>
-          {code && (
+          {/* Code first when expanded — the user toggled Code ON to
+              see the source, so it should lead. Output and stderr
+              follow. When the toggle is off, we render output bare
+              without a label as the lone artefact of the cell run. */}
+          {showCode && code && (
             <Section
               label="Code"
               right={Array.isArray(data.packages) && data.packages.length > 0 ? (
@@ -308,18 +334,95 @@ function CellView({ cell, index, total, focused = false }) {
             </Section>
           )}
 
-          {hasErr && (
+          {/* Output — bare pre when code is hidden (clean focus on
+              the result), or labelled Section when sitting next to
+              code so the two read evenly. */}
+          {stdout && (
+            showCode ? (
+              <Section label="Output">
+                <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">
+{stdout}
+                </pre>
+              </Section>
+            ) : (
+              <pre className="mt-4 overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">
+{stdout}
+              </pre>
+            )
+          )}
+
+          {/* Stderr — only visible alongside the rest of the
+              inspector (toggle on) since it's a debug signal, not a
+              top-line result. Auto-revealed for errored cells via
+              the useEffect that flips showCode true above. */}
+          {showCode && hasErr && (
             <Section label="Stderr">
               <pre className="overflow-x-auto rounded-md border border-red-200 bg-red-50 p-3 font-mono text-[12px] leading-snug text-red-700">
 {stderr}
               </pre>
             </Section>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
+
+// Material-style switch for the "Show code" affordance. Reads as
+// a labelled toggle: the word "Code" with a 32×18 track + 14px
+// thumb to its right. On = accent fill, off = surface-2. Both
+// states inherit theme via CSS variables so dark/light Just Work.
+function CodeToggle({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={!!checked}
+      aria-label={checked ? 'Hide code' : 'Show code'}
+      onClick={() => onChange?.(!checked)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+        flexShrink: 0,
+        padding: '4px 6px',
+        background: 'transparent',
+        border: 0,
+        borderRadius: 6,
+        cursor: 'pointer',
+        fontFamily: 'var(--font-body)',
+        fontSize: 11.5,
+        fontWeight: 500,
+        color: 'var(--ink-3)',
+        transition: 'color 120ms ease',
+      }}
+      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; }}
+      onMouseOut={(e)  => { e.currentTarget.style.color = 'var(--ink-3)'; }}
+    >
+      <span>Code</span>
+      <span aria-hidden style={{
+        position: 'relative',
+        display: 'inline-block',
+        width: 32, height: 18,
+        borderRadius: 999,
+        background: checked
+          ? 'var(--accent)'
+          : 'color-mix(in srgb, var(--ink) 18%, transparent)',
+        transition: 'background 180ms ease',
+      }}>
+        <span style={{
+          position: 'absolute',
+          top: 2,
+          left: checked ? 16 : 2,
+          width: 14, height: 14,
+          borderRadius: '50%',
+          background: '#fff',
+          boxShadow: '0 1px 2px rgba(15,16,17,0.18)',
+          transition: 'left 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+        }} />
+      </span>
+    </button>
+  );
+}
+
 
 function Section({ label, muted = false, right, children }) {
   return (

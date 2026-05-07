@@ -48,7 +48,14 @@ export function initialStreamState() {
 
 /** Replace (immutably) the trailing scratchpad step regardless of its
  *  status. The .result event arrives *after* scratchpad_done in some
- *  flows, so requiring in_progress here would silently drop the output. */
+ *  flows, so requiring in_progress here would silently drop the output.
+ *
+ *  Use this only as a fallback. When the upstream event carries a
+ *  `tool_use_id`, prefer `patchScratchpadStepById` — multi-cell turns
+ *  (LLM emits start/end for cells A,B,C upfront then anton dispatches
+ *  them sequentially) need result events correlated to their source by
+ *  id, otherwise A's result patches step C and the cells appear mixed.
+ */
 function patchLastScratchpadStep(steps, patch) {
   if (steps.length === 0) return steps;
   const idx = steps.length - 1;
@@ -56,6 +63,21 @@ function patchLastScratchpadStep(steps, patch) {
   if (!last._isScratchpad) return steps;
   const next = steps.slice();
   next[idx] = { ...last, ...patch };
+  return next;
+}
+
+/** Patch the scratchpad step whose `_toolUseId` matches the given id.
+ *  Returns the original list if no match. Used when the upstream
+ *  event carries an explicit tool_use_id (modern server) so multi-
+ *  cell turns no longer cross-attribute output between cells. */
+function patchScratchpadStepById(steps, toolUseId, patch) {
+  if (!toolUseId) return null;
+  const idx = steps.findIndex(
+    (s) => s && s._isScratchpad && s._toolUseId === toolUseId
+  );
+  if (idx === -1) return null;
+  const next = steps.slice();
+  next[idx] = { ...steps[idx], ...patch };
   return next;
 }
 
@@ -151,6 +173,11 @@ export function reduceStream(state, event, now = Date.now) {
   // UI sees activity even before the .end event delivers the input.
   // Reasoning starts here — it's the time anton spends deciding *what*
   // code to run, before the runtime actually executes anything.
+  // `tool_use_id` (when the server includes it) is captured on the
+  // step so subsequent end / progress / result events can be
+  // correlated to THIS specific cell. Without that correlation,
+  // multi-cell turns where the LLM queues several scratchpad calls
+  // before any of them runs would patch the wrong step on result.
   if (role === 'thought.scratchpad.start') {
     const id = `step-${state.steps.length + 1}`;
     const ts = now();
@@ -162,8 +189,6 @@ export function reduceStream(state, event, now = Date.now) {
       status: 'in_progress',
       startedAt: ts,
       completedAt: null,
-      // Fine-grained timing — used to split "reasoning" (LLM deciding
-      // what to do) from "execution" (runtime running the code).
       reasoningStartedAt: ts,
       executionStartedAt: null,
       executionCompletedAt: null,
@@ -172,69 +197,68 @@ export function reduceStream(state, event, now = Date.now) {
       result: null,
       _isScratchpad: true,
       _scratchpadTabId: null,
+      _toolUseId: event.tool_use_id || null,
     };
     return { ...state, steps: [...state.steps, step] };
   }
 
   // Scratchpad input — the JSON contains action, name, code,
   // one_line_description, etc. Use one_line_description as the visible
-  // label (matches mdb-ai's convention) and `name` as the tab id so
-  // multiple cells under the same scratchpad name group together.
+  // label and `name` as the tab id so multiple cells under the same
+  // scratchpad name group together.
   if (role === 'thought.scratchpad.end') {
-    // The server clips content at 64KB so long cells fail full JSON
-    // parse. Fall back to regex-extracting the fields we care about
-    // so the step still gets its real label.
     const parsed = safeJsonParse(event.content);
     const oneLiner = parsed?.one_line_description ?? extractJsonString(event.content, 'one_line_description');
     const name     = parsed?.name                  ?? extractJsonString(event.content, 'name');
     const code     = parsed?.code                  ?? extractJsonString(event.content, 'code');
     if (!oneLiner && !name && !code) return state;
-    // The .end event is the boundary between reasoning ("LLM
-    // streaming the JSON") and execution ("runtime running it"). We
-    // record executionStartedAt here as a FALLBACK — the canonical
-    // signal is the `phase: scratchpad_start` progress, but that's
-    // not always emitted (replayed historical streams in particular
-    // sometimes drop it). Without this fallback, reasoningMs and
-    // executionMs both stay null and the meta strip shows "—".
     const ts = now();
-    const last = state.steps[state.steps.length - 1];
-    const executionStartedAt = last?._isScratchpad
-      ? (last.executionStartedAt || ts)
+    const toolUseId = event.tool_use_id || null;
+    // Find the step the .start event created for this id. Fall back
+    // to the trailing scratchpad step for legacy/replayed streams
+    // that don't carry tool_use_id.
+    const target = toolUseId
+      ? state.steps.find((s) => s._isScratchpad && s._toolUseId === toolUseId)
+      : state.steps[state.steps.length - 1];
+    const executionStartedAt = target?._isScratchpad
+      ? (target.executionStartedAt || ts)
       : ts;
-    const steps = patchLastScratchpadStep(state.steps, {
+    const patch = {
       label: oneLiner || name || 'Running code',
       data: parsed || { one_line_description: oneLiner, name, code, _truncated: true },
       _scratchpadTabId: name || null,
       executionStartedAt,
-    });
-    return { ...state, steps };
+    };
+    const byId = patchScratchpadStepById(state.steps, toolUseId, patch);
+    return { ...state, steps: byId || patchLastScratchpadStep(state.steps, patch) };
   }
 
   // Scratchpad output — JSON of { code, stdout, stderr, ... }. The
-  // result event is the canonical "this cell finished" signal: it
-  // arrives whether or not the upstream emitted scratchpad_done first,
-  // and it carries the actual stdout we want to surface. Server can
-  // truncate this at ~2KB, so fall back to regex-extracting stdout.
+  // result event is the canonical "this cell finished" signal.
+  // Correlated to its step by tool_use_id; falls back to "last
+  // scratchpad" only for legacy events that lack the id.
   if (role === 'thought.scratchpad.result') {
     const stdout = bestEffortField(event.content, 'stdout');
     const stderr = bestEffortField(event.content, 'stderr');
     const parsed = safeJsonParse(event.content);
     const ts = now();
-    // The result is also the canonical end of execution if we never
-    // got a `scratchpad_done` phase (some flows skip it).
-    const last = state.steps[state.steps.length - 1];
-    const executionCompletedAt = last?._isScratchpad
-      ? (last.executionCompletedAt || ts)
+    const toolUseId = event.tool_use_id || null;
+    const target = toolUseId
+      ? state.steps.find((s) => s._isScratchpad && s._toolUseId === toolUseId)
+      : state.steps[state.steps.length - 1];
+    const executionCompletedAt = target?._isScratchpad
+      ? (target.executionCompletedAt || ts)
       : ts;
-    const steps = patchLastScratchpadStep(state.steps, {
+    const patch = {
       output: typeof stdout === 'string' ? stdout : null,
       result: parsed || { stdout, stderr, _truncated: true },
       status: 'completed',
       completedAt: ts,
       executionCompletedAt,
       ...(typeof stderr === 'string' && stderr ? { stderr } : null),
-    });
-    return { ...state, steps };
+    };
+    const byId = patchScratchpadStepById(state.steps, toolUseId, patch);
+    return { ...state, steps: byId || patchLastScratchpadStep(state.steps, patch) };
   }
 
   // Progress markers
@@ -248,27 +272,61 @@ export function reduceStream(state, event, now = Date.now) {
     // Either way, this is when execution wraps.
     if (phase === 'scratchpad_done') {
       const ts = now();
-      const stepsClosed = closeOpenScratchpadStep(state.steps, ts);
-      const stepsTimed = patchLastScratchpadStep(stepsClosed, {
-        executionCompletedAt: ts,
-      });
+      const toolUseId = event.tool_use_id || null;
+      // Status flip: when the event carries a tool_use_id, find the
+      // exact step by id and close ONLY that one. Otherwise fall
+      // back to the trailing in-progress scratchpad (legacy stream).
+      let stepsClosed;
+      if (toolUseId) {
+        const idx = state.steps.findIndex(
+          (s) => s && s._isScratchpad && s._toolUseId === toolUseId,
+        );
+        if (idx !== -1 && state.steps[idx].status === 'in_progress') {
+          stepsClosed = state.steps.slice();
+          stepsClosed[idx] = { ...state.steps[idx], status: 'completed', completedAt: ts };
+        } else {
+          stepsClosed = state.steps;
+        }
+      } else {
+        stepsClosed = closeOpenScratchpadStep(state.steps, ts);
+      }
+      const patch = { executionCompletedAt: ts };
+      const byId = patchScratchpadStepById(stepsClosed, toolUseId, patch);
+      const stepsTimed = byId || patchLastScratchpadStep(stepsClosed, patch);
       return { ...state, steps: stepsTimed };
     }
 
     // Cell starting — already marked in_progress in .start, but if
     // somehow we missed .start (out-of-order), upsert a step now.
-    // Either way, mark execution start (reasoning is over).
+    // Either way, mark execution start (reasoning is over). When the
+    // event carries a tool_use_id, target the matching step
+    // explicitly so multi-cell turns don't time the wrong step.
     if (phase === 'scratchpad_start') {
-      const last = state.steps[state.steps.length - 1];
       const ts = now();
+      const toolUseId = event.tool_use_id || null;
+      const patch = { executionStartedAt: ts };
+      if (toolUseId) {
+        const byId = patchScratchpadStepById(state.steps, toolUseId, patch);
+        if (byId) return { ...state, steps: byId };
+        // No step yet for this id — seed one and re-apply.
+        const seeded = reduceStream(state, {
+          type: 'response.in_progress',
+          thought_role: 'thought.scratchpad.start',
+          tool_use_id: toolUseId,
+        }, now);
+        const seededById = patchScratchpadStepById(seeded.steps, toolUseId, patch);
+        return { ...seeded, steps: seededById || seeded.steps };
+      }
+      // Legacy / no id — preserve previous behaviour.
+      const last = state.steps[state.steps.length - 1];
       if (!last || last.status !== 'in_progress') {
         const seeded = reduceStream(state, {
           type: 'response.in_progress',
           thought_role: 'thought.scratchpad.start',
         }, now);
-        return { ...seeded, steps: patchLastScratchpadStep(seeded.steps, { executionStartedAt: ts }) };
+        return { ...seeded, steps: patchLastScratchpadStep(seeded.steps, patch) };
       }
-      return { ...state, steps: patchLastScratchpadStep(state.steps, { executionStartedAt: ts }) };
+      return { ...state, steps: patchLastScratchpadStep(state.steps, patch) };
     }
 
     // 'publish_or_preview' is a two-event sequence — this one is just
