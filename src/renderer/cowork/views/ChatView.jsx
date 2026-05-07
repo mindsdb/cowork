@@ -468,11 +468,29 @@ function ArtifactCard({ artifact, onOpen }) {
         {artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26)}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-          letterSpacing: '0.01em',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{artifact.title}</span>
+        {/* Title doubles as the primary "open preview" affordance —
+            clicking it routes through the same handler the Open
+            button uses. Hover gets an accent + underline so the
+            interaction reads at a glance. Disabled when there's no
+            path to open. */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); if (canAct) handleOpen(); }}
+          disabled={!canAct}
+          title={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
+          style={{
+            all: 'unset',
+            cursor: canAct ? 'pointer' : 'not-allowed',
+            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
+            letterSpacing: '0.01em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            display: 'block', minWidth: 0,
+            transition: 'color 120ms ease',
+            opacity: canAct ? 1 : 0.7,
+          }}
+          onMouseOver={(e) => { if (canAct) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
+          onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
+        >{artifact.title}</button>
         <span style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3 }}>
           {artifact.kind || 'live artifact'}
         </span>

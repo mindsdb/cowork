@@ -424,12 +424,31 @@ async def preview_mount(req: PreviewMountRequest):
     # entries since each project has at most one .anton/output dir.
     token = hashlib.sha256(str(parent).encode("utf-8")).hexdigest()[:16]
     _PREVIEW_MOUNTS[token] = parent
+
+    # Surface the published URL alongside the mount info so the viewer
+    # shows the "Published" pill regardless of how it was opened. The
+    # `/artifacts` list endpoint already enriches its rows the same
+    # way; the in-chat / project surfaces build their artifact object
+    # from streamed scratchpad payloads which never carry it, so the
+    # sidecar lookup has to happen here too.
+    published_url = ""
+    published_path = parent / ".published.json"
+    if published_path.is_file():
+        try:
+            pmap = json.loads(published_path.read_text(encoding="utf-8"))
+            entry = pmap.get(artifact.name)
+            if isinstance(entry, dict):
+                published_url = entry.get("url", "") or ""
+        except Exception:
+            published_url = ""
+
     return {
         "token": token,
         "entry": artifact.name,
         # Relative path the client can append to BASE; full URL is built
         # client-side so we don't need to know the host here.
         "relUrl": f"/artifacts/preview-asset/{token}/{artifact.name}",
+        "publishedUrl": published_url,
     }
 
 

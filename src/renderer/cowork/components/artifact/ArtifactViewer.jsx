@@ -18,7 +18,7 @@ const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monosp
 // Single-row "label: value [copy]" — used twice in the header (local
 // path + remote URL when published). Tiny inline copy state flips the
 // glyph to a check for ~1.4s after a successful copy.
-function PathRow({ label, value, copyValue, accent = false }) {
+function PathRow({ label, value, copyValue, accent = false, onActivate }) {
   const [copyState, setCopyState] = useState('');
   if (!value) return null;
   const valueToCopy = copyValue || value;
@@ -39,6 +39,7 @@ function PathRow({ label, value, copyValue, accent = false }) {
   };
   const copied = copyState === 'copied';
   const failed = copyState === 'failed';
+  const activatable = typeof onActivate === 'function';
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
@@ -49,13 +50,41 @@ function PathRow({ label, value, copyValue, accent = false }) {
         color: 'var(--ink-4)', letterSpacing: '0.04em',
         textTransform: 'uppercase',
       }}>{label}:</span>
-      <span title={value} style={{
-        minWidth: 0, flex: 1,
-        color: accent ? 'var(--accent)' : 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {value}
-      </span>
+      {/* When `onActivate` is set the value is an interactive element
+          (link semantics). Hover gets an accent underline so it reads
+          as clickable; click stops propagation so the row's copy
+          button can sit beside it without being triggered. */}
+      {activatable ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onActivate(); }}
+          title={`Open ${value}`}
+          style={{
+            all: 'unset', cursor: 'pointer',
+            minWidth: 0, flex: 1,
+            color: accent ? 'var(--accent)' : 'var(--ink-3)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            transition: 'color 120ms ease',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = 'var(--accent)';
+            e.currentTarget.style.textDecoration = 'underline';
+            e.currentTarget.style.textUnderlineOffset = '2px';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = accent ? 'var(--accent)' : 'var(--ink-3)';
+            e.currentTarget.style.textDecoration = 'none';
+          }}
+        >{value}</button>
+      ) : (
+        <span title={value} style={{
+          minWidth: 0, flex: 1,
+          color: accent ? 'var(--accent)' : 'var(--ink-3)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {value}
+        </span>
+      )}
       <button
         type="button"
         onClick={onCopy}
@@ -207,9 +236,17 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setErr('');
     setPreviewUrl('');
     mountArtifactPreview(actionPath)
-      .then(({ url }) => {
+      .then(({ url, publishedUrl: serverPublishedUrl }) => {
         if (!url) throw new Error('Preview mount returned no URL');
         setPreviewUrl(url);
+        // The mount endpoint now also reports the artifact's published
+        // URL from `.published.json`. Adopt it whenever the server
+        // knows of one — covers the chat-bubble / project-rail entry
+        // points where the artifact object was built from a streamed
+        // payload and didn't carry `publishedUrl`. Don't blank out a
+        // locally-known value when the server returns "" (the user
+        // may have just published; we don't want a flicker).
+        if (serverPublishedUrl) setPublishedUrl(serverPublishedUrl);
       })
       .catch((e) => setErr(e?.message || 'Could not load artifact'))
       .finally(() => setLoading(false));
@@ -295,6 +332,20 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       window.open(publishedUrl, '_blank', 'noreferrer');
     }
   };
+  // Local-path activate: hand off to the OS handler. For HTML
+  // artifacts this opens the default browser; for everything else
+  // (md, pdf, etc.) it routes to the user's default app.
+  const onOpenLocal = async () => {
+    if (!actionPath) return;
+    try {
+      const result = await window.antontron?.openPath?.(actionPath);
+      if (result && result.ok === false) {
+        setErr(result.reason || 'Could not open file.');
+      }
+    } catch (e) {
+      setErr(e?.message || 'Could not open file.');
+    }
+  };
 
   return (
     <Modal
@@ -323,9 +374,19 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             }}>
               {artifact.title || artifact.path?.split('/').pop()}
             </div>
-            <PathRow label="local" value={displayPath} copyValue={actionPath} />
+            <PathRow
+              label="local"
+              value={displayPath}
+              copyValue={actionPath}
+              onActivate={hasActionPath ? onOpenLocal : undefined}
+            />
             {publishedUrl && (
-              <PathRow label="remote" value={publishedUrl} accent />
+              <PathRow
+                label="remote"
+                value={publishedUrl}
+                accent
+                onActivate={onOpenPublished}
+              />
             )}
           </div>
           {publishedUrl && (

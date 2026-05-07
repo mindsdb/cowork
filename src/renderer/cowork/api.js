@@ -497,6 +497,11 @@ export async function mountArtifactPreview(path) {
     // path without scheme; combine with BASE so the renderer doesn't
     // need to know the API origin.
     url: data?.relUrl ? `${BASE}${data.relUrl}` : '',
+    // Server-side sidecar lookup of the artifact's published URL (if
+    // any). Forwarded so the viewer shows the "Published" pill even
+    // when opened from a chat bubble — those carry no publishedUrl on
+    // the artifact object since they're built from streamed payloads.
+    publishedUrl: data?.publishedUrl || '',
   };
 }
 

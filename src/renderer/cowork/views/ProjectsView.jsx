@@ -437,7 +437,12 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
 // currently-streaming tasks in this project. Client-side derivable
 // from `tasks` (status === 'active'), so no new server endpoint
 // needed; the data is already on the client.
-const LIST_GRID = '1.6fr 2fr 70px 70px 70px 70px 70px 110px 36px';
+//
+// Name leads with the most fr-share so long names don't ellipsize at
+// the typical sidebar width — the prior 1.6fr lost the name to the
+// "Last activity" cell. Updated column was dropped (the activity
+// summary already implies recency); the freed width goes to Name.
+const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
 
 function ListHeader() {
   const Cell = ({ children, align }) => (
@@ -461,7 +466,6 @@ function ListHeader() {
       <Cell align="right">Memories</Cell>
       <Cell align="right">Sched.</Cell>
       <Cell align="right">Artifacts</Cell>
-      <Cell>Updated</Cell>
       <Cell />
     </div>
   );
@@ -542,7 +546,6 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
   // live in-flight work for the project.
   const activeTaskCount = projectTasks.filter((t) => t.status === 'active').length;
   const schedCount = (scheduled || []).filter((s) => (s.project || s.projectName) === project.name).length;
-  const updated = relativeAge(timestampOfProject(project, tasks));
   const active = isActive(project, tasks);
   const isReserved = project.name === 'general' || project.name === 'default';
 
@@ -603,12 +606,6 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
       <D1Num value={mem} />
       <D1Num value={schedCount} />
       <D1Num value={art} />
-
-      {/* Updated */}
-      <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
-      }}>{updated}</div>
 
       {/* ⋯ menu */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
