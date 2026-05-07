@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import html
-import ipaddress
 import mimetypes
 import re
 import shutil
-import socket
 import uuid
 from pathlib import Path
-from urllib.parse import urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
@@ -71,12 +66,6 @@ class SnippetAttachmentRequest(BaseModel):
     project_path: str | None = None
 
 
-class UrlAttachmentRequest(BaseModel):
-    url: str
-    session_id: str | None = None
-    project_path: str | None = None
-
-
 class ProjectFileAttachmentRequest(BaseModel):
     project_path: str
     path: str
@@ -103,15 +92,6 @@ def _truncate_text(text: str, limit: int = TEXT_LIMIT) -> tuple[str, bool]:
     if len(text) <= limit:
         return text, False
     return text[:limit], True
-
-
-def _decode_bytes(data: bytes) -> str:
-    for encoding in ("utf-8", "utf-16", "latin-1"):
-        try:
-            return data.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return data.decode("utf-8", errors="replace")
 
 
 def _store_metadata(metadata: dict) -> dict:
@@ -218,76 +198,6 @@ def attachment_context(ids: list[str] | None) -> str:
     return "\n\n".join(sections)
 
 
-def _validate_url_target(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(status_code=400, detail="Only http and https URLs can be attached.")
-    if not parsed.hostname:
-        raise HTTPException(status_code=400, detail="URL must include a hostname.")
-    hostname = parsed.hostname.strip().lower()
-    if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
-        raise HTTPException(status_code=400, detail="Local and private URLs cannot be attached.")
-    try:
-        addresses = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise HTTPException(status_code=400, detail=f"Could not resolve URL hostname: {exc}") from exc
-    for info in addresses:
-        address = info[4][0]
-        try:
-            ip = ipaddress.ip_address(address)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="URL resolved to an invalid address.")
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            raise HTTPException(status_code=400, detail="Local and private URLs cannot be attached.")
-        if str(ip) == "169.254.169.254":
-            raise HTTPException(status_code=400, detail="Metadata service URLs cannot be attached.")
-    return url
-
-
-class _SafeRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        _validate_url_target(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def _fetch_url_text(url: str) -> tuple[str, str, str | None]:
-    safe_url = _validate_url_target(url)
-    request = Request(safe_url, headers={"User-Agent": "Anton-CoWork/1.0"})
-    opener = build_opener(_SafeRedirectHandler)
-    try:
-        with opener.open(request, timeout=12) as response:
-            final_url = response.geturl()
-            _validate_url_target(final_url)
-            content_type = response.headers.get("content-type", "")
-            data = response.read(URL_READ_LIMIT + 1)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Could not fetch URL: {exc}") from exc
-    truncated = len(data) > URL_READ_LIMIT
-    data = data[:URL_READ_LIMIT]
-    text = _decode_bytes(data)
-    title = None
-    if "html" in content_type.lower() or re.search(r"<html|<body|<title", text, re.I):
-        title_match = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
-        if title_match:
-            title = html.unescape(re.sub(r"\s+", " ", title_match.group(1))).strip()
-        text = re.sub(r"(?is)<script.*?</script>|<style.*?</style>|<noscript.*?</noscript>", " ", text)
-        text = re.sub(r"(?s)<[^>]+>", " ", text)
-        text = html.unescape(text)
-    text = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", text)).strip()
-    if truncated:
-        text += "\n\n[URL content was truncated before being stored.]"
-    return text, final_url, title
-
-
 @router.get("")
 def list_attachments(
     session_id: str | None = None,
@@ -351,26 +261,6 @@ def create_snippet(request: SnippetAttachmentRequest):
         extraction_status="ready",
         truncated=truncated,
         language=request.language,
-    )
-    return {"attachment": metadata}
-
-
-@router.post("/url")
-def create_url_attachment(request: UrlAttachmentRequest):
-    text, final_url, title = _fetch_url_text(request.url)
-    text, truncated = _truncate_text(text)
-    metadata = _make_attachment(
-        kind="url",
-        name=title or final_url,
-        source="url",
-        source_url=final_url,
-        session_id=request.session_id,
-        project_path=request.project_path,
-        mime="text/html",
-        size=len(text.encode("utf-8")),
-        text=text,
-        extraction_status="ready",
-        truncated=truncated,
     )
     return {"attachment": metadata}
 
