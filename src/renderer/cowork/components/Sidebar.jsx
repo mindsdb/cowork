@@ -3,17 +3,11 @@ import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
+import { host } from '../../platform/host';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
-const IS_MAC = (() => {
-  try {
-    if (typeof window !== 'undefined' && window.antontron && typeof window.antontron.getPlatform === 'function') {
-      return window.antontron.getPlatform() === 'darwin';
-    }
-  } catch {}
-  return /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
-})();
+const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
@@ -423,7 +417,10 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Footer status */}
+        {/* Footer status — Electron-only. In the hosted web shell the
+            FastAPI process IS the host, so start/stop/diagnostics have
+            no meaning and we drop the entire pill + power button. */}
+        {!host.isWeb && (
         <div className="anton-sidebar__footer">
           {/* The whole "backend · <status>" pill is the help affordance
               now — click anywhere on it to open the server-state modal.
@@ -484,6 +481,7 @@ export default function Sidebar({
             </button>
           </div>
         </div>
+        )}
       </div>
 
       <RecentsModal

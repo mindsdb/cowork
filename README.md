@@ -48,6 +48,84 @@ This runs three processes concurrently:
 
 ---
 
+## Web Build
+
+The cowork SPA also runs as a plain web app, served by the same FastAPI
+backend. The renderer is shell-agnostic — there is one source tree, one
+component library, and two entrypoints.
+
+### Run dev (web)
+
+```bash
+npm run dev:web
+```
+
+This boots both processes:
+
+1. The Anton FastAPI sidecar on `127.0.0.1:26866` (using your `uv tool install anton` interpreter — same as the Electron path).
+2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`.
+
+The dev server opens at `http://localhost:5173/` (a small Vite
+middleware rewrites `/` → `/index-web.html` so the bare URL is
+canonical). API calls hit the FastAPI sidecar via Vite's
+`/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
+shutdown — vite quiesces first, then the python child.
+
+If you haven't installed Anton yet, `dev:web` will print:
+
+```
+✗ Anton Python interpreter not found at ~/.local/share/uv/tools/anton/bin/python.
+  Run `uv tool install anton` first, then re-run `npm run dev:web`.
+```
+
+### Build a production bundle
+
+```bash
+npm run build:web
+```
+
+Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
+the Electron build). Drop this directory behind any static-file server
+and point its `/v1` requests at a running Anton FastAPI process.
+
+### Platform abstraction
+
+The cowork tree (`src/renderer/cowork/`) **never** touches
+`window.antontron` directly. All host-bridge access goes through
+`src/renderer/platform/host.ts`, which exposes:
+
+| Method | Electron | Web |
+|---|---|---|
+| `getPlatform()` / `isMac()` | `'darwin' \| 'win32' \| 'linux'` | `'web'` / `false` |
+| `getApiOrigin()` | `http://127.0.0.1:26866` | `window.location.origin` |
+| `openExternal(url)` | Electron shell.openExternal | `window.open(url, '_blank')` |
+| `openPath` / `showItemInFolder` / `trashItem` | OS shell | `{ ok: false, reason: 'unsupported' }` |
+| `serverInfo` / `serverStart` / `serverStop` | IPC to main | static `{running: true, …}` |
+| `oauthConnect(...)` | IPC PKCE loopback flow | inline error (redirect-based OAuth not yet wired) |
+
+Affordances that depend on Electron-only bridge calls (server pill +
+power button in the sidebar, "Open in OS" / "Show in Finder" /
+"Move to Trash" buttons in the artifact views, the
+`ServerOfflineHelpModal`) are hidden when `host.isWeb` is true.
+
+### Web entry layout
+
+```
+src/renderer/
+  index.html              # Electron entry (loads main.tsx)
+  index-web.html          # Web entry (loads web-main.tsx)
+  main.tsx                # Electron entry: App.tsx → CoworkApp (with onboarding gates)
+  web-main.tsx            # Web entry: cowork SPA directly (no onboarding gates)
+  platform/host.ts        # Shell abstraction (the only sanctioned bridge surface)
+  cowork/                 # The shared SPA — never imports window.antontron
+```
+
+`vite.config.ts` branches on `BUILD_TARGET=web`: when set, `rollupOptions.input`
+points at `index-web.html` and `outDir` becomes `dist/renderer-web/`. When
+unset (the Electron path), behavior is byte-identical to before.
+
+---
+
 ## Architecture
 
 ```

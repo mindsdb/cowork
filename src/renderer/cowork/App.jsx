@@ -21,6 +21,7 @@ import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
+import { host } from '../platform/host';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -658,7 +659,11 @@ function AppCore() {
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedModel, setSelectedModel] = useState(MOCK_DATA.models[0]);
-  const [serverOnline, setServerOnline] = useState(false);
+  // In the hosted web shell the FastAPI process IS the host — there
+  // is no subprocess to start/stop, and the SPA only loads at all if
+  // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
+  // don't block the initial render waiting for a poll that never matters.
+  const [serverOnline, setServerOnline] = useState(host.isWeb);
   const [serverBusy, setServerBusy] = useState(false);
   const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
   const [health, setHealth] = useState({ status: 'offline', anton_available: false, config_ready: false });
@@ -810,12 +815,13 @@ function AppCore() {
   // has returned. While main is mid-start, show the spinner; poll
   // every 600 ms until it resolves.
   useEffect(() => {
+    if (host.isWeb) return; // No server lifecycle to poll in the hosted web shell.
     let cancelled = false;
     let timer = null;
 
     const tick = async () => {
       try {
-        const info = await window.antontron?.serverInfo?.();
+        const info = await host.serverInfo();
         if (cancelled || !info) return;
         if (typeof info.running === 'boolean') setServerOnline(info.running);
         if (info.starting) {
@@ -2113,7 +2119,7 @@ function AppCore() {
           let actuallyRunning = serverOnline;
           let actuallyStarting = false;
           try {
-            const info = await window.antontron?.serverInfo?.();
+            const info = await host.serverInfo();
             if (info) {
               if (typeof info.running === 'boolean') actuallyRunning = info.running;
               if (typeof info.starting === 'boolean') actuallyStarting = info.starting;
@@ -2125,8 +2131,8 @@ function AppCore() {
           setServerBusy(true);
           try {
             const result = goingUp
-              ? await window.antontron?.serverStart?.()
-              : await window.antontron?.serverStop?.();
+              ? await host.serverStart()
+              : await host.serverStop();
             if (result) {
               setServerOnline(!!result.running);
               if (result.running) setTimeout(refreshData, 400);
@@ -2348,6 +2354,7 @@ function AppCore() {
         onPick={handleConnectorPicked}
       />
 
+      {!host.isWeb && (
       <ServerOfflineHelpModal
         open={serverHelpOpen}
         onClose={() => setServerHelpOpen(false)}
@@ -2365,13 +2372,13 @@ function AppCore() {
               setServerBusyKind('stopping');
               setServerBusy(true);
               try {
-                const stopRes = await window.antontron?.serverStop?.();
+                const stopRes = await host.serverStop?.();
                 if (stopRes) setServerOnline(!!stopRes.running);
               } catch {}
             }
             setServerBusyKind('starting');
             setServerBusy(true);
-            const result = await window.antontron?.serverStart?.();
+            const result = await host.serverStart?.();
             if (result) {
               setServerOnline(!!result.running);
               if (result.running) setTimeout(refreshData, 400);
@@ -2381,6 +2388,7 @@ function AppCore() {
           }
         }}
       />
+      )}
 
       <ConfirmModal
         open={pendingDeleteTaskId != null}

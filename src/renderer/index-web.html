@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Web CSP: no file:// or app:// origins (those are Electron-only).
+         connect-src is broadened to https/wss for hosted deployments where
+         the SPA and FastAPI may share an https origin behind a proxy.
+         Tighten per-deployment via reverse-proxy headers if needed. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss: http: https:; frame-src 'self'; child-src 'self'" />
+    <title>Anton</title>
+    <link rel="stylesheet" href="./gravity-field/gravity-field.css" />
+  </head>
+  <body class="gf-theme-dark">
+    <canvas id="gravity-field-bg" class="gravity-field" aria-hidden="true"></canvas>
+    <div id="root"></div>
+    <script src="./gravity-field/gravity-field.js"></script>
+    <script>
+      window.gravityField = window.GravityField.mount(
+        document.getElementById('gravity-field-bg'),
+        { theme: 'dark', trackPointer: false },
+      );
+    </script>
+    <script type="module" src="./web-main.tsx"></script>
+  </body>
+</html>

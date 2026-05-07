@@ -17,6 +17,7 @@ import {
   listProjectFiles,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
+import { host } from '../../../platform/host';
 
 function timeAgo(ts) {
   if (ts == null || ts === '') return '';
@@ -194,7 +195,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
 
   const [previewArt, setPreviewArt] = useState(null);
   const onOpen = async (path) => {
-    try { await window.antontron?.openPath?.(path); } catch {}
+    try { await host.openPath(path); } catch {}
   };
   const onOpenArtifact = (artifact) => {
     const isHtml = (artifact.ext || '').toLowerCase() === '.html'
@@ -218,9 +219,13 @@ export function WorkingFolderLive({ project, isStreaming }) {
             {effectiveProject.name}
           </span>
           <span
-            className="text-[10.5px] text-ink-4 truncate cursor-pointer hover:text-ink-3"
-            title={antonFolder ? `Open ${antonFolder}` : effectiveProject.path}
-            onClick={() => antonFolder && onOpen(antonFolder)}
+            className={
+              host.isWeb
+                ? 'text-[10.5px] text-ink-4 truncate'
+                : 'text-[10.5px] text-ink-4 truncate cursor-pointer hover:text-ink-3'
+            }
+            title={!host.isWeb && antonFolder ? `Open ${antonFolder}` : effectiveProject.path}
+            onClick={host.isWeb ? undefined : () => antonFolder && onOpen(antonFolder)}
           >{effectiveProject.path}</span>
         </div>
       ) : (

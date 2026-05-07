@@ -22,6 +22,7 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, fetchIntegrations, fetchDatasources } from '../../api';
+import { host } from '../../../platform/host';
 
 const BROWSER_OAUTH_START = {
   google_drive: startGoogleDriveAuth,
@@ -200,7 +201,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
       setBusy(true);
       try {
-        const result = await window.antontron?.oauthConnect?.({
+        const result = await host.oauthConnect({
           authUrl: oauthMeta.auth_url,
           tokenUrl: oauthMeta.token_url,
           clientId,

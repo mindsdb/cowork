@@ -38,6 +38,7 @@ import {
   subscribeSelectedMethod,
 } from './formStore';
 import HowToModal from './HowToModal';
+import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
 const FONT_BODY    = 'var(--font-body)';
@@ -607,7 +608,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
             if (hasHowTo) {
               setFormHowToOpen(true);
             } else if (m.help_url) {
-              try { window.antontron?.openExternal?.(m.help_url); }
+              try { host.openExternal(m.help_url); }
               catch { window.open(m.help_url, '_blank', 'noreferrer'); }
             }
           };
@@ -746,7 +747,7 @@ function MethodPicker({ methods, onPick, busy }) {
           if (hasHowTo) {
             setHowToFor(m);
           } else if (m.help_url) {
-            try { window.antontron?.openExternal?.(m.help_url); }
+            try { host.openExternal(m.help_url); }
             catch { window.open(m.help_url, '_blank', 'noreferrer'); }
           }
         };

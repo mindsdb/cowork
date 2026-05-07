@@ -9,6 +9,7 @@ import Ico from '../Icons';
 import { mountArtifactPreview, publishArtifact, unpublishArtifact } from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { Modal } from '../ui/Modal';
+import { host } from '../../../platform/host';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "'Josefin Sans', sans-serif";
@@ -295,7 +296,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       return;
     }
     try {
-      const result = await window.antontron?.openPath?.(actionPath);
+      const result = await host.openPath(actionPath);
       if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
     } catch (e) {
       setErr(e?.message || 'Open failed');
@@ -313,7 +314,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setBusy(true);
     setErr('');
     try {
-      const result = await window.antontron?.trashItem?.(actionPath);
+      const result = await host.trashItem(actionPath);
       if (result && result.ok === false) {
         throw new Error(result.reason || 'Could not move to Trash.');
       }
@@ -327,7 +328,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   };
   const onOpenPublished = async () => {
     if (!publishedUrl) return;
-    try { await window.antontron?.openExternal?.(publishedUrl); } catch {
+    try { await host.openExternal(publishedUrl); } catch {
       window.open(publishedUrl, '_blank', 'noreferrer');
     }
   };
@@ -492,26 +493,31 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           anchorRect={menuRect}
           onClose={() => setMenuRect(null)}
           items={[
-            {
+            // Open in OS / Delete drop out in the hosted web shell —
+            // both depend on the renderer sharing a filesystem with the
+            // server, which is only true in Electron.
+            ...(host.isWeb ? [] : [{
               label: 'Open in OS',
               icon: Ico.externalLink(13),
               disabled: !hasActionPath,
               onClick: onOpenOS,
-            },
+            }]),
             {
               label: publishedUrl ? 'Unpublish' : 'Publish',
               icon: Ico.upload(13),
               disabled: busy || !hasActionPath,
               onClick: publishedUrl ? onUnpublish : onPublish,
             },
-            { divider: true },
-            {
-              label: 'Delete',
-              icon: Ico.trash(13),
-              danger: true,
-              disabled: busy || !hasActionPath,
-              onClick: onTrash,
-            },
+            ...(host.isWeb ? [] : [
+              { divider: true },
+              {
+                label: 'Delete',
+                icon: Ico.trash(13),
+                danger: true,
+                disabled: busy || !hasActionPath,
+                onClick: onTrash,
+              },
+            ]),
           ]}
         />
 

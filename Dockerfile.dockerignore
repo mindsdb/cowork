@@ -1,0 +1,73 @@
+# Companion .dockerignore for cowork/Dockerfile.
+#
+# BuildKit applies <dockerfile-path>.dockerignore as a companion file when
+# present, taking priority over a context-root .dockerignore. Naming this
+# file Dockerfile.dockerignore (matching the sibling Dockerfile) means the
+# rules below apply regardless of where the build context root sits — the
+# cowork/ directory itself (git-mode build) or a parent like antonworld/
+# / mindsdb/ that also contains anton/ (local-mode build).
+#
+# Patterns use **/ globs because the cowork tree may sit at the context
+# root (git mode) or under cowork/ (local mode), and the anton/ sibling
+# (local mode) needs the same hygiene applied to its subtree.
+
+# Build artifacts — produced inside the image.
+**/node_modules/
+**/dist/
+**/out/
+**/release/
+**/build/
+
+# Editor / OS / agent junk.
+**/.DS_Store
+**/Thumbs.db
+**/.vscode/
+**/.idea/
+**/.cursor/
+**/.claude/
+**/*.swp
+
+# Source-control internals — not needed for builds, and shipping .git to
+# a customer leaks commit history. Critical for security review.
+**/.git/
+**/.gitignore
+**/.gitattributes
+**/.github/
+
+# Environment / secrets — never bake into images. The negation keeps the
+# .env.example template available so docs/setup scripts can read it.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+
+# Python caches and local virtualenvs. The local anton/.venv on the host
+# is a macOS-built venv with darwin .so files — useless on Linux and a
+# source of phantom CVE findings if it slips into the image.
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/.pytest-workspace/
+**/scratchpad-venvs/
+**/htmlcov/
+**/.coverage
+**/.coverage.*
+
+# Anton runtime state directory (vault, conversations, settings) — host
+# data that must not be baked in.
+**/.anton/
+
+# Logs.
+**/*.log
+**/logs/
+
+# Documentation drafts and the throwaway port-audit.
+**/docs/web-port-audit.md

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
+import { host } from '../../platform/host';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
@@ -29,7 +30,7 @@ export default function ServerOfflineHelpModal({
     let cancelled = false;
     (async () => {
       try {
-        const data = await window.antontron?.serverDiagnostics?.();
+        const data = await host.serverDiagnostics();
         if (!cancelled) setDiag(data || null);
       } catch {
         if (!cancelled) setDiag(null);
@@ -94,7 +95,7 @@ export default function ServerOfflineHelpModal({
       await onRetry?.();
       // Pull fresh diagnostics after the retry attempt — gives the
       // user immediate feedback on whether the new attempt worked.
-      const data = await window.antontron?.serverDiagnostics?.();
+      const data = await host.serverDiagnostics();
       setDiag(data || null);
     } finally {
       setBusy(false);
