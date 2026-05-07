@@ -34,10 +34,20 @@ GOOGLE_DRIVE_OAUTH_SCOPES = (
     "profile",
     "https://www.googleapis.com/auth/drive",
 )
+GOOGLE_OAUTH_STATE_KEY = "google_drive_oauth"
+
+GOOGLE_CALENDAR_ENGINE = "google_calendar"
+GOOGLE_CALENDAR_OAUTH_SCOPES = (
+    "openid",
+    "email",
+    "profile",
+    "https://www.googleapis.com/auth/calendar",
+)
+GOOGLE_CALENDAR_OAUTH_STATE_KEY = "google_calendar_oauth"
+
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
-GOOGLE_OAUTH_STATE_KEY = "google_drive_oauth"
 
 GOOGLE_DRIVE_BLOCK = dedent(
     """
@@ -89,6 +99,30 @@ GOOGLE_DRIVE_BLOCK = dedent(
     """
 ).strip()
 
+GOOGLE_CALENDAR_BLOCK = dedent(
+    """
+    ## Google Calendar
+
+    ```yaml
+    engine: google_calendar
+    display_name: Google Calendar
+    pip: google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
+    popular: true
+    fields:
+      - { name: access_token, required: false, secret: true, description: "OAuth access token (managed by Anton)" }
+    test_snippet: |
+      import os
+      from google.oauth2.credentials import Credentials
+      from googleapiclient.discovery import build
+
+      creds = Credentials(token=os.environ.get('DS_ACCESS_TOKEN', ''))
+      service = build('calendar', 'v3', credentials=creds, cache_discovery=False)
+      result = service.calendarList().list(maxResults=1).execute()
+      print('ok — calendars:', len(result.get('items', [])))
+    ```
+    """
+).strip()
+
 
 def _replace_managed_block(existing: str, managed_body: str) -> str:
     managed_section = f"{MANAGED_BEGIN}\n\n{managed_body}\n\n{MANAGED_END}\n"
@@ -129,6 +163,8 @@ def ensure_managed_integrations() -> Path:
     managed_blocks: list[str] = []
     if "engine: google_drive" not in base_without_managed:
         managed_blocks.append(GOOGLE_DRIVE_BLOCK)
+    if "engine: google_calendar" not in base_without_managed:
+        managed_blocks.append(GOOGLE_CALENDAR_BLOCK)
 
     managed_body = "\n\n".join(block for block in managed_blocks if block).strip()
     updated = (
@@ -205,7 +241,6 @@ def _clear_google_oauth_pending(**updates: Any) -> dict[str, Any]:
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
-
 def _google_oauth_config() -> dict[str, str | bool]:
     client_id = GOOGLE_CLIENT_ID.strip()
     client_secret = GOOGLE_CLIENT_SECRET.strip()
@@ -218,6 +253,43 @@ def _google_oauth_config() -> dict[str, str | bool]:
         "client_secret": client_secret,
         "error": "" if ready else "Google OAuth credentials are not configured.",
     }
+
+
+def _google_calendar_oauth_config() -> dict[str, str | bool]:
+    return _google_oauth_config()
+
+
+def _google_calendar_oauth_meta() -> dict[str, Any]:
+    state = load_state()
+    utility_state = state.get("utility_state") if isinstance(state, dict) else {}
+    meta = utility_state.get(GOOGLE_CALENDAR_OAUTH_STATE_KEY) if isinstance(utility_state, dict) else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    if not isinstance(meta.get("pending"), dict):
+        meta["pending"] = {}
+    return meta
+
+
+def _write_google_calendar_oauth_meta(**updates: Any) -> dict[str, Any]:
+    def mutate(state: dict[str, Any]) -> dict[str, Any]:
+        utility_state = state.setdefault("utility_state", {})
+        meta = utility_state.get(GOOGLE_CALENDAR_OAUTH_STATE_KEY)
+        if not isinstance(meta, dict):
+            meta = {}
+        meta.update(updates)
+        if not isinstance(meta.get("pending"), dict):
+            meta["pending"] = {}
+        utility_state[GOOGLE_CALENDAR_OAUTH_STATE_KEY] = meta
+        return dict(meta)
+    return update_state(mutate)
+
+
+def _clear_google_calendar_oauth_pending(**updates: Any) -> dict[str, Any]:
+    return _write_google_calendar_oauth_meta(pending={}, **updates)
+
+
+def _google_calendar_redirect_uri() -> str:
+    return f"{_server_origin()}/v1/integrations/google-calendar/oauth/callback"
 
 
 def _pkce_verifier() -> str:
@@ -281,6 +353,57 @@ def _google_drive_oauth_connections(vault) -> list[dict[str, Any]]:
     return connections
 
 
+def _google_calendar_oauth_connections(vault) -> list[dict[str, Any]]:
+    connections = []
+    for item in vault.list_connections():
+        if item.get("engine") != GOOGLE_CALENDAR_ENGINE or not item.get("name"):
+            continue
+        fields = vault.load(GOOGLE_CALENDAR_ENGINE, item["name"]) or {}
+        if fields.get("auth_type") != "oauth":
+            continue
+        display_name = fields.get("account_name", "").strip() or fields.get("account_email", "").strip() or item["name"]
+        subtitle = fields.get("account_email", "").strip() or item["name"]
+        connections.append(
+            {
+                "engine": GOOGLE_CALENDAR_ENGINE,
+                "name": item["name"],
+                "slug": f"{GOOGLE_CALENDAR_ENGINE}-{item['name']}",
+                "label": display_name,
+                "subtitle": subtitle,
+                "connectedVia": "browser_oauth",
+                "createdAt": item.get("created_at", ""),
+            }
+        )
+    return connections
+
+
+def _calendar_integration_item(vault) -> dict[str, Any]:
+    oauth_config = _google_calendar_oauth_config()
+    oauth_meta = _google_calendar_oauth_meta()
+    calendar_connections = _google_calendar_oauth_connections(vault)
+    return {
+        "id": GOOGLE_CALENDAR_ENGINE,
+        "title": "Google Calendar",
+        "engine": GOOGLE_CALENDAR_ENGINE,
+        "status": "connected" if calendar_connections else ("available" if oauth_config["ready"] else "needs_config"),
+        "description": "Connect your Google Calendar account so Anton can read and manage your events.",
+        "setupMode": "browser_oauth",
+        "connections": calendar_connections,
+        "connectionCount": len(calendar_connections),
+        "engineAvailable": True,
+        "oauth": {
+            "ready": oauth_config["ready"],
+            "configError": oauth_config["error"],
+            "pending": bool(oauth_meta.get("pending")),
+            "lastSuccessAt": oauth_meta.get("lastSuccessAt", ""),
+            "lastError": oauth_meta.get("lastError", ""),
+            "lastErrorAt": oauth_meta.get("lastErrorAt", ""),
+            "launchLabel": "Connect Google Calendar",
+            "redirectUri": _google_calendar_redirect_uri(),
+        },
+    }
+
+
 def _integration_item(vault) -> dict[str, Any]:
     oauth_config = _google_oauth_config()
     oauth_meta = _google_oauth_meta()
@@ -324,7 +447,7 @@ async def list_integrations():
         raise HTTPException(status_code=503, detail="Anton integration catalogue is unavailable") from exc
 
     vault = LocalDataVault()
-    return {"items": [_integration_item(vault)]}
+    return {"items": [_integration_item(vault), _calendar_integration_item(vault)]}
 
 
 @router.post("/google-drive/oauth/start")
@@ -577,6 +700,190 @@ async def google_drive_oauth_callback(
     _clear_google_oauth_pending(lastError="", lastErrorAt="", lastSuccessAt=_iso_now())
     return _callback_page(
         "Google Drive connected",
+        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton CoWork.",
+        success=True,
+    )
+
+
+@router.post("/google-calendar/oauth/start")
+async def start_google_calendar_oauth():
+    oauth_config = _google_calendar_oauth_config()
+    if not oauth_config["ready"]:
+        raise HTTPException(status_code=400, detail=str(oauth_config["error"]))
+
+    verifier = _pkce_verifier()
+    challenge = _pkce_challenge(verifier)
+    started_at = _iso_now()
+    state = secrets.token_urlsafe(24)
+    redirect_uri = _google_calendar_redirect_uri()
+
+    _write_google_calendar_oauth_meta(
+        pending={
+            "state": state,
+            "verifier": verifier,
+            "redirectUri": redirect_uri,
+            "startedAt": started_at,
+        },
+        lastError="",
+        lastErrorAt="",
+    )
+
+    auth_url = (
+        f"{GOOGLE_AUTH_ENDPOINT}?"
+        + urlencode(
+            {
+                "client_id": oauth_config["client_id"],
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "access_type": "offline",
+                "include_granted_scopes": "true",
+                "prompt": "consent",
+                "scope": " ".join(GOOGLE_CALENDAR_OAUTH_SCOPES),
+                "state": state,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            }
+        )
+    )
+    return {
+        "status": "ok",
+        "authUrl": auth_url,
+        "redirectUri": redirect_uri,
+        "startedAt": started_at,
+    }
+
+
+@router.get("/google-calendar/oauth/callback")
+async def google_calendar_oauth_callback(
+    code: str = Query(default=""),
+    state: str = Query(default=""),
+    error: str = Query(default=""),
+):
+    oauth_meta = _google_calendar_oauth_meta()
+    pending = oauth_meta.get("pending") or {}
+    if error:
+        _clear_google_calendar_oauth_pending(lastError=f"Google sign-in returned: {error}", lastErrorAt=_iso_now())
+        return _callback_page(
+            "Google Calendar connection was cancelled",
+            "You can return to Anton CoWork and try the connection again whenever you are ready.",
+            success=False,
+        )
+
+    if not pending:
+        return _callback_page(
+            "Google Calendar sign-in expired",
+            "Anton CoWork could not find a pending Google Calendar sign-in request. Start the connection again from Customize.",
+            success=False,
+        )
+
+    pending_state = str(pending.get("state", "")).strip()
+    if not state or state != pending_state:
+        _clear_google_calendar_oauth_pending(lastError="Google sign-in state did not match.", lastErrorAt=_iso_now())
+        return _callback_page(
+            "Google Calendar connection could not be verified",
+            "Anton CoWork rejected the callback because the Google sign-in state did not match.",
+            success=False,
+        )
+
+    if not code:
+        _clear_google_calendar_oauth_pending(lastError="Google sign-in did not return an authorization code.", lastErrorAt=_iso_now())
+        return _callback_page(
+            "Google Calendar connection could not be completed",
+            "Google did not return an authorization code to Anton CoWork.",
+            success=False,
+        )
+
+    oauth_config = _google_calendar_oauth_config()
+    if not oauth_config["ready"]:
+        _clear_google_calendar_oauth_pending(lastError=str(oauth_config["error"]), lastErrorAt=_iso_now())
+        return _callback_page(
+            "Google Calendar connection is not configured",
+            str(oauth_config["error"]),
+            success=False,
+        )
+
+    started_at = str(pending.get("startedAt", "")).strip()
+    if started_at:
+        try:
+            started_dt = datetime.fromisoformat(started_at)
+            if datetime.now(timezone.utc) - started_dt > timedelta(minutes=20):
+                _clear_google_calendar_oauth_pending(lastError="Google sign-in timed out.", lastErrorAt=_iso_now())
+                return _callback_page(
+                    "Google Calendar sign-in expired",
+                    "That Google sign-in request took too long. Start the connection again from Customize.",
+                    success=False,
+                )
+        except ValueError:
+            pass
+
+    try:
+        token_data = _json_request(
+            GOOGLE_TOKEN_ENDPOINT,
+            method="POST",
+            data={
+                "code": code,
+                "client_id": str(oauth_config["client_id"]),
+                "client_secret": str(oauth_config["client_secret"]),
+                "redirect_uri": str(pending.get("redirectUri") or _google_calendar_redirect_uri()),
+                "grant_type": "authorization_code",
+                "code_verifier": str(pending.get("verifier", "")),
+            },
+        )
+        access_token = str(token_data.get("access_token", "")).strip()
+        if not access_token:
+            raise HTTPException(status_code=502, detail="Google OAuth token exchange did not return an access token.")
+
+        userinfo = _json_request(
+            GOOGLE_USERINFO_ENDPOINT,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        account_email = str(userinfo.get("email", "")).strip()
+        account_name = str(userinfo.get("name", "")).strip()
+        connection_name = account_email or "google_calendar"
+        expires_in = int(token_data.get("expires_in", 0) or 0)
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        ).isoformat() if expires_in else ""
+
+        try:
+            from anton.core.datasources.data_vault import LocalDataVault
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+
+        LocalDataVault().save(
+            GOOGLE_CALENDAR_ENGINE,
+            connection_name,
+            {
+                "auth_type": "oauth",
+                "access_token": access_token,
+                "refresh_token": str(token_data.get("refresh_token", "")).strip(),
+                "token_type": str(token_data.get("token_type", "Bearer")).strip(),
+                "scope": str(token_data.get("scope", "")).strip(),
+                "expires_at": expires_at,
+                "client_id": str(oauth_config["client_id"]).strip(),
+                "client_secret": str(oauth_config["client_secret"]).strip(),
+                "account_email": account_email,
+                "account_name": account_name,
+            },
+        )
+    except HTTPException as exc:
+        _clear_google_calendar_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
+        return _callback_page(
+            "Google Calendar connection failed",
+            str(exc.detail),
+            success=False,
+        )
+    except Exception as exc:
+        _clear_google_calendar_oauth_pending(lastError=str(exc), lastErrorAt=_iso_now())
+        return _callback_page(
+            "Google Calendar connection failed",
+            str(exc),
+            success=False,
+        )
+
+    _clear_google_calendar_oauth_pending(lastError="", lastErrorAt="", lastSuccessAt=_iso_now())
+    return _callback_page(
+        "Google Calendar connected",
         f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton CoWork.",
         success=True,
     )

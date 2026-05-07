@@ -537,6 +537,10 @@ export async function startGoogleDriveAuth() {
   return req('/integrations/google-drive/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export async function startGoogleCalendarAuth() {
+  return req('/integrations/google-calendar/oauth/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
 export async function fetchMemory(projectPath) {
   const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';

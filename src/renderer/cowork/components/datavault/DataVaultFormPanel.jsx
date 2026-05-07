@@ -21,7 +21,16 @@ import {
   clearForm, getForm, patchForm, subscribe,
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
-import { saveConnector, startGoogleDriveAuth, fetchIntegrations, fetchDatasources } from '../../api';
+import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, fetchIntegrations, fetchDatasources } from '../../api';
+
+const BROWSER_OAUTH_START = {
+  google_drive: startGoogleDriveAuth,
+  google_calendar: startGoogleCalendarAuth,
+};
+const BROWSER_OAUTH_TITLE = {
+  google_drive: 'Google Drive connected',
+  google_calendar: 'Google Calendar connected',
+};
 import { submitDataVaultForm } from '../../api';
 
 const BROWSER_OAUTH_POLL_MS    = 3000;
@@ -508,10 +517,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           conversationId={conversationId}
           onMethodChange={async (methodId) => {
             if (methodId !== 'browser_oauth_builtin') return;
+            const engine = spec.engine || 'google_drive';
+            const startFn = BROWSER_OAUTH_START[engine] || startGoogleDriveAuth;
+            const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
             setBusy(true);
             setError('');
             try {
-              const result = await startGoogleDriveAuth();
+              const result = await startFn();
               if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
               window.open(result.authUrl, '_blank');
               const startedAt = result.startedAt || '';
@@ -525,7 +537,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     return;
                   }
                   const data = await fetchIntegrations();
-                  const item = (data?.items || []).find((i) => i.id === 'google_drive');
+                  const item = (data?.items || []).find((i) => i.id === engine);
                   const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
                   if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
                     clearInterval(poll);
@@ -534,7 +546,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     patchForm(conversationId, {
                       form_id: spec.form_id,
                       _is_success: true,
-                      title: 'Google Drive connected',
+                      title: successTitle,
                       subtitle: "Saved to Anton's data vault. Anton can now use this connection in tasks.",
                     });
                   }

@@ -9,6 +9,7 @@
   "logo_color": "#1FA463",
   "form": {
     "form_id": "google-drive-connector",
+    "engine": "google_drive",
     "title": "Connect Google Drive",
     "subtitle": "Authorize Anton to read and manage files in your Drive.",
     "logo": "folder",

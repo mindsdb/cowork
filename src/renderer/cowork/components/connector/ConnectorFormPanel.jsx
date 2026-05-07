@@ -10,7 +10,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { DataVaultForm } from '../datavault/DataVaultForm';
-import { saveDatasource, fetchDatasources, startGoogleDriveAuth, fetchIntegrations } from '../../api';
+import { saveDatasource, fetchDatasources, startGoogleDriveAuth, startGoogleCalendarAuth, fetchIntegrations } from '../../api';
+
+const BROWSER_OAUTH_START = {
+  google_drive: startGoogleDriveAuth,
+  google_calendar: startGoogleCalendarAuth,
+};
 
 const BROWSER_OAUTH_POLL_MS      = 3000;
 const BROWSER_OAUTH_TIMEOUT_MS   = 2 * 60 * 1000;
@@ -47,7 +52,7 @@ export default function ConnectorFormPanel({
       }
       try {
         const data = await fetchIntegrations();
-        const item = (data?.items || []).find((i) => i.id === 'google_drive');
+        const item = (data?.items || []).find((i) => i.id === connector.id);
         const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
         if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
           clearInterval(pollRef.current);
@@ -61,7 +66,7 @@ export default function ConnectorFormPanel({
           setSavedSpec({
             ...spec,
             _is_success: true,
-            title: 'Google Drive connected',
+            title: `${connector.label || connector.id} connected`,
             subtitle: "Saved to Anton's data vault. Anton can now use this connection in tasks.",
             actions: [{ id: 'dismiss', label: 'Close', kind: 'cancel' }],
           });
@@ -95,7 +100,8 @@ export default function ConnectorFormPanel({
       setErrorMsg('');
       setBusy(true);
       try {
-        const result = await startGoogleDriveAuth();
+        const startFn = BROWSER_OAUTH_START[connector.id] || startGoogleDriveAuth;
+        const result = await startFn();
         if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
         oauthStartedAt.current = result.startedAt || '';
         window.open(result.authUrl, '_blank');
