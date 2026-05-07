@@ -1459,7 +1459,13 @@ export default function ChatView({
             isStreaming={isStreaming}
           />
         )}
-        {!formActive && <ContextBox project={project} />}
+        {!formActive && (
+          <ContextBox
+            project={project}
+            conversationId={task?.id}
+            refreshKey={task?.messages?.length ?? 0}
+          />
+        )}
       </aside>
 
       {/* keyframes for the streaming cursor */}

@@ -2232,6 +2232,11 @@ function AppCore() {
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onDeleteProject={handleDeleteProject}
+            attachments={composerAttachments}
+            connectors={connectors}
+            onAttachFiles={handleAttachFiles}
+            onAttachConnector={handleAttachConnector}
+            onRemoveAttachment={handleRemoveAttachment}
           />
         )}
 

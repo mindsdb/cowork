@@ -852,12 +852,23 @@ export async function uploadAttachments(files, { projectPath, sessionId } = {}) 
   return res.json();
 }
 
-export async function createSnippetAttachment(payload) {
-  return req('/attachments/snippet', { method: 'POST', body: JSON.stringify(payload) });
+export async function fetchAttachments(sessionId, ids) {
+  if (!sessionId && (!ids || !ids.length)) {
+    return { attachments: [] };
+  }
+  const qs = new URLSearchParams();
+  if (sessionId) qs.set('session_id', sessionId);
+  if (Array.isArray(ids) && ids.length) {
+    for (const id of ids) {
+      if (id) qs.append('ids', id);
+    }
+  }
+  const q = qs.toString();
+  return req(`/attachments${q ? `?${q}` : ''}`);
 }
 
-export async function createUrlAttachment(payload) {
-  return req('/attachments/url', { method: 'POST', body: JSON.stringify(payload) });
+export async function createSnippetAttachment(payload) {
+  return req('/attachments/snippet', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 export async function deleteAttachment(id) {
