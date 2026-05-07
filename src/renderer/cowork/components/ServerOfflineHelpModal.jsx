@@ -273,22 +273,30 @@ export default function ServerOfflineHelpModal({
               fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
             }}
           >Close</button>
-          {state === 'offline' && (
-            <button
-              type="button"
-              onClick={handleRetry}
-              disabled={busy}
-              style={{
-                cursor: busy ? 'progress' : 'pointer',
-                background: 'var(--accent)',
-                border: '1px solid var(--accent)',
-                color: '#fff',
-                padding: '7px 14px', borderRadius: 7,
-                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                opacity: busy ? 0.7 : 1,
-              }}
-            >{busy ? 'Restarting…' : 'Restart backend'}</button>
-          )}
+          {/* Restart is available in every state — even when the
+              backend reports "online" some kinds of corruption (a
+              cached ChatSession pointing at a deleted project dir,
+              etc.) only clear after a full restart. Disabled while
+              starting/stopping so we don't fire concurrent toggles
+              into the main process. */}
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={busy || serverBusy}
+            style={{
+              cursor: (busy || serverBusy) ? 'progress' : 'pointer',
+              background: 'var(--accent)',
+              border: '1px solid var(--accent)',
+              color: '#fff',
+              padding: '7px 14px', borderRadius: 7,
+              fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
+              opacity: (busy || serverBusy) ? 0.7 : 1,
+            }}
+          >
+            {busy
+              ? (state === 'offline' ? 'Starting…' : 'Restarting…')
+              : (state === 'offline' ? 'Start backend' : 'Restart backend')}
+          </button>
         </div>
       </div>
     </div>

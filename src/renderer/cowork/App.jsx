@@ -603,6 +603,51 @@ function AppCore() {
     wasOnlineRef.current = serverOnline;
   }, [serverOnline, refreshData]);
 
+  // One-shot: once the backend has been online at least once during
+  // this app session, the home view should skip the boot
+  // choreography (orb → caret → typewriter). Re-running the intro on
+  // every "new task" click is jarring; the choreography is a "the
+  // app is starting" cue, not a per-navigation flourish.
+  const [bootIntroDone, setBootIntroDone] = useState(false);
+  useEffect(() => {
+    if (serverOnline && !bootIntroDone) setBootIntroDone(true);
+  }, [serverOnline, bootIntroDone]);
+
+  // ── Boot lifecycle decisions ─────────────────────────────────────
+  // Both of these used to live inside HomeView, but the user can
+  // navigate (settings → home → settings) which would re-mount
+  // HomeView and re-fire each. App.jsx is the natural home — these
+  // refs are app-session-level by virtue of being component-scoped
+  // here, not view-scoped.
+
+  // Watchdog — if the local backend never comes online, pop the help
+  // modal so the user has logs / restart available. Once.
+  const bootWatchdogFiredRef = useRef(false);
+  useEffect(() => {
+    if (serverOnline) return undefined;
+    if (bootWatchdogFiredRef.current) return undefined;
+    const t = setTimeout(() => {
+      bootWatchdogFiredRef.current = true;
+      setServerHelpOpen(true);
+    }, 12_000);
+    return () => clearTimeout(t);
+  }, [serverOnline]);
+
+  // Config redirect — server is up but config_ready is explicitly
+  // false → take the user to Settings so they can finish setup.
+  // Tested as `=== false` (not falsy) on purpose: we don't want to
+  // route on initial undefined / pending values, only on a confirmed
+  // negative from the server. Once per session.
+  const bootConfigRedirectFiredRef = useRef(false);
+  useEffect(() => {
+    if (bootConfigRedirectFiredRef.current) return;
+    if (!serverOnline) return;
+    if (health.config_ready === false) {
+      bootConfigRedirectFiredRef.current = true;
+      setRoute('settings');
+    }
+  }, [serverOnline, health.config_ready]);
+
   // Default the new-task project to "general". If the projects list
   // is loaded and it doesn't include "general", create it first. The
   // server provisions general on startup, so this only fires on
@@ -1718,6 +1763,9 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={() => setRoute('settings')}
+            serverOnline={serverOnline}
+            onShowServerHelp={() => setServerHelpOpen(true)}
+            skipIntro={bootIntroDone}
           />
         )}
 
@@ -1884,12 +1932,22 @@ function AppCore() {
         serverBusy={serverBusy}
         serverBusyKind={serverBusyKind}
         onRetry={async () => {
-          // Reuse the toggle path so the busy/online state in App
-          // updates correctly while the start runs. We force "going
-          // up" here since the help icon only renders while offline.
-          setServerBusyKind('starting');
-          setServerBusy(true);
+          // The modal's Restart button is available in every server
+          // state. If the backend is currently online we do a clean
+          // stop → start cycle (which is the workaround for the
+          // "[Errno 2] No such file or directory" bug a stale cached
+          // session can trigger). Offline → just start.
           try {
+            if (serverOnline) {
+              setServerBusyKind('stopping');
+              setServerBusy(true);
+              try {
+                const stopRes = await window.antontron?.serverStop?.();
+                if (stopRes) setServerOnline(!!stopRes.running);
+              } catch {}
+            }
+            setServerBusyKind('starting');
+            setServerBusy(true);
             const result = await window.antontron?.serverStart?.();
             if (result) {
               setServerOnline(!!result.running);

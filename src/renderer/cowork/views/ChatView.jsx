@@ -992,10 +992,14 @@ export default function ChatView({
             generously (~180px) because the composer grows multi-line
             as the user types longer drafts, plus the attachments
             row adds height when files / connectors are attached —
-            tighter values clipped the last reply on long sessions. */}
+            tighter values clipped the last reply on long sessions.
+            `marginBottom: 25` shortens the scroll container so the
+            chat surface ends with a calm gap above the window edge
+            instead of butting flush against it. */}
         <div ref={scrollRef} data-scroll="true" style={{
           minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
           padding: '32px 28px 180px',
+          marginBottom: 25,
           background: 'transparent',
           WebkitAppRegion: 'no-drag',
         }}>

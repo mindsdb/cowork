@@ -216,22 +216,37 @@ def _sanitize_history_for_anthropic(history: list[dict]) -> tuple[list[dict], in
     """Repair a conversation history so the Anthropic API accepts it
     on the next turn.
 
-    Anthropic requires every assistant `tool_use` block to be followed
-    by a user message containing a matching `tool_result` block. When
-    a stream is stopped or errors mid-tool-use, anton may persist the
-    `tool_use` without ever appending the result — and the next call
-    fails with `400 invalid_request_error: tool_use ids were found
-    without tool_result blocks immediately after`.
+    Anthropic enforces TWO matching constraints on tool calls:
+      (1) every assistant `tool_use` must be followed by a user
+          message containing a `tool_result` with the same id, AND
+      (2) every user `tool_result` must be preceded by an assistant
+          message whose `tool_use` carries the matching id.
 
-    This walks the history; for any assistant message with `tool_use`
-    blocks whose ids aren't acknowledged in the next user message,
-    we synthesize matching `tool_result` blocks marked as the call
-    being interrupted by the user. We never delete tool_use entries
-    (that'd lose context the model already committed to producing).
+    Both invariants can break. Anton's auto-retry path on stream
+    failure appends a "SYSTEM: error" user message right after a
+    dangling `tool_use` — violating (1). Anton's history truncation
+    can drop the assistant turn that owned a `tool_use` while
+    keeping the user turn that carried its `tool_result` — violating
+    (2). Either failure surfaces as a 400.
 
-    Returns (fixed_history, repair_count). repair_count > 0 means the
-    caller should write the result back to disk and drop the live
-    session cache so the next turn loads the repaired form.
+    The sanitizer applies two passes:
+      • Pass 1 — scan assistant messages with `tool_use` blocks.
+        For any id NOT acknowledged in the next user message, splice
+        a synthetic `tool_result` block ("interrupted by user — tool
+        call did not complete") into the next user message (or
+        insert a new user message right after).
+      • Pass 2 — scan user messages with `tool_result` blocks. For
+        each block whose `tool_use_id` doesn't match a `tool_use` in
+        the *immediately preceding* assistant message, drop that
+        block. If a user message ends up with no surviving content,
+        drop the message entirely.
+
+    Pass 1 fixes the "tool_use without tool_result" 400.
+    Pass 2 fixes the "tool_result without tool_use" 400.
+
+    Returns (fixed_history, repair_count). repair_count > 0 means
+    the caller should write the result back to disk and drop the
+    live session cache so the next turn loads the repaired form.
     """
     if not isinstance(history, list):
         return history, 0
@@ -304,7 +319,74 @@ def _sanitize_history_for_anthropic(history: list[dict]) -> tuple[list[dict], in
                 "content": synth_blocks,
             })
         i += 1
-    return fixed, repairs
+
+    # ── Pass 2 — strip orphan tool_result blocks ───────────────────
+    #
+    # A `tool_result` block whose `tool_use_id` doesn't match a
+    # `tool_use` in the IMMEDIATELY PRECEDING assistant message
+    # produces:
+    #   400 invalid_request_error: unexpected `tool_use_id` found
+    #   in `tool_result` blocks: <id>. Each `tool_result` block
+    #   must have a corresponding `tool_use` block in the previous
+    #   message.
+    # Most often: a previous truncation pass dropped the assistant
+    # turn that owned the tool_use but left the user turn with the
+    # tool_result intact. We drop the orphan block. If a user message
+    # consisted ONLY of orphan tool_results, it gets removed entirely
+    # — leaving such a message in place would either consecutive-user
+    # or empty-content the API.
+    cleaned: list[dict] = []
+    for idx, msg in enumerate(fixed):
+        if not (isinstance(msg, dict) and msg.get("role") == "user"):
+            cleaned.append(msg)
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            cleaned.append(msg)
+            continue
+        # Find the immediately-preceding assistant message in the
+        # CLEANED list (not `fixed`) so we follow whatever pass 1 did.
+        prev_assistant = None
+        for back in reversed(cleaned):
+            if not isinstance(back, dict):
+                continue
+            if back.get("role") == "assistant":
+                prev_assistant = back
+                break
+            if back.get("role") == "user":
+                # Hit another user before any assistant — no possible
+                # tool_use in scope.
+                break
+        prev_tool_use_ids: set = set()
+        if isinstance(prev_assistant, dict):
+            pc = prev_assistant.get("content")
+            if isinstance(pc, list):
+                prev_tool_use_ids = {
+                    b.get("id") for b in pc
+                    if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id")
+                }
+        survived: list = []
+        dropped_orphans = 0
+        for b in content:
+            if (
+                isinstance(b, dict)
+                and b.get("type") == "tool_result"
+                and b.get("tool_use_id")
+                and b.get("tool_use_id") not in prev_tool_use_ids
+            ):
+                dropped_orphans += 1
+                continue
+            survived.append(b)
+        if dropped_orphans:
+            repairs += dropped_orphans
+            if not survived:
+                # Drop the now-empty user message entirely.
+                continue
+            cleaned.append({**msg, "content": survived})
+        else:
+            cleaned.append(msg)
+
+    return cleaned, repairs
 
 
 def _write_history(path: Path, history: list[dict]) -> bool:
@@ -873,19 +955,72 @@ def _evict_oldest() -> None:
         _live.pop(oldest, None)
 
 
+def _evict_session(conversation_id: str) -> None:
+    """Drop a single cached session. Used when staleness is detected
+    so the next turn rebuilds against current paths / settings."""
+    _live.pop(conversation_id, None)
+
+
+def _session_base_is_stale(entry: dict) -> bool:
+    """Return True when the cached session was built against a base
+    directory that no longer exists or now resolves elsewhere.
+
+    Common trigger: the user deletes a project on disk while a stale
+    conversation in that project is still cached. The session captured
+    `output_dir` / `context_dir` / `episodes_dir` paths under the now-
+    missing project dir; every subsequent turn raises ENOENT trying
+    to write history / append context. The user-visible symptom is
+    `[Errno 2] No such file or directory`, and a server restart fixes
+    it because the cache is gone after restart.
+
+    We compare the snapshotted project base path against what the
+    project name resolves to NOW. Mismatch (or the snapshotted dir
+    disappearing) means rebuild."""
+    snapped_base = entry.get("base")
+    if not snapped_base:
+        # Older cache entries without a base recorded — treat as
+        # fresh; the upcoming turn will either succeed or trip
+        # the runtime FileNotFoundError handler.
+        return False
+    try:
+        # _project_base never raises — it falls back to active project
+        # if the named one is missing. So if the snapshotted base no
+        # longer exists OR _project_base would now resolve elsewhere,
+        # we know the cache is pointing at a stale directory.
+        current = _project_base(entry.get("project"))
+    except Exception:
+        return True
+    snapped_path = Path(snapped_base)
+    if not snapped_path.exists():
+        return True
+    if Path(current).resolve() != snapped_path.resolve():
+        return True
+    return False
+
+
 async def _resolve_session(
     conversation_id: str,
     project: Optional[str],
     model: Optional[str],
 ):
-    if conversation_id in _live:
-        return _live[conversation_id]["session"]
+    entry = _live.get(conversation_id)
+    if entry is not None:
+        if _session_base_is_stale(entry):
+            logger.info(
+                "Conversation %s session was built against a stale base path; "
+                "rebuilding so the new turn doesn't ENOENT.",
+                conversation_id,
+            )
+            _evict_session(conversation_id)
+        else:
+            return entry["session"]
 
     if len(_live) >= MAX_CONVERSATIONS:
         _evict_oldest()
 
+    base = _project_base(project)
     session = await _build_chat_session(conversation_id, project, model)
-    _live[conversation_id] = {"session": session, "project": project}
+    _live[conversation_id] = {"session": session, "project": project, "base": str(base)}
     return session
 
 
@@ -945,13 +1080,115 @@ async def chat_stream(
 
     session = await _resolve_session(cid, project, model)
 
+    def _is_tool_use_error(exc: Exception) -> bool:
+        """Detect either of Anthropic's two tool-pairing 400s:
+
+          • "tool_use ids were found without tool_result blocks
+             immediately after"  (dangling tool_use)
+          • "unexpected tool_use_id found in tool_result blocks …
+             Each tool_result block must have a corresponding
+             tool_use block in the previous message"  (orphan
+             tool_result)
+
+        Both heal via `_sanitize_history_for_anthropic` (pass 1
+        synthesises tool_results, pass 2 strips orphans). String
+        match because the error reaches us wrapped inside one of
+        several layers (anton's auto-retry fallback path, a generic
+        400, the SDK's own exception type).
+        """
+        s = str(exc)
+        if "tool_use" not in s and "tool_use_id" not in s and "tool_result" not in s:
+            return False
+        return (
+            "tool_result" in s
+            or "without `tool_result`" in s
+            or "ids were found" in s
+            or "unexpected `tool_use_id`" in s
+            or "unexpected tool_use_id" in s
+            or "corresponding `tool_use`" in s
+            or "corresponding tool_use" in s
+        )
+
+    async def _drain_one_attempt(active_session, prompt):
+        """One pass through anton's turn_stream — yields events,
+        re-raises the underlying exception so the caller can decide
+        whether to retry. Kept inside chat_stream so it captures
+        `cid` / `project` from the closure for the retry path.
+        """
+        async for event in active_session.turn_stream(prompt):
+            yield event
+
     async def _stream() -> AsyncGenerator:
+        nonlocal session
+        retried = False
         try:
-            async for event in session.turn_stream(user_input):
-                yield event
-        except Exception as exc:
-            logger.exception("Conversation %s failed", cid)
-            raise AntonRuntimeError(_safe_error(exc)) from exc
+            try:
+                async for event in _drain_one_attempt(session, user_input):
+                    yield event
+            except FileNotFoundError as exc:
+                # Cached session pointed at a path that no longer exists
+                # (project deleted, .anton/ wiped, etc.). Evict so the
+                # next turn rebuilds against current paths.
+                logger.warning(
+                    "Conversation %s hit ENOENT mid-turn; evicting cached "
+                    "session so the next attempt rebuilds. (%s)", cid, exc,
+                )
+                _evict_session(cid)
+                raise AntonRuntimeError(
+                    "A file referenced by this conversation went missing "
+                    "(likely the project directory was moved or deleted). "
+                    "Try sending the message again — it will recover automatically."
+                ) from exc
+            except Exception as exc:
+                # Recovery for the classic Anthropic
+                # "tool_use ids were found without tool_result blocks"
+                # 400. By the time we land here, anton's own auto-retry
+                # has exhausted itself — its retry path appends a
+                # "SYSTEM error" user message that DOESN'T acknowledge
+                # the dangling tool_use, so subsequent retries fail with
+                # the same 400.
+                #
+                # What heals it: our `_sanitize_history_for_anthropic`
+                # synthesises matching `tool_result` blocks for every
+                # unpaired `tool_use`. After running that, evicting the
+                # cached session forces a fresh load from the now-clean
+                # disk history, and a single restart of turn_stream
+                # almost always succeeds.
+                #
+                # This only fires once per turn (`retried` guard) so a
+                # genuinely broken request can't loop forever.
+                if not retried and _is_tool_use_error(exc):
+                    logger.warning(
+                        "Conversation %s failed with tool_use/tool_result "
+                        "mismatch — repairing history and retrying once.",
+                        cid,
+                    )
+                    try:
+                        repair_history_if_needed(project, cid)
+                    except Exception:
+                        logger.debug("Repair before retry failed", exc_info=True)
+                    _evict_session(cid)
+                    retried = True
+                    # Re-resolve a fresh session against the repaired
+                    # history and replay the same user input.
+                    session = await _resolve_session(cid, project, model)
+                    try:
+                        async for event in _drain_one_attempt(session, user_input):
+                            yield event
+                    except Exception as retry_exc:
+                        logger.exception(
+                            "Conversation %s retry after history repair also failed",
+                            cid,
+                        )
+                        raise AntonRuntimeError(_safe_error(retry_exc)) from retry_exc
+                else:
+                    logger.exception("Conversation %s failed", cid)
+                    # Defensive: some libraries wrap ENOENT inside a
+                    # different exception class but keep the substring
+                    # in str(exc). Treat as stale-path too.
+                    if "Errno 2" in str(exc) or "No such file or directory" in str(exc):
+                        _evict_session(cid)
+                    raise AntonRuntimeError(_safe_error(exc)) from exc
         finally:
             try:
                 _update_meta_after_turn(project, cid, session.history)

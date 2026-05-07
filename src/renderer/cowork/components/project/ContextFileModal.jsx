@@ -143,7 +143,12 @@ export default function ContextFileModal({
         onMouseDown={(e) => e.stopPropagation()}
         style={{
           width: 'min(720px, 92vw)',
-          maxHeight: 'min(720px, 88vh)',
+          // FIXED height — not maxHeight. Toggling between view and
+          // edit must feel like the same modal, just with the body
+          // swapped, so the container size has to stay constant. The
+          // textarea + preview inside both `flex: 1` to fill this
+          // height identically (no jump-on-cancel).
+          height: 'min(720px, 88vh)',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
           borderRadius: 14,
@@ -202,9 +207,14 @@ export default function ContextFileModal({
           </div>
         </div>
 
+        {/* Body is a flex column so the textarea / pre below can both
+            `flex: 1` and fill the same vertical space identically.
+            The body itself doesn't scroll — content scrolls inside
+            the textarea or the pre. */}
         <div style={{
-          flex: 1, minHeight: 0, overflowY: 'auto',
+          flex: 1, minHeight: 0,
           padding: '16px 18px',
+          display: 'flex', flexDirection: 'column', gap: 10,
         }}>
           {loading && (
             <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>Loading…</div>
@@ -214,7 +224,8 @@ export default function ContextFileModal({
               padding: '10px 12px', borderRadius: 7,
               background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
               border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-              color: 'var(--danger)', fontSize: 13, marginBottom: 10,
+              color: 'var(--danger)', fontSize: 13,
+              flexShrink: 0,
             }}>{error}</div>
           )}
           {!loading && (editing ? (
@@ -228,19 +239,24 @@ export default function ContextFileModal({
               spellCheck={false}
               disabled={busy}
               style={{
-                width: '100%', minHeight: 320, maxHeight: '60vh',
+                flex: 1, minHeight: 0,
+                width: '100%',
                 padding: '12px 14px', borderRadius: 8,
                 background: 'var(--surface-2)',
                 border: '1px solid var(--line)',
                 color: 'var(--ink)',
                 fontFamily: FONT_MONO, fontSize: 13, lineHeight: 1.55,
                 outline: 'none',
-                resize: 'vertical',
+                // No vertical resize handle — modal is fixed-height,
+                // dragging would create a "is this the same modal?"
+                // moment we just designed away.
+                resize: 'none',
                 boxSizing: 'border-box',
               }}
             />
           ) : (
             <pre style={{
+              flex: 1, minHeight: 0,
               margin: 0,
               padding: '14px 16px',
               background: 'var(--surface-2)',
@@ -250,7 +266,7 @@ export default function ContextFileModal({
               color: 'var(--ink-2)',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
-              minHeight: 120,
+              overflowY: 'auto',
             }}>{content || (isAnton
               ? '(no instructions yet — click Edit to add some)'
               : '(empty file)')}</pre>
