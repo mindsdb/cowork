@@ -382,6 +382,11 @@ const enc = encodeURIComponent;
 /** Relative path from project root for LLM instructions (projects file API). */
 export const ANTON_PROJECT_INSTRUCTIONS_PATH = '.context/anton.md';
 
+export async function listProjectFiles(projectName) {
+  if (!projectName) return { files: [] };
+  return req(`/projects/${enc(projectName)}/files`);
+}
+
 export async function readProjectFile(projectName, path) {
   // `path` may have slashes — encode each segment, not the whole
   // string (encodeURIComponent('a/b') → 'a%2Fb' which the FastAPI
