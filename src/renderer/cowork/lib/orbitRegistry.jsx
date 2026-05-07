@@ -1,12 +1,11 @@
-// Single OrbitMorph that follows the active "slot" across the chat.
+// Single OrbitMorph anchored to one registered "slot" (ChatView uses
+// the streaming ANTON header only). Slots register via useOrbitSlot;
+// OrbitProvider reads the active slot id + streamState and positions
+// the morph in canvas coordinates.
 //
-// Slots are mount points (the ANTON header, each step row, the body
-// caret). Each one registers a ref + kind via useOrbitSlot. The
-// ChatView decides which slot id is active right now (from the live
-// streamState) and the provider renders one positioned OrbitMorph
-// whose coords are read from the active slot's bounding rect.
-//
-// Movement is a CSS transition on top/left; recomputed on:
+// Position (top/left) snaps on every layout/scroll tick — no transition,
+// or the orb would lag behind the slot while scrolling. Opacity/scale
+// still ease. Recomputed on:
 //   - slot id change
 //   - registered slot ref change (mount/unmount)
 //   - window resize
@@ -147,11 +146,7 @@ export function OrbitProvider({
         pointerEvents: 'none',
         opacity: pos.visible ? 1 : 0,
         transform: pos.visible ? 'scale(1)' : 'scale(0.6)',
-        transition:
-          'top 380ms cubic-bezier(.32,.72,0,1), ' +
-          'left 380ms cubic-bezier(.32,.72,0,1), ' +
-          'opacity 220ms ease, ' +
-          'transform 220ms ease',
+        transition: 'opacity 220ms ease, transform 220ms ease',
         zIndex: 6,
       }}
     >

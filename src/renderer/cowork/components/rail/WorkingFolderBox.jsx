@@ -7,7 +7,6 @@ import { WorkingFolderLive } from './WorkingFolderLive';
 export function WorkingFolderBox({
   project,
   isStreaming = false,
-  streamStartedAt = null,
   defaultOpen = true,
   maxBodyHeight = 320,
 }) {
@@ -16,7 +15,6 @@ export function WorkingFolderBox({
       <WorkingFolderLive
         project={project}
         isStreaming={isStreaming}
-        streamStartedAt={streamStartedAt}
       />
     </RailCard>
   );

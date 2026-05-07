@@ -20,6 +20,10 @@ on:
         required: true
       SSL_TOTP_SECRET:
         required: true
+      GOOGLE_CLIENT_ID:
+        required: true
+      GOOGLE_CLIENT_SECRET:
+        required: true
 
 jobs:
   build:
@@ -51,6 +55,21 @@ jobs:
 
       - name: Rebuild native modules for Electron
         run: npx electron-rebuild -f -w node-pty
+
+      - name: Inject Google OAuth credentials
+        shell: bash
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          python -c "
+          import os, re
+          path = 'server/routes/integrations.py'
+          content = open(path).read()
+          content = re.sub(r'os\.environ\.get\(\"GOOGLE_CLIENT_ID\",\s*\"\"\)', repr(os.environ['GOOGLE_CLIENT_ID']), content)
+          content = re.sub(r'os\.environ\.get\(\"GOOGLE_CLIENT_SECRET\",\s*\"\"\)', repr(os.environ['GOOGLE_CLIENT_SECRET']), content)
+          open(path, 'w').write(content)
+          "
 
       - name: Build Windows installer (unsigned)
         run: npm run dist:win

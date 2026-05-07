@@ -130,31 +130,65 @@ def _serialise_schedule(request: ScheduleRequest) -> dict:
     }
 
 
-async def _run_schedule(schedule: dict, manual: bool = False) -> dict:
+# Cap how many run records we keep per schedule. Old records fall
+# off the front, newest stay at the end. 500 covers a year of daily
+# runs or a month of hourly — plenty for the in-app health view, and
+# keeps state.json small enough to round-trip cheaply.
+_MAX_RUNS_PER_SCHEDULE = 500
+
+
+def _append_run_record(state: dict, schedule_id: str, record: dict) -> None:
+    runs_by_id = state.setdefault("schedule_runs", {})
+    if not isinstance(runs_by_id, dict):
+        runs_by_id = {}
+        state["schedule_runs"] = runs_by_id
+    bucket = runs_by_id.setdefault(schedule_id, [])
+    if not isinstance(bucket, list):
+        bucket = []
+        runs_by_id[schedule_id] = bucket
+    bucket.append(record)
+    if len(bucket) > _MAX_RUNS_PER_SCHEDULE:
+        del bucket[: len(bucket) - _MAX_RUNS_PER_SCHEDULE]
+
+
+async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | None = None) -> dict:
+    """Execute one run of a scheduled task.
+
+    Side effects on the schedule itself: updates `lastRunAt`,
+    `lastResultSessionId`, `lastError`, `updatedAt`. For non-manual
+    runs the cadence advances `nextRunAt`.
+
+    Side effects on state: when `state` is provided, appends a run
+    record to `state["schedule_runs"][<schedule_id>]`. The caller is
+    responsible for save_state() afterward so writes happen once.
+    """
     from anton.core.llm.provider import StreamTextDelta
 
     title = schedule.get("title") or _task_title(schedule.get("prompt", "Scheduled task"))
+    started_at_iso = utc_now_iso()
+    started_at_dt  = datetime.now(timezone.utc)
     task = {
         "title": title,
         "summary": "Scheduled Anton task",
         "project": schedule.get("project"),
         "model": schedule.get("model"),
         "status": "running",
-        "createdAt": utc_now_iso(),
-        "updatedAt": utc_now_iso(),
+        "createdAt": started_at_iso,
+        "updatedAt": started_at_iso,
         "scheduledId": schedule.get("id"),
         "attachments": [],
         "messages": [
             {
                 "role": "user",
                 "content": schedule.get("prompt", ""),
-                "createdAt": utc_now_iso(),
+                "createdAt": started_at_iso,
                 "attachments": [],
             }
         ],
     }
 
     conversation_id: str | None = None
+    error_message: str | None = None
     try:
         event_stream, conversation_id = await conversation_manager.chat_stream(
             schedule.get("prompt", ""),
@@ -175,17 +209,37 @@ async def _run_schedule(schedule: dict, manual: bool = False) -> dict:
         if conversation_id is None:
             conversation_id = f"sched_{uuid.uuid4().hex[:12]}"
             task["id"] = conversation_id
+        error_message = str(exc)
         task["status"] = "error"
-        task["error"] = str(exc)
+        task["error"] = error_message
         task["updatedAt"] = utc_now_iso()
-        schedule["lastError"] = str(exc)
+        schedule["lastError"] = error_message
 
-    schedule["lastRunAt"] = utc_now_iso()
+    finished_at_iso = utc_now_iso()
+    finished_at_dt  = datetime.now(timezone.utc)
+    schedule["lastRunAt"] = finished_at_iso
     schedule["lastResultSessionId"] = conversation_id
     schedule["catchupPending"] = False
     if not manual:
         _advance_schedule(schedule)
-    schedule["updatedAt"] = utc_now_iso()
+    schedule["updatedAt"] = finished_at_iso
+
+    # Persist the run record alongside the schedule update so the
+    # detail page can graph health over time, and individual runs are
+    # navigable from the runs list.
+    if state is not None and schedule.get("id"):
+        _append_run_record(state, schedule["id"], {
+            "id": f"run_{uuid.uuid4().hex[:14]}",
+            "scheduleId": schedule["id"],
+            "startedAt": started_at_iso,
+            "finishedAt": finished_at_iso,
+            "durationMs": int((finished_at_dt - started_at_dt).total_seconds() * 1000),
+            "status": "error" if error_message else "success",
+            "error": error_message,
+            "sessionId": conversation_id,
+            "manual": bool(manual),
+        })
+
     return {"schedule": schedule, "session": task}
 
 
@@ -201,7 +255,7 @@ async def _scheduler_loop() -> None:
             next_run = _parse_datetime(schedule.get("nextRunAt"))
             if not next_run or next_run > now:
                 continue
-            await _run_schedule(schedule, manual=False)
+            await _run_schedule(schedule, manual=False, state=state)
             changed = True
         if changed:
             save_state(state)
@@ -295,6 +349,31 @@ async def run_schedule_now(schedule_id: str):
     schedule = next((item for item in state.get("schedules", []) if item.get("id") == schedule_id), None)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found.")
-    result = await _run_schedule(schedule, manual=True)
+    result = await _run_schedule(schedule, manual=True, state=state)
     save_state(state)
     return result
+
+
+@router.get("/{schedule_id}/runs")
+def list_schedule_runs(schedule_id: str, limit: int = 100):
+    """Return the schedule's run history, newest first.
+
+    Each record:
+      { id, scheduleId, startedAt, finishedAt, durationMs,
+        status: 'success'|'error', error, sessionId, manual }
+
+    The history is capped per-schedule (see _MAX_RUNS_PER_SCHEDULE).
+    The optional `limit` query param caps the response further; default
+    100 is enough to power the detail page's recent-runs list and the
+    7/30-day health chart without paging.
+    """
+    state = load_state()
+    schedule = next((s for s in state.get("schedules", []) if s.get("id") == schedule_id), None)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found.")
+    bucket = state.get("schedule_runs", {}).get(schedule_id, []) or []
+    # Newest first — append-order is oldest→newest, so reverse and slice.
+    runs = list(reversed(bucket))
+    if limit and limit > 0:
+        runs = runs[: int(limit)]
+    return {"schedule_id": schedule_id, "runs": runs}

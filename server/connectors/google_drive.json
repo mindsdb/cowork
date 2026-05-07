@@ -15,10 +15,17 @@
     "logo_color": "#1FA463",
     "methods": [
       {
+        "id": "browser_oauth_builtin",
+        "label": "In-Browser Connect",
+        "description": "Opens Google sign-in in your browser. No credentials required — just click Connect.",
+        "recommended": true,
+        "fields": []
+      },
+      {
         "id": "oauth",
         "label": "Sign in with Google",
         "description": "OAuth 2.0 — a browser pops open for you to grant Anton scoped access to your Drive. No passwords stored, revocable from your Google Account at any time. Currently requires you to bring your own Google Cloud OAuth client (steps below); we'll switch to a hosted client in a future release.",
-        "recommended": true,
+        "recommended": false,
         "submit_action": "oauth_launch",
         "oauth": {
           "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",

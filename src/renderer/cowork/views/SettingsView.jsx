@@ -117,9 +117,9 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   );
 }
 
-function Segmented({ value, onChange, options }) {
+function Segmented({ value, onChange, options, style }) {
   return (
-    <div className="segmented">
+    <div className="segmented" style={style}>
       {options.map((o) => (
         <button
           key={o.value}
@@ -305,6 +305,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   value={inferProviderPreset(settings)}
                   onChange={(v) => applyProviderPreset(v, settings, setSetting)}
                   options={PROVIDER_PRESETS}
+                  style={{ display: 'flex', flexWrap: 'wrap', width: '100%' }}
                 />
               </Section>
               <Section title="Planning model" subtitle="Used for reasoning, orchestration, and responses.">

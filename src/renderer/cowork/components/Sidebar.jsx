@@ -143,6 +143,9 @@ export default function Sidebar({
   tasks,
   pins = [],
   scheduledCount = 0,
+  projectsCount = 0,
+  artifactsCount = 0,
+  connectorsCount = 0,
   activeRoute,
   activeTaskId,
   serverOnline,
@@ -303,15 +306,24 @@ export default function Sidebar({
 
         {/* Primary nav */}
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <NavItem icon={Ico.folder(15)}  label="Projects"      onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'} />
+          <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={projectsCount  || null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={scheduledCount || null} />
-          <NavItem icon={Ico.sparkle(15)} label="Live artifacts" onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} />
           <NavItem icon={Ico.chats(15)}   label="Dispatch"      onClick={() => onNavigate('dispatch')}  active={activeRoute === 'dispatch'} />
+          <NavItem icon={Ico.sparkle(15)} label="Live artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={artifactsCount || null} />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in
-              a Projects-style grid. */}
-          <NavItem icon={Ico.link(15)}    label="Connect Apps and Data" onClick={() => onNavigate('customize')} active={activeRoute === 'customize'} />
+              a Projects-style grid.
+              Label flips to "Connected Apps" once at least one app /
+              data source is connected; the badge then reads as a
+              live "you have N connections" indicator. */}
+          <NavItem
+            icon={Ico.link(15)}
+            label={connectorsCount > 0 ? 'Connected Apps' : 'Connect Apps and Data'}
+            onClick={() => onNavigate('customize')}
+            active={activeRoute === 'customize'}
+            badge={connectorsCount || null}
+          />
         </div>
 
         {/* Anton group — visually grouped panel for the brain-style nav */}

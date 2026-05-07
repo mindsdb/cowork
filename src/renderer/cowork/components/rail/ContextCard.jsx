@@ -1,12 +1,19 @@
-// Context card body — currently surfaces just memories (Project +
-// Global). Click any memory row to open the rendered markdown in a
-// modal. Skills are intentionally skipped for now per current scope.
+// Context card body — surfaces memories (Project + Global) AND
+// files under `.context/` (anton.md + uploads). Listed via the same
+// GET /projects/{name}/files as Working folder, but only `.context/`
+// rows appear here; everything else lives in Working folder only.
 
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
-import { fetchMemory } from '../../api';
+import {
+  fetchMemory,
+  isUnderContextDir,
+  listProjectFiles,
+  ANTON_PROJECT_INSTRUCTIONS_PATH,
+} from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import ContextFileModal from '../project/ContextFileModal';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -98,9 +105,47 @@ function MemoryModal({ open, onClose, entry }) {
   );
 }
 
+// Row for a project context file (anton.md or any uploaded file).
+// Same visual rhythm as MemoryRow but distinguishes the always-
+// present anton.md with a subtle "Project instructions" label.
+function ContextFileRow({ file, onOpen }) {
+  const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
+  const isEmpty = !file.size || file.synthetic === true;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={file.path}
+      className={clsx(
+        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
+        'cursor-pointer transition-colors hover:bg-surface-2',
+        'border-0 bg-transparent w-full'
+      )}
+      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
+    >
+      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-[12.5px] text-ink">
+          {isAnton ? 'anton.md' : file.path}
+        </span>
+        <span className="mt-0.5 block truncate text-[11px] text-ink-4">
+          {isAnton
+            ? (isEmpty ? 'Empty — click to add instructions' : 'Project instructions')
+            : (isEmpty ? 'Empty file' : `${Math.ceil((file.size || 0) / 1024)} KB`)}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export function ContextCard({ project }) {
   const [sections, setSections] = useState([]);
+  const [projectFiles, setProjectFiles] = useState([]);
   const [openEntry, setOpenEntry] = useState(null);
+  // Project-file editor is a separate modal because the shape (view
+  // + edit + save + delete) is different from the read-only memory
+  // viewer.
+  const [openFile, setOpenFile] = useState(null);
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
@@ -110,6 +155,28 @@ export function ContextCard({ project }) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [project?.path]);
+
+  const reloadFiles = () => {
+    if (!project?.name) { setProjectFiles([]); return; }
+    listProjectFiles(project.name)
+      .then((data) => {
+        const raw = Array.isArray(data?.files) ? data.files : [];
+        setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
+      })
+      .catch(() => setProjectFiles([]));
+  };
+  useEffect(() => {
+    let cancelled = false;
+    if (!project?.name) { setProjectFiles([]); return undefined; }
+    listProjectFiles(project.name)
+      .then((data) => {
+        if (cancelled) return;
+        const raw = Array.isArray(data?.files) ? data.files : [];
+        setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
+      })
+      .catch(() => { if (!cancelled) setProjectFiles([]); });
+    return () => { cancelled = true; };
+  }, [project?.name]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {
@@ -127,9 +194,10 @@ export function ContextCard({ project }) {
     }));
   }, [sections]);
 
-  const totalFiles = useMemo(() => ordered.reduce((n, s) => n + s.files.length, 0), [ordered]);
+  const totalMemoryFiles = useMemo(() => ordered.reduce((n, s) => n + s.files.length, 0), [ordered]);
+  const hasProjectFiles = projectFiles.length > 0;
 
-  if (totalFiles === 0) {
+  if (totalMemoryFiles === 0 && !hasProjectFiles) {
     return (
       <p className="text-[12.5px] text-ink-4 px-1 pt-2 pb-1">
         Anton learns as you work — memories will appear here.
@@ -139,6 +207,22 @@ export function ContextCard({ project }) {
 
   return (
     <div className="flex flex-col gap-3 pt-2">
+      {/* `.context/` only — Working folder lists the rest of the project tree. */}
+      {project?.name && hasProjectFiles && (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            Context files
+          </span>
+          {projectFiles.map((f) => (
+            <ContextFileRow
+              key={f.path}
+              file={f}
+              onOpen={() => setOpenFile(f)}
+            />
+          ))}
+        </div>
+      )}
+
       {ordered.map((section) => {
         const max = showAll ? section.files.length : 4;
         const visible = section.files.slice(0, max);
@@ -170,6 +254,14 @@ export function ContextCard({ project }) {
       })}
 
       <MemoryModal open={!!openEntry} entry={openEntry} onClose={() => setOpenEntry(null)} />
+      <ContextFileModal
+        open={!!openFile}
+        projectName={project?.name}
+        filePath={openFile?.path}
+        isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
+        onClose={() => setOpenFile(null)}
+        onChanged={() => reloadFiles()}
+      />
     </div>
   );
 }

@@ -58,14 +58,13 @@ export default function HomeView({
     <div
       style={{
         flex: 1, overflow: 'auto',
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         padding: '0 40px 60px',
         // Transparent — the gravity-field canvas mounted at the body
         // level shows through. The composer + greeting float above.
         background: 'transparent',
       }}
     >
-      <div style={{ flex: '0 0 auto', height: '14vh', minHeight: 60 }} />
       <h1 style={{
         fontFamily: 'var(--font-display)',
         fontSize: 36, fontWeight: 700, letterSpacing: '-0.02em',

@@ -12,6 +12,7 @@ import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
+import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import DispatchView from './views/DispatchView';
 import CustomizeView from './views/CustomizeView';
@@ -70,8 +71,8 @@ function describeConnectFormState(state) {
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
-         uploadAttachments, createSnippetAttachment, createUrlAttachment, fetchProjectFiles,
-         attachProjectFile, deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
+         uploadAttachments, createSnippetAttachment,
+         deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
@@ -376,6 +377,9 @@ function AppCore() {
   });
 
   const [tasks, setTasks] = useState([]);
+  // IDs of tasks deleted this session. Used to filter them out of
+  // subsequent fetchSessions responses so zombies can't reappear.
+  const deletedTaskIdsRef = useRef(new Set());
   const [projects, setProjects] = useState([]);
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
@@ -526,8 +530,9 @@ function AppCore() {
     }
   }, [theme]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | artifacts | dispatch | customize | settings
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize | settings
   const [activeTaskId, setActiveTaskId] = useState(null);
+  const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedModel, setSelectedModel] = useState(MOCK_DATA.models[0]);
   const [serverOnline, setServerOnline] = useState(false);
@@ -542,7 +547,7 @@ function AppCore() {
       setServerOnline(h.status === 'ok');
     });
     fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -579,7 +584,7 @@ function AppCore() {
     const handler = () => {
       fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
       fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     };
     window.addEventListener('anton:projects-changed', handler);
@@ -716,7 +721,7 @@ function AppCore() {
       recordTaskVisit(task, false).then(() => {
         fetchPins().then((data) => setPins(data.pins || []));
         fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
       }).catch(() => {});
 
@@ -898,26 +903,6 @@ function AppCore() {
   const handleAttachFiles = async (files) => {
     const data = await uploadAttachments(files, { projectPath: attachmentProjectPath, sessionId: attachmentSessionId });
     setComposerAttachments((prev) => [...prev, ...(data.attachments || [])]);
-  };
-
-  const handleAttachUrl = async (url) => {
-    const data = await createUrlAttachment({ url, project_path: attachmentProjectPath, session_id: attachmentSessionId });
-    setComposerAttachments((prev) => [...prev, data.attachment]);
-  };
-
-  const handleAttachSnippet = async ({ title, content }) => {
-    const data = await createSnippetAttachment({ title, content, project_path: attachmentProjectPath, session_id: attachmentSessionId });
-    setComposerAttachments((prev) => [...prev, data.attachment]);
-  };
-
-  const handleBrowseProjectFiles = async (query) => {
-    if (!attachmentProjectPath) return { files: [] };
-    return fetchProjectFiles(attachmentProjectPath, query);
-  };
-
-  const handleAttachProjectFile = async (path) => {
-    const data = await attachProjectFile({ project_path: attachmentProjectPath, path, session_id: attachmentSessionId });
-    setComposerAttachments((prev) => [...prev, data.attachment]);
   };
 
   const handleAttachConnector = async (connector) => {
@@ -1343,8 +1328,14 @@ function AppCore() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleCreateProject = async ({ name }) => {
-    const project = await createProject(name);
+  const handleCreateProject = async ({ name, _alreadyCreated }) => {
+    // The new-project modal does the create + anton.md write +
+    // file uploads in one atomic flow; when it calls back here it
+    // sets `_alreadyCreated` so we skip the duplicate POST and just
+    // refresh the projects list + pin the new one as selected.
+    const project = _alreadyCreated
+      ? { name }
+      : await createProject(name);
     const latest = await fetchProjects();
     if (Array.isArray(latest)) {
       setProjects(latest);
@@ -1379,7 +1370,7 @@ function AppCore() {
     } catch {
       // Reload from server on failure to recover the canonical title.
       const fresh = await fetchSessions();
-      if (Array.isArray(fresh)) setTasks(fresh);
+      if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }
   };
 
@@ -1395,7 +1386,10 @@ function AppCore() {
     if (!taskId) return;
     // eslint-disable-next-line no-console
     console.log('[performDeleteTask] confirmed', taskId);
+    deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // Optimistically remove from pins so the sidebar clears immediately.
+    setPins((prev) => prev.filter((p) => p.id !== taskId));
     if (activeTaskId === taskId) {
       setActiveTaskId(null);
       setRoute('home');
@@ -1408,7 +1402,10 @@ function AppCore() {
       return;
     }
     try {
-      await deleteConversation(taskId);
+      await Promise.all([
+        deleteConversation(taskId),
+        unpinTask(taskId).catch(() => {}), // unpin is a no-op if not pinned
+      ]);
       // eslint-disable-next-line no-console
       console.log('[performDeleteTask] server delete ok');
     } catch (e) {
@@ -1501,7 +1498,7 @@ function AppCore() {
     // Refresh from server to recover the canonical state.
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).catch(() => {});
     fetchSessions().then((data) => {
-      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev));
+      if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     }).catch(() => {});
   };
 
@@ -1525,7 +1522,7 @@ function AppCore() {
     // Refresh sessions so the server's canonical project mapping wins
     // if our optimistic guess was wrong.
     const fresh = await fetchSessions();
-    if (Array.isArray(fresh)) setTasks(fresh);
+    if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
   };
 
   const refreshSchedules = async () => {
@@ -1642,7 +1639,10 @@ function AppCore() {
         tasks={tasks}
         pins={pins}
         scheduledCount={scheduled.length}
-        activeRoute={route === 'task' ? null : route}
+        projectsCount={projects.length}
+        artifactsCount={artifacts.length}
+        connectorsCount={connectors.length}
+        activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
         activeTaskId={activeTaskId}
         serverOnline={serverOnline}
         onNavigate={navigate}
@@ -1798,6 +1798,38 @@ function AppCore() {
             onPause={handlePauseSchedule}
             onResume={handleResumeSchedule}
             onRunNow={handleRunScheduleNow}
+            onOpenSchedule={(task) => {
+              setSelectedScheduleId(task.id);
+              setRoute('schedule-detail');
+            }}
+          />
+        )}
+
+        {route === 'schedule-detail' && (
+          <ScheduleDetailView
+            task={scheduled.find((s) => s.id === selectedScheduleId) || null}
+            projects={projects}
+            models={modelOptions}
+            onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
+            onUpdate={handleUpdateSchedule}
+            onDelete={async (id) => {
+              await handleDeleteSchedule(id);
+              setSelectedScheduleId(null);
+              setRoute('scheduled');
+            }}
+            onPause={handlePauseSchedule}
+            onResume={handleResumeSchedule}
+            onRunNow={handleRunScheduleNow}
+            onOpenRunSession={(sessionId) => {
+              // Best-effort: jump to the conversation if it's in our
+              // task list; otherwise no-op so we don't navigate away
+              // to a blank page.
+              const t = tasks.find((x) => x.id === sessionId);
+              if (t) {
+                setActiveTaskId(t.id);
+                setRoute('task');
+              }
+            }}
           />
         )}
 

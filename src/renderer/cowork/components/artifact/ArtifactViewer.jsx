@@ -9,6 +9,7 @@ import Ico from '../Icons';
 import { mountArtifactPreview, publishArtifact, unpublishArtifact } from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { openPath, openExternal, trashItem } from '../../lib/host';
+import { Modal } from '../ui/Modal';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "'Josefin Sans', sans-serif";
@@ -189,13 +190,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setPublishedUrl(artifact?.publishedUrl || '');
   }, [artifact?.path, artifact?.publishedUrl]);
 
-  // Esc closes.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
   // Mount the artifact when opened. The server registers the parent
   // dir under a token and returns a URL that serves the entry HTML;
@@ -302,29 +297,14 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   };
 
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 80,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      width="min(1080px, 94vw)"
+      height="min(820px, 88vh)"
+      labelledBy="artifact-viewer-title"
     >
-      <div
-        style={{
-          width: 'min(1080px, 94vw)', height: 'min(820px, 88vh)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
         {/* Header */}
         <div style={{
           flex: '0 0 auto',
@@ -336,7 +316,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             {Ico.doc(18)}
           </span>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{
+            <div id="artifact-viewer-title" style={{
               fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15,
               color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -500,7 +480,6 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             ) : null
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

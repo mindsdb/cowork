@@ -14,6 +14,7 @@ import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard } from '../components/project/ProjectCard';
+import NewProjectModal from '../components/project/NewProjectModal';
 import {
   PageHeader,
   FilterRow,
@@ -1003,13 +1004,12 @@ export default function ProjectsView({
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Inline create — the trailing dashed card flips into an input when
-  // creating=true. The header / empty-state CTAs toggle it; the card
-  // also self-toggles when clicked. Replaces the previous
-  // window.prompt flow which Electron renderers can silently block.
+  // Create flow — the "+ New project" button (header, empty-state,
+  // trailing dashed card) opens the NewProjectModal. The modal owns
+  // the full create + anton.md + file-upload pipeline; this view
+  // only needs to know "did a project get created?" to refetch.
   const [creating, setCreating] = useState(false);
   const handleNewProject = () => {
-    if (view !== 'grid') setView('grid'); // ensure the card is visible
     setCreating(true);
   };
   const handleCreateProject = async (name) => {
@@ -1184,11 +1184,39 @@ export default function ProjectsView({
               onRenameCancel={handleRenameCancel}
             />
           ))}
-          <NewProjectCard
-            creating={creating}
-            onCreatingChange={setCreating}
-            onCreate={handleCreateProject}
-          />
+          {/* Trailing dashed "+ New project" card — clicking just
+              opens the modal (no inline-edit mode any more). The
+              modal handles name + instructions + file uploads in a
+              single confirmable surface. */}
+          <button
+            type="button"
+            onClick={handleNewProject}
+            className="proj-new-tile"
+            style={{
+              minHeight: 120, borderRadius: 10,
+              padding: '14px 16px',
+              background: 'transparent',
+              border: '1px dashed var(--line-2)',
+              color: 'var(--ink-3)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 8, cursor: 'pointer',
+              transition: 'border-color .15s ease, color .15s ease',
+              font: 'inherit',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.borderColor = 'var(--accent)';
+              e.currentTarget.style.color = 'var(--accent)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.borderColor = 'var(--line-2)';
+              e.currentTarget.style.color = 'var(--ink-3)';
+            }}
+          >
+            <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
+            <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>
+              New project
+            </span>
+          </button>
         </div>
       ) : (
         <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
@@ -1220,6 +1248,22 @@ export default function ProjectsView({
         onTogglePin={(proj, next) => togglePin(proj.name, next)}
         onReveal={handleReveal}
         onDelete={(proj) => onDeleteProject?.(proj)}
+      />
+
+      {/* "Start a new project" modal — replaces the inline-edit
+          dashed card pattern. Owns name + instructions + file
+          uploads, then notifies the parent so the projects list
+          refetches and the new project appears in the grid. */}
+      <NewProjectModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(result) => {
+          // Reuse the existing parent callback so the App-level
+          // listener refetches projects and updates the active
+          // project pointer. `result.name` is the canonical
+          // sanitised name returned by the server.
+          onCreateProject?.({ name: result?.name, _alreadyCreated: true });
+        }}
       />
     </div>
   );

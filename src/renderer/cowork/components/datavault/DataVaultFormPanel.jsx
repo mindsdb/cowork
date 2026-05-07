@@ -21,8 +21,11 @@ import {
   clearForm, getForm, patchForm, subscribe,
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
-import { saveConnector } from '../../api';
+import { saveConnector, startGoogleDriveAuth, fetchIntegrations, fetchDatasources } from '../../api';
 import { submitDataVaultForm } from '../../api';
+
+const BROWSER_OAUTH_POLL_MS    = 3000;
+const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -498,7 +501,51 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             </button>
           </div>
         )}
-        <DataVaultForm spec={spec} busy={busy} onAction={handleAction} conversationId={conversationId} />
+        <DataVaultForm
+          spec={spec}
+          busy={busy}
+          onAction={handleAction}
+          conversationId={conversationId}
+          onMethodChange={async (methodId) => {
+            if (methodId !== 'browser_oauth_builtin') return;
+            setBusy(true);
+            setError('');
+            try {
+              const result = await startGoogleDriveAuth();
+              if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
+              window.open(result.authUrl, '_blank');
+              const startedAt = result.startedAt || '';
+              const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
+              const poll = setInterval(async () => {
+                try {
+                  if (Date.now() > deadline) {
+                    clearInterval(poll);
+                    setBusy(false);
+                    setError('Sign-in timed out. Please try again.');
+                    return;
+                  }
+                  const data = await fetchIntegrations();
+                  const item = (data?.items || []).find((i) => i.id === 'google_drive');
+                  const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
+                  if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
+                    clearInterval(poll);
+                    setBusy(false);
+                    try { await fetchDatasources(); } catch { /* best effort */ }
+                    patchForm(conversationId, {
+                      form_id: spec.form_id,
+                      _is_success: true,
+                      title: 'Google Drive connected',
+                      subtitle: "Saved to Anton's data vault. Anton can now use this connection in tasks.",
+                    });
+                  }
+                } catch { /* keep polling */ }
+              }, BROWSER_OAUTH_POLL_MS);
+            } catch (e) {
+              setError(e?.message || 'Could not start Google sign-in.');
+              setBusy(false);
+            }
+          }}
+        />
         {error && (
           <div style={{
             marginTop: 10, padding: '8px 10px', borderRadius: 7,

@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
+import { Modal } from '../ui/Modal';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
@@ -239,13 +240,7 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
     return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Esc closes.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
   // Distinct categories present in the loaded list — drives the
   // Filter-by dropdown. Order: explicit CATEGORY_ORDER first, then
@@ -278,33 +273,15 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
     });
   }, [connectors, query, category]);
 
-  if (!open) return null;
-
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 80,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      width="min(720px, 92vw)"
+      maxHeight="min(640px, 86vh)"
+      labelledBy="connector-picker-title"
     >
-      <div
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(720px, 92vw)',
-          height: 'min(640px, 86vh)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          fontFamily: FONT_BODY,
-        }}
-      >
         {/* Header — title row, then search row, then filter/sort row.
             All three live in the chrome above the scrollable grid;
             the grid background (surface-2) provides the visual break. */}
@@ -314,7 +291,7 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
           background: 'var(--surface)',
           flexShrink: 0,
         }}>
-          <h2 style={{
+          <h2 id="connector-picker-title" style={{
             margin: 0,
             fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600,
             letterSpacing: '-0.005em', color: 'var(--ink)',
@@ -488,7 +465,6 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
             ))
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
