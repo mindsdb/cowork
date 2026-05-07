@@ -75,7 +75,8 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
-         deleteProject, cancelScratchpad, fetchConnector } from './api';
+         deleteProject, cancelScratchpad, fetchConnector,
+         fetchSavedConnection, deleteDatasource } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 
 const ACCENT_VARS = {
@@ -954,6 +955,244 @@ function AppCore() {
   const handleStartConnectChat = () => {
     setConnectorPickerOpen(true);
   };
+  // Modify-existing-connection flow: same chat-task + form shape as
+  // handleConnectorPicked, but skips the picker (engine is known)
+  // and pre-fills every field the renderer is allowed to see —
+  // non-secrets verbatim from the vault, secrets as the
+  // `ANTON_VAULT_KEEP` sentinel. Saving via the existing submission
+  // path runs the server-side merge: any field still carrying the
+  // sentinel resolves to its prior on-disk value, so the user only
+  // re-types what they actually want to change.
+  const handleModifyConnection = async (connection) => {
+    if (!connection?.engine) return;
+    // Connector spec + saved record fetched in parallel — both feed
+    // into the injected form. The spec gives us field shape (types,
+    // labels, descriptions, secret flags); the saved record gives
+    // us the values to pre-fill.
+    const [full, savedRaw] = await Promise.all([
+      fetchConnector(connection.engine).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.warn('[connectors] failed to load full spec for modify', e);
+        return null;
+      }),
+      fetchSavedConnection(connection.engine, connection.name).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.warn('[connectors] failed to load saved connection for modify', e);
+        return null;
+      }),
+    ]);
+    const saved = savedRaw || { fields: {}, secureKeys: [] };
+    const savedFields = saved.fields || {};
+
+    const label = full?.label || connection.engine;
+    const tempId = 'tmp-modify-' + Date.now();
+    const hasLiteralForm = !!(full && full.form);
+
+    setTasks((prev) => [{
+      id: tempId,
+      title: `Modify ${connection.name || label}`,
+      subtitle: 'just now',
+      status: hasLiteralForm ? 'idle' : 'active',
+      messages: hasLiteralForm
+        ? [
+            {
+              role: 'assistant',
+              _kind: 'connect_intro',
+              connector: {
+                id: full.id,
+                label,
+                logo: full.form?.logo || full.logo,
+                logo_color: full.form?.logo_color || full.logo_color,
+              },
+              content: `Modify ${connection.name || label}`,
+              // Modify-specific metadata so ChatView can render the
+              // intro card with Cancel + Disconnect actions instead
+              // of the plain "fill out the form" affordance.
+              _modify: true,
+              _engine: connection.engine,
+              _existing_name: connection.name,
+              _client_only: true,
+            },
+            {
+              role: 'assistant',
+              content: `Update the credentials or settings for "${connection.name}" — saving overwrites the existing connection.`,
+              _client_only: true,
+            },
+          ]
+        : [
+            {
+              role: 'assistant',
+              content: `Let's update ${connection.name || label}.`,
+              _client_only: true,
+            },
+          ],
+      projectName: selectedProject?.name || 'general',
+      projectPath: selectedProject?.path || null,
+      model: selectedModel?.id || null,
+      attachments: [],
+    }, ...prev]);
+    setActiveTaskId(tempId);
+    setComposerAttachments([]);
+    setRoute('task');
+
+    if (hasLiteralForm) {
+      // Underscore-prefixed keys in the vault record are metadata
+      // stamps from previous saves (e.g. `_method`, `_connector_id`)
+      // — not user-typed inputs. Read what we need before filtering.
+      const savedMethodId = savedFields._method || null;
+      // Build the value map for actual user fields. Strip the meta
+      // stamps so they never render as form inputs (and never appear
+      // in the "extra fields" enumeration).
+      const valueByName = Object.fromEntries(
+        Object.entries(savedFields).filter(([k]) => !k.startsWith('_'))
+      );
+
+      // Pre-fill helper — applied to either the top-level fields[]
+      // (legacy single-method specs) or to the active method's
+      // fields[] (multi-method specs). The `name` field is
+      // hard-pinned to the existing connection name AND marked
+      // read-only (`_locked: true`) so identity can't drift —
+      // `(engine, name)` is the vault row key.
+      const patchFields = (specFields) => {
+        const patched = (specFields || []).map((f) => {
+          if (!f || !f.name) return f;
+          if (f.name === 'name') {
+            return {
+              ...f,
+              default: connection.name || f.default || '',
+              _locked: true,
+            };
+          }
+          if (f.name in valueByName) {
+            return { ...f, default: valueByName[f.name] };
+          }
+          return f;
+        });
+        // Append any vault-only fields this spec branch doesn't
+        // declare (custom engines / agent-driven flows can save
+        // fields the JSON doesn't mention). They still need to
+        // round-trip on save so the user can clear them.
+        const known = new Set((specFields || []).map((f) => f?.name).filter(Boolean));
+        const extras = Object.keys(valueByName)
+          .filter((k) => !known.has(k))
+          .map((k) => ({
+            name: k,
+            required: false,
+            default: valueByName[k],
+            // Heuristic-driven secret tagging mirrors the server side
+            // so unknown-secret fields render with the sentinel-aware
+            // placeholder. Cheap fallback when no spec exists.
+            secret: (saved.secureKeys || []).includes(k),
+          }));
+        return [...patched, ...extras];
+      };
+
+      const isMultiMethod = Array.isArray(full.form.methods) && full.form.methods.length > 0;
+      let nextSpec;
+      if (isMultiMethod) {
+        // Pick the method to land on. Order of preference:
+        //   1. The method explicitly stamped on the saved record
+        //      (`_method`), if it still exists in the spec.
+        //   2. The first method (so the form opens *somewhere*
+        //      sensible rather than the picker; users can hit
+        //      "Back to options" if they want to switch auth shape).
+        // Either way the picker remains reachable via the
+        // breadcrumb's "← Back to options" — modify just biases the
+        // landing screen toward "edit what you have".
+        const matched = full.form.methods.find((m) => m && m.id === savedMethodId);
+        const target = matched || full.form.methods[0];
+        const targetId = target?.id;
+        const patchedMethods = full.form.methods.map((m) =>
+          m && m.id === targetId
+            ? { ...m, fields: patchFields(m.fields) }
+            : m
+        );
+        nextSpec = {
+          ...full.form,
+          methods: patchedMethods,
+          // `selected_method` is the existing pre-pick mechanism —
+          // DataVaultForm reads it on initial render and skips the
+          // picker entirely.
+          selected_method: targetId,
+          engine: full.form.engine || full.id,
+          _connector_id: full.id,
+          _secure_keys: saved.secureKeys || [],
+          _modify: true,
+          _existing_name: connection.name,
+          logo: full.form.logo || full.logo,
+          logo_color: full.form.logo_color || full.logo_color,
+        };
+      } else {
+        nextSpec = {
+          ...full.form,
+          fields: patchFields(full.form.fields),
+          engine: full.form.engine || full.id,
+          _connector_id: full.id,
+          _secure_keys: saved.secureKeys || [],
+          _modify: true,
+          _existing_name: connection.name,
+          logo: full.form.logo || full.logo,
+          logo_color: full.form.logo_color || full.logo_color,
+        };
+      }
+      setDataVaultForm(tempId, nextSpec);
+      // Cache the spec on the connect_intro message so the bubble
+      // can re-publish it (re-open the panel) if the user closes
+      // the form and clicks the card.
+      setTasks((prev) => prev.map((t) => t.id !== tempId ? t : {
+        ...t,
+        messages: t.messages.map((m) =>
+          m && m._kind === 'connect_intro' ? { ...m, _form_spec: nextSpec } : m
+        ),
+      }));
+    } else {
+      // No registry entry — fall back to the chat-agent flow. Anton
+      // can still walk the user through the change.
+      Promise.resolve().then(() => handleSendFromHome(`Update connection ${connection.name} (${label}).`));
+    }
+  };
+  // Cancel a modify-flow task: drop the synthetic chat task we
+  // just created and route back to the Connect Apps and Data page.
+  // Modify tasks are always tmp- (we never persist them server-
+  // side until the user actually saves), so the local cleanup is
+  // sufficient — no `/conversations` DELETE round-trip.
+  const handleCancelModify = (taskId) => {
+    if (taskId) {
+      deletedTaskIdsRef.current.add(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      if (activeTaskId === taskId) setActiveTaskId(null);
+    }
+    setRoute('customize');
+  };
+  // Disconnect from a modify-flow task: delete the vault entry +
+  // close the task. Confirmation is on the renderer side because
+  // this is destructive and easy to mis-click. After success the
+  // user lands back on the Connect Apps grid where they'd expect
+  // to see the connection gone.
+  const handleDisconnectFromModify = async (taskId, engine, name) => {
+    if (!engine || !name) return;
+    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    try {
+      await deleteDatasource(engine, name);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[connectors] disconnect failed', e);
+      alert(`Could not disconnect: ${e?.message || e}`);
+      return;
+    }
+    if (taskId) {
+      deletedTaskIdsRef.current.add(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      if (activeTaskId === taskId) setActiveTaskId(null);
+    }
+    // Refresh the connectors mirror so the apps page reflects the
+    // removal immediately on landing.
+    try {
+      const fresh = await fetchDatasources();
+      setConnectors(Array.isArray(fresh?.connections) ? fresh.connections : []);
+    } catch { /* best-effort refresh */ }
+    setRoute('customize');
+  };
   // Picker hands us a summary record (id + label + …). The user
   // wants to land in a normal chat task — not a separate modal —
   // so the scratchpad / agent loop is available for any iteration
@@ -1030,7 +1269,7 @@ function AppCore() {
       // OAuth (and any other auth shape) submits through the
       // connector-aware save endpoint instead of the legacy
       // datasources path.
-      setDataVaultForm(tempId, {
+      const connectSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
         // (datavault_agent: "Trying to connect to **<engine>**…",
@@ -1042,7 +1281,17 @@ function AppCore() {
         _connector_id: full.id,
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
-      });
+      };
+      setDataVaultForm(tempId, connectSpec);
+      // Cache the original spec on the connect_intro message so the
+      // bubble can re-publish it to the form store if the user
+      // closes the panel and clicks the card to bring it back.
+      setTasks((prev) => prev.map((t) => t.id !== tempId ? t : {
+        ...t,
+        messages: t.messages.map((m) =>
+          m && m._kind === 'connect_intro' ? { ...m, _form_spec: connectSpec } : m
+        ),
+      }));
     } else {
       // No registry entry — fall back to the chat-agent flow.
       Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
@@ -1947,6 +2196,8 @@ function AppCore() {
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onCancelModify={handleCancelModify}
+            onDisconnectModify={handleDisconnectFromModify}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
               setRoute('projects');
@@ -2001,6 +2252,10 @@ function AppCore() {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
             }}
+            onOpenProject={(p) => {
+              if (p) setSelectedProject(p);
+              setRoute('projects');
+            }}
           />
         )}
 
@@ -2033,7 +2288,17 @@ function AppCore() {
         )}
 
         {route === 'artifacts' && (
-          <ArtifactsView artifacts={artifacts} projects={projects} />
+          <ArtifactsView
+            artifacts={artifacts}
+            projects={projects}
+            onOpenProject={(p) => {
+              // Pin the project so ProjectsView opens directly in detail
+              // (its `selectedProject` effect mirrors that into local
+              // `detailProject` state on mount), then flip the route.
+              if (p) setSelectedProject(p);
+              setRoute('projects');
+            }}
+          />
         )}
 
         {route === 'dispatch' && (
@@ -2045,6 +2310,7 @@ function AppCore() {
             connectors={connectors}
             onOpenSettings={() => setRoute('settings')}
             onConnectNew={handleStartConnectChat}
+            onModifyConnection={handleModifyConnection}
           />
         )}
 

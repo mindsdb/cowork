@@ -49,9 +49,8 @@ function absoluteTime(iso) {
 }
 
 function StatusPill({ task }) {
-  if (task.catchupPending) return <Pill color="amber" label="Catch up" />;
-  if (!task.enabled)       return <Pill color="muted" label="Paused" />;
-  if (task.lastError)      return <Pill color="danger" label="Last failed" />;
+  if (!task.enabled)  return <Pill color="muted" label="Paused" />;
+  if (task.lastError) return <Pill color="danger" label="Last failed" />;
   return <Pill color="success" label="Active" />;
 }
 
@@ -117,12 +116,24 @@ function CadencePill({ cadence }) {
 
 export default function ScheduleCard({
   task, busy = false,
+  // `projects` + `onOpenProject` are optional — when both are
+  // supplied the card surfaces a clickable "project: <name>" label
+  // that routes to the project's detail page. Mirrors the pattern
+  // ArtifactBubble uses on the Live artifacts page.
+  projects = [],
+  onOpenProject,
   onOpen, onRunNow, onPause, onResume, onEdit,
 }) {
   const [hover, setHover] = useState(false);
 
   const open  = () => onOpen?.(task);
   const stop  = (e) => { e.stopPropagation(); };
+
+  const projectName = task.project || task.projectName || '';
+  const projectMatch = projectName
+    ? projects.find((p) => p.name === projectName) || null
+    : null;
+  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
     <div
@@ -194,6 +205,48 @@ export default function ScheduleCard({
         </div>
       )}
 
+      {/* Project label — mirrors ArtifactBubble's `project: <name>`.
+          Clickable when we can resolve the name to a project object;
+          otherwise rendered plainly. Hidden entirely when the task
+          has no project (older schedules pre-fix all hit this). */}
+      {projectName && (
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11,
+          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          display: 'flex', alignItems: 'baseline', gap: 4,
+          minWidth: 0,
+        }}>
+          <span style={{ flexShrink: 0 }}>project:</span>
+          {canOpenProject ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              title={`Open ${projectMatch.name}`}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                color: 'var(--ink-3)', minWidth: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                transition: 'color 120ms ease',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = 'var(--accent)';
+                e.currentTarget.style.textDecoration = 'underline';
+                e.currentTarget.style.textUnderlineOffset = '2px';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = 'var(--ink-3)';
+                e.currentTarget.style.textDecoration = 'none';
+              }}
+            >{projectName}</button>
+          ) : (
+            <span style={{
+              color: 'var(--ink-3)', minWidth: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{projectName}</span>
+          )}
+        </div>
+      )}
+
       {/* Meta row — next run + relative time. Tooltip carries the
           absolute timestamp for users who want it precise. */}
       <div style={{
@@ -214,6 +267,19 @@ export default function ScheduleCard({
           </span>
         )}
       </div>
+
+      {/* Missed-runs note — appears under the meta row only when the
+          schedule slipped one or more cycles while the app was off.
+          Cleared automatically on the next successful run; purely
+          informational, no action required. */}
+      {Number(task.missedRuns) > 0 && (
+        <div style={{
+          fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)',
+          marginTop: -4,
+        }}>
+          Missed {task.missedRuns} run{task.missedRuns === 1 ? '' : 's'} while the app was closed.
+        </div>
+      )}
 
       {/* Hover-revealed action row. Always rendered to keep layout
           stable; opacity fades up on hover so the card stays calm at

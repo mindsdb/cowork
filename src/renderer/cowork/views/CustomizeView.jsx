@@ -89,7 +89,7 @@ function NewConnectionCard({ onClick }) {
   );
 }
 
-function ConnectionCard({ connection, onDelete }) {
+function ConnectionCard({ connection, onDelete, onModify }) {
   const [hover, setHover] = useState(false);
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
@@ -107,8 +107,21 @@ function ConnectionCard({ connection, onDelete }) {
     }
   };
 
+  // Card click → modify. Mirrors the "+ Connect" flow: pulls up the
+  // same form (same engine spec), pre-filled with this connection's
+  // name. Submitting overwrites the existing entry in the data vault.
+  const canModify = typeof onModify === 'function';
+  const handleCardClick = () => {
+    if (!canModify || busy) return;
+    onModify(connection);
+  };
+
   return (
     <div
+      role={canModify ? 'button' : undefined}
+      tabIndex={canModify ? 0 : undefined}
+      onClick={canModify ? handleCardClick : undefined}
+      onKeyDown={canModify ? (e) => { if (e.key === 'Enter') handleCardClick(); } : undefined}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -120,6 +133,8 @@ function ConnectionCard({ connection, onDelete }) {
         display: 'flex', flexDirection: 'column', gap: 10,
         transition: 'background .15s ease, border-color .15s ease',
         position: 'relative',
+        cursor: canModify ? 'pointer' : 'default',
+        outline: 'none',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -209,7 +224,7 @@ function EmptyState({ onConnectNew }) {
 
 // ─── Composed view ───────────────────────────────────────────────────────
 
-export default function CustomizeView({ connectors: initialConnectors = [], onConnectNew }) {
+export default function CustomizeView({ connectors: initialConnectors = [], onConnectNew, onModifyConnection }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
@@ -377,6 +392,7 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
               key={`${c.engine}-${c.name}`}
               connection={c}
               onDelete={handleDelete}
+              onModify={onModifyConnection}
             />
           ))}
           {/* Trailing dashed "New connection" card — appears only

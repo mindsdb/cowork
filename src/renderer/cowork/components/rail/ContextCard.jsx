@@ -3,7 +3,7 @@
 // GET /projects/{name}/files as Working folder, but only `.context/`
 // rows appear here; everything else lives in Working folder only.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
@@ -116,27 +116,36 @@ export function ContextCard({ project }) {
     return () => { cancelled = true; };
   }, [project?.path]);
 
-  const reloadFiles = () => {
+  // Ticket pattern: every listProjectFiles call (mount + reload-on-
+  // edit) bumps `loadVersion`. The async response only applies its
+  // result if its ticket is still the latest. Without this, saving a
+  // context edit and immediately switching projects could let the
+  // late response paint into the new project — the same shape of
+  // bug WorkingFolderLive had.
+  const loadVersion = useRef(0);
+
+  const reloadFiles = useCallback(() => {
     if (!project?.name) { setProjectFiles([]); return; }
+    const ticket = ++loadVersion.current;
     listProjectFiles(project.name)
       .then((data) => {
+        if (ticket !== loadVersion.current) return;
         const raw = Array.isArray(data?.files) ? data.files : [];
         setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
       })
-      .catch(() => setProjectFiles([]));
-  };
-  useEffect(() => {
-    let cancelled = false;
-    if (!project?.name) { setProjectFiles([]); return undefined; }
-    listProjectFiles(project.name)
-      .then((data) => {
-        if (cancelled) return;
-        const raw = Array.isArray(data?.files) ? data.files : [];
-        setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
-      })
-      .catch(() => { if (!cancelled) setProjectFiles([]); });
-    return () => { cancelled = true; };
+      .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
   }, [project?.name]);
+
+  useEffect(() => {
+    if (!project?.name) {
+      setProjectFiles([]);
+      // Bump the ticket so any in-flight load from a prior project
+      // gets discarded when it finally lands.
+      loadVersion.current += 1;
+      return;
+    }
+    reloadFiles();
+  }, [project?.name, reloadFiles]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {

@@ -19,7 +19,7 @@ import {
 
 const TITLES = {
   memory: ['Memory', 'Rules, lessons, identity notes, and saved episodes Anton can reuse.'],
-  skills: ['Skills library', 'Saved Anton skills and recall guidance.'],
+  skills: ['Skill Library', 'Saved Anton skills and recall guidance.'],
   // 'connect' (legacy datasources page) is gone — Connect Apps and
   // Data is the canonical surface. Kept the import paths for
   // fetchDatasources / validateDatasource because they're still
@@ -89,12 +89,21 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
 
   const [title, subtitle] = TITLES[kind] || ['Anton utility', ''];
 
+  // Memory kind owns its own scrolling: the sidebar list and the
+  // viewer pane each scroll independently so flipping through a long
+  // file doesn't push the file list around. The legacy kinds keep
+  // the original "page scrolls" behaviour.
+  const isMemoryKind = kind === 'memory';
+  const wrapperStyle = isMemoryKind
+    ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { flex: 1, overflowY: 'auto' };
+
   return (
-    <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto' }}>
+    <div className="scroll-clean" style={wrapperStyle}>
       {/* MemoryView renders its own canonical header (with the
           + New memory action). For the legacy kinds we keep the
           plain header here. */}
-      {kind !== 'memory' && <PageHeader title={title} subtitle={subtitle} />}
+      {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
       {status && <div style={{ margin: '16px 28px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
@@ -135,9 +144,16 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   // `projectName` / `projectPath` carry the project context for project-scoped
   // edits — needed because the universal listing means a memory's project
   // may not match the rail's currently active project.
+  //
+  // `kind` is the new-memory type picker: 'lessons' | 'rules' | 'topic'.
+  // Lessons + Rules are well-known paths (`lessons.md`, `rules.md`) and
+  // hydrate `draft.content` from the existing file if there's one in the
+  // chosen scope. Topic is a free-form name → `topics/<slug>.md`; we
+  // validate the resulting path isn't already taken before saving.
   const [draft, setDraft] = useState({
     scope: 'Global', relativePath: '', content: '',
     projectName: null, projectPath: null,
+    kind: 'lessons', topicName: '',
   });
 
   const refresh = async () => {
@@ -148,11 +164,86 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   const startNew = () => {
     setEditing('new');
     setDraft({
-      scope: 'Global', relativePath: '', content: '',
+      scope: 'Global', relativePath: 'lessons.md', content: '',
       projectName: null, projectPath: null,
+      kind: 'lessons', topicName: '',
     });
     onSelect(null);
   };
+
+  // Files in scope for the new-memory form's hydration / availability
+  // check. Returns the array of file payloads from `data.sections`
+  // matching the current draft scope.
+  const filesForCurrentScope = () => {
+    if (draft.scope === 'Global') return globalSection?.files || [];
+    if (draft.scope === 'Project' && draft.projectName) {
+      const section = sections.find(
+        (s) => s.scope === 'Project' && s.projectName === draft.projectName,
+      );
+      return section?.files || [];
+    }
+    return [];
+  };
+
+  // Slugify a topic name → safe `topics/<slug>.md` path. Lowercases,
+  // collapses whitespace + non-alphanumerics to `-`, trims dashes.
+  const topicSlug = (raw) => String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  const relativePathForKind = (kind, topicName) => {
+    if (kind === 'lessons') return 'lessons.md';
+    if (kind === 'rules')   return 'rules.md';
+    const slug = topicSlug(topicName);
+    return slug ? `topics/${slug}.md` : '';
+  };
+
+  // Pull existing content for a given relativePath in the current
+  // scope, or '' when no file is there yet. Used to pre-populate the
+  // body when the user picks Lessons / Rules so they edit instead of
+  // accidentally overwriting.
+  const existingContentForPath = (relPath) => {
+    if (!relPath) return '';
+    const file = filesForCurrentScope().find((f) => f.relativePath === relPath);
+    return file?.content || file?.preview || '';
+  };
+
+  // When the user changes the kind (or the scope, which changes which
+  // files we check against), recompute the implied path and hydrate
+  // body content for lessons/rules. Topic mode keeps the user-typed
+  // body in place — they'll only see content from a colliding file via
+  // the inline error on the topic name field.
+  const onKindChange = (nextKind) => {
+    setDraft((prev) => {
+      const relPath = relativePathForKind(nextKind, prev.topicName);
+      const next = { ...prev, kind: nextKind, relativePath: relPath };
+      if (nextKind === 'lessons' || nextKind === 'rules') {
+        next.content = existingContentForPath(relPath);
+      }
+      return next;
+    });
+  };
+
+  const onTopicNameChange = (value) => {
+    setDraft((prev) => ({
+      ...prev,
+      topicName: value,
+      relativePath: relativePathForKind('topic', value),
+    }));
+  };
+
+  // Topic-mode duplicate check, surfaced inline so the Save button
+  // can communicate the conflict before the user clicks. Computed
+  // each render — cheap, since `filesForCurrentScope()` is small.
+  const topicConflict = (() => {
+    if (draft.kind !== 'topic') return null;
+    const slug = topicSlug(draft.topicName);
+    if (!slug) return null;
+    const candidate = `topics/${slug}.md`;
+    const exists = filesForCurrentScope().some((f) => f.relativePath === candidate);
+    return exists ? candidate : null;
+  })();
 
   const startEdit = (file) => {
     setEditing('edit');
@@ -173,22 +264,60 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
     .map((s) => ({ name: s.projectName, path: s.projectPath }));
 
   const onScopeChange = (value) => {
-    if (value === 'Global') {
-      setDraft((prev) => ({ ...prev, scope: 'Global', projectName: null, projectPath: null }));
-      return;
+    // The hydration helper reads from the *new* scope, but we can't
+    // call `existingContentForPath` mid-state-update because it
+    // closes over the previous draft. Compute the next scope tuple
+    // first, then re-derive content directly from `sections`.
+    let nextScope = 'Global';
+    let nextProjectName = null;
+    let nextProjectPath = null;
+    if (value !== 'Global') {
+      const projectName = value.startsWith('Project::') ? value.slice('Project::'.length) : null;
+      const match = projectChoices.find((p) => p.name === projectName);
+      nextScope = 'Project';
+      nextProjectName = match?.name || null;
+      nextProjectPath = match?.path || null;
     }
-    // value is `Project::<name>` for a specific project
-    const projectName = value.startsWith('Project::') ? value.slice('Project::'.length) : null;
-    const match = projectChoices.find((p) => p.name === projectName);
-    setDraft((prev) => ({
-      ...prev,
-      scope: 'Project',
-      projectName: match?.name || null,
-      projectPath: match?.path || null,
-    }));
+    const filesNext = (() => {
+      if (nextScope === 'Global') return globalSection?.files || [];
+      const section = sections.find(
+        (s) => s.scope === 'Project' && s.projectName === nextProjectName,
+      );
+      return section?.files || [];
+    })();
+    setDraft((prev) => {
+      const next = {
+        ...prev,
+        scope: nextScope,
+        projectName: nextProjectName,
+        projectPath: nextProjectPath,
+      };
+      if (prev.kind === 'lessons' || prev.kind === 'rules') {
+        const file = filesNext.find((f) => f.relativePath === prev.relativePath);
+        next.content = file?.content || file?.preview || '';
+      }
+      return next;
+    });
   };
 
   const save = async () => {
+    // Topic mode: derive the path from the typed name and refuse to
+    // overwrite an existing topic. Lessons/rules intentionally allow
+    // overwriting — they're the canonical files Anton reads, so the
+    // form pre-populates them and saving means "edit", not "create".
+    if (editing === 'new' && draft.kind === 'topic') {
+      const slug = topicSlug(draft.topicName);
+      if (!slug) {
+        setStatus('Enter a topic name.');
+        return;
+      }
+      const candidate = `topics/${slug}.md`;
+      const conflict = filesForCurrentScope().some((f) => f.relativePath === candidate);
+      if (conflict) {
+        setStatus(`A memory at ${candidate} already exists. Choose a different topic name.`);
+        return;
+      }
+    }
     if (!draft.relativePath.trim()) {
       setStatus('Choose a Markdown path for this memory file.');
       return;
@@ -243,15 +372,34 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
           </button>
         }
       />
-      <div style={{ height: 18 }} />
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', minHeight: 0, padding: '0 32px 60px', gap: 24 }}>
-        <div style={{ borderRight: '1px solid var(--border-0)', paddingRight: 18, display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <MemorySectionList
-            heading="Global"
-            files={globalSection?.files || []}
-            selected={selected}
-            onSelect={onSelect}
-          />
+      <div style={{ height: 14 }} />
+      {/* Grid fills the rest of the viewport. Both columns get their
+          own `overflowY: auto` so the file list and the viewer pane
+          scroll independently — picking through a long memory file
+          no longer drags the sidebar with it. */}
+      <div style={{
+        flex: 1, minHeight: 0,
+        display: 'grid', gridTemplateColumns: '300px 1fr',
+        padding: '0 32px 24px', gap: 24,
+      }}>
+        <div className="scroll-clean" style={{
+          borderRight: '1px solid var(--border-0)',
+          paddingRight: 12,
+          display: 'flex', flexDirection: 'column', gap: 14,
+          overflowY: 'auto', minHeight: 0,
+        }}>
+          {/* Skip the Global section entirely when it has no entries
+              — the empty placeholder reads as broken-list noise. The
+              "+ New memory" form keeps Global as a scope option, so
+              the user can still create one from scratch. */}
+          {(globalSection?.files?.length || 0) > 0 && (
+            <MemorySectionList
+              heading="Global"
+              files={globalSection?.files || []}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          )}
           {projectSections.map((section) => (
             <MemorySectionList
               key={section.projectName}
@@ -264,27 +412,82 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
           ))}
           {totalFiles === 0 && <EmptyState>No Anton memory files found.</EmptyState>}
         </div>
-        <div>
+        <div className="scroll-clean" style={{
+          overflowY: 'auto', minHeight: 0,
+        }}>
           {editing === 'new' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 8 }}>
+              {/* Row 1: Scope (Global / Project) + Type
+                  (Lessons / Rules / Topic). Both <select>s use the
+                  chevron-aware `selectStyle`. */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <select
                   value={scopeValue}
                   onChange={(e) => onScopeChange(e.target.value)}
-                  style={inputStyle}
+                  style={selectStyle}
                 >
                   <option value="Global">Global</option>
                   {projectChoices.map((p) => (
                     <option key={p.name} value={`Project::${p.name}`}>Project · {p.name}</option>
                   ))}
                 </select>
-                <input
-                  value={draft.relativePath}
-                  onChange={(e) => setDraft((prev) => ({ ...prev, relativePath: e.target.value }))}
-                  placeholder="topics/customer-notes.md"
-                  style={inputStyle}
-                />
+                <select
+                  value={draft.kind}
+                  onChange={(e) => onKindChange(e.target.value)}
+                  style={selectStyle}
+                >
+                  <option value="lessons">Lessons</option>
+                  <option value="rules">Rules</option>
+                  <option value="topic">Topic</option>
+                </select>
               </div>
+
+              {/* Row 2: file/topic identification.
+                  - Lessons/Rules show the resolved path read-only —
+                    the user can see what they're editing without
+                    being able to type something else by accident.
+                    A small note flags whether the file already
+                    exists (so saving is "edit", not "create").
+                  - Topic shows a name input → `topics/<slug>.md`
+                    underneath, and an inline conflict message when
+                    the slug collides with an existing file. */}
+              {draft.kind === 'topic' ? (
+                <div>
+                  <input
+                    value={draft.topicName}
+                    onChange={(e) => onTopicNameChange(e.target.value)}
+                    placeholder="customer-notes"
+                    style={inputStyle}
+                  />
+                  <div style={{
+                    marginTop: 4, fontSize: 11.5,
+                    color: topicConflict ? 'var(--danger)' : 'var(--frost-600)',
+                  }}>
+                    {topicConflict
+                      ? `A memory at ${topicConflict} already exists — pick a different name.`
+                      : (draft.relativePath
+                          ? `Will save as ${draft.relativePath}`
+                          : 'Type a topic name (no extension needed).')
+                    }
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{
+                    ...inputStyle,
+                    display: 'flex', alignItems: 'center',
+                    background: 'var(--surface-2)',
+                    color: 'var(--ink-3)', cursor: 'default',
+                    userSelect: 'text',
+                  }}>{draft.relativePath}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>
+                    {existingContentForPath(draft.relativePath)
+                      ? `Editing existing ${draft.relativePath}.`
+                      : `${draft.relativePath} doesn't exist yet — saving creates it.`}
+                  </div>
+                </div>
+              )}
+
               <textarea
                 value={draft.content}
                 onChange={(e) => setDraft((prev) => ({ ...prev, content: e.target.value }))}
@@ -292,7 +495,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               />
               <div className="dialog-actions">
                 <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                <button className="btn-primary" onClick={save}>Save memory</button>
+                <button className="btn-primary" onClick={save} disabled={!!topicConflict}>Save memory</button>
               </div>
             </div>
           ) : editing === 'edit' && selected ? (
@@ -356,26 +559,26 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
 
 function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <div style={{
         fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.14em',
         textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
-        padding: '0 4px 6px', display: 'flex', alignItems: 'center', gap: 6,
+        padding: '0 4px 4px', display: 'flex', alignItems: 'center', gap: 6,
       }}>
         <span>{heading}</span>
         {isActive && <span style={{ color: 'var(--accent)', letterSpacing: 0, textTransform: 'none', fontFamily: 'var(--font-body)', fontSize: 10.5 }}>· active</span>}
         <span style={{ marginLeft: 'auto', color: 'var(--ink-4)', letterSpacing: 0, textTransform: 'none', fontFamily: 'var(--font-body)' }}>{files.length}</span>
       </div>
       {files.length === 0 ? (
-        <div style={{ padding: '4px 6px 2px', color: 'var(--ink-4)', fontSize: 12 }}>—</div>
+        <div style={{ padding: '2px 6px 2px', color: 'var(--ink-4)', fontSize: 12 }}>—</div>
       ) : files.map((file) => (
         <button
           key={file.path}
           className={`recent-item${selected?.path === file.path ? ' active' : ''}`}
           onClick={() => onSelect(file)}
-          style={{ height: 'auto', minHeight: 34, padding: '8px 10px' }}
+          style={{ height: 'auto', minHeight: 26, padding: '4px 10px', fontSize: 12.5 }}
         >
-          <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.doc(14)}</span>
+          <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.doc(13)}</span>
           <span style={{ flex: 1, whiteSpace: 'normal' }}>{file.relativePath}</span>
         </button>
       ))}
@@ -706,6 +909,11 @@ const inputStyle = {
   background: 'var(--surface-0)',
   color: 'var(--ink)',
 };
+
+// Native <select> paints its own chevron in the right padding area;
+// the chevron looked flush with the right border at `padding: 10px`.
+// Bumping right padding gives the indicator some air.
+const selectStyle = { ...inputStyle, paddingRight: 28 };
 
 // Editor and viewer share the same fixed min-height + typography so
 // flipping between read and edit doesn't shift the layout. `--ink`

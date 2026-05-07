@@ -312,8 +312,8 @@ export default function Sidebar({
         {/* Primary nav */}
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={projectsCount  || null} />
-          <NavItem icon={Ico.clock(15)}   label="Scheduled tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={scheduledCount || null} />
-          <NavItem icon={Ico.sparkle(15)} label="Live artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={artifactsCount || null} />
+          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={scheduledCount || null} />
+          <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={artifactsCount || null} />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in
@@ -333,7 +333,7 @@ export default function Sidebar({
         {/* Anton group — visually grouped panel for the brain-style nav */}
         <div className="section-label">Anton</div>
         <div className="anton-group">
-          <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
+          <NavItem icon={Ico.cube(15)}     label="Skill Library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
           <NavItem icon={Ico.brain(15)}    label="Memory"         onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
           {/* "Connect data" removed from the sidebar — the canonical
               connector surface is the Connect Apps and Data page

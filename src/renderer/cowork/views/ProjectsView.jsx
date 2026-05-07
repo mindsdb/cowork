@@ -1162,9 +1162,15 @@ export default function ProjectsView({
         title="Projects"
         subtitle="Workspaces Anton uses to group conversations, memory, and outputs."
         actions={<NewProjectButton onClick={handleNewProject} />}
+        // Bake the breathing room into the header itself rather than a
+        // sibling spacer. The previous 18px spacer div collapsed in
+        // some grid-view layouts (the flex column let it disappear
+        // under certain content heights), which made the gap between
+        // subtitle and the search bar look smaller in grid than in
+        // list. Embedding it as `marginBottom` on the subtitle makes
+        // the spacing immune to whatever the body below decides to do.
+        subtitleBottom={20}
       />
-
-      <div style={{ height: 18 }} />
 
       <FilterRow
         search={

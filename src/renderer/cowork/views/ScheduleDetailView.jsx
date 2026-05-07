@@ -98,9 +98,8 @@ function CrumbSep() {
 
 function StatusPill({ task }) {
   const cfg = (() => {
-    if (task.catchupPending) return { label: 'Catch up needed', fg: 'var(--accent)' };
-    if (!task.enabled)       return { label: 'Paused',          fg: 'var(--ink-3)' };
-    if (task.lastError)      return { label: 'Last run failed', fg: 'var(--danger)' };
+    if (!task.enabled)  return { label: 'Paused',          fg: 'var(--ink-3)' };
+    if (task.lastError) return { label: 'Last run failed', fg: 'var(--danger)' };
     return { label: 'Active', fg: 'var(--success)' };
   })();
   return (
@@ -383,7 +382,7 @@ export default function ScheduleDetailView({
         padding: '14px 28px 8px',
         display: 'flex', alignItems: 'center', gap: 4,
       }}>
-        <CrumbButton label="Scheduled tasks" onClick={onBack} title="All scheduled tasks" />
+        <CrumbButton label="Scheduled Tasks" onClick={onBack} title="All scheduled tasks" />
         <CrumbSep />
         <span style={{
           padding: '2px 6px',

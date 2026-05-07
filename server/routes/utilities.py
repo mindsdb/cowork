@@ -352,6 +352,79 @@ def _clean_credentials(credentials: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _resolve_modify_merge(
+    engine: str,
+    name: str,
+    incoming: dict[str, str],
+    spec_fields: list[Any],
+) -> tuple[dict[str, str], list[str]]:
+    """Server-side wrapper around anton-core's `resolve_modify_merge`.
+
+    Pulls the spec-marked secret-field names out of the engine spec
+    objects (which use a `field.secret: bool` attribute), then hands
+    everything off to anton-core so the merge logic stays in one
+    place. See `anton.core.datasources.data_vault.resolve_modify_merge`
+    for the full contract.
+    """
+    try:
+        from anton.core.datasources.data_vault import (
+            LocalDataVault,
+            resolve_modify_merge,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+
+    spec_secret_names = [
+        getattr(f, "name", "") for f in spec_fields
+        if getattr(f, "secret", False) and getattr(f, "name", "")
+    ]
+    return resolve_modify_merge(
+        LocalDataVault(),
+        engine,
+        name,
+        incoming,
+        spec_secret_keys=spec_secret_names,
+    )
+
+
+def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
+    """Build the modify-flow read response.
+
+    Substitutes `ANTON_VAULT_KEEP` into every secret-shaped slot so
+    the renderer can pre-fill the form without ever seeing the
+    underlying credential. Identity + timestamps + the secure-keys
+    list pass through verbatim.
+    """
+    try:
+        from anton.core.datasources.data_vault import ANTON_VAULT_KEEP, is_secret_key
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+
+    raw_fields = record.get("fields") or {}
+    secure_keys = record.get("secure_keys")  # may be None on legacy records
+    fields_out: dict[str, str] = {}
+    for key, value in raw_fields.items():
+        if is_secret_key(key, secure_keys=secure_keys):
+            fields_out[key] = ANTON_VAULT_KEEP
+        else:
+            fields_out[key] = value
+    return {
+        "engine": record.get("engine", ""),
+        "name": record.get("name", ""),
+        "createdAt": record.get("created_at"),
+        "updatedAt": record.get("updated_at"),
+        # Echo the secure-key set the renderer should treat as "saved · keep".
+        # On legacy records (no stored list), recompute from the heuristic
+        # so the renderer's UX is identical regardless of schema age.
+        "secureKeys": (
+            secure_keys
+            if secure_keys is not None
+            else sorted(k for k in raw_fields.keys() if is_secret_key(k))
+        ),
+        "fields": fields_out,
+    }
+
+
 def _validate_datasource_payload(
     engine: str,
     credentials: dict[str, str],
@@ -396,6 +469,30 @@ async def list_datasources():
     }
 
 
+@router.get("/datasources/{engine}/{name}")
+async def read_datasource(engine: str, name: str):
+    """Modify-flow read: return the saved connection's non-secret
+    fields verbatim, with the `ANTON_VAULT_KEEP` sentinel substituted
+    into every secret slot.
+
+    The renderer hydrates its form from this payload — non-secrets
+    pre-fill the inputs, secret-slot sentinels render as empty inputs
+    with a "Saved · type to replace, clear to remove" placeholder.
+    On submit, any field still carrying the sentinel is resolved
+    server-side against the prior record (see `_resolve_modify_merge`).
+    """
+    if not engine.strip() or not name.strip():
+        raise HTTPException(status_code=400, detail="engine and name are required")
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+    record = LocalDataVault().read_record(engine.strip(), name.strip())
+    if record is None:
+        raise HTTPException(status_code=404, detail="Datasource connection not found")
+    return _datasource_record_payload(record)
+
+
 @router.post("/datasources/validate")
 async def validate_datasource(req: DatasourceValidateRequest):
     credentials = req.credentials
@@ -424,7 +521,24 @@ async def validate_datasource(req: DatasourceValidateRequest):
 async def save_datasource(req: DatasourceSaveRequest):
     if not req.engine.strip():
         raise HTTPException(status_code=400, detail="Datasource engine is required")
-    credentials = _clean_credentials(req.credentials)
+    raw_credentials = _clean_credentials(req.credentials)
+
+    # Modify-flow merge: resolve any `ANTON_VAULT_KEEP` sentinels in
+    # the incoming credentials against the existing vault record, and
+    # compute the secure-key set to persist. Pure no-op for create
+    # paths — there's no prior record so no sentinels survive, and
+    # the secure-key set is computed from spec + heuristic alone.
+    engine_def_pre, _, _, spec_fields_pre, _ = _validate_datasource_payload(
+        req.engine, raw_credentials, req.authMethod
+    )
+    candidate_name = req.name.strip()
+    credentials, merged_secure_keys = _resolve_modify_merge(
+        engine=req.engine.strip(),
+        name=candidate_name,
+        incoming=raw_credentials,
+        spec_fields=spec_fields_pre,
+    )
+
     engine_def, _, _, fields, missing = _validate_datasource_payload(req.engine, credentials, req.authMethod)
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
@@ -445,8 +559,22 @@ async def save_datasource(req: DatasourceSaveRequest):
 
     try:
         vault = LocalDataVault()
-        name = req.name.strip() or find_matching_connection(vault, engine_def, credentials) or uuid.uuid4().hex[:8]
-        slug = save_connection(vault, engine_def, name, credentials)
+        name = candidate_name or find_matching_connection(vault, engine_def, credentials) or uuid.uuid4().hex[:8]
+        # If find_matching_connection picked a different name than the
+        # one we merged against, the sentinel resolution we did above
+        # used the wrong prior record. Re-resolve against the picked
+        # name so secrets actually carry through. Cheap and rare.
+        if name != candidate_name:
+            credentials, merged_secure_keys = _resolve_modify_merge(
+                engine=engine_def.engine,
+                name=name,
+                incoming=raw_credentials,
+                spec_fields=spec_fields_pre,
+            )
+        slug = save_connection(
+            vault, engine_def, name, credentials,
+            secure_keys=merged_secure_keys,
+        )
     except Exception as exc:
         logger.exception("Datasource save failed")
         raise HTTPException(status_code=500, detail="Could not save datasource") from exc
