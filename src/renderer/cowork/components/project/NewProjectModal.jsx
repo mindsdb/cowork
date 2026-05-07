@@ -337,7 +337,14 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               type="file"
               multiple
               style={{ display: 'none' }}
-              onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+              onChange={(e) => {
+                // Snapshot before clearing `value`: clearing empties the live
+                // FileList, and React runs the setState updater after this
+                // handler returns — so passing FileList alone would add nothing.
+                const picked = e.target.files ? Array.from(e.target.files) : [];
+                e.target.value = '';
+                addFiles(picked);
+              }}
             />
             <FileList files={files} onRemove={removeFile} />
           </div>
