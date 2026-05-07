@@ -150,10 +150,29 @@ async def root():
 # claimed. /v1/* and /health are explicitly excluded so wrong API paths
 # return a clean 404 instead of falling back to index-web.html.
 if ANTON_SERVE_SPA and SPA_DIR is not None:
+    # Subdirectories that the SPA build emits — served by StaticFiles so
+    # they get correct MIME-types and range-request handling for free.
+    # Any future top-level subdir of SPA_DIR that should be served must
+    # be added to this tuple (or as its own dedicated mount).
     for _sub in ("assets", "fonts", "gravity-field"):
         _sub_path = SPA_DIR / _sub
         if _sub_path.exists():
             app.mount(f"/{_sub}", StaticFiles(directory=str(_sub_path)), name=f"spa-{_sub}")
+
+    # Pre-resolve every top-level file in SPA_DIR into a string→Path
+    # allowlist. The fallback handler below looks the request up in this
+    # dict — the user-controlled `full_path` is used only as a dict key,
+    # never as a path component. That removes the entire untrusted-input
+    # → path-expression dataflow that CodeQL py/path-injection flagged
+    # against earlier realpath/is_relative_to-based guards: there is no
+    # path being built from `full_path` at all, so traversal sequences
+    # (`..`, encoded variants, absolute paths) simply miss the dict and
+    # fall through to the SPA shell. Computed at startup so the dict is
+    # immutable for the request handler's lifetime.
+    _spa_files: dict[str, Path] = {
+        _entry.name: _entry for _entry in SPA_DIR.iterdir() if _entry.is_file()
+    }
+    _spa_shell: Path = SPA_DIR / "index-web.html"
 
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
@@ -162,20 +181,14 @@ if ANTON_SERVE_SPA and SPA_DIR is not None:
         # HTML where they expected JSON.
         if full_path == "v1" or full_path.startswith("v1/") or full_path == "health":
             raise HTTPException(status_code=404)
-        # Resolve the candidate and confirm it stays inside SPA_DIR.
-        # Path.resolve() normalizes `..` and follows symlinks; the
-        # subsequent is_relative_to() check is the canonical path-traversal
-        # barrier that static analyzers (incl. CodeQL py/path-injection)
-        # recognize as a sanitizer. SPA_DIR was already resolve()'d at
-        # startup, so this comparison is fully normalized on both sides.
-        candidate = (SPA_DIR / full_path).resolve()
-        if not candidate.is_relative_to(SPA_DIR):
-            raise HTTPException(status_code=404)
-        if candidate.is_file():
-            return FileResponse(str(candidate))
-        # Anything else → SPA shell, so client-side routes (e.g. /artifacts,
-        # /projects/foo) work on browser refresh.
-        return FileResponse(str(SPA_DIR / "index-web.html"))
+        # Top-level file the build emitted? Serve it. Otherwise this is
+        # either a client-side route (/projects/foo, /artifacts/...) or a
+        # bogus path — both get the SPA shell so the renderer's router
+        # can take over (or render its own 404 view) on the client.
+        served = _spa_files.get(full_path)
+        if served is not None:
+            return FileResponse(str(served))
+        return FileResponse(str(_spa_shell))
 
 
 if __name__ == "__main__":
