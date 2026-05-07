@@ -172,7 +172,7 @@ def attachment_context(ids: list[str] | None) -> str:
     selected = get_attachments(ids or [])
     if not selected:
         return ""
-    remaining = ATTACHMENT_CONTEXT_LIMIT
+
     sections = ["Attached context supplied by the user:"]
     for item in selected:
         header_bits = [item.get("kind") or "attachment", item.get("mime") or "unknown type"]
@@ -181,20 +181,10 @@ def attachment_context(ids: list[str] | None) -> str:
         elif item.get("source"):
             header_bits.append(item["source"])
         header = f"### {item.get('name') or item['id']} ({'; '.join(header_bits)})"
-        text = item.get("text") or ""
-        note = item.get("note")
-        if not text:
-            text = f"[No extracted text. Extraction status: {item.get('extractionStatus', 'unknown')}.]"
-            if note:
-                text += f" {note}"
-        chunk = text[: max(0, min(len(text), remaining))]
-        if item.get("truncated") or len(text) > len(chunk):
-            chunk += "\n[Attachment text was truncated before being sent to Anton.]"
-        sections.append(f"{header}\n```text\n{chunk}\n```")
-        remaining -= len(chunk)
-        if remaining <= 0:
-            sections.append("[Additional attachment context was omitted because the combined context was too large.]")
-            break
+        sections.append(header)
+        path = f"File path: {item['path']}"
+        sections.append(path)
+
     return "\n\n".join(sections)
 
 
@@ -233,11 +223,8 @@ async def upload_attachments(
             "mime": mime or "application/octet-stream",
             "size": len(data),
             "path": str(target),
-            "source": "disk",
-            "sourceUrl": None,
             "sessionId": session_id,
             "projectPath": project_path,
-            "language": None,
             "createdAt": utc_now_iso(),
             "updatedAt": utc_now_iso(),
         }
