@@ -1,0 +1,55 @@
+# dockerignore for cowork/Dockerfile. BuildKit picks this up via the
+# companion-file convention (<dockerfile-path>.dockerignore), so it
+# applies whether the build context is cowork/ itself (git-mode build)
+# or a parent like antonworld/ or mindsdb/ (local-mode build).
+#
+# Patterns use **/ globs because the cowork tree may sit at the context
+# root (git mode) or under cowork/ (local mode).
+
+# Build artifacts — produced inside the image.
+**/node_modules/
+**/dist/
+**/out/
+**/release/
+**/build/
+
+# Editor / OS junk.
+**/.DS_Store
+**/Thumbs.db
+**/.vscode/
+**/.idea/
+**/*.swp
+
+# Source-control internals — not needed for builds.
+**/.git/
+**/.gitignore
+**/.github/
+
+# Environment / secrets — never bake into images.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+
+# Python caches.
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+
+# Logs.
+**/*.log
+**/logs/
+
+# Documentation drafts and the throwaway port-audit.
+**/docs/web-port-audit.md
+
+# Anton sibling: only copied when ANTON_SOURCE=local and even then we only
+# need source — exclude its own caches, venvs, and runtime state.
+**/.anton/
+**/.venv/
+**/.pytest-workspace/
+**/scratchpad-venvs/
+**/htmlcov/
+**/.coverage
