@@ -172,13 +172,23 @@ def _safe_relpath(rel: str, base: Path) -> Path:
     return candidate
 
 
-def _file_meta(p: Path, base: Path) -> dict[str, Any]:
-    """Compact descriptor for the listing response."""
+def _file_meta(p: Path, base: Path) -> dict[str, Any] | None:
+    """Compact descriptor for the listing response.
+
+    Skips entries whose resolved path is not under `base` (e.g. symlinks
+    that point outside the project — `rglob` + `resolve()` would otherwise
+    raise ValueError in `relative_to`).
+    """
     try:
         st = p.stat()
     except FileNotFoundError:
-        return None  # type: ignore[return-value]
-    rel = p.resolve().relative_to(base.resolve())
+        return None
+    try:
+        resolved = p.resolve()
+        base_resolved = base.resolve()
+        rel = resolved.relative_to(base_resolved)
+    except ValueError:
+        return None
     return {
         "path":     str(rel).replace("\\", "/"),
         "name":     p.name,
