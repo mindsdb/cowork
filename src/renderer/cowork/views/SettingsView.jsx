@@ -24,7 +24,7 @@ function inferProviderPreset(s) {
   if (provider === "anthropic") return "anthropic";
   if (provider === "openai") return "openai";
   if (provider === "openai-compatible") {
-    if (baseUrl.startsWith("https://generativelanguage.googleapis.com"))
+    if (baseUrl.startsWith("https://generativelanguage.googleapis.com/"))
       return "gemini";
     if (
       baseUrl.includes("mdb.ai") ||
@@ -54,7 +54,7 @@ function applyProviderPreset(preset, settings, setSetting) {
     setSetting("codingProvider", "openai-compatible");
     if (
       (settings.openaiBaseUrl || "").startsWith(
-        "https://generativelanguage.googleapis.com",
+        "https://generativelanguage.googleapis.com/",
       )
     ) {
       setSetting("openaiBaseUrl", "");
