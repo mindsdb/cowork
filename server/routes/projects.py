@@ -193,7 +193,7 @@ async def list_project_files(name: str):
     can render it as "empty, click to author" instead of having to
     branch on its absence.
     """
-    base = _context_dir(name)
+    base = _project_dir(name)
     files: list[dict[str, Any]] = []
     for p in sorted(base.rglob("*")):
         if p.is_dir():
@@ -220,7 +220,7 @@ async def list_project_files(name: str):
 
 @router.get("/{name}/files/{path:path}")
 async def read_project_file(name: str, path: str):
-    base = _context_dir(name)
+    base = _project_dir(name)
     target = _safe_relpath(path, base)
     if not target.exists():
         # `anton.md` is allowed to be requested before it's been
@@ -248,7 +248,7 @@ async def read_project_file(name: str, path: str):
 
 @router.put("/{name}/files/{path:path}")
 async def write_project_file(name: str, path: str, req: FileWriteRequest):
-    base = _context_dir(name)
+    base = _project_dir(name)
     target = _safe_relpath(path, base)
     if target.exists() and target.is_dir():
         raise HTTPException(status_code=400, detail="Path is a directory")
@@ -274,7 +274,7 @@ async def upload_project_files(
     its original filename (sanitised). Returns a per-file result so
     the caller can tell which uploads succeeded.
     """
-    base = _context_dir(name)
+    base = _project_dir(name)
     results: list[dict[str, Any]] = []
     for f in files:
         if not f.filename:
@@ -305,7 +305,7 @@ async def upload_project_files(
 
 @router.delete("/{name}/files/{path:path}")
 async def delete_project_file(name: str, path: str):
-    base = _context_dir(name)
+    base = _project_dir(name)
     target = _safe_relpath(path, base)
     if not target.exists():
         raise HTTPException(status_code=404, detail="File not found")
