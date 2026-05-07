@@ -15,18 +15,21 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { readProjectFile, writeProjectFile, deleteProjectFile } from '../../api';
+import {
+  readProjectFile,
+  writeProjectFile,
+  deleteProjectFile,
+  ANTON_PROJECT_INSTRUCTIONS_PATH,
+} from '../../api';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
-const ANTON_INSTRUCTIONS_FILENAME = 'anton.md';
-
 export default function ContextFileModal({
   open,
   projectName,
-  filePath,        // relative path under .context (e.g. 'anton.md')
+  filePath,        // project-relative path (instructions: ANTON_PROJECT_INSTRUCTIONS_PATH)
   initialContent,  // optional preview from the listing — saves a fetch on open
   isAntonMd,       // optional override; otherwise derived from filePath
   onClose,
@@ -40,7 +43,7 @@ export default function ContextFileModal({
   const [error, setError] = useState('');
   const textareaRef = useRef(null);
 
-  const isAnton = !!(isAntonMd ?? (filePath === ANTON_INSTRUCTIONS_FILENAME));
+  const isAnton = !!(isAntonMd ?? (filePath === ANTON_PROJECT_INSTRUCTIONS_PATH));
 
   // Load on open. Anton.md is special-cased server-side: the read
   // endpoint returns an empty body when the file doesn't exist yet,
@@ -160,7 +163,7 @@ export default function ContextFileModal({
               fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600,
               letterSpacing: '-0.005em', color: 'var(--ink)',
               minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{filePath}</h2>
+            }}>{isAnton ? 'anton.md' : filePath}</h2>
             {isAnton && (
               <span style={{
                 fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',

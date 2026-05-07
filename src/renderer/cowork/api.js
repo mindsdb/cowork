@@ -379,7 +379,7 @@ export async function deleteProject(name) {
 
 const enc = encodeURIComponent;
 
-/** Relative path from project root for LLM instructions (API + listing). */
+/** Relative path from project root for LLM instructions (projects file API). */
 export const ANTON_PROJECT_INSTRUCTIONS_PATH = '.context/anton.md';
 
 export async function readProjectFile(projectName, path) {

@@ -8,11 +8,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
-import { fetchMemory, fetchProjectFiles } from '../../api';
+import { fetchMemory, fetchProjectFiles, ANTON_PROJECT_INSTRUCTIONS_PATH } from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import ContextFileModal from '../project/ContextFileModal';
-
-const ANTON_INSTRUCTIONS_FILENAME = 'anton.md';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -108,7 +106,7 @@ function MemoryModal({ open, onClose, entry }) {
 // Same visual rhythm as MemoryRow but distinguishes the always-
 // present anton.md with a subtle "Project instructions" label.
 function ContextFileRow({ file, onOpen }) {
-  const isAnton = file.path === ANTON_INSTRUCTIONS_FILENAME;
+  const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
   const isEmpty = !file.size || file.synthetic === true;
   return (
     <button
@@ -125,7 +123,7 @@ function ContextFileRow({ file, onOpen }) {
       <span className="mt-0.5 text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
       <span className="min-w-0">
         <span className="block truncate text-[12.5px] text-ink">
-          {file.path}
+          {isAnton ? 'anton.md' : file.path}
         </span>
         <span className="mt-0.5 block truncate text-[11px] text-ink-4">
           {isAnton
@@ -155,27 +153,27 @@ export function ContextCard({ project }) {
     return () => { cancelled = true; };
   }, [project?.path]);
 
-  // Project files fetch — keyed by project NAME (server route is
-  // /v1/projects/{name}/files). Server always returns at least the
-  // synthetic anton.md entry so first-time projects still show
-  // something to author against.
+  // Project files listing (composer browse / attachments route) —
+  // keyed by project filesystem path. Instructions file path for
+  // read/write is ANTON_PROJECT_INSTRUCTIONS_PATH (handled separately
+  // from how we list files here).
   const reloadFiles = () => {
-    if (!project?.name) { setProjectFiles([]); return; }
-    fetchProjectFiles(project.name)
+    if (!project?.path) { setProjectFiles([]); return; }
+    fetchProjectFiles(project.path)
       .then((data) => setProjectFiles(Array.isArray(data?.files) ? data.files : []))
       .catch(() => setProjectFiles([]));
   };
   useEffect(() => {
     let cancelled = false;
-    if (!project?.name) { setProjectFiles([]); return undefined; }
-    fetchProjectFiles(project.name)
+    if (!project?.path) { setProjectFiles([]); return undefined; }
+    fetchProjectFiles(project.path)
       .then((data) => {
         if (cancelled) return;
         setProjectFiles(Array.isArray(data?.files) ? data.files : []);
       })
       .catch(() => { if (!cancelled) setProjectFiles([]); });
     return () => { cancelled = true; };
-  }, [project?.name]);
+  }, [project?.path]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {
@@ -209,7 +207,7 @@ export function ContextCard({ project }) {
       {/* Project files section — anton.md (always) + uploaded docs.
           Rendered first when we have a project so the working
           instructions are the first thing the user sees. */}
-      {project?.name && hasProjectFiles && (
+      {project?.path && hasProjectFiles && (
         <div className="flex flex-col gap-0.5">
           <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
             Project files
@@ -259,7 +257,7 @@ export function ContextCard({ project }) {
         open={!!openFile}
         projectName={project?.name}
         filePath={openFile?.path}
-        isAntonMd={openFile?.path === ANTON_INSTRUCTIONS_FILENAME}
+        isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
         onClose={() => setOpenFile(null)}
         onChanged={() => reloadFiles()}
       />
