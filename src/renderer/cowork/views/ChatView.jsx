@@ -537,12 +537,10 @@ function SmallBtn({ primary, children, onClick, title, disabled }) {
   );
 }
 
-// Streaming cursor — blinking accent caret. Doubles as the orb's body
-// anchor while text is being delivered.
-function StreamCursor({ slotId }) {
-  const ref = useOrbitSlot(slotId || `__none__:${Math.random()}`);
+// Streaming cursor — blinking accent caret (orb stays on the header).
+function StreamCursor() {
   return (
-    <span ref={slotId ? ref : undefined} style={{
+    <span style={{
       display: 'inline-block', width: 8, height: 14,
       background: T.accent, marginLeft: 4, verticalAlign: 'text-bottom',
       animation: 'cb 1s steps(2) infinite',
@@ -728,20 +726,13 @@ export default function ChatView({
   const chatRef = useRef(null);
   const convRef = useRef(null);
 
-  // Compute which orb slot should be active right now and what state
-  // the orb should display. The lifecycle:
-  //   - response in flight, no steps yet → header slot, 'thinking'
-  //   - some step in_progress             → that step's row, 'thinking'
-  //   - all steps done, body streaming    → body caret, 'thinking'
-  //   - response done                     → no active slot, 'done'
+  // Orb stays on the ANTON header for the whole streaming turn — it
+  // does not follow scratchpad rows or the body caret (avoids stacking
+  // against streaming markdown).
   const orbView = useMemo(() => {
     if (!streamingMsg) return { state: null, activeSlot: null };
-    const steps = streamingMsg.steps || [];
-    const inProgress = steps.find((s) => s.status === 'in_progress');
     const status = streamingMsg.streamStatus;
-    if (status === 'done') return { state: 'done', activeSlot: 'body:streaming' };
-    if (inProgress) return { state: 'thinking', activeSlot: `step:${inProgress.id}` };
-    if (streamingMsg.content) return { state: 'thinking', activeSlot: 'body:streaming' };
+    if (status === 'done') return { state: 'done', activeSlot: 'header:streaming' };
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
@@ -1142,7 +1133,7 @@ export default function ChatView({
                 {streamingMsg.content && (
                   <div style={{ position: 'relative' }}>
                     <TextBlock text={streamingMsg.content} id="streaming" complete={false} conversationId={task.id} />
-                    <StreamCursor slotId="body:streaming" />
+                    <StreamCursor />
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
