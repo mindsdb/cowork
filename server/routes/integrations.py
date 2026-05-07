@@ -365,6 +365,49 @@ def _json_request(url: str, *, method: str = "GET", data: dict[str, str] | None 
         raise HTTPException(status_code=502, detail="Could not reach Google OAuth services") from exc
 
 
+GOOGLE_REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
+GOOGLE_OAUTH_ENGINES = {GOOGLE_DRIVE_ENGINE, GOOGLE_CALENDAR_ENGINE, GMAIL_ENGINE}
+
+
+def revoke_google_token(engine: str, name: str) -> None:
+    """Revoke Google OAuth tokens for a connection, removing it from the user's Google permissions page.
+
+    Fire-and-forget — errors are logged but never raised so the caller's
+    delete flow is never blocked by a failed revocation.
+    """
+    import logging
+    log = logging.getLogger("integrations.revoke")
+
+    if engine not in GOOGLE_OAUTH_ENGINES:
+        return
+
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+        fields = LocalDataVault().load(engine, name) or {}
+    except Exception:
+        return
+
+    if fields.get("auth_type") != "oauth":
+        return
+
+    token = fields.get("refresh_token", "").strip() or fields.get("access_token", "").strip()
+    if not token:
+        return
+
+    try:
+        from urllib.request import urlopen, Request
+        req = Request(
+            f"{GOOGLE_REVOKE_ENDPOINT}?token={token}",
+            method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urlopen(req, timeout=10):
+            pass
+        log.info("Revoked Google token for %s/%s", engine, name)
+    except Exception as exc:
+        log.warning("Could not revoke Google token for %s/%s: %s", engine, name, exc)
+
+
 def refresh_google_oauth_tokens() -> None:
     """Proactively refresh Google OAuth tokens that are close to expiry.
 

@@ -1,6 +1,7 @@
 """Anton utility routes for memory, skills, data connections, and publishing."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -417,6 +418,13 @@ async def delete_datasource(engine: str, name: str):
         from anton.core.datasources.data_vault import LocalDataVault
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+
+    try:
+        from routes.integrations import revoke_google_token
+        await asyncio.to_thread(revoke_google_token, engine, name)
+    except Exception:
+        pass
+
     deleted = LocalDataVault().delete(engine, name)
     if not deleted:
         raise HTTPException(status_code=404, detail="Datasource connection not found")
