@@ -291,22 +291,39 @@ function UserTurn({ content, attachments, time, onDelete }) {
   );
 }
 
+// OrbitProvider `size` for the chat orb — header slot matches this box.
+const CHAT_ORB_SIZE = 22;
+
 // ─── Anton answer turn — content stack ────────────────────────────────────
-// `slotIdHeader` lets the parent register this turn's ANTON label as an
-// orb anchor (used while the request is "thinking" with no steps yet).
+// `slotIdHeader` lets the parent register an orb anchor beside the label
+// (while the request is in flight with no step row / body caret yet).
 function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader }) {
-  const headerRef = useOrbitSlot(slotIdHeader || `__none__:${Math.random()}`);
+  // Stable id: never use Math.random() here (would churn register every render).
+  const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        {/* Wrap the ANTON wordmark so the orb can anchor over it. The
-            slot only registers when slotIdHeader is provided. */}
-        <span ref={slotIdHeader ? headerRef : undefined} style={{
-          fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-          letterSpacing: '0.14em', textTransform: 'uppercase', color: T.ink,
-          // Reserve a little space so the orb has room when it lands here.
-          paddingLeft: slotIdHeader ? 28 : 0,
-        }}>Anton</span>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          {/* Empty box only — orb centers here so it never stacks against glyphs. */}
+          {slotIdHeader ? (
+            <span
+              ref={headerRef}
+              aria-hidden
+              style={{
+                display: 'inline-flex',
+                width: CHAT_ORB_SIZE,
+                height: CHAT_ORB_SIZE,
+                flexShrink: 0,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
+          ) : null}
+          <span style={{
+            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+            letterSpacing: '0.14em', textTransform: 'uppercase', color: T.ink,
+          }}>Anton</span>
+        </div>
         {time && (
           <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
             {state === 'thinking' ? `${time} · drafting` : time}
@@ -756,7 +773,7 @@ export default function ChatView({
       <OrbitProvider
         canvasRef={convRef}
         scrollRef={scrollRef}
-        size={22}
+        size={CHAT_ORB_SIZE}
         state={orbView.state}
         activeSlot={orbView.activeSlot}
       >
