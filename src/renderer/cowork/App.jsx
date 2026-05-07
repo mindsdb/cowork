@@ -755,13 +755,16 @@ function AppCore() {
   }, []);
 
   const handleApplyUpdate = useCallback(async () => {
-    if (updateApplying) return;
+    console.log('[ui-update] install clicked, applying update...');
+    if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
     setUpdateApplying(true);
     setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
     try {
-      await window.antontron.applyUpdate();
+      const result = await window.antontron.applyUpdate();
+      console.log('[ui-update] applyUpdate result:', result);
       // Window will reload with the new bundle — no further action needed
-    } catch {
+    } catch (err) {
+      console.error('[ui-update] applyUpdate failed:', err);
       setUpdateApplying(false);
       setUpdateStatus({ phase: 'error' });
     }

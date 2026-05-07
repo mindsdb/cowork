@@ -461,7 +461,9 @@ function createWindow() {
     console.log('[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
     mainWindow.loadFile(getBundledPath());
   } else {
-    mainWindow.loadFile(getRendererPath());
+    const rendererPath = getRendererPath();
+    console.log(`[main] loading renderer from ${rendererPath}`);
+    mainWindow.loadFile(rendererPath);
   }
 
   // DevTools no longer auto-open on launch. Still reachable on demand
@@ -981,11 +983,19 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
-    const applied = await applyUIUpdate();
-    if (applied && mainWindow) {
-      mainWindow.loadFile(getRendererPath());
+    console.log('[ui-updater] apply requested via IPC');
+    try {
+      const applied = await applyUIUpdate();
+      console.log(`[ui-updater] apply result: ${applied}`);
+      if (applied && mainWindow) {
+        console.log('[ui-updater] reloading window with new bundle');
+        mainWindow.loadFile(getRendererPath());
+      }
+      return applied;
+    } catch (err) {
+      console.error('[ui-updater] apply failed:', err);
+      throw err;
     }
-    return applied;
   });
 }
 
@@ -1034,7 +1044,6 @@ app.whenReady().then(() => {
         submenu: [
           {
             label: 'About Anton',
-            role: 'about',
             click: () => {
               const uiVersion = getCachedVersion();
               const versionStr = uiVersion
@@ -1102,35 +1111,44 @@ app.whenReady().then(() => {
     console.error('[server] check-and-start failed:', err);
   });
 
-  // OTA UI update check — only in packaged builds and not in DEV_MODE
+  // OTA UI update check — only in packaged builds and not in DEV_MODE.
+  // Waits for the renderer to finish loading so the React app has time
+  // to mount and register its IPC listener before we push status.
   const devMode = getDevMode();
   if (app.isPackaged && !devMode) {
-    (async () => {
+    const runUpdateCheck = async () => {
       try {
         const updateMode = getUpdateMode();
+        console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
         mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
 
         const online = await hasInternet();
         if (!online) {
+          console.log('[ui-updater] offline — skipping update check');
           mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
           return;
         }
 
         const result = await checkForUIUpdate();
         if (!result.updateAvailable) {
+          console.log('[ui-updater] up to date');
           mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
           return;
         }
 
+        console.log(`[ui-updater] new version available: ${result.newVersion}`);
+
         if (updateMode === 'auto') {
+          console.log('[ui-updater] auto mode — downloading and applying...');
           mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
           const applied = await applyUIUpdate();
           if (applied && mainWindow) {
+            console.log('[ui-updater] update applied — reloading window');
             mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
             mainWindow.loadFile(getRendererPath());
           }
         } else {
-          // Manual mode — notify renderer, let user decide
+          console.log('[ui-updater] manual mode — notifying renderer');
           mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
             phase: 'available',
             version: result.newVersion,
@@ -1139,7 +1157,15 @@ app.whenReady().then(() => {
       } catch (err) {
         console.error('[ui-updater] startup check failed:', err);
       }
-    })();
+    };
+    // Delay until the renderer has loaded and React has mounted
+    mainWindow?.webContents.once('did-finish-load', () => {
+      setTimeout(runUpdateCheck, 1500);
+    });
+  } else if (!app.isPackaged) {
+    console.log('[ui-updater] skipped — not a packaged build');
+  } else if (devMode) {
+    console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
   }
 
   app.on('activate', () => {

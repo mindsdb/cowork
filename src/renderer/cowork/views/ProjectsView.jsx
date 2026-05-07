@@ -8,13 +8,13 @@
 //
 // Design source: docs/design-handoff/Anton Projects (D1).
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import Ico from '../components/Icons';
-import Composer from '../components/Composer';
-import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
-import { TaskList } from '../components/task';
-import { ProjectCard } from '../components/project/ProjectCard';
-import NewProjectModal from '../components/project/NewProjectModal';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Ico from "../components/Icons";
+import Composer from "../components/Composer";
+import { WorkingFolderBox, ContextBox, ScheduledBox } from "../components/rail";
+import { TaskList } from "../components/task";
+import { ProjectCard } from "../components/project/ProjectCard";
+import NewProjectModal from "../components/project/NewProjectModal";
 import {
   PageHeader,
   FilterRow,
@@ -22,17 +22,18 @@ import {
   SortPill,
   ViewToggle,
   useCollectionShortcut,
-} from '../components/collection';
+} from "../components/collection";
 import {
   createProject as createProjectApi,
   renameProject,
   revealProjectInFinder,
-  fetchMemory, fetchArtifacts,
-} from '../api';
+  fetchMemory,
+  fetchArtifacts,
+} from "../api";
 
-const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
-const FONT_MONO    = 'var(--font-mono)';
+const FONT_BODY = "var(--font-body)";
+const FONT_DISPLAY = "var(--font-display)";
+const FONT_MONO = "var(--font-mono)";
 
 // ─── Pin persistence (localStorage) ──────────────────────────────────────
 //
@@ -41,8 +42,8 @@ const FONT_MONO    = 'var(--font-mono)';
 // ignored gracefully. Any caller that mutates the list re-emits a
 // 'storage' event-equivalent via a custom event so the components can
 // react without coupling to the storage primitive directly.
-const PIN_KEY = 'anton:pinned-projects';
-const PIN_EVENT = 'anton:pinned-projects:change';
+const PIN_KEY = "anton:pinned-projects";
+const PIN_EVENT = "anton:pinned-projects:change";
 
 function readPinned() {
   try {
@@ -70,10 +71,10 @@ function usePinnedProjects() {
   useEffect(() => {
     const sync = () => setPinned(readPinned());
     window.addEventListener(PIN_EVENT, sync);
-    window.addEventListener('storage', sync);
+    window.addEventListener("storage", sync);
     return () => {
       window.removeEventListener(PIN_EVENT, sync);
-      window.removeEventListener('storage', sync);
+      window.removeEventListener("storage", sync);
     };
   }, []);
   const togglePin = (name, next) => {
@@ -89,46 +90,51 @@ function usePinnedProjects() {
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 function relativeAge(input) {
-  if (!input) return '—';
-  const ts = typeof input === 'number' ? input : Date.parse(input);
-  if (!Number.isFinite(ts)) return '—';
+  if (!input) return "—";
+  const ts = typeof input === "number" ? input : Date.parse(input);
+  if (!Number.isFinite(ts)) return "—";
   const diff = Date.now() - ts;
-  if (diff < 60_000)        return 'just now';
-  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return new Date(ts).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function timestampOfProject(project, tasks) {
-  const list = (tasks || []).filter((t) =>
-    t.projectName === project?.name || t.projectPath === project?.path,
+  const list = (tasks || []).filter(
+    (t) => t.projectName === project?.name || t.projectPath === project?.path,
   );
   let max = 0;
   for (const t of list) {
-    const ts = Date.parse(t.updatedAt || t.subtitle || '') || 0;
+    const ts = Date.parse(t.updatedAt || t.subtitle || "") || 0;
     if (ts > max) max = ts;
   }
   return max;
 }
 
 function isActive(project, tasks) {
-  const list = (tasks || []).filter((t) =>
-    t.projectName === project?.name || t.projectPath === project?.path,
+  const list = (tasks || []).filter(
+    (t) => t.projectName === project?.name || t.projectPath === project?.path,
   );
-  if (list.some((t) => t.status === 'active')) return true;
+  if (list.some((t) => t.status === "active")) return true;
   const HOUR = 60 * 60 * 1000;
   const ts = timestampOfProject(project, tasks);
   return ts > 0 && Date.now() - ts < HOUR;
 }
 
 function activitySummaryFor(project, tasks) {
-  const list = (tasks || []).filter((t) =>
-    t.projectName === project?.name || t.projectPath === project?.path,
+  const list = (tasks || []).filter(
+    (t) => t.projectName === project?.name || t.projectPath === project?.path,
   );
   if (list.length === 0) return null;
-  const sorted = [...list].sort((a, b) =>
-    (Date.parse(b.updatedAt || '') || 0) - (Date.parse(a.updatedAt || '') || 0),
+  const sorted = [...list].sort(
+    (a, b) =>
+      (Date.parse(b.updatedAt || "") || 0) -
+      (Date.parse(a.updatedAt || "") || 0),
   );
   return sorted[0];
 }
@@ -149,24 +155,24 @@ function NewProjectButton({ onClick }) {
 // Sort options for the projects collection. Kept here (and not in
 // the kit) because the choices are page-specific.
 const SORT_OPTIONS = [
-  { id: 'recent',       label: 'Recent' },
-  { id: 'name',         label: 'Name' },
-  { id: 'most-active',  label: 'Most active' },
-  { id: 'least-active', label: 'Least active' },
+  { id: "recent", label: "Recent" },
+  { id: "name", label: "Name" },
+  { id: "most-active", label: "Most active" },
+  { id: "least-active", label: "Least active" },
 ];
 
 function ProjectsCounts({ search, total, filtered, pinnedCount }) {
-  const filterActive = (search || '').trim().length > 0;
+  const filterActive = (search || "").trim().length > 0;
   const countText = filterActive
     ? `Showing ${filtered} of ${total}`
-    : `${total} ${total === 1 ? 'project' : 'projects'}`;
+    : `${total} ${total === 1 ? "project" : "projects"}`;
   return (
     <>
       {countText}
       {pinnedCount > 0 && (
         <>
-          {' · '}
-          <span style={{ color: 'var(--accent)' }}>{pinnedCount} pinned</span>
+          {" · "}
+          <span style={{ color: "var(--accent)" }}>{pinnedCount} pinned</span>
         </>
       )}
     </>
@@ -175,23 +181,46 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
 
 // ─── Project menu (kebab popover) ────────────────────────────────────────
 
-function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
+function ProjectMenu({
+  open,
+  anchorRect,
+  project,
+  pinned,
+  isReserved,
+  undeletable = false,
+  hideOpen = false,
+  hidePin = false,
+  onClose,
+  onOpen,
+  onRename,
+  onTogglePin,
+  onReveal,
+  onDelete,
+}) {
   const ref = useRef(null);
   // Measured layout for the flip-up-when-no-room-below trick — same
   // pattern TaskMenu uses for the sidebar/header kebabs. Without this,
   // a card on the bottom row of the grid opens its menu past the
   // viewport and the destructive items get clipped.
-  const [layout, setLayout] = useState({ top: 0, measured: false, flipped: false });
+  const [layout, setLayout] = useState({
+    top: 0,
+    measured: false,
+    flipped: false,
+  });
 
   useEffect(() => {
     if (!open) return;
-    const onClick = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('mousedown', onClick);
-    window.addEventListener('keydown', onKey);
+    const onClick = (e) => {
+      if (!ref.current?.contains(e.target)) onClose?.();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("mousedown", onClick);
+    window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener('mousedown', onClick);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener("mousedown", onClick);
+      window.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
 
@@ -208,7 +237,7 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
   useLayoutEffect(() => {
     if (!open || !ref.current || !anchorRect) return;
     const h = ref.current.offsetHeight;
-    const VH = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const VH = typeof window !== "undefined" ? window.innerHeight : 800;
     const spaceBelow = VH - VIEWPORT_PAD - anchorRect.bottom;
     const flip = h + VISIBLE_GAP > spaceBelow;
     const next = flip
@@ -220,7 +249,10 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
   if (!open || !anchorRect) return null;
 
   const MENU_W = 200;
-  const left = Math.min(window.innerWidth - MENU_W - 8, Math.max(8, anchorRect.right - MENU_W));
+  const left = Math.min(
+    window.innerWidth - MENU_W - 8,
+    Math.max(8, anchorRect.right - MENU_W),
+  );
 
   const Item = ({ label, icon, onClick, danger, disabled, title }) => (
     <button
@@ -234,25 +266,43 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
         onClose?.();
       }}
       style={{
-        width: 'calc(100% - 8px)', margin: '0 4px',
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 10px', borderRadius: 5,
-        background: 'transparent', border: 0,
-        fontFamily: FONT_BODY, fontSize: 13,
-        color: danger ? 'var(--danger)' : 'var(--ink-2)',
-        textAlign: 'left',
-        cursor: disabled ? 'not-allowed' : 'pointer',
+        width: "calc(100% - 8px)",
+        margin: "0 4px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px",
+        borderRadius: 5,
+        background: "transparent",
+        border: 0,
+        fontFamily: FONT_BODY,
+        fontSize: 13,
+        color: danger ? "var(--danger)" : "var(--ink-2)",
+        textAlign: "left",
+        cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1,
       }}
       onMouseOver={(e) => {
         if (disabled) return;
         e.currentTarget.style.background = danger
-          ? 'color-mix(in srgb, var(--danger) 12%, transparent)'
-          : 'var(--surface-2)';
+          ? "color-mix(in srgb, var(--danger) 12%, transparent)"
+          : "var(--surface-2)";
       }}
-      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.background = "transparent";
+      }}
     >
-      {icon && <span style={{ display: 'inline-flex', flexShrink: 0, color: danger ? 'var(--danger)' : 'var(--ink-3)' }}>{icon}</span>}
+      {icon && (
+        <span
+          style={{
+            display: "inline-flex",
+            flexShrink: 0,
+            color: danger ? "var(--danger)" : "var(--ink-3)",
+          }}
+        >
+          {icon}
+        </span>
+      )}
       <span style={{ flex: 1 }}>{label}</span>
     </button>
   );
@@ -261,37 +311,60 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
     <div
       ref={ref}
       style={{
-        position: 'fixed', top: layout.top, left, zIndex: 60,
+        position: "fixed",
+        top: layout.top,
+        left,
+        zIndex: 60,
         width: MENU_W,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
         borderRadius: 8,
-        boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
-        padding: '4px 0',
-        WebkitAppRegion: 'no-drag',
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)",
+        padding: "4px 0",
+        WebkitAppRegion: "no-drag",
         // Stay invisible while the layout effect is measuring height
         // — prevents a one-frame flash at the wrong y when flipping.
-        visibility: layout.measured ? 'visible' : 'hidden',
+        visibility: layout.measured ? "visible" : "hidden",
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      {!hideOpen && <Item label="Open" icon={Ico.folder(13)} onClick={() => onOpen?.(project)} />}
+      {!hideOpen && (
+        <Item
+          label="Open"
+          icon={Ico.folder(13)}
+          onClick={() => onOpen?.(project)}
+        />
+      )}
       {!hidePin && (
         <Item
-          label={pinned ? 'Unpin' : 'Pin'}
+          label={pinned ? "Unpin" : "Pin"}
           icon={Ico.pin(13)}
           onClick={() => onTogglePin?.(project, !pinned)}
         />
       )}
-      {!isReserved && <Item label="Rename…" icon={Ico.edit(13)} onClick={() => onRename?.(project)} />}
-      <Item label="Show in Finder" icon={Ico.folder(13)} onClick={() => onReveal?.(project)} />
-      <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
+      {!isReserved && (
+        <Item
+          label="Rename…"
+          icon={Ico.edit(13)}
+          onClick={() => onRename?.(project)}
+        />
+      )}
+      <Item
+        label="Show in Finder"
+        icon={Ico.folder(13)}
+        onClick={() => onReveal?.(project)}
+      />
+      <div style={{ height: 1, background: "var(--line)", margin: "4px 0" }} />
       <Item
         label="Delete…"
         icon={Ico.trash(13)}
         danger
         disabled={undeletable}
-        title={undeletable ? "The General project can't be deleted — it's the orphan-fallback workspace." : undefined}
+        title={
+          undeletable
+            ? "The General project can't be deleted — it's the orphan-fallback workspace."
+            : undefined
+        }
         onClick={() => onDelete?.(project)}
       />
     </div>
@@ -323,7 +396,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
   }, [editing]);
 
   const submit = async () => {
-    const next = (inputRef.current?.value || '').trim();
+    const next = (inputRef.current?.value || "").trim();
     if (!next) {
       setEditing(false);
       return;
@@ -334,7 +407,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
       setEditing(false);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[projects] create failed', e);
+      console.error("[projects] create failed", e);
       alert(`Could not create project: ${e?.message || e}`);
     } finally {
       setBusy(false);
@@ -349,17 +422,27 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
     return (
       <div
         style={{
-          minHeight: 120, borderRadius: 10,
-          padding: '14px 16px',
-          background: 'var(--surface)',
-          border: '1px solid var(--accent)',
-          display: 'flex', flexDirection: 'column', gap: 10, justifyContent: 'center',
+          minHeight: 120,
+          borderRadius: 10,
+          padding: "14px 16px",
+          background: "var(--surface)",
+          border: "1px solid var(--accent)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          justifyContent: "center",
           fontFamily: FONT_BODY,
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-3)' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              flexShrink: 0,
+              color: "var(--ink-3)",
+            }}
+          >
             {Ico.folder(14)}
           </span>
           <input
@@ -372,37 +455,45 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
             autoCorrect="off"
             onKeyDown={(e) => {
               e.stopPropagation();
-              if (e.key === 'Enter') {
+              if (e.key === "Enter") {
                 e.preventDefault();
                 submit();
-              } else if (e.key === 'Escape') {
+              } else if (e.key === "Escape") {
                 e.preventDefault();
                 cancel();
               }
             }}
             onBlur={() => {
               // Blur commits if there's a value, otherwise cancels.
-              const val = (inputRef.current?.value || '').trim();
+              const val = (inputRef.current?.value || "").trim();
               if (val) submit();
               else cancel();
             }}
             style={{
-              flex: 1, minWidth: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--line)',
+              flex: 1,
+              minWidth: 0,
+              fontFamily: FONT_DISPLAY,
+              fontSize: 16,
+              fontWeight: 600,
+              letterSpacing: "-0.005em",
+              color: "var(--ink)",
+              background: "var(--surface-2)",
+              border: "1px solid var(--line)",
               borderRadius: 6,
-              padding: '4px 8px',
-              outline: 'none',
+              padding: "4px 8px",
+              outline: "none",
             }}
           />
         </div>
-        <div style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-        }}>
-          {busy ? 'Creating…' : '↵ create · esc cancel'}
+        <div
+          style={{
+            fontFamily: FONT_MONO,
+            fontSize: 10.5,
+            color: "var(--ink-4)",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {busy ? "Creating…" : "↵ create · esc cancel"}
         </div>
       </div>
     );
@@ -415,18 +506,25 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        minHeight: 120, borderRadius: 10,
-        padding: '14px 16px',
-        background: 'transparent',
-        border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
-        color: hover ? 'var(--accent)' : 'var(--ink-3)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 8, cursor: 'pointer',
-        transition: 'border-color .15s ease, color .15s ease',
+        minHeight: 120,
+        borderRadius: 10,
+        padding: "14px 16px",
+        background: "transparent",
+        border: `1px dashed ${hover ? "var(--accent)" : "var(--line-2)"}`,
+        color: hover ? "var(--accent)" : "var(--ink-3)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        cursor: "pointer",
+        transition: "border-color .15s ease, color .15s ease",
       }}
     >
-      <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
-      <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>New project</span>
+      <span style={{ display: "inline-flex" }}>{Ico.plus(16)}</span>
+      <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>
+        New project
+      </span>
     </button>
   );
 }
@@ -442,23 +540,33 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
 // the typical sidebar width — the prior 1.6fr lost the name to the
 // "Last activity" cell. Updated column was dropped (the activity
 // summary already implies recency); the freed width goes to Name.
-const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
+const LIST_GRID = "3fr 1.2fr 64px 64px 64px 64px 64px 36px";
 
 function ListHeader() {
   const Cell = ({ children, align }) => (
-    <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
-      textTransform: 'uppercase',
-      textAlign: align || 'left',
-    }}>{children}</div>
+    <div
+      style={{
+        fontFamily: FONT_MONO,
+        fontSize: 10.5,
+        color: "var(--ink-4)",
+        letterSpacing: "0.10em",
+        textTransform: "uppercase",
+        textAlign: align || "left",
+      }}
+    >
+      {children}
+    </div>
   );
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-      padding: '10px 14px',
-      borderBottom: '1px solid var(--line)',
-    }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: LIST_GRID,
+        gap: 14,
+        padding: "10px 14px",
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
       <Cell>Name</Cell>
       <Cell>Last activity</Cell>
       <Cell align="right">Tasks</Cell>
@@ -474,12 +582,17 @@ function ListHeader() {
 function D1Num({ value }) {
   const isZero = !value;
   return (
-    <span style={{
-      fontFamily: FONT_MONO, fontSize: 12,
-      color: isZero ? 'var(--ink-5)' : 'var(--ink)',
-      textAlign: 'right',
-      fontVariantNumeric: 'tabular-nums',
-    }}>{value ?? 0}</span>
+    <span
+      style={{
+        fontFamily: FONT_MONO,
+        fontSize: 12,
+        color: isZero ? "var(--ink-5)" : "var(--ink)",
+        textAlign: "right",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {value ?? 0}
+    </span>
   );
 }
 
@@ -489,21 +602,33 @@ function D1Num({ value }) {
 function ActiveNum({ value }) {
   const isZero = !value;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-      gap: 6,
-      fontFamily: FONT_MONO, fontSize: 12,
-      color: isZero ? 'var(--ink-5)' : 'var(--accent)',
-      textAlign: 'right',
-      fontVariantNumeric: 'tabular-nums',
-    }}>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: 6,
+        fontFamily: FONT_MONO,
+        fontSize: 12,
+        color: isZero ? "var(--ink-5)" : "var(--accent)",
+        textAlign: "right",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
       {!isZero && (
-        <span aria-hidden className="pulse-dot" style={{
-          width: 6, height: 6, borderRadius: '50%',
-          background: 'var(--accent)',
-          boxShadow: '0 0 6px color-mix(in srgb, var(--accent) 55%, transparent)',
-          flexShrink: 0,
-        }} />
+        <span
+          aria-hidden
+          className="pulse-dot"
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            boxShadow:
+              "0 0 6px color-mix(in srgb, var(--accent) 55%, transparent)",
+            flexShrink: 0,
+          }}
+        />
       )}
       {value ?? 0}
     </span>
@@ -519,35 +644,58 @@ function useRowStats(project) {
   useEffect(() => {
     if (!project?.path) return;
     let cancelled = false;
-    fetchMemory(project.path).then((data) => {
-      if (cancelled) return;
-      const total = (data?.sections || []).reduce((n, s) => n + (s.files?.length || 0), 0);
-      setMem(total);
-    }).catch(() => {});
-    fetchArtifacts().then((data) => {
-      if (cancelled || !Array.isArray(data)) return;
-      const prefix = project.path.replace(/\/+$/, '') + '/';
-      setArt(data.filter((a) => a.path?.startsWith(prefix)).length);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    fetchMemory(project.path)
+      .then((data) => {
+        if (cancelled) return;
+        const total = (data?.sections || []).reduce(
+          (n, s) => n + (s.files?.length || 0),
+          0,
+        );
+        setMem(total);
+      })
+      .catch(() => {});
+    fetchArtifacts()
+      .then((data) => {
+        if (cancelled || !Array.isArray(data)) return;
+        const prefix = project.path.replace(/\/+$/, "") + "/";
+        setArt(data.filter((a) => a.path?.startsWith(prefix)).length);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [project?.path]);
   return { mem, art };
 }
 
-function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen }) {
+function ListRow({
+  project,
+  tasks,
+  scheduled,
+  pinned,
+  onOpen,
+  onTogglePin,
+  onMenuOpen,
+}) {
   const [hover, setHover] = useState(false);
   const triggerRef = useRef(null);
   const { mem, art } = useRowStats(project);
   const summary = activitySummaryFor(project, tasks);
-  const projectTasks = (tasks || []).filter((t) => t.projectName === project.name || t.projectPath === project.path);
+  const projectTasks = (tasks || []).filter(
+    (t) => t.projectName === project.name || t.projectPath === project.path,
+  );
   const taskCount = projectTasks.length;
   // App.jsx sets task.status to 'active' while a turn is streaming
   // and back to 'idle' on completion, so this count reflects the
   // live in-flight work for the project.
-  const activeTaskCount = projectTasks.filter((t) => t.status === 'active').length;
-  const schedCount = (scheduled || []).filter((s) => (s.project || s.projectName) === project.name).length;
+  const activeTaskCount = projectTasks.filter(
+    (t) => t.status === "active",
+  ).length;
+  const schedCount = (scheduled || []).filter(
+    (s) => (s.project || s.projectName) === project.name,
+  ).length;
   const active = isActive(project, tasks);
-  const isReserved = project.name === 'general' || project.name === 'default';
+  const isReserved = project.name === "general" || project.name === "default";
 
   return (
     <div
@@ -556,48 +704,89 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
       onClick={() => onOpen?.(project)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onKeyDown={(e) => { if (e.key === 'Enter') onOpen?.(project); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onOpen?.(project);
+      }}
       style={{
-        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-        padding: '12px 14px',
-        background: hover ? 'var(--surface)' : 'transparent',
-        borderBottom: '1px solid var(--line)',
-        cursor: 'pointer',
-        transition: 'background .12s ease',
-        alignItems: 'center',
-        outline: 'none',
+        display: "grid",
+        gridTemplateColumns: LIST_GRID,
+        gap: 14,
+        padding: "12px 14px",
+        background: hover ? "var(--surface)" : "transparent",
+        borderBottom: "1px solid var(--line)",
+        cursor: "pointer",
+        transition: "background .12s ease",
+        alignItems: "center",
+        outline: "none",
       }}
     >
       {/* Name */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <span aria-hidden style={{
-          width: 6, height: 6, borderRadius: 99,
-          background: active ? 'var(--success)' : 'var(--ink-5)',
-          boxShadow: active ? '0 0 6px var(--success-glow)' : 'none',
-          flexShrink: 0,
-        }} />
-        <span style={{ display: 'inline-flex', color: 'var(--ink-3)', flexShrink: 0 }}>
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 99,
+            background: active ? "var(--success)" : "var(--ink-5)",
+            boxShadow: active ? "0 0 6px var(--success-glow)" : "none",
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            display: "inline-flex",
+            color: "var(--ink-3)",
+            flexShrink: 0,
+          }}
+        >
           {Ico.folder(13)}
         </span>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-          color: 'var(--ink)', minWidth: 0,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{project.name}</span>
+        <span
+          style={{
+            fontFamily: FONT_DISPLAY,
+            fontSize: 14.5,
+            fontWeight: 600,
+            color: "var(--ink)",
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {project.name}
+        </span>
         {pinned && (
-          <span style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              color: "var(--accent)",
+              flexShrink: 0,
+            }}
+          >
             {Ico.pin(11)}
           </span>
         )}
       </div>
 
       {/* Last activity */}
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 12.5,
-        color: 'var(--ink-2)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {summary?.title || <span style={{ color: 'var(--ink-4)', fontStyle: 'italic' }}>No activity yet</span>}
+      <div
+        style={{
+          fontFamily: FONT_BODY,
+          fontSize: 12.5,
+          color: "var(--ink-2)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {summary?.title || (
+          <span style={{ color: "var(--ink-4)", fontStyle: "italic" }}>
+            No activity yet
+          </span>
+        )}
       </div>
 
       {/* Number cells */}
@@ -608,7 +797,7 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
       <D1Num value={art} />
 
       {/* ⋯ menu */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button
           ref={triggerRef}
           type="button"
@@ -619,17 +808,27 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
           }}
           aria-label="Project menu"
           style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            background: "transparent",
+            border: 0,
+            color: "var(--ink-3)",
             opacity: hover || isReserved ? 1 : 0,
-            display: isReserved ? 'none' : 'inline-grid',
-            placeItems: 'center',
-            cursor: 'pointer',
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+            display: isReserved ? "none" : "inline-grid",
+            placeItems: "center",
+            cursor: "pointer",
+            transition:
+              "opacity .15s ease, color .15s ease, background .15s ease",
           }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = "var(--surface-2)";
+            e.currentTarget.style.color = "var(--ink)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "var(--ink-3)";
+          }}
         >
           {Ico.moreVert(15)}
         </button>
@@ -642,16 +841,40 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
 
 function EmptyState({ onNewProject }) {
   return (
-    <div style={{
-      flex: 1, minHeight: 360,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 14, padding: '40px 24px',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 360,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 14,
+        padding: "40px 24px",
+      }}
+    >
+      <span style={{ display: "inline-flex", color: "var(--ink-4)" }}>
+        {Ico.folder(32)}
+      </span>
+      <div
+        style={{
+          fontFamily: FONT_DISPLAY,
+          fontSize: 18,
+          fontWeight: 600,
+          color: "var(--ink)",
+        }}
+      >
         No projects yet
       </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 360, textAlign: 'center' }}>
+      <div
+        style={{
+          fontFamily: FONT_BODY,
+          fontSize: 13.5,
+          color: "var(--ink-3)",
+          maxWidth: 360,
+          textAlign: "center",
+        }}
+      >
         Create your first project to start grouping conversations and outputs.
       </div>
       <NewProjectButton onClick={onNewProject} />
@@ -661,17 +884,58 @@ function EmptyState({ onNewProject }) {
 
 function SkeletonCard() {
   return (
-    <div style={{
-      minHeight: 120, borderRadius: 10, padding: '14px 16px',
-      border: '1px solid var(--line)', background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      <div style={{ height: 14, width: '60%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ height: 11, width: '90%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
-        <div style={{ height: 11, width: '70%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+    <div
+      style={{
+        minHeight: 120,
+        borderRadius: 10,
+        padding: "14px 16px",
+        border: "1px solid var(--line)",
+        background: "var(--surface)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          height: 14,
+          width: "60%",
+          background: "var(--surface-2)",
+          borderRadius: 4,
+        }}
+        className="proj-shimmer"
+      />
+      <div
+        style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}
+      >
+        <div
+          style={{
+            height: 11,
+            width: "90%",
+            background: "var(--surface-2)",
+            borderRadius: 4,
+          }}
+          className="proj-shimmer"
+        />
+        <div
+          style={{
+            height: 11,
+            width: "70%",
+            background: "var(--surface-2)",
+            borderRadius: 4,
+          }}
+          className="proj-shimmer"
+        />
       </div>
-      <div style={{ height: 12, width: '50%', background: 'var(--surface-2)', borderRadius: 4 }} className="proj-shimmer" />
+      <div
+        style={{
+          height: 12,
+          width: "50%",
+          background: "var(--surface-2)",
+          borderRadius: 4,
+        }}
+        className="proj-shimmer"
+      />
     </div>
   );
 }
@@ -691,17 +955,33 @@ function Crumb({ label, onClick, title, maxWidth }) {
       onClick={onClick}
       title={title}
       style={{
-        cursor: 'pointer', background: 'transparent', border: 0, outline: 0,
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
+        cursor: "pointer",
+        background: "transparent",
+        border: 0,
+        outline: 0,
+        fontFamily: FONT_DISPLAY,
+        fontWeight: 600,
+        fontSize: 13,
+        letterSpacing: "0.04em",
+        color: "var(--ink-3)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        maxWidth,
+        flexShrink: 1,
+        padding: "2px 6px",
+        borderRadius: 5,
+        transition: "color 120ms ease, background 120ms ease",
+        WebkitAppRegion: "no-drag",
       }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.color = "var(--ink)";
+        e.currentTarget.style.background = "var(--surface-2)";
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.color = "var(--ink-3)";
+        e.currentTarget.style.background = "transparent";
+      }}
     >
       {label}
     </button>
@@ -710,11 +990,20 @@ function Crumb({ label, onClick, title, maxWidth }) {
 
 function CrumbSep() {
   return (
-    <span aria-hidden="true" style={{
-      color: 'var(--ink-4)', fontFamily: FONT_DISPLAY,
-      fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-      userSelect: 'none',
-    }}>›</span>
+    <span
+      aria-hidden="true"
+      style={{
+        color: "var(--ink-4)",
+        fontFamily: FONT_DISPLAY,
+        fontSize: 14,
+        lineHeight: 1,
+        padding: "0 2px",
+        flexShrink: 0,
+        userSelect: "none",
+      }}
+    >
+      ›
+    </span>
   );
 }
 
@@ -739,17 +1028,20 @@ function ProjectDetail({
   onDelete,
 }) {
   const projectTasks = (tasks || [])
-    .filter((t) => t.projectName === project.name || t.projectPath === project.path)
+    .filter(
+      (t) => t.projectName === project.name || t.projectPath === project.path,
+    )
     .sort((a, b) => timestampOfProject(b, []) - timestampOfProject(a, []) || 0);
-  const projectSchedules = (scheduled || [])
-    .filter((s) => (s.project || s.projectName) === project.name);
+  const projectSchedules = (scheduled || []).filter(
+    (s) => (s.project || s.projectName) === project.name,
+  );
 
   const [railOpen, setRailOpen] = useState(true);
   const [titleHover, setTitleHover] = useState(false);
   const [menuRect, setMenuRect] = useState(null);
   const kebabRef = useRef(null);
   const renameInputRef = useRef(null);
-  const isReserved = project.name === 'general' || project.name === 'default';
+  const isReserved = project.name === "general" || project.name === "default";
   const showKebab = titleHover || !!menuRect;
 
   // Focus + select-all the inline input on mount of the editing state.
@@ -759,7 +1051,9 @@ function ProjectDetail({
       const el = renameInputRef.current;
       if (!el) return;
       el.focus();
-      try { el.select(); } catch {}
+      try {
+        el.select();
+      } catch {}
     });
     return () => cancelAnimationFrame(id);
   }, [editing]);
@@ -770,24 +1064,33 @@ function ProjectDetail({
   };
 
   return (
-    <div style={{
-      flex: 1, minHeight: 0,
-      display: 'grid',
-      gridTemplateColumns: railOpen ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr) 0px',
-      gridTemplateRows: '1fr',
-      transition: 'grid-template-columns 220ms cubic-bezier(.2,.7,.3,1)',
-      background: 'transparent',
-      fontFamily: FONT_BODY,
-      color: 'var(--ink-2)',
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        position: 'relative', overflow: 'hidden',
-        display: 'grid',
-        gridTemplateRows: 'auto 1fr',
-        minWidth: 0, minHeight: 0,
-      }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "grid",
+        gridTemplateColumns: railOpen
+          ? "minmax(0, 1fr) 320px"
+          : "minmax(0, 1fr) 0px",
+        gridTemplateRows: "1fr",
+        transition: "grid-template-columns 220ms cubic-bezier(.2,.7,.3,1)",
+        background: "transparent",
+        fontFamily: FONT_BODY,
+        color: "var(--ink-2)",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          display: "grid",
+          gridTemplateRows: "auto 1fr",
+          minWidth: 0,
+          minHeight: 0,
+        }}
+      >
         {/* Floating expand-rail button (mirrors ChatView). */}
         <button
           type="button"
@@ -795,47 +1098,74 @@ function ProjectDetail({
           title="Expand panel"
           aria-label="Expand panel"
           style={{
-            position: 'absolute', top: 14, right: 14, zIndex: 10,
-            width: 28, height: 28, borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer', background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
+            position: "absolute",
+            top: 14,
+            right: 14,
+            zIndex: 10,
+            width: 28,
+            height: 28,
+            borderRadius: 6,
+            display: "inline-grid",
+            placeItems: "center",
+            cursor: "pointer",
+            background: "transparent",
+            border: 0,
+            color: "var(--ink-3)",
             opacity: railOpen ? 0 : 1,
-            transform: railOpen ? 'translateX(8px)' : 'translateX(0)',
-            pointerEvents: railOpen ? 'none' : 'auto',
+            transform: railOpen ? "translateX(8px)" : "translateX(0)",
+            pointerEvents: railOpen ? "none" : "auto",
             transition:
-              `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '120ms'}, ` +
-              `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
-            WebkitAppRegion: 'no-drag',
+              `opacity 280ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? "0ms" : "120ms"}, ` +
+              `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? "0ms" : "80ms"}`,
+            WebkitAppRegion: "no-drag",
           }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = "var(--ink)";
+            e.currentTarget.style.background = "var(--surface-2)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = "var(--ink-3)";
+            e.currentTarget.style.background = "transparent";
+          }}
         >
           {Ico.panelExpandLeft(15)}
         </button>
 
         {/* Header — Projects › [project] crumb */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 28px',
-          borderBottom: '1px solid var(--line)',
-          background: 'transparent',
-          flexShrink: 0,
-          minWidth: 0, overflow: 'hidden',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            minWidth: 0, flex: '1 1 0',
-            overflow: 'hidden',
-          }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 28px",
+            borderBottom: "1px solid var(--line)",
+            background: "transparent",
+            flexShrink: 0,
+            minWidth: 0,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              minWidth: 0,
+              flex: "1 1 0",
+              overflow: "hidden",
+            }}
+          >
             <Crumb label="Projects" onClick={onShowAll} title="All projects" />
             <CrumbSep />
             <div
               onMouseEnter={() => setTitleHover(true)}
               onMouseLeave={() => setTitleHover(false)}
               style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                minWidth: 0, flex: '1 1 0',
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                minWidth: 0,
+                flex: "1 1 0",
               }}
             >
               {editing ? (
@@ -847,10 +1177,10 @@ function ProjectDetail({
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => {
                     e.stopPropagation();
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       e.preventDefault();
                       submitRename();
-                    } else if (e.key === 'Escape') {
+                    } else if (e.key === "Escape") {
                       e.preventDefault();
                       onRenameCancel?.();
                     }
@@ -860,21 +1190,38 @@ function ProjectDetail({
                   autoCapitalize="none"
                   autoCorrect="off"
                   style={{
-                    flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--accent)',
-                    borderRadius: 5, padding: '2px 6px', outline: 'none',
+                    flex: "1 1 0",
+                    minWidth: 0,
+                    fontFamily: FONT_DISPLAY,
+                    fontWeight: 600,
+                    fontSize: 14,
+                    letterSpacing: "0.04em",
+                    color: "var(--ink)",
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--accent)",
+                    borderRadius: 5,
+                    padding: "2px 6px",
+                    outline: "none",
                   }}
                 />
               ) : (
-                <span title={project.name} style={{
-                  fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                  letterSpacing: '0.04em', color: 'var(--ink)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  minWidth: 0, flex: '0 1 auto',
-                }}>{project.name}</span>
+                <span
+                  title={project.name}
+                  style={{
+                    fontFamily: FONT_DISPLAY,
+                    fontWeight: 600,
+                    fontSize: 14,
+                    letterSpacing: "0.04em",
+                    color: "var(--ink)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                    flex: "0 1 auto",
+                  }}
+                >
+                  {project.name}
+                </span>
               )}
               {!editing && (
                 <button
@@ -887,19 +1234,30 @@ function ProjectDetail({
                     setMenuRect(rect || null);
                   }}
                   style={{
-                    width: 22, height: 22, borderRadius: 5,
-                    background: 'transparent', border: 0,
-                    color: 'var(--ink-3)',
-                    display: 'inline-grid', placeItems: 'center',
+                    width: 22,
+                    height: 22,
+                    borderRadius: 5,
+                    background: "transparent",
+                    border: 0,
+                    color: "var(--ink-3)",
+                    display: "inline-grid",
+                    placeItems: "center",
                     flexShrink: 0,
                     opacity: showKebab ? 1 : 0,
-                    pointerEvents: showKebab ? 'auto' : 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-                    WebkitAppRegion: 'no-drag',
+                    pointerEvents: showKebab ? "auto" : "none",
+                    cursor: "pointer",
+                    transition:
+                      "opacity .15s ease, color .15s ease, background .15s ease",
+                    WebkitAppRegion: "no-drag",
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = "var(--surface-2)";
+                    e.currentTarget.style.color = "var(--ink)";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "var(--ink-3)";
+                  }}
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -913,7 +1271,7 @@ function ProjectDetail({
           anchorRect={menuRect}
           project={project}
           isReserved={isReserved}
-          undeletable={project.name === 'general'}
+          undeletable={project.name === "general"}
           hideOpen
           hidePin
           onClose={() => setMenuRect(null)}
@@ -922,16 +1280,26 @@ function ProjectDetail({
           onDelete={() => onDelete?.(project)}
         />
 
-        <div data-scroll="true" style={{
-          minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
-          padding: '32px 28px 60px',
-          background: 'transparent',
-          WebkitAppRegion: 'no-drag',
-        }}>
-          <div style={{
-            maxWidth: 720, margin: '0 auto',
-            display: 'flex', flexDirection: 'column', gap: 28,
-          }}>
+        <div
+          data-scroll="true"
+          style={{
+            minHeight: 0,
+            overflowY: "auto",
+            overflowX: "hidden",
+            padding: "32px 28px 60px",
+            background: "transparent",
+            WebkitAppRegion: "no-drag",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 720,
+              margin: "0 auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 28,
+            }}
+          >
             <Composer
               onSend={onSend}
               project={project}
@@ -961,35 +1329,55 @@ function ProjectDetail({
         </div>
       </div>
 
-      <aside style={{
-        background: 'transparent',
-        padding: '14px 14px 22px',
-        visibility: railOpen ? 'visible' : 'hidden',
-        opacity: railOpen ? 1 : 0,
-        transition: 'opacity 180ms ease',
-        display: 'flex', flexDirection: 'column', gap: 10,
-        overflowX: 'hidden', overflowY: 'auto',
-        minWidth: 0,
-        WebkitAppRegion: 'no-drag',
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-          flexShrink: 0,
-        }}>
+      <aside
+        style={{
+          background: "transparent",
+          padding: "14px 14px 22px",
+          visibility: railOpen ? "visible" : "hidden",
+          opacity: railOpen ? 1 : 0,
+          transition: "opacity 180ms ease",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          overflowX: "hidden",
+          overflowY: "auto",
+          minWidth: 0,
+          WebkitAppRegion: "no-drag",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            flexShrink: 0,
+          }}
+        >
           <button
             type="button"
             onClick={() => setRailOpen(false)}
             title="Collapse panel"
             aria-label="Collapse panel"
             style={{
-              cursor: 'pointer', background: 'transparent', border: 0,
-              width: 26, height: 26, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              color: 'var(--ink-3)',
-              WebkitAppRegion: 'no-drag',
+              cursor: "pointer",
+              background: "transparent",
+              border: 0,
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              display: "inline-grid",
+              placeItems: "center",
+              color: "var(--ink-3)",
+              WebkitAppRegion: "no-drag",
             }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.color = "var(--ink)";
+              e.currentTarget.style.background = "var(--surface-2)";
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.color = "var(--ink-3)";
+              e.currentTarget.style.background = "transparent";
+            }}
           >
             {Ico.panelCollapseRight(15)}
           </button>
@@ -1025,10 +1413,10 @@ export default function ProjectsView({
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const [view, setView] = useState(() =>
-    localStorage.getItem('anton:projects-view') === 'list' ? 'list' : 'grid'
+    localStorage.getItem("anton:projects-view") === "list" ? "list" : "grid",
   );
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('recent');
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("recent");
   const [menuFor, setMenuFor] = useState(null); // { project, rect }
   // Card whose title is currently in inline-edit mode. Only one at a
   // time — null means no card is editing. The card owns the input;
@@ -1041,10 +1429,14 @@ export default function ProjectsView({
   // app-level selectedProject so the chat-header crumb (which sets
   // selectedProject + routes here) lands directly in detail.
   const [detailProject, setDetailProject] = useState(selectedProject || null);
-  useEffect(() => { setDetailProject(selectedProject || null); }, [selectedProject]);
+  useEffect(() => {
+    setDetailProject(selectedProject || null);
+  }, [selectedProject]);
 
   // Persist view preference.
-  useEffect(() => { localStorage.setItem('anton:projects-view', view); }, [view]);
+  useEffect(() => {
+    localStorage.setItem("anton:projects-view", view);
+  }, [view]);
 
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
@@ -1061,7 +1453,7 @@ export default function ProjectsView({
     if (onCreateProject) await onCreateProject({ name });
     else await createProjectApi(name);
     // App-level listener refetches projects on this event.
-    window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+    window.dispatchEvent(new CustomEvent("anton:projects-changed"));
   };
 
   const handleOpen = (project) => {
@@ -1079,7 +1471,7 @@ export default function ProjectsView({
     setEditingProjectName(null);
   };
   const handleRenameSubmit = async (oldName, rawNext) => {
-    const next = (rawNext || '').trim();
+    const next = (rawNext || "").trim();
     setEditingProjectName(null);
     if (!next || next === oldName) return;
     try {
@@ -1091,10 +1483,14 @@ export default function ProjectsView({
       // immediately — App.jsx's selectedProject won't update until the
       // user re-enters the project from the grid.
       if (detailProject?.name === oldName) {
-        setDetailProject({ ...detailProject, name: finalName, path: finalPath });
+        setDetailProject({
+          ...detailProject,
+          name: finalName,
+          path: finalPath,
+        });
       }
       // App-level listener refetches projects on this event.
-      window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+      window.dispatchEvent(new CustomEvent("anton:projects-changed"));
     } catch (e) {
       alert(`Rename failed: ${e?.message || e}`);
     }
@@ -1102,32 +1498,39 @@ export default function ProjectsView({
 
   const handleReveal = async (project) => {
     if (!project?.path) return;
-    try { await revealProjectInFinder(project.path); } catch {}
+    try {
+      await revealProjectInFinder(project.path);
+    } catch {}
   };
 
   // Filter + sort, with pinned items always at the top.
   const visibleProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = [...projects];
-    if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q));
+    if (q) list = list.filter((p) => (p.name || "").toLowerCase().includes(q));
 
     const ts = (p) => timestampOfProject(p, tasks);
-    const taskCountOf = (p) => (tasks || []).filter((t) =>
-      t.projectName === p.name || t.projectPath === p.path,
-    ).length;
+    const taskCountOf = (p) =>
+      (tasks || []).filter(
+        (t) => t.projectName === p.name || t.projectPath === p.path,
+      ).length;
 
     list.sort((a, b) => {
       switch (sort) {
-        case 'name':         return a.name.localeCompare(b.name);
-        case 'most-active':  return taskCountOf(b) - taskCountOf(a);
-        case 'least-active': return taskCountOf(a) - taskCountOf(b);
-        case 'recent':
-        default:             return ts(b) - ts(a);
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "most-active":
+          return taskCountOf(b) - taskCountOf(a);
+        case "least-active":
+          return taskCountOf(a) - taskCountOf(b);
+        case "recent":
+        default:
+          return ts(b) - ts(a);
       }
     });
 
     // Pinned to top, preserving relative sort within each group.
-    const pinnedList   = list.filter((p) => pinned.has(p.name));
+    const pinnedList = list.filter((p) => pinned.has(p.name));
     const unpinnedList = list.filter((p) => !pinned.has(p.name));
     return [...pinnedList, ...unpinnedList];
   }, [projects, tasks, search, sort, pinned]);
@@ -1151,7 +1554,9 @@ export default function ProjectsView({
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}
-        onRenameSubmit={(rawNext) => handleRenameSubmit(detailProject.name, rawNext)}
+        onRenameSubmit={(rawNext) =>
+          handleRenameSubmit(detailProject.name, rawNext)
+        }
         onRenameCancel={handleRenameCancel}
         onReveal={handleReveal}
         onDelete={(proj) => {
@@ -1169,13 +1574,18 @@ export default function ProjectsView({
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through. Earlier this was
     // `background: 'var(--bg)'`, which masked the field on this view.
-    <div className="scroll-clean" style={{
-      flex: 1, overflowY: 'auto',
-      display: 'flex', flexDirection: 'column',
-    }}>
+    <div
+      className="scroll-clean"
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <PageHeader
         title="Projects"
-        subtitle="Workspaces Anton uses to group conversations, memory, and outputs."
+        subtitle="Workspaces !! Anton uses to group conversations, memory, and outputs."
         actions={<NewProjectButton onClick={handleNewProject} />}
         // Bake the breathing room into the header itself rather than a
         // sibling spacer. The previous 18px spacer div collapsed in
@@ -1196,34 +1606,48 @@ export default function ProjectsView({
             placeholder="Search projects"
           />
         }
-        sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+        sort={
+          <SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />
+        }
         view={<ViewToggle value={view} onChange={setView} />}
         counts={
           <ProjectsCounts
             search={search}
             total={projects.length}
             filtered={visibleProjects.length}
-            pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
+            pinnedCount={
+              visibleProjects.filter((p) => pinned.has(p.name)).length
+            }
           />
         }
       />
 
       {loading ? (
-        <div style={{
-          padding: '6px 32px 60px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
-          marginTop: 18,
-        }}>
-          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+        <div
+          style={{
+            padding: "6px 32px 60px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: 14,
+            marginTop: 18,
+          }}
+        >
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       ) : projects.length === 0 ? (
         <EmptyState onNewProject={handleNewProject} />
-      ) : view === 'grid' ? (
-        <div style={{
-          padding: '6px 32px 60px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
-          marginTop: 18,
-        }}>
+      ) : view === "grid" ? (
+        <div
+          style={{
+            padding: "6px 32px 60px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: 14,
+            marginTop: 18,
+          }}
+        >
           {visibleProjects.map((p) => (
             <ProjectCard
               key={p.name || p.path}
@@ -1249,33 +1673,40 @@ export default function ProjectsView({
             onClick={handleNewProject}
             className="proj-new-tile"
             style={{
-              minHeight: 120, borderRadius: 10,
-              padding: '14px 16px',
-              background: 'transparent',
-              border: '1px dashed var(--line-2)',
-              color: 'var(--ink-3)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 8, cursor: 'pointer',
-              transition: 'border-color .15s ease, color .15s ease',
-              font: 'inherit',
+              minHeight: 120,
+              borderRadius: 10,
+              padding: "14px 16px",
+              background: "transparent",
+              border: "1px dashed var(--line-2)",
+              color: "var(--ink-3)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              cursor: "pointer",
+              transition: "border-color .15s ease, color .15s ease",
+              font: "inherit",
             }}
             onMouseOver={(e) => {
-              e.currentTarget.style.borderColor = 'var(--accent)';
-              e.currentTarget.style.color = 'var(--accent)';
+              e.currentTarget.style.borderColor = "var(--accent)";
+              e.currentTarget.style.color = "var(--accent)";
             }}
             onMouseOut={(e) => {
-              e.currentTarget.style.borderColor = 'var(--line-2)';
-              e.currentTarget.style.color = 'var(--ink-3)';
+              e.currentTarget.style.borderColor = "var(--line-2)";
+              e.currentTarget.style.color = "var(--ink-3)";
             }}
           >
-            <span style={{ display: 'inline-flex' }}>{Ico.plus(16)}</span>
-            <span style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}>
+            <span style={{ display: "inline-flex" }}>{Ico.plus(16)}</span>
+            <span
+              style={{ fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500 }}
+            >
               New project
             </span>
           </button>
         </div>
       ) : (
-        <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
+        <div style={{ padding: "6px 32px 60px", marginTop: 18 }}>
           <ListHeader />
           {visibleProjects.map((p) => (
             <ListRow
@@ -1297,7 +1728,10 @@ export default function ProjectsView({
         anchorRect={menuFor?.rect}
         project={menuFor?.project}
         pinned={menuFor ? pinned.has(menuFor.project.name) : false}
-        isReserved={menuFor?.project?.name === 'general' || menuFor?.project?.name === 'default'}
+        isReserved={
+          menuFor?.project?.name === "general" ||
+          menuFor?.project?.name === "default"
+        }
         onClose={() => setMenuFor(null)}
         onOpen={handleOpen}
         onRename={handleRenameStart}
