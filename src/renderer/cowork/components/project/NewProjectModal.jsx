@@ -5,8 +5,8 @@
 //   1. Validate the name (server sanitises + dedupes; we just guard
 //      empty / whitespace).
 //   2. POST /v1/projects to create the folder.
-//   3. If the user supplied instructions text, PUT it as anton.md
-//      under the new project's `.context/` directory.
+//   3. If the user supplied instructions text, PUT it at
+//      ANTON_PROJECT_INSTRUCTIONS_PATH (`.context/anton.md`).
 //   4. If files are queued, upload them in one multipart request.
 //
 // Failure handling: each step that touches the server is independent
@@ -19,13 +19,12 @@ import {
   createProject,
   uploadProjectFiles,
   writeProjectFile,
+  ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
-
-const ANTON_INSTRUCTIONS_FILENAME = 'anton.md';
 
 function FileList({ files, onRemove }) {
   if (!files.length) return null;
@@ -142,13 +141,12 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       const result = await createProject(trimmed);
       const finalName = result?.name || trimmed;
 
-      // 2) Write anton.md if the user typed instructions. Use the
-      //    final (post-sanitisation) name so the file lands in the
-      //    correct project.
+      // 2) Write instructions if the user typed any. Use the final
+      //    (post-sanitisation) project name.
       const trimmedInstr = (instructions || '').trim();
       if (trimmedInstr) {
         try {
-          await writeProjectFile(finalName, ANTON_INSTRUCTIONS_FILENAME, trimmedInstr);
+          await writeProjectFile(finalName, ANTON_PROJECT_INSTRUCTIONS_PATH, trimmedInstr);
         } catch (e) {
           // eslint-disable-next-line no-console
           console.warn('[new-project] writing anton.md failed', e);

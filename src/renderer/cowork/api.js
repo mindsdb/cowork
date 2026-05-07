@@ -371,16 +371,16 @@ export async function deleteProject(name) {
   return res.json();
 }
 
-// ── Project files (context dir) ─────────────────────────────────
+// ── Project files ────────────────────────────────────────────────
 //
-// Each project has a `.context/` subdirectory the user fills with
-// reference docs (anton.md being the always-present working
-// instructions). These helpers wrap the GET/PUT/POST/DELETE
-// endpoints in routes/projects.py so the renderer can list, read,
-// edit, upload, and remove files without mixing fetch boilerplate
-// into every component that touches them.
+// Most paths are relative to the project root. Project instructions
+// live at ANTON_PROJECT_INSTRUCTIONS_PATH (on disk: `.context/anton.md`).
+// These helpers wrap routes/projects.py.
 
 const enc = encodeURIComponent;
+
+/** Relative path from project root for LLM instructions (API + listing). */
+export const ANTON_PROJECT_INSTRUCTIONS_PATH = '.context/anton.md';
 
 export async function readProjectFile(projectName, path) {
   // `path` may have slashes — encode each segment, not the whole
