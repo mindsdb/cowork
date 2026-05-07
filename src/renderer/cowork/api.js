@@ -856,10 +856,6 @@ export async function createSnippetAttachment(payload) {
   return req('/attachments/snippet', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function createUrlAttachment(payload) {
-  return req('/attachments/url', { method: 'POST', body: JSON.stringify(payload) });
-}
-
 export async function deleteAttachment(id) {
   return req(`/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
