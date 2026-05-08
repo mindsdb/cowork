@@ -84,7 +84,8 @@ function httpRequest(
       headers: options.headers,
     };
     if (!rejectUnauth && parsed.protocol === 'https:') {
-      reqOptions.agent = new https.Agent({ rejectUnauthorized: false }); // codeql[js/disabling-certificate-validation]
+      // codeql[js/disabling-certificate-validation]
+      reqOptions.agent = new https.Agent({ rejectUnauthorized: false });
     }
     const req = mod.request(
       reqOptions,
@@ -452,7 +453,8 @@ function createWindow() {
       // Safe in this context: app is local, network calls only target the
       // loopback python server we spawn ourselves. CSP in index.html still
       // allowlists the exact origins for defense in depth.
-      webSecurity: false, // codeql[js/electron-disable-websecurity]
+      // codeql[js/electron-disable-websecurity]
+      webSecurity: false, 
     },
   });
 
