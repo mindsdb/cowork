@@ -127,7 +127,7 @@ export default function ServerOfflineHelpModal({
 
   const refreshDiag = async () => {
     try {
-      const data = await window.antontron?.serverDiagnostics?.();
+      const data = await host.serverDiagnostics();
       setDiag(data || null);
     } catch {}
   };

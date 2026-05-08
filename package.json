@@ -17,6 +17,7 @@
     "build:renderer": "vite build src/renderer",
     "build:web": "BUILD_TARGET=web vite build src/renderer",
     "dev:web": "node scripts/dev-web.mjs",
+    "check:cowork-purity": "node scripts/check-cowork-purity.mjs",
     "start": "electron dist/main/main/index.js",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",

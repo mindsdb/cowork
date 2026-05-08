@@ -192,6 +192,29 @@ export async function getUIVersion(): Promise<string> {
   return 'web';
 }
 
+// ---- OTA updates (Electron-only) ---------------------------------------
+
+export interface UpdateStatus {
+  phase: string;
+  version?: string;
+}
+
+// Subscribes to update-status pushes from the main process. Returns
+// an unsubscribe function. Web returns a no-op unsubscriber.
+export function onUpdateStatus(cb: (status: UpdateStatus) => void): () => void {
+  if (isElectron && typeof bridge.onUpdateStatus === 'function') {
+    return bridge.onUpdateStatus(cb);
+  }
+  return () => {};
+}
+
+export async function applyUpdate(): Promise<boolean> {
+  if (isElectron && typeof bridge.applyUpdate === 'function') {
+    return bridge.applyUpdate();
+  }
+  return false;
+}
+
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
 
 export interface OAuthConnectOpts {
@@ -242,6 +265,8 @@ export const host = {
   trashItem,
   getPathForFile,
   getUIVersion,
+  onUpdateStatus,
+  applyUpdate,
   oauthConnect,
 };
 

@@ -849,10 +849,10 @@ function AppCore() {
     if (serverOnline && !bootIntroDone) setBootIntroDone(true);
   }, [serverOnline, bootIntroDone]);
 
-  // Listen for OTA update status pushed from main process
+  // Listen for OTA update status pushed from main process. No-op in
+  // web — host returns a noop unsubscriber there.
   useEffect(() => {
-    if (!window.antontron?.onUpdateStatus) return;
-    return window.antontron.onUpdateStatus((status) => {
+    return host.onUpdateStatus((status) => {
       setUpdateStatus(status);
     });
   }, []);
@@ -863,7 +863,7 @@ function AppCore() {
     setUpdateApplying(true);
     setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
     try {
-      const result = await window.antontron.applyUpdate();
+      const result = await host.applyUpdate();
       console.log('[ui-update] applyUpdate result:', result);
       // Window will reload with the new bundle — no further action needed
     } catch (err) {
@@ -2805,7 +2805,7 @@ function AppCore() {
           setServerBusyKind('stopping');
           setServerBusy(true);
           try {
-            const result = await window.antontron?.serverStop?.();
+            const result = await host.serverStop();
             if (result) setServerOnline(!!result.running);
           } catch {} finally {
             setServerBusy(false);

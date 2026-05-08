@@ -338,7 +338,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const onOpenLocal = async () => {
     if (!actionPath) return;
     try {
-      const result = await window.antontron?.openPath?.(actionPath);
+      const result = await host.openPath(actionPath);
       if (result && result.ok === false) {
         setErr(result.reason || 'Could not open file.');
       }
