@@ -1,5 +1,8 @@
-// Working folder card — project header + live file list. Used in both
-// chat and project views identically.
+// Artifacts card — live list of files anton has produced for the
+// project. Used in both chat and project views identically. Renamed
+// from "Working folder" because users couldn't tell what that meant;
+// "Artifacts" matches the Live Artifacts page's vocabulary and the
+// label users see across the rest of the app.
 
 import { RailCard } from './RailCard';
 import { WorkingFolderLive } from './WorkingFolderLive';
@@ -11,7 +14,7 @@ export function WorkingFolderBox({
   maxBodyHeight = 320,
 }) {
   return (
-    <RailCard title="Working folder" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
+    <RailCard title="Artifacts" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
       <WorkingFolderLive
         project={project}
         isStreaming={isStreaming}

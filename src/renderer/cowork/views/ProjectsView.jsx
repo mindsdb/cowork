@@ -284,7 +284,6 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
         />
       )}
       {!isReserved && <Item label="Rename…" icon={Ico.edit(13)} onClick={() => onRename?.(project)} />}
-      <Item label="Show in Finder" icon={Ico.folder(13)} onClick={() => onReveal?.(project)} />
       <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
       <Item
         label="Delete…"
@@ -534,9 +533,19 @@ function useRowStats(project) {
   return { mem, art };
 }
 
-function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen }) {
+function ListRow({
+  project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen,
+  // Inline-edit plumbing — wired from the parent the same way the
+  // grid `ProjectCard` is, so the kebab → Rename action works in both
+  // views. Earlier the list row showed no input when editing, which
+  // forced users to flip to grid view to actually rename.
+  editing = false,
+  onRenameSubmit,
+  onRenameCancel,
+}) {
   const [hover, setHover] = useState(false);
   const triggerRef = useRef(null);
+  const inputRef = useRef(null);
   const { mem, art } = useRowStats(project);
   const summary = activitySummaryFor(project, tasks);
   const projectTasks = (tasks || []).filter((t) => t.projectName === project.name || t.projectPath === project.path);
@@ -549,20 +558,35 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
   const active = isActive(project, tasks);
   const isReserved = project.name === 'general' || project.name === 'default';
 
+  // Auto-focus + select-all when the row enters edit mode so the user
+  // can start typing the new name immediately.
+  useEffect(() => {
+    if (!editing) return;
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    try { el.setSelectionRange(0, el.value.length); } catch {}
+  }, [editing]);
+
+  const submitRename = () => {
+    const next = inputRef.current?.value ?? project.name;
+    onRenameSubmit?.(next);
+  };
+
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen?.(project)}
+      role={editing ? undefined : 'button'}
+      tabIndex={editing ? undefined : 0}
+      onClick={editing ? undefined : () => onOpen?.(project)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onKeyDown={(e) => { if (e.key === 'Enter') onOpen?.(project); }}
+      onKeyDown={(e) => { if (!editing && e.key === 'Enter') onOpen?.(project); }}
       style={{
         display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
         padding: '12px 14px',
         background: hover ? 'var(--surface)' : 'transparent',
         borderBottom: '1px solid var(--line)',
-        cursor: 'pointer',
+        cursor: editing ? 'default' : 'pointer',
         transition: 'background .12s ease',
         alignItems: 'center',
         outline: 'none',
@@ -579,12 +603,37 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
         <span style={{ display: 'inline-flex', color: 'var(--ink-3)', flexShrink: 0 }}>
           {Ico.folder(13)}
         </span>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-          color: 'var(--ink)', minWidth: 0,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{project.name}</span>
-        {pinned && (
+        {editing ? (
+          <input
+            ref={inputRef}
+            defaultValue={project.name}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
+              else if (e.key === 'Escape') { e.preventDefault(); onRenameCancel?.(); }
+            }}
+            onBlur={submitRename}
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            style={{
+              flex: '1 1 0', minWidth: 0,
+              fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
+              color: 'var(--ink)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--accent)',
+              borderRadius: 5, padding: '2px 6px', outline: 'none',
+            }}
+          />
+        ) : (
+          <span style={{
+            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
+            color: 'var(--ink)', minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{project.name}</span>
+        )}
+        {pinned && !editing && (
           <span style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>
             {Ico.pin(11)}
           </span>
@@ -1287,6 +1336,9 @@ export default function ProjectsView({
               onOpen={handleOpen}
               onTogglePin={(proj, next) => togglePin(proj.name, next)}
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+              editing={editingProjectName === p.name}
+              onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
+              onRenameCancel={handleRenameCancel}
             />
           ))}
         </div>

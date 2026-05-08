@@ -841,25 +841,59 @@ function AppCore() {
   // Seed server state from main's truth on first paint so the toggle
   // button reflects reality (running OR starting) even before /health
   // has returned. While main is mid-start, show the spinner; poll
-  // every 600 ms until it resolves.
+  // every 600 ms until it resolves — OR until we've polled long
+  // enough that we'd expect main to have decided one way or the
+  // other.
+  //
+  // The earlier version stopped as soon as `info.starting === false`,
+  // which lost the race against main's boot path: the renderer
+  // mounts and runs its first tick before main has finished
+  // `checkInstallStatus()` + spawned the python (so `pendingStart`
+  // is still null and `info.starting === false` even though the
+  // boot path is about to start one). The renderer would settle on
+  // "offline" and never re-poll, leaving the user looking at a
+  // grey status pill while a perfectly healthy server was
+  // listening in the background.
+  //
+  // Fix: keep ticking until either `info.running` flips true OR a
+  // hard ceiling elapses (45s — same upper bound as `startServer`'s
+  // health-probe timeout). After the ceiling we stop and trust the
+  // status pill / sidebar toggle to recover by user action.
   useEffect(() => {
     if (host.isWeb) return; // No server lifecycle to poll in the hosted web shell.
     let cancelled = false;
     let timer = null;
+    const startedAt = Date.now();
+    const POLL_CEILING_MS = 45_000;
 
     const tick = async () => {
       try {
         const info = await host.serverInfo();
         if (cancelled || !info) return;
         if (typeof info.running === 'boolean') setServerOnline(info.running);
-        if (info.starting) {
+        const running = info.running === true;
+        const starting = info.starting === true;
+        if (starting) {
           setServerBusyKind('starting');
           setServerBusy(true);
-          timer = setTimeout(tick, 600);
         } else {
           setServerBusy(false);
         }
-      } catch {}
+        // Keep polling until we see `running=true`, OR until the
+        // ceiling elapses. Polling while `running=false` covers the
+        // window where main is still resolving `checkInstallStatus`
+        // before kicking off `startServer`.
+        if (!running && Date.now() - startedAt < POLL_CEILING_MS) {
+          timer = setTimeout(tick, 600);
+        }
+      } catch {
+        // Polling errors (IPC blip, restart) shouldn't kill the
+        // loop — keep trying within the ceiling so a transient
+        // hiccup doesn't strand the renderer in offline state.
+        if (Date.now() - startedAt < POLL_CEILING_MS) {
+          timer = setTimeout(tick, 600);
+        }
+      }
     };
 
     tick();

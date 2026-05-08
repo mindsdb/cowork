@@ -69,9 +69,28 @@ export default function ServerOfflineHelpModal({
   // Live state → title + header colour + subtitle. The same modal is
   // used in every state — clicking the status pill while the backend
   // is up should read as "Backend status" not "Backend isn't running".
+  //
+  // The offline branch splits further. Three signals are involved:
+  //   - `lastError`: present when a start attempt failed (timeout,
+  //     spawn error, deps missing, …). Absent after a successful
+  //     start, even if the python later crashed.
+  //   - `lastStopIntentional`: TRUE when the death was caused by a
+  //     user/app stopServer() call; FALSE on crash; NULL pre-first-
+  //     stop. This is the load-bearing signal — `lastError` alone
+  //     can't distinguish a clean stop from a post-start crash since
+  //     both leave it null.
+  // Decision: stopped panel iff there's no start-time error AND the
+  // last transition was intentional. Everything else (including the
+  // initial "never tried" state and post-start crashes) gets the
+  // failure panel.
   const state = serverBusy
     ? (serverBusyKind === 'stopping' ? 'stopping' : 'starting')
     : serverOnline ? 'online' : 'offline';
+  const offlineKind = state === 'offline'
+    && !error
+    && diag?.lastStopIntentional === true
+    ? 'stopped'
+    : 'failed';
   const HEADER = {
     online:   {
       title:    'Anton backend is running',
@@ -91,12 +110,19 @@ export default function ServerOfflineHelpModal({
       iconColor:  'var(--ink-3)',
       iconBgMix:  'var(--ink-3)',
     },
-    offline: {
-      title:    "Anton backend isn't running",
-      subtitle: "The local Python server didn't start. Below is the most recent error and log tail captured from the process.",
-      iconColor:  'var(--danger)',
-      iconBgMix:  'var(--danger)',
-    },
+    offline: offlineKind === 'stopped'
+      ? {
+          title:    'Anton backend is stopped',
+          subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.',
+          iconColor:  'var(--ink-3)',
+          iconBgMix:  'var(--ink-3)',
+        }
+      : {
+          title:    "Anton backend isn't running",
+          subtitle: "The local Python server didn't start. Below is the most recent error and log tail captured from the process.",
+          iconColor:  'var(--danger)',
+          iconBgMix:  'var(--danger)',
+        },
   }[state];
 
   const refreshDiag = async () => {
@@ -263,10 +289,11 @@ export default function ServerOfflineHelpModal({
             </div>
           </div>
 
-          {/* Headline error — offline only. While running there's no
-              "start error" to surface; the log tail below is enough
-              for live debugging. */}
-          {state === 'offline' && (error ? (
+          {/* Headline error — offline + start-failure only. A
+              user-initiated stop has no failure to surface, so we
+              skip the error block entirely; the header subtitle
+              already explains why the backend is down. */}
+          {state === 'offline' && offlineKind === 'failed' && (error ? (
             <div style={{
               padding: '10px 12px', borderRadius: 8,
               background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',

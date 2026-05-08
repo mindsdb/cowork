@@ -33,11 +33,21 @@ function readEnvFile(): Record<string, string> {
   return vars;
 }
 
-/** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null. */
+/** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null.
+ *
+ * Defaults to 'full' when the user hasn't set anything — the OTA
+ * hot-update path is parked while we stabilize. Bundled renderer is
+ * the path of least surprise: every relaunch picks up whatever was
+ * shipped in the .app, no async cache fetch in the boot path. Set
+ * `DEV_MODE=live` for the Vite dev-server flow, `DEV_MODE=ota` to
+ * opt back into the cached-bundle path. `false` / `none` also map
+ * to the OTA path for callers that want the previous behaviour.
+ */
 function getDevMode(): string | null {
   const vars = readEnvFile();
   const val = (vars.DEV_MODE || '').trim().toLowerCase();
-  if (!val || val === 'false' || val === 'none') return null;
+  if (val === 'ota' || val === 'false' || val === 'none') return null;
+  if (!val) return 'full';
   return val; // 'live' or 'full'
 }
 
@@ -1102,13 +1112,28 @@ app.whenReady().then(() => {
   // Without the deps check, a returning user with a stand-alone
   // `anton` install would see the server fail to start with a Python
   // ImportError they can't act on.
-  // Auto-update is now handled inside server/main.py via
+  // Boot-time server start. Three branches, all loud so the user
+  // can see why they're offline if it goes wrong:
+  //   1. Anton not installed at all → setup screen handles it.
+  //   2. Server deps missing from the tool venv → log + skip; the
+  //      install step re-fills the deps, the next launch picks up.
+  //   3. Otherwise → call `startServer()`, which itself begins with a
+  //      `/health` probe so it adopts an already-listening orphan
+  //      from a prior session before trying to spawn a fresh python.
+  //
+  // Auto-update is handled inside `server/main.py` via
   // `_maybe_self_update_and_reexec` — same `anton.updater.check_and_update`
   // the CLI uses. The python child execs itself in-place when a new
-  // release lands, transparent to Node. Boot path stays minimal:
-  // verify install state, then start the server.
+  // release lands, transparent to Node.
   checkInstallStatus().then(async ({ antonInstalled, serverDepsReady }) => {
-    if (!antonInstalled || !serverDepsReady) return;
+    if (!antonInstalled) {
+      console.log('[server] skipped: Anton CLI not installed; setup screen will handle.');
+      return;
+    }
+    if (!serverDepsReady) {
+      console.warn('[server] skipped: server deps missing from tool venv. Run installer to repair.');
+      return;
+    }
     const result = await startServer();
     if (!result.ok) {
       console.error(`[server] start failed: ${result.reason}`);

@@ -32,6 +32,19 @@ let recentStderr = '';
 let lastStartError: string | null = null;
 let lastStartAt: number | null = null;
 let lastExitCode: number | null = null;
+// Whether the most-recent transition to "not running" was caused by
+// a user/app-initiated stopServer() call. Distinguishes:
+//   true  → user clicked Stop (or app is quitting). Modal shows
+//           a calm "You stopped the backend" panel.
+//   false → python died on its own (crash, external kill, OOM).
+//           Modal shows the failure-style "didn't start / didn't
+//           stay up" panel with the log tail.
+//   null  → never stopped this session (initial state pre-first-stop).
+let lastStopIntentional: boolean | null = null;
+// Set true while stopServer() is running so the child's exit event
+// can attribute the death correctly. Reset to false in the exit
+// handler.
+let _stopRequested = false;
 
 function appendStderr(chunk: string) {
   recentStderr = (recentStderr + chunk).slice(-STDERR_BUFFER_BYTES);
@@ -113,6 +126,22 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   if (pendingStart) return pendingStart;
 
   serverPort = opts.port ?? (Number(process.env.ANTON_SERVER_PORT) || DEFAULT_PORT);
+
+  // Pre-flight: somebody might already be on our port. The most
+  // common cause is an orphan python from a prior antontron session
+  // that didn't get reaped on quit. If `/health` answers cleanly we
+  // adopt that process — there's no point spawning a second python
+  // that would fail to bind. Renderer-initiated re-starts after a
+  // user "Stop" hit this same path; the brief 500ms probe is cheap
+  // enough to be unconditional.
+  const alreadyHealthy = await probeHealth(500);
+  if (alreadyHealthy) {
+    serverStarted = true;
+    lastStartError = null;
+    console.log(`[server] adopted existing instance on port ${serverPort}`);
+    return { ok: true, port: serverPort };
+  }
+
   // 45s ceiling so the python's in-process `_maybe_self_update_and_reexec`
   // has room to download + install + execv when a new release lands.
   // Steady-state boots respond in <2s; only the update-on-launch path
@@ -120,6 +149,12 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   const readyTimeoutMs = opts.readyTimeoutMs ?? 45000;
 
   lastStartAt = Date.now();
+  // A new start attempt invalidates the prior stop attribution —
+  // whether the previous death was intentional or a crash, the
+  // user is now asking for a fresh boot. Reset so the next
+  // transition to "not running" reflects this start cycle's reason.
+  lastStopIntentional = null;
+  _stopRequested = false;
   const pythonCmd = getAntonPython();
   if (!pythonCmd) {
     lastStartError = 'Anton Python interpreter not found. Run the installer first.';
@@ -200,6 +235,13 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       serverStarted = false;
       serverProcess = null;
       lastExitCode = code;
+      // Attribute the death: if `_stopRequested` is set, this exit
+      // was caused by stopServer() (user clicked Stop, or the app is
+      // quitting). Otherwise the python died on its own — surface
+      // that in the diagnostics so the modal shows the failure
+      // panel instead of a calm "you stopped it" message.
+      lastStopIntentional = _stopRequested;
+      _stopRequested = false;
       if (code !== 0 && code !== null) {
         console.error(`[anton-server] exited with code ${code}`);
       }
@@ -261,8 +303,19 @@ export async function stopServer(): Promise<void> {
   const proc = serverProcess;
   if (!proc) {
     serverStarted = false;
+    // Even with no live child, mark this as an intentional stop —
+    // a stopServer() call signals user/app intent, the absence of a
+    // child is just "already stopped." Keeps the modal from showing
+    // a stale "crashed" panel after the user re-clicked Stop on an
+    // already-stopped backend.
+    lastStopIntentional = true;
     return;
   }
+
+  // Tell the child's exit handler this death is intentional. Set
+  // BEFORE the kill so there's no chance the exit event fires before
+  // we've recorded our intent.
+  _stopRequested = true;
 
   // Mark not-running immediately so the renderer's `isServerRunning`
   // check reflects intent. We keep `serverProcess` non-null until we
@@ -326,6 +379,14 @@ export interface ServerDiagnostics {
   lastStartAt: number | null;
   /** Tail of stdout+stderr since this run of the main process. */
   recentLog: string;
+  /**
+   * Whether the most-recent transition to "not running" was caused by a
+   * user/app stopServer() call (true) vs an unexpected exit (false).
+   * Null until the first stop happens this session. The renderer uses
+   * this to choose between a calm "you stopped the backend" panel and
+   * the failure-style "didn't start / crashed" panel.
+   */
+  lastStopIntentional: boolean | null;
 }
 
 export function getServerDiagnostics(): ServerDiagnostics {
@@ -337,5 +398,6 @@ export function getServerDiagnostics(): ServerDiagnostics {
     lastExitCode,
     lastStartAt,
     recentLog: recentStderr,
+    lastStopIntentional,
   };
 }

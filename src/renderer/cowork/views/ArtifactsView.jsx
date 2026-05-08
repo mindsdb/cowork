@@ -494,7 +494,19 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           {canOpenProject ? (
             <button
               type="button"
+              // Same mousedown+click+keydown hardening the list row uses —
+              // the grid card's outer `<div role="button">` opens the
+              // artifact viewer, and we don't want the project click
+              // to fall through to that.
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onOpenProject(projectMatch);
+                }
+              }}
               title={`Open ${projectMatch.name}`}
               style={{
                 all: 'unset', cursor: 'pointer',
@@ -798,7 +810,23 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           {canOpenProject ? (
             <button
               type="button"
+              // Stop propagation on BOTH mousedown and click — the
+              // surrounding row is a `role="button"` whose onClick
+              // opens the artifact, and a single onClick stopPropagation
+              // wasn't reliably preventing the row handler from firing
+              // first. Same defensive pattern the kebab uses.
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              onKeyDown={(e) => {
+                // Block keyboard Enter / Space from also bubbling to
+                // the row's `onKeyDown` (which would re-open the
+                // artifact). Activates the navigation in-place.
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onOpenProject(projectMatch);
+                }
+              }}
               title={`Open ${projectMatch.name}`}
               style={{
                 all: 'unset', cursor: 'pointer',

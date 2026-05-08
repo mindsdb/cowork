@@ -267,7 +267,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       {project?.name && hasProjectFiles && (
         <div className="flex flex-col gap-0.5">
           <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
-            Context files
+            Files
           </span>
           {projectFiles.map((f) => (
             <ContextFileRow
@@ -316,7 +316,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
             <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
-              {section.scope}
+              {/* Display label spelled out — "Project" / "Global" on
+                  their own read as project metadata, not memory. The
+                  vault scope (`section.scope`) is still the canonical
+                  id used to save/edit; this is purely the heading
+                  shown in the rail. */}
+              {section.scope === 'Project' ? 'Project memory'
+                : section.scope === 'Global' ? 'Global memory'
+                : section.scope}
             </span>
             {visible.map((entry) => (
               <MemoryRow
