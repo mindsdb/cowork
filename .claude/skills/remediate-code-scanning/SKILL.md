@@ -178,12 +178,16 @@ Electron `webPreferences.webSecurity` set to `false`. Fix by:
 - Removing the `webSecurity: false` setting (defaults to `true`).
 - If needed for development only, gate behind an environment variable check.
 
+If no fix is applicable, use a suppression comment — see **Alert is a false positive or the pattern is intentional** below.
+
 #### `js/disabling-certificate-validation`
 
 TLS certificate validation disabled via `NODE_TLS_REJECT_UNAUTHORIZED=0` or `rejectUnauthorized: false`. Fix by:
 - Removing the override entirely if possible.
 - If needed for specific self-signed certs, configure a custom CA bundle instead.
 - If needed for development only, gate behind an environment variable.
+
+If no fix is applicable, use a suppression comment — see **Alert is a false positive or the pattern is intentional** below.
 
 #### `actions/missing-workflow-permissions`
 
@@ -323,9 +327,21 @@ Report:
 
 Some alerts (e.g. `py/path-injection`) require understanding what paths are valid and what the intended access scope is. Read the surrounding code, route definitions, and any existing validation. If the intended scope is unclear, describe the vulnerability and the candidate fix in the PR body and mark as `needs-verification`.
 
-### Alert is a false positive
+### Alert is a false positive or the pattern is intentional
 
-If after reading the code you determine the alert is a false positive (e.g. the input is already validated upstream, or the flagged code is unreachable), do not change the code. Mark the group as `needs-verification` with a note explaining why. The user can then dismiss the alert on GitHub.
+If after reading the code you determine the alert is a false positive or the flagged pattern is intentional and no code fix is applicable (e.g. the input is already validated upstream, or the flagged code is unreachable):
+
+1. Ensure there is a comment in the code explaining why the flagged pattern is safe and intentional. If one already exists, no additional prose is needed.
+2. Add a CodeQL suppression comment on the **line immediately before** the flagged line:
+   - JavaScript/TypeScript: `// codeql[rule-id]`
+   - Python: `# codeql[rule-id]`
+   - YAML: `# codeql[rule-id]`
+
+   **Important**: the suppression comment must be on its own dedicated line immediately preceding the flagged line. Appending it at the end of the flagged line itself does **not** work.
+
+3. Commit and open a PR as normal. The suppression prevents future scans from re-flagging the line without requiring GitHub UI dismissals each time.
+
+If the code is entirely dead/unreachable, removing it is preferable to suppressing it.
 
 ### Multiple rules in one file
 
