@@ -28,38 +28,31 @@ function relativeAge(ts) {
   return `${Math.floor(secs / 86400)}d`;
 }
 
-function previewFirstLine(text, max = 80) {
-  if (!text) return '';
-  const line = String(text).replace(/^#+\s*/, '').split('\n').find((l) => l.trim()) || '';
-  const trimmed = line.trim();
-  if (trimmed.length <= max) return trimmed;
-  return trimmed.slice(0, max - 1) + '…';
-}
-
 function MemoryRow({ entry, onOpen }) {
+  // Single-line row — the previous version displayed
+  // `previewFirstLine(entry.content)` underneath the filename, which
+  // for the canonical files (lessons.md, rules.md, identity.md, …)
+  // is just the H1 of the file and reads as a duplicate of the
+  // filename itself. Hover/click opens the editor, which has the
+  // full content; the rail row only needs the file identity + age.
   return (
     <button
       type="button"
       onClick={onOpen}
       title={entry.content || entry.relativePath}
       className={clsx(
-        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
+        'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'border-0 bg-transparent w-full'
       )}
       style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
     >
-      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
-      <span className="min-w-0">
-        <span className="block truncate text-[12.5px] text-ink">
-          {entry.relativePath || entry.name}
-        </span>
-        <span className="mt-0.5 block truncate text-[11px] text-ink-4">
-          {previewFirstLine(entry.content)}
-        </span>
+      <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
+      <span className="block truncate text-[12.5px] text-ink min-w-0">
+        {entry.relativePath || entry.name}
       </span>
       {entry.modifiedAt && (
-        <span className="text-[10.5px] text-ink-4 mt-0.5">{relativeAge(entry.modifiedAt)}</span>
+        <span className="text-[10.5px] text-ink-4">{relativeAge(entry.modifiedAt)}</span>
       )}
     </button>
   );
@@ -122,7 +115,12 @@ function ContextFileRow({ file, onOpen }) {
       <span className="mt-0.5 text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
       <span className="min-w-0">
         <span className="block truncate text-[12.5px] text-ink">
-          {isAnton ? 'anton.md' : file.path}
+          {/* Display name for the canonical instructions file. The
+              raw filename (`anton.md`) is jargon — most users don't
+              know what it does. "Instructions" reads as a noun and
+              matches the project-level mental model. The on-disk
+              path is unchanged; the modal still writes to anton.md. */}
+          {isAnton ? 'Instructions' : file.path}
         </span>
         <span className="mt-0.5 block truncate text-[11px] text-ink-4">
           {isAnton
@@ -295,9 +293,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
             </p>
           )}
           {!attachmentsLoading && !attachmentsError && sessionAttachments.length === 0 && (
-            <p className="text-[12px] text-ink-4 px-1 pb-0.5">
-              No files attached to this task yet.
-            </p>
+            <div className="flex items-center gap-2 px-1 pb-0.5 text-[12px] text-ink-4">
+              {/* Empty-state glyph mirrors the row icon style above
+                  (paperclip ~ "attachment") so the row reads as a
+                  placeholder for what would otherwise live there. */}
+              <span className="text-ink-4 inline-flex flex-none">{Ico.attach(13)}</span>
+              <span>No files attached yet.</span>
+            </div>
           )}
           {!attachmentsLoading
             && sessionAttachments.map((item) => (

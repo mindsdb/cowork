@@ -187,6 +187,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       if (!id || !Array.isArray(spec.methods)) return null;
       return spec.methods.find((m) => m.id === id) || null;
     })();
+    // Modify-flow synthetic method (`__edit_current__`) carries
+    // `_underlying_method` — the saved record's real auth method id.
+    // Server-side validation rejects unknown ids, so we always send
+    // the underlying real id over the wire while keeping the
+    // synthetic id locally for resolving the active spec entry.
+    // `wireMethodId` falls through to `authMethod` for ordinary
+    // (non-synthetic) methods so create-flow behaviour is unchanged.
+    const wireMethodId = activeMethodSpec?._underlying_method || authMethod;
     if (activeMethodSpec?.submit_action === 'oauth_launch' && kind === 'primary') {
       const oauthMeta = activeMethodSpec.oauth || {};
       const clientId = oauthMeta.client_id || (values && values.client_id) || '';
@@ -236,7 +244,11 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         if (connectorId) {
           try {
             const saved = await saveConnector(connectorId, {
-              method: authMethod || activeMethodSpec.id || null,
+              // `wireMethodId` resolves the synthetic
+              // `__edit_current__` modify-flow method to the real
+              // saved method id; for ordinary methods this is just
+              // `authMethod` (unchanged from before).
+              method: wireMethodId || activeMethodSpec.id || null,
               // Modify-flow stamps the existing connection name on
               // the spec so the save lands on the same vault row
               // (`(engine, name)` is the row key). Without this the
@@ -264,11 +276,14 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           }
         } else if (onSubmit) {
           // Spec wasn't stamped with a connector id — fall back to
-          // the legacy agent path with the augmented values.
+          // the legacy agent path with the augmented values. We
+          // route via `wireMethodId` so modify-flow submissions
+          // resolve to the saved method's real id, not the
+          // synthetic `__edit_current__`.
           onSubmit({
             formId: spec.form_id,
-            formSpec: authMethod
-              ? { ...spec, auth_method: authMethod, selected_method: authMethod }
+            formSpec: wireMethodId
+              ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
               : spec,
             values: oauthValues,
             skipped: skipped || [],
@@ -292,12 +307,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       if (onSubmit) {
         onSubmit({
           formId: spec.form_id,
-          // Spread the chosen auth_method into the spec we send so the
-          // server-side agent reads it from spec.auth_method (its
-          // existing entry point) AND keeps spec.selected_method for
-          // any logic that reads it directly.
-          formSpec: authMethod
-            ? { ...spec, auth_method: authMethod, selected_method: authMethod }
+          // Spread the chosen auth_method into the spec we send so
+          // the server-side agent reads it from `spec.auth_method`
+          // (its existing entry point) AND keeps
+          // `spec.selected_method` for any logic that reads it
+          // directly. Use `wireMethodId` so the synthetic modify
+          // method (`__edit_current__`) resolves to the real saved
+          // method id — server-side spec validation only knows the
+          // real ones.
+          formSpec: wireMethodId
+            ? { ...spec, auth_method: wireMethodId, selected_method: wireMethodId }
             : spec,
           values: values || {},
           skipped: skipped || [],

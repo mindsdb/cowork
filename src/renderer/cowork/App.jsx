@@ -1041,102 +1041,116 @@ function AppCore() {
     setComposerAttachments([]);
     setRoute('task');
 
+
     if (hasLiteralForm) {
       // Underscore-prefixed keys in the vault record are metadata
       // stamps from previous saves (e.g. `_method`, `_connector_id`)
       // — not user-typed inputs. Read what we need before filtering.
       const savedMethodId = savedFields._method || null;
       // Build the value map for actual user fields. Strip the meta
-      // stamps so they never render as form inputs (and never appear
-      // in the "extra fields" enumeration).
+      // stamps so they never render as form inputs.
       const valueByName = Object.fromEntries(
         Object.entries(savedFields).filter(([k]) => !k.startsWith('_'))
       );
 
-      // Pre-fill helper — applied to either the top-level fields[]
-      // (legacy single-method specs) or to the active method's
-      // fields[] (multi-method specs). The `name` field is
-      // hard-pinned to the existing connection name AND marked
-      // read-only (`_locked: true`) so identity can't drift —
-      // `(engine, name)` is the vault row key.
-      const patchFields = (specFields) => {
-        const patched = (specFields || []).map((f) => {
-          if (!f || !f.name) return f;
-          if (f.name === 'name') {
-            return {
-              ...f,
-              default: connection.name || f.default || '',
-              _locked: true,
-            };
-          }
-          if (f.name in valueByName) {
-            return { ...f, default: valueByName[f.name] };
-          }
-          return f;
-        });
-        // Append any vault-only fields this spec branch doesn't
-        // declare (custom engines / agent-driven flows can save
-        // fields the JSON doesn't mention). They still need to
-        // round-trip on save so the user can clear them.
-        const known = new Set((specFields || []).map((f) => f?.name).filter(Boolean));
-        const extras = Object.keys(valueByName)
-          .filter((k) => !known.has(k))
-          .map((k) => ({
-            name: k,
-            required: false,
-            default: valueByName[k],
-            // Heuristic-driven secret tagging mirrors the server side
-            // so unknown-secret fields render with the sentinel-aware
-            // placeholder. Cheap fallback when no spec exists.
-            secret: (saved.secureKeys || []).includes(k),
-          }));
-        return [...patched, ...extras];
-      };
+      // Pure synthesis — the synthetic method's fields come from
+      // the saved record alone, with NO attribute borrowing from
+      // any spec method. The user's intent: "append a new option,
+      // not append to the attributes of an existing option". So we
+      // build each field from scratch using only what we know
+      // about the saved key — the key name (titlecased into a
+      // human label) and whether it was classified secret on save.
+      // The rendered form is exactly what's in the vault: same
+      // keys, no spec leakage, no surprise fields.
+      const niceLabel = (name) => String(name || '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      const syntheticFields = Object.keys(valueByName).map((k) => {
+        const isSecret = (saved.secureKeys || []).includes(k);
+        return {
+          name: k,
+          label: niceLabel(k),
+          type: isSecret ? 'password' : 'text',
+          secret: isSecret,
+          required: false,
+          default: valueByName[k],
+        };
+      });
 
       const isMultiMethod = Array.isArray(full.form.methods) && full.form.methods.length > 0;
+      const matchedSpecMethod = isMultiMethod
+        ? (full.form.methods.find((m) => m && m.id === savedMethodId) || null)
+        : null;
+
       let nextSpec;
       if (isMultiMethod) {
-        // Pick the method to land on. Order of preference:
-        //   1. The method explicitly stamped on the saved record
-        //      (`_method`), if it still exists in the spec.
-        //   2. The first method (so the form opens *somewhere*
-        //      sensible rather than the picker; users can hit
-        //      "Back to options" if they want to switch auth shape).
-        // Either way the picker remains reachable via the
-        // breadcrumb's "← Back to options" — modify just biases the
-        // landing screen toward "edit what you have".
-        const matched = full.form.methods.find((m) => m && m.id === savedMethodId);
-        const target = matched || full.form.methods[0];
-        const targetId = target?.id;
-        const patchedMethods = full.form.methods.map((m) =>
-          m && m.id === targetId
-            ? { ...m, fields: patchFields(m.fields) }
-            : m
-        );
+        // Synthesize a NEW method option with id `__edit_current__`.
+        // The original methods stay in the array untouched — the
+        // picker shows the synthetic *plus* every original, so the
+        // user can edit current values OR start fresh on any method.
+        //
+        // `_underlying_method` carries the saved method's real id
+        // through to submit. The form panel reads this and sends it
+        // as the `method` / `auth_method` to the server, so server-
+        // side validation accepts the submit (it sees a real id).
+        // OAuth submit_action / oauth metadata / actions are
+        // inherited from the matched original so the OAuth launch
+        // path still triggers when the original method was OAuth.
+        // When the saved method id no longer matches anything in
+        // the spec (renamed / removed in a connector update), we
+        // still publish the synthetic — `_underlying_method` is
+        // null and the submit falls through the agent's custom
+        // save path, which doesn't validate against the spec's
+        // method list.
+        const synthMethod = {
+          id: '__edit_current__',
+          label: 'Currently saved values',
+          description: 'Edit the values stored for this connection.',
+          fields: syntheticFields,
+          // No `submit_action` / `oauth` / `actions` inherited from
+          // any spec method — the synthetic stands on its own. The
+          // submit goes through the regular agent path; if the user
+          // wants to re-run OAuth (or any other launch flow), they
+          // click "Back to options" and pick the original method,
+          // which still has those affordances.
+          //
+          // Hidden marker — server-side validation rejects unknown
+          // method ids, so on submit the form panel sends the saved
+          // method's real id (resolved through `_underlying_method`)
+          // as the `method` / `auth_method`. Synthetic id stays
+          // local, used only for picker selection + state keying.
+          _underlying_method: matchedSpecMethod?.id || null,
+        };
         nextSpec = {
           ...full.form,
-          methods: patchedMethods,
-          // `selected_method` is the existing pre-pick mechanism —
-          // DataVaultForm reads it on initial render and skips the
-          // picker entirely.
-          selected_method: targetId,
+          // ADD, don't replace. Synthetic at the front so the picker
+          // shows it first (and so `selected_method = __edit_current__`
+          // resolves to it on initial render).
+          methods: [synthMethod, ...full.form.methods],
+          selected_method: '__edit_current__',
           engine: full.form.engine || full.id,
           _connector_id: full.id,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
+          name: connection.name,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
       } else {
+        // Single-method form — there's no method picker, so we just
+        // replace top-level fields with the synthetic ones. There's
+        // nothing to "go back to" anyway.
         nextSpec = {
           ...full.form,
-          fields: patchFields(full.form.fields),
+          fields: syntheticFields,
           engine: full.form.engine || full.id,
           _connector_id: full.id,
           _secure_keys: saved.secureKeys || [],
           _modify: true,
           _existing_name: connection.name,
+          name: connection.name,
           logo: full.form.logo || full.logo,
           logo_color: full.form.logo_color || full.logo_color,
         };
@@ -2321,7 +2335,11 @@ function AppCore() {
             connectors={connectors}
             onOpenSettings={() => setRoute('settings')}
             onConnectNew={handleStartConnectChat}
-            onModifyConnection={handleModifyConnection}
+            // Modify is disabled for now — pass nothing through so the
+            // card's `canModify` check is false and the click affordance
+            // collapses to the existing Disconnect button only. The
+            // handler + supporting code stay in App.jsx untouched so
+            // re-enabling is a one-line prop pass-through.
           />
         )}
 
