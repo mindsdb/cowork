@@ -1,0 +1,42 @@
+# Trivy ignore file for cowork's customer-facing Docker image.
+#
+# Each entry is a HIGH/CRITICAL CVE that we have triaged and accepted
+# as residual risk. Every entry MUST cite:
+#   1. The package and current Red Hat UBI 9 version.
+#   2. Why no fix is applied (most commonly: no upstream patch yet).
+#   3. Why the residual risk is acceptable in our threat model.
+#
+# This file is checked into the repo so the customer (and any auditor)
+# can see exactly what we've ignored and why. Re-review on every base
+# image bump — `docker pull registry.access.redhat.com/ubi9-minimal`
+# then re-scan and remove any entry whose CVE is now patched in the
+# new base.
+#
+# Last reviewed: 2026-05-07 against
+#   registry.access.redhat.com/ubi9-minimal@sha256:
+#     b9b10f42d7eba7ad4a6d5ef26b7d34fdc892b2ffe59b8d0372ec884008569eb6
+# (Red Hat Enterprise Linux 9.7 "Plow")
+#
+# Threat model summary: cowork is a FastAPI HTTP server that listens on
+# a single loopback port (default 26866). It does NOT terminate TLS, does
+# NOT speak DTLS / WebRTC, does NOT speak Kerberos, and does NOT load
+# arbitrary terminfo from network input. Every CVE below requires us to
+# actively use a protocol stack we don't link or invoke. Scanner
+# `objdump -T /opt/venv/bin/python | grep -iE 'gnutls|krb5'` returns
+# empty, confirming no symbols are imported.
+
+# gnutls 3.8.3-10.el9_7 — TLS / DTLS implementation. Pulled in
+# transitively by ca-certificates / RPM tooling but never linked into
+# cowork's Python process. The three DoS-class CVEs below all require
+# the affected process to act as a DTLS server / RSA-PSK TLS server,
+# which cowork never does (it serves plain HTTP on a loopback port).
+# No upstream fix at scan time.
+CVE-2026-33845
+CVE-2026-33846
+CVE-2026-42010
+
+# krb5-libs 1.21.1-9.el9_7 — MIT Kerberos 5 client libraries. Present
+# in UBI base; never invoked by cowork. The integer-underflow DoS
+# requires the affected process to parse a malicious Kerberos ticket,
+# which cowork has no code path to do. No upstream fix at scan time.
+CVE-2026-40356

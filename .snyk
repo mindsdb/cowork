@@ -1,0 +1,33 @@
+# Snyk policy file for the cowork repository.
+#
+# This file lists explicit, justified suppressions for Snyk findings
+# that we have reviewed and accepted as architecturally required. Every
+# entry MUST include a `reason:` and an `expires:` date so the policy
+# is re-reviewed periodically (default cadence: 12 months).
+#
+# Customer hand-off note: the cowork web Docker image (the artifact
+# the customer actually pulls) does NOT contain the Electron sources
+# in `src/main/`, so Electron-only Snyk Code findings against
+# `oauth-service.ts`, `index.ts`, `index.html` etc. do not appear in
+# the customer's Snyk Container scan. They are kept out of this file
+# intentionally — there is nothing to suppress for the image-only
+# threat model.
+#
+# Workstream A of the Snyk remediation pass closed every visible High
+# in the Python server (server/main.py, server/routes/utilities.py,
+# server/routes/artifacts.py, server/routes/attachments.py,
+# server/routes/integrations.py) by hardening the existing guards
+# rather than suppressing — so the `ignore:` map below is currently
+# empty. Add entries here only when refactoring is impractical and
+# the construct is genuinely required.
+
+version: v1.25.0
+
+# See `.trivyignore` (sibling file, repo root) for the equivalent
+# Trivy/Aqua CVE allowlist — same rationale per CVE, same review cadence.
+# When Snyk Container surfaces one of those CVEs under a Snyk-specific
+# rule ID, mirror it here with the matching reason text.
+
+ignore: {}
+
+patch: {}

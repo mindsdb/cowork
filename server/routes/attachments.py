@@ -222,7 +222,14 @@ def delete_attachment(attachment_id: str):
     save_state(state)
     path = metadata.get("path")
     if path:
-        parent = Path(path).parent
-        if parent.name == attachment_id:
+        # Path-traversal guard around `shutil.rmtree`. The stored
+        # `path` is server-generated (UUID-based directory under
+        # `attachments_dir()`), but we re-verify here so the sink can
+        # be statically proven to receive only paths inside the
+        # attachments root. `is_relative_to` is the canonical
+        # sanitizer form recognised by Snyk Code (CWE-23).
+        attachments_root = attachments_dir().resolve()
+        parent = Path(path).resolve().parent
+        if parent.name == attachment_id and parent.is_relative_to(attachments_root):
             shutil.rmtree(parent, ignore_errors=True)
     return {"ok": True}

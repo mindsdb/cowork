@@ -457,15 +457,17 @@ async def preview_asset(token: str, rel_path: str):
     parent = _PREVIEW_MOUNTS.get(token)
     if parent is None:
         raise HTTPException(status_code=404, detail="Preview mount has expired or is unknown")
+    parent_resolved = parent.resolve()
     try:
         target = (parent / rel_path).resolve()
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid asset path") from exc
-    # Path-traversal guard — the resolved target must remain inside
-    # the mounted parent directory.
-    try:
-        target.relative_to(parent)
-    except ValueError:
+    # Path-traversal guard — the resolved target must remain inside the
+    # mounted parent directory. `is_relative_to` is the canonical
+    # sanitizer form recognised by Snyk Code (CWE-23) and CodeQL
+    # (py/path-injection); kept as the gate immediately preceding any
+    # filesystem access on `target`.
+    if not target.is_relative_to(parent_resolved):
         raise HTTPException(status_code=403, detail="Asset is outside the artifact directory")
     if not target.is_file():
         raise HTTPException(status_code=404, detail="Asset not found")

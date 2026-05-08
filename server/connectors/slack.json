@@ -43,7 +43,7 @@
             "type": "password",
             "required": true,
             "secret": true,
-            "placeholder": "xoxb-1234567890-...",
+            "placeholder": "Your Slack bot token (starts with xoxb-)",
             "description": "Bot User OAuth Token from api.slack.com/apps \u2192 your app \u2192 OAuth & Permissions. Starts with xoxb-."
           },
           {

@@ -42,7 +42,7 @@
             "type": "password",
             "required": true,
             "secret": true,
-            "placeholder": "sk_live_xxxxxxxxxxxxxxxxxxxx",
+            "placeholder": "Your Vitally API secret key",
             "description": "Your Vitally API secret key. Found under Settings \u2192 Integrations \u2192 API."
           },
           {

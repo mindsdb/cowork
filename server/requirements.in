@@ -1,0 +1,33 @@
+# Source-of-truth loose constraints for cowork's FastAPI server.
+#
+# This file is the input to `pip-compile`; the generated
+# `requirements.txt` next to it is what `pip install -r` actually
+# reads inside the Docker build (see cowork/Dockerfile, py-builder
+# stage). Customer Snyk Container scans flag any unpinned dep in
+# requirements.txt as a risk, so the pinned `==` lockfile is the
+# shipped artifact and `requirements.in` carries the human-readable
+# bounds.
+#
+# To regenerate after bumping a bound:
+#
+#   python3 -m venv /tmp/cowork-pin && \
+#   /tmp/cowork-pin/bin/pip install pip-tools && \
+#   /tmp/cowork-pin/bin/pip-compile --upgrade --output-file requirements.txt requirements.in
+#
+# Bound rationale:
+#   fastapi          — current line for AsyncIO + Starlette compat.
+#   uvicorn[standard]— "standard" pulls httptools + uvloop for prod-
+#                      grade async I/O; required for the SSE streaming
+#                      endpoints in /v1/conversations.
+#   python-multipart — required by FastAPI for `UploadFile` form
+#                      parsing on /v1/attachments/upload and
+#                      /v1/projects/{name}/files/upload.
+#   pydantic         — v2 only; v1 is a hard break for our route
+#                      models.
+#
+# Anton itself is installed separately (see scripts/install-anton.sh)
+# from git or local source; do NOT add it here.
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+pydantic>=2.0.0

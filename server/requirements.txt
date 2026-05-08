@@ -1,6 +1,58 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-python-multipart>=0.0.12
-pydantic>=2.0.0
-# Anton itself — install separately: pip install anton
-# anton @ git+https://github.com/mindsdb/anton.git
+# Generated from server/requirements.in by `pip-compile`. Do NOT edit
+# this file by hand — change requirements.in and re-run pip-compile.
+# See requirements.in for the regen command + bound rationale.
+#
+# Every dep below is `==`-pinned (including transitive deps) so the
+# customer's Snyk Container scan flags a deterministic version set
+# rather than a floating "latest". Bump the bounds in requirements.in
+# and regenerate when CVEs require it.
+annotated-doc==0.0.4
+    # via fastapi
+annotated-types==0.7.0
+    # via pydantic
+anyio==4.13.0
+    # via
+    #   starlette
+    #   watchfiles
+click==8.3.3
+    # via uvicorn
+fastapi==0.136.1
+    # via -r requirements.in
+h11==0.16.0
+    # via uvicorn
+httptools==0.7.1
+    # via uvicorn
+idna==3.13
+    # via anyio
+pydantic==2.13.4
+    # via
+    #   -r requirements.in
+    #   fastapi
+pydantic-core==2.46.4
+    # via pydantic
+python-dotenv==1.2.2
+    # via uvicorn
+python-multipart==0.0.27
+    # via -r requirements.in
+pyyaml==6.0.3
+    # via uvicorn
+starlette==1.0.0
+    # via fastapi
+typing-extensions==4.15.0
+    # via
+    #   fastapi
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via
+    #   fastapi
+    #   pydantic
+uvicorn==0.46.0
+    # via -r requirements.in
+uvloop==0.22.1
+    # via uvicorn
+watchfiles==1.1.1
+    # via uvicorn
+websockets==16.0
+    # via uvicorn

@@ -13,7 +13,7 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from fastapi import APIRouter, HTTPException, Query
@@ -48,6 +48,17 @@ GOOGLE_CALENDAR_OAUTH_STATE_KEY = "google_calendar_oauth"
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
+
+# SSRF allowlist — every host `_json_request` is permitted to reach.
+# All current callers pass hardcoded `GOOGLE_*_ENDPOINT` constants, so
+# the allowlist is a no-op behaviourally. Its purpose is to make the
+# safety obvious to static analysers (Snyk Code CWE-918) and to fail
+# closed if a future caller passes a request-derived URL by mistake.
+# Add new hosts here as new integrations are wired up.
+_ALLOWED_OUTBOUND_HOSTS: frozenset[str] = frozenset({
+    "oauth2.googleapis.com",
+    "openidconnect.googleapis.com",
+})
 
 GOOGLE_DRIVE_BLOCK = dedent(
     """
@@ -302,6 +313,17 @@ def _pkce_challenge(verifier: str) -> str:
 
 
 def _json_request(url: str, *, method: str = "GET", data: dict[str, str] | None = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    # SSRF guard — restrict outbound requests to a hardcoded host
+    # allowlist (see `_ALLOWED_OUTBOUND_HOSTS` above). Required scheme
+    # is HTTPS. This makes the validation obvious to static analysers
+    # (Snyk Code CWE-918) and is the authoritative sink-adjacent gate
+    # that prevents request-controlled URLs from reaching `urlopen`.
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or (parsed.hostname or "") not in _ALLOWED_OUTBOUND_HOSTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Disallowed outbound URL: {parsed.scheme}://{parsed.hostname or ''}",
+        )
     request_headers = {"Accept": "application/json", **(headers or {})}
     body = None
     if data is not None:
@@ -309,7 +331,7 @@ def _json_request(url: str, *, method: str = "GET", data: dict[str, str] | None 
         body = urlencode(data).encode("utf-8")
     request = Request(url, data=body, headers=request_headers, method=method)
     try:
-        with urlopen(request, timeout=20) as response:
+        with urlopen(request, timeout=20) as response:  # noqa: S310 — host+scheme allowlisted above
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         raw = exc.read().decode("utf-8", "replace")

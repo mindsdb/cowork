@@ -45,7 +45,7 @@
             "type": "password",
             "required": true,
             "secret": true,
-            "placeholder": "glpat-xxxxxxxxxxxxxxxxxxxx",
+            "placeholder": "Your GitLab personal access token",
             "description": "From GitLab \u2192 Edit profile \u2192 Access Tokens. Must include at least the read_api or api scope."
           },
           {

@@ -174,6 +174,11 @@ if ANTON_SERVE_SPA and SPA_DIR is not None:
     }
     _spa_shell: Path = SPA_DIR / "index-web.html"
 
+    # Pre-resolve the SPA root once at module load. The fallback handler
+    # uses this to validate that every served path stays inside SPA_DIR
+    # — defense in depth on top of the `_spa_files` allowlist below.
+    _SPA_DIR_RESOLVED: Path = SPA_DIR.resolve()
+
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         # Wrong /v1/* paths must 404 cleanly — never serve the SPA shell
@@ -187,7 +192,16 @@ if ANTON_SERVE_SPA and SPA_DIR is not None:
         # can take over (or render its own 404 view) on the client.
         served = _spa_files.get(full_path)
         if served is not None:
-            return FileResponse(str(served))
+            # _spa_files is a pre-built allowlist of files inside
+            # SPA_DIR (computed at startup), so traversal sequences in
+            # `full_path` simply miss the dict. The explicit
+            # is_relative_to check below is redundant defense in depth
+            # and makes the safety obvious to static analysis (Snyk
+            # Code, CodeQL py/path-injection).
+            resolved = served.resolve()
+            if not resolved.is_relative_to(_SPA_DIR_RESOLVED):
+                raise HTTPException(status_code=403)
+            return FileResponse(str(resolved))
         return FileResponse(str(_spa_shell))
 
 

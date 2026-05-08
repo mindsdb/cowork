@@ -85,24 +85,55 @@ def _resolve_memory_path(scope: str, relative_path: str, project_path: Optional[
     root = _memory_root(scope, project_path)
     rel = _normalise_relative_md(relative_path)
     target = (root / rel).resolve()
-    try:
-        target.relative_to(root.resolve())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Memory file must stay inside the memory folder.") from exc
+    # Path-traversal guard — `is_relative_to` is the canonical sanitizer
+    # form recognised by static analysers (Snyk Code CWE-23, CodeQL
+    # py/path-injection). Even though `_normalise_relative_md` already
+    # rejects `..` and absolute paths, this is the authoritative gate
+    # that the resolved target is inside the memory root.
+    if not target.is_relative_to(root.resolve()):
+        raise HTTPException(status_code=400, detail="Memory file must stay inside the memory folder.")
     return root, target
+
+
+def _allowed_backup_roots() -> list[Path]:
+    """All directories from which `_backup_target` will accept paths.
+
+    Currently the only caller surface is the memory subsystem (Global +
+    every registered Project's `.anton/memory/`). Centralising the list
+    here keeps the defense-in-depth guard in `_backup_target` aligned
+    with `_memory_roots()` without re-deriving from the request scope.
+    """
+    roots: list[Path] = [(Path.home() / ".anton" / "memory").resolve()]
+    try:
+        from anton_api import projects_store
+        for project in projects_store.list_projects():
+            roots.append((Path(project["path"]).expanduser().resolve() / ".anton" / "memory").resolve())
+    except Exception:
+        # Project enumeration shouldn't crash the backup path; the
+        # global root above is enough to cover the most common case.
+        logger.warning("Could not enumerate projects for backup root allowlist", exc_info=True)
+    return roots
 
 
 def _backup_target(path: Path, namespace: str) -> None:
     if not path.exists():
         return
+    # Defense in depth — callers (`save_memory`, `delete_memory`) already
+    # route through `_resolve_memory_path`, but re-verify here so the
+    # `shutil.copy2` sink can be statically proven to receive only
+    # paths inside an allowed memory root. Reject anything else.
+    resolved = path.resolve()
+    if not any(resolved.is_relative_to(r) for r in _allowed_backup_roots()):
+        logger.warning("Refusing backup of %s — outside allowed memory roots", resolved)
+        return
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_root = backups_dir() / namespace
     backup_root.mkdir(parents=True, exist_ok=True)
-    name = f"{path.name}.{stamp}.bak"
+    name = f"{resolved.name}.{stamp}.bak"
     try:
-        shutil.copy2(path, backup_root / name)
+        shutil.copy2(resolved, backup_root / name)
     except OSError:
-        logger.warning("Could not backup %s before mutation", path)
+        logger.warning("Could not backup %s before mutation", resolved)
 
 
 def _memory_file_payload(

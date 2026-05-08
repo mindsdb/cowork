@@ -71,26 +71,58 @@ FROM scratch AS anton-source-git
 FROM anton-source-${ANTON_SOURCE} AS anton-source
 
 # ── Stage 3: install Python deps into an isolated venv ────────────────────
-# This stage carries git + ssh-client because ANTON_SOURCE=git uses
+# This stage carries git + openssh-clients because ANTON_SOURCE=git uses
 # `pip install git+ssh://...`. Neither tool reaches the runtime image —
 # only /opt/venv is copied forward. That keeps the runtime CVE surface
 # small (no git binary; no openssh) while still supporting both install
 # paths from the same Dockerfile.
-FROM python:3.11-slim AS py-builder
+#
+# Base is Red Hat UBI 9 minimal, pinned to its multi-arch manifest-list
+# digest. UBI is freely redistributable (no RHEL subscription required)
+# and Red Hat aggressively backports security patches into their RPM
+# packages — concretely, the previous Debian trixie base shipped 7
+# HIGH OS CVEs without upstream fixes (libcap, libsystemd, ncurses);
+# UBI 9 minimal ships 4 HIGHs (gnutls, krb5-libs DoS-class) that are
+# unreachable in our threat model since cowork doesn't terminate TLS
+# or speak Kerberos. To bump after a CVE patch lands:
+#   docker pull registry.access.redhat.com/ubi9-minimal
+#   docker buildx imagetools inspect registry.access.redhat.com/ubi9-minimal
+# Replace the digest below in BOTH FROM lines.
+FROM registry.access.redhat.com/ubi9-minimal@sha256:b9b10f42d7eba7ad4a6d5ef26b7d34fdc892b2ffe59b8d0372ec884008569eb6 AS py-builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        ssh-client \
+# microdnf is UBI minimal's slim package manager (replaces dnf). The
+# update step pulls Red Hat security errata published since the base
+# digest was tagged. python3.11 carries pip; openssh-clients provides
+# ssh-keyscan + ssh used by `git+ssh://`; ca-certificates is required
+# for HTTPS metadata fetches during pip install.
+RUN microdnf update -y \
+    && microdnf install -y --nodocs \
+        python3.11 \
+        python3.11-pip \
         git \
-    && rm -rf /var/lib/apt/lists/*
+        openssh-clients \
+        ca-certificates \
+        shadow-utils \
+        tar \
+        gzip \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum
 
 # Self-contained venv at /opt/venv. Using a venv (rather than the system
 # site-packages) gives us a clean directory to COPY into the runtime
-# stage without dragging pip's own footprint or apt-managed packages.
-RUN python -m venv /opt/venv
+# stage without dragging pip's own footprint or RPM-managed packages.
+RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
+
+# Refresh pip + setuptools + wheel inside the venv.
+# UBI's stock python3.11 venv ships with old pip/setuptools whose
+# `_vendor/` carries `wheel 0.45.x` (CVE-2026-24049) and
+# `jaraco.context 5.3.0` (CVE-2026-23949). Bumping the installer
+# toolchain pulls patched versions and clears both HIGH findings
+# from a Snyk Container / Trivy scan of /opt/venv.
+RUN pip install --upgrade pip setuptools wheel
 
 # FastAPI stack first — its pinned set rarely changes, so this layer caches.
 COPY cowork/server/requirements.txt /tmp/requirements.txt
@@ -108,19 +140,39 @@ ENV ANTON_VERSION=${ANTON_VERSION}
 RUN --mount=type=ssh chmod +x /tmp/install-anton.sh && /tmp/install-anton.sh
 
 # ── Stage 4: runtime — minimal, no compilers, no git, no source tree ─────
-FROM python:3.11-slim AS runtime
+# Same digest-pinned UBI 9 minimal base as py-builder. The runtime
+# stage is what the customer actually pulls, so this digest is the
+# one their Snyk Container scan resolves against. Keep both FROM
+# digests in sync when bumping the base.
+FROM registry.access.redhat.com/ubi9-minimal@sha256:b9b10f42d7eba7ad4a6d5ef26b7d34fdc892b2ffe59b8d0372ec884008569eb6 AS runtime
 
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
-LABEL org.opencontainers.image.description="Anton CoWork — FastAPI + SPA"
+LABEL org.opencontainers.image.description="Anton CoWork — FastAPI + SPA (UBI 9 minimal)"
+LABEL org.opencontainers.image.base.name="registry.access.redhat.com/ubi9-minimal"
 
-# ca-certificates is the only runtime apt dep. git and ssh-client live
-# only in py-builder; dropping them here removes ~50 MB and the entire
-# git CVE surface from customer security scans.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Apply Red Hat security errata published since the base digest was
+# tagged, then install ONLY the packages the runtime needs:
+#   - python3.11      — host the venv interpreter (the venv is layered
+#                        on top via /opt/venv).
+#   - ca-certificates — TLS root anchors for outbound HTTPS to LLM APIs.
+#   - shadow-utils    — provides `useradd` for non-root user creation.
+# git, ssh, and dev tools live only in py-builder.
+RUN microdnf update -y \
+    && microdnf install -y --nodocs \
+        python3.11 \
+        python3.11-pip \
         ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+        shadow-utils \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum
+
+# Refresh the system Python's pip + setuptools + wheel. trivy/Snyk
+# scan /usr/lib/python3.11/site-packages/ and flag the RPM-bundled
+# wheel/setuptools metadata. The app runs from /opt/venv (separate),
+# but the system copies still get scanned.
+RUN python3.11 -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Run as a non-root user. UID 1000 is the convention for "primary user"
 # on most distros — easy to bind-mount host directories with matching
