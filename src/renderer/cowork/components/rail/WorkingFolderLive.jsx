@@ -207,31 +207,14 @@ export function WorkingFolderLive({ project, isStreaming }) {
     }
   };
 
-  const antonFolder = effectiveProject?.path
-    ? `${effectiveProject.path.replace(/\/+$/, '')}/.anton`
-    : null;
+  // The card header used to print the project name + path here, but
+  // both are already obvious from the page chrome (the project breadcrumb
+  // / project-detail header). Keeping them in the rail double-printed
+  // information and crowded the file list. The empty-state text below
+  // covers the "no active workspace" case implicitly.
 
   return (
     <div className="pt-2">
-      {effectiveProject ? (
-        <div className="flex flex-col gap-0.5 pb-2 mb-1.5 border-b border-line">
-          <span className="text-[12.5px] font-medium text-ink truncate" title={effectiveProject.name}>
-            {effectiveProject.name}
-          </span>
-          <span
-            className={
-              host.isWeb
-                ? 'text-[10.5px] text-ink-4 truncate'
-                : 'text-[10.5px] text-ink-4 truncate cursor-pointer hover:text-ink-3'
-            }
-            title={!host.isWeb && antonFolder ? `Open ${antonFolder}` : effectiveProject.path}
-            onClick={host.isWeb ? undefined : () => antonFolder && onOpen(antonFolder)}
-          >{effectiveProject.path}</span>
-        </div>
-      ) : (
-        <p className="text-[12.5px] text-ink-4 pb-2">No active workspace.</p>
-      )}
-
       {rows.length === 0 ? (
         <p className="text-[12.5px] text-ink-4 px-1 pb-1">
           No files yet — Anton will store new artifacts here.
