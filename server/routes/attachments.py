@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from .cowork_state import attachments_dir, load_state, save_state, utc_now_iso
+from .cowork_state import load_state, save_state, uploads_dir, utc_now_iso
 
 
 router = APIRouter(prefix="/v1/attachments", tags=["attachments"])
@@ -166,11 +166,15 @@ async def upload_attachments(
     session_id: str | None = Form(default=None),
     project_path: str | None = Form(default=None),
 ):
+    # Store uploads in the project's /uploads directory.
+    project_path = Path(project_path)
+    project_uploads_dir = uploads_dir(project_path)
+
     created: list[dict] = []
     for file in files:
         attachment_id = _new_id()
         filename = _safe_name(file.filename or "attachment")
-        target_dir = attachments_dir() / attachment_id
+        target_dir = project_uploads_dir / session_id / attachment_id
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / filename
         data = await file.read()

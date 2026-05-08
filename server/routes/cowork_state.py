@@ -45,6 +45,16 @@ def attachments_dir() -> Path:
     return path
 
 
+def uploads_dir(project_path: Path) -> Path:
+    path = project_path / ".anton" / "uploads"
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.chmod(0o700)
+    except OSError:
+        pass
+    return path
+
+
 def backups_dir() -> Path:
     path = cowork_dir() / "backups"
     path.mkdir(parents=True, exist_ok=True)
