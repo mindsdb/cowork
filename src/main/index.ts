@@ -990,7 +990,7 @@ function startEnvWatcher() {
 app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     const dockIcon = nativeImage.createFromPath(getIconPath());
-    app.dock.setIcon(dockIcon);
+    app.dock?.setIcon(dockIcon);
 
     const template: Electron.MenuItemConstructorOptions[] = [
       {
