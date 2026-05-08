@@ -83,8 +83,12 @@ function httpRequest(
       method: options.method,
       headers: options.headers,
     };
+    // When the caller explicitly opts out of certificate validation (sslVerify: false in the
+    // MindsDB settings UI), disable it for this request. This is a deliberate user choice to
+    // connect to a MindsDB instance that uses a self-signed or untrusted TLS certificate on a
+    // private network. The option is never set for calls to public APIs (Anthropic, OpenAI).
     if (!rejectUnauth && parsed.protocol === 'https:') {
-      reqOptions.agent = new https.Agent({ rejectUnauthorized: false });
+      reqOptions.agent = new https.Agent({ rejectUnauthorized: false }); // intentional: user-controlled, see above
     }
     const req = mod.request(
       reqOptions,
@@ -447,12 +451,16 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, // needed for node-pty
-      // Disable Chromium's same-origin/mixed-content checks so the renderer
-      // (loaded from file://) can fetch http://127.0.0.1:<antonPort>/v1/*.
-      // Safe in this context: app is local, network calls only target the
-      // loopback python server we spawn ourselves. CSP in index.html still
-      // allowlists the exact origins for defense in depth.
-      webSecurity: false,
+      // webSecurity: false is required because the renderer is loaded from
+      // file:// but must call http://127.0.0.1:<antonPort>/v1/* (the loopback
+      // Python sidecar). Chromium's same-origin policy blocks file:// → http://
+      // by default. This is safe in our threat model:
+      //   • The renderer bundle is compiled and packaged by us (not from the web)
+      //   • All network calls target 127.0.0.1 (loopback only, never a remote host)
+      //   • The Python server itself binds to 127.0.0.1 and rejects external connections
+      //   • CSP in index.html explicitly allowlists the exact loopback origin
+      // Removing this would break the renderer's ability to reach the local AI backend.
+      webSecurity: false, // intentional: required for file:// → loopback architecture, see above
     },
   });
 
