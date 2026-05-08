@@ -266,7 +266,7 @@ gh pr list --state open --head <branch_name> --json number,title,url,body
 If no PR exists, create it:
 
 ```bash
-gh pr create --title "<pr_title>" --body "<pr_body>" --base <base_branch> --head <branch_name>
+gh pr create --draft --title "<pr_title>" --body "<pr_body>" --base <base_branch> --head <branch_name>
 ```
 
 Use this PR body structure:
