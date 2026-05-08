@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Anton Hot Updates (OTA) — Manual Testing</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+  /* ───────────── Tokens (mirrored from server-api.html) ───────────── */
+  :root {
+    color-scheme: light;
+    --ink:        #0E0F10;
+    --ink-2:      #2A2C2F;
+    --ink-3:      #3F4145;
+    --faded:      #6B6F73;
+    --line:       #D8D8D4;
+    --bg:         #ECECEA;
+    --surface:    #FFFFFF;
+    --surface-2:  #F4F4F0;
+    --chip:       #DDDDD8;
+    --accent:     #1F9CB0;
+    --accent-bg:  #E2F5FD;
+    --pass:       #2E8B57;
+    --pass-bg:    #E5F4EC;
+    --warn:       #B07A1F;
+    --warn-bg:    #FAF2DF;
+    --danger:     #B33A3A;
+    --danger-bg:  #FBE7E7;
+  }
+
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+  *, *::before, *::after { box-sizing: border-box; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ───────────── Sticky header ───────────── */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(140%) blur(10px);
+    -webkit-backdrop-filter: saturate(140%) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1140px; margin: 0 auto; padding: 12px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .brand {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--faded); font-weight: 600;
+  }
+  .brand strong { color: var(--ink); margin-right: 8px; }
+  .topbar .grow { flex: 1; }
+  .topbar a.toplink { font-size: 12.5px; color: var(--faded); }
+  .topbar a.toplink:hover { color: var(--ink); text-decoration: none; }
+
+  /* ───────────── Layout ───────────── */
+  .shell {
+    max-width: 1140px; margin: 0 auto;
+    padding: 56px 24px 120px;
+  }
+  @media (min-width: 1024px) {
+    .shell {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 56px;
+      padding-top: 64px;
+    }
+  }
+
+  /* ───────────── Side TOC ───────────── */
+  .toc { display: none; }
+  @media (min-width: 1024px) {
+    .toc {
+      display: block;
+      position: sticky; top: 88px; align-self: start;
+      max-height: calc(100vh - 110px); overflow: auto;
+    }
+  }
+  .toc-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--faded);
+    font-weight: 600; margin-bottom: 14px;
+  }
+  .toc nav { display: flex; flex-direction: column; border-left: 1px solid var(--line); padding-left: 16px; gap: 6px; }
+  .toc a { font-size: 13px; color: var(--ink-2); padding: 2px 0; }
+  .toc a:hover { color: var(--accent); text-decoration: none; }
+  .toc .toc-section {
+    margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line);
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--faded);
+  }
+  .toc .toc-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  /* ───────────── Mobile TOC ───────────── */
+  .toc-mobile {
+    margin-bottom: 24px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  @media (min-width: 1024px) { .toc-mobile { display: none; } }
+  .toc-mobile summary {
+    cursor: pointer; list-style: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+    font-size: 13.5px; font-weight: 500; color: var(--ink);
+  }
+  .toc-mobile summary::-webkit-details-marker { display: none; }
+  .toc-mobile summary::after { content: '▾'; color: var(--faded); transition: transform .2s ease; }
+  .toc-mobile[open] summary::after { transform: rotate(180deg); }
+  .toc-mobile nav { display: flex; flex-direction: column; padding: 8px 16px 14px; gap: 4px; border-top: 1px solid var(--line); }
+  .toc-mobile a { font-size: 13px; color: var(--ink-2); padding: 6px 0; }
+  .toc-mobile a:hover { color: var(--accent); }
+
+  /* ───────────── Typography ───────────── */
+  .content { min-width: 0; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faded); margin: 0 0 10px;
+  }
+  .hero {
+    font-size: 38px; font-weight: 600; letter-spacing: -0.015em;
+    line-height: 1.08; margin: 0 0 12px; max-width: 22ch;
+  }
+  @media (max-width: 640px) { .hero { font-size: 30px; } }
+  .hero-sub {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--pass-bg); color: var(--pass);
+    border: 1px solid color-mix(in srgb, var(--pass) 30%, transparent);
+    padding: 4px 10px; border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .hero-sub .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--pass);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pass) 25%, transparent);
+  }
+  .lede {
+    font-size: 16px; line-height: 1.6; color: var(--ink-2); max-width: 64ch;
+    margin: 0 0 28px;
+  }
+  h2 {
+    font-size: 26px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 60px 0 8px; scroll-margin-top: 88px;
+  }
+  h3 {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--faded); margin: 28px 0 10px;
+  }
+  p {
+    font-size: 14.5px; line-height: 1.6; color: var(--ink-2);
+    max-width: 70ch; margin: 0 0 12px;
+  }
+  ul, ol { font-size: 14.5px; line-height: 1.7; color: var(--ink-2); padding-left: 18px; max-width: 70ch; }
+  li { margin: 4px 0; }
+  code {
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+    background: var(--chip); padding: 1px 6px; border-radius: 4px; color: var(--ink);
+  }
+  hr { border: none; border-top: 1px solid var(--line); margin: 56px 0; }
+
+  /* ───────────── Key-facts row ───────────── */
+  .keys {
+    display: grid; grid-template-columns: 1fr;
+    gap: 12px; margin: 24px 0 20px; max-width: 70ch;
+  }
+  @media (min-width: 720px) { .keys { grid-template-columns: repeat(3, 1fr); } }
+  .key {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .key .lbl {
+    display: block; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--faded);
+    margin-bottom: 6px; font-weight: 600;
+  }
+  .key .val {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink);
+    word-break: break-all; line-height: 1.4;
+  }
+
+  /* ───────────── Code blocks ───────────── */
+  pre {
+    background: var(--ink); color: #E7E7E2;
+    padding: 14px 16px; border-radius: 10px; overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.55;
+    margin: 12px 0;
+    border: 1px solid color-mix(in srgb, var(--ink) 80%, var(--line));
+  }
+  pre code { background: transparent; padding: 0; color: inherit; font-size: inherit; border-radius: 0; }
+  .code-out {
+    background: var(--surface-2); color: var(--ink);
+    border: 1px solid var(--line);
+  }
+
+  /* ───────────── File-location table ───────────── */
+  .filetable {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; max-width: 70ch;
+  }
+  .filetable .row {
+    display: grid; gap: 14px; align-items: start;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr);
+    padding: 11px 16px; border-top: 1px solid var(--line);
+    font-size: 13.5px;
+  }
+  .filetable .row:first-child { border-top: 0; }
+  .filetable .row .what { color: var(--ink); font-weight: 500; }
+  .filetable .row .path { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--ink-2); word-break: break-all; }
+
+  /* ───────────── Test cards ───────────── */
+  .test {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; margin: 18px 0 28px;
+    scroll-margin-top: 88px;
+  }
+  .test-head {
+    display: flex; align-items: baseline; gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .test-num {
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--faded);
+    font-weight: 600;
+  }
+  .test-title {
+    font-size: 19px; font-weight: 600; letter-spacing: -0.005em;
+    color: var(--ink); margin: 0;
+  }
+  .test-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 9px; border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .pill-pass {
+    background: var(--pass-bg); color: var(--pass);
+    border: 1px solid color-mix(in srgb, var(--pass) 30%, transparent);
+  }
+  .pill-pass .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pass); }
+  .pill-todo {
+    background: var(--warn-bg); color: var(--warn);
+    border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  }
+  .pill-todo .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+
+  .test p:first-of-type { margin-top: 4px; color: var(--ink-2); }
+
+  .step-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--faded);
+    font-weight: 600;
+    margin: 18px 0 6px;
+  }
+
+  /* ───────────── Verify checklist ───────────── */
+  .verify {
+    list-style: none; padding: 0; margin: 8px 0 0; max-width: 70ch;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .verify li {
+    position: relative;
+    padding: 8px 12px 8px 36px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 13.5px; line-height: 1.5; color: var(--ink-2);
+    margin: 0;
+  }
+  .verify li::before {
+    content: '';
+    position: absolute; left: 12px; top: 11px;
+    width: 14px; height: 14px;
+    border: 1.5px solid color-mix(in srgb, var(--ink) 35%, transparent);
+    border-radius: 4px;
+    background: #fff;
+  }
+  .verify li code { background: var(--chip); }
+
+  /* ───────────── Env-var table ───────────── */
+  .envtable {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; max-width: 70ch;
+  }
+  .envtable .head, .envtable .row {
+    display: grid; gap: 12px; align-items: start;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.6fr);
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  .envtable .head {
+    background: var(--surface-2); border-bottom: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--faded);
+    font-weight: 600;
+  }
+  .envtable .row { border-top: 1px solid var(--line); }
+  .envtable .row:first-of-type { border-top: 0; }
+  .envtable .var, .envtable .vals, .envtable .def {
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--ink);
+  }
+  .envtable .vals { color: var(--ink-2); }
+  .envtable .def { color: var(--faded); }
+  .envtable .effect { color: var(--ink-2); }
+
+  /* ───────────── Tip / callout ───────────── */
+  .tip {
+    background: var(--accent-bg);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 16px 0 8px;
+    max-width: 70ch;
+    font-size: 13.5px; line-height: 1.55; color: var(--ink-2);
+  }
+  .tip strong {
+    color: var(--accent); font-weight: 600;
+  }
+
+  /* ───────────── Troubleshooting ───────────── */
+  .trouble {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0; max-width: 70ch; overflow: hidden;
+  }
+  .trouble details {
+    border-top: 1px solid var(--line);
+  }
+  .trouble details:first-child { border-top: 0; }
+  .trouble summary {
+    cursor: pointer; list-style: none;
+    padding: 13px 16px;
+    font-size: 14px; font-weight: 500; color: var(--ink);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .trouble summary::-webkit-details-marker { display: none; }
+  .trouble summary::after { content: '+'; color: var(--faded); font-family: 'JetBrains Mono', monospace; font-size: 16px; transition: transform .15s ease; }
+  .trouble details[open] summary::after { transform: rotate(45deg); }
+  .trouble .body {
+    padding: 0 16px 14px;
+    font-size: 13.5px; line-height: 1.55; color: var(--ink-2);
+  }
+  .trouble .body p { margin: 0 0 10px; max-width: none; font-size: inherit; }
+  .trouble .body pre { margin: 8px 0; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand"><strong>Anton</strong>Docs</span>
+    <span class="grow"></span>
+    <a class="toplink" href="index.html">Home</a>
+    <a class="toplink" href="server-api.html">API</a>
+    <a class="toplink" href="data-vault.html">Vault</a>
+  </div>
+</header>
+
+<main class="shell">
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-label">On this page</div>
+    <nav>
+      <span class="toc-section">Setup</span>
+      <a href="#prerequisites">Prerequisites</a>
+      <a href="#file-locations">File locations</a>
+
+      <span class="toc-section">Tests</span>
+      <a href="#test-1">1. Manual mode · first launch</a>
+      <a href="#test-2">2. Manual mode · up to date</a>
+      <a href="#test-3">3. Auto mode</a>
+      <a href="#test-4">4. Offline behavior</a>
+      <a href="#test-5">5. DEV_MODE=live</a>
+      <a href="#test-6">6. DEV_MODE=full</a>
+      <a href="#test-7">7. Settings UI toggle</a>
+      <a href="#test-8">8. Rollback / cache clear</a>
+      <a href="#test-9">9. About panel version</a>
+      <a href="#test-10">10. Standard dev mode</a>
+
+      <span class="toc-section">Reference</span>
+      <a href="#env-vars">Env vars</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+    </nav>
+  </aside>
+
+  <article class="content">
+
+    <details class="toc-mobile">
+      <summary>On this page</summary>
+      <nav>
+        <a href="#prerequisites">Prerequisites</a>
+        <a href="#file-locations">File locations</a>
+        <a href="#test-1">1. Manual · first launch</a>
+        <a href="#test-2">2. Manual · up to date</a>
+        <a href="#test-3">3. Auto mode</a>
+        <a href="#test-4">4. Offline</a>
+        <a href="#test-5">5. DEV_MODE=live</a>
+        <a href="#test-6">6. DEV_MODE=full</a>
+        <a href="#test-7">7. Settings UI toggle</a>
+        <a href="#test-8">8. Rollback</a>
+        <a href="#test-9">9. About panel</a>
+        <a href="#test-10">10. Standard dev</a>
+        <a href="#env-vars">Env vars</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+      </nav>
+    </details>
+
+    <p class="eyebrow">QA Reference</p>
+    <h1 class="hero">Hot Updates (OTA) — Manual Testing</h1>
+    <p class="hero-sub"><span class="dot"></span> 10 / 10 Tests Passed</p>
+    <p class="lede">
+      Every mode and scenario the OTA hot-updates feature ships with, walked through end-to-end.
+      Each test is self-contained — run them in any order. Look for the green pill on each
+      test card to confirm coverage as you go.
+    </p>
+
+    <div class="keys">
+      <div class="key">
+        <span class="lbl">Manifest</span>
+        <span class="val">mindsdb.github.io/<wbr/>antontron-releases/<wbr/>latest.json</span>
+      </div>
+      <div class="key">
+        <span class="lbl">Cache root</span>
+        <span class="val">~/Library/<wbr/>Application Support/<wbr/>Anton/ui-cache/</span>
+      </div>
+      <div class="key">
+        <span class="lbl">Modes</span>
+        <span class="val">manual · auto · live · full</span>
+      </div>
+    </div>
+
+    <hr/>
+
+    <!-- ───────────── Prerequisites ───────────── -->
+    <h2 id="prerequisites">Prerequisites</h2>
+    <p>Before you start, confirm two things.</p>
+
+    <h3>1. The manifest is live</h3>
+    <pre><code>curl -s https://mindsdb.github.io/antontron-releases/latest.json | python3 -m json.tool</code></pre>
+    <p>You should see something like:</p>
+    <pre class="code-out"><code>{
+  "version": "2.0.4-e94e713",
+  "url": "https://github.com/mindsdb/antontron-releases/releases/download/ui-v2.0.4-e94e713/ui-bundle.tar.gz",
+  "sha256": "5b15b66a5a7bcf9a319418e22f601e2ce3f610ac0edc45d6cc45fc3ad53af1d3"
+}</code></pre>
+    <p>
+      If this fails or 404s, the OTA system has nothing to serve — the update check will report
+      "up to date" and the app will load its bundled renderer.
+    </p>
+
+    <h3>2. You can build the packaged app</h3>
+    <p>
+      OTA checks only run in packaged builds (<code>app.isPackaged === true</code>). Dev mode
+      (<code>npm run dev</code>) skips them entirely.
+    </p>
+    <pre><code>PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run pack</code></pre>
+    <p>Output: <code>release/mac-arm64/Anton.app</code></p>
+
+    <p class="tip">
+      <strong>Tip.</strong> To see Electron's console logs, always launch the packaged app from
+      Terminal:
+    </p>
+    <pre><code>./release/mac-arm64/Anton.app/Contents/MacOS/Anton</code></pre>
+    <p>
+      That lets you watch <code>[ui-updater]</code> and <code>[main]</code> log lines in real
+      time.
+    </p>
+
+    <!-- ───────────── File locations ───────────── -->
+    <h2 id="file-locations">Key file locations</h2>
+    <div class="filetable">
+      <div class="row">
+        <span class="what">Anton config</span>
+        <span class="path">~/.anton/.env</span>
+      </div>
+      <div class="row">
+        <span class="what">OTA cache dir</span>
+        <span class="path">~/Library/Application Support/Anton/ui-cache/</span>
+      </div>
+      <div class="row">
+        <span class="what">Cached bundle</span>
+        <span class="path">.../ui-cache/current/index.html</span>
+      </div>
+      <div class="row">
+        <span class="what">Previous bundle (rollback)</span>
+        <span class="path">.../ui-cache/previous/</span>
+      </div>
+      <div class="row">
+        <span class="what">Version metadata</span>
+        <span class="path">.../ui-cache/version.json</span>
+      </div>
+      <div class="row">
+        <span class="what">Electron logs</span>
+        <span class="path">Launch from Terminal to see stdout</span>
+      </div>
+    </div>
+
+    <hr/>
+
+    <!-- ───────────── Test 1 ───────────── -->
+    <section class="test" id="test-1">
+      <div class="test-head">
+        <span class="test-num">Test 01</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Manual update mode (default) — first launch, no cache</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+      <p>The out-of-the-box experience for new users.</p>
+
+      <p class="step-label">Setup</p>
+      <pre><code># Ensure no prior OTA cache exists
+rm -rf ~/Library/Application\ Support/Anton/ui-cache
+
+# Ensure manual mode (or just remove the key — manual is the default)
+grep -v 'UI_UPDATE_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env
+grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Build the app: <code>PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run pack</code></li>
+        <li>Launch from Terminal: <code>./release/mac-arm64/Anton.app/Contents/MacOS/Anton</code></li>
+        <li>Watch the Terminal output.</li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>Terminal shows <code>[ui-updater]</code> checking log lines (no errors)</li>
+        <li>The app loads normally with the bundled renderer (no blank screen)</li>
+        <li>After a few seconds, a small green-accented banner appears in the sidebar footer area saying "Update available (2.0.4-e94e713)" with an "Install" label</li>
+        <li>The banner is unobtrusive — it doesn't block any UI or force action</li>
+        <li>Clicking the banner starts the download — you may briefly see a full-screen overlay with a spinner and "Updating to 2.0.4-e94e713…"</li>
+        <li>The app reloads with the new bundle — the UI looks the same (it's the same codebase, just delivered via OTA)</li>
+        <li>After reload, the sidebar banner is gone (we're now up to date)</li>
+      </ul>
+
+      <p class="step-label">Verify the cache</p>
+      <pre><code># Should now have files
+ls ~/Library/Application\ Support/Anton/ui-cache/current/
+# Should contain index.html and assets
+
+cat ~/Library/Application\ Support/Anton/ui-cache/version.json
+# Should show {"version":"2.0.4-e94e713"}</code></pre>
+    </section>
+
+    <!-- ───────────── Test 2 ───────────── -->
+    <section class="test" id="test-2">
+      <div class="test-head">
+        <span class="test-num">Test 02</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Manual update mode — already up to date</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+
+      <p class="step-label">Setup</p>
+      <p>Run Test 1 first so the cache is populated with the latest version.</p>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Quit and relaunch: <code>./release/mac-arm64/Anton.app/Contents/MacOS/Anton</code></li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>Terminal shows the update check but reports no new version</li>
+        <li>No update banner appears in the sidebar</li>
+        <li>The app loads from the cached OTA bundle (check Terminal for the file path in any load logs)</li>
+      </ul>
+    </section>
+
+    <!-- ───────────── Test 3 ───────────── -->
+    <section class="test" id="test-3">
+      <div class="test-head">
+        <span class="test-num">Test 03</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Auto update mode</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+
+      <p class="step-label">Setup</p>
+      <pre><code># Clear cache to force a fresh download
+rm -rf ~/Library/Application\ Support/Anton/ui-cache
+
+# Set auto mode
+echo 'UI_UPDATE_MODE=auto' >> ~/.anton/.env</code></pre>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Launch: <code>./release/mac-arm64/Anton.app/Contents/MacOS/Anton</code></li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>The app starts and shows its normal UI briefly</li>
+        <li>A full-screen overlay appears with a spinner and "Updating to …" message</li>
+        <li>After a few seconds (download time), the overlay says "Almost there…"</li>
+        <li>The app reloads automatically — no user interaction needed</li>
+        <li>After reload, the app is running the OTA bundle (check <code>version.json</code>)</li>
+        <li>No update banner appears (auto mode doesn't use the banner)</li>
+      </ul>
+
+      <p class="step-label">Cleanup</p>
+      <pre><code># Remove the auto mode setting to go back to default (manual)
+grep -v 'UI_UPDATE_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
+    </section>
+
+    <!-- ───────────── Test 4 ───────────── -->
+    <section class="test" id="test-4">
+      <div class="test-head">
+        <span class="test-num">Test 04</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Offline behavior</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+
+      <p class="step-label">Setup</p>
+      <pre><code># Clear cache
+rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Disconnect from the internet (turn off Wi-Fi, or use an airplane-mode equivalent)</li>
+        <li>Launch: <code>./release/mac-arm64/Anton.app/Contents/MacOS/Anton</code></li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>Terminal shows something like <code>[ui-updater] timeout</code> or connectivity failure (not a crash)</li>
+        <li>The app loads normally with the bundled renderer — no blank screen, no error</li>
+        <li>No update banner appears</li>
+        <li>The app is fully functional (aside from features that need the network)</li>
+      </ul>
+
+      <p class="step-label">Then</p>
+      <ol>
+        <li>Reconnect to the internet</li>
+        <li>Quit and relaunch</li>
+      </ol>
+      <ul class="verify">
+        <li>The update check now succeeds and the banner (or auto-update) kicks in</li>
+      </ul>
+    </section>
+
+    <!-- ───────────── Test 5 ───────────── -->
+    <section class="test" id="test-5">
+      <div class="test-head">
+        <span class="test-num">Test 05</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">DEV_MODE=live</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+      <p>For developers who want renderer changes in real time without rebuilding the full app.</p>
+
+      <p class="step-label">Setup</p>
+      <pre><code>echo 'DEV_MODE=live' >> ~/.anton/.env</code></pre>
+
+      <p class="step-label">Steps — with dev server running</p>
+      <ol>
+        <li>
+          In one terminal, start the Vite dev server:
+          <pre><code>PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run dev:renderer</code></pre>
+          Wait until it says the server is ready on <code>localhost:5173</code>.
+        </li>
+        <li>
+          In another terminal, launch the packaged app:
+          <pre><code>./release/mac-arm64/Anton.app/Contents/MacOS/Anton</code></pre>
+        </li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>Terminal shows <code>[main] DEV_MODE=live — loading from http://localhost:5173</code></li>
+        <li>The app loads the renderer from the Vite dev server, not from the bundled/cached files</li>
+        <li>If you edit a file under <code>src/renderer/</code>, Vite hot-reloads it in the running app window</li>
+        <li>No OTA update check runs — no <code>[ui-updater]</code> log lines appear</li>
+        <li>The Python server still starts and works normally</li>
+      </ul>
+
+      <p class="step-label">Steps — without dev server running</p>
+      <ol>
+        <li>Stop the Vite dev server (<code>Ctrl+C</code>)</li>
+        <li>Launch the packaged app again</li>
+      </ol>
+
+      <ul class="verify">
+        <li>The app window shows an error page (<code>ERR_CONNECTION_REFUSED</code> or similar) — this is expected</li>
+        <li>The app does NOT crash — it just can't reach <code>localhost:5173</code></li>
+      </ul>
+
+      <p class="step-label">Cleanup</p>
+      <pre><code>grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
+    </section>
+
+    <!-- ───────────── Test 6 ───────────── -->
+    <section class="test" id="test-6">
+      <div class="test-head">
+        <span class="test-num">Test 06</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">DEV_MODE=full</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+      <p>
+        For developers who want to test the packaged build end-to-end but don't want OTA to
+        override their local changes.
+      </p>
+
+      <p class="step-label">Setup</p>
+      <pre><code># Populate the OTA cache so we can verify it gets ignored
+# (run Test 1 first if the cache is empty)
+
+echo 'DEV_MODE=full' >> ~/.anton/.env</code></pre>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Launch: <code>./release/mac-arm64/Anton.app/Contents/MacOS/Anton</code></li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>Terminal shows <code>[main] DEV_MODE=full — using bundled renderer, skipping OTA cache</code></li>
+        <li>The app loads from the app bundle, NOT from <code>ui-cache/current/</code></li>
+        <li>No OTA update check runs</li>
+        <li>If you had a different version cached in <code>ui-cache/</code>, it is ignored</li>
+      </ul>
+
+      <p class="step-label">Cleanup</p>
+      <pre><code>grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
+    </section>
+
+    <!-- ───────────── Test 7 ───────────── -->
+    <section class="test" id="test-7">
+      <div class="test-head">
+        <span class="test-num">Test 07</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Settings UI toggle</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Launch the app (packaged or dev mode — Settings UI works in both)</li>
+        <li>Navigate to Settings (gear icon in the sidebar)</li>
+        <li>Scroll down and expand the <strong>Updates</strong> section</li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>There is a segmented control with two options: <strong>Manual</strong> and <strong>Auto</strong></li>
+        <li>The default selection is <strong>Manual</strong></li>
+        <li>Clicking <strong>Auto</strong> switches the selection visually</li>
+        <li>Click <strong>Save settings</strong></li>
+        <li>
+          Verify the setting was persisted:
+          <pre><code>grep UI_UPDATE_MODE ~/.anton/.env
+# Should show: UI_UPDATE_MODE=auto</code></pre>
+        </li>
+        <li>Switch back to <strong>Manual</strong> and save again</li>
+        <li>
+          Verify:
+          <pre><code>grep UI_UPDATE_MODE ~/.anton/.env
+# Should show: UI_UPDATE_MODE=manual</code></pre>
+        </li>
+      </ul>
+    </section>
+
+    <!-- ───────────── Test 8 ───────────── -->
+    <section class="test" id="test-8">
+      <div class="test-head">
+        <span class="test-num">Test 08</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Rollback / cache clearing</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+      <p>If a bad OTA bundle is deployed, users can recover by clearing the cache.</p>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>
+          After running any test that populated the cache:
+          <pre><code>rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
+        </li>
+        <li>Relaunch the app</li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>The app loads the bundled renderer (the version shipped inside <code>Anton.app</code>)</li>
+        <li>On next launch with internet, OTA check runs and re-downloads the latest bundle</li>
+      </ul>
+    </section>
+
+    <!-- ───────────── Test 9 ───────────── -->
+    <section class="test" id="test-9">
+      <div class="test-head">
+        <span class="test-num">Test 09</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">About panel version display</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Launch the packaged app</li>
+        <li>Click <strong>Anton</strong> in the menu bar &gt; <strong>About Anton</strong></li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>If running the OTA bundle, the version shows something like <code>2.0.4 (UI: 2.0.4-e94e713)</code></li>
+        <li>If running the bundled renderer (no cache), it shows just <code>2.0.4</code> or <code>2.0.4 (UI: bundled)</code></li>
+      </ul>
+    </section>
+
+    <!-- ───────────── Test 10 ───────────── -->
+    <section class="test" id="test-10">
+      <div class="test-head">
+        <span class="test-num">Test 10</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Standard dev mode (npm run dev)</h2>
+        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+      </div>
+      <p>Verify that the normal development workflow is unaffected.</p>
+
+      <p class="step-label">Setup</p>
+      <pre><code># Make sure DEV_MODE is NOT set
+grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li><code>PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run dev</code></li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>The app starts with Vite hot-reloading as usual</li>
+        <li>No OTA checks run (because <code>app.isPackaged</code> is false in dev)</li>
+        <li>No update banner appears</li>
+        <li>Everything works as it did before this feature</li>
+      </ul>
+    </section>
+
+    <hr/>
+
+    <!-- ───────────── Env vars ───────────── -->
+    <h2 id="env-vars">Quick reference: env vars</h2>
+    <p>Add these to <code>~/.anton/.env</code> as <code>KEY=value</code> lines.</p>
+
+    <div class="envtable">
+      <div class="head">
+        <span>Variable</span>
+        <span>Values</span>
+        <span>Default</span>
+        <span>Effect</span>
+      </div>
+      <div class="row">
+        <span class="var">UI_UPDATE_MODE</span>
+        <span class="vals">auto, manual</span>
+        <span class="def">manual</span>
+        <span class="effect">How OTA updates are applied</span>
+      </div>
+      <div class="row">
+        <span class="var">DEV_MODE</span>
+        <span class="vals">live, full, false/empty</span>
+        <span class="def">not set</span>
+        <span class="effect">Developer renderer override</span>
+      </div>
+    </div>
+    <p style="margin-top: 12px;">
+      Both can also be set from the Settings UI (<code>UI_UPDATE_MODE</code>) or manually
+      edited.
+    </p>
+
+    <!-- ───────────── Troubleshooting ───────────── -->
+    <h2 id="troubleshooting">Troubleshooting</h2>
+    <div class="trouble">
+      <details>
+        <summary>I see no update banner but the manifest has a new version</summary>
+        <div class="body">
+          <ul>
+            <li>Are you running the packaged app? OTA only runs when <code>app.isPackaged === true</code>.</li>
+            <li>Is <code>DEV_MODE</code> set? It skips OTA entirely.</li>
+            <li>Check Terminal logs for <code>[ui-updater]</code> lines.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>The app shows a blank white screen</summary>
+        <div class="body">
+          <ul>
+            <li>If <code>DEV_MODE=live</code> and no Vite server is running, this is expected. Remove <code>DEV_MODE</code> from <code>~/.anton/.env</code>.</li>
+            <li>If the OTA cache is corrupted: <code>rm -rf ~/Library/Application\ Support/Anton/ui-cache</code> and relaunch.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>The update overlay is stuck</summary>
+        <div class="body">
+          <ul>
+            <li>Could mean the download is slow or failed. Check Terminal for <code>[ui-updater] download failed</code> or SHA-256 mismatch errors.</li>
+            <li>Kill the app, clear the cache, and relaunch.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>I want to force a re-download</summary>
+        <div class="body">
+          <pre><code>rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
+          <p>Then relaunch.</p>
+        </div>
+      </details>
+    </div>
+
+  </article>
+</main>
+
+</body>
+</html>
