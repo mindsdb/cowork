@@ -218,6 +218,9 @@ def _resolve_artifact_path(raw_path: str) -> Path:
          (`.anton/`, `node_modules/`, `.venv/`, …) are excluded so a
          scoped path can't escape the project tree.
     """
+    # Reject null bytes, which are used in path injection attacks.
+    if "\x00" in raw_path:
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
     try:
         target = Path(raw_path).expanduser()
     except Exception as exc:
