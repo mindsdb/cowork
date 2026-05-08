@@ -635,7 +635,7 @@ function StatusDot({ artifact }) {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onCopyUrl, onPublish, onUnpublish }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onCopyUrl, onPublish, onUnpublish, onDelete }) {
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -704,16 +704,24 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onCopy
         <Item label="Publish" icon={Ico.upload(13)} onClick={onPublish} />
       )}
       {published && (
+        <Item label="Unpublish" icon={Ico.upload(13)} onClick={onUnpublish} />
+      )}
+      {/* Delete sits at the bottom under a divider so it reads as a
+          terminal / destructive action distinct from the rest of
+          the menu. Routes through the parent's `handleTrash` which
+          uses Electron's `shell.trashItem` — the file goes to the
+          OS Trash, not unlinked, so the action is recoverable. */}
+      {onDelete && (
         <>
           <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
-          <Item label="Unpublish" icon={Ico.trash(13)} danger onClick={onUnpublish} />
+          <Item label="Delete artifact" icon={Ico.trash(13)} danger onClick={onDelete} />
         </>
       )}
     </div>
   );
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onOpenProject }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onOpenProject }) {
   const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
@@ -890,6 +898,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
+        onDelete={doDelete ? () => doDelete(artifact) : undefined}
       />
     </>
   );
@@ -1229,6 +1238,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onOpenViewer={setViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
+              // host.trashItem is Electron-only — gate the delete
+              // option to native runs so the web shell doesn't show
+              // a menu item that wouldn't work.
+              onDelete={!host.isWeb ? handleTrash : undefined}
               onOpenProject={onOpenProject}
             />
           ))}

@@ -11,6 +11,7 @@ import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
+import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
 import DispatchView from './views/DispatchView';
@@ -499,6 +500,11 @@ function AppCore() {
   const [projects, setProjects] = useState([]);
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
+  // Flat session→schedule map sourced from `GET /v1/schedules`.
+  // Lets TasksView collapse all conversations belonging to one
+  // schedule into a single grouped row instead of listing each
+  // execution separately.
+  const [scheduleRunsIndex, setScheduleRunsIndex] = useState({});
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
@@ -709,7 +715,10 @@ function AppCore() {
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); });
     fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
     fetchPins().then((data) => setPins(data.pins || []));
-    fetchSchedules().then((data) => setScheduled(data.schedules || []));
+    fetchSchedules().then((data) => {
+      setScheduled(data.schedules || []);
+      setScheduleRunsIndex(data.runs_index || {});
+    });
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
       .catch(() => setConnectors([]));
@@ -1426,7 +1435,10 @@ function AppCore() {
       setSelectedProject(null);
     }
     if (key === 'scheduled') {
-      fetchSchedules().then((data) => setScheduled(data.schedules || []));
+      fetchSchedules().then((data) => {
+      setScheduled(data.schedules || []);
+      setScheduleRunsIndex(data.runs_index || {});
+    });
     }
     setRoute(key);
   };
@@ -2080,6 +2092,7 @@ function AppCore() {
   const refreshSchedules = async () => {
     const data = await fetchSchedules();
     setScheduled(data.schedules || []);
+    setScheduleRunsIndex(data.runs_index || {});
   };
 
   const handleCreateSchedule = async (payload) => {
@@ -2220,6 +2233,12 @@ function AppCore() {
         onDeleteTask={handleDeleteTask}
         onMoveTaskToProject={handleMoveTaskToProject}
         projects={projects}
+        schedules={scheduled}
+        scheduleRunsIndex={scheduleRunsIndex}
+        onOpenSchedule={(scheduleId) => {
+          setSelectedScheduleId(scheduleId);
+          setRoute('schedule-detail');
+        }}
         serverBusy={serverBusy}
         serverBusyKind={serverBusyKind}
         updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
@@ -2429,6 +2448,25 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+          />
+        )}
+
+        {route === 'tasks' && (
+          <TasksView
+            tasks={tasks}
+            projects={projects}
+            schedules={scheduled}
+            scheduleRunsIndex={scheduleRunsIndex}
+            onOpenTask={(id) => selectTask(id)}
+            onOpenProject={(p) => {
+              if (p) setSelectedProject(p);
+              setRoute('projects');
+            }}
+            onOpenSchedule={(scheduleId) => {
+              setSelectedScheduleId(scheduleId);
+              setRoute('schedule-detail');
+            }}
+            onDeleteTask={handleDeleteTask}
           />
         )}
 

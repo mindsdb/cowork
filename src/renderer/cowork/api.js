@@ -165,6 +165,14 @@ function _conversationToTask(conv, messages = []) {
     model: null,
     attachments: [],
     pinned: false,
+    // Carry the schedule linkage through so the renderer can group
+    // multiple runs of the same schedule into a single "view all"
+    // row instead of showing each execution as its own task. Set on
+    // conversations created by `_run_schedule`; null for chat-
+    // initiated conversations.
+    scheduledId: conv.scheduled_id || conv.scheduledId || null,
+    updatedAt: conv.updated_at || conv.updatedAt || null,
+    createdAt: conv.created_at || conv.createdAt || null,
   };
 }
 

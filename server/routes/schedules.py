@@ -342,7 +342,23 @@ def list_schedules():
     state = load_state()
     if _mark_missed(state):
         save_state(state)
-    return {"schedules": state.get("schedules", [])}
+    # Build a flat session→schedule index so the renderer can group
+    # all conversations belonging to one schedule into a single
+    # row on the Tasks page (without making a separate request per
+    # schedule). Cheap to compute — schedule_runs is already in
+    # memory as part of state.
+    runs_index: dict[str, str] = {}
+    for schedule_id, runs in (state.get("schedule_runs") or {}).items():
+        if not isinstance(runs, list):
+            continue
+        for run in runs:
+            sid = (run or {}).get("sessionId")
+            if sid:
+                runs_index[sid] = schedule_id
+    return {
+        "schedules": state.get("schedules", []),
+        "runs_index": runs_index,
+    }
 
 
 @router.post("")

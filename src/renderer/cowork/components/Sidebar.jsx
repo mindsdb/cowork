@@ -74,7 +74,28 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         <span className="recent-row__title" style={{
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           flex: 1, paddingRight: 8,
-        }}>{task.title || 'Untitled'}</span>
+        }}>
+          {task.title || 'Untitled'}
+          {/* Schedule-group entries — append a muted "· N runs"
+              suffix so the title still reads clean while the count
+              is visually separated from the schedule name. Painted
+              in --ink-4 (one tone below the title) and the bullet
+              uses --ink-5 so the separator recedes further still. */}
+          {task._scheduleGroup && (() => {
+            const n = task._scheduleGroup.runs;
+            return (
+              <span style={{
+                color: 'var(--ink-4)',
+                fontWeight: 400,
+                marginLeft: 6,
+                whiteSpace: 'nowrap',
+              }}>
+                <span style={{ color: 'var(--ink-5)', marginRight: 4 }}>·</span>
+                {n} {n === 1 ? 'run' : 'runs'}
+              </span>
+            );
+          })()}
+        </span>
 
         {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab */}
         <span style={{
@@ -162,6 +183,14 @@ export default function Sidebar({
   onDeleteTask,
   onMoveTaskToProject,
   projects = [],
+  // Schedules + the flat sessionId → scheduleId index. When a
+  // recent task carries a scheduledId, we collapse all sibling
+  // runs of the same schedule into a single synthesized entry
+  // ("Daily digest · 3 runs") so the recents list isn't drowned
+  // out by repeat scheduled-run conversations.
+  schedules = [],
+  scheduleRunsIndex = {},
+  onOpenSchedule,
   onToggleServer,
   onShowServerHelp,
   updateAvailable = null, // { version: string } or null
@@ -181,7 +210,65 @@ export default function Sidebar({
   // Recents excludes pinned items so a task isn't surfaced twice.
   // The full pool — sliced down to whatever fits the viewport + a
   // "Show more" affordance below.
-  const recentsAll = tasksWithPin.filter((t) => !pinnedIds.has(t.id));
+  const recentsRaw = tasksWithPin.filter((t) => !pinnedIds.has(t.id));
+
+  // Collapse all conversations belonging to one schedule into a
+  // single synthetic entry. Without this a daily/hourly schedule
+  // floods the rail with repeat rows and the actual chat tasks
+  // get pushed out of view. Each group entry inherits the most
+  // recent run's timestamp so the grouping respects "newest first."
+  const _ts = (raw) => {
+    if (!raw) return 0;
+    if (typeof raw === 'number') return raw;
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : 0;
+  };
+  const _scheduleById = new Map((schedules || []).map((s) => [s?.id, s]));
+  const _resolveSchedId = (t) => t?.scheduledId || scheduleRunsIndex?.[t?.id] || null;
+
+  const recentsAll = (() => {
+    const out = [];
+    const groups = new Map(); // scheduleId → synthesised group entry
+    for (const t of recentsRaw) {
+      const sid = _resolveSchedId(t);
+      if (!sid) {
+        out.push(t);
+        continue;
+      }
+      let g = groups.get(sid);
+      if (!g) {
+        const sched = _scheduleById.get(sid);
+        const baseTitle = sched?.title || t.title || 'Scheduled task';
+        g = {
+          id: `sched:${sid}`,
+          title: baseTitle,
+          subtitle: t.subtitle,
+          updatedAt: t.updatedAt,
+          projectName: sched?.project || t.projectName || null,
+          // Marker fields the click handler / row renderer key off:
+          _scheduleGroup: { scheduleId: sid, runs: 1, baseTitle },
+        };
+        groups.set(sid, g);
+        out.push(g);
+      } else {
+        g._scheduleGroup.runs += 1;
+        // Track the freshest timestamp across the group's runs so
+        // sorting / "n minutes ago" reflects the most recent run.
+        if (_ts(t.updatedAt || t.subtitle) > _ts(g.updatedAt || g.subtitle)) {
+          g.subtitle = t.subtitle;
+          g.updatedAt = t.updatedAt;
+        }
+      }
+    }
+    // Title stays as the schedule's base name; the run count is
+    // surfaced separately so RecentItem can paint it in a muted
+    // accent that distinguishes the schedule meta from the title.
+    for (const g of out) {
+      if (!g._scheduleGroup) continue;
+      g.title = g._scheduleGroup.baseTitle;
+    }
+    return out;
+  })();
 
   // Sized dynamically: measure the available height of the recents
   // scroll area on mount + on window resize, then divide by an
@@ -191,6 +278,12 @@ export default function Sidebar({
   const RECENT_FOOTER_PAD  = 36;   // reserved for the Show-more row
   const recentsRef = useRef(null);
   const [recentsHeight, setRecentsHeight] = useState(0);
+  // Strict hover state for the Recents heading row only. CSS
+  // `:hover` was bleeding (or appearing to bleed) onto the recents
+  // list below; pinning this to onMouseEnter/onMouseLeave on the
+  // heading div makes the hit area exactly the heading's bounding
+  // box and nothing else.
+  const [recentsHeadingHover, setRecentsHeadingHover] = useState(false);
   useLayoutEffect(() => {
     const el = recentsRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -386,11 +479,14 @@ export default function Sidebar({
           />
         </div>
 
-        {/* Anton group — visually grouped panel for the brain-style nav */}
+        {/* Anton group — visually grouped panel for the brain-style nav.
+            Order: Memories → Skills library → Settings. Labels read
+            as the things the user OWNS (plural collections) rather
+            than the abstract concepts the engine names them after. */}
         <div className="section-label">Anton</div>
         <div className="anton-group">
-          <NavItem icon={Ico.cube(15)}     label="Skill Library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
-          <NavItem icon={Ico.brain(15)}    label="Memory"         onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
+          <NavItem icon={Ico.brain(15)}    label="Memories"       onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
+          <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
           {/* "Connect data" removed from the sidebar — the canonical
               connector surface is the Connect Apps and Data page
               (route='customize'). The legacy 'connect' route used to
@@ -423,25 +519,75 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Recents */}
-        <div className="section-label">Recents</div>
+        {/* Recents — heading row with a "View all →" link pinned
+            to the right end. Hidden at rest; appears on hover of
+            the *entire* row, including the empty space between
+            "Recents" and the link. CSS-driven hover (on the
+            `recents-heading` class) — using the parent's :hover
+            pseudo-class avoids the inline-mouseenter / pointer-
+            events gap that left the dead space between elements
+            non-receptive. The span flex-grows to fill the row so
+            the heading itself owns the empty space too. */}
+        <div
+          className="section-label recents-heading"
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 8,
+            cursor: 'default',
+            width: '100%',
+          }}
+          onMouseEnter={() => setRecentsHeadingHover(true)}
+          onMouseLeave={() => setRecentsHeadingHover(false)}
+        >
+          <span style={{ flex: 1 }}>Recents</span>
+          <button
+            type="button"
+            className="recents-viewall"
+            onClick={() => onNavigate?.('tasks')}
+            style={{
+              background: 'transparent', border: 0, padding: 0,
+              cursor: recentsHeadingHover ? 'pointer' : 'default',
+              fontFamily: 'var(--font-body)', fontSize: 11,
+              letterSpacing: '0.02em',
+              textTransform: 'none',
+              opacity: recentsHeadingHover ? 1 : 0,
+              transform: recentsHeadingHover ? 'translateX(0)' : 'translateX(2px)',
+              pointerEvents: recentsHeadingHover ? 'auto' : 'none',
+            }}
+            title="View all tasks"
+          >
+            View all →
+          </button>
+        </div>
         <div ref={recentsRef} className="scroll-clean" style={{
           padding: '0 10px', flex: 1, overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 1,
         }}>
-          {recents.map((t) => (
-            <RecentItem
-              key={t.id}
-              task={t}
-              projects={projects}
-              onClick={() => onSelectTask(t.id)}
-              onPin={onPinTask}
-              onUnpin={onUnpinTask}
-              onRename={onRenameTask}
-              onDelete={onDeleteTask}
-              onMoveToProject={onMoveTaskToProject}
-            />
-          ))}
+          {recents.map((t) => {
+            // Synthetic schedule-group entries route to the schedule
+            // detail view (where the per-run history lives). Lone
+            // tasks open the chat as before. Pin / move / delete /
+            // rename are suppressed on group entries — those actions
+            // belong to the underlying schedule, not the synthesised
+            // row, and their per-run plumbing wouldn't apply cleanly.
+            const isGroup = !!t._scheduleGroup;
+            return (
+              <RecentItem
+                key={t.id}
+                task={t}
+                projects={projects}
+                onClick={() => isGroup
+                  ? onOpenSchedule?.(t._scheduleGroup.scheduleId)
+                  : onSelectTask(t.id)}
+                onPin={isGroup ? undefined : onPinTask}
+                onUnpin={isGroup ? undefined : onUnpinTask}
+                onRename={isGroup ? undefined : onRenameTask}
+                onDelete={isGroup ? undefined : onDeleteTask}
+                onMoveToProject={isGroup ? undefined : onMoveTaskToProject}
+              />
+            );
+          })}
           {hasMoreRecents && (
             <button
               type="button"
