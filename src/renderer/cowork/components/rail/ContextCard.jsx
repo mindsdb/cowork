@@ -3,16 +3,18 @@
 // GET /projects/{name}/files as Working folder, but only `.context/`
 // rows appear here; everything else lives in Working folder only.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
+  deleteMemory,
+  fetchAttachments,
   fetchMemory,
   isUnderContextDir,
   listProjectFiles,
+  saveMemory,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
-import { MarkdownContent } from '../markdown/MarkdownContent';
 import ContextFileModal from '../project/ContextFileModal';
 
 function relativeAge(ts) {
@@ -26,88 +28,75 @@ function relativeAge(ts) {
   return `${Math.floor(secs / 86400)}d`;
 }
 
-function previewFirstLine(text, max = 80) {
-  if (!text) return '';
-  const line = String(text).replace(/^#+\s*/, '').split('\n').find((l) => l.trim()) || '';
-  const trimmed = line.trim();
-  if (trimmed.length <= max) return trimmed;
-  return trimmed.slice(0, max - 1) + '…';
-}
-
 function MemoryRow({ entry, onOpen }) {
+  // Single-line row — the previous version displayed
+  // `previewFirstLine(entry.content)` underneath the filename, which
+  // for the canonical files (lessons.md, rules.md, identity.md, …)
+  // is just the H1 of the file and reads as a duplicate of the
+  // filename itself. Hover/click opens the editor, which has the
+  // full content; the rail row only needs the file identity + age.
   return (
     <button
       type="button"
       onClick={onOpen}
       title={entry.content || entry.relativePath}
       className={clsx(
-        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
+        'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'border-0 bg-transparent w-full'
       )}
       style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
     >
-      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
-      <span className="min-w-0">
-        <span className="block truncate text-[12.5px] text-ink">
-          {entry.relativePath || entry.name}
-        </span>
-        <span className="mt-0.5 block truncate text-[11px] text-ink-4">
-          {previewFirstLine(entry.content)}
-        </span>
+      <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
+      <span className="block truncate text-[12.5px] text-ink min-w-0">
+        {entry.relativePath || entry.name}
       </span>
       {entry.modifiedAt && (
-        <span className="text-[10.5px] text-ink-4 mt-0.5">{relativeAge(entry.modifiedAt)}</span>
+        <span className="text-[10.5px] text-ink-4">{relativeAge(entry.modifiedAt)}</span>
       )}
     </button>
-  );
-}
-
-function MemoryModal({ open, onClose, entry }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open || !entry) return null;
-  return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      style={{ WebkitAppRegion: 'no-drag' }}
-    >
-      <div className="flex h-[80vh] w-[min(720px,92vw)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl">
-        <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3">
-          <div className="flex items-baseline gap-3 min-w-0">
-            <span className="font-display text-[13px] font-semibold uppercase tracking-wider text-ink">
-              {entry.scope || 'Memory'}
-            </span>
-            <span className="text-[12px] text-ink-3 truncate" title={entry.relativePath}>
-              {entry.relativePath || entry.name}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
-          >
-            ×
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5" style={{ WebkitAppRegion: 'no-drag' }}>
-          <MarkdownContent text={entry.content || '(empty)'} id={`mem-${entry.relativePath}`} complete />
-        </div>
-      </div>
-    </div>
   );
 }
 
 // Row for a project context file (anton.md or any uploaded file).
 // Same visual rhythm as MemoryRow but distinguishes the always-
 // present anton.md with a subtle "Project instructions" label.
+function attachmentKindIcon(kind) {
+  if (kind === 'url') return Ico.globe(13);
+  if (kind === 'snippet') return Ico.code(13);
+  if (kind === 'connector') return Ico.link(13);
+  return Ico.doc(13);
+}
+
+function SessionAttachmentRow({ item }) {
+  const label = item.name || item.id || 'Attachment';
+  const sub = item.textPreview
+    || (item.mime ? String(item.mime).split('/').pop() : '')
+    || (item.size ? `${Math.ceil(item.size / 1024)} KB` : '');
+  const when = item.updatedAt || item.createdAt;
+  return (
+    <div
+      className={clsx(
+        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
+        'border-0 bg-transparent w-full'
+      )}
+      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
+      title={item.note || item.textPreview || label}
+    >
+      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{attachmentKindIcon(item.kind)}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-[12.5px] text-ink">{label}</span>
+        {sub ? (
+          <span className="mt-0.5 block truncate text-[11px] text-ink-4">{sub}</span>
+        ) : null}
+      </span>
+      {when ? (
+        <span className="text-[10.5px] text-ink-4 mt-0.5">{relativeAge(when)}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function ContextFileRow({ file, onOpen }) {
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
   const isEmpty = !file.size || file.synthetic === true;
@@ -126,7 +115,12 @@ function ContextFileRow({ file, onOpen }) {
       <span className="mt-0.5 text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
       <span className="min-w-0">
         <span className="block truncate text-[12.5px] text-ink">
-          {isAnton ? 'anton.md' : file.path}
+          {/* Display name for the canonical instructions file. The
+              raw filename (`anton.md`) is jargon — most users don't
+              know what it does. "Instructions" reads as a noun and
+              matches the project-level mental model. The on-disk
+              path is unchanged; the modal still writes to anton.md. */}
+          {isAnton ? 'Instructions' : file.path}
         </span>
         <span className="mt-0.5 block truncate text-[11px] text-ink-4">
           {isAnton
@@ -138,13 +132,17 @@ function ContextFileRow({ file, onOpen }) {
   );
 }
 
-export function ContextCard({ project }) {
+export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
+  const [sessionAttachments, setSessionAttachments] = useState([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsError, setAttachmentsError] = useState(null);
+  // `openEntry` is a memory file; `openFile` is a project context
+  // file. Both feed into `ContextFileModal` (one component, two
+  // wirings) so the UX feels identical regardless of which surface
+  // the row was opened from.
   const [openEntry, setOpenEntry] = useState(null);
-  // Project-file editor is a separate modal because the shape (view
-  // + edit + save + delete) is different from the read-only memory
-  // viewer.
   const [openFile, setOpenFile] = useState(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -156,27 +154,83 @@ export function ContextCard({ project }) {
     return () => { cancelled = true; };
   }, [project?.path]);
 
-  const reloadFiles = () => {
+  // Ticket pattern: every listProjectFiles call (mount + reload-on-
+  // edit) bumps `loadVersion`. The async response only applies its
+  // result if its ticket is still the latest. Without this, saving a
+  // context edit and immediately switching projects could let the
+  // late response paint into the new project — the same shape of
+  // bug WorkingFolderLive had.
+  const loadVersion = useRef(0);
+
+  const reloadFiles = useCallback(() => {
     if (!project?.name) { setProjectFiles([]); return; }
+    const ticket = ++loadVersion.current;
     listProjectFiles(project.name)
       .then((data) => {
+        if (ticket !== loadVersion.current) return;
         const raw = Array.isArray(data?.files) ? data.files : [];
         setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
       })
-      .catch(() => setProjectFiles([]));
-  };
+      .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
+  }, [project?.name]);
+
   useEffect(() => {
+    if (!project?.name) {
+      setProjectFiles([]);
+      // Bump the ticket so any in-flight load from a prior project
+      // gets discarded when it finally lands.
+      loadVersion.current += 1;
+      return;
+    }
+    reloadFiles();
+  }, [project?.name, reloadFiles]);
+
+  const sessionRelevant = conversationId && !String(conversationId).startsWith('tmp-');
+
+  // `useEffect` runs after paint — switching tasks would briefly show the
+  // previous task's rows with "Loading attachments…". This runs first
+  // and clears before paint. Loading is only set here on conversation
+  // change (not on refreshKey), so same-task refetches stay quiet.
+  useLayoutEffect(() => {
+    if (!sessionRelevant) {
+      setSessionAttachments([]);
+      setAttachmentsError(null);
+      setAttachmentsLoading(false);
+      return;
+    }
+    setSessionAttachments([]);
+    setAttachmentsError(null);
+    setAttachmentsLoading(true);
+  }, [conversationId, sessionRelevant]);
+
+  useEffect(() => {
+    if (!sessionRelevant) {
+      return undefined;
+    }
     let cancelled = false;
-    if (!project?.name) { setProjectFiles([]); return undefined; }
-    listProjectFiles(project.name)
+    setAttachmentsError(null);
+    fetchAttachments(conversationId)
       .then((data) => {
         if (cancelled) return;
-        const raw = Array.isArray(data?.files) ? data.files : [];
-        setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
+        const raw = Array.isArray(data?.attachments) ? data.attachments : [];
+        const sorted = [...raw].sort((a, b) => {
+          const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
+          const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+          return tb - ta;
+        });
+        setSessionAttachments(sorted);
       })
-      .catch(() => { if (!cancelled) setProjectFiles([]); });
+      .catch((err) => {
+        if (!cancelled) {
+          setSessionAttachments([]);
+          setAttachmentsError(err?.message || 'Could not load attachments');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAttachmentsLoading(false);
+      });
     return () => { cancelled = true; };
-  }, [project?.name]);
+  }, [sessionRelevant, conversationId, refreshKey]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {
@@ -197,7 +251,9 @@ export function ContextCard({ project }) {
   const totalMemoryFiles = useMemo(() => ordered.reduce((n, s) => n + s.files.length, 0), [ordered]);
   const hasProjectFiles = projectFiles.length > 0;
 
-  if (totalMemoryFiles === 0 && !hasProjectFiles) {
+  const blockGlobalEmpty = totalMemoryFiles === 0 && !hasProjectFiles && !sessionRelevant;
+
+  if (blockGlobalEmpty) {
     return (
       <p className="text-[12.5px] text-ink-4 px-1 pt-2 pb-1">
         Anton learns as you work — memories will appear here.
@@ -220,6 +276,35 @@ export function ContextCard({ project }) {
               onOpen={() => setOpenFile(f)}
             />
           ))}
+        </div>
+      )}
+
+      {sessionRelevant && (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            Uploads
+          </span>
+          {attachmentsLoading && (
+            <p className="text-[12px] text-ink-4 px-1 pb-0.5">Loading attachments…</p>
+          )}
+          {attachmentsError && (
+            <p className="text-[12px] px-1 pb-0.5" style={{ color: 'var(--danger-600, #b3261e)' }}>
+              {attachmentsError}
+            </p>
+          )}
+          {!attachmentsLoading && !attachmentsError && sessionAttachments.length === 0 && (
+            <div className="flex items-center gap-2 px-1 pb-0.5 text-[12px] text-ink-4">
+              {/* Empty-state glyph mirrors the row icon style above
+                  (paperclip ~ "attachment") so the row reads as a
+                  placeholder for what would otherwise live there. */}
+              <span className="text-ink-4 inline-flex flex-none">{Ico.attach(13)}</span>
+              <span>No files attached yet.</span>
+            </div>
+          )}
+          {!attachmentsLoading
+            && sessionAttachments.map((item) => (
+              <SessionAttachmentRow key={item.id} item={item} />
+            ))}
         </div>
       )}
 
@@ -253,7 +338,45 @@ export function ContextCard({ project }) {
         );
       })}
 
-      <MemoryModal open={!!openEntry} entry={openEntry} onClose={() => setOpenEntry(null)} />
+      <ContextFileModal
+        open={!!openEntry}
+        title={openEntry?.relativePath || openEntry?.name || ''}
+        subtitle={
+          openEntry?.scope === 'Project' && openEntry?.projectName
+            ? `Project · ${openEntry.projectName}`
+            : (openEntry?.scope || '')
+        }
+        initialContent={openEntry?.content || ''}
+        saver={async (content) => {
+          if (!openEntry) return;
+          await saveMemory({
+            scope: openEntry.scope,
+            relativePath: openEntry.relativePath,
+            content,
+            projectPath: openEntry.scope === 'Project' ? openEntry.projectPath : null,
+          });
+        }}
+        remover={async () => {
+          if (!openEntry) return;
+          await deleteMemory({
+            scope: openEntry.scope,
+            relativePath: openEntry.relativePath,
+            projectPath: openEntry.scope === 'Project' ? openEntry.projectPath : null,
+          });
+        }}
+        emptyMessage="(empty memory file)"
+        placeholder="Memory contents — what should Anton remember?"
+        dense
+        onClose={() => setOpenEntry(null)}
+        onChanged={() => {
+          // Refresh the rail's memory listing so adds/edits/deletes
+          // surface immediately. Same project_path the rail uses on
+          // initial load — keeps the displayed sections coherent.
+          fetchMemory(project?.path)
+            .then((data) => { if (data?.sections) setSections(data.sections); })
+            .catch(() => {});
+        }}
+      />
       <ContextFileModal
         open={!!openFile}
         projectName={project?.name}

@@ -6,7 +6,7 @@
 // - Poll-driven refresh only; row icons stay static (no streaming pulse).
 // - Click → HTML opens in-app viewer; other types → OS openPath.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
@@ -17,6 +17,7 @@ import {
   listProjectFiles,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
+import { host } from '../../../platform/host';
 
 function timeAgo(ts) {
   if (ts == null || ts === '') return '';
@@ -34,6 +35,40 @@ function formatBytes(n) {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
   return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+// Map a file extension to a glyph from `Icons.jsx`. Buckets group
+// extensions that read the same at glance — code files all get the
+// brackets icon, tabular data files all get the database icon, etc.
+// Unknown / unmapped extensions fall through to a generic doc.
+const EXT_ICON = {
+  // Web / published
+  html: 'globe', htm: 'globe',
+  // Images
+  png: 'image', jpg: 'image', jpeg: 'image', gif: 'image',
+  svg: 'image', webp: 'image', bmp: 'image', ico: 'image',
+  // Code
+  py: 'code', js: 'code', mjs: 'code', cjs: 'code',
+  ts: 'code', tsx: 'code', jsx: 'code',
+  css: 'code', scss: 'code', less: 'code',
+  sh: 'code', bash: 'code', zsh: 'code',
+  rb: 'code', go: 'code', rs: 'code', java: 'code',
+  c: 'code', h: 'code', cpp: 'code', hpp: 'code',
+  yaml: 'code', yml: 'code', toml: 'code',
+  // Tabular / data
+  csv: 'database', tsv: 'database', parquet: 'database',
+  xlsx: 'database', xls: 'database', xlsm: 'database',
+  db: 'database', sqlite: 'database',
+  json: 'database', jsonl: 'database', ndjson: 'database',
+  sql: 'database',
+  // Documents — md/pdf/txt fall through to doc, listed for clarity
+  md: 'doc', mdx: 'doc', txt: 'doc', pdf: 'doc',
+  rtf: 'doc', log: 'doc',
+};
+
+function iconForRow(row) {
+  const ext = String(row?.ext || '').replace(/^\./, '').toLowerCase();
+  return EXT_ICON[ext] || 'doc';
 }
 
 /** Project-file listing row → artifact-shaped row for previews / OS open. */
@@ -84,51 +119,83 @@ export function WorkingFolderLive({ project, isStreaming }) {
   const effectiveProject = project || resolvedProject;
 
   const [rows, setRows] = useState([]);
-  const inFlight = useRef(false);
+  // Bumped on every project switch / streaming-tick load. The async
+  // load checks the version against the latest before applying its
+  // result, so a request that finishes after a project switch can't
+  // overwrite the new project's rows. (Earlier the component used a
+  // single `inFlight` ref, which dropped the new project's request
+  // and let the prior project's response paint into the wrong view.)
+  const loadVersion = useRef(0);
 
-  const refresh = useCallback(async () => {
-    if (inFlight.current) return;
+  // Skip files that start with a dot (`.DS_Store`, `.gitignore`,
+  // `.env`, etc.) — they're noise in the working-folder card and
+  // never something Anton produced as an artifact.
+  const isHidden = (entry) => {
+    const name = entry?.name || String(entry?.path || '').split('/').pop();
+    return !!name && name.startsWith('.');
+  };
+
+  const applyListing = (proj, data, ticket) => {
+    if (ticket !== loadVersion.current) return;
+    const list = Array.isArray(data?.files) ? data.files : [];
+    const next = list
+      .filter((f) => !f.is_dir
+        && !isUnderContextDir(f.path)
+        && !isUnderAntonDir(f.path)
+        && !isHidden(f))
+      .map((f) => fileEntryToRow(proj.path, f))
+      .sort((a, b) => (b.updated || 0) - (a.updated || 0))
+      .slice(0, 12);
+    setRows(next);
+  };
+
+  // Project switch — clear immediately, then load. The clear is
+  // important: without it, the rail keeps painting the previous
+  // project's files until the new request returns, which reads as
+  // "the wrong files until I refresh."
+  useEffect(() => {
     const proj = effectiveProject;
+    const ticket = ++loadVersion.current;
     if (!proj?.name || !proj?.path) {
       setRows([]);
       return;
     }
-    inFlight.current = true;
-    try {
-      const data = await listProjectFiles(proj.name);
-      const list = Array.isArray(data?.files) ? data.files : [];
-      const next = list
-        .filter((f) => !f.is_dir && !isUnderContextDir(f.path) && !isUnderAntonDir(f.path))
-        .map((f) => fileEntryToRow(proj.path, f))
-        .sort((a, b) => (b.updated || 0) - (a.updated || 0))
-        .slice(0, 12);
-      setRows(next);
-    } catch {
-      setRows([]);
-    } finally {
-      inFlight.current = false;
-    }
-  }, [effectiveProject]);
+    setRows([]);
+    listProjectFiles(proj.name)
+      .then((data) => applyListing(proj, data, ticket))
+      .catch(() => { if (ticket === loadVersion.current) setRows([]); });
+  }, [effectiveProject?.name, effectiveProject?.path]);
 
-  useEffect(() => { refresh(); }, [refresh]);
-
+  // Streaming poll — every 3s while live, plus once shortly after
+  // streaming ends (catches files written near the very end of the
+  // turn). Each tick allocates a fresh ticket so its response is
+  // discarded if a project switch lands between the request and its
+  // resolution.
   const wasStreaming = useRef(isStreaming);
   useEffect(() => {
+    const tick = () => {
+      const proj = effectiveProject;
+      if (!proj?.name || !proj?.path) return;
+      const ticket = ++loadVersion.current;
+      listProjectFiles(proj.name)
+        .then((data) => applyListing(proj, data, ticket))
+        .catch(() => { /* swallow — keep current rows */ });
+    };
     if (isStreaming) {
-      const id = setInterval(() => { refresh(); }, 3000);
+      const id = setInterval(tick, 3000);
       wasStreaming.current = true;
       return () => clearInterval(id);
     }
     if (wasStreaming.current) {
-      const id = setTimeout(() => { refresh(); }, 1000);
+      const id = setTimeout(tick, 1000);
       wasStreaming.current = false;
       return () => clearTimeout(id);
     }
-  }, [isStreaming, refresh]);
+  }, [isStreaming, effectiveProject?.name, effectiveProject?.path]);
 
   const [previewArt, setPreviewArt] = useState(null);
   const onOpen = async (path) => {
-    try { await window.antontron?.openPath?.(path); } catch {}
+    try { await host.openPath(path); } catch {}
   };
   const onOpenArtifact = (artifact) => {
     const isHtml = (artifact.ext || '').toLowerCase() === '.html'
@@ -152,9 +219,13 @@ export function WorkingFolderLive({ project, isStreaming }) {
             {effectiveProject.name}
           </span>
           <span
-            className="text-[10.5px] text-ink-4 truncate cursor-pointer hover:text-ink-3"
-            title={antonFolder ? `Open ${antonFolder}` : effectiveProject.path}
-            onClick={() => antonFolder && onOpen(antonFolder)}
+            className={
+              host.isWeb
+                ? 'text-[10.5px] text-ink-4 truncate'
+                : 'text-[10.5px] text-ink-4 truncate cursor-pointer hover:text-ink-3'
+            }
+            title={!host.isWeb && antonFolder ? `Open ${antonFolder}` : effectiveProject.path}
+            onClick={host.isWeb ? undefined : () => antonFolder && onOpen(antonFolder)}
           >{effectiveProject.path}</span>
         </div>
       ) : (
@@ -180,7 +251,9 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 )}
                 style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
               >
-                <span className="text-ink-4 inline-flex">{Ico.doc(13)}</span>
+                <span className="text-ink-4 inline-flex">
+                  {(Ico[iconForRow(f)] || Ico.doc)(13)}
+                </span>
                 <span className="text-[12.5px] text-ink truncate">{f.title || (f.path?.split('/').pop() || '')}</span>
                 <span className="text-[10.5px] text-ink-4">
                   {timeAgo(f.updated) || formatBytes(f.size)}

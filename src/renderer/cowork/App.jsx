@@ -21,6 +21,7 @@ import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
+import { host } from '../platform/host';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -75,7 +76,8 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
-         deleteProject, cancelScratchpad, fetchConnector } from './api';
+         deleteProject, cancelScratchpad, fetchConnector,
+         fetchSavedConnection, deleteDatasource } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 
 const ACCENT_VARS = {
@@ -87,8 +89,123 @@ const ACCENT_VARS = {
 
 const THINKING_PLACEHOLDER = 'Thinking...';
 
+// Friendly continuation prompts. We reach for one of these when the
+// user lands on a conversation that was streaming when the app or
+// server died (or the user closed the window mid-turn). The prompt
+// becomes a synthetic assistant message (or the tail of one) so the
+// user has something to react to instead of staring at frozen
+// "thinking" indicators.
+const CONTINUE_PROMPTS = [
+  'Looks like we paused mid-flow. Want to pick up where we left off?',
+  'Got cut off before I could finish. Should I keep going?',
+  "Hey — looks like our last run got cut short. Continue from here?",
+  "I lost my place when the session ended. Want me to resume the work?",
+  "Things stopped before I wrapped up. Ready to continue?",
+  "Looks like that turn didn't finish. Want me to take another swing at it?",
+  'We left this one mid-thought — keep going, or pivot to something else?',
+  "Got disconnected. Should I resume from where I was?",
+  "That last task didn't complete. Want to pick it back up?",
+  'Picking back up — should I continue, or are we moving on?',
+];
+
+function pickContinuePrompt() {
+  return CONTINUE_PROMPTS[Math.floor(Math.random() * CONTINUE_PROMPTS.length)];
+}
+
 function stripStreaming(messages) {
   return messages.filter((m) => m.role !== '_streaming');
+}
+
+// Status values the stream reducer leaves behind for IN-FLIGHT step
+// activity. A clean turn closes everything to 'completed' / 'done' /
+// 'error' / 'cancelled'. Anything else is "this step was running
+// when the stream died" — we'll mark them done on reload so the rail
+// stops claiming work is still happening.
+const RUNNING_STEP_STATUSES = new Set([
+  'pending', 'thinking', 'streaming', 'in_progress', 'running',
+]);
+
+// Reconcile a task's stored streaming/running state against whether
+// a real SSE stream is alive for it RIGHT NOW. Called when the user
+// navigates into a task. Three concerns:
+//
+//   1. `_streaming` UI placeholder rows — if no live stream exists
+//      for this task, the placeholder is a zombie from a previous
+//      run; drop it.
+//   2. Step rows whose `status` says they're still working —
+//      collapse them to `completed` so the progress box doesn't
+//      keep animating.
+//   3. If anything was clearly mid-flight (zombie placeholder, or a
+//      trailing user message with no assistant reply), append a
+//      friendly "continue?" assistant message — appending to the
+//      last assistant message when there is one, else inserting a
+//      fresh one. This is renderer-side only; it never goes to the
+//      server (anton's history stays clean) and it gets replaced as
+//      soon as the user sends their next message.
+function reconcileTaskMessages(messages, isLive) {
+  if (!Array.isArray(messages)) return messages;
+  if (isLive) return messages; // legitimate in-flight, leave alone
+  const hadStreaming = messages.some((m) => m && m.role === '_streaming');
+  // Pass 1 — strip _streaming + activity placeholders, mark
+  // running steps as completed. Each rewritten message gets a flag
+  // so we can avoid double-tagging continuation prompts.
+  const cleaned = messages
+    .filter((m) => m && m.role !== '_streaming' && m.role !== 'activity')
+    .map((m) => {
+      if (m.role !== 'assistant') return m;
+      if (!Array.isArray(m.steps) || m.steps.length === 0) return m;
+      let dirty = false;
+      const nextSteps = m.steps.map((s) => {
+        if (s && RUNNING_STEP_STATUSES.has(s.status)) {
+          dirty = true;
+          return { ...s, status: 'completed', completedAt: s.completedAt || Date.now() };
+        }
+        return s;
+      });
+      // Also shake out a top-level message-level streamStatus if any
+      // (the live stream sets it to 'streaming' / 'tool' / etc.).
+      const streamStatusFix = m.streamStatus && m.streamStatus !== 'done'
+        ? { streamStatus: 'done' }
+        : null;
+      if (!dirty && !streamStatusFix) return m;
+      return { ...m, ...(dirty ? { steps: nextSteps } : {}), ...(streamStatusFix || {}) };
+    });
+
+  // Decide whether a continuation prompt is warranted.
+  // Triggers:
+  //   • we just stripped a `_streaming` row, OR
+  //   • the last surviving message is a user message with no reply,
+  //     OR an assistant message we just had to clean up.
+  let wantContinuation = hadStreaming;
+  if (!wantContinuation && cleaned.length > 0) {
+    const last = cleaned[cleaned.length - 1];
+    if (last && last.role === 'user') wantContinuation = true;
+  }
+  if (!wantContinuation) return cleaned;
+
+  const prompt = pickContinuePrompt();
+  const last = cleaned[cleaned.length - 1];
+  if (last && last.role === 'assistant' && !last._continuationAppended) {
+    // Append to the existing assistant message (per request: "if the
+    // last message is from anton, append into it").
+    const sep = last.content && last.content.length ? '\n\n' : '';
+    return [
+      ...cleaned.slice(0, -1),
+      { ...last, content: (last.content || '') + sep + prompt, _continuationAppended: true },
+    ];
+  }
+  // Otherwise inject a fresh assistant message.
+  return [
+    ...cleaned,
+    {
+      role: 'assistant',
+      content: prompt,
+      steps: [],
+      startedAt: Date.now(),
+      _continuationAppended: true,
+      _client_only: true,
+    },
+  ];
 }
 
 function removeThinkingPlaceholder(messages) {
@@ -399,6 +516,13 @@ function AppCore() {
   // both the SSE read and the in-flight scratchpad cell.
   const activeStreamCtrlRef = useRef(null);
   const activeScratchpadRef = useRef(null);
+  // Which task id (if any) the active stream belongs to. Used to
+  // distinguish "this conversation is mid-flight, keep the running
+  // indicators" from "this conversation has zombie running indicators
+  // from a stream that died (server restart, network blip, app close
+  // mid-turn)" when the user navigates back to it. See
+  // `reconcileTaskMessages` for the cleanup it enables.
+  const activeStreamingTaskIdRef = useRef(null);
 
   const handleStopStream = useCallback(async () => {
     // 1) Cancel the running scratchpad (if any) so anton stops
@@ -414,6 +538,7 @@ function AppCore() {
       activeStreamCtrlRef.current = null;
     }
     activeScratchpadRef.current = null;
+    activeStreamingTaskIdRef.current = null;
 
     // 3) Roll the streaming placeholder into a final assistant
     //    message. Drop the in-flight steps so the rail's Progress
@@ -534,10 +659,18 @@ function AppCore() {
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedModel, setSelectedModel] = useState(MOCK_DATA.models[0]);
-  const [serverOnline, setServerOnline] = useState(false);
+  // In the hosted web shell the FastAPI process IS the host — there
+  // is no subprocess to start/stop, and the SPA only loads at all if
+  // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
+  // don't block the initial render waiting for a poll that never matters.
+  const [serverOnline, setServerOnline] = useState(host.isWeb);
   const [serverBusy, setServerBusy] = useState(false);
   const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
   const [health, setHealth] = useState({ status: 'offline', anton_available: false, config_ready: false });
+
+  // OTA UI update state
+  const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
+  const [updateApplying, setUpdateApplying] = useState(false);
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -603,6 +736,75 @@ function AppCore() {
     wasOnlineRef.current = serverOnline;
   }, [serverOnline, refreshData]);
 
+  // One-shot: once the backend has been online at least once during
+  // this app session, the home view should skip the boot
+  // choreography (orb → caret → typewriter). Re-running the intro on
+  // every "new task" click is jarring; the choreography is a "the
+  // app is starting" cue, not a per-navigation flourish.
+  const [bootIntroDone, setBootIntroDone] = useState(false);
+  useEffect(() => {
+    if (serverOnline && !bootIntroDone) setBootIntroDone(true);
+  }, [serverOnline, bootIntroDone]);
+
+  // Listen for OTA update status pushed from main process
+  useEffect(() => {
+    if (!window.antontron?.onUpdateStatus) return;
+    return window.antontron.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+    });
+  }, []);
+
+  const handleApplyUpdate = useCallback(async () => {
+    console.log('[ui-update] install clicked, applying update...');
+    if (updateApplying) { console.log('[ui-update] already applying, skipping'); return; }
+    setUpdateApplying(true);
+    setUpdateStatus({ phase: 'downloading', version: updateStatus?.version });
+    try {
+      const result = await window.antontron.applyUpdate();
+      console.log('[ui-update] applyUpdate result:', result);
+      // Window will reload with the new bundle — no further action needed
+    } catch (err) {
+      console.error('[ui-update] applyUpdate failed:', err);
+      setUpdateApplying(false);
+      setUpdateStatus({ phase: 'error' });
+    }
+  }, [updateApplying, updateStatus]);
+
+  // ── Boot lifecycle decisions ─────────────────────────────────────
+  // Both of these used to live inside HomeView, but the user can
+  // navigate (settings → home → settings) which would re-mount
+  // HomeView and re-fire each. App.jsx is the natural home — these
+  // refs are app-session-level by virtue of being component-scoped
+  // here, not view-scoped.
+
+  // Watchdog — if the local backend never comes online, pop the help
+  // modal so the user has logs / restart available. Once.
+  const bootWatchdogFiredRef = useRef(false);
+  useEffect(() => {
+    if (serverOnline) return undefined;
+    if (bootWatchdogFiredRef.current) return undefined;
+    const t = setTimeout(() => {
+      bootWatchdogFiredRef.current = true;
+      setServerHelpOpen(true);
+    }, 12_000);
+    return () => clearTimeout(t);
+  }, [serverOnline]);
+
+  // Config redirect — server is up but config_ready is explicitly
+  // false → take the user to Settings so they can finish setup.
+  // Tested as `=== false` (not falsy) on purpose: we don't want to
+  // route on initial undefined / pending values, only on a confirmed
+  // negative from the server. Once per session.
+  const bootConfigRedirectFiredRef = useRef(false);
+  useEffect(() => {
+    if (bootConfigRedirectFiredRef.current) return;
+    if (!serverOnline) return;
+    if (health.config_ready === false) {
+      bootConfigRedirectFiredRef.current = true;
+      setRoute('settings');
+    }
+  }, [serverOnline, health.config_ready]);
+
   // Default the new-task project to "general". If the projects list
   // is loaded and it doesn't include "general", create it first. The
   // server provisions general on startup, so this only fires on
@@ -641,12 +843,13 @@ function AppCore() {
   // has returned. While main is mid-start, show the spinner; poll
   // every 600 ms until it resolves.
   useEffect(() => {
+    if (host.isWeb) return; // No server lifecycle to poll in the hosted web shell.
     let cancelled = false;
     let timer = null;
 
     const tick = async () => {
       try {
-        const info = await window.antontron?.serverInfo?.();
+        const info = await host.serverInfo();
         if (cancelled || !info) return;
         if (typeof info.running === 'boolean') setServerOnline(info.running);
         if (info.starting) {
@@ -724,6 +927,15 @@ function AppCore() {
     });
       }).catch(() => {});
 
+      // Is this conversation actually mid-stream right now? If yes,
+      // we LEAVE running indicators alone. If no, the reconcile pass
+      // will collapse zombie steps and may inject a "want to
+      // continue?" prompt for the user.
+      const isLive = (
+        !!activeStreamCtrlRef.current
+        && activeStreamingTaskIdRef.current === id
+      );
+
       // If this task didn't get its messages preloaded (we only fan
       // out to the recent N at startup), fetch them now so the chat
       // view doesn't render empty.
@@ -739,8 +951,9 @@ function AppCore() {
           //      created before the server sidecar shipped.
           const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
           const enriched = mergeConvTurns(id, fromServer);
+          const reconciled = reconcileTaskMessages(enriched, isLive);
           setTasks((prev) => prev.map((t) =>
-            t.id === id ? { ...t, messages: enriched } : t
+            t.id === id ? { ...t, messages: reconciled } : t
           ));
         }).catch(() => {});
       } else {
@@ -749,7 +962,8 @@ function AppCore() {
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id) return t;
           const fromServer = hydrateMessagesFromServerEvents(t.messages);
-          return { ...t, messages: mergeConvTurns(id, fromServer) };
+          const enriched = mergeConvTurns(id, fromServer);
+          return { ...t, messages: reconcileTaskMessages(enriched, isLive) };
         }));
       }
     }
@@ -774,6 +988,258 @@ function AppCore() {
   // validate the picker UX without rewriting the form flow.
   const handleStartConnectChat = () => {
     setConnectorPickerOpen(true);
+  };
+  // Modify-existing-connection flow: same chat-task + form shape as
+  // handleConnectorPicked, but skips the picker (engine is known)
+  // and pre-fills every field the renderer is allowed to see —
+  // non-secrets verbatim from the vault, secrets as the
+  // `ANTON_VAULT_KEEP` sentinel. Saving via the existing submission
+  // path runs the server-side merge: any field still carrying the
+  // sentinel resolves to its prior on-disk value, so the user only
+  // re-types what they actually want to change.
+  const handleModifyConnection = async (connection) => {
+    if (!connection?.engine) return;
+    // Connector spec + saved record fetched in parallel — both feed
+    // into the injected form. The spec gives us field shape (types,
+    // labels, descriptions, secret flags); the saved record gives
+    // us the values to pre-fill.
+    const [full, savedRaw] = await Promise.all([
+      fetchConnector(connection.engine).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.warn('[connectors] failed to load full spec for modify', e);
+        return null;
+      }),
+      fetchSavedConnection(connection.engine, connection.name).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.warn('[connectors] failed to load saved connection for modify', e);
+        return null;
+      }),
+    ]);
+    const saved = savedRaw || { fields: {}, secureKeys: [] };
+    const savedFields = saved.fields || {};
+
+    const label = full?.label || connection.engine;
+    const tempId = 'tmp-modify-' + Date.now();
+    const hasLiteralForm = !!(full && full.form);
+
+    setTasks((prev) => [{
+      id: tempId,
+      title: `Modify ${connection.name || label}`,
+      subtitle: 'just now',
+      status: hasLiteralForm ? 'idle' : 'active',
+      messages: hasLiteralForm
+        ? [
+            {
+              role: 'assistant',
+              _kind: 'connect_intro',
+              connector: {
+                id: full.id,
+                label,
+                logo: full.form?.logo || full.logo,
+                logo_color: full.form?.logo_color || full.logo_color,
+              },
+              content: `Modify ${connection.name || label}`,
+              // Modify-specific metadata so ChatView can render the
+              // intro card with Cancel + Disconnect actions instead
+              // of the plain "fill out the form" affordance.
+              _modify: true,
+              _engine: connection.engine,
+              _existing_name: connection.name,
+              _client_only: true,
+            },
+            {
+              role: 'assistant',
+              content: `Update the credentials or settings for "${connection.name}" — saving overwrites the existing connection.`,
+              _client_only: true,
+            },
+          ]
+        : [
+            {
+              role: 'assistant',
+              content: `Let's update ${connection.name || label}.`,
+              _client_only: true,
+            },
+          ],
+      projectName: selectedProject?.name || 'general',
+      projectPath: selectedProject?.path || null,
+      model: selectedModel?.id || null,
+      attachments: [],
+    }, ...prev]);
+    setActiveTaskId(tempId);
+    setComposerAttachments([]);
+    setRoute('task');
+
+
+    if (hasLiteralForm) {
+      // Underscore-prefixed keys in the vault record are metadata
+      // stamps from previous saves (e.g. `_method`, `_connector_id`)
+      // — not user-typed inputs. Read what we need before filtering.
+      const savedMethodId = savedFields._method || null;
+      // Build the value map for actual user fields. Strip the meta
+      // stamps so they never render as form inputs.
+      const valueByName = Object.fromEntries(
+        Object.entries(savedFields).filter(([k]) => !k.startsWith('_'))
+      );
+
+      // Pure synthesis — the synthetic method's fields come from
+      // the saved record alone, with NO attribute borrowing from
+      // any spec method. The user's intent: "append a new option,
+      // not append to the attributes of an existing option". So we
+      // build each field from scratch using only what we know
+      // about the saved key — the key name (titlecased into a
+      // human label) and whether it was classified secret on save.
+      // The rendered form is exactly what's in the vault: same
+      // keys, no spec leakage, no surprise fields.
+      const niceLabel = (name) => String(name || '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      const syntheticFields = Object.keys(valueByName).map((k) => {
+        const isSecret = (saved.secureKeys || []).includes(k);
+        return {
+          name: k,
+          label: niceLabel(k),
+          type: isSecret ? 'password' : 'text',
+          secret: isSecret,
+          required: false,
+          default: valueByName[k],
+        };
+      });
+
+      const isMultiMethod = Array.isArray(full.form.methods) && full.form.methods.length > 0;
+      const matchedSpecMethod = isMultiMethod
+        ? (full.form.methods.find((m) => m && m.id === savedMethodId) || null)
+        : null;
+
+      let nextSpec;
+      if (isMultiMethod) {
+        // Synthesize a NEW method option with id `__edit_current__`.
+        // The original methods stay in the array untouched — the
+        // picker shows the synthetic *plus* every original, so the
+        // user can edit current values OR start fresh on any method.
+        //
+        // `_underlying_method` carries the saved method's real id
+        // through to submit. The form panel reads this and sends it
+        // as the `method` / `auth_method` to the server, so server-
+        // side validation accepts the submit (it sees a real id).
+        // OAuth submit_action / oauth metadata / actions are
+        // inherited from the matched original so the OAuth launch
+        // path still triggers when the original method was OAuth.
+        // When the saved method id no longer matches anything in
+        // the spec (renamed / removed in a connector update), we
+        // still publish the synthetic — `_underlying_method` is
+        // null and the submit falls through the agent's custom
+        // save path, which doesn't validate against the spec's
+        // method list.
+        const synthMethod = {
+          id: '__edit_current__',
+          label: 'Currently saved values',
+          description: 'Edit the values stored for this connection.',
+          fields: syntheticFields,
+          // No `submit_action` / `oauth` / `actions` inherited from
+          // any spec method — the synthetic stands on its own. The
+          // submit goes through the regular agent path; if the user
+          // wants to re-run OAuth (or any other launch flow), they
+          // click "Back to options" and pick the original method,
+          // which still has those affordances.
+          //
+          // Hidden marker — server-side validation rejects unknown
+          // method ids, so on submit the form panel sends the saved
+          // method's real id (resolved through `_underlying_method`)
+          // as the `method` / `auth_method`. Synthetic id stays
+          // local, used only for picker selection + state keying.
+          _underlying_method: matchedSpecMethod?.id || null,
+        };
+        nextSpec = {
+          ...full.form,
+          // ADD, don't replace. Synthetic at the front so the picker
+          // shows it first (and so `selected_method = __edit_current__`
+          // resolves to it on initial render).
+          methods: [synthMethod, ...full.form.methods],
+          selected_method: '__edit_current__',
+          engine: full.form.engine || full.id,
+          _connector_id: full.id,
+          _secure_keys: saved.secureKeys || [],
+          _modify: true,
+          _existing_name: connection.name,
+          name: connection.name,
+          logo: full.form.logo || full.logo,
+          logo_color: full.form.logo_color || full.logo_color,
+        };
+      } else {
+        // Single-method form — there's no method picker, so we just
+        // replace top-level fields with the synthetic ones. There's
+        // nothing to "go back to" anyway.
+        nextSpec = {
+          ...full.form,
+          fields: syntheticFields,
+          engine: full.form.engine || full.id,
+          _connector_id: full.id,
+          _secure_keys: saved.secureKeys || [],
+          _modify: true,
+          _existing_name: connection.name,
+          name: connection.name,
+          logo: full.form.logo || full.logo,
+          logo_color: full.form.logo_color || full.logo_color,
+        };
+      }
+      setDataVaultForm(tempId, nextSpec);
+      // Cache the spec on the connect_intro message so the bubble
+      // can re-publish it (re-open the panel) if the user closes
+      // the form and clicks the card.
+      setTasks((prev) => prev.map((t) => t.id !== tempId ? t : {
+        ...t,
+        messages: t.messages.map((m) =>
+          m && m._kind === 'connect_intro' ? { ...m, _form_spec: nextSpec } : m
+        ),
+      }));
+    } else {
+      // No registry entry — fall back to the chat-agent flow. Anton
+      // can still walk the user through the change.
+      Promise.resolve().then(() => handleSendFromHome(`Update connection ${connection.name} (${label}).`));
+    }
+  };
+  // Cancel a modify-flow task: drop the synthetic chat task we
+  // just created and route back to the Connect Apps and Data page.
+  // Modify tasks are always tmp- (we never persist them server-
+  // side until the user actually saves), so the local cleanup is
+  // sufficient — no `/conversations` DELETE round-trip.
+  const handleCancelModify = (taskId) => {
+    if (taskId) {
+      deletedTaskIdsRef.current.add(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      if (activeTaskId === taskId) setActiveTaskId(null);
+    }
+    setRoute('customize');
+  };
+  // Disconnect from a modify-flow task: delete the vault entry +
+  // close the task. Confirmation is on the renderer side because
+  // this is destructive and easy to mis-click. After success the
+  // user lands back on the Connect Apps grid where they'd expect
+  // to see the connection gone.
+  const handleDisconnectFromModify = async (taskId, engine, name) => {
+    if (!engine || !name) return;
+    if (!window.confirm(`Disconnect ${engine}/${name}?`)) return;
+    try {
+      await deleteDatasource(engine, name);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[connectors] disconnect failed', e);
+      alert(`Could not disconnect: ${e?.message || e}`);
+      return;
+    }
+    if (taskId) {
+      deletedTaskIdsRef.current.add(taskId);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      if (activeTaskId === taskId) setActiveTaskId(null);
+    }
+    // Refresh the connectors mirror so the apps page reflects the
+    // removal immediately on landing.
+    try {
+      const fresh = await fetchDatasources();
+      setConnectors(Array.isArray(fresh?.connections) ? fresh.connections : []);
+    } catch { /* best-effort refresh */ }
+    setRoute('customize');
   };
   // Picker hands us a summary record (id + label + …). The user
   // wants to land in a normal chat task — not a separate modal —
@@ -851,7 +1317,7 @@ function AppCore() {
       // OAuth (and any other auth shape) submits through the
       // connector-aware save endpoint instead of the legacy
       // datasources path.
-      setDataVaultForm(tempId, {
+      const connectSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code
         // (datavault_agent: "Trying to connect to **<engine>**…",
@@ -863,7 +1329,17 @@ function AppCore() {
         _connector_id: full.id,
         logo: full.form.logo || full.logo,
         logo_color: full.form.logo_color || full.logo_color,
-      });
+      };
+      setDataVaultForm(tempId, connectSpec);
+      // Cache the original spec on the connect_intro message so the
+      // bubble can re-publish it to the form store if the user
+      // closes the panel and clicks the card to bring it back.
+      setTasks((prev) => prev.map((t) => t.id !== tempId ? t : {
+        ...t,
+        messages: t.messages.map((m) =>
+          m && m._kind === 'connect_intro' ? { ...m, _form_spec: connectSpec } : m
+        ),
+      }));
     } else {
       // No registry entry — fall back to the chat-agent flow.
       Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
@@ -1015,6 +1491,9 @@ function AppCore() {
           : t,
       ));
       activeStreamCtrlRef.current = streamNewSessionFn();
+      // Tag which task is mid-flight so reconcileTaskMessages can
+      // tell legitimate running indicators from zombies on reload.
+      activeStreamingTaskIdRef.current = tempId;
     };
     const streamNewSessionFn = () => streamNewSession(text, {
       projectName: effectiveProjectName,
@@ -1075,6 +1554,7 @@ function AppCore() {
       onDone(sid) {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
+        activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
@@ -1109,6 +1589,9 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
+        activeStreamCtrlRef.current = null;
+        activeScratchpadRef.current = null;
+        activeStreamingTaskIdRef.current = null;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== resolvedId && t.id !== tempId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -1183,6 +1666,9 @@ function AppCore() {
     const connectContext = describeConnectFormState(connectFormState);
     const sendText = connectContext ? `${text}\n\n${connectContext}` : text;
 
+    // Tag this task as currently streaming so reconcileTaskMessages
+    // can distinguish a real in-flight turn from a zombie placeholder.
+    activeStreamingTaskIdRef.current = id;
     activeStreamCtrlRef.current = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectPath: taskProjectPath,
@@ -1203,6 +1689,7 @@ function AppCore() {
       onDone() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
+        activeStreamingTaskIdRef.current = null;
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -1227,6 +1714,9 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
+        activeStreamCtrlRef.current = null;
+        activeScratchpadRef.current = null;
+        activeStreamingTaskIdRef.current = null;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -1269,6 +1759,7 @@ function AppCore() {
       }));
     };
 
+    activeStreamingTaskIdRef.current = id;
     activeStreamCtrlRef.current = streamDataVaultSubmission({
       formId,
       conversationId: id,
@@ -1284,6 +1775,7 @@ function AppCore() {
       },
       onDone() {
         activeStreamCtrlRef.current = null;
+        activeStreamingTaskIdRef.current = null;
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -1311,6 +1803,8 @@ function AppCore() {
           .catch(() => {});
       },
       onError(message) {
+        activeStreamCtrlRef.current = null;
+        activeStreamingTaskIdRef.current = null;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
@@ -1658,6 +2152,8 @@ function AppCore() {
         projects={projects}
         serverBusy={serverBusy}
         serverBusyKind={serverBusyKind}
+        updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
+        onApplyUpdate={handleApplyUpdate}
         onShowServerHelp={() => setServerHelpOpen(true)}
         onToggleServer={async () => {
           if (serverBusy) return;
@@ -1667,7 +2163,7 @@ function AppCore() {
           let actuallyRunning = serverOnline;
           let actuallyStarting = false;
           try {
-            const info = await window.antontron?.serverInfo?.();
+            const info = await host.serverInfo();
             if (info) {
               if (typeof info.running === 'boolean') actuallyRunning = info.running;
               if (typeof info.starting === 'boolean') actuallyStarting = info.starting;
@@ -1679,8 +2175,8 @@ function AppCore() {
           setServerBusy(true);
           try {
             const result = goingUp
-              ? await window.antontron?.serverStart?.()
-              : await window.antontron?.serverStop?.();
+              ? await host.serverStart()
+              : await host.serverStop();
             if (result) {
               setServerOnline(!!result.running);
               if (result.running) setTimeout(refreshData, 400);
@@ -1718,6 +2214,9 @@ function AppCore() {
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={() => setRoute('settings')}
+            serverOnline={serverOnline}
+            onShowServerHelp={() => setServerHelpOpen(true)}
+            skipIntro={bootIntroDone}
           />
         )}
 
@@ -1747,6 +2246,8 @@ function AppCore() {
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onCancelModify={handleCancelModify}
+            onDisconnectModify={handleDisconnectFromModify}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
               setRoute('projects');
@@ -1781,6 +2282,11 @@ function AppCore() {
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
             onDeleteProject={handleDeleteProject}
+            attachments={composerAttachments}
+            connectors={connectors}
+            onAttachFiles={handleAttachFiles}
+            onAttachConnector={handleAttachConnector}
+            onRemoveAttachment={handleRemoveAttachment}
           />
         )}
 
@@ -1800,6 +2306,10 @@ function AppCore() {
             onOpenSchedule={(task) => {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
+            }}
+            onOpenProject={(p) => {
+              if (p) setSelectedProject(p);
+              setRoute('projects');
             }}
           />
         )}
@@ -1833,7 +2343,17 @@ function AppCore() {
         )}
 
         {route === 'artifacts' && (
-          <ArtifactsView artifacts={artifacts} projects={projects} />
+          <ArtifactsView
+            artifacts={artifacts}
+            projects={projects}
+            onOpenProject={(p) => {
+              // Pin the project so ProjectsView opens directly in detail
+              // (its `selectedProject` effect mirrors that into local
+              // `detailProject` state on mount), then flip the route.
+              if (p) setSelectedProject(p);
+              setRoute('projects');
+            }}
+          />
         )}
 
         {route === 'dispatch' && (
@@ -1845,6 +2365,11 @@ function AppCore() {
             connectors={connectors}
             onOpenSettings={() => setRoute('settings')}
             onConnectNew={handleStartConnectChat}
+            // Modify is disabled for now — pass nothing through so the
+            // card's `canModify` check is false and the click affordance
+            // collapses to the existing Disconnect button only. The
+            // handler + supporting code stay in App.jsx untouched so
+            // re-enabling is a one-line prop pass-through.
           />
         )}
 
@@ -1877,20 +2402,30 @@ function AppCore() {
         onPick={handleConnectorPicked}
       />
 
+      {!host.isWeb && (
       <ServerOfflineHelpModal
         open={serverHelpOpen}
         onClose={() => setServerHelpOpen(false)}
         serverOnline={serverOnline}
         serverBusy={serverBusy}
         serverBusyKind={serverBusyKind}
-        onRetry={async () => {
-          // Reuse the toggle path so the busy/online state in App
-          // updates correctly while the start runs. We force "going
-          // up" here since the help icon only renders while offline.
+        onStart={async () => {
+          // Atomic start — used by both the offline "Start" button
+          // and the composed "Restart" path inside the modal.
           setServerBusyKind('starting');
           setServerBusy(true);
           try {
-            const result = await window.antontron?.serverStart?.();
+            if (serverOnline) {
+              setServerBusyKind('stopping');
+              setServerBusy(true);
+              try {
+                const stopRes = await host.serverStop?.();
+                if (stopRes) setServerOnline(!!stopRes.running);
+              } catch {}
+            }
+            setServerBusyKind('starting');
+            setServerBusy(true);
+            const result = await host.serverStart?.();
             if (result) {
               setServerOnline(!!result.running);
               if (result.running) setTimeout(refreshData, 400);
@@ -1899,7 +2434,23 @@ function AppCore() {
             setServerBusy(false);
           }
         }}
+        onStop={async () => {
+          // Atomic stop — used by the new modal "Stop" button so the
+          // user can shut down the backend without it immediately
+          // re-starting. The previous single-button onRetry forced
+          // stop+start every click and made it impossible to leave
+          // the backend off.
+          setServerBusyKind('stopping');
+          setServerBusy(true);
+          try {
+            const result = await window.antontron?.serverStop?.();
+            if (result) setServerOnline(!!result.running);
+          } catch {} finally {
+            setServerBusy(false);
+          }
+        }}
       />
+      )}
 
       <ConfirmModal
         open={pendingDeleteTaskId != null}
@@ -1957,6 +2508,36 @@ function AppCore() {
       >
         {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
       </button>
+
+      {/* OTA update overlay — shown during auto-update download/reload */}
+      {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 16,
+          background: 'rgba(10, 10, 15, 0.85)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+        }}>
+          <div style={{
+            width: 40, height: 40,
+            border: '3px solid rgba(93,146,135,0.3)',
+            borderTopColor: 'var(--sage-500, #5D9287)',
+            borderRadius: '50%',
+            animation: 'spin 800ms linear infinite',
+          }} />
+          <div style={{
+            fontSize: 14, fontWeight: 500,
+            color: 'var(--text-strong, #e0e0e0)',
+            fontFamily: 'var(--font-sans)',
+          }}>
+            {updateStatus.phase === 'downloading'
+              ? `Updating${updateStatus.version ? ` to ${updateStatus.version}` : ''}...`
+              : 'Almost there...'}
+          </div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
     </div>
   );
 }

@@ -24,10 +24,14 @@ from typing import TypedDict
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_PROJECT = "default"
-# General is the orphan-fallback project surfaced to the client when a
-# task has no project assigned. We always keep it provisioned so the
-# UI can confidently route there.
+# `general` is the system baseline — the project that's auto-created
+# on first launch AND the orphan-fallback the UI routes unassigned
+# tasks to. One name, one role.
+#
+# Pre-existing installs may still have a `default/` directory from
+# the era when antontron auto-provisioned it. Those keep working
+# untouched: the directory is treated as a regular user project,
+# the user can rename or delete it like anything else.
 GENERAL_PROJECT = "general"
 
 # Folder name policy. Whitelist letters/digits/dot/underscore/hyphen so a
@@ -122,18 +126,15 @@ def _scaffold(target: Path) -> None:
     (target / ".anton").mkdir(parents=True, exist_ok=True)
 
 
-def ensure_default_project() -> None:
-    ensure_projects_dir()
-    default_dir = project_path(DEFAULT_PROJECT)
-    if not default_dir.exists():
-        default_dir.mkdir(parents=True, exist_ok=True)
-    _scaffold(default_dir)
-    # Also provision the orphan-fallback "general" project so the
-    # client can always route there for unassigned tasks.
-    ensure_general_project()
-
-
 def ensure_general_project() -> None:
+    """Provision the baseline `general/` project on first launch.
+
+    Idempotent: re-running on an existing install is a no-op. New
+    installs land here on first boot; old installs that still have
+    `default/` keep it untouched (no migration), so they end up
+    with both `default/` and `general/` side by side — same as
+    they have today.
+    """
     ensure_projects_dir()
     general_dir = project_path(GENERAL_PROJECT)
     if not general_dir.exists():
@@ -166,8 +167,13 @@ def create_project(name: str) -> Project:
 
 
 def rename_project(old_name: str, new_name: str) -> Project:
-    if old_name == DEFAULT_PROJECT:
-        raise ValueError("Cannot rename default project")
+    # The system-baseline `general` project is the only one that
+    # can't be renamed — the orphan-fallback path needs a stable
+    # name. Pre-existing `default/` directories from older installs
+    # are treated as regular user projects and can be renamed
+    # freely.
+    if old_name == GENERAL_PROJECT:
+        raise ValueError("Cannot rename the General project")
     old_dir = project_path(old_name)
     if not old_dir.exists():
         raise FileNotFoundError("Project not found")
@@ -188,12 +194,10 @@ def rename_project(old_name: str, new_name: str) -> Project:
 
 
 def delete_project(name: str) -> bool:
-    # `general` is the orphan-fallback project — the UI always needs a
-    # safe place to route unassigned tasks, so it can't be deleted.
-    # `default` used to be blocked too but it's now treated like any
-    # user project: deletable, recreated lazily by ensure_default_project
-    # on the next list call so the install never ends up with zero
-    # projects.
+    # `general` is the system-baseline + orphan-fallback project.
+    # The UI always needs a safe place to route unassigned tasks,
+    # so it can't be deleted. Every other project (including any
+    # pre-existing `default/` from older installs) is fair game.
     if name == GENERAL_PROJECT:
         raise ValueError("Cannot delete the General project")
     target = project_path(name)
@@ -202,24 +206,26 @@ def delete_project(name: str) -> bool:
     shutil.rmtree(target)
     state = _read_state()
     if state.get("activeProject") == name:
-        _write_state({"activeProject": DEFAULT_PROJECT})
-        ensure_default_project()
+        # Active project just got deleted — fall back to `general`,
+        # re-provisioning it if somehow absent.
+        _write_state({"activeProject": GENERAL_PROJECT})
+        ensure_general_project()
     return True
 
 
 def _read_state() -> dict:
     path = _state_path()
     if not path.is_file():
-        return {"activeProject": DEFAULT_PROJECT}
+        return {"activeProject": GENERAL_PROJECT}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
-            return {"activeProject": DEFAULT_PROJECT}
+            return {"activeProject": GENERAL_PROJECT}
         if not data.get("activeProject"):
-            data["activeProject"] = DEFAULT_PROJECT
+            data["activeProject"] = GENERAL_PROJECT
         return data
     except Exception:
-        return {"activeProject": DEFAULT_PROJECT}
+        return {"activeProject": GENERAL_PROJECT}
 
 
 def _write_state(state: dict) -> None:
@@ -239,11 +245,14 @@ def _write_state(state: dict) -> None:
 
 
 def get_active() -> str:
-    name = _read_state().get("activeProject") or DEFAULT_PROJECT
+    name = _read_state().get("activeProject") or GENERAL_PROJECT
     if not project_path(name).exists():
-        ensure_default_project()
-        _write_state({"activeProject": DEFAULT_PROJECT})
-        return DEFAULT_PROJECT
+        # Recovery path — the active-project pointer is dangling
+        # (its directory was deleted out from under us). Fall back
+        # to the system baseline and re-provision it.
+        ensure_general_project()
+        _write_state({"activeProject": GENERAL_PROJECT})
+        return GENERAL_PROJECT
     return name
 
 

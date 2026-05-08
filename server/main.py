@@ -26,8 +26,80 @@ if _env_path.exists():
             _k, _, _v = _line.partition("=")
             os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
+
+def _maybe_self_update_and_reexec() -> None:
+    """Run anton's self-update flow before the server boots.
+
+    Mirrors what `anton/cli.py` does at the top of its root command,
+    so antontron-launched servers stay current the same way the CLI
+    does. The Node side previously duplicated this logic in
+    TypeScript; the Python check is the single source of truth now.
+
+    Behaviour:
+      * `_ANTON_UPDATED=1` env var → already updated this process
+        tree, skip (matches `anton/updater.py` loop guard).
+      * `disable_autoupdates` setting → user opted out, skip.
+      * Otherwise call `anton.updater.check_and_update`. If it
+        installed a newer version, set the loop-guard env var and
+        `os.execv` the same python interpreter on the same script.
+        The kernel replaces the current process in-place — same PID,
+        same stdio pipes — so antontron's `server-process.ts`
+        doesn't need to know an update happened. The 15s /health
+        probe absorbs the extra cold-start time.
+
+    Errors here are non-fatal: any exception drops us through to
+    starting the server on the existing version. Better to be one
+    release behind than fail to boot because GitHub was down.
+    """
+    if os.environ.get("_ANTON_UPDATED") == "1":
+        return
+    try:
+        from anton.config.settings import AntonSettings
+        from anton.updater import check_and_update
+    except Exception:
+        # Anton not importable yet (first launch race, broken venv) —
+        # nothing for us to update against. Let the rest of main.py
+        # raise the proper diagnostic.
+        return
+    try:
+        settings = AntonSettings()
+    except Exception:
+        return
+    if getattr(settings, "disable_autoupdates", False):
+        return
+
+    class _NullConsole:
+        """Stand-in for rich.Console — `check_and_update` only calls
+        `console.print(msg)` to show status, which we capture via
+        stdout instead so antontron's log buffer picks it up."""
+        def print(self, *args, **kwargs):
+            try:
+                print(*args)
+            except Exception:
+                pass
+
+    try:
+        if check_and_update(_NullConsole(), settings):
+            os.environ["_ANTON_UPDATED"] = "1"
+            # Re-exec the same interpreter on the same script so the
+            # post-import state (anton, fastapi, etc.) reloads
+            # against the freshly installed version. PID/pipes are
+            # preserved across execv so the parent (antontron) sees
+            # this as a slightly slower cold start.
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception:
+        # Updater raised — keep going on the existing version.
+        return
+
+
+_maybe_self_update_and_reexec()
+
+
 from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from anton_api import conversation_manager, projects_store, scratchpad_runtime
 from routes.responses import router as responses_router
@@ -53,7 +125,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger("anton-server")
 
+# When ANTON_SERVE_SPA=1, serve the cowork web SPA at / from ANTON_SPA_DIR.
+# Used by the Docker image (cowork:web) — the same FastAPI process answers
+# both /v1/* (API) and / (SPA) on one port. Unset by default so the
+# Electron path is byte-identical to before.
+ANTON_SERVE_SPA = os.environ.get("ANTON_SERVE_SPA", "").lower() in ("1", "true", "yes")
+_spa_dir_env = os.environ.get("ANTON_SPA_DIR", "/app/dist/renderer-web")
+SPA_DIR: Path | None = Path(_spa_dir_env).resolve() if ANTON_SERVE_SPA else None
+if ANTON_SERVE_SPA and (SPA_DIR is None or not SPA_DIR.exists()):
+    logger.warning(
+        "ANTON_SERVE_SPA=1 but SPA bundle not found at %s; SPA serving disabled.",
+        _spa_dir_env,
+    )
+    ANTON_SERVE_SPA = False
+    SPA_DIR = None
 
+    
 async def _google_token_refresh_loop() -> None:
     await asyncio.sleep(60)  # let the vault settle after startup
     while True:
@@ -66,7 +153,7 @@ async def _google_token_refresh_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    projects_store.ensure_default_project()
+    projects_store.ensure_general_project()
     start_scheduler()
     refresh_task = asyncio.create_task(_google_token_refresh_loop())
     yield
@@ -136,10 +223,58 @@ async def health():
 
 @app.get("/")
 async def root():
+    if ANTON_SERVE_SPA and SPA_DIR is not None:
+        return FileResponse(str(SPA_DIR / "index-web.html"))
     return {
         "message": "Anton CoWork API",
         "anton_available": conversation_manager.is_anton_available(),
     }
+
+
+# SPA static + client-side-routing fallback. Mounted AFTER all API routers
+# so they take priority; the catch-all only fires for paths none of them
+# claimed. /v1/* and /health are explicitly excluded so wrong API paths
+# return a clean 404 instead of falling back to index-web.html.
+if ANTON_SERVE_SPA and SPA_DIR is not None:
+    # Subdirectories that the SPA build emits — served by StaticFiles so
+    # they get correct MIME-types and range-request handling for free.
+    # Any future top-level subdir of SPA_DIR that should be served must
+    # be added to this tuple (or as its own dedicated mount).
+    for _sub in ("assets", "fonts", "gravity-field"):
+        _sub_path = SPA_DIR / _sub
+        if _sub_path.exists():
+            app.mount(f"/{_sub}", StaticFiles(directory=str(_sub_path)), name=f"spa-{_sub}")
+
+    # Pre-resolve every top-level file in SPA_DIR into a string→Path
+    # allowlist. The fallback handler below looks the request up in this
+    # dict — the user-controlled `full_path` is used only as a dict key,
+    # never as a path component. That removes the entire untrusted-input
+    # → path-expression dataflow that CodeQL py/path-injection flagged
+    # against earlier realpath/is_relative_to-based guards: there is no
+    # path being built from `full_path` at all, so traversal sequences
+    # (`..`, encoded variants, absolute paths) simply miss the dict and
+    # fall through to the SPA shell. Computed at startup so the dict is
+    # immutable for the request handler's lifetime.
+    _spa_files: dict[str, Path] = {
+        _entry.name: _entry for _entry in SPA_DIR.iterdir() if _entry.is_file()
+    }
+    _spa_shell: Path = SPA_DIR / "index-web.html"
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        # Wrong /v1/* paths must 404 cleanly — never serve the SPA shell
+        # in place of a missing API endpoint or callers will silently get
+        # HTML where they expected JSON.
+        if full_path == "v1" or full_path.startswith("v1/") or full_path == "health":
+            raise HTTPException(status_code=404)
+        # Top-level file the build emitted? Serve it. Otherwise this is
+        # either a client-side route (/projects/foo, /artifacts/...) or a
+        # bogus path — both get the SPA shell so the renderer's router
+        # can take over (or render its own 404 view) on the client.
+        served = _spa_files.get(full_path)
+        if served is not None:
+            return FileResponse(str(served))
+        return FileResponse(str(_spa_shell))
 
 
 if __name__ == "__main__":

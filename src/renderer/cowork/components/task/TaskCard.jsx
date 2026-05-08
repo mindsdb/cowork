@@ -54,6 +54,11 @@ export function TaskCard({
   const updated = relativeAge(task.updatedAt || task.updated_at || task.created_at);
   const turns = turnsCount(task);
   const showKebab = hover || menuOpen;
+  // App.jsx flips task.status to 'active' while a turn is streaming
+  // and back to 'idle' on completion. Use it as the live indicator —
+  // a subtle pulsing accent dot beside the title reads as "this one
+  // is doing something" without taking up a whole status pill.
+  const isActive = task.status === 'active';
 
   const openMenu = (e) => {
     e.stopPropagation();
@@ -100,11 +105,34 @@ export function TaskCard({
       >
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{
-            fontFamily: FONT_BODY, fontWeight: 600,
-            fontSize: 14, color: 'var(--ink)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            display: 'flex', alignItems: 'center', gap: 8,
+            minWidth: 0,
           }}>
-            {task.title || 'Untitled'}
+            {isActive && (
+              // Subtle accent dot — same `pulse-dot` keyframe used
+              // elsewhere in the app. Soft accent glow so it reads
+              // as "live activity" at a glance without competing
+              // with the title text.
+              <span
+                aria-hidden
+                className="pulse-dot"
+                title="Running"
+                style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: 'var(--accent)',
+                  boxShadow: '0 0 8px color-mix(in srgb, var(--accent) 55%, transparent)',
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <span style={{
+              fontFamily: FONT_BODY, fontWeight: 600,
+              fontSize: 14, color: 'var(--ink)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}>
+              {task.title || 'Untitled'}
+            </span>
           </span>
           {subtitle && (
             <span style={{

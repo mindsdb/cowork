@@ -9,6 +9,7 @@ import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
+import { checkPythonImports, getAntonToolPython, getPythonUtf8Env } from './server-deps';
 
 const DEFAULT_PORT = 26866; // ANTON on T9 keypad
 const SERVER_HOST = '127.0.0.1';
@@ -45,12 +46,7 @@ export function getServerOrigin(): string {
 }
 
 function getAntonPython(): string | null {
-  const dataHome = process.env.XDG_DATA_HOME ||
-    path.join(os.homedir(), process.platform === 'win32' ? 'AppData/Roaming' : '.local/share');
-  const candidate = path.join(
-    dataHome, 'uv', 'tools', 'anton',
-    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
-  );
+  const candidate = getAntonToolPython();
   return fs.existsSync(candidate) ? candidate : null;
 }
 
@@ -117,12 +113,30 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   if (pendingStart) return pendingStart;
 
   serverPort = opts.port ?? (Number(process.env.ANTON_SERVER_PORT) || DEFAULT_PORT);
-  const readyTimeoutMs = opts.readyTimeoutMs ?? 15000;
+  // 45s ceiling so the python's in-process `_maybe_self_update_and_reexec`
+  // has room to download + install + execv when a new release lands.
+  // Steady-state boots respond in <2s; only the update-on-launch path
+  // pushes us past 15s. Lower would risk timing out a valid update.
+  const readyTimeoutMs = opts.readyTimeoutMs ?? 45000;
 
   lastStartAt = Date.now();
   const pythonCmd = getAntonPython();
   if (!pythonCmd) {
     lastStartError = 'Anton Python interpreter not found. Run the installer first.';
+    return {
+      ok: false,
+      reason: lastStartError,
+    };
+  }
+
+  const baseEnv = {
+    ...process.env,
+    PATH: getEnvPath(),
+    ...getPythonUtf8Env(),
+  };
+  const depsReady = await checkPythonImports(pythonCmd, baseEnv);
+  if (!depsReady) {
+    lastStartError = 'Anton server dependencies are missing from the uv tool environment. Run the installer to repair the Anton tool venv.';
     return {
       ok: false,
       reason: lastStartError,
@@ -140,16 +154,30 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 
   pendingStart = (async (): Promise<StartServerResult> => {
     const env = {
-      ...process.env,
-      PATH: getEnvPath(),
+      ...baseEnv,
       PYTHONUNBUFFERED: '1',
       ANTON_SERVER_PORT: String(serverPort),
       ANTON_SERVER_HOST: SERVER_HOST,
       ANTON_PROJECTS_DIR: path.join(app.getPath('userData'), 'projects'),
     };
 
-    const child = spawn(pythonCmd, ['main.py'], {
-      cwd: serverDir,
+    // Spawn the python with a STABLE cwd (`~`) and pass `main.py` as
+    // an absolute path. Earlier we used `cwd: serverDir`, which sat
+    // inside the .app bundle — fine until the bundle was replaced
+    // under a running server (`npm run pack` in dev wipes
+    // `release/mac-arm64/`; in-place app updates do the same in
+    // production). Once the cwd directory is gone, anton-core's
+    // `anton/config/settings.py:_build_env_files` calls `Path.cwd()`
+    // at import time, which calls `os.getcwd()`, which raises
+    // FileNotFoundError. That surfaces in the chat as the cryptic
+    // "[Errno 2] No such file or directory" with no recoverable
+    // context. Pinning cwd to home avoids the problem entirely —
+    // the server uses absolute paths everywhere internally, cwd is
+    // only load-bearing for anton-core's optional `cwd/.env` lookup
+    // which we deliberately skip here (the server's `.env` chain
+    // resolves through `~/.anton/.env`).
+    const child = spawn(pythonCmd, [path.join(serverDir, 'main.py')], {
+      cwd: os.homedir(),
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -182,6 +210,22 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
     const ready = await probeHealth(readyTimeoutMs);
     if (!ready) {
       lastStartError = `Server did not respond on /health within ${readyTimeoutMs}ms.`;
+      // Reap the spawned child instead of leaving it as a zombie
+      // pinning the port. If we don't, every failed restart leaks a
+      // python that still owns 26866, so subsequent restart attempts
+      // bind-collide and fail the same way — making the "stop +
+      // start" cycle look broken from the user's side. SIGTERM with
+      // a SIGKILL fallback so a hung uvicorn boot can't outlive us.
+      try { child.kill('SIGTERM'); } catch {}
+      const exited = new Promise<void>((resolve) => {
+        child.once('exit', () => resolve());
+      });
+      await Promise.race([exited, new Promise<void>((r) => setTimeout(r, 2_000))]);
+      if (child.exitCode === null && !child.killed) {
+        try { child.kill('SIGKILL'); } catch {}
+        await Promise.race([exited, new Promise<void>((r) => setTimeout(r, 1_000))]);
+      }
+      if (serverProcess === child) serverProcess = null;
       return {
         ok: false,
         reason: lastStartError,
@@ -202,11 +246,59 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   }
 }
 
-export function stopServer() {
-  if (serverProcess) {
-    try { serverProcess.kill('SIGTERM'); } catch {}
-    serverProcess = null;
+// Stop the python child and wait for it to actually exit before
+// returning. Earlier the function fired SIGTERM and immediately nulled
+// `serverProcess`, which let a subsequent `startServer()` race ahead
+// and spawn a new python on a port the dying child still owned —
+// surfacing as a 15s /health timeout instead of an obvious failure.
+//
+// Three phases:
+//   1. SIGTERM, wait up to 3s for graceful shutdown.
+//   2. SIGKILL, wait up to 1.5s for hard kill.
+//   3. Clear the slot regardless — if the OS truly orphaned the child,
+//      we'd rather lose track of it than block app quit forever.
+export async function stopServer(): Promise<void> {
+  const proc = serverProcess;
+  if (!proc) {
     serverStarted = false;
+    return;
+  }
+
+  // Mark not-running immediately so the renderer's `isServerRunning`
+  // check reflects intent. We keep `serverProcess` non-null until we
+  // actually verify exit so a racing startServer can't double-spawn.
+  serverStarted = false;
+
+  const exited = new Promise<void>((resolve) => {
+    proc.once('exit', () => resolve());
+    // 'close' fires after exit + stdio close; 'exit' is enough for
+    // port release on POSIX. If we ever lose 'exit' (very rare), the
+    // race-with-timeout below covers us.
+  });
+
+  try { proc.kill('SIGTERM'); } catch {}
+
+  await Promise.race([
+    exited,
+    new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
+  ]);
+
+  // Still alive? Force-kill. `proc.exitCode === null` means the child
+  // hasn't reported an exit code yet → still running.
+  if (proc.exitCode === null && !proc.killed) {
+    try { proc.kill('SIGKILL'); } catch {}
+    await Promise.race([
+      exited,
+      new Promise<void>((resolve) => setTimeout(resolve, 1_500)),
+    ]);
+  }
+
+  // Clear the slot only if it still points at the same child — a
+  // concurrent startServer() may have replaced it (shouldn't happen
+  // with the renderer's serial restart flow but safe-guards against
+  // future callers that don't await stopServer).
+  if (serverProcess === proc) {
+    serverProcess = null;
   }
 }
 

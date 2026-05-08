@@ -130,6 +130,15 @@ contextBridge.exposeInMainWorld('antontron', {
   getActiveProject: () => ipcRenderer.invoke(IPC.PROJECTS_GET_ACTIVE),
   setActiveProject: (name: string) => ipcRenderer.invoke(IPC.PROJECTS_SET_ACTIVE, name),
 
+  // UI Updates
+  checkForUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_CHECK),
+  applyUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_APPLY),
+  onUpdateStatus: (cb: (status: { phase: string; version?: string }) => void) => {
+    const listener = (_: any, status: { phase: string; version?: string }) => cb(status);
+    ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);
+    return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
+  },
+
   // App
   getPlatform: () => process.platform,
   getUIVersion: () => ipcRenderer.invoke(IPC.APP_UI_VERSION),

@@ -74,6 +74,16 @@ async def format_responses_stream(
     collected_text: list[str] = []
 
     def _event(event_type: str, data: dict) -> str:
+        # Wall-clock millisecond stamp on every event. The renderer
+        # uses this (over `Date.now()` at the moment of replay) so
+        # historical conversations rebuild correct reasoning /
+        # execution durations: synchronous replay through the stream
+        # reducer would otherwise see every `now()` collapse to the
+        # same JS-tick value, producing 0ms across the board.
+        # Persisted into the turns sidecar via `event_sink`, so the
+        # field is also there for future replays.
+        if "at_ms" not in data:
+            data["at_ms"] = int(time.time() * 1000)
         if event_sink is not None:
             try:
                 event_sink(event_type, data)
@@ -118,12 +128,20 @@ async def format_responses_stream(
                 role = Role.thought_recall_start.value
             else:
                 role = Role.thought_progress.value
+            # `tool_use_id` rides along on start/end/result/progress
+            # events so the renderer can correlate them. Without it,
+            # multi-tool turns (LLM emits start/end for cells A, B, C
+            # upfront, then anton dispatches them sequentially) end up
+            # patching the wrong step when results arrive — the
+            # frontend's "patch the last scratchpad step" heuristic
+            # silently misattributes A's output to C.
             seq += 1
             yield _event("response.in_progress", {
                 "type": "response.in_progress",
                 "sequence_number": seq,
                 "thought_role": role,
                 "content": event.name,
+                "tool_use_id": event.id,
             })
 
         elif isinstance(event, StreamToolUseDelta):
@@ -142,12 +160,19 @@ async def format_responses_stream(
                 role = Role.thought_recall_end.value
             else:
                 role = Role.thought_progress.value
+            # 64 KB cap — old 2 KB cap routinely chopped scratchpad
+            # JSON mid-`code` field, leaving the desktop renderer with
+            # an unparseable string and the inspector showing "No code
+            # captured for this cell." 64 KB covers every cell we've
+            # seen in practice without bloating the SSE stream or the
+            # persisted turns log.
             seq += 1
             yield _event("response.in_progress", {
                 "type": "response.in_progress",
                 "sequence_number": seq,
                 "thought_role": role,
-                "content": accumulated[:2000],
+                "content": accumulated[:65536],
+                "tool_use_id": event.id,
             })
 
         elif isinstance(event, StreamToolResult):
@@ -156,15 +181,26 @@ async def format_responses_stream(
                 "type": "response.in_progress",
                 "sequence_number": seq,
                 "thought_role": Role.thought_scratchpad_result.value,
-                "content": event.content[:2000],
+                "content": event.content[:65536],
                 "tool_name": getattr(event, "name", "") or "",
                 "tool_action": getattr(event, "action", "") or "",
+                "tool_use_id": getattr(event, "id", None) or "",
             })
 
         elif isinstance(event, StreamTaskProgress):
+            # scratchpad_start / scratchpad_done phases now carry the
+            # source tool_use_id so the renderer correlates them to
+            # the right step instead of the last scratchpad step.
+            # We DO NOT throttle scratchpad-phase events even when
+            # under PROGRESS_THROTTLE — dropping a scratchpad_done
+            # would leave the cell stuck in_progress in the UI.
+            phase_str = event.phase or ""
+            is_scratchpad_phase = phase_str in ("scratchpad_start", "scratchpad_done")
             now = time.time()
-            if now - last_progress >= PROGRESS_THROTTLE:
-                last_progress = now
+            should_emit = is_scratchpad_phase or (now - last_progress >= PROGRESS_THROTTLE)
+            if should_emit:
+                if not is_scratchpad_phase:
+                    last_progress = now
                 label = PHASE_LABELS.get(event.phase, event.phase)
                 msg = f"{label}: {event.message}" if event.message else label
                 seq += 1
@@ -176,6 +212,7 @@ async def format_responses_stream(
                     "phase": event.phase,
                     "message": event.message,
                     "eta_seconds": getattr(event, "eta_seconds", None),
+                    "tool_use_id": getattr(event, "id", None) or "",
                 })
 
         elif isinstance(event, StreamContextCompacted):

@@ -433,7 +433,16 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
 
 // ─── List view ───────────────────────────────────────────────────────────
 
-const LIST_GRID = '1.6fr 2fr 70px 70px 70px 70px 110px 36px';
+// Adds an "Active" column between Tasks and Memories — the count of
+// currently-streaming tasks in this project. Client-side derivable
+// from `tasks` (status === 'active'), so no new server endpoint
+// needed; the data is already on the client.
+//
+// Name leads with the most fr-share so long names don't ellipsize at
+// the typical sidebar width — the prior 1.6fr lost the name to the
+// "Last activity" cell. Updated column was dropped (the activity
+// summary already implies recency); the freed width goes to Name.
+const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
 
 function ListHeader() {
   const Cell = ({ children, align }) => (
@@ -453,10 +462,10 @@ function ListHeader() {
       <Cell>Name</Cell>
       <Cell>Last activity</Cell>
       <Cell align="right">Tasks</Cell>
+      <Cell align="right">Active</Cell>
       <Cell align="right">Memories</Cell>
       <Cell align="right">Sched.</Cell>
       <Cell align="right">Artifacts</Cell>
-      <Cell>Updated</Cell>
       <Cell />
     </div>
   );
@@ -471,6 +480,33 @@ function D1Num({ value }) {
       textAlign: 'right',
       fontVariantNumeric: 'tabular-nums',
     }}>{value ?? 0}</span>
+  );
+}
+
+// Same shape as D1Num but with a pulsing accent dot + accent number
+// when > 0. Used by the "Active" column so live projects stand out
+// without dragging in a full status pill.
+function ActiveNum({ value }) {
+  const isZero = !value;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
+      gap: 6,
+      fontFamily: FONT_MONO, fontSize: 12,
+      color: isZero ? 'var(--ink-5)' : 'var(--accent)',
+      textAlign: 'right',
+      fontVariantNumeric: 'tabular-nums',
+    }}>
+      {!isZero && (
+        <span aria-hidden className="pulse-dot" style={{
+          width: 6, height: 6, borderRadius: '50%',
+          background: 'var(--accent)',
+          boxShadow: '0 0 6px color-mix(in srgb, var(--accent) 55%, transparent)',
+          flexShrink: 0,
+        }} />
+      )}
+      {value ?? 0}
+    </span>
   );
 }
 
@@ -503,9 +539,13 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
   const triggerRef = useRef(null);
   const { mem, art } = useRowStats(project);
   const summary = activitySummaryFor(project, tasks);
-  const taskCount = (tasks || []).filter((t) => t.projectName === project.name || t.projectPath === project.path).length;
+  const projectTasks = (tasks || []).filter((t) => t.projectName === project.name || t.projectPath === project.path);
+  const taskCount = projectTasks.length;
+  // App.jsx sets task.status to 'active' while a turn is streaming
+  // and back to 'idle' on completion, so this count reflects the
+  // live in-flight work for the project.
+  const activeTaskCount = projectTasks.filter((t) => t.status === 'active').length;
   const schedCount = (scheduled || []).filter((s) => (s.project || s.projectName) === project.name).length;
-  const updated = relativeAge(timestampOfProject(project, tasks));
   const active = isActive(project, tasks);
   const isReserved = project.name === 'general' || project.name === 'default';
 
@@ -562,15 +602,10 @@ function ListRow({ project, tasks, scheduled, pinned, onOpen, onTogglePin, onMen
 
       {/* Number cells */}
       <D1Num value={taskCount} />
+      <ActiveNum value={activeTaskCount} />
       <D1Num value={mem} />
       <D1Num value={schedCount} />
       <D1Num value={art} />
-
-      {/* Updated */}
-      <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
-      }}>{updated}</div>
 
       {/* ⋯ menu */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -686,6 +721,11 @@ function CrumbSep() {
 function ProjectDetail({
   project, projects, tasks, scheduled, models, onSend, onSelectTask,
   onDeleteTask, onShowAll,
+  attachments = [],
+  connectors = [],
+  onAttachFiles,
+  onAttachConnector,
+  onRemoveAttachment,
   // Header kebab + inline rename — lets users rename / reveal / delete
   // the active project without bouncing back to the grid. Pin is
   // intentionally absent: the only pin store today is localStorage on
@@ -900,11 +940,11 @@ function ProjectDetail({
               onModelChange={() => {}}
               projects={projects || []}
               models={models || []}
-              attachments={[]}
-              connectors={[]}
-              onAttachFiles={() => {}}
-              onAttachConnector={() => {}}
-              onRemoveAttachment={() => {}}
+              attachments={attachments}
+              connectors={connectors}
+              onAttachFiles={onAttachFiles}
+              onAttachConnector={onAttachConnector}
+              onRemoveAttachment={onRemoveAttachment}
               hideModel
               metaReadOnly
               placeholder={`Start a new task in ${project.name}…`}
@@ -977,6 +1017,11 @@ export default function ProjectsView({
   onSendInProject,
   onSelectTask,
   onDeleteTask,
+  attachments = [],
+  connectors = [],
+  onAttachFiles,
+  onAttachConnector,
+  onRemoveAttachment,
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const [view, setView] = useState(() =>
@@ -1098,6 +1143,11 @@ export default function ProjectsView({
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
+        attachments={attachments}
+        connectors={connectors}
+        onAttachFiles={onAttachFiles}
+        onAttachConnector={onAttachConnector}
+        onRemoveAttachment={onRemoveAttachment}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}
@@ -1127,9 +1177,15 @@ export default function ProjectsView({
         title="Projects"
         subtitle="Workspaces Anton uses to group conversations, memory, and outputs."
         actions={<NewProjectButton onClick={handleNewProject} />}
+        // Bake the breathing room into the header itself rather than a
+        // sibling spacer. The previous 18px spacer div collapsed in
+        // some grid-view layouts (the flex column let it disappear
+        // under certain content heights), which made the gap between
+        // subtitle and the search bar look smaller in grid than in
+        // list. Embedding it as `marginBottom` on the subtitle makes
+        // the spacing immune to whatever the body below decides to do.
+        subtitleBottom={20}
       />
-
-      <div style={{ height: 18 }} />
 
       <FilterRow
         search={

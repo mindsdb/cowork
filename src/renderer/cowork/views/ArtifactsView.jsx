@@ -27,6 +27,7 @@ import {
   HoverMenu,
   useCollectionShortcut,
 } from '../components/collection';
+import { host } from '../../platform/host';
 
 const FONT_BODY    = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
@@ -78,6 +79,20 @@ function projectNameOf(artifact, projects = []) {
   if (m) return m[1];
   const parts = p.split('/').filter(Boolean);
   return parts[parts.length - 2] || '—';
+}
+
+// Resolve to the actual project object so the label can navigate
+// the user to that project's detail view. Returns null when the
+// artifact's path doesn't fall under any known project root — in
+// that case the label stays informational (no click affordance).
+function projectOf(artifact, projects = []) {
+  const p = artifact?.path || '';
+  if (!p) return null;
+  return projects.find((proj) => {
+    if (!proj?.path) return false;
+    const pre = proj.path.replace(/\/+$/, '') + '/';
+    return p.startsWith(pre);
+  }) || null;
 }
 
 function isHtmlArtifact(a) {
@@ -298,7 +313,7 @@ function LocalPathRow({ path }) {
   );
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, busy }) {
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, busy, onOpenProject }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
 
@@ -311,7 +326,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   };
   const onOpenPublished = async () => {
     if (!published) return;
-    try { await window.antontron?.openExternal?.(artifact.publishedUrl); } catch {
+    try { await host.openExternal(artifact.publishedUrl); } catch {
       window.open(artifact.publishedUrl, '_blank', 'noreferrer');
     }
   };
@@ -319,6 +334,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   const Icon = iconForArtifact(artifact);
   const ext = extensionOf(artifact);
   const projectLabel = projectNameOf(artifact, projects);
+  // The project the artifact belongs to. When resolved, the project
+  // label becomes a clickable affordance (renders as a button) that
+  // navigates the user to that project's detail page.
+  const projectMatch = projectOf(artifact, projects);
+  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   // Hand the click off to the parent — it owns the single shared
   // menu so the dropdown isn't rendered inside the card (cards
@@ -471,10 +491,33 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           }}
         >
           <span style={{ flexShrink: 0 }}>project:</span>
-          <span style={{
-            color: 'var(--ink-3)', minWidth: 0, flex: '0 1 auto',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{projectLabel}</span>
+          {canOpenProject ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              title={`Open ${projectMatch.name}`}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                color: 'var(--ink-3)', minWidth: 0, flex: '0 1 auto',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                transition: 'color 120ms ease',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = 'var(--accent)';
+                e.currentTarget.style.textDecoration = 'underline';
+                e.currentTarget.style.textUnderlineOffset = '2px';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = 'var(--ink-3)';
+                e.currentTarget.style.textDecoration = 'none';
+              }}
+            >{projectLabel}</button>
+          ) : (
+            <span style={{
+              color: 'var(--ink-3)', minWidth: 0, flex: '0 1 auto',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{projectLabel}</span>
+          )}
         </span>
         <span style={{
           fontFamily: FONT_MONO, fontSize: 11,
@@ -516,8 +559,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 
 // ─── List view ───────────────────────────────────────────────────────────
 
-// Status dot · Title · Published · Kind · Project · Updated · ⋯
-const LIST_GRID = '24px 2fr 100px 70px 1fr 110px 36px';
+// Status dot · Title · Published · Type · Kind · Project · Updated · ⋯
+//
+// `Type` is the bare file extension (html, csv, png, …) and lives
+// before `Kind` (the broader category — Dashboard, Data, Image, …)
+// so the at-a-glance scan reads from concrete to abstract.
+const LIST_GRID = '24px 2fr 100px 60px 70px 1fr 110px 36px';
 
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
@@ -537,6 +584,7 @@ function ListHeaderRow() {
       <Cell />
       <Cell>Title</Cell>
       <Cell>Published</Cell>
+      <Cell>Type</Cell>
       <Cell>Kind</Cell>
       <Cell>Project</Cell>
       <Cell>Updated</Cell>
@@ -653,7 +701,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onCopy
   );
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onOpenProject }) {
   const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
@@ -662,6 +710,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   const project = projectNameOf(artifact, projects);
+  const projectMatch = projectOf(artifact, projects);
+  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   const onCopyUrl = async () => {
     if (!published) return false;
@@ -724,6 +774,15 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           )}
         </div>
 
+        {/* Type — bare extension, monospace, slightly muted to read
+            as metadata. Sits before Kind so the eye picks up the
+            concrete file format first. */}
+        <div style={{
+          fontFamily: FONT_MONO, fontSize: 11,
+          color: 'var(--ink-4)', letterSpacing: '0.06em', textTransform: 'uppercase',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{extensionOf(artifact)}</div>
+
         <div style={{
           fontFamily: FONT_MONO, fontSize: 11,
           color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -734,7 +793,32 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           fontFamily: FONT_BODY, fontSize: 12.5,
           color: 'var(--ink-2)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{project}</div>
+          minWidth: 0,
+        }}>
+          {canOpenProject ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+              title={`Open ${projectMatch.name}`}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                color: 'var(--ink-2)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                maxWidth: '100%', display: 'inline-block',
+                transition: 'color 120ms ease',
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = 'var(--accent)';
+                e.currentTarget.style.textDecoration = 'underline';
+                e.currentTarget.style.textUnderlineOffset = '2px';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = 'var(--ink-2)';
+                e.currentTarget.style.textDecoration = 'none';
+              }}
+            >{project}</button>
+          ) : project}
+        </div>
 
         <div style={{
           fontFamily: FONT_MONO, fontSize: 11,
@@ -849,7 +933,7 @@ function Toast({ kind, message, onClose }) {
 
 // ─── Composed view ───────────────────────────────────────────────────────
 
-export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [] }) {
+export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject }) {
   const [list, setList] = useState(initial);
   const [viewer, setViewer] = useState(null);
   const [view, setView] = useState(() =>
@@ -865,12 +949,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // apply `transform` on hover, which would re-anchor a position:fixed
   // descendant to the card itself instead of the viewport.
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
-  const isMacPlatform = (() => {
-    try {
-      if (window.antontron?.getPlatform) return window.antontron.getPlatform() === 'darwin';
-    } catch {}
-    return /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
-  })();
+  const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
   const [toast, setToast] = useState(null); // { kind: 'ok'|'error', message }
@@ -977,7 +1056,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
     try {
-      const result = await window.antontron?.trashItem?.(artifact.path);
+      const result = await host.trashItem(artifact.path);
       if (result && result.ok === false) {
         throw new Error(result.reason || 'Could not move to Trash.');
       }
@@ -1034,7 +1113,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       display: 'flex', flexDirection: 'column',
     }}>
       <PageHeader
-        title="Live artifacts"
+        title="Live Artifacts"
         subtitle="Documents, dashboards, and code Anton produces. Publish to share a live URL."
         // 20px below the subtitle text so the page reads with a
         // little air before the search-row begins. The 20px spacer
@@ -1107,6 +1186,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onMenuOpen={(art, rect) => setMenuFor({ artifact: art, rect })}
               isMenuOpen={menuFor?.artifact?.path === a.path}
               busy={busyPaths.has(a.path)}
+              onOpenProject={onOpenProject}
             />
           ))}
         </div>
@@ -1121,6 +1201,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onOpenViewer={setViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
+              onOpenProject={onOpenProject}
             />
           ))}
         </div>
@@ -1177,14 +1258,17 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               icon: (Ico.link?.(13) || Ico.globe?.(13) || Ico.doc(13)),
               onClick: () => {
                 if (a.publishedUrl) {
-                  try { window.antontron?.openExternal?.(a.publishedUrl); }
+                  try { host.openExternal(a.publishedUrl); }
                   catch { window.open(a.publishedUrl, '_blank', 'noreferrer'); }
                 } else {
                   openArtifact(a.path);
                 }
               },
             });
-          } else {
+          } else if (!host.isWeb) {
+            // Reveal hits the server's /artifacts/reveal endpoint which
+            // shells out to the OS opener — meaningful only on the
+            // desktop where the renderer and server share a filesystem.
             items.push({
               id: 'reveal',
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
@@ -1192,14 +1276,17 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onClick: () => { try { revealArtifact(a.path); } catch {} },
             });
           }
-          items.push({ separator: true });
-          items.push({
-            id: 'delete',
-            label: 'Delete',
-            icon: Ico.trash(13),
-            danger: true,
-            onClick: () => handleTrash(a),
-          });
+          // Delete uses host.trashItem (OS Trash) — no equivalent in web.
+          if (!host.isWeb) {
+            items.push({ separator: true });
+            items.push({
+              id: 'delete',
+              label: 'Delete',
+              icon: Ico.trash(13),
+              danger: true,
+              onClick: () => handleTrash(a),
+            });
+          }
           return items;
         })()}
       />

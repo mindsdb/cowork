@@ -82,6 +82,22 @@ def _parse_for_display(
             if role == "user"
             else str(content)
         )
+        # Skip anton-core's auto-recovery prompts. When a tool call
+        # fails mid-stream, anton appends a synthetic
+        # `{role: "user", content: "SYSTEM: An error interrupted
+        # execution: …"}` message to history so the LLM can self-
+        # correct on the next turn (anton/core/session.py:952). They
+        # must remain in _history.json (anton needs them as context
+        # next turn) but rendering them as user bubbles in the chat
+        # is confusing — the user never typed them, they read like
+        # the conversation went off the rails. Two known prefixes:
+        #   "SYSTEM: An error interrupted execution: …" — single retry
+        #   "SYSTEM: The task has failed N times. Latest error: …" — retries exhausted
+        # Anything else starting with SYSTEM: is treated the same way
+        # to be safe; user-typed content that legitimately starts
+        # with that token is vanishingly unlikely.
+        if role == "user" and text.lstrip().startswith("SYSTEM:"):
+            continue
         if role == "assistant":
             # Merge with the previous bubble if it's also assistant —
             # this is the same user→answer cycle, just split into

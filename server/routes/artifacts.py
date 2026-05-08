@@ -73,6 +73,27 @@ def _snippet(path: Path) -> str:
 
 
 def _scan_output_dirs() -> list[Path]:
+    """Directories to walk when listing or resolving artifacts.
+
+    The historical pair was `~/.anton/output/` + `<project>/.anton/output/`,
+    but anton's actual save behaviour is fuzzier:
+      - Some `output_context` system prompts told the LLM to "save in
+        the project directory" without specifying `.anton/output/`.
+      - `pad.execute_streaming` runs with cwd = workspace root, so any
+        `with open(...)` in scratchpad code that uses a bare relative
+        filename lands in the workspace root.
+      - The LLM occasionally invents folders like `dashboards/`,
+        `outputs/`, `reports/`.
+    All those land outside the original two roots, the artifact list
+    silently skipped them, and clicking a card returned 404 from
+    `_resolve_artifact_path`.
+
+    The expansion below adds the project workspace ROOT as a scan
+    target. The list-view uses `ARTIFACT_EXTENSIONS` to keep
+    user-typed `.py` / `requirements.txt` / etc. out of the artifact
+    list; the resolve path accepts anything under the workspace so a
+    direct click on a non-listed file (e.g. an `.ipynb`) still opens.
+    """
     dirs: dict[str, Path] = {}
     global_output = Path.home() / ".anton" / "output"
     if global_output.is_dir():
@@ -82,6 +103,75 @@ def _scan_output_dirs() -> list[Path]:
         if output_dir.is_dir():
             dirs[str(output_dir.resolve())] = output_dir
     return list(dirs.values())
+
+
+def _scan_workspace_roots() -> list[Path]:
+    """Project workspace roots — the broader search domain.
+
+    Used for the list-view's secondary pass (extension-filtered) and
+    the resolve-path validator. Returned in the same shape as
+    `_scan_output_dirs` so the listing loop can iterate both.
+    """
+    out: dict[str, Path] = {}
+    for project in projects_store.list_projects():
+        path = Path(project["path"])
+        if path.is_dir():
+            out[str(path.resolve())] = path
+    return list(out.values())
+
+
+# Files we surface in the artifacts LIST view. Tighter than what
+# we'll OPEN — `.py` and `.txt` source files aren't user-facing
+# artifacts, but `_resolve_artifact_path` will still open them if a
+# caller links directly. Keep this in sync with `KIND_MAP` above.
+ARTIFACT_EXTENSIONS = {
+    ".html", ".md", ".pdf", ".csv", ".json",
+    ".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp",
+}
+
+# Workspace-root scan ignores these directories outright. Walking
+# `node_modules/` etc. would be ruinous; users don't think of them
+# as artifact homes. `.anton/` is excluded only at the workspace-
+# root layer because we already scan `.anton/output/` directly via
+# `_scan_output_dirs` and the rest of `.anton/` (episodes, memory,
+# context) is internal bookkeeping.
+WORKSPACE_SCAN_IGNORES = {
+    ".anton", ".context",
+    ".git", ".hg", ".svn",
+    "node_modules", ".venv", "venv", "env", ".env",
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "dist", "build", "out",
+    ".next", ".turbo", ".cache",
+}
+
+
+def _walk_workspace_root(root: Path):
+    """Walk a workspace root, skipping ignored dirs. Yields files."""
+    if not root.is_dir():
+        return
+    try:
+        stack = [root]
+        while stack:
+            cur = stack.pop()
+            try:
+                entries = list(cur.iterdir())
+            except (OSError, PermissionError):
+                continue
+            for entry in entries:
+                name = entry.name
+                if name.startswith("."):
+                    # Hidden files / dirs at any depth — skip. The
+                    # global `~/.anton/output/` is reached via
+                    # `_scan_output_dirs`, not via this walker.
+                    continue
+                if entry.is_dir():
+                    if name in WORKSPACE_SCAN_IGNORES:
+                        continue
+                    stack.append(entry)
+                elif entry.is_file():
+                    yield entry
+    except Exception:
+        return
 
 
 def _candidate_relative_artifacts(raw_path: str) -> list[Path]:
@@ -117,6 +207,17 @@ def _candidate_relative_artifacts(raw_path: str) -> list[Path]:
 
 
 def _resolve_artifact_path(raw_path: str) -> Path:
+    """Resolve a request to an absolute artifact path on disk.
+
+    Accepted locations (in priority order):
+      1. The classic Anton output dirs (`~/.anton/output/`,
+         `<project>/.anton/output/`) — strict, unchanged.
+      2. Anywhere under any registered project's workspace root —
+         loosened so `dashboards/q4.html` or a workspace-root
+         `report.html` opens cleanly. Hidden / ignore-listed dirs
+         (`.anton/`, `node_modules/`, `.venv/`, …) are excluded so a
+         scoped path can't escape the project tree.
+    """
     try:
         target = Path(raw_path).expanduser()
     except Exception as exc:
@@ -127,6 +228,7 @@ def _resolve_artifact_path(raw_path: str) -> Path:
 
     if target.is_absolute():
         resolved = target.resolve()
+        # Tier 1 — classic output dirs.
         for output_dir in _scan_output_dirs():
             try:
                 output_root = output_dir.resolve()
@@ -135,6 +237,36 @@ def _resolve_artifact_path(raw_path: str) -> Path:
                     return resolved
             except ValueError:
                 continue
+        # Tier 2 — anywhere under a project workspace, minus the
+        # ignore list. We check that NO segment of the path under the
+        # project root falls in WORKSPACE_SCAN_IGNORES.
+        for ws_root in _scan_workspace_roots():
+            try:
+                ws = ws_root.resolve()
+                rel = resolved.relative_to(ws)
+            except ValueError:
+                continue
+            if not resolved.is_file():
+                continue
+            parts = rel.parts
+            # Reject hidden segments anywhere in the relative path,
+            # except for `.anton/output/` which is permitted since
+            # that's the canonical artifact home.
+            forbidden_hidden = False
+            for seg in parts[:-1]:
+                if seg.startswith(".") and seg != ".anton":
+                    forbidden_hidden = True
+                    break
+                if seg in WORKSPACE_SCAN_IGNORES:
+                    # `.anton/output/` is fine; anything else under
+                    # `.anton/` (episodes, memory, context) is not.
+                    if seg == ".anton" and len(parts) >= 2 and parts[1] == "output":
+                        continue
+                    forbidden_hidden = True
+                    break
+            if forbidden_hidden:
+                continue
+            return resolved
         raise HTTPException(status_code=404, detail="Artifact is not in a known Anton output directory")
 
     matches = _candidate_relative_artifacts(raw_path)
@@ -163,16 +295,39 @@ TEXT_EXTENSIONS = {".html", ".md", ".txt", ".csv", ".json", ".py", ".js", ".ts",
 @router.get("")
 async def list_artifacts():
     artifacts = []
-    seen = set()
+    seen: set[str] = set()
     files: list[Path] = []
 
+    # Tier 1 — `.anton/output/` dirs. Anything in here is considered
+    # an artifact regardless of extension (it's a curated location).
     for output_dir in _scan_output_dirs():
         if not output_dir.exists():
             continue
         try:
-            files.extend(path for path in output_dir.rglob("*") if path.is_file() and not path.name.startswith("."))
+            for path in output_dir.rglob("*"):
+                if not path.is_file() or path.name.startswith("."):
+                    continue
+                key = str(path.resolve())
+                if key in seen:
+                    continue
+                seen.add(key)
+                files.append(path)
         except Exception:
             continue
+
+    # Tier 2 — workspace roots, filtered by ARTIFACT_EXTENSIONS so
+    # we don't surface every `.py` source file as an artifact card.
+    # Keeps the list focused on user-facing outputs (HTML dashboards,
+    # CSVs, PDFs, images, JSON data) wherever the LLM saved them.
+    for ws_root in _scan_workspace_roots():
+        for path in _walk_workspace_root(ws_root):
+            if path.suffix.lower() not in ARTIFACT_EXTENSIONS:
+                continue
+            key = str(path.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(path)
 
     try:
         files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
@@ -180,11 +335,6 @@ async def list_artifacts():
         pass
 
     for f in files:
-        key = str(f)
-        if key in seen:
-            continue
-        seen.add(key)
-
         ext = f.suffix.lower()
         kind = KIND_MAP.get(ext, "File")
         is_live = (time.time() - f.stat().st_mtime) < 300  # "live" if modified in last 5 min
@@ -274,12 +424,31 @@ async def preview_mount(req: PreviewMountRequest):
     # entries since each project has at most one .anton/output dir.
     token = hashlib.sha256(str(parent).encode("utf-8")).hexdigest()[:16]
     _PREVIEW_MOUNTS[token] = parent
+
+    # Surface the published URL alongside the mount info so the viewer
+    # shows the "Published" pill regardless of how it was opened. The
+    # `/artifacts` list endpoint already enriches its rows the same
+    # way; the in-chat / project surfaces build their artifact object
+    # from streamed scratchpad payloads which never carry it, so the
+    # sidecar lookup has to happen here too.
+    published_url = ""
+    published_path = parent / ".published.json"
+    if published_path.is_file():
+        try:
+            pmap = json.loads(published_path.read_text(encoding="utf-8"))
+            entry = pmap.get(artifact.name)
+            if isinstance(entry, dict):
+                published_url = entry.get("url", "") or ""
+        except Exception:
+            published_url = ""
+
     return {
         "token": token,
         "entry": artifact.name,
         # Relative path the client can append to BASE; full URL is built
         # client-side so we don't need to know the host here.
         "relUrl": f"/artifacts/preview-asset/{token}/{artifact.name}",
+        "publishedUrl": published_url,
     }
 
 

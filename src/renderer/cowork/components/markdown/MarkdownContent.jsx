@@ -20,13 +20,20 @@ import {
   TableBody,
 } from './MarkdownTable';
 
-// Allow the extra attributes our chart blocks need on <code>.
+// Allow the extra attributes our chart blocks need on <code>, and
+// permit the `engram:` URL scheme on links so the engram-comment
+// pre-processor (see `_renderEngramComments`) can route metadata
+// through the `a` component override into a styled chip.
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
     code: [...(defaultSchema.attributes?.code || []), ['className']],
     span: [...(defaultSchema.attributes?.span || []), ['className']],
+  },
+  protocols: {
+    ...(defaultSchema.protocols || {}),
+    href: [...(defaultSchema.protocols?.href || []), 'engram'],
   },
 };
 
@@ -53,8 +60,82 @@ function _normalizeFormFences(text) {
   );
 }
 
-export function MarkdownContent({ text, id, complete = true, conversationId = null }) {
-  const normalized = useMemo(() => _normalizeFormFences(text), [text]);
+// Engram metadata in lessons.md / rules.md / profile.md is encoded
+// as inline HTML comments at the end of each bullet, e.g.
+//   `- CoinGecko rate-limits at 50 req/min <!-- topic:api ts:2026-02-27 -->`.
+// react-markdown drops HTML by default, so the comment normally
+// disappears entirely, taking the engram's provenance with it. We
+// transform each comment into a sequence of markdown links with a
+// special `engram:` URL scheme — those survive sanitization, and the
+// `a` component override below picks the scheme up and renders each
+// pair as a small chip.
+//
+// The matching pattern is intentionally narrow: we only rewrite
+// comments whose body looks like one or more `key:value` pairs (e.g.
+// `topic:foo`, `ts:2026-02-27`, `source:consolidation`). Plain
+// authorship comments like `<!-- TODO -->` or `<!-- not sure -->`
+// pass through untouched and continue to be filtered by the parser.
+const _ENGRAM_COMMENT_RE = /<!--\s*((?:[a-z][a-z0-9_-]*:[^\s<>]+\s*)+)-->/gi;
+
+function _renderEngramComments(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(_ENGRAM_COMMENT_RE, (_full, body) => {
+    const pairs = body.trim().split(/\s+/);
+    const chips = pairs
+      .map((pair) => {
+        const idx = pair.indexOf(':');
+        if (idx <= 0) return '';
+        const key = pair.slice(0, idx);
+        const val = pair.slice(idx + 1);
+        // The link text is what the user sees; the href carries the
+        // engram scheme so the renderer can distinguish it from real
+        // links. Encode the value so spaces / special chars don't
+        // break the URL portion.
+        return `[${key}: ${val}](engram:${encodeURIComponent(val)}?k=${encodeURIComponent(key)})`;
+      })
+      .filter(Boolean)
+      .join(' ');
+    // Leading space keeps the chip from glomming onto the preceding
+    // word; if there are no usable pairs we drop the comment entirely.
+    return chips ? ` ${chips}` : '';
+  });
+}
+
+// Density-scoped class strings. `dense` halves the rhythm and shaves
+// a step off every body-text role; used by memory previews where the
+// reading column is narrower and we want more lessons on screen.
+const _SIZES = {
+  default: {
+    root: 'markdown-content space-y-2 break-words text-body text-ink-2',
+    p: 'font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0',
+    h1: 'font-display text-[20px] font-semibold text-ink mt-4 mb-2',
+    h2: 'font-display text-[17px] font-semibold text-ink mt-4 mb-2',
+    h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-3 mb-1',
+    ul: 'list-disc pl-5 my-2 text-body text-ink-2 space-y-1',
+    ol: 'list-decimal pl-5 my-2 text-body text-ink-2 space-y-1',
+    blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2',
+  },
+  // `dense` is the memory-preview density. Trimmed one notch off
+  // chat defaults (and a comfortable line-height) for an elegant
+  // reading column without sacrificing readability.
+  dense: {
+    root: 'markdown-content space-y-2 break-words text-[12.5px] leading-[1.65] text-ink-2',
+    p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
+    h1: 'font-display text-[16px] font-semibold text-ink mt-3.5 mb-1.5 tracking-[-0.005em]',
+    h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5 tracking-[-0.005em]',
+    h3: 'font-display text-[12px] font-semibold uppercase tracking-wider text-ink-3 mt-2.5 mb-1',
+    ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
+    ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
+    blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2 text-[12.5px]',
+  },
+};
+
+export function MarkdownContent({ text, id, complete = true, conversationId = null, dense = false }) {
+  const normalized = useMemo(
+    () => _renderEngramComments(_normalizeFormFences(text)),
+    [text],
+  );
+  const sz = dense ? _SIZES.dense : _SIZES.default;
   const components = useMemo(() => ({
     code: (props) => <MarkdownCode id={id} complete={complete} conversationId={conversationId} {...props} />,
     table: (props) => <MarkdownTable {...props} />,
@@ -65,40 +146,50 @@ export function MarkdownContent({ text, id, complete = true, conversationId = nu
     td: TableCell,
     // Inline body styling — keep paragraphs compact and consistent
     // with the rest of the chat column.
-    p: (props) => (
-      <p className="font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0" {...props} />
-    ),
-    h1: (props) => (
-      <h1 className="font-display text-[20px] font-semibold text-ink mt-4 mb-2" {...props} />
-    ),
-    h2: (props) => (
-      <h2 className="font-display text-[17px] font-semibold text-ink mt-4 mb-2" {...props} />
-    ),
-    h3: (props) => (
-      <h3 className="font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-3 mb-1" {...props} />
-    ),
-    ul: (props) => (
-      <ul className="list-disc pl-5 my-2 text-body text-ink-2 space-y-1" {...props} />
-    ),
-    ol: (props) => (
-      <ol className="list-decimal pl-5 my-2 text-body text-ink-2 space-y-1" {...props} />
-    ),
+    p: (props) => <p className={sz.p} {...props} />,
+    h1: (props) => <h1 className={sz.h1} {...props} />,
+    h2: (props) => <h2 className={sz.h2} {...props} />,
+    h3: (props) => <h3 className={sz.h3} {...props} />,
+    ul: (props) => <ul className={sz.ul} {...props} />,
+    ol: (props) => <ol className={sz.ol} {...props} />,
     li: (props) => <li className="text-ink-2 marker:text-ink-4" {...props} />,
-    a: (props) => (
-      <a className="text-accent underline-offset-2 hover:underline" target="_blank" rel="noreferrer" {...props} />
-    ),
-    blockquote: (props) => (
-      <blockquote className="border-l-2 border-line pl-3 italic text-ink-3 my-2" {...props} />
-    ),
+    a: (props) => {
+      const href = props.href || '';
+      // Engram metadata chip — see _renderEngramComments above. We
+      // intercept the synthetic `engram:` href and render a small
+      // pill instead of a link. Keying off the URL scheme keeps real
+      // links untouched.
+      if (href.startsWith('engram:')) {
+        return (
+          <span
+            className="inline-flex items-baseline gap-1 align-middle ml-1 mr-0.5 rounded-md border border-line bg-surface-2 px-1.5 py-[1px] text-[10.5px] font-mono text-ink-3 leading-[1.4] no-underline"
+            // Strip the children's <a> wrapper styling — react-markdown
+            // hands us the linkified text as plain text children, so
+            // we render straight into the chip.
+          >
+            {props.children}
+          </span>
+        );
+      }
+      return (
+        <a
+          className="text-accent underline-offset-2 hover:underline"
+          target="_blank"
+          rel="noreferrer"
+          {...props}
+        />
+      );
+    },
+    blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
     hr: () => <hr className="my-3 border-t border-line" />,
     pre: (props) => <pre className="my-2 overflow-x-auto" {...props} />,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [id, complete, conversationId]);
+  }), [id, complete, conversationId, dense]);
 
   return (
-    <div className="markdown-content space-y-2 break-words text-body text-ink-2">
+    <div className={sz.root}>
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}

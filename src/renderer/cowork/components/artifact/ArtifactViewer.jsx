@@ -9,6 +9,7 @@ import Ico from '../Icons';
 import { mountArtifactPreview, publishArtifact, unpublishArtifact } from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { Modal } from '../ui/Modal';
+import { host } from '../../../platform/host';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "'Josefin Sans', sans-serif";
@@ -17,7 +18,7 @@ const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monosp
 // Single-row "label: value [copy]" — used twice in the header (local
 // path + remote URL when published). Tiny inline copy state flips the
 // glyph to a check for ~1.4s after a successful copy.
-function PathRow({ label, value, copyValue, accent = false }) {
+function PathRow({ label, value, copyValue, accent = false, onActivate }) {
   const [copyState, setCopyState] = useState('');
   if (!value) return null;
   const valueToCopy = copyValue || value;
@@ -38,6 +39,7 @@ function PathRow({ label, value, copyValue, accent = false }) {
   };
   const copied = copyState === 'copied';
   const failed = copyState === 'failed';
+  const activatable = typeof onActivate === 'function';
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
@@ -48,13 +50,41 @@ function PathRow({ label, value, copyValue, accent = false }) {
         color: 'var(--ink-4)', letterSpacing: '0.04em',
         textTransform: 'uppercase',
       }}>{label}:</span>
-      <span title={value} style={{
-        minWidth: 0, flex: 1,
-        color: accent ? 'var(--accent)' : 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        {value}
-      </span>
+      {/* When `onActivate` is set the value is an interactive element
+          (link semantics). Hover gets an accent underline so it reads
+          as clickable; click stops propagation so the row's copy
+          button can sit beside it without being triggered. */}
+      {activatable ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onActivate(); }}
+          title={`Open ${value}`}
+          style={{
+            all: 'unset', cursor: 'pointer',
+            minWidth: 0, flex: 1,
+            color: accent ? 'var(--accent)' : 'var(--ink-3)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            transition: 'color 120ms ease',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = 'var(--accent)';
+            e.currentTarget.style.textDecoration = 'underline';
+            e.currentTarget.style.textUnderlineOffset = '2px';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = accent ? 'var(--accent)' : 'var(--ink-3)';
+            e.currentTarget.style.textDecoration = 'none';
+          }}
+        >{value}</button>
+      ) : (
+        <span title={value} style={{
+          minWidth: 0, flex: 1,
+          color: accent ? 'var(--accent)' : 'var(--ink-3)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {value}
+        </span>
+      )}
       <button
         type="button"
         onClick={onCopy}
@@ -206,9 +236,17 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setErr('');
     setPreviewUrl('');
     mountArtifactPreview(actionPath)
-      .then(({ url }) => {
+      .then(({ url, publishedUrl: serverPublishedUrl }) => {
         if (!url) throw new Error('Preview mount returned no URL');
         setPreviewUrl(url);
+        // The mount endpoint now also reports the artifact's published
+        // URL from `.published.json`. Adopt it whenever the server
+        // knows of one — covers the chat-bubble / project-rail entry
+        // points where the artifact object was built from a streamed
+        // payload and didn't carry `publishedUrl`. Don't blank out a
+        // locally-known value when the server returns "" (the user
+        // may have just published; we don't want a flicker).
+        if (serverPublishedUrl) setPublishedUrl(serverPublishedUrl);
       })
       .catch((e) => setErr(e?.message || 'Could not load artifact'))
       .finally(() => setLoading(false));
@@ -258,7 +296,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       return;
     }
     try {
-      const result = await window.antontron?.openPath?.(actionPath);
+      const result = await host.openPath(actionPath);
       if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
     } catch (e) {
       setErr(e?.message || 'Open failed');
@@ -276,7 +314,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setBusy(true);
     setErr('');
     try {
-      const result = await window.antontron?.trashItem?.(actionPath);
+      const result = await host.trashItem(actionPath);
       if (result && result.ok === false) {
         throw new Error(result.reason || 'Could not move to Trash.');
       }
@@ -290,8 +328,22 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   };
   const onOpenPublished = async () => {
     if (!publishedUrl) return;
-    try { await window.antontron?.openExternal?.(publishedUrl); } catch {
+    try { await host.openExternal(publishedUrl); } catch {
       window.open(publishedUrl, '_blank', 'noreferrer');
+    }
+  };
+  // Local-path activate: hand off to the OS handler. For HTML
+  // artifacts this opens the default browser; for everything else
+  // (md, pdf, etc.) it routes to the user's default app.
+  const onOpenLocal = async () => {
+    if (!actionPath) return;
+    try {
+      const result = await window.antontron?.openPath?.(actionPath);
+      if (result && result.ok === false) {
+        setErr(result.reason || 'Could not open file.');
+      }
+    } catch (e) {
+      setErr(e?.message || 'Could not open file.');
     }
   };
 
@@ -322,9 +374,19 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             }}>
               {artifact.title || artifact.path?.split('/').pop()}
             </div>
-            <PathRow label="local" value={displayPath} copyValue={actionPath} />
+            <PathRow
+              label="local"
+              value={displayPath}
+              copyValue={actionPath}
+              onActivate={hasActionPath ? onOpenLocal : undefined}
+            />
             {publishedUrl && (
-              <PathRow label="remote" value={publishedUrl} accent />
+              <PathRow
+                label="remote"
+                value={publishedUrl}
+                accent
+                onActivate={onOpenPublished}
+              />
             )}
           </div>
           {publishedUrl && (
@@ -431,26 +493,31 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           anchorRect={menuRect}
           onClose={() => setMenuRect(null)}
           items={[
-            {
+            // Open in OS / Delete drop out in the hosted web shell —
+            // both depend on the renderer sharing a filesystem with the
+            // server, which is only true in Electron.
+            ...(host.isWeb ? [] : [{
               label: 'Open in OS',
               icon: Ico.externalLink(13),
               disabled: !hasActionPath,
               onClick: onOpenOS,
-            },
+            }]),
             {
               label: publishedUrl ? 'Unpublish' : 'Publish',
               icon: Ico.upload(13),
               disabled: busy || !hasActionPath,
               onClick: publishedUrl ? onUnpublish : onPublish,
             },
-            { divider: true },
-            {
-              label: 'Delete',
-              icon: Ico.trash(13),
-              danger: true,
-              disabled: busy || !hasActionPath,
-              onClick: onTrash,
-            },
+            ...(host.isWeb ? [] : [
+              { divider: true },
+              {
+                label: 'Delete',
+                icon: Ico.trash(13),
+                danger: true,
+                disabled: busy || !hasActionPath,
+                onClick: onTrash,
+              },
+            ]),
           ]}
         />
 

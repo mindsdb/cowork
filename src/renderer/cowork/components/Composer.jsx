@@ -114,12 +114,6 @@ export default function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const recognitionRef = useRef(null);
-  const dictationBaseRef = useRef('');
-
-  const SpeechRecognitionCtor = typeof window !== 'undefined'
-    ? (window.SpeechRecognition || window.webkitSpeechRecognition)
-    : null;
-  const speechSupported = !!SpeechRecognitionCtor;
 
   useEffect(() => {
     if (!taRef.current) return;
@@ -193,64 +187,6 @@ export default function Composer({
     if (taRef.current) taRef.current.style.height = 'auto';
   };
 
-  const stopListening = () => {
-    const rec = recognitionRef.current;
-    if (rec) { try { rec.stop(); } catch {} }
-  };
-
-  const startListening = () => {
-    if (!SpeechRecognitionCtor || listening || disabled) return;
-    setError('');
-    const rec = new SpeechRecognitionCtor();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = navigator.language || 'en-US';
-    dictationBaseRef.current = value;
-
-    rec.onresult = (event) => {
-      let interim = '';
-      let finalChunk = '';
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) finalChunk += transcript;
-        else interim += transcript;
-      }
-      const base = dictationBaseRef.current;
-      const join = (text) => {
-        if (!text) return base;
-        const sep = base && !/\s$/.test(base) ? ' ' : '';
-        return base + sep + text;
-      };
-      if (finalChunk) {
-        dictationBaseRef.current = join(finalChunk);
-        setValue(dictationBaseRef.current);
-      } else {
-        setValue(join(interim));
-      }
-    };
-    rec.onerror = (event) => {
-      const code = event.error || 'unknown';
-      const msg = code === 'not-allowed' || code === 'service-not-allowed'
-        ? 'Microphone permission was denied.'
-        : code === 'no-speech'
-          ? 'Did not catch that — try again.'
-          : `Voice input error: ${code}`;
-      setError(msg);
-    };
-    rec.onend = () => {
-      setListening(false);
-      recognitionRef.current = null;
-    };
-
-    recognitionRef.current = rec;
-    setListening(true);
-    try { rec.start(); } catch (err) {
-      setListening(false);
-      recognitionRef.current = null;
-      setError(err?.message || 'Could not start voice input.');
-    }
-  };
-
   useEffect(() => () => {
     const rec = recognitionRef.current;
     if (rec) { try { rec.abort(); } catch {} }
@@ -262,7 +198,6 @@ export default function Composer({
         ref={fileRef}
         type="file"
         multiple
-        accept="*/*,image/*"
         hidden
         onChange={(event) => handleAttachFiles(event.target.files)}
       />

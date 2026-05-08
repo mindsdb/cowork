@@ -82,17 +82,30 @@ export default function ScheduleTaskModal({
     setError('');
     setConfirmingDelete(false);
     if (task) {
+      // The server stores the project as a NAME (`task.project`) and
+      // the form's <select> uses path as its value. Hydrate the form
+      // by resolving the name back to a path via `projects`. Earlier
+      // versions read `task.projectPath` which the server never sets,
+      // so editing always lost the project association.
+      const taskProjectPath = (() => {
+        if (task.projectPath) return task.projectPath;
+        if (task.project) {
+          const match = projects.find((p) => p.name === task.project);
+          if (match?.path) return match.path;
+        }
+        return '';
+      })();
       setForm({
         title:       task.title || '',
         prompt:      task.prompt || '',
         cadence:     task.cadence || 'once',
         nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
-        projectPath: task.projectPath || defaultProjectPath || '',
+        projectPath: taskProjectPath || defaultProjectPath || '',
       });
     } else {
       setForm(emptyForm({ defaultProjectPath }));
     }
-  }, [open, task?.id, defaultProjectPath]);
+  }, [open, task?.id, defaultProjectPath, projects]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -102,13 +115,20 @@ export default function ScheduleTaskModal({
       return;
     }
     setError('');
+    // The server's `ScheduleRequest` schema accepts `project` as a
+    // bare project NAME (not a path) and ignores any unknown fields.
+    // The earlier payload sent `project_path: <path>` which silently
+    // dropped — every schedule landed with `project: null`, breaking
+    // the project-pivoted card / list / count. Resolve the form's
+    // path back to a name via `projects` and send the right field.
+    const projectMatch = projects.find((p) => p.path === form.projectPath);
     const payload = {
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
       cadence:      form.cadence,
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  new Date(form.nextRunAt).toISOString(),
-      project_path: form.projectPath || null,
+      project:      projectMatch?.name || null,
       // Scheduled tasks always use the user's configured default
       // model — exposing the picker here let people accidentally
       // pin a stale model id that's no longer valid.

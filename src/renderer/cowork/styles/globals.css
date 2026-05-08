@@ -336,11 +336,28 @@ a[href],
   -webkit-app-region: no-drag;
 }
 
-/* ─── Scrollbars ─────────────────────────────────────────────────────────── */
+/* ─── Scrollbars ───────────────────────────────────────────────────────────
+   Theme-aware. `color-mix` against --ink lets the same rule work in
+   light + dark — without it the hard rgba(0,0,0,…) thumb was nearly
+   invisible on the navy dark surface and the chat would seem to
+   sport a "default ugly" scrollbar.
+   Firefox uses scrollbar-width / scrollbar-color (the only two
+   tunable properties); Chromium uses ::-webkit-scrollbar pseudo-
+   elements. We set both so styled scrollbars hit every engine. */
+.scroll-clean {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink) 18%, transparent) transparent;
+}
 .scroll-clean::-webkit-scrollbar { width: 8px; height: 8px; }
-.scroll-clean::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 4px; }
-.scroll-clean::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+.scroll-clean::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+  border-radius: 4px;
+}
+.scroll-clean::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
+}
 .scroll-clean::-webkit-scrollbar-track { background: transparent; }
+.scroll-clean::-webkit-scrollbar-corner { background: transparent; }
 
 /* ─── Dot canvas ─────────────────────────────────────────────────────────── */
 .dot-canvas {
@@ -3087,14 +3104,9 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 
 /* ─── Scheduling ────────────────────────────────────────────────────────── */
-.catchup-banner {
-  display: flex; gap: 10px; align-items: flex-start;
-  margin: 20px 28px 0; padding: 12px 14px;
-  background: #FFF8E6; border: 1px solid #EAD49A;
-  border-radius: 10px; color: #694A09;
-}
-.catchup-banner span { display: inline-flex; margin-top: 2px; }
-.catchup-banner p { margin: 2px 0 0; font-size: 12.5px; }
+/* The `.catchup-banner` block was retired with the catchup-approval
+   flow — missed runs are now surfaced as informational counters on
+   each schedule card / row instead of an actionable banner. */
 .schedule-form {
   margin: 20px 28px 0; padding: 14px;
   border: 1px solid var(--border-01); border-radius: 12px;

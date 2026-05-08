@@ -3,17 +3,11 @@ import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
+import { host } from '../../platform/host';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
-const IS_MAC = (() => {
-  try {
-    if (typeof window !== 'undefined' && window.antontron && typeof window.antontron.getPlatform === 'function') {
-      return window.antontron.getPlatform() === 'darwin';
-    }
-  } catch {}
-  return /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
-})();
+const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
@@ -170,6 +164,8 @@ export default function Sidebar({
   projects = [],
   onToggleServer,
   onShowServerHelp,
+  updateAvailable = null, // { version: string } or null
+  onApplyUpdate,
 }) {
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
@@ -312,8 +308,8 @@ export default function Sidebar({
         {/* Primary nav */}
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={projectsCount  || null} />
-          <NavItem icon={Ico.clock(15)}   label="Scheduled tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={scheduledCount || null} />
-          <NavItem icon={Ico.sparkle(15)} label="Live artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={artifactsCount || null} />
+          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={scheduledCount || null} />
+          <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={artifactsCount || null} />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in
@@ -333,7 +329,7 @@ export default function Sidebar({
         {/* Anton group — visually grouped panel for the brain-style nav */}
         <div className="section-label">Anton</div>
         <div className="anton-group">
-          <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
+          <NavItem icon={Ico.cube(15)}     label="Skill Library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
           <NavItem icon={Ico.brain(15)}    label="Memory"         onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
           {/* "Connect data" removed from the sidebar — the canonical
               connector surface is the Connect Apps and Data page
@@ -423,7 +419,55 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Footer status */}
+        {/* Update available banner */}
+        {updateAvailable && (
+          <button
+            type="button"
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(93,146,135,0.12)',
+              border: '1px solid rgba(93,146,135,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer',
+              transition: 'background 120ms ease',
+              width: 'calc(100% - 20px)',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              WebkitAppRegion: 'no-drag',
+            }}
+            onClick={onApplyUpdate}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.22)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.12)'; }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--sage-500, #5D9287)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
+              fontFamily: 'var(--font-sans)',
+            }}>
+              Update available{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
+            </span>
+            <span style={{
+              fontSize: 10, color: 'var(--sage-500, #5D9287)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.03em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>
+              Install
+            </span>
+          </button>
+        )}
+
+        {/* Footer status — Electron-only. In the hosted web shell the
+            FastAPI process IS the host, so start/stop/diagnostics have
+            no meaning and we drop the entire pill + power button. */}
+        {!host.isWeb && (
         <div className="anton-sidebar__footer">
           {/* The whole "backend · <status>" pill is the help affordance
               now — click anywhere on it to open the server-state modal.
@@ -484,6 +528,7 @@ export default function Sidebar({
             </button>
           </div>
         </div>
+        )}
       </div>
 
       <RecentsModal

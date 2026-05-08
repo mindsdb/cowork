@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from './Icons';
+import { host } from '../../platform/host';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
@@ -13,6 +14,16 @@ const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
 export default function ServerOfflineHelpModal({
   open,
   onClose,
+  // Atomic server actions wired from App.jsx. The modal composes
+  // "Restart" locally from `onStop` + `onStart` so the parent only
+  // needs to expose the two primitives. Older callers passed a
+  // single `onRetry` that did stop+start; that hid the "I just want
+  // to stop, not restart" intent and made it impossible to give the
+  // user a Stop button. Kept here for backwards-compat — when neither
+  // `onStop` nor `onStart` is provided, `onRetry` runs the legacy
+  // stop+start cycle.
+  onStart,
+  onStop,
   onRetry,
   serverOnline = false,
   serverBusy = false,
@@ -29,7 +40,7 @@ export default function ServerOfflineHelpModal({
     let cancelled = false;
     (async () => {
       try {
-        const data = await window.antontron?.serverDiagnostics?.();
+        const data = await host.serverDiagnostics();
         if (!cancelled) setDiag(data || null);
       } catch {
         if (!cancelled) setDiag(null);
@@ -88,13 +99,63 @@ export default function ServerOfflineHelpModal({
     },
   }[state];
 
+  const refreshDiag = async () => {
+    try {
+      const data = await window.antontron?.serverDiagnostics?.();
+      setDiag(data || null);
+    } catch {}
+  };
+
+  const handleStart = async () => {
+    if (!onStart) return;
+    setBusy(true);
+    try {
+      await onStart();
+      await refreshDiag();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleStop = async () => {
+    if (!onStop) return;
+    setBusy(true);
+    try {
+      await onStop();
+      await refreshDiag();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    setBusy(true);
+    try {
+      // Prefer atomic actions when wired; fall back to the legacy
+      // single onRetry handler so older callers still work.
+      if (onStop && onStart) {
+        await onStop();
+        await onStart();
+      } else if (onRetry) {
+        await onRetry();
+      }
+      await refreshDiag();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Legacy single-button click target — only used when atomic
+  // handlers aren't provided. Kept as a thin wrapper so the existing
+  // disabled-while-busy + diagnostics-refresh logic is unchanged for
+  // any caller that still ships the old API.
   const handleRetry = async () => {
     setBusy(true);
     try {
       await onRetry?.();
       // Pull fresh diagnostics after the retry attempt — gives the
       // user immediate feedback on whether the new attempt worked.
-      const data = await window.antontron?.serverDiagnostics?.();
+      const data = await host.serverDiagnostics();
       setDiag(data || null);
     } finally {
       setBusy(false);
@@ -273,21 +334,72 @@ export default function ServerOfflineHelpModal({
               fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
             }}
           >Close</button>
-          {state === 'offline' && (
+          {/* Action buttons — split by intent so the user can stop
+              the backend without it immediately restarting:
+                * online   → [Stop] [Restart]   (Restart = stop + start)
+                * offline  → [Start]
+              All disabled while a transition is in flight so we
+              don't fire concurrent toggles into the main process.
+              Falls back to a single legacy button when only the
+              old `onRetry` API was provided. */}
+          {(onStart || onStop) ? (
+            <>
+              {state !== 'offline' && (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  disabled={busy || serverBusy || !onStop}
+                  style={{
+                    cursor: (busy || serverBusy) ? 'progress' : 'pointer',
+                    background: 'transparent',
+                    border: '1px solid var(--line)',
+                    color: 'var(--ink-2)',
+                    padding: '7px 14px', borderRadius: 7,
+                    fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+                    opacity: (busy || serverBusy) ? 0.7 : 1,
+                  }}
+                >
+                  {(busy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={state === 'offline' ? handleStart : handleRestart}
+                disabled={busy || serverBusy || (state === 'offline' ? !onStart : !(onStart && onStop))}
+                style={{
+                  cursor: (busy || serverBusy) ? 'progress' : 'pointer',
+                  background: 'var(--accent)',
+                  border: '1px solid var(--accent)',
+                  color: '#fff',
+                  padding: '7px 14px', borderRadius: 7,
+                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
+                  opacity: (busy || serverBusy) ? 0.7 : 1,
+                }}
+              >
+                {busy
+                  ? (state === 'offline' ? 'Starting…' : 'Restarting…')
+                  : (state === 'offline' ? 'Start backend' : 'Restart backend')}
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               onClick={handleRetry}
-              disabled={busy}
+              disabled={busy || serverBusy}
               style={{
-                cursor: busy ? 'progress' : 'pointer',
+                cursor: (busy || serverBusy) ? 'progress' : 'pointer',
                 background: 'var(--accent)',
                 border: '1px solid var(--accent)',
                 color: '#fff',
                 padding: '7px 14px', borderRadius: 7,
                 fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                opacity: busy ? 0.7 : 1,
+                opacity: (busy || serverBusy) ? 0.7 : 1,
               }}
-            >{busy ? 'Restarting…' : 'Restart backend'}</button>
+            >
+              {busy
+                ? (state === 'offline' ? 'Starting…' : 'Restarting…')
+                : (state === 'offline' ? 'Start backend' : 'Restart backend')}
+            </button>
           )}
         </div>
       </div>

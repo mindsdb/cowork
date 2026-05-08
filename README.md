@@ -46,6 +46,98 @@ This runs three processes concurrently:
 2. `vite dev` for renderer (port 5173)
 3. Electron with `VITE_DEV=1` flag
 
+### DEV_MODE (packaged app testing)
+
+When testing a packaged build (`npm run pack`), the `DEV_MODE` variable in `~/.anton/.env` controls which renderer the app loads:
+
+| Value | Behavior |
+|-------|----------|
+| `live` | Load from Vite dev server (`localhost:5173`) — requires `npm run dev:renderer` running separately |
+| `full` | Load the bundled renderer only — skips OTA cache entirely |
+| _(unset)_ | Production mode — loads OTA-cached UI if available, otherwise bundled |
+
+To set it, add `DEV_MODE=full` (or `live`) to `~/.anton/.env`. Remove the line to return to production behavior. When `DEV_MODE` is set, the OTA update check is skipped entirely.
+
+> **Tip**: If you build the app and it looks outdated, the OTA cache may be serving an older published bundle. Either set `DEV_MODE=full` to bypass it, or clear the cache: `rm -rf ~/Library/Application\ Support/anton/ui-cache/current`
+
+---
+
+## Web Build
+
+The cowork SPA also runs as a plain web app, served by the same FastAPI
+backend. The renderer is shell-agnostic — there is one source tree, one
+component library, and two entrypoints.
+
+### Run dev (web)
+
+```bash
+npm run dev:web
+```
+
+This boots both processes:
+
+1. The Anton FastAPI sidecar on `127.0.0.1:26866` (using your `uv tool install anton` interpreter — same as the Electron path).
+2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`.
+
+The dev server opens at `http://localhost:5173/` (a small Vite
+middleware rewrites `/` → `/index-web.html` so the bare URL is
+canonical). API calls hit the FastAPI sidecar via Vite's
+`/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
+shutdown — vite quiesces first, then the python child.
+
+If you haven't installed Anton yet, `dev:web` will print:
+
+```
+✗ Anton Python interpreter not found at ~/.local/share/uv/tools/anton/bin/python.
+  Run `uv tool install anton` first, then re-run `npm run dev:web`.
+```
+
+### Build a production bundle
+
+```bash
+npm run build:web
+```
+
+Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
+the Electron build). Drop this directory behind any static-file server
+and point its `/v1` requests at a running Anton FastAPI process.
+
+### Platform abstraction
+
+The cowork tree (`src/renderer/cowork/`) **never** touches
+`window.antontron` directly. All host-bridge access goes through
+`src/renderer/platform/host.ts`, which exposes:
+
+| Method | Electron | Web |
+|---|---|---|
+| `getPlatform()` / `isMac()` | `'darwin' \| 'win32' \| 'linux'` | `'web'` / `false` |
+| `getApiOrigin()` | `http://127.0.0.1:26866` | `window.location.origin` |
+| `openExternal(url)` | Electron shell.openExternal | `window.open(url, '_blank')` |
+| `openPath` / `showItemInFolder` / `trashItem` | OS shell | `{ ok: false, reason: 'unsupported' }` |
+| `serverInfo` / `serverStart` / `serverStop` | IPC to main | static `{running: true, …}` |
+| `oauthConnect(...)` | IPC PKCE loopback flow | inline error (redirect-based OAuth not yet wired) |
+
+Affordances that depend on Electron-only bridge calls (server pill +
+power button in the sidebar, "Open in OS" / "Show in Finder" /
+"Move to Trash" buttons in the artifact views, the
+`ServerOfflineHelpModal`) are hidden when `host.isWeb` is true.
+
+### Web entry layout
+
+```
+src/renderer/
+  index.html              # Electron entry (loads main.tsx)
+  index-web.html          # Web entry (loads web-main.tsx)
+  main.tsx                # Electron entry: App.tsx → CoworkApp (with onboarding gates)
+  web-main.tsx            # Web entry: cowork SPA directly (no onboarding gates)
+  platform/host.ts        # Shell abstraction (the only sanctioned bridge surface)
+  cowork/                 # The shared SPA — never imports window.antontron
+```
+
+`vite.config.ts` branches on `BUILD_TARGET=web`: when set, `rollupOptions.input`
+points at `index-web.html` and `outDir` becomes `dist/renderer-web/`. When
+unset (the Electron path), behavior is byte-identical to before.
+
 ---
 
 ## Architecture
@@ -84,7 +176,7 @@ assets/
 
 - **Minds integration**: The GUI replicates Anton's `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes the same env vars to `~/.anton/.env`, and auto-restarts Anton to pick up new config.
 
-- **OTA UI updates**: The Electron shell ships rarely, but the React UI updates frequently via GitHub Releases. On every boot, the main process checks a static `latest.json` on GitHub Pages (no API rate limits), downloads new bundles in the background, verifies SHA-256 integrity, and swaps atomically with rollback support. Zero user interaction — updates apply on next launch.
+- **OTA UI updates**: The Electron shell ships rarely, but the React UI updates frequently via GitHub Releases. On every boot, the main process checks a static `latest.json` on GitHub Pages (no API rate limits). In **auto** mode, new bundles are downloaded, SHA-256 verified, and applied silently — the app reloads with the new UI. In **manual** mode (the default), a green banner appears in the sidebar and the user clicks "Install" to apply. The update preference is persisted as `UI_UPDATE_MODE` in `~/.anton/.env` and configurable in Settings → Updates.
 
 ---
 
@@ -107,6 +199,9 @@ All channels defined in `src/shared/ipc-channels.ts`:
 | `clipboard:save-image`                              | invoke    | Save clipboard image to temp file         |
 | `settings:save/check-configured/validate`           | invoke    | Settings & API key management             |
 | `projects:list/create/delete/get-active/set-active` | invoke    | Project CRUD                              |
+| `ui:update-check`                                   | invoke    | Check for OTA UI updates                  |
+| `ui:update-apply`                                   | invoke    | Download and apply a pending UI update    |
+| `ui:update-status`                                  | send      | Update status events (available/reloading)|
 
 ---
 
@@ -510,14 +605,19 @@ After the workflow completes:
 
 ```
 App starts
+  ├─ If DEV_MODE is set → load Vite dev server (live) or bundled renderer (full), skip OTA
   ├─ Load cached UI (instant, no network needed)
   │   └─ Falls back to bundled renderer if no cache exists
-  └─ Background: fetch latest.json from GitHub Pages
-      └─ If new version → download → verify SHA-256 → cache
-          └─ Applied on next launch
+  └─ After renderer loads (did-finish-load + 1.5 s):
+      └─ Background: fetch latest.json from GitHub Pages
+          ├─ If offline or up to date → done
+          └─ If new version available:
+              ├─ Auto mode → download → verify SHA-256 → swap → reload
+              └─ Manual mode → send "update-available" to renderer → sidebar banner
+                  └─ User clicks "Install" → download → verify → swap → reload
 ```
 
-The app **never blocks on a network request** — it always loads immediately from cache or bundled files, and downloads updates silently in the background.
+The app **never blocks on a network request** — it always loads immediately from cache or bundled files. The OTA check waits for the renderer to finish loading before running to avoid IPC race conditions.
 
 ### File Layout
 
@@ -754,6 +854,8 @@ These are written to `~/.anton/.env` by the app and read by Anton at startup:
 | `ANTON_CODING_MODEL`            | Settings    | Model for coding tasks              |
 | `ANTON_MEMORY_MODE`             | Settings    | Memory mode (autopilot/copilot/off) |
 | `ANTON_SUPPRESS_BANNER`         | Auto-set    | Suppresses ASCII art banner in PTY  |
+| `DEV_MODE`                      | Manual      | Renderer source override for developers (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
+| `UI_UPDATE_MODE`                | Settings    | OTA update behavior (`auto` = apply silently, `manual` = show banner; default `manual`) |
 
 ---
 

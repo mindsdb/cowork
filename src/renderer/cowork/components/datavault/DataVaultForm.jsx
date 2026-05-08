@@ -38,6 +38,8 @@ import {
   subscribeSelectedMethod,
 } from './formStore';
 import HowToModal from './HowToModal';
+import { host } from '../../../platform/host';
+import { ANTON_VAULT_KEEP } from '../../api';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -75,10 +77,30 @@ function FieldInput({ field, value, onChange, disabled }) {
     opacity: disabled ? 0.6 : 1,
   };
 
+  // Sentinel rendering — when the underlying state still equals
+  // `ANTON_VAULT_KEEP`, the field hasn't been touched since the
+  // modify-flow pre-fill. Show the input visually empty with a
+  // placeholder that explains the "saved" semantics. The state
+  // stays as the sentinel until the user types; the first keystroke
+  // replaces it via the parent's onChange (controlled-input
+  // semantics — `e.target.value` carries just the typed character
+  // because the displayed value is empty). On submit, fields whose
+  // state is still the sentinel pass through and resolve server-
+  // side against the prior record.
+  const isSentinel = value === ANTON_VAULT_KEEP;
+  const displayValue = isSentinel ? '' : (value ?? field.default ?? '');
+  // For sentinel-bearing fields the placeholder doubles as the
+  // "saved" indicator. Eight asterisks is the convention users
+  // already recognize from password managers — short, unambiguous,
+  // and visually distinct from a normal placeholder hint.
+  const placeholder = isSentinel
+    ? '********'
+    : (field.placeholder || '');
+
   if (field.type === 'select') {
     return (
       <select
-        value={value ?? field.default ?? ''}
+        value={displayValue}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         style={baseStyle}
@@ -93,8 +115,8 @@ function FieldInput({ field, value, onChange, disabled }) {
   if (field.type === 'textarea') {
     return (
       <textarea
-        value={value ?? field.default ?? ''}
-        placeholder={field.placeholder || ''}
+        value={displayValue}
+        placeholder={placeholder}
         disabled={disabled}
         rows={4}
         spellCheck={false}
@@ -114,7 +136,12 @@ function FieldInput({ field, value, onChange, disabled }) {
       }}>
         <input
           type="checkbox"
-          checked={!!value}
+          // Booleans never carry the sentinel — modify-flow only
+          // replaces secret string fields. For booleans the saved
+          // value lands directly in `default` and the state mirrors
+          // it. Sentinel guard kept for safety: a stray sentinel on
+          // a boolean field renders unchecked.
+          checked={!isSentinel && !!value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.checked)}
         />
@@ -126,8 +153,8 @@ function FieldInput({ field, value, onChange, disabled }) {
   return (
     <input
       type={field.type === 'password' ? 'password' : (field.type === 'url' ? 'url' : 'text')}
-      value={value ?? field.default ?? ''}
-      placeholder={field.placeholder || ''}
+      value={displayValue}
+      placeholder={placeholder}
       autoComplete={field.type === 'password' ? 'current-password' : 'off'}
       autoCapitalize="none"
       autoCorrect="off"
@@ -460,6 +487,11 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {fields.map((f) => {
           const isSkipped = skipped.has(f.name);
+          // Identity / read-only marker. The modify-flow pins
+          // `name` (and could pin others) so the vault row key
+          // stays stable. Locked fields render disabled and lose
+          // the skip affordance.
+          const isLocked = !!f._locked;
           return (
             <div key={f.name} style={{ display: 'flex', flexDirection: 'column', gap: 4, opacity: isSkipped ? 0.55 : 1 }}>
               <div style={{
@@ -479,8 +511,11 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                     asking the wrong thing — Anton uses the skipped
                     set on the next iteration to figure out the
                     minimum-viable connection. Per-field opt-out via
-                    `skipable: false` in the spec is still respected. */}
-                {f.skipable !== false && (
+                    `skipable: false` in the spec is still respected.
+                    Locked fields (modify-flow identity) drop the
+                    skip affordance entirely — there's nothing for
+                    Anton to figure out about a fixed row key. */}
+                {f.skipable !== false && !isLocked && (
                   <button
                     type="button"
                     onClick={() => isSkipped ? updateField(f.name, values[f.name] ?? '') : skipField(f.name)}
@@ -499,7 +534,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                   field={f}
                   value={values[f.name]}
                   onChange={(v) => updateField(f.name, v)}
-                  disabled={busy}
+                  disabled={busy || isLocked}
                 />
               )}
               {isSkipped && (
@@ -573,7 +608,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
             if (hasHowTo) {
               setFormHowToOpen(true);
             } else if (m.help_url) {
-              try { window.antontron?.openExternal?.(m.help_url); }
+              try { host.openExternal(m.help_url); }
               catch { window.open(m.help_url, '_blank', 'noreferrer'); }
             }
           };
@@ -608,36 +643,46 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
           );
         })()}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: 'Submit', kind: 'primary' }]).map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => {
-              // Field-level skip via an action button (vs the per-field
-              // skip control). Useful when the spec wants a one-shot
-              // "let Anton pick this" affordance.
-              if (a.kind === 'skip' && a.field) {
-                skipField(a.field);
-                return;
-              }
-              dispatch(a);
-            }}
-            disabled={busy && a.kind !== 'cancel'}
-            className={a.kind === 'primary' ? 'btn-primary' : undefined}
-            style={a.kind === 'primary' ? undefined : {
-              background: 'transparent',
-              border: '1px solid var(--line)',
-              color: a.kind === 'cancel' ? 'var(--ink-3)' : 'var(--ink-2)',
-              padding: '7px 12px',
-              borderRadius: 7,
-              fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-              cursor: busy ? 'progress' : 'pointer',
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            {a.kind === 'primary' && busy ? 'Working…' : a.label}
-          </button>
-        ))}
+        {(activeMethod?.actions || spec.actions || [{ id: 'submit', label: 'Submit', kind: 'primary' }]).map((a) => {
+          // Modify mode swaps the primary action's label to make
+          // the destination explicit — "Save changes" reads as an
+          // overwrite, "Connect" implies a fresh attachment. Only
+          // touches the visible label; the action id + kind go
+          // through unchanged so server-side handling is identical.
+          const label = (spec._modify && a.kind === 'primary')
+            ? 'Save changes'
+            : a.label;
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => {
+                // Field-level skip via an action button (vs the per-field
+                // skip control). Useful when the spec wants a one-shot
+                // "let Anton pick this" affordance.
+                if (a.kind === 'skip' && a.field) {
+                  skipField(a.field);
+                  return;
+                }
+                dispatch(a);
+              }}
+              disabled={busy && a.kind !== 'cancel'}
+              className={a.kind === 'primary' ? 'btn-primary' : undefined}
+              style={a.kind === 'primary' ? undefined : {
+                background: 'transparent',
+                border: '1px solid var(--line)',
+                color: a.kind === 'cancel' ? 'var(--ink-3)' : 'var(--ink-2)',
+                padding: '7px 12px',
+                borderRadius: 7,
+                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+                cursor: busy ? 'progress' : 'pointer',
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              {a.kind === 'primary' && busy ? 'Working…' : label}
+            </button>
+          );
+        })}
         </div>
       </div>
       </>}
@@ -702,7 +747,7 @@ function MethodPicker({ methods, onPick, busy }) {
           if (hasHowTo) {
             setHowToFor(m);
           } else if (m.help_url) {
-            try { window.antontron?.openExternal?.(m.help_url); }
+            try { host.openExternal(m.help_url); }
             catch { window.open(m.help_url, '_blank', 'noreferrer'); }
           }
         };

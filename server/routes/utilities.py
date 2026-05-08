@@ -31,10 +31,29 @@ def _safe_text(path: Path, limit: int = 80_000) -> str:
     return text[:limit]
 
 
-def _memory_roots(project_path: Optional[str] = None) -> list[tuple[str, Path]]:
-    roots = [("Global", Path.home() / ".anton" / "memory")]
+def _memory_roots(project_path: Optional[str] = None) -> list[tuple[str, Optional[str], Path]]:
+    """Enumerate (scope, project_name, root) tuples for the memory listing.
+
+    `scope` is "Global" or "Project". Global has no project_name. When
+    `project_path` is set we list only that one project (legacy
+    single-project shape). When `project_path` is None we list every
+    project on disk so the UI can present a unified view of all memory
+    grouped by project.
+    """
+    roots: list[tuple[str, Optional[str], Path]] = [
+        ("Global", None, Path.home() / ".anton" / "memory"),
+    ]
     if project_path:
-        roots.append(("Project", Path(project_path).expanduser().resolve() / ".anton" / "memory"))
+        target = Path(project_path).expanduser().resolve()
+        roots.append(("Project", target.name, target / ".anton" / "memory"))
+        return roots
+    try:
+        from anton_api import projects_store
+        for project in projects_store.list_projects():
+            target = Path(project["path"]).expanduser().resolve()
+            roots.append(("Project", project["name"], target / ".anton" / "memory"))
+    except Exception:
+        logger.warning("Could not enumerate projects for memory listing", exc_info=True)
     return roots
 
 
@@ -87,11 +106,16 @@ def _backup_target(path: Path, namespace: str) -> None:
         logger.warning("Could not backup %s before mutation", path)
 
 
-def _memory_file_payload(path: Path, root: Path, scope: str) -> dict[str, Any]:
+def _memory_file_payload(
+    path: Path,
+    root: Path,
+    scope: str,
+    project_name: Optional[str] = None,
+) -> dict[str, Any]:
     text = _safe_text(path, 16_000)
     resolved_root = root.resolve()
     resolved_path = path.resolve()
-    return {
+    payload: dict[str, Any] = {
         "name": path.stem.replace("-", " ").replace("_", " ").title(),
         "path": str(resolved_path),
         "relativePath": str(resolved_path.relative_to(resolved_root)),
@@ -100,20 +124,35 @@ def _memory_file_payload(path: Path, root: Path, scope: str) -> dict[str, Any]:
         "preview": "\n".join([line for line in text.splitlines() if line.strip()][:8])[:700],
         "content": text,
     }
+    if project_name:
+        # `projectPath` is the project root (two levels up from
+        # `<project>/.anton/memory/`) — the UI passes this back to
+        # save/delete so writes hit the right project regardless of
+        # which project is currently "active" in the sidebar.
+        payload["projectName"] = project_name
+        payload["projectPath"] = str(resolved_root.parent.parent)
+    return payload
 
 
 @router.get("/memory")
 async def list_memory(project_path: Optional[str] = None):
     sections = []
-    for label, root in _memory_roots(project_path):
+    for scope, project_name, root in _memory_roots(project_path):
         files = []
         if root.is_dir():
             for path in sorted(root.rglob("*.md")):
                 if not path.is_file():
                     continue
-                text = _safe_text(path, 16_000)
-                files.append(_memory_file_payload(path, root, label))
-        sections.append({"scope": label, "root": str(root), "files": files})
+                files.append(_memory_file_payload(path, root, scope, project_name))
+        section: dict[str, Any] = {
+            "scope": scope,
+            "root": str(root),
+            "files": files,
+        }
+        if project_name:
+            section["projectName"] = project_name
+            section["projectPath"] = str(root.parent.parent)
+        sections.append(section)
     return {"sections": sections}
 
 
@@ -130,7 +169,10 @@ async def save_memory(req: MemorySaveRequest):
     target.parent.mkdir(parents=True, exist_ok=True)
     _backup_target(target, "memory")
     target.write_text(req.content, encoding="utf-8")
-    return {"status": "ok", "file": _memory_file_payload(target, root, req.scope.title())}
+    project_name: Optional[str] = None
+    if req.scope.strip().lower() == "project" and req.projectPath:
+        project_name = Path(req.projectPath).expanduser().resolve().name
+    return {"status": "ok", "file": _memory_file_payload(target, root, req.scope.title(), project_name)}
 
 
 @router.delete("/memory")
@@ -311,6 +353,90 @@ def _clean_credentials(credentials: dict[str, str]) -> dict[str, str]:
     }
 
 
+def _resolve_modify_merge(
+    engine: str,
+    name: str,
+    incoming: dict[str, str],
+    spec_fields: list[Any],
+) -> tuple[dict[str, str], list[str]]:
+    """Server-side wrapper around anton-core's `resolve_modify_merge`.
+
+    Pulls the spec-marked secret-field names out of the engine spec
+    objects (which use a `field.secret: bool` attribute), then hands
+    everything off to anton-core so the merge logic stays in one
+    place. See `anton.core.datasources.data_vault.resolve_modify_merge`
+    for the full contract.
+
+    Falls back to a passthrough (no merge, no secure-key tracking)
+    when the installed anton-core predates `resolve_modify_merge`.
+    Logs a warning so the user knows to reinstall — the modify
+    flow's sentinel preservation only kicks in once anton is fresh.
+    """
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+    try:
+        from anton.core.datasources.data_vault import resolve_modify_merge
+    except ImportError:
+        logger.warning(
+            "anton-core has no `resolve_modify_merge` — saving without "
+            "the modify-flow merge. Reinstall anton to enable sentinel-"
+            "based credential preservation."
+        )
+        return dict(incoming), []
+
+    spec_secret_names = [
+        getattr(f, "name", "") for f in spec_fields
+        if getattr(f, "secret", False) and getattr(f, "name", "")
+    ]
+    return resolve_modify_merge(
+        LocalDataVault(),
+        engine,
+        name,
+        incoming,
+        spec_secret_keys=spec_secret_names,
+    )
+
+
+def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
+    """Build the modify-flow read response.
+
+    Substitutes `ANTON_VAULT_KEEP` into every secret-shaped slot so
+    the renderer can pre-fill the form without ever seeing the
+    underlying credential. Identity + timestamps + the secure-keys
+    list pass through verbatim.
+    """
+    try:
+        from anton.core.datasources.data_vault import ANTON_VAULT_KEEP, is_secret_key
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+
+    raw_fields = record.get("fields") or {}
+    secure_keys = record.get("secure_keys")  # may be None on legacy records
+    fields_out: dict[str, str] = {}
+    for key, value in raw_fields.items():
+        if is_secret_key(key, secure_keys=secure_keys):
+            fields_out[key] = ANTON_VAULT_KEEP
+        else:
+            fields_out[key] = value
+    return {
+        "engine": record.get("engine", ""),
+        "name": record.get("name", ""),
+        "createdAt": record.get("created_at"),
+        "updatedAt": record.get("updated_at"),
+        # Echo the secure-key set the renderer should treat as "saved · keep".
+        # On legacy records (no stored list), recompute from the heuristic
+        # so the renderer's UX is identical regardless of schema age.
+        "secureKeys": (
+            secure_keys
+            if secure_keys is not None
+            else sorted(k for k in raw_fields.keys() if is_secret_key(k))
+        ),
+        "fields": fields_out,
+    }
+
+
 def _validate_datasource_payload(
     engine: str,
     credentials: dict[str, str],
@@ -355,6 +481,42 @@ async def list_datasources():
     }
 
 
+@router.get("/datasources/{engine}/{name}")
+async def read_datasource(engine: str, name: str):
+    """Modify-flow read: return the saved connection's non-secret
+    fields verbatim, with the `ANTON_VAULT_KEEP` sentinel substituted
+    into every secret slot.
+
+    The renderer hydrates its form from this payload — non-secrets
+    pre-fill the inputs, secret-slot sentinels render as empty inputs
+    with a "Saved · type to replace, clear to remove" placeholder.
+    On submit, any field still carrying the sentinel is resolved
+    server-side against the prior record (see `_resolve_modify_merge`).
+    """
+    if not engine.strip() or not name.strip():
+        raise HTTPException(status_code=400, detail="engine and name are required")
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+    vault = LocalDataVault()
+    # Older anton installs don't have `read_record` — fall back to
+    # synthesizing a minimal record from `load()`. The renderer's
+    # modify form still works (heuristic fills in for the missing
+    # secure-keys list); only created_at / updated_at are missing.
+    if hasattr(vault, "read_record"):
+        record = vault.read_record(engine.strip(), name.strip())
+    else:
+        fields = vault.load(engine.strip(), name.strip())
+        record = (
+            None if fields is None
+            else {"engine": engine.strip(), "name": name.strip(), "fields": fields}
+        )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Datasource connection not found")
+    return _datasource_record_payload(record)
+
+
 @router.post("/datasources/validate")
 async def validate_datasource(req: DatasourceValidateRequest):
     credentials = req.credentials
@@ -383,7 +545,24 @@ async def validate_datasource(req: DatasourceValidateRequest):
 async def save_datasource(req: DatasourceSaveRequest):
     if not req.engine.strip():
         raise HTTPException(status_code=400, detail="Datasource engine is required")
-    credentials = _clean_credentials(req.credentials)
+    raw_credentials = _clean_credentials(req.credentials)
+
+    # Modify-flow merge: resolve any `ANTON_VAULT_KEEP` sentinels in
+    # the incoming credentials against the existing vault record, and
+    # compute the secure-key set to persist. Pure no-op for create
+    # paths — there's no prior record so no sentinels survive, and
+    # the secure-key set is computed from spec + heuristic alone.
+    engine_def_pre, _, _, spec_fields_pre, _ = _validate_datasource_payload(
+        req.engine, raw_credentials, req.authMethod
+    )
+    candidate_name = req.name.strip()
+    credentials, merged_secure_keys = _resolve_modify_merge(
+        engine=req.engine.strip(),
+        name=candidate_name,
+        incoming=raw_credentials,
+        spec_fields=spec_fields_pre,
+    )
+
     engine_def, _, _, fields, missing = _validate_datasource_payload(req.engine, credentials, req.authMethod)
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
@@ -404,8 +583,35 @@ async def save_datasource(req: DatasourceSaveRequest):
 
     try:
         vault = LocalDataVault()
-        name = req.name.strip() or find_matching_connection(vault, engine_def, credentials) or uuid.uuid4().hex[:8]
-        slug = save_connection(vault, engine_def, name, credentials)
+        name = candidate_name or find_matching_connection(vault, engine_def, credentials) or uuid.uuid4().hex[:8]
+        # If find_matching_connection picked a different name than the
+        # one we merged against, the sentinel resolution we did above
+        # used the wrong prior record. Re-resolve against the picked
+        # name so secrets actually carry through. Cheap and rare.
+        if name != candidate_name:
+            credentials, merged_secure_keys = _resolve_modify_merge(
+                engine=engine_def.engine,
+                name=name,
+                incoming=raw_credentials,
+                spec_fields=spec_fields_pre,
+            )
+        try:
+            slug = save_connection(
+                vault, engine_def, name, credentials,
+                secure_keys=merged_secure_keys,
+            )
+        except TypeError:
+            # Older anton.utils.datasources.save_connection signature
+            # has no `secure_keys` kwarg. Save still lands; the
+            # secure-key set just isn't persisted on the record. The
+            # next read falls back to the heuristic, which is good
+            # enough until the user reinstalls anton.
+            logger.warning(
+                "anton-core save_connection has no `secure_keys` kwarg — "
+                "persisting without it. Reinstall anton to enable "
+                "secure-key tracking."
+            )
+            slug = save_connection(vault, engine_def, name, credentials)
     except Exception as exc:
         logger.exception("Datasource save failed")
         raise HTTPException(status_code=500, detail="Could not save datasource") from exc

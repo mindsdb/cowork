@@ -21,10 +21,11 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
-import { getForm as getDataVaultForm, subscribe as subscribeDataVaultForm } from '../components/datavault/formStore';
+import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact } from '../api';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
+import { host } from '../../platform/host';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -151,58 +152,148 @@ function MessageActions({ getText, onDelete }) {
 // logo + label and a "Fill out the form on the side panel →" prompt.
 // Hovering it highlights the form panel on the right rail so the
 // affordance is obvious.
-function ConnectIntroBubble({ title, connector, onHoverChange }) {
+//
+// In modify mode, the bubble grows two affordances inline next to
+// the card: a borderless "← Cancel" and a danger-tinted
+// "Disconnect". Both stay in the chat row so the user can bail or
+// destroy without scrolling around to find a menu.
+function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, onCancel, onDisconnect, onClickCard }) {
   const [hover, setHover] = useState(false);
   const iconName = connector?.logo || 'database';
   const Icon = (Ico[iconName] || Ico.database);
+  const clickable = typeof onClickCard === 'function';
   // No "Anton" eyebrow on this bubble — the follow-up assistant
   // turn that always renders right after it carries its own,
   // and two headers stacked back-to-back read as a stutter. The
   // card itself is visually distinct enough to stand on its own.
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 4 }}>
-      <div
-        onMouseEnter={() => { setHover(true); onHoverChange?.(true); }}
-        onMouseLeave={() => { setHover(false); onHoverChange?.(false); }}
-        style={{
-          alignSelf: 'flex-start',
-          display: 'inline-flex', alignItems: 'center', gap: 12,
-          padding: '12px 14px',
-          background: hover
-            ? 'color-mix(in srgb, var(--accent) 10%, var(--surface))'
-            : 'var(--surface)',
-          border: `1px solid ${hover ? 'var(--accent)' : T.line}`,
-          borderRadius: 12,
-          maxWidth: '78%',
-          cursor: 'default',
-          transition: 'border-color 140ms ease, background 140ms ease, box-shadow 140ms ease',
-          boxShadow: hover
-            ? `0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent)`
-            : 'none',
-        }}
-      >
-        <span style={{
-          display: 'inline-grid', placeItems: 'center',
-          width: 36, height: 36, borderRadius: 8,
-          background: 'var(--surface-2)',
-          color: connector?.logo_color || 'var(--ink-3)',
-          flexShrink: 0,
-        }}>
-          {Icon(20)}
-        </span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div
+          role={clickable ? 'button' : undefined}
+          tabIndex={clickable ? 0 : undefined}
+          onClick={clickable ? onClickCard : undefined}
+          onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClickCard(); } } : undefined}
+          onMouseEnter={() => { setHover(true); onHoverChange?.(true); }}
+          onMouseLeave={() => { setHover(false); onHoverChange?.(false); }}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 12,
+            padding: '12px 14px',
+            background: hover
+              ? 'color-mix(in srgb, var(--accent) 10%, var(--surface))'
+              : 'var(--surface)',
+            border: `1px solid ${hover ? 'var(--accent)' : T.line}`,
+            borderRadius: 12,
+            maxWidth: '78%',
+            cursor: clickable ? 'pointer' : 'default',
+            transition: 'border-color 140ms ease, background 140ms ease, box-shadow 140ms ease',
+            boxShadow: hover
+              ? `0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent)`
+              : 'none',
+            outline: 'none',
+          }}
+        >
           <span style={{
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-            color: T.ink, letterSpacing: '-0.005em',
-          }}>{title}</span>
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3,
+            display: 'inline-grid', placeItems: 'center',
+            width: 36, height: 36, borderRadius: 8,
+            background: 'var(--surface-2)',
+            color: connector?.logo_color || 'var(--ink-3)',
+            flexShrink: 0,
           }}>
-            Fill out the form on the side panel <span aria-hidden style={{ color: 'var(--accent)' }}>→</span>
+            {Icon(20)}
           </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <span style={{
+              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+              color: T.ink, letterSpacing: '-0.005em',
+            }}>{title}</span>
+            <span style={{
+              fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3,
+            }}>
+              {clickable
+                ? <>Click to re-open the form <span aria-hidden style={{ color: 'var(--accent)' }}>→</span></>
+                : <>Fill out the form on the side panel <span aria-hidden style={{ color: 'var(--accent)' }}>→</span></>}
+            </span>
+          </div>
         </div>
+        {modify && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {onCancel && (
+              <ConnectIntroPillButton
+                kind="ghost"
+                onClick={onCancel}
+                // Inline left-arrow glyph — Icons.jsx doesn't ship a
+                // chevronLeft yet, and the `←` matches the "Back to
+                // options" treatment used elsewhere in the codebase.
+                renderIcon={() => (
+                  <span aria-hidden style={{ fontSize: 14, lineHeight: 1, display: 'inline-block', marginTop: -1 }}>←</span>
+                )}
+                label="Cancel"
+              />
+            )}
+            {onDisconnect && (
+              <ConnectIntroPillButton
+                kind="danger"
+                onClick={onDisconnect}
+                renderIcon={(s) => Ico.trash(s)}
+                label="Disconnect"
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+// Pill-shaped action button used next to the connect-intro card in
+// modify mode. Two visual variants:
+//   • "ghost"  — borderless, ink color, hover lifts background
+//                 (used for Cancel — the safe, reversible action)
+//   • "danger" — red border + tint, hover ramps the fill
+//                 (used for Disconnect — destructive, asks confirm)
+// Icon + label sit inline with a 6px gap; whole button is a single
+// rounded shape so the row reads as a clean affordance group next
+// to the connector card.
+function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
+  const [hover, setHover] = useState(false);
+  const isDanger = kind === 'danger';
+  const baseColor = isDanger ? 'var(--danger)' : 'var(--ink-3)';
+  const hoverColor = isDanger ? 'var(--danger)' : 'var(--ink)';
+  const baseBg = isDanger
+    ? 'color-mix(in srgb, var(--danger) 8%, transparent)'
+    : 'transparent';
+  const hoverBg = isDanger
+    ? 'color-mix(in srgb, var(--danger) 14%, transparent)'
+    : 'var(--surface-2)';
+  const baseBorder = isDanger
+    ? '1px solid color-mix(in srgb, var(--danger) 30%, transparent)'
+    : '1px solid transparent';
+  const hoverBorder = isDanger
+    ? '1px solid color-mix(in srgb, var(--danger) 45%, transparent)'
+    : '1px solid var(--line)';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '6px 12px', borderRadius: 999,
+        background: hover ? hoverBg : baseBg,
+        border: hover ? hoverBorder : baseBorder,
+        color: hover ? hoverColor : baseColor,
+        fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+        cursor: 'pointer',
+        transition: 'background 140ms ease, border-color 140ms ease, color 140ms ease',
+      }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+        {typeof renderIcon === 'function' ? renderIcon(13) : null}
+      </span>
+      {label}
+    </button>
   );
 }
 
@@ -392,9 +483,7 @@ function ArtifactCard({ artifact, onOpen }) {
   const displayPath = artifact.displayPath || path;
   const disabledReason = artifact.actionDisabledReason || '';
   const canAct = !!path && !disabledReason;
-  const platform = (() => {
-    try { return window.antontron?.getPlatform?.() || ''; } catch { return ''; }
-  })();
+  const platform = host.getPlatform();
   const revealLabel = platform === 'darwin' ? 'Show in Finder' : 'Show in folder';
 
   const showStatus = (kind, text) => {
@@ -418,7 +507,7 @@ function ArtifactCard({ artifact, onOpen }) {
       return;
     }
     try {
-      const result = await window.antontron?.openPath?.(path);
+      const result = await host.openPath(path);
       if (result && result.ok === false) throw new Error(result.reason || 'Could not open artifact.');
       showStatus('ok', 'Opened.');
     }
@@ -435,14 +524,12 @@ function ArtifactCard({ artifact, onOpen }) {
     }
     let bridgeError = null;
     try {
-      if (typeof window.antontron?.showItemInFolder === 'function') {
-        const result = await window.antontron.showItemInFolder(path);
-        if (result?.ok) {
-          showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
-          return;
-        }
-        bridgeError = result?.reason || 'Could not show artifact.';
+      const result = await host.showItemInFolder(path);
+      if (result?.ok) {
+        showStatus('ok', platform === 'darwin' ? 'Shown in Finder.' : 'Shown in folder.');
+        return;
       }
+      bridgeError = result?.reason || 'Could not show artifact.';
     } catch (e) {
       bridgeError = e;
     }
@@ -471,11 +558,29 @@ function ArtifactCard({ artifact, onOpen }) {
         {artifact.icon === 'doc' ? Ico.doc(26) : Ico.sparkle(26)}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-          letterSpacing: '0.01em',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{artifact.title}</span>
+        {/* Title doubles as the primary "open preview" affordance —
+            clicking it routes through the same handler the Open
+            button uses. Hover gets an accent + underline so the
+            interaction reads at a glance. Disabled when there's no
+            path to open. */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); if (canAct) handleOpen(); }}
+          disabled={!canAct}
+          title={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
+          style={{
+            all: 'unset',
+            cursor: canAct ? 'pointer' : 'not-allowed',
+            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
+            letterSpacing: '0.01em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            display: 'block', minWidth: 0,
+            transition: 'color 120ms ease',
+            opacity: canAct ? 1 : 0.7,
+          }}
+          onMouseOver={(e) => { if (canAct) { e.currentTarget.style.color = T.accent; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '3px'; } }}
+          onMouseOut={(e) => { e.currentTarget.style.color = T.ink; e.currentTarget.style.textDecoration = 'none'; }}
+        >{artifact.title}</button>
         <span style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3 }}>
           {artifact.kind || 'live artifact'}
         </span>
@@ -504,12 +609,16 @@ function ArtifactCard({ artifact, onOpen }) {
             {status.text}
           </span>
         )}
-        <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
-          {revealLabel}
-        </SmallBtn>
-        <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? `Open ${path}` : disabledReason || 'No file path'}>
-          Open
-        </SmallBtn>
+        {!host.isWeb && (
+          <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
+            {revealLabel}
+          </SmallBtn>
+        )}
+        {(!host.isWeb || isHtml) && (
+          <SmallBtn primary disabled={!canAct} onClick={handleOpen} title={canAct ? `Open ${path}` : disabledReason || 'No file path'}>
+            Open
+          </SmallBtn>
+        )}
       </div>
     </div>
   );
@@ -628,6 +737,8 @@ export default function ChatView({
   onDeleteTurn,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
+  onCancelModify,
+  onDisconnectModify,
   onMoveTaskToProject,
   onOpenProject,
   onOpenProjectsList,
@@ -714,6 +825,49 @@ export default function ChatView({
     }
     return [];
   })();
+
+  // Per-message stable key for prefixing step ids in the scratchpad
+  // pool. Each message generates step ids that start over at "step-1"
+  // for that message — so two messages can share an id like "step-1".
+  // Without prefixing, the pooled list passed to ScratchpadModal has
+  // duplicate keys (React warning + occasional render glitch) AND the
+  // focus-step lookup `steps.find(s => s.id === focusStepId)` returns
+  // the FIRST match, which can be the wrong message's step. Prefixing
+  // makes the pool unique and keeps focus correlation tight.
+  const messageKey = (m, i) =>
+    `m:${m?.id || `idx-${i}`}`;
+  const streamingKey = streamingMsg
+    ? `streaming:${streamingMsg.id || 'live'}`
+    : null;
+  const prefixId = (msgKey, stepId) => `${msgKey}::${stepId}`;
+  const railMsgKey = (() => {
+    if (streamingMsg && streamingMsg.steps?.length) return streamingKey;
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      const m = visibleMessages[i];
+      if (m.role === 'assistant' && m.steps?.length) return messageKey(m, i);
+    }
+    return null;
+  })();
+  // Build the unified scratchpad pool with prefixed ids. The modal
+  // groups by `_scratchpadTabId` so each tab still only contains its
+  // own cells; this prefix is purely for global-uniqueness of step
+  // ids across the conversation's pooled history.
+  const scratchpadStepsPool = useMemo(() => {
+    const out = [];
+    visibleMessages.forEach((m, i) => {
+      const msgKey = messageKey(m, i);
+      (m.steps || []).forEach((s) => {
+        out.push({ ...s, id: prefixId(msgKey, s.id) });
+      });
+    });
+    if (streamingMsg && streamingKey) {
+      (streamingMsg.steps || []).forEach((s) => {
+        out.push({ ...s, id: prefixId(streamingKey, s.id) });
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleMessages, streamingMsg]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -828,33 +982,59 @@ export default function ChatView({
           minWidth: 0, overflow: 'hidden',
           transition: 'padding 240ms cubic-bezier(0.32, 0.72, 0, 1)',
         }}>
-          {/* Left side: [Project] › [Task]. The project crumb is a
-              clickable button that returns home with that project
-              pre-selected (the equivalent of "new task in this project"). */}
+          {/* Left side: [Project] › [Task] for chat tasks, or
+              [Apps] › [Task] for connect-data flows (Connect Gmail,
+              Modify gmail-prod, …). The connect-data flow is
+              detectable from the synthetic `connect_intro` message
+              that handleConnectorPicked / handleModifyConnection
+              inject as the first assistant message — that's stable
+              across the lifetime of the task whether or not the
+              form is currently mounted in the rail. */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
             minWidth: 0, flex: '1 1 0',
             overflow: 'hidden',
           }}>
-            {/* Projects › [project] › [task] — text-only crumb. The
-                separator is a typographic › (single right-pointing
-                angle quote) so we don't need any chevron SVGs. */}
-            <CrumbButton
-              label="Projects"
-              onClick={() => onOpenProjectsList?.()}
-              title="All projects"
-            />
-            {project?.name && (
-              <>
-                <CrumbSep />
-                <CrumbButton
-                  label={project.name}
-                  onClick={() => onOpenProject?.(project)}
-                  title={`Open project: ${project.name}`}
-                  maxWidth={200}
-                />
-              </>
-            )}
+            {(() => {
+              // The "Apps" crumb only makes sense while the form
+              // panel is on screen — the user is mid-flow connecting
+              // or modifying a connection. Once the panel is closed
+              // (X button or post-save), the chat is a normal chat
+              // pinned to a project, so the breadcrumb pivots to the
+              // standard `Projects > <project>` shape and the Apps
+              // context falls away.
+              const hasConnectIntro = Array.isArray(task?.messages)
+                && task.messages.some((m) => m && m._kind === 'connect_intro');
+              if (hasConnectIntro && formActive) {
+                return (
+                  <CrumbButton
+                    label="Apps"
+                    onClick={() => onNavigateToConnectors?.()}
+                    title="Connect Apps and Data"
+                  />
+                );
+              }
+              return (
+                <>
+                  <CrumbButton
+                    label="Projects"
+                    onClick={() => onOpenProjectsList?.()}
+                    title="All projects"
+                  />
+                  {project?.name && (
+                    <>
+                      <CrumbSep />
+                      <CrumbButton
+                        label={project.name}
+                        onClick={() => onOpenProject?.(project)}
+                        title={`Open project: ${project.name}`}
+                        maxWidth={200}
+                      />
+                    </>
+                  )}
+                </>
+              );
+            })()}
             <CrumbSep />
             <div
               onMouseEnter={() => setTitleHover(true)}
@@ -992,10 +1172,14 @@ export default function ChatView({
             generously (~180px) because the composer grows multi-line
             as the user types longer drafts, plus the attachments
             row adds height when files / connectors are attached —
-            tighter values clipped the last reply on long sessions. */}
-        <div ref={scrollRef} data-scroll="true" style={{
+            tighter values clipped the last reply on long sessions.
+            `marginBottom: 25` shortens the scroll container so the
+            chat surface ends with a calm gap above the window edge
+            instead of butting flush against it. */}
+        <div ref={scrollRef} data-scroll="true" className="scroll-clean" style={{
           minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
           padding: '32px 28px 180px',
+          marginBottom: 25,
           background: 'transparent',
           WebkitAppRegion: 'no-drag',
         }}>
@@ -1043,12 +1227,34 @@ export default function ChatView({
               }
               if (m.role === 'activity') return null; // surfaced in the rail's Progress
               if (m._kind === 'connect_intro') {
+                // The card is clickable: clicking it re-opens the
+                // form panel when it's been closed. We stash the
+                // original spec on the message at creation time
+                // (App.jsx) so re-publishing is a one-liner. If the
+                // form is currently active there's nothing to do —
+                // the panel is already on the right rail.
+                const cachedSpec = m._form_spec || null;
+                const reopenForm = (cachedSpec && !formActive)
+                  ? () => setDataVaultForm(task?.id, cachedSpec)
+                  : undefined;
                 return (
                   <ConnectIntroBubble
                     key={i}
                     title={m.content || 'Connect'}
                     connector={m.connector}
                     onHoverChange={setFormHighlight}
+                    onClickCard={reopenForm}
+                    // Modify-flow extras: when set, the bubble
+                    // renders Cancel + Disconnect buttons next to
+                    // the card. Plain connect intros (no `_modify`)
+                    // keep the original layout.
+                    modify={!!m._modify}
+                    onCancel={m._modify ? () => onCancelModify?.(task?.id) : undefined}
+                    onDisconnect={
+                      m._modify && m._engine && m._existing_name
+                        ? () => onDisconnectModify?.(task?.id, m._engine, m._existing_name)
+                        : undefined
+                    }
                   />
                 );
               }
@@ -1087,7 +1293,7 @@ export default function ChatView({
                       steps={m.steps}
                       startedAt={m.startedAt}
                       isActive={false}
-                      onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+                      onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     />
                   )}
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
@@ -1110,7 +1316,7 @@ export default function ChatView({
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
-                    onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+                    onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
                 {/* Bridge state: between the first stream event arriving
@@ -1244,7 +1450,9 @@ export default function ChatView({
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
           conversationId={task.id || ''}
-          onActivateStep={(step) => setOpenScratchpadStepId(step.id)}
+          onActivateStep={(step) => railMsgKey
+            ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
+            : null}
         />
         {!formActive && (
           <WorkingFolderBox
@@ -1252,7 +1460,13 @@ export default function ChatView({
             isStreaming={isStreaming}
           />
         )}
-        {!formActive && <ContextBox project={project} />}
+        {!formActive && (
+          <ContextBox
+            project={project}
+            conversationId={task?.id}
+            refreshKey={task?.messages?.length ?? 0}
+          />
+        )}
       </aside>
 
       {/* keyframes for the streaming cursor */}
@@ -1265,10 +1479,7 @@ export default function ChatView({
       <ScratchpadModal
         open={openScratchpadStepId != null}
         onClose={() => setOpenScratchpadStepId(null)}
-        steps={[
-          ...visibleMessages.flatMap((m) => m.steps || []),
-          ...(streamingMsg?.steps || []),
-        ]}
+        steps={scratchpadStepsPool}
         focusStepId={openScratchpadStepId}
       />
 

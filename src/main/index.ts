@@ -5,12 +5,13 @@ import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
-import { checkAntonInstalled, runInstaller } from './installer';
+import { checkAntonInstalled, checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics } from './server-process';
 import { oauthConnect } from './oauth-service';
 import { startAnton, writeToAnton, resizeAnton, killAnton, isAntonRunning } from './anton-process';
 import { sendEvent } from './analytics';
-import { getRendererPath, checkForUIUpdate, getCachedVersion } from './ui-updater';
+import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
+import type { UpdateCheckResult } from './ui-updater';
 
 function getAntonEnvPath(): string {
   return path.join(os.homedir(), '.anton', '.env');
@@ -30,6 +31,20 @@ function readEnvFile(): Record<string, string> {
     }
   }
   return vars;
+}
+
+/** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null. */
+function getDevMode(): string | null {
+  const vars = readEnvFile();
+  const val = (vars.DEV_MODE || '').trim().toLowerCase();
+  if (!val || val === 'false' || val === 'none') return null;
+  return val; // 'live' or 'full'
+}
+
+/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'manual'. */
+function getUpdateMode(): 'auto' | 'manual' {
+  const vars = readEnvFile();
+  return vars.UI_UPDATE_MODE === 'auto' ? 'auto' : 'manual';
 }
 
 function checkConfigured(): { configured: boolean; provider: string } {
@@ -401,7 +416,7 @@ let activeInstall: { cancelled: boolean } | null = null;
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
-  const shouldOpenDevTools = process.env.ANTON_OPEN_DEVTOOLS === '1';
+  const devMode = getDevMode();
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -431,11 +446,24 @@ function createWindow() {
     },
   });
 
-  // In dev with Vite running, load from dev server; otherwise load built/cached files
-  if (isDev) {
+  // Renderer loading priority:
+  // 1. DEV_MODE=live → Vite dev server (hot reload without full build)
+  // 2. Standard Vite dev (VITE_DEV=1) → dev server
+  // 3. DEV_MODE=full → always use bundled renderer, skip OTA cache
+  // 4. Production → OTA cached bundle or bundled fallback
+  if (devMode === 'live') {
+    const port = process.env.VITE_RENDERER_PORT || '5173';
+    console.log(`[main] DEV_MODE=live — loading from http://localhost:${port}`);
+    mainWindow.loadURL(`http://localhost:${port}`);
+  } else if (isDev) {
     mainWindow.loadURL(process.env.VITE_RENDERER_URL || 'http://localhost:5173');
+  } else if (devMode === 'full') {
+    console.log('[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
+    mainWindow.loadFile(getBundledPath());
   } else {
-    mainWindow.loadFile(getRendererPath());
+    const rendererPath = getRendererPath();
+    console.log(`[main] loading renderer from ${rendererPath}`);
+    mainWindow.loadFile(rendererPath);
   }
 
   // DevTools no longer auto-open on launch. Still reachable on demand
@@ -494,7 +522,11 @@ function createWindow() {
 // IPC handlers
 function setupIPC() {
   ipcMain.handle(IPC.INSTALL_CHECK, async () => {
-    return checkAntonInstalled();
+    // Return both the CLI presence AND the server-deps readiness so
+    // the renderer can route to setup when either is missing — covers
+    // the case where the user already has the anton CLI installed
+    // independently but doesn't have fastapi/uvicorn/etc. yet.
+    return checkInstallStatus();
   });
 
   ipcMain.handle(IPC.INSTALL_START, async () => {
@@ -526,7 +558,7 @@ function setupIPC() {
   // "Already starting" counts as up — stop it instead of double-spawning.
   ipcMain.handle('server:toggle', async () => {
     if (isServerRunning() || isServerStarting()) {
-      stopServer();
+      await stopServer();
       return { running: false, port: getServerPort() };
     }
     const result = await startServer();
@@ -539,7 +571,10 @@ function setupIPC() {
     return { running: !!result.ok, port: result.port ?? getServerPort(), error: result.reason };
   });
   ipcMain.handle('server:stop', async () => {
-    stopServer();
+    // Actually await the child's exit before resolving. The renderer
+    // typically follows this with a serverStart() — without the wait,
+    // the new python races the dying one for port 26866.
+    await stopServer();
     return { running: false, port: getServerPort() };
   });
   // Diagnostics — last start error + recent stdout/stderr tail. The
@@ -944,6 +979,27 @@ function setupIPC() {
       ui: uiVersion || 'bundled',
     };
   });
+
+  // UI Updates
+  ipcMain.handle(IPC.UI_UPDATE_CHECK, async () => {
+    return checkForUIUpdate();
+  });
+
+  ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
+    console.log('[ui-updater] apply requested via IPC');
+    try {
+      const applied = await applyUIUpdate();
+      console.log(`[ui-updater] apply result: ${applied}`);
+      if (applied && mainWindow) {
+        console.log('[ui-updater] reloading window with new bundle');
+        mainWindow.loadFile(getRendererPath());
+      }
+      return applied;
+    } catch (err) {
+      console.error('[ui-updater] apply failed:', err);
+      throw err;
+    }
+  });
 }
 
 // Watch ~/.anton/.env for external changes (e.g. /connect from CLI)
@@ -983,7 +1039,7 @@ function startEnvWatcher() {
 app.whenReady().then(() => {
   if (process.platform === 'darwin') {
     const dockIcon = nativeImage.createFromPath(getIconPath());
-    app.dock.setIcon(dockIcon);
+    app.dock?.setIcon(dockIcon);
 
     const template: Electron.MenuItemConstructorOptions[] = [
       {
@@ -991,7 +1047,6 @@ app.whenReady().then(() => {
         submenu: [
           {
             label: 'About Anton',
-            role: 'about',
             click: () => {
               const uiVersion = getCachedVersion();
               const versionStr = uiVersion
@@ -1039,11 +1094,21 @@ app.whenReady().then(() => {
   startEnvWatcher();
   createWindow();
 
-  // If anton is already installed (returning user), start the bundled
-  // python server in the background. Skips silently if anton isn't
-  // installed yet — the installer will start it after install completes.
-  checkAntonInstalled().then(async (installed) => {
-    if (!installed) return;
+  // If anton is already installed AND the server-runtime Python deps
+  // are importable, start the bundled python server in the
+  // background. Skips silently if either is missing — the renderer's
+  // boot flow will route to the setup screen, which handles installing
+  // (or re-installing with extras) and then starts the server itself.
+  // Without the deps check, a returning user with a stand-alone
+  // `anton` install would see the server fail to start with a Python
+  // ImportError they can't act on.
+  // Auto-update is now handled inside server/main.py via
+  // `_maybe_self_update_and_reexec` — same `anton.updater.check_and_update`
+  // the CLI uses. The python child execs itself in-place when a new
+  // release lands, transparent to Node. Boot path stays minimal:
+  // verify install state, then start the server.
+  checkInstallStatus().then(async ({ antonInstalled, serverDepsReady }) => {
+    if (!antonInstalled || !serverDepsReady) return;
     const result = await startServer();
     if (!result.ok) {
       console.error(`[server] start failed: ${result.reason}`);
@@ -1054,11 +1119,61 @@ app.whenReady().then(() => {
     console.error('[server] check-and-start failed:', err);
   });
 
-  // Check for UI updates in the background — only in packaged builds
-  if (app.isPackaged) {
-    checkForUIUpdate().then((updated) => {
-      if (updated) console.log('[main] UI update downloaded — will apply on next launch');
-    }).catch(() => {});
+  // OTA UI update check — only in packaged builds and not in DEV_MODE.
+  // Waits for the renderer to finish loading so the React app has time
+  // to mount and register its IPC listener before we push status.
+  const devMode = getDevMode();
+  if (app.isPackaged && !devMode) {
+    const runUpdateCheck = async () => {
+      try {
+        const updateMode = getUpdateMode();
+        console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
+        mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
+
+        const online = await hasInternet();
+        if (!online) {
+          console.log('[ui-updater] offline — skipping update check');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
+          return;
+        }
+
+        const result = await checkForUIUpdate();
+        if (!result.updateAvailable) {
+          console.log('[ui-updater] up to date');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
+          return;
+        }
+
+        console.log(`[ui-updater] new version available: ${result.newVersion}`);
+
+        if (updateMode === 'auto') {
+          console.log('[ui-updater] auto mode — downloading and applying...');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
+          const applied = await applyUIUpdate();
+          if (applied && mainWindow) {
+            console.log('[ui-updater] update applied — reloading window');
+            mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+            mainWindow.loadFile(getRendererPath());
+          }
+        } else {
+          console.log('[ui-updater] manual mode — notifying renderer');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
+            phase: 'available',
+            version: result.newVersion,
+          });
+        }
+      } catch (err) {
+        console.error('[ui-updater] startup check failed:', err);
+      }
+    };
+    // Delay until the renderer has loaded and React has mounted
+    mainWindow?.webContents.once('did-finish-load', () => {
+      setTimeout(runUpdateCheck, 1500);
+    });
+  } else if (!app.isPackaged) {
+    console.log('[ui-updater] skipped — not a packaged build');
+  } else if (devMode) {
+    console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
   }
 
   app.on('activate', () => {
@@ -1068,13 +1183,48 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
+// Tracks whether we've already drained the python child during this
+// quit. before-quit can fire multiple times (Cmd+Q, dock quit, force
+// quit menu) — we only want to block on the first occurrence.
+let _quitDrained = false;
+
+async function drainServerForQuit(): Promise<void> {
+  if (_quitDrained) return;
+  _quitDrained = true;
+  // Hard ceiling so a wedged python can't pin the quit indefinitely.
+  // stopServer's own SIGTERM(3s) + SIGKILL(1.5s) chain stays inside
+  // this window, but a misbehaving OS-level process delay could push
+  // past it; if so we'd rather quit and reparent the child to launchd
+  // than leave the user waiting on the dock icon.
+  await Promise.race([
+    stopServer(),
+    new Promise<void>((resolve) => setTimeout(resolve, 6_000)),
+  ]);
+}
+
+app.on('window-all-closed', async () => {
   fs.unwatchFile(getAntonEnvPath());
   killAnton();
-  stopServer();
+  await drainServerForQuit();
   app.quit();
 });
 
-app.on('before-quit', () => {
-  stopServer();
+// Block the quit until the python child has actually exited. Earlier
+// this was `void stopServer()` — fire-and-forget — which meant
+// Electron exited (often within milliseconds of SIGTERM) before the
+// python had time to respond. The child got reparented to launchd
+// (PPID=1) and kept running, holding port 26866. The next launch's
+// new python couldn't bind, fell back to talking to the orphan, and
+// since the orphan's cwd was inside a now-deleted bundle directory,
+// every chat completion crashed in `os.getcwd()` with [Errno 2].
+//
+// `event.preventDefault()` defers the quit; we re-call `app.quit()`
+// after the drain finishes. Guarded by `_quitDrained` so the second
+// invocation skips the deferral and the app exits cleanly.
+app.on('before-quit', (event) => {
+  if (_quitDrained) return;
+  event.preventDefault();
+  drainServerForQuit().finally(() => {
+    app.quit();
+  });
 });
