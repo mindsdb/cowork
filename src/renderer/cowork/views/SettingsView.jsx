@@ -23,7 +23,7 @@ function inferProviderPreset(s) {
   if (provider === 'anthropic') return 'anthropic';
   if (provider === 'openai') return 'openai';
   if (provider === 'openai-compatible') {
-    if (baseUrl.startsWith('https://generativelanguage.googleapis.com')) return 'gemini';
+    if (baseUrl.startsWith('https://generativelanguage.googleapis.com/')) return 'gemini';
     if (baseUrl.includes('mdb.ai') || baseUrl.endsWith(MINDS_API_PATH_SUFFIX) && (s.mindsApiKey || s.mindsUrl)) {
       return 'minds-cloud';
     }
@@ -47,7 +47,7 @@ function applyProviderPreset(preset, settings, setSetting) {
   } else if (preset === 'openai-compatible') {
     setSetting('planningProvider', 'openai-compatible');
     setSetting('codingProvider', 'openai-compatible');
-    if ((settings.openaiBaseUrl || '').startsWith('https://generativelanguage.googleapis.com')) {
+    if ((settings.openaiBaseUrl || '').startsWith('https://generativelanguage.googleapis.com/')) {
       setSetting('openaiBaseUrl', '');
     }
   } else if (preset === 'minds-cloud') {
@@ -383,6 +383,22 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     placeholder="postgres"
                   />
                 </div>
+              </Section>
+            </CollapsibleGroup>
+
+            <CollapsibleGroup title="Updates" defaultOpen={false}>
+              <Section
+                title="UI updates"
+                subtitle="How over-the-air UI updates are applied when a new version is published."
+              >
+                <Segmented
+                  value={settings.uiUpdateMode ?? 'manual'}
+                  onChange={(v) => setSetting('uiUpdateMode', v)}
+                  options={[
+                    { value: 'auto', label: 'Auto' },
+                    { value: 'manual', label: 'Manual' },
+                  ]}
+                />
               </Section>
             </CollapsibleGroup>
 

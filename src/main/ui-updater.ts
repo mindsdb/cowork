@@ -3,16 +3,20 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import * as zlib from 'zlib';
-import { pipeline } from 'stream/promises';
 
 // Where we read latest.json from — GitHub Pages, no API rate limits
 const MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
 
-interface UIManifest {
+export interface UIManifest {
   version: string;
   url: string;       // GitHub Release asset download URL
   sha256: string;
+}
+
+export interface UpdateCheckResult {
+  updateAvailable: boolean;
+  applied: boolean;
+  newVersion?: string;
 }
 
 function getCacheDir(): string {
@@ -41,12 +45,16 @@ function getBundledRendererPath(): string {
   return path.join(__dirname, '..', '..', 'renderer', 'index.html');
 }
 
-/** Returns the index.html path to load — bundled only.
- *  UI auto-updater is disabled while we iterate on the cowork-derived
- *  renderer; previously this returned a cached download from
- *  mindsdb.github.io which would mask local builds.
- */
+/** Returns the index.html path to load — cached OTA bundle if available,
+ *  otherwise the bundled renderer shipped with the app. */
 export function getRendererPath(): string {
+  const cached = path.join(getCurrentDir(), 'index.html');
+  if (fs.existsSync(cached)) return cached;
+  return getBundledRendererPath();
+}
+
+/** Always returns the app-bundled renderer, ignoring any OTA cache. */
+export function getBundledPath(): string {
   return getBundledRendererPath();
 }
 
@@ -60,11 +68,11 @@ export function getCachedVersion(): string | null {
   }
 }
 
-function httpsGet(url: string): Promise<{ statusCode: number; headers: Record<string, any>; body: Buffer }> {
+function httpsGet(url: string, timeoutMs = 10000): Promise<{ statusCode: number; headers: Record<string, any>; body: Buffer }> {
   return new Promise((resolve, reject) => {
     const doGet = (reqUrl: string, redirects: number) => {
       if (redirects > 5) { reject(new Error('Too many redirects')); return; }
-      https.get(reqUrl, { headers: { 'User-Agent': 'antontron-updater' } }, (res) => {
+      const req = https.get(reqUrl, { headers: { 'User-Agent': 'antontron-updater' } }, (res) => {
         // Follow redirects (GitHub releases use 302)
         if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
           doGet(res.headers.location, redirects + 1);
@@ -79,13 +87,25 @@ function httpsGet(url: string): Promise<{ statusCode: number; headers: Record<st
             body: Buffer.concat(chunks),
           });
         });
-      }).on('error', reject);
+      });
+      req.on('error', reject);
+      req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Request timed out')); });
     };
     doGet(url, 0);
   });
 }
 
-async function fetchManifest(): Promise<UIManifest | null> {
+/** Quick connectivity check — can we reach the manifest host? */
+export async function hasInternet(): Promise<boolean> {
+  try {
+    const res = await httpsGet(MANIFEST_URL, 5000);
+    return res.statusCode === 200;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchManifest(): Promise<UIManifest | null> {
   try {
     const res = await httpsGet(MANIFEST_URL);
     if (res.statusCode !== 200) return null;
@@ -109,8 +129,6 @@ function rmDir(dir: string) {
 
 /** Extracts a .tar.gz buffer into a target directory. */
 async function extractTarGz(buf: Buffer, targetDir: string): Promise<void> {
-  // Use tar from Node — we decompress with zlib, then parse the tar manually
-  // For simplicity and zero deps, shell out to tar
   fs.mkdirSync(targetDir, { recursive: true });
   const tmpFile = path.join(getCacheDir(), 'download.tar.gz');
   fs.writeFileSync(tmpFile, buf);
@@ -119,18 +137,83 @@ async function extractTarGz(buf: Buffer, targetDir: string): Promise<void> {
   fs.unlinkSync(tmpFile);
 }
 
+/** Download, verify, and stage a new UI bundle. Returns true on success. */
+async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
+  console.log(`[ui-updater] downloading UI ${manifest.version}...`);
+  const res = await httpsGet(manifest.url, 60000);
+  if (res.statusCode !== 200) {
+    console.error(`[ui-updater] download failed: HTTP ${res.statusCode}`);
+    return false;
+  }
+
+  const hash = sha256(res.body);
+  if (hash !== manifest.sha256) {
+    console.error(`[ui-updater] SHA-256 mismatch: expected ${manifest.sha256}, got ${hash}`);
+    return false;
+  }
+
+  const staging = getStagingDir();
+  rmDir(staging);
+  await extractTarGz(res.body, staging);
+
+  // Verify index.html exists in the extracted bundle
+  if (!fs.existsSync(path.join(staging, 'index.html'))) {
+    console.error('[ui-updater] extracted bundle missing index.html');
+    rmDir(staging);
+    return false;
+  }
+
+  return true;
+}
+
+/** Activate a staged bundle: current → previous, staging → current. */
+function activateStaged(version: string): void {
+  const current = getCurrentDir();
+  const previous = getPreviousDir();
+  const staging = getStagingDir();
+
+  rmDir(previous);
+  if (fs.existsSync(current)) {
+    fs.renameSync(current, previous);
+  }
+  fs.renameSync(staging, current);
+  fs.mkdirSync(getCacheDir(), { recursive: true });
+  fs.writeFileSync(getVersionFile(), JSON.stringify({ version }), 'utf-8');
+  console.log(`[ui-updater] activated UI ${version}`);
+}
+
 /**
- * Check for UI updates in the background. Downloads and stages the new UI
- * so it's ready on next launch. Returns true if a new version was downloaded.
+ * Check for UI updates. If a new version is available, downloads and
+ * stages it but does NOT activate (caller decides when to activate).
  */
-export async function checkForUIUpdate(): Promise<boolean> {
-  // UI auto-updater is disabled while we iterate on the cowork-derived
-  // renderer. Previously this fetched a manifest from
-  // https://mindsdb.github.io/antontron-releases/latest.json and downloaded
-  // a tarball that masked locally-bundled changes. Re-enable when the
-  // renderer ships and we want hot UI updates again. See getRendererPath()
-  // above — it now always returns the bundled UI.
-  return false;
+export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
+  const manifest = await fetchManifest();
+  if (!manifest) return { updateAvailable: false, applied: false };
+
+  const cached = getCachedVersion();
+  if (cached === manifest.version) {
+    return { updateAvailable: false, applied: false };
+  }
+
+  return { updateAvailable: true, applied: false, newVersion: manifest.version };
+}
+
+/**
+ * Download, verify, stage, and activate a UI update in one shot.
+ * Returns true if the update was applied successfully.
+ */
+export async function applyUIUpdate(): Promise<boolean> {
+  const manifest = await fetchManifest();
+  if (!manifest) return false;
+
+  const cached = getCachedVersion();
+  if (cached === manifest.version) return false;
+
+  const ok = await downloadAndStage(manifest);
+  if (!ok) return false;
+
+  activateStaged(manifest.version);
+  return true;
 }
 
 /** Roll back to previous cached version or bundled UI. */

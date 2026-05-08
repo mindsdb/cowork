@@ -10,7 +10,8 @@ import { startServer, stopServer, isServerRunning, isServerStarting, getServerPo
 import { oauthConnect } from './oauth-service';
 import { startAnton, writeToAnton, resizeAnton, killAnton, isAntonRunning } from './anton-process';
 import { sendEvent } from './analytics';
-import { getRendererPath, checkForUIUpdate, getCachedVersion } from './ui-updater';
+import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
+import type { UpdateCheckResult } from './ui-updater';
 
 function getAntonEnvPath(): string {
   return path.join(os.homedir(), '.anton', '.env');
@@ -30,6 +31,20 @@ function readEnvFile(): Record<string, string> {
     }
   }
   return vars;
+}
+
+/** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null. */
+function getDevMode(): string | null {
+  const vars = readEnvFile();
+  const val = (vars.DEV_MODE || '').trim().toLowerCase();
+  if (!val || val === 'false' || val === 'none') return null;
+  return val; // 'live' or 'full'
+}
+
+/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'manual'. */
+function getUpdateMode(): 'auto' | 'manual' {
+  const vars = readEnvFile();
+  return vars.UI_UPDATE_MODE === 'auto' ? 'auto' : 'manual';
 }
 
 function checkConfigured(): { configured: boolean; provider: string } {
@@ -401,7 +416,7 @@ let activeInstall: { cancelled: boolean } | null = null;
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
-  const shouldOpenDevTools = process.env.ANTON_OPEN_DEVTOOLS === '1';
+  const devMode = getDevMode();
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -431,11 +446,24 @@ function createWindow() {
     },
   });
 
-  // In dev with Vite running, load from dev server; otherwise load built/cached files
-  if (isDev) {
+  // Renderer loading priority:
+  // 1. DEV_MODE=live → Vite dev server (hot reload without full build)
+  // 2. Standard Vite dev (VITE_DEV=1) → dev server
+  // 3. DEV_MODE=full → always use bundled renderer, skip OTA cache
+  // 4. Production → OTA cached bundle or bundled fallback
+  if (devMode === 'live') {
+    const port = process.env.VITE_RENDERER_PORT || '5173';
+    console.log(`[main] DEV_MODE=live — loading from http://localhost:${port}`);
+    mainWindow.loadURL(`http://localhost:${port}`);
+  } else if (isDev) {
     mainWindow.loadURL(process.env.VITE_RENDERER_URL || 'http://localhost:5173');
+  } else if (devMode === 'full') {
+    console.log('[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
+    mainWindow.loadFile(getBundledPath());
   } else {
-    mainWindow.loadFile(getRendererPath());
+    const rendererPath = getRendererPath();
+    console.log(`[main] loading renderer from ${rendererPath}`);
+    mainWindow.loadFile(rendererPath);
   }
 
   // DevTools no longer auto-open on launch. Still reachable on demand
@@ -951,6 +979,27 @@ function setupIPC() {
       ui: uiVersion || 'bundled',
     };
   });
+
+  // UI Updates
+  ipcMain.handle(IPC.UI_UPDATE_CHECK, async () => {
+    return checkForUIUpdate();
+  });
+
+  ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
+    console.log('[ui-updater] apply requested via IPC');
+    try {
+      const applied = await applyUIUpdate();
+      console.log(`[ui-updater] apply result: ${applied}`);
+      if (applied && mainWindow) {
+        console.log('[ui-updater] reloading window with new bundle');
+        mainWindow.loadFile(getRendererPath());
+      }
+      return applied;
+    } catch (err) {
+      console.error('[ui-updater] apply failed:', err);
+      throw err;
+    }
+  });
 }
 
 // Watch ~/.anton/.env for external changes (e.g. /connect from CLI)
@@ -998,7 +1047,6 @@ app.whenReady().then(() => {
         submenu: [
           {
             label: 'About Anton',
-            role: 'about',
             click: () => {
               const uiVersion = getCachedVersion();
               const versionStr = uiVersion
@@ -1071,11 +1119,61 @@ app.whenReady().then(() => {
     console.error('[server] check-and-start failed:', err);
   });
 
-  // Check for UI updates in the background — only in packaged builds
-  if (app.isPackaged) {
-    checkForUIUpdate().then((updated) => {
-      if (updated) console.log('[main] UI update downloaded — will apply on next launch');
-    }).catch(() => {});
+  // OTA UI update check — only in packaged builds and not in DEV_MODE.
+  // Waits for the renderer to finish loading so the React app has time
+  // to mount and register its IPC listener before we push status.
+  const devMode = getDevMode();
+  if (app.isPackaged && !devMode) {
+    const runUpdateCheck = async () => {
+      try {
+        const updateMode = getUpdateMode();
+        console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
+        mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
+
+        const online = await hasInternet();
+        if (!online) {
+          console.log('[ui-updater] offline — skipping update check');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
+          return;
+        }
+
+        const result = await checkForUIUpdate();
+        if (!result.updateAvailable) {
+          console.log('[ui-updater] up to date');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
+          return;
+        }
+
+        console.log(`[ui-updater] new version available: ${result.newVersion}`);
+
+        if (updateMode === 'auto') {
+          console.log('[ui-updater] auto mode — downloading and applying...');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
+          const applied = await applyUIUpdate();
+          if (applied && mainWindow) {
+            console.log('[ui-updater] update applied — reloading window');
+            mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+            mainWindow.loadFile(getRendererPath());
+          }
+        } else {
+          console.log('[ui-updater] manual mode — notifying renderer');
+          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
+            phase: 'available',
+            version: result.newVersion,
+          });
+        }
+      } catch (err) {
+        console.error('[ui-updater] startup check failed:', err);
+      }
+    };
+    // Delay until the renderer has loaded and React has mounted
+    mainWindow?.webContents.once('did-finish-load', () => {
+      setTimeout(runUpdateCheck, 1500);
+    });
+  } else if (!app.isPackaged) {
+    console.log('[ui-updater] skipped — not a packaged build');
+  } else if (devMode) {
+    console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
   }
 
   app.on('activate', () => {

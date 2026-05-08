@@ -53,6 +53,11 @@ export const IPC = {
   // Clipboard
   CLIPBOARD_SAVE_IMAGE: 'clipboard:save-image',
 
+  // UI Updates
+  UI_UPDATE_CHECK: 'ui:update-check',
+  UI_UPDATE_APPLY: 'ui:update-apply',
+  UI_UPDATE_STATUS: 'ui:update-status',
+
   // App
   APP_READY: 'app:ready',
   APP_GET_PLATFORM: 'app:get-platform',

@@ -215,6 +215,7 @@ async def get_settings():
         "autoPin":       ui["autoPin"],
         "showDots":      ui["showDots"],
         "accentVariant": ui["accentVariant"],
+        "uiUpdateMode":  _get_env("UI_UPDATE_MODE", "manual"),
     }
 
 
@@ -243,6 +244,7 @@ class SettingsPatch(BaseModel):
     memoryMode:           Optional[str] = None
     episodicMemory:       Optional[bool] = None
     proactiveDashboards:  Optional[bool] = None
+    uiUpdateMode:         Optional[str] = None
 
 
 @router.put("")
@@ -285,6 +287,7 @@ async def update_settings(patch: SettingsPatch):
         writes["ANTON_PROACTIVE_DASHBOARDS"] = str(patch.proactiveDashboards).lower()
     if patch.mindsSslVerify is not None:
         writes["ANTON_MINDS_SSL_VERIFY"] = str(patch.mindsSslVerify).lower()
+    _stage_string_env(patch.uiUpdateMode, "UI_UPDATE_MODE", writes, delete_keys)
 
     # API keys — write if provided and not the masked sentinel
     if patch.anthropicApiKey is not None and patch.anthropicApiKey != "***":

@@ -164,6 +164,8 @@ export default function Sidebar({
   projects = [],
   onToggleServer,
   onShowServerHelp,
+  updateAvailable = null, // { version: string } or null
+  onApplyUpdate,
 }) {
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
@@ -416,6 +418,51 @@ export default function Sidebar({
             </button>
           )}
         </div>
+
+        {/* Update available banner */}
+        {updateAvailable && (
+          <button
+            type="button"
+            style={{
+              margin: '0 10px 6px',
+              padding: '8px 12px',
+              background: 'rgba(93,146,135,0.12)',
+              border: '1px solid rgba(93,146,135,0.30)',
+              borderRadius: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: 'pointer',
+              transition: 'background 120ms ease',
+              width: 'calc(100% - 20px)',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              WebkitAppRegion: 'no-drag',
+            }}
+            onClick={onApplyUpdate}
+            onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.22)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(93,146,135,0.12)'; }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--sage-500, #5D9287)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              flex: 1, fontSize: 11.5, color: 'var(--text-strong)',
+              fontFamily: 'var(--font-sans)',
+            }}>
+              Update available{updateAvailable.version ? ` (${updateAvailable.version})` : ''}
+            </span>
+            <span style={{
+              fontSize: 10, color: 'var(--sage-500, #5D9287)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.03em',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+            }}>
+              Install
+            </span>
+          </button>
+        )}
 
         {/* Footer status — Electron-only. In the hosted web shell the
             FastAPI process IS the host, so start/stop/diagnostics have
