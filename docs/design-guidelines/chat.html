@@ -73,6 +73,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     const manifest = JSON.parse(manifestEl.textContent);
+    // template is read from an embedded <script type="__bundler/template"> tag in this
+    // same static file — it is pre-bundled build output, not user-controlled input.
+    // The subsequent DOMParser.parseFromString call is intentional: this page IS the
+    // bundler runtime and its entire purpose is to swap in the bundled HTML. There is
+    // no XSS risk because the template source is the page itself, not any URL
+    // parameter, storage, or external fetch.
     let template = JSON.parse(templateEl.textContent);
 
     const uuids = Object.keys(manifest);
@@ -150,6 +156,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // DOMParser/replaceWith are inert per spec — re-create each with
     // createElement so they execute, awaiting onload for src scripts to
     // preserve ordering (React before ReactDOM before Babel before text/babel).
+    // codeql[js/xss-through-dom]
     const doc = new DOMParser().parseFromString(template, 'text/html');
     document.documentElement.replaceWith(doc.documentElement);
     const dead = Array.from(document.scripts);
