@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException
@@ -16,6 +17,7 @@ from anton_api.models import (
     ScratchpadStartRequest,
 )
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/scratchpad", tags=["scratchpad"])
 
@@ -73,8 +75,9 @@ async def scratchpad_execute_stream(req: ScratchpadExecRequest):
                     yield f"data: {json.dumps({'type': 'progress', 'message': item})}\n\n"
                 elif isinstance(item, Cell):
                     yield f"data: {json.dumps({'type': 'cell', 'cell': asdict(item)})}\n\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+        except Exception:
+            logger.exception("scratchpad execution failed")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Execution failed'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

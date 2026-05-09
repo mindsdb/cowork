@@ -8,9 +8,12 @@ browse/search tool surface that can be called from sessions.
 from __future__ import annotations
 
 import importlib
+import logging
 import pkgutil
 
 from fastapi import APIRouter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/browse", tags=["browse"])
 
@@ -19,10 +22,11 @@ def _detect_browse_capability() -> dict:
     try:
         import anton
     except Exception as exc:
+        logger.warning("Anton import failed: %s", exc)
         return {
             "supported": False,
             "mode": "url_context_only",
-            "reason": f"Anton is unavailable: {exc}",
+            "reason": "Anton is unavailable",
             "evidence": [],
         }
 

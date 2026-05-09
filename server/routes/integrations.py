@@ -6,6 +6,7 @@ import base64
 import hashlib
 import html as html_lib
 import json
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,8 @@ from fastapi.responses import HTMLResponse
 
 from .cowork_state import load_state, update_state
 from .settings import _get_env
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -1030,10 +1033,11 @@ async def google_calendar_oauth_callback(
             success=False,
         )
     except Exception as exc:
+        logger.exception("Google Calendar OAuth callback failed")
         _clear_google_calendar_oauth_pending(lastError=str(exc), lastErrorAt=_iso_now())
         return _callback_page(
             "Google Calendar connection failed",
-            str(exc),
+            "Anton CoWork could not finish the Google sign-in flow.",
             success=False,
         )
 

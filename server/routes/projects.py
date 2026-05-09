@@ -317,7 +317,8 @@ async def upload_project_files(
                 "size": len(data),
             })
         except Exception as exc:
-            results.append({"name": safe_name, "ok": False, "error": str(exc)})
+            logger.error("Failed to write file %s: %s", safe_name, exc)
+            results.append({"name": safe_name, "ok": False, "error": "File write failed"})
     return {"results": results}
 
 

@@ -77,12 +77,12 @@ async def submit_form(req: SubmitFormRequest):
                 conversation_id=req.conversation_id,
             ):
                 yield chunk
-        except Exception as exc:
+        except Exception:
             logger.exception("datavault stream failed")
             import json as _json
             yield (
                 "event: response.failed\n"
-                f"data: {_json.dumps({'type': 'response.failed', 'error': str(exc)})}\n\n"
+                f"data: {_json.dumps({'type': 'response.failed', 'error': 'Internal server error'})}\n\n"
             )
 
     return StreamingResponse(
