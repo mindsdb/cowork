@@ -25,6 +25,9 @@ on:
       GOOGLE_CLIENT_SECRET:
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest

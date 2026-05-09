@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build-macos:
     uses: ./.github/workflows/build-macos-pkg.yml

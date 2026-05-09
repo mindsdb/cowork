@@ -9,6 +9,9 @@ on:
       - labeled
       - unlabeled
 
+permissions:
+  contents: read
+
 jobs:
   build-macos:
     if: >-
