@@ -954,8 +954,8 @@ async def _build_chat_session(
 
     project_context = (
         f"You are operating in the project {project}."
-        f"You have access to all of the files in the project at {str(base)} except for the .anton/ and .context/ directories."
-        "They are off limits. Do not mention the .anton/ and .context/ directories in your responses."
+        f"You have access to all of the files in the project at {str(base)} except for the .anton/ directory."
+        "They are off limits. Do not mention the .anton/ directory in your responses."
         "You can perform operations on these files via the scratchpad."
         "You can freely read any of these project files."
         "If you need to perform any actions on these files, ask the user for permission first."
