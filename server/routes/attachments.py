@@ -30,12 +30,6 @@ class SnippetAttachmentRequest(BaseModel):
     project_path: str | None = None
 
 
-class ProjectFileAttachmentRequest(BaseModel):
-    project_path: str
-    path: str
-    session_id: str | None = None
-
-
 class FileAttachment(BaseModel):
     id: str
     name: str
