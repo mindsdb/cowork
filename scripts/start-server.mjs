@@ -22,6 +22,10 @@ const DEFAULT_PORT = 26866; // ANTON on T9 keypad
 const SERVER_HOST = '127.0.0.1';
 const REQUIRED_PROTOCOL_VERSION = 1;
 
+// Anton version constraints — mirrors server-deps.ts. Null = no constraint.
+const ANTON_MIN_VERSION = null;
+const ANTON_MAX_VERSION = null;
+
 let serverProcess = null;
 let serverStarted = false;
 
@@ -45,6 +49,30 @@ function getEnvPath() {
   const currentPath = process.env.PATH || '';
   const parts = [localBin, cargoBin, currentPath].filter(Boolean);
   return parts.join(path.delimiter);
+}
+
+function compareVersions(a, b) {
+  const pa = a.replace(/^v/, '').split('.').map(Number);
+  const pb = b.replace(/^v/, '').split('.').map(Number);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = pa[i] ?? 0;
+    const nb = pb[i] ?? 0;
+    if (na < nb) return -1;
+    if (na > nb) return 1;
+  }
+  return 0;
+}
+
+function checkAntonVersionCompat(antonVersion) {
+  if (!antonVersion || antonVersion === 'unknown') return null;
+  if (ANTON_MIN_VERSION && compareVersions(antonVersion, ANTON_MIN_VERSION) < 0) {
+    return `Anton ${antonVersion} is too old (requires >= ${ANTON_MIN_VERSION}). Run: uv tool install -e "../anton[cowork-server]" --force --reinstall`;
+  }
+  if (ANTON_MAX_VERSION && compareVersions(antonVersion, ANTON_MAX_VERSION) > 0) {
+    return `Anton ${antonVersion} is newer than tested (max ${ANTON_MAX_VERSION}). Update the Cowork app or set ANTON_MAX_VERSION=null.`;
+  }
+  return null;
 }
 
 async function probeHealth(port, timeoutMs) {
@@ -72,18 +100,19 @@ async function probeHealth(port, timeoutMs) {
       req.on('error', () => resolve(null));
       req.on('timeout', () => { req.destroy(); resolve(null); });
     });
-    if (
-      health?.status === 'ok' &&
-      typeof health.cowork_server_protocol_version === 'number' &&
-      health.cowork_server_protocol_version >= REQUIRED_PROTOCOL_VERSION
-    ) {
-      return true;
-    }
     if (health?.status === 'ok') {
-      throw new Error(
-        `Server protocol ${health.cowork_server_protocol_version ?? 'unknown'} is incompatible; ` +
-        `required >= ${REQUIRED_PROTOCOL_VERSION}.`,
-      );
+      if (typeof health.cowork_server_protocol_version !== 'number' ||
+          health.cowork_server_protocol_version < REQUIRED_PROTOCOL_VERSION) {
+        throw new Error(
+          `Server protocol ${health.cowork_server_protocol_version ?? 'unknown'} is incompatible; ` +
+          `required >= ${REQUIRED_PROTOCOL_VERSION}.`,
+        );
+      }
+      const versionErr = checkAntonVersionCompat(health.anton_version);
+      if (versionErr) {
+        throw new Error(versionErr);
+      }
+      return true;
     }
     await new Promise((r) => setTimeout(r, 250));
   }

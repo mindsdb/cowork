@@ -13,6 +13,8 @@ import * as path from 'path';
 import { app } from 'electron';
 import {
   ANTON_COWORK_SERVER_PROTOCOL_VERSION,
+  ANTON_MAX_VERSION,
+  checkAntonVersionCompat,
   checkPythonImports,
   getAntonToolPython,
   getPythonUtf8Env,
@@ -103,20 +105,26 @@ function getServerDir(): string {
 interface ServerHealth {
   status?: string;
   cowork_server_protocol_version?: number;
+  anton_version?: string;
 }
 
 function isCompatibleHealth(health: ServerHealth | null): boolean {
-  return Boolean(
-    health &&
-    health.status === 'ok' &&
-    typeof health.cowork_server_protocol_version === 'number' &&
-    health.cowork_server_protocol_version >= ANTON_COWORK_SERVER_PROTOCOL_VERSION,
-  );
+  if (!health || health.status !== 'ok') return false;
+  if (typeof health.cowork_server_protocol_version !== 'number') return false;
+  if (health.cowork_server_protocol_version < ANTON_COWORK_SERVER_PROTOCOL_VERSION) return false;
+  if (checkAntonVersionCompat(health.anton_version) !== null) return false;
+  return true;
 }
 
-function protocolError(health: ServerHealth | null): string {
-  const actual = health?.cowork_server_protocol_version;
-  return `Anton Cowork server protocol ${actual ?? 'unknown'} is incompatible; required >= ${ANTON_COWORK_SERVER_PROTOCOL_VERSION}.`;
+function compatError(health: ServerHealth | null): string {
+  if (!health || health.status !== 'ok') return 'Server /health did not return status ok.';
+  const proto = health.cowork_server_protocol_version;
+  if (typeof proto !== 'number' || proto < ANTON_COWORK_SERVER_PROTOCOL_VERSION) {
+    return `Anton Cowork server protocol ${proto ?? 'unknown'} is incompatible; required >= ${ANTON_COWORK_SERVER_PROTOCOL_VERSION}.`;
+  }
+  const versionErr = checkAntonVersionCompat(health.anton_version);
+  if (versionErr) return versionErr;
+  return 'Unknown compatibility error.';
 }
 
 async function readHealthOnce(timeoutMs: number = 1000): Promise<ServerHealth | null> {
@@ -152,7 +160,7 @@ async function waitForCompatibleHealth(timeoutMs: number, shouldAbort?: () => bo
     }
     const health = await readHealthOnce();
     if (isCompatibleHealth(health)) return { ok: true, health };
-    if (health?.status === 'ok') return { ok: false, health, reason: protocolError(health) };
+    if (health?.status === 'ok') return { ok: false, health, reason: compatError(health) };
     await new Promise((r) => setTimeout(r, 250));
   }
   return { ok: false, health: null, reason: `Server did not respond on /health within ${timeoutMs}ms.` };
@@ -187,7 +195,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
     return { ok: true, port: serverPort };
   }
   if (alreadyHealthy.health?.status === 'ok') {
-    lastStartError = alreadyHealthy.reason || protocolError(alreadyHealthy.health);
+    lastStartError = alreadyHealthy.reason || compatError(alreadyHealthy.health);
     return { ok: false, reason: lastStartError, port: serverPort };
   }
 
@@ -238,6 +246,10 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       PYTHONUNBUFFERED: '1',
       ANTON_SERVER_PORT: String(serverPort),
       ANTON_SERVER_HOST: SERVER_HOST,
+      // Tell the server's self-updater the maximum Anton version this
+      // Cowork app has been tested with. The updater skips releases
+      // beyond this so a new Anton release can't break an older Cowork.
+      ...(ANTON_MAX_VERSION ? { ANTON_COWORK_MAX_VERSION: ANTON_MAX_VERSION } : {}),
       ANTON_PROJECTS_DIR: path.join(app.getPath('userData'), 'projects'),
     };
 
