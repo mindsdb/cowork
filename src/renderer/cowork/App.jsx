@@ -910,6 +910,12 @@ function AppCore() {
         if (starting) {
           setServerBusyKind('starting');
           setServerBusy(true);
+          timer = setTimeout(tick, 600);
+        } else if (!info.running) {
+          // Server isn't starting yet (e.g. checkInstallStatus still
+          // resolving) — keep polling so we catch it when it comes up.
+          setServerBusy(false);
+          timer = setTimeout(tick, 1000);
         } else {
           setServerBusy(false);
         }
