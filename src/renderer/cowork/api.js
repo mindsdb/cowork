@@ -465,6 +465,21 @@ export function isUnderAntonDir(relPath) {
   return r === '.anton' || r.startsWith('.anton/');
 }
 
+/**
+ * Stat just `.anton/anton.md` for the project — far cheaper than
+ * `listProjectFiles` when the only thing the caller needs is the
+ * canonical instructions row. Returns `{ file: { path, name, size,
+ * modified, is_dir, synthetic? } }`. `synthetic: true` means the
+ * file doesn't exist on disk yet (renderer should show the "empty,
+ * click to author" affordance). Coalesced like `listProjectFiles`.
+ */
+export async function fetchProjectInstructions(projectName) {
+  if (!projectName) return { file: null };
+  return dedupe(`projects/${projectName}/instructions`, () =>
+    req(`/projects/${enc(projectName)}/instructions`),
+  );
+}
+
 export async function listProjectFiles(projectName) {
   if (!projectName) return { files: [] };
   // Coalesced — see `dedupe` notes above. WorkingFolderLive +
@@ -553,10 +568,20 @@ export async function setActiveProject(name) {
 // the `dedupe` wrapper that meant N copies of the same request on
 // every list render. With coalescing, one network request fans out
 // to all subscribers and the cache entry releases on settle.
-export async function fetchArtifacts() {
-  return dedupe('artifacts', async () => {
+export async function fetchArtifacts({ projectPath } = {}) {
+  // `projectPath` scopes the response to one project's
+  // `<base>/artifacts/` tree. Used by the project-detail rail card
+  // so the response is small and the server skips reading every
+  // other project's metadata.json. Omit it (or pass undefined) for
+  // the system-wide list the global Live Artifacts page wants.
+  const suffix = projectPath
+    ? `?project_path=${encodeURIComponent(projectPath)}`
+    : '';
+  // Dedupe key includes the path so a global fetch and a scoped
+  // fetch don't share an in-flight promise.
+  return dedupe(`artifacts${suffix}`, async () => {
     try {
-      return await req('/artifacts');
+      return await req(`/artifacts${suffix}`);
     } catch {
       return [];
     }

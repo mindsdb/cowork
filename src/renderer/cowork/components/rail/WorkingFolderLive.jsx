@@ -56,12 +56,6 @@ function iconForRow(row) {
   return EXT_ICON[ext] || 'doc';
 }
 
-/** True iff the artifact's path falls under the given project root. */
-function artifactBelongsToProject(artifact, projectPath) {
-  if (!artifact?.path || !projectPath) return false;
-  const prefix = String(projectPath).replace(/\/+$/, '') + '/';
-  return String(artifact.path).startsWith(prefix);
-}
 
 export function WorkingFolderLive({ project, isStreaming }) {
   const [resolvedProject, setResolvedProject] = useState(null);
@@ -96,18 +90,14 @@ export function WorkingFolderLive({ project, isStreaming }) {
   // and let the prior project's response paint into the wrong view.)
   const loadVersion = useRef(0);
 
-  // Apply a fetched artifacts list, scoped to the project we're
-  // viewing. Server returns artifacts mtime-desc across all
-  // projects; filter, slice, set. The ticket check is the same
-  // guard against late-landing requests for a project the user has
-  // since switched away from.
+  // Apply a fetched artifacts list. We now scope the request
+  // server-side via `?project_path=...`, so the response is already
+  // narrowed to this project — no client-side prefix filter needed.
+  // Still slice to the top 12 newest for the rail.
   const applyArtifacts = (proj, list, ticket) => {
     if (ticket !== loadVersion.current) return;
     const all = Array.isArray(list) ? list : [];
-    const next = all
-      .filter((a) => artifactBelongsToProject(a, proj.path))
-      .slice(0, 12);
-    setRows(next);
+    setRows(all.slice(0, 12));
   };
 
   // Project switch — clear immediately, then load. The clear is
@@ -122,7 +112,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       return;
     }
     setRows([]);
-    fetchArtifacts()
+    fetchArtifacts({ projectPath: proj.path })
       .then((list) => applyArtifacts(proj, list, ticket))
       .catch(() => { if (ticket === loadVersion.current) setRows([]); });
   }, [effectiveProject?.name, effectiveProject?.path]);
@@ -138,7 +128,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       const proj = effectiveProject;
       if (!proj?.name || !proj?.path) return;
       const ticket = ++loadVersion.current;
-      fetchArtifacts()
+      fetchArtifacts({ projectPath: proj.path })
         .then((list) => applyArtifacts(proj, list, ticket))
         .catch(() => { /* swallow — keep current rows */ });
     };

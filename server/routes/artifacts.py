@@ -134,14 +134,30 @@ def _scan_artifact_dirs() -> list[Path]:
     return list(dirs.values())
 
 
-def _iter_artifact_folders() -> Iterator[Path]:
+def _iter_artifact_folders(project_path: str | None = None) -> Iterator[Path]:
     """Yield every direct subfolder of every project's artifacts dir.
 
     Only folders containing a readable `metadata.json` are passed
     through to callers; bare folders are skipped (incomplete writes,
     or user-stashed dirs the agent hasn't claimed).
+
+    When `project_path` is provided, restrict the walk to that single
+    project's `<base>/artifacts/`. Avoids reading every other
+    project's metadata.json on requests that only care about one
+    project (e.g. the project-detail rail card).
     """
-    for root in _scan_artifact_dirs():
+    roots: list[Path]
+    if project_path:
+        try:
+            candidate = Path(project_path).expanduser() / "artifacts"
+        except Exception:
+            return
+        if not candidate.is_dir():
+            return
+        roots = [candidate]
+    else:
+        roots = _scan_artifact_dirs()
+    for root in roots:
         try:
             for child in sorted(root.iterdir()):
                 if not child.is_dir():
@@ -251,16 +267,21 @@ def _published_url_for(folder: Path, primary: Path | None) -> str:
 
 
 @router.get("")
-async def list_artifacts():
+async def list_artifacts(project_path: str | None = Query(default=None)):
     """Every artifact across all projects, newest first.
 
     Card payload mirrors the shape the legacy listing returned, plus
     a few new fields the renderer can consume (slug, type,
     description, fileCount, folder). Older renderers that only know
     about `path` / `kind` / `updated` keep working.
+
+    `project_path` scopes the response to one project's
+    `<base>/artifacts/` tree. The rail card uses this so each
+    project-detail mount doesn't pay for reading every other
+    project's metadata.json.
     """
     cards: list[dict] = []
-    for folder in _iter_artifact_folders():
+    for folder in _iter_artifact_folders(project_path):
         meta = _load_metadata(folder)
         if meta is None:
             continue

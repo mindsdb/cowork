@@ -11,8 +11,7 @@ import {
   deleteMemory,
   fetchAttachments,
   fetchMemory,
-  isProjectInstructionsPath,
-  listProjectFiles,
+  fetchProjectInstructions,
   saveMemory,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
@@ -155,7 +154,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     return () => { cancelled = true; };
   }, [project?.path]);
 
-  // Ticket pattern: every listProjectFiles call (mount + reload-on-
+  // Ticket pattern: every instructions fetch (mount + reload-on-
   // edit) bumps `loadVersion`. The async response only applies its
   // result if its ticket is still the latest. Without this, saving a
   // context edit and immediately switching projects could let the
@@ -163,21 +162,18 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   // bug WorkingFolderLive had.
   const loadVersion = useRef(0);
 
+  // Stat just `.anton/anton.md` instead of walking the whole project
+  // tree. The rail only needs the one row; the old recursive listing
+  // was the dominant cost when projects had large directories
+  // (node_modules, .venv, …) anywhere under the root.
   const reloadFiles = useCallback(() => {
     if (!project?.name) { setProjectFiles([]); return; }
     const ticket = ++loadVersion.current;
-    listProjectFiles(project.name)
+    fetchProjectInstructions(project.name)
       .then((data) => {
         if (ticket !== loadVersion.current) return;
-        const raw = Array.isArray(data?.files) ? data.files : [];
-        // Show only the canonical project-instructions file
-        // (`.anton/anton.md`). The legacy `.context/` tree (everything
-        // matched by the old `isUnderContextDir` clause) is dead
-        // weight — no part of the running server or anton-core reads
-        // from it, and surfacing duplicate `anton.md` rows from there
-        // was misleading users into editing the wrong file. Files
-        // stay on disk; we just stop offering them through the rail.
-        setProjectFiles(raw.filter((f) => isProjectInstructionsPath(f.path)));
+        const file = data?.file;
+        setProjectFiles(file ? [file] : []);
       })
       .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
   }, [project?.name]);

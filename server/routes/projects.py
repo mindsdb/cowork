@@ -186,6 +186,51 @@ def _file_meta(p: Path, base: Path) -> dict[str, Any] | None:
     }
 
 
+@router.get("/{name}/instructions")
+async def get_project_instructions_meta(name: str):
+    """Just the canonical `anton.md` row, synthesising an empty
+    placeholder when the file doesn't exist yet.
+
+    The rail's Context card used to call `list_project_files` (a full
+    recursive walk of the project tree) just to discover whether
+    `.anton/anton.md` was on disk and how big it was. That paid the
+    rglob cost on every project switch even though we only wanted
+    one row. This endpoint short-circuits the walk by stat-ing the
+    one file directly. Renderer payload mirrors a single entry from
+    `list_project_files` for callsite parity.
+    """
+    base = _project_dir(name)
+    p = _anton_md_disk_path(name)
+    rel = p.relative_to(base).as_posix()
+    if p.is_file():
+        try:
+            st = p.stat()
+        except OSError:
+            return {"file": {
+                "path": rel,
+                "name": ANTON_INSTRUCTIONS_FILENAME,
+                "size": 0,
+                "modified": None,
+                "is_dir": False,
+                "synthetic": True,
+            }}
+        return {"file": {
+            "path": rel,
+            "name": ANTON_INSTRUCTIONS_FILENAME,
+            "size": st.st_size,
+            "modified": st.st_mtime,
+            "is_dir": False,
+        }}
+    return {"file": {
+        "path": rel,
+        "name": ANTON_INSTRUCTIONS_FILENAME,
+        "size": 0,
+        "modified": None,
+        "is_dir": False,
+        "synthetic": True,
+    }}
+
+
 @router.get("/{name}/files")
 async def list_project_files(name: str):
     """List every file under the project root, recursively.
