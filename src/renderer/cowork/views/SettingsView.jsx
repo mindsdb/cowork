@@ -491,9 +491,10 @@ function SetBadge({ hasValue, active }) {
         background: active ? 'rgba(124,196,182,0.18)' : 'rgba(93,146,135,0.10)',
         border: `1px solid ${active ? 'rgba(124,196,182,0.55)' : 'rgba(93,146,135,0.28)'}`,
         borderRadius: 999, verticalAlign: 'middle',
-        boxShadow: active
-          ? '0 0 0 1px rgba(124,196,182,0.20), 0 0 14px rgba(124,196,182,0.45), 0 0 28px rgba(93,146,135,0.25)'
-          : 'none',
+        // When active, the box-shadow comes from the set-badge-pulse
+        // keyframes; the static value would never paint. When inactive
+        // we explicitly clear any inherited shadow.
+        boxShadow: active ? undefined : 'none',
         animation: active ? 'set-badge-pulse 2.4s ease-in-out infinite' : 'none',
         transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
       }}
