@@ -3511,14 +3511,17 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   position: relative;
 }
 
-/* Floating composer override — promotes the composer-wrap visual to match
-   docs/design-guidelines/chat.html (18px radius, deep shadow, much shorter
-   single-line input, borderless tool icons). */
+/* Floating composer override — chat shell (18px radius, compact field).
+   Toolbar + / Send insets and control sizes match the default composer
+   (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 18px;
-  padding: 14px 16px 12px;
+  /* 10px horizontal + textarea side padding = same 18px text inset as
+     .composer-textarea on home; toolbar is flush on the bottom so the card
+     doesn't pick up a double band (toolbar pb + wrap pb). */
+  padding: 14px 10px 12px;
   /* Subtle all-around lift — replaces the heavier downward shadow we
      used to pair with the bottom gradient mask. With the mask gone, a
      soft even glow reads as "floating panel" without darkening the
@@ -3531,16 +3534,21 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.45;
-  padding: 2px 2px 12px;
+  /* 10px (wrap) + 8px = 18px body inset — matches home .composer-textarea */
+  /* Tighter bottom than default textarea: toolbar supplies top spacing so we
+     don't stack 12px + 10px and leave a tall band under the input line. */
+  padding: 2px 8px 6px;
   min-height: 22px;
 }
 .chat-floating-composer .composer-toolbar {
-  padding: 0;
-  gap: 4px;
+  /* Horizontal inset comes from .composer-wrap; no bottom padding — wrap's
+     padding-bottom gives the only inset below + / Send (matches pre-alignment). */
+  padding: 6px 0 0;
+  gap: 6px;
 }
 .chat-floating-composer .composer-icon,
 .chat-floating-composer .composer-mic {
-  width: 30px; height: 30px; border-radius: 8px;
+  width: 32px; height: 32px; border-radius: 8px;
   border: 0; background: transparent;
   color: var(--ink-2);
 }
