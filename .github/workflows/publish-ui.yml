@@ -32,6 +32,9 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Upgrade npm for supply-chain protections
+        run: npm install -g npm@latest
+
       - run: npm ci
 
       - name: Build renderer
