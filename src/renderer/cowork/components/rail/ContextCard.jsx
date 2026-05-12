@@ -12,7 +12,6 @@ import {
   fetchAttachments,
   fetchMemory,
   isProjectInstructionsPath,
-  isUnderContextDir,
   listProjectFiles,
   saveMemory,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
@@ -171,7 +170,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       .then((data) => {
         if (ticket !== loadVersion.current) return;
         const raw = Array.isArray(data?.files) ? data.files : [];
-        setProjectFiles(raw.filter((f) => isProjectInstructionsPath(f.path) || isUnderContextDir(f.path)));
+        // Show only the canonical project-instructions file
+        // (`.anton/anton.md`). The legacy `.context/` tree (everything
+        // matched by the old `isUnderContextDir` clause) is dead
+        // weight — no part of the running server or anton-core reads
+        // from it, and surfacing duplicate `anton.md` rows from there
+        // was misleading users into editing the wrong file. Files
+        // stay on disk; we just stop offering them through the rail.
+        setProjectFiles(raw.filter((f) => isProjectInstructionsPath(f.path)));
       })
       .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
   }, [project?.name]);

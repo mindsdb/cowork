@@ -1,9 +1,14 @@
-// Live working-folder card body.
+// Artifacts rail card body.
 //
-// - Orphans resolve active project name → full { name, path } via projects list.
-// - Loads files from GET /v1/projects/{name}/files (excludes `.anton/` + `.context/`).
+// Strictly an "artifacts" surface: data source is `GET /v1/artifacts`
+// (the canonical artifact registry the global Artifacts page uses),
+// filtered to the active project. Loose project-tree files don't
+// appear here — they're outside the artifact model and trying to
+// preview one would 404 on `/v1/artifacts/preview-mount`.
+//
+// - Orphans resolve the active project name → { name, path } via the
+//   projects list, so the path-prefix filter works.
 // - Polls every 3s while streaming, plus once when streaming ends.
-// - Poll-driven refresh only; row icons stay static (no streaming pulse).
 // - Click → HTML opens in-app viewer; other types → OS openPath.
 
 import { useEffect, useRef, useState } from 'react';
@@ -11,31 +16,11 @@ import clsx from 'clsx';
 import Ico from '../Icons';
 import {
   fetchActiveProject,
+  fetchArtifacts,
   fetchProjects,
-  isUnderAntonDir,
-  isUnderContextDir,
-  listProjectFiles,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
 import { host } from '../../../platform/host';
-
-function timeAgo(ts) {
-  if (ts == null || ts === '') return '';
-  const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
-  if (Number.isNaN(d.getTime())) return '';
-  const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
-  return `${Math.floor(secs / 86400)}d`;
-}
-
-function formatBytes(n) {
-  if (!Number.isFinite(n)) return '';
-  if (n < 1024) return `${n}B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
-  return `${(n / 1024 / 1024).toFixed(1)}MB`;
-}
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -71,27 +56,11 @@ function iconForRow(row) {
   return EXT_ICON[ext] || 'doc';
 }
 
-/** Project-file listing row → artifact-shaped row for previews / OS open. */
-function fileEntryToRow(projectRoot, f) {
-  const rel = String(f.path || '').replace(/\\/g, '/');
-  const abs = `${String(projectRoot).replace(/\/+$/, '')}/${rel}`;
-  const baseName = f.name || rel.split('/').pop() || '';
-  const lower = baseName.toLowerCase();
-  const ext = lower.includes('.') ? `.${lower.split('.').pop()}` : '';
-  const stem = baseName.includes('.') ? baseName.slice(0, baseName.lastIndexOf('.')) : baseName;
-  const title = stem
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-  const mtimeSec = typeof f.modified === 'number' ? f.modified : null;
-  const updatedMs = mtimeSec != null ? Math.round(mtimeSec * 1000) : 0;
-  return {
-    path: abs,
-    title,
-    ext,
-    updated: updatedMs,
-    size: Number.isFinite(f.size) ? f.size : 0,
-    publishedUrl: '',
-  };
+/** True iff the artifact's path falls under the given project root. */
+function artifactBelongsToProject(artifact, projectPath) {
+  if (!artifact?.path || !projectPath) return false;
+  const prefix = String(projectPath).replace(/\/+$/, '') + '/';
+  return String(artifact.path).startsWith(prefix);
 }
 
 export function WorkingFolderLive({ project, isStreaming }) {
@@ -127,32 +96,24 @@ export function WorkingFolderLive({ project, isStreaming }) {
   // and let the prior project's response paint into the wrong view.)
   const loadVersion = useRef(0);
 
-  // Skip files that start with a dot (`.DS_Store`, `.gitignore`,
-  // `.env`, etc.) — they're noise in the working-folder card and
-  // never something Anton produced as an artifact.
-  const isHidden = (entry) => {
-    const name = entry?.name || String(entry?.path || '').split('/').pop();
-    return !!name && name.startsWith('.');
-  };
-
-  const applyListing = (proj, data, ticket) => {
+  // Apply a fetched artifacts list, scoped to the project we're
+  // viewing. Server returns artifacts mtime-desc across all
+  // projects; filter, slice, set. The ticket check is the same
+  // guard against late-landing requests for a project the user has
+  // since switched away from.
+  const applyArtifacts = (proj, list, ticket) => {
     if (ticket !== loadVersion.current) return;
-    const list = Array.isArray(data?.files) ? data.files : [];
-    const next = list
-      .filter((f) => !f.is_dir
-        && !isUnderContextDir(f.path)
-        && !isUnderAntonDir(f.path)
-        && !isHidden(f))
-      .map((f) => fileEntryToRow(proj.path, f))
-      .sort((a, b) => (b.updated || 0) - (a.updated || 0))
+    const all = Array.isArray(list) ? list : [];
+    const next = all
+      .filter((a) => artifactBelongsToProject(a, proj.path))
       .slice(0, 12);
     setRows(next);
   };
 
   // Project switch — clear immediately, then load. The clear is
   // important: without it, the rail keeps painting the previous
-  // project's files until the new request returns, which reads as
-  // "the wrong files until I refresh."
+  // project's artifacts until the new request returns, which reads
+  // as "the wrong artifacts until I refresh."
   useEffect(() => {
     const proj = effectiveProject;
     const ticket = ++loadVersion.current;
@@ -161,15 +122,15 @@ export function WorkingFolderLive({ project, isStreaming }) {
       return;
     }
     setRows([]);
-    listProjectFiles(proj.name)
-      .then((data) => applyListing(proj, data, ticket))
+    fetchArtifacts()
+      .then((list) => applyArtifacts(proj, list, ticket))
       .catch(() => { if (ticket === loadVersion.current) setRows([]); });
   }, [effectiveProject?.name, effectiveProject?.path]);
 
   // Streaming poll — every 3s while live, plus once shortly after
-  // streaming ends (catches files written near the very end of the
-  // turn). Each tick allocates a fresh ticket so its response is
-  // discarded if a project switch lands between the request and its
+  // streaming ends (catches artifacts written near the very end of
+  // the turn). Each tick allocates a fresh ticket so its response
+  // is discarded if a project switch lands between request and
   // resolution.
   const wasStreaming = useRef(isStreaming);
   useEffect(() => {
@@ -177,8 +138,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
       const proj = effectiveProject;
       if (!proj?.name || !proj?.path) return;
       const ticket = ++loadVersion.current;
-      listProjectFiles(proj.name)
-        .then((data) => applyListing(proj, data, ticket))
+      fetchArtifacts()
+        .then((list) => applyArtifacts(proj, list, ticket))
         .catch(() => { /* swallow — keep current rows */ });
     };
     if (isStreaming) {
@@ -217,16 +178,17 @@ export function WorkingFolderLive({ project, isStreaming }) {
     <div className="pt-2">
       {rows.length === 0 ? (
         <p className="text-[12.5px] text-ink-4 px-1 pb-1">
-          No files yet — Anton will store new artifacts here.
+          No artifacts yet — Anton will save dashboards, reports, and
+          datasets here as it produces them.
         </p>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {rows.map((f) => (
+          {rows.map((a) => (
               <button
-                key={f.path}
+                key={a.path}
                 type="button"
-                onClick={() => onOpenArtifact(f)}
-                title={f.path}
+                onClick={() => onOpenArtifact(a)}
+                title={a.path}
                 className={clsx(
                   'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
                   'cursor-pointer transition-colors hover:bg-surface-2',
@@ -235,11 +197,18 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
               >
                 <span className="text-ink-4 inline-flex">
-                  {(Ico[iconForRow(f)] || Ico.doc)(13)}
+                  {(Ico[iconForRow(a)] || Ico.doc)(13)}
                 </span>
-                <span className="text-[12.5px] text-ink truncate">{f.title || (f.path?.split('/').pop() || '')}</span>
+                <span className="text-[12.5px] text-ink truncate">
+                  {a.title || (a.path?.split('/').pop() || '')}
+                </span>
+                {/* Server pre-formats `updated` as a phrase like
+                    "updated 3h ago" — surface it verbatim. Strip
+                    the redundant leading "updated " so the right
+                    column reads as a timestamp instead of a
+                    sentence. */}
                 <span className="text-[10.5px] text-ink-4">
-                  {timeAgo(f.updated) || formatBytes(f.size)}
+                  {String(a.updated || '').replace(/^updated\s+/i, '')}
                 </span>
               </button>
           ))}
