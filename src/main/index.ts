@@ -7,6 +7,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkAntonInstalled, checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics } from './server-process';
+import { getSelectedHarness } from './harness-process';
 import { oauthConnect } from './oauth-service';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
@@ -57,6 +58,10 @@ function getUpdateMode(): 'auto' | 'manual' {
 }
 
 function checkConfigured(): { configured: boolean; provider: string } {
+  const harness = getSelectedHarness();
+  if (harness === 'hermes') {
+    return { configured: true, provider: 'hermes' };
+  }
   const vars = readEnvFile();
   if (vars.ANTON_ANTHROPIC_API_KEY) {
     return { configured: true, provider: 'anthropic' };
@@ -369,6 +374,7 @@ function setupIPC() {
     starting: isServerStarting(),
     port: getServerPort(),
     origin: `http://127.0.0.1:${getServerPort()}`,
+    harness: getSelectedHarness(),
   }));
 
   // Toggle the python server up/down. Used by the sidebar footer button.

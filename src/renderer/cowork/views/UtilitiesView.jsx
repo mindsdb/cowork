@@ -87,7 +87,10 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
     if (kind === 'publish') fetchPublishable().then(setData).catch((err) => setStatus(err.message));
   }, [kind, project?.path]);
 
-  const [title, subtitle] = TITLES[kind] || ['Anton utility', ''];
+  let [title, subtitle] = TITLES[kind] || ['Anton utility', ''];
+  if (kind === 'skills' && data?.harness === 'hermes') {
+    subtitle = 'Hermes Agent skills from ~/.hermes/skills. Cowork-managed skills are editable.';
+  }
 
   // Memory kind owns its own scrolling: the sidebar list and the
   // viewer pane each scroll independently so flipping through a long
@@ -136,8 +139,10 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
 
 function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
+  const isHermes = data?.harness === 'hermes';
   const projectSections = sections.filter((s) => s.scope === 'Project' && (s.files || []).length > 0);
   const globalSection = sections.find((s) => s.scope === 'Global');
+  const harnessSections = sections.filter((s) => !['Global', 'Project'].includes(s.scope));
   const totalFiles = sections.reduce((acc, s) => acc + (s.files?.length || 0), 0);
 
   const [editing, setEditing] = useState(null);
@@ -327,13 +332,13 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
       return;
     }
     try {
-      await saveMemory({
+      const saved = await saveMemory({
         scope: draft.scope,
         relativePath: draft.relativePath,
         content: draft.content,
         projectPath: draft.scope === 'Project' ? draft.projectPath : null,
       });
-      setStatus(`Saved memory file ${draft.relativePath}.`);
+      setStatus(`Saved memory file ${draft.relativePath}.${saved?.requiresNewSession ? ' New Hermes sessions will use the update.' : ''}`);
       setEditing(null);
       await refresh();
     } catch (err) {
@@ -344,12 +349,12 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   const remove = async (file) => {
     if (!window.confirm(`Delete memory file "${file.relativePath}"? A backup will be kept.`)) return;
     try {
-      await deleteMemory({
+      const deleted = await deleteMemory({
         scope: file.scope || 'Global',
         relativePath: file.relativePath,
         projectPath: file.scope === 'Project' ? file.projectPath : null,
       });
-      setStatus(`Deleted memory file ${file.relativePath}.`);
+      setStatus(`Deleted memory file ${file.relativePath}.${deleted?.requiresNewSession ? ' New Hermes sessions will use the update.' : ''}`);
       onSelect(null);
       await refresh();
     } catch (err) {
@@ -365,11 +370,15 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
     <>
       <CollectionPageHeader
         title="Memory"
-        subtitle="Rules, lessons, identity notes, and saved episodes Anton can reuse."
+        subtitle={isHermes
+          ? 'Hermes MEMORY.md and USER.md files used by Hermes Agent sessions.'
+          : 'Rules, lessons, identity notes, and saved episodes Anton can reuse.'}
         actions={
-          <button type="button" className="btn-primary" onClick={startNew}>
-            {Ico.plus(14)} New memory
-          </button>
+          isHermes ? null : (
+            <button type="button" className="btn-primary" onClick={startNew}>
+              {Ico.plus(14)} New memory
+            </button>
+          )
         }
       />
       <div style={{ height: 14 }} />
@@ -400,6 +409,15 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               onSelect={onSelect}
             />
           )}
+          {harnessSections.map((section) => (
+            <MemorySectionList
+              key={section.scope}
+              heading={section.scope}
+              files={section.files || []}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          ))}
           {projectSections.map((section) => (
             <MemorySectionList
               key={section.projectName}
@@ -410,7 +428,9 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               isActive={section.projectName === project?.name}
             />
           ))}
-          {totalFiles === 0 && <EmptyState>No Anton memory files found.</EmptyState>}
+          {totalFiles === 0 && (
+            <EmptyState>{isHermes ? 'No Hermes memory files found.' : 'No Anton memory files found.'}</EmptyState>
+          )}
         </div>
         <div className="scroll-clean" style={{
           overflowY: 'auto', minHeight: 0,
@@ -510,6 +530,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                     {selected.scope === 'Project' && selected.projectName
                       ? `Project · ${selected.projectName}`
                       : selected.scope}
+                    {selected.requiresNewSession ? ' · new session required' : ''}
                   </div>
                 </div>
                 <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
@@ -530,6 +551,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                     {selected.scope === 'Project' && selected.projectName
                       ? `Project · ${selected.projectName}`
                       : selected.scope}
+                    {selected.requiresNewSession ? ' · new session required' : ''}
                   </div>
                 </div>
                 <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
@@ -588,11 +610,16 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
 
 function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus }) {
   const skills = data.skills || [];
+  const isHermes = data?.harness === 'hermes';
   const emptyDraft = { label: '', name: '', description: '', whenToUse: '', declarative: '' };
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyDraft);
 
   const remove = async (skill) => {
+    if (skill.readOnly) {
+      setStatus('This Hermes skill is read-only in Cowork. Cowork can only remove skills under ~/.hermes/skills/cowork.');
+      return;
+    }
     if (!window.confirm(`Remove skill "${skill.name}"?`)) return;
     try {
       await deleteSkill(skill.label);
@@ -611,6 +638,10 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
   };
 
   const startEdit = (skill) => {
+    if (skill.readOnly) {
+      setStatus('This Hermes skill is read-only in Cowork. Create a Cowork-managed Hermes skill to edit it here.');
+      return;
+    }
     setEditing('edit');
     setDraft({
       label: skill.label || '',
@@ -641,9 +672,12 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
           <button key={skill.label} className={`recent-item${selected?.label === skill.label ? ' active' : ''}`} onClick={() => onSelect(skill)} style={{ height: 'auto', minHeight: 38, padding: '8px 10px' }}>
             <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.brain(14)}</span>
             <span style={{ flex: 1, whiteSpace: 'normal' }}>{skill.name}</span>
+            {skill.readOnly && (
+              <span style={{ fontSize: 10.5, color: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>read-only</span>
+            )}
           </button>
         ))}
-        {!skills.length && <EmptyState>No saved Anton skills found.</EmptyState>}
+        {!skills.length && <EmptyState>{isHermes ? 'No Hermes skills found.' : 'No saved Anton skills found.'}</EmptyState>}
       </div>
       <div style={{ padding: 24 }}>
         {editing ? (
@@ -653,7 +687,7 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
               <input value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
             </div>
             <input value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" style={inputStyle} />
-            <input value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When Anton should use this skill" style={inputStyle} />
+            <input value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder={isHermes ? 'When Hermes should use this skill' : 'When Anton should use this skill'} style={inputStyle} />
             <textarea value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
             <div className="dialog-actions">
               <button className="secondary-btn" onClick={() => setEditing(null)}>Cancel</button>
@@ -667,8 +701,14 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
                 <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-strong)' }}>{selected.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>{selected.label}</div>
               </div>
-              <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
-              <button className="btn-secondary" onClick={() => remove(selected)}>Remove</button>
+              {selected.readOnly ? (
+                <span style={{ fontSize: 11.5, color: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>read-only</span>
+              ) : (
+                <>
+                  <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
+                  <button className="btn-secondary" onClick={() => remove(selected)}>Remove</button>
+                </>
+              )}
             </div>
             {selected.description && <p style={{ margin: '0 0 12px', fontSize: 13.5, color: 'var(--frost-700)' }}>{selected.description}</p>}
             <pre style={{ margin: 0, whiteSpace: 'pre-wrap', userSelect: 'text', fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.55 }}>{selected.declarative}</pre>

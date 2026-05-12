@@ -102,6 +102,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from anton_api import conversation_manager, projects_store, scratchpad_runtime
+from harnesses.registry import active_harness_id, get_active_harness
 from routes.responses import router as responses_router
 from routes.conversations import router as conversations_router
 from routes.scratchpad import router as scratchpad_router
@@ -162,7 +163,7 @@ async def lifespan(app: FastAPI):
         await refresh_task
     except asyncio.CancelledError:
         pass
-    await conversation_manager.close_all()
+    await get_active_harness().close_all()
     await scratchpad_runtime.close_all()
 
 
@@ -205,18 +206,24 @@ app.include_router(connectors_router)
 
 @app.get("/health")
 async def health():
+    harness = get_active_harness()
+    harness_health = await harness.health()
     config = get_config_status()
     anton_available = conversation_manager.is_anton_available()
+    ready = bool(config["config_ready"] and harness_health.get("available"))
     return {
         "status": "ok",
         "anton_available": anton_available,
-        "mode": "anton" if anton_available else "demo",
-        "config_ready": config["config_ready"],
-        "config_error": config["config_error"],
+        "harness": harness.id,
+        "harness_label": harness.label,
+        "harness_available": bool(harness_health.get("available")),
+        "mode": harness.id if harness_health.get("available") else "demo",
+        "config_ready": ready,
+        "config_error": "" if ready else (harness_health.get("error") or config["config_error"]),
         "provider": config["provider"],
         "model": config["model"],
         "provider_label": config["provider_label"],
-        "live_conversations": conversation_manager.list_live(),
+        "live_conversations": harness.list_live(),
         "live_pads": scratchpad_runtime.list_pads(),
     }
 
@@ -228,6 +235,7 @@ async def root():
     return {
         "message": "Anton CoWork API",
         "anton_available": conversation_manager.is_anton_available(),
+        "harness": active_harness_id(),
     }
 
 
@@ -289,6 +297,7 @@ if __name__ == "__main__":
 
     logger.info("─" * 50)
     logger.info("Anton CoWork server starting on %s:%d", host, port)
+    logger.info("Active harness: %s", active_harness_id())
     logger.info("Anton available: %s", conversation_manager.is_anton_available())
     if not conversation_manager.is_anton_available():
         logger.info("Anton is not installed; chat endpoints will return 503")

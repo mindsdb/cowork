@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import shutil
 import uuid
@@ -21,6 +22,40 @@ from .settings import _get_env, get_config_status
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+_HERMES_ENTRY_DELIMITER = "\n\u00a7\n"
+_HERMES_MEMORY_DEFAULT_LIMIT = 2200
+_HERMES_USER_DEFAULT_LIMIT = 1375
+_HERMES_MEMORY_SPECS = {
+    "MEMORY.md": {
+        "name": "Memory",
+        "memoryKind": "hermes_memory",
+        "charLimitKey": "memory_char_limit",
+        "defaultLimit": _HERMES_MEMORY_DEFAULT_LIMIT,
+    },
+    "USER.md": {
+        "name": "User Profile",
+        "memoryKind": "hermes_user",
+        "charLimitKey": "user_char_limit",
+        "defaultLimit": _HERMES_USER_DEFAULT_LIMIT,
+    },
+}
+_HERMES_INVISIBLE_RE = re.compile(r"[\u200b\u200c\u200d\ufeff\u2060\u180e]")
+_HERMES_THREAT_RE = re.compile(
+    r"(ignore\s+(?:all|previous|earlier|above)\s+(?:instructions|rules|memory|memories))"
+    r"|((?:reveal|print|dump|show)\s+(?:the\s+)?(?:system\s+prompt|developer\s+message|secrets?))"
+    r"|((?:delete|overwrite|disable)\s+(?:the\s+)?(?:memory|memories|instructions))",
+    re.IGNORECASE,
+)
+
+
+def _active_harness_name() -> str:
+    try:
+        from harnesses.registry import active_harness_id
+        return active_harness_id()
+    except Exception:
+        logger.debug("Could not resolve active harness; falling back to Anton utility mode", exc_info=True)
+        return "anton"
 
 
 def _safe_text(path: Path, limit: int = 80_000) -> str:
@@ -138,8 +173,123 @@ def _memory_file_payload(
     return payload
 
 
+def _hermes_home() -> Path:
+    return Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes")).expanduser()
+
+
+def _hermes_memory_dir() -> Path:
+    return _hermes_home() / "memories"
+
+
+def _hermes_config_text() -> str:
+    return _safe_text(_hermes_home() / "config.yaml", 24_000)
+
+
+def _hermes_memory_limits() -> dict[str, int]:
+    config_text = _hermes_config_text()
+    limits = {
+        "memory_char_limit": _HERMES_MEMORY_DEFAULT_LIMIT,
+        "user_char_limit": _HERMES_USER_DEFAULT_LIMIT,
+    }
+    for key in list(limits):
+        match = re.search(rf"(?m)^\s*{re.escape(key)}\s*:\s*(\d+)\s*$", config_text)
+        if match:
+            try:
+                limits[key] = max(1, int(match.group(1)))
+            except ValueError:
+                pass
+    return limits
+
+
+def _resolve_hermes_memory_filename(relative_path: str) -> str:
+    text = (relative_path or "").strip().replace("\\", "/")
+    path = Path(text)
+    if len(path.parts) != 1 or path.name not in _HERMES_MEMORY_SPECS:
+        allowed = ", ".join(_HERMES_MEMORY_SPECS)
+        raise HTTPException(status_code=400, detail=f"Hermes memory can only edit: {allowed}.")
+    return path.name
+
+
+def _validate_hermes_memory_entry(filename: str, content: str, char_limit: int) -> str:
+    if _HERMES_INVISIBLE_RE.search(content):
+        raise HTTPException(status_code=400, detail=f"{filename} contains invisible control characters.")
+    if _HERMES_THREAT_RE.search(content):
+        raise HTTPException(status_code=400, detail=f"{filename} looks like prompt-injection memory content.")
+    if len(content) > char_limit:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{filename} is {len(content)} characters; Hermes allows {char_limit}.",
+        )
+    return content
+
+
+def _normalise_hermes_memory_content(filename: str, raw_content: str) -> str:
+    limits = _hermes_memory_limits()
+    spec = _HERMES_MEMORY_SPECS[filename]
+    char_limit = limits.get(spec["charLimitKey"], spec["defaultLimit"])
+    text = (raw_content or "").strip()
+    if not text:
+        return ""
+    entries = [
+        entry.strip()
+        for entry in re.split(r"\n\s*\u00a7\s*\n", text)
+        if entry.strip()
+    ]
+    if not entries:
+        return ""
+    for entry in entries:
+        _validate_hermes_memory_entry(filename, entry, char_limit)
+    normalised = _HERMES_ENTRY_DELIMITER.join(entries)
+    _validate_hermes_memory_entry(filename, normalised, char_limit)
+    return normalised + "\n"
+
+
+def _hermes_memory_payload(filename: str) -> dict[str, Any]:
+    root = _hermes_memory_dir()
+    path = root / filename
+    text = _safe_text(path, 16_000) if path.is_file() else ""
+    limits = _hermes_memory_limits()
+    spec = _HERMES_MEMORY_SPECS[filename]
+    char_limit = limits.get(spec["charLimitKey"], spec["defaultLimit"])
+    return {
+        "name": spec["name"],
+        "path": str(path.resolve()),
+        "relativePath": filename,
+        "scope": "Hermes",
+        "harness": "hermes",
+        "readOnly": False,
+        "requiresNewSession": True,
+        "memoryKind": spec["memoryKind"],
+        "charLimit": char_limit,
+        "bytes": path.stat().st_size if path.is_file() else 0,
+        "preview": "\n".join([line for line in text.splitlines() if line.strip()][:8])[:700],
+        "content": text,
+        "exists": path.is_file(),
+    }
+
+
+def _list_hermes_memory() -> dict[str, Any]:
+    root = _hermes_memory_dir()
+    files = [_hermes_memory_payload(filename) for filename in _HERMES_MEMORY_SPECS]
+    return {
+        "harness": "hermes",
+        "sections": [
+            {
+                "scope": "Hermes",
+                "root": str(root),
+                "harness": "hermes",
+                "requiresNewSession": True,
+                "files": files,
+            }
+        ],
+    }
+
+
 @router.get("/memory")
 async def list_memory(project_path: Optional[str] = None):
+    if _active_harness_name() == "hermes":
+        return _list_hermes_memory()
+
     sections = []
     for scope, project_name, root in _memory_roots(project_path):
         files = []
@@ -157,7 +307,7 @@ async def list_memory(project_path: Optional[str] = None):
             section["projectName"] = project_name
             section["projectPath"] = str(root.parent.parent)
         sections.append(section)
-    return {"sections": sections}
+    return {"harness": "anton", "sections": sections}
 
 
 class MemorySaveRequest(BaseModel):
@@ -169,6 +319,20 @@ class MemorySaveRequest(BaseModel):
 
 @router.post("/memory")
 async def save_memory(req: MemorySaveRequest):
+    if _active_harness_name() == "hermes":
+        filename = _resolve_hermes_memory_filename(req.relativePath)
+        root = _hermes_memory_dir()
+        target = root / filename
+        content = _normalise_hermes_memory_content(filename, req.content)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _backup_target(target, "hermes-memory")
+        target.write_text(content, encoding="utf-8")
+        return {
+            "status": "ok",
+            "requiresNewSession": True,
+            "file": _hermes_memory_payload(filename),
+        }
+
     root, target = _resolve_memory_path(req.scope, req.relativePath, req.projectPath)
     target.parent.mkdir(parents=True, exist_ok=True)
     _backup_target(target, "memory")
@@ -183,6 +347,19 @@ async def save_memory(req: MemorySaveRequest):
 
 @router.delete("/memory")
 async def delete_memory(scope: str, relative_path: str, project_path: Optional[str] = None):
+    if _active_harness_name() == "hermes":
+        filename = _resolve_hermes_memory_filename(relative_path)
+        target = _hermes_memory_dir() / filename
+        if target.is_file():
+            _backup_target(target, "hermes-memory")
+            target.unlink()
+        return {
+            "status": "ok",
+            "deleted": str(target),
+            "root": str(_hermes_memory_dir()),
+            "requiresNewSession": True,
+        }
+
     root, target = _resolve_memory_path(scope, relative_path, project_path)
     if not target.is_file():
         raise HTTPException(status_code=404, detail="Memory file not found.")
@@ -191,8 +368,123 @@ async def delete_memory(scope: str, relative_path: str, project_path: Optional[s
     return {"status": "ok", "deleted": str(target), "root": str(root)}
 
 
+def _hermes_skills_root() -> Path:
+    return _hermes_home() / "skills"
+
+
+def _is_hermes_cowork_skill(path: Path) -> bool:
+    try:
+        path.resolve().relative_to((_hermes_skills_root() / "cowork").resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _parse_hermes_frontmatter(text: str) -> tuple[dict[str, str], str]:
+    if not text.startswith("---"):
+        return {}, text.strip()
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.DOTALL)
+    if not match:
+        return {}, text.strip()
+    meta_text, body = match.groups()
+    meta: dict[str, str] = {}
+    for line in meta_text.splitlines():
+        if ":" not in line or line.lstrip() != line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        if not key:
+            continue
+        raw = value.strip()
+        try:
+            parsed = json.loads(raw)
+            meta[key] = str(parsed) if parsed is not None else ""
+        except Exception:
+            meta[key] = raw.strip("'\"")
+    return meta, body.strip()
+
+
+def _hermes_skill_label(path: Path, meta: dict[str, str]) -> str:
+    if _is_hermes_cowork_skill(path):
+        return _skill_label(meta.get("cowork_label") or path.parent.name)
+    rel_parent = path.parent.relative_to(_hermes_skills_root())
+    return _skill_label("__".join(rel_parent.parts))
+
+
+def _hermes_skill_payload(path: Path) -> dict[str, Any]:
+    text = _safe_text(path, 160_000)
+    meta, body = _parse_hermes_frontmatter(text)
+    read_only = not _is_hermes_cowork_skill(path)
+    label = _hermes_skill_label(path, meta)
+    rel_path = str(path.relative_to(_hermes_skills_root()))
+    name = meta.get("name") or path.parent.name.replace("-", " ").replace("_", " ").title()
+    description = meta.get("description") or ""
+    return {
+        "label": label,
+        "name": name,
+        "description": description,
+        "whenToUse": meta.get("cowork_when_to_use") or "",
+        "declarative": body,
+        "createdAt": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+        "provenance": "cowork" if not read_only else "hermes",
+        "harness": "hermes",
+        "readOnly": read_only,
+        "path": str(path.resolve()),
+        "relativePath": rel_path,
+        "stages": {
+            "stage1": bool(body),
+            "stage2": False,
+            "stage3": False,
+        },
+        "stats": {
+            "totalRecalls": 0,
+        },
+    }
+
+
+def _list_hermes_skills() -> dict[str, Any]:
+    root = _hermes_skills_root()
+    skills: list[dict[str, Any]] = []
+    if root.is_dir():
+        for path in sorted(root.rglob("SKILL.md")):
+            if path.is_file():
+                try:
+                    skills.append(_hermes_skill_payload(path))
+                except Exception:
+                    logger.warning("Could not parse Hermes skill %s", path, exc_info=True)
+    skills.sort(key=lambda item: (bool(item.get("readOnly")), str(item.get("name", "")).lower()))
+    return {"harness": "hermes", "skills": skills}
+
+
+def _json_yaml_scalar(value: str) -> str:
+    return json.dumps(value or "", ensure_ascii=False)
+
+
+def _render_hermes_skill(req: "SkillSaveRequest", label: str) -> str:
+    body = req.declarative.strip()
+    return "\n".join([
+        "---",
+        f"name: {_json_yaml_scalar(req.name.strip())}",
+        f"description: {_json_yaml_scalar(req.description.strip())}",
+        f"cowork_label: {_json_yaml_scalar(label)}",
+        f"cowork_when_to_use: {_json_yaml_scalar(req.whenToUse.strip())}",
+        "cowork_managed: true",
+        "---",
+        "",
+        body,
+        "",
+    ])
+
+
+def _hermes_cowork_skill_dir(label: str) -> Path:
+    return _hermes_skills_root() / "cowork" / _skill_label(label)
+
+
 @router.get("/skills")
 async def list_skills():
+    if _active_harness_name() == "hermes":
+        return _list_hermes_skills()
+
     try:
         from anton.core.memory.skills import SkillStore
     except Exception as exc:
@@ -217,8 +509,10 @@ async def list_skills():
             "stats": {
                 "totalRecalls": getattr(skill.stats, "total_recalls", 0),
             },
+            "harness": "anton",
+            "readOnly": False,
         })
-    return {"skills": skills}
+    return {"harness": "anton", "skills": skills}
 
 
 def _skill_label(value: str) -> str:
@@ -238,6 +532,19 @@ class SkillSaveRequest(BaseModel):
 
 @router.post("/skills")
 async def save_skill(req: SkillSaveRequest):
+    if _active_harness_name() == "hermes":
+        label = _skill_label(req.label)
+        if not req.name.strip():
+            raise HTTPException(status_code=400, detail="Skill name is required.")
+        if not req.declarative.strip():
+            raise HTTPException(status_code=400, detail="Skill instructions are required.")
+        skill_dir = _hermes_cowork_skill_dir(label)
+        skill_path = skill_dir / "SKILL.md"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        _backup_target(skill_path, "hermes-skills")
+        skill_path.write_text(_render_hermes_skill(req, label), encoding="utf-8")
+        return {"status": "ok", "label": label, "path": str(skill_path), "harness": "hermes"}
+
     try:
         from anton.core.memory.skills import Skill, SkillStore
     except Exception as exc:
@@ -273,6 +580,19 @@ async def save_skill(req: SkillSaveRequest):
 
 @router.delete("/skills/{label}")
 async def delete_skill(label: str):
+    if _active_harness_name() == "hermes":
+        clean_label = _skill_label(label)
+        skill_dir = _hermes_cowork_skill_dir(clean_label)
+        skill_path = skill_dir / "SKILL.md"
+        if not skill_path.is_file():
+            raise HTTPException(status_code=403, detail="Only Cowork-created Hermes skills can be removed from Cowork.")
+        _backup_target(skill_path, "hermes-skills")
+        try:
+            shutil.rmtree(skill_dir)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Could not remove Hermes skill.") from exc
+        return {"status": "ok", "deleted": clean_label, "harness": "hermes"}
+
     try:
         from anton.core.memory.skills import SkillStore
     except Exception as exc:

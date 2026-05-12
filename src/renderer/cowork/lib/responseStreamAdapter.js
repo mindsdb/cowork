@@ -94,6 +94,50 @@ function closeOpenScratchpadStep(steps, completedAt) {
   return next;
 }
 
+function patchLastGenericStep(steps, predicate, patch) {
+  for (let idx = steps.length - 1; idx >= 0; idx -= 1) {
+    const step = steps[idx];
+    if (!step?._isGenericProgress) continue;
+    if (!predicate(step)) continue;
+    const next = steps.slice();
+    next[idx] = { ...step, ...patch };
+    return next;
+  }
+  return null;
+}
+
+function addArtifactStep(state, payload, eventTs) {
+  if (!payload || typeof payload !== 'object') return state;
+  if (!payload.file_path && !payload.path && !payload.title && !payload.name) return state;
+  const id = `artifact-${state.steps.length + 1}`;
+  const title = payload.title || payload.name || payload.file_path || payload.path || 'Artifact';
+  const step = {
+    id,
+    label: title,
+    badge: 'Artifact',
+    icon: 'sparkle',
+    status: 'completed',
+    startedAt: eventTs,
+    completedAt: eventTs,
+    data: payload,
+    output: null,
+    result: null,
+    _isScratchpad: false,
+    _isGenericProgress: false,
+    _scratchpadTabId: null,
+  };
+  return {
+    ...state,
+    awaitingArtifactPayload: false,
+    steps: [...state.steps, step],
+  };
+}
+
+function progressMessage(event) {
+  const message = event.message ?? event.content ?? '';
+  return typeof message === 'string' ? message.trim() : '';
+}
+
 function safeJsonParse(text) {
   if (typeof text !== 'string') return null;
   try { return JSON.parse(text); } catch { return null; }
@@ -278,6 +322,17 @@ export function reduceStream(state, event, now = Date.now) {
   if (role === 'thought.progress') {
     const phase = event.phase;
     const content = event.content;
+    const progressStatus = event.progress_status;
+
+    // Hermes emits Cowork-compatible generic progress events instead
+    // of Anton scratchpad cells. Artifact events carry their payload
+    // directly on the event, or as JSON in `content`.
+    if (phase === 'artifact') {
+      const payload = (event.artifact && typeof event.artifact === 'object')
+        ? event.artifact
+        : safeJsonParse(content);
+      return addArtifactStep(state, payload, eventTs);
+    }
 
     // Cell finished — flip the trailing in-progress scratchpad to
     // completed if the .result hasn't arrived yet. (When .result does
@@ -367,30 +422,109 @@ export function reduceStream(state, event, now = Date.now) {
     // unpack it as an Artifact step.
     if (state.awaitingArtifactPayload && typeof content === 'string') {
       const payload = safeJsonParse(content);
-      if (payload && (payload.file_path || payload.title)) {
-        const id = `artifact-${state.steps.length + 1}`;
-        const step = {
-          id,
-          label: payload.title || payload.file_path || 'Artifact',
-          badge: 'Artifact',
-          icon: 'sparkle',
-          status: 'completed',
-          startedAt: now(),
-          completedAt: now(),
-          data: payload,
-          output: null,
-          result: null,
-          _isScratchpad: false,
-          _scratchpadTabId: null,
-        };
-        return {
-          ...state,
-          awaitingArtifactPayload: false,
-          steps: [...state.steps, step],
-        };
+      if (payload && (payload.file_path || payload.path || payload.title || payload.name)) {
+        return addArtifactStep(state, payload, eventTs);
       }
       // Wasn't JSON after all — clear the flag and ignore.
       return { ...state, awaitingArtifactPayload: false };
+    }
+
+    if (phase === 'tool') {
+      const toolName = String(event.tool_name || event.tool || 'tool');
+      const message = progressMessage(event);
+      const label = message || toolName;
+      const failed = progressStatus === 'failed' || Boolean(event.error);
+      const completed = failed || progressStatus === 'completed' || progressStatus === 'done';
+      if (!completed) {
+        const step = {
+          id: `progress-${state.steps.length + 1}`,
+          label,
+          badge: 'Tool',
+          icon: 'sparkle',
+          status: 'in_progress',
+          startedAt: eventTs,
+          completedAt: null,
+          data: {
+            phase,
+            progress_status: progressStatus || 'started',
+            tool_name: toolName,
+            message,
+          },
+          output: null,
+          result: null,
+          _isScratchpad: false,
+          _isGenericProgress: true,
+          _progressPhase: phase,
+          _toolName: toolName,
+        };
+        return { ...state, steps: [...state.steps, step] };
+      }
+
+      const patch = {
+        label,
+        status: failed ? 'failed' : 'completed',
+        completedAt: eventTs,
+        data: {
+          phase,
+          progress_status: failed ? 'failed' : 'completed',
+          tool_name: toolName,
+          message,
+          error: event.error || null,
+        },
+      };
+      const patched = patchLastGenericStep(
+        state.steps,
+        (step) => step._progressPhase === 'tool'
+          && step._toolName === toolName
+          && step.status === 'in_progress',
+        patch,
+      );
+      if (patched) return { ...state, steps: patched };
+      return {
+        ...state,
+        steps: [
+          ...state.steps,
+          {
+            id: `progress-${state.steps.length + 1}`,
+            badge: 'Tool',
+            icon: 'sparkle',
+            startedAt: eventTs,
+            output: null,
+            result: null,
+            _isScratchpad: false,
+            _isGenericProgress: true,
+            _progressPhase: phase,
+            _toolName: toolName,
+            ...patch,
+          },
+        ],
+      };
+    }
+
+    if (phase === 'reasoning') {
+      const message = progressMessage(event);
+      if (!message) return state;
+      const step = {
+        id: `progress-${state.steps.length + 1}`,
+        label: 'Reasoning',
+        badge: 'Thought',
+        icon: 'sparkle',
+        status: 'completed',
+        startedAt: eventTs,
+        completedAt: eventTs,
+        data: {
+          phase,
+          progress_status: progressStatus || 'completed',
+          message,
+        },
+        output: null,
+        result: null,
+        _isScratchpad: false,
+        _isGenericProgress: true,
+        _progressPhase: phase,
+        _toolName: null,
+      };
+      return { ...state, steps: [...state.steps, step] };
     }
 
     // 'reasoning_done' and other ad-hoc messages are noise; the live

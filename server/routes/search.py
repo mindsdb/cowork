@@ -1,10 +1,10 @@
-"""Anton-only local search for CoWork data."""
+"""Local search for CoWork data."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter
 
-from anton_api import conversation_manager
+from harnesses.registry import get_active_harness
 from .artifacts import list_artifacts
 from .attachments import get_attachments
 from .cowork_state import load_state
@@ -34,7 +34,7 @@ async def search_cowork(q: str = "", limit: int = 25):
         return {"results": []}
 
     results: list[dict] = []
-    conversations = conversation_manager.list_conversations(limit=500, project="all")
+    conversations = get_active_harness().list_conversations(limit=500, project="all")
     for conv in conversations:
         project_label = conv.get("project") or conv.get("project_path") or ""
         text = " ".join(

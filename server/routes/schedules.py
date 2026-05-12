@@ -9,7 +9,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from anton_api import conversation_manager, projects_store
+from anton_api import projects_store
+from harnesses.registry import get_active_harness
 from .cowork_state import load_state, save_state, utc_now_iso
 
 
@@ -212,8 +213,6 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
     record to `state["schedule_runs"][<schedule_id>]`. The caller is
     responsible for save_state() afterward so writes happen once.
     """
-    from anton.core.llm.provider import StreamTextDelta
-
     title = schedule.get("title") or _task_title(schedule.get("prompt", "Scheduled task"))
     started_at_iso = utc_now_iso()
     started_at_dt  = datetime.now(timezone.utc)
@@ -227,7 +226,7 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
     project_name = schedule.get("project") or projects_store.GENERAL_PROJECT
     task = {
         "title": title,
-        "summary": "Scheduled Anton task",
+        "summary": "Scheduled Cowork task",
         "project": project_name,
         "model": schedule.get("model"),
         "status": "running",
@@ -248,17 +247,15 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
     conversation_id: str | None = None
     error_message: str | None = None
     try:
-        event_stream, conversation_id = await conversation_manager.chat_stream(
-            schedule.get("prompt", ""),
+        answer, conversation_id = await get_active_harness().complete_text(
+            user_input=schedule.get("prompt", ""),
+            conversation_id=None,
             project=project_name,
             model=schedule.get("model"),
+            disabled_connections=None,
         )
         task["id"] = conversation_id
-        parts: list[str] = []
-        async for event in event_stream:
-            if isinstance(event, StreamTextDelta):
-                parts.append(event.text)
-        answer = "".join(parts).strip()
+        answer = (answer or "").strip()
         task["messages"].append({"role": "assistant", "content": answer, "createdAt": utc_now_iso()})
         task["status"] = "idle"
         task["updatedAt"] = utc_now_iso()

@@ -47,21 +47,21 @@ export function ThinkingBlock({
   onActivateStep,
 }) {
   const hasSteps = steps.length > 0;
-  const hasScratchpadSteps = useMemo(
-    () => steps.some((s) => s._isScratchpad),
+  const hasDetailSteps = useMemo(
+    () => steps.some((s) => s._isScratchpad || s._isGenericProgress || s.badge === 'Artifact'),
     [steps]
   );
 
-  const [isExpanded, setIsExpanded] = useState(() => hasScratchpadSteps);
+  const [isExpanded, setIsExpanded] = useState(() => hasDetailSteps);
   const hasAutoExpanded = useRef(false);
 
-  // Auto-expand the first time scratchpad steps appear.
+  // Auto-expand the first time displayable progress steps appear.
   useEffect(() => {
-    if (hasScratchpadSteps && !hasAutoExpanded.current) {
+    if (hasDetailSteps && !hasAutoExpanded.current) {
       setIsExpanded(true);
       hasAutoExpanded.current = true;
     }
-  }, [hasScratchpadSteps]);
+  }, [hasDetailSteps]);
 
   const finalDuration = useMemo(() => {
     if (!isActive && startedAt && steps.length > 0) {
@@ -119,7 +119,7 @@ export function ThinkingBlock({
               step={step}
               isFirst={index === 0}
               isLast={index === arr.length - 1}
-              onActivate={onActivateStep}
+              onActivate={step._isScratchpad ? onActivateStep : undefined}
             />
           ))}
         </div>

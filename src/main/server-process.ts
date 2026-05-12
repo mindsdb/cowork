@@ -10,6 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
 import { checkPythonImports, getAntonToolPython, getPythonUtf8Env } from './server-deps';
+import { prepareHarnessEnvironment, stopManagedHermes } from './harness-process';
 
 const DEFAULT_PORT = 26866; // ANTON on T9 keypad
 const SERVER_HOST = '127.0.0.1';
@@ -188,8 +189,9 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   }
 
   pendingStart = (async (): Promise<StartServerResult> => {
+    const harnessEnv = await prepareHarnessEnvironment(baseEnv);
     const env = {
-      ...baseEnv,
+      ...harnessEnv,
       PYTHONUNBUFFERED: '1',
       ANTON_SERVER_PORT: String(serverPort),
       ANTON_SERVER_HOST: SERVER_HOST,
@@ -268,6 +270,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
         await Promise.race([exited, new Promise<void>((r) => setTimeout(r, 1_000))]);
       }
       if (serverProcess === child) serverProcess = null;
+      await stopManagedHermes();
       return {
         ok: false,
         reason: lastStartError,
@@ -303,6 +306,7 @@ export async function stopServer(): Promise<void> {
   const proc = serverProcess;
   if (!proc) {
     serverStarted = false;
+    await stopManagedHermes();
     // Even with no live child, mark this as an intentional stop —
     // a stopServer() call signals user/app intent, the absence of a
     // child is just "already stopped." Keeps the modal from showing
@@ -353,6 +357,7 @@ export async function stopServer(): Promise<void> {
   if (serverProcess === proc) {
     serverProcess = null;
   }
+  await stopManagedHermes();
 }
 
 // True once /health has confirmed the python is responsive.

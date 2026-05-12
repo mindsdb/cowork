@@ -30,6 +30,7 @@ PROVIDER_LABELS = {
     "anthropic": "Anthropic",
     "openai": "OpenAI",
     "openai-compatible": "OpenAI-compatible",
+    "hermes": "Hermes Agent",
 }
 
 UI_DEFAULTS = {
@@ -142,6 +143,18 @@ def _migrate_legacy_keys() -> list[str]:
 def get_config_status() -> dict[str, Any]:
     """Return safe readiness metadata for health checks and setup gates."""
     migrated = _migrate_legacy_keys()
+    harness_provider = (_get_env("COWORK_HARNESS_PROVIDER", "anton") or "anton").strip().lower()
+    if harness_provider in {"hermes", "hermes-agent", "hermes_agent"}:
+        return {
+            "config_ready": True,
+            "config_error": "",
+            "provider": "hermes",
+            "model": "hermes-agent",
+            "provider_label": PROVIDER_LABELS["hermes"],
+            "harness_provider": "hermes",
+            "migrated": migrated,
+        }
+
     provider = _get_env("ANTON_PLANNING_PROVIDER", "anthropic")
     model = _get_env("ANTON_PLANNING_MODEL", "claude-sonnet-4-6")
 
@@ -168,6 +181,7 @@ def get_config_status() -> dict[str, Any]:
         "provider": provider,
         "model": model,
         "provider_label": PROVIDER_LABELS.get(provider, provider),
+        "harness_provider": "anton",
         "migrated": migrated,
     }
 
@@ -229,6 +243,10 @@ async def get_settings():
     status = get_config_status()
     ui = _ui_settings()
     return {
+        "harnessProvider": _get_env("COWORK_HARNESS_PROVIDER", "anton"),
+        "hermesApiBaseUrl": _get_env("COWORK_HERMES_API_BASE_URL", "http://127.0.0.1:8642"),
+        "hermesApiKey":     _masked("COWORK_HERMES_API_KEY"),
+        "hermesAutoStart":  _bool_env("COWORK_HERMES_AUTO_START", True),
         "planningProvider": _get_env("ANTON_PLANNING_PROVIDER", "anthropic"),
         "planningModel":    _get_env("ANTON_PLANNING_MODEL", "claude-sonnet-4-6"),
         "codingProvider":   _get_env("ANTON_CODING_PROVIDER", "anthropic"),
@@ -261,6 +279,10 @@ async def get_settings():
 
 
 class SettingsPatch(BaseModel):
+    harnessProvider:      Optional[str] = None
+    hermesApiBaseUrl:     Optional[str] = None
+    hermesApiKey:         Optional[str] = None
+    hermesAutoStart:      Optional[bool] = None
     greeting:             Optional[str] = None
     tone:                 Optional[str] = None
     defaultModel:         Optional[str] = None
@@ -307,6 +329,12 @@ async def update_settings(patch: SettingsPatch):
     if patch.accentVariant is not None:
         pref_writes["accentVariant"] = patch.accentVariant
 
+    if patch.harnessProvider is not None:
+        harness = patch.harnessProvider.strip().lower()
+        writes["COWORK_HARNESS_PROVIDER"] = "hermes" if harness in {"hermes", "hermes-agent", "hermes_agent"} else "anton"
+    _stage_string_env(patch.hermesApiBaseUrl, "COWORK_HERMES_API_BASE_URL", writes, delete_keys)
+    if patch.hermesAutoStart is not None:
+        writes["COWORK_HERMES_AUTO_START"] = str(patch.hermesAutoStart).lower()
     _stage_string_env(patch.planningProvider, "ANTON_PLANNING_PROVIDER", writes, delete_keys)
     _stage_string_env(patch.planningModel, "ANTON_PLANNING_MODEL", writes, delete_keys)
     if patch.planningModel is not None and patch.planningModel.strip() and patch.defaultModel is None:
@@ -346,6 +374,11 @@ async def update_settings(patch: SettingsPatch):
             writes["ANTON_MINDS_API_KEY"] = patch.mindsApiKey.strip()
         else:
             delete_keys.append("ANTON_MINDS_API_KEY")
+    if patch.hermesApiKey is not None and patch.hermesApiKey != "***":
+        if patch.hermesApiKey.strip():
+            writes["COWORK_HERMES_API_KEY"] = patch.hermesApiKey.strip()
+        else:
+            delete_keys.append("COWORK_HERMES_API_KEY")
 
     if writes or delete_keys:
         try:

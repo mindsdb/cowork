@@ -524,6 +524,10 @@ export default function App() {
 
 function AppCore() {
   const [settings, setSettings] = useState({
+    harnessProvider: 'anton',
+    hermesApiBaseUrl: 'http://127.0.0.1:8642',
+    hermesApiKey: '',
+    hermesAutoStart: true,
     greeting: "Let's knock something off your list",
     tone: 'balanced',
     defaultModel: 'claude-sonnet-4-6',
@@ -743,7 +747,7 @@ function AppCore() {
   const [serverOnline, setServerOnline] = useState(host.isWeb);
   const [serverBusy, setServerBusy] = useState(false);
   const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
-  const [health, setHealth] = useState({ status: 'offline', anton_available: false, config_ready: false });
+  const [health, setHealth] = useState({ status: 'offline', anton_available: false, config_ready: false, harness: 'anton' });
 
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
@@ -1002,12 +1006,23 @@ function AppCore() {
   }, []);
 
   const saveSettings = useCallback(async (patch = settings) => {
+    const currentHarness = (health.harness || 'anton').toLowerCase();
+    const nextHarness = (patch.harnessProvider || currentHarness).toLowerCase();
+    const shouldRestartServer = host.isElectron && nextHarness !== currentHarness;
     const result = await updateSettings(patch);
     setSettings((prev) => ({
       ...prev,
       configReady: result.configReady ?? prev.configReady,
       configError: result.configError ?? prev.configError,
     }));
+    if (shouldRestartServer) {
+      setServerOnline(false);
+      await host.serverStop();
+      const restarted = await host.serverStart();
+      if (!restarted?.ok && !restarted?.running) {
+        setServerOnline(false);
+      }
+    }
     const h = await fetchHealth();
     setHealth(h);
     setServerOnline(h.status === 'ok');
@@ -1019,7 +1034,7 @@ function AppCore() {
       setSelectedModel(m || { id: modelId, name: modelId || 'Anton model', desc: 'Configured Anton planning model' });
     }
     return result;
-  }, [settings]);
+  }, [settings, health.harness]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);

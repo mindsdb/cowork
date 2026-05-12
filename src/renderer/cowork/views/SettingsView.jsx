@@ -191,6 +191,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   const [validation, setValidation] = useState(null);
   const configReady = validation?.configReady ?? settings.configReady;
   const configError = validation?.configError || settings.configError;
+  const harnessProvider = settings.harnessProvider || 'anton';
+  const harnessLabel = harnessProvider === 'hermes' ? 'Hermes Agent' : 'Anton';
 
   const save = async () => {
     try {
@@ -253,10 +255,10 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               }}>{configReady ? Ico.check(15) : Ico.key(15)}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--text-strong)' }}>
-                  {configReady ? 'Anton is configured' : 'Anton needs configuration'}
+                  {configReady ? `${harnessLabel} is configured` : `${harnessLabel} needs configuration`}
                 </div>
                 <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {configError || 'Provider, model, and credentials are ready.'}
+                  {configError || 'Harness, provider, model, and credentials are ready.'}
                 </div>
               </div>
               <button className="btn-secondary" onClick={validate}>Test</button>
@@ -292,6 +294,39 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               </Section>
               <Section title="Auto-pin recents" subtitle="Pin tasks you visit more than 3 times.">
                 <Toggle value={settings.autoPin} onChange={(v) => setSetting('autoPin', v)} />
+              </Section>
+            </CollapsibleGroup>
+
+            <CollapsibleGroup title="Harness">
+              <Section title="Runtime" subtitle="Choose the agent harness that powers new Cowork app sessions.">
+                <Segmented
+                  value={harnessProvider}
+                  onChange={(v) => setSetting('harnessProvider', v)}
+                  options={[
+                    { value: 'anton', label: 'Anton' },
+                    { value: 'hermes', label: 'Hermes' },
+                  ]}
+                />
+              </Section>
+              <Section title="Hermes auto-start" subtitle="Start Hermes Agent locally when the backend starts and Hermes is selected.">
+                <Toggle
+                  value={settings.hermesAutoStart ?? true}
+                  onChange={(v) => setSetting('hermesAutoStart', v)}
+                />
+              </Section>
+              <Section title="Hermes API URL" subtitle="Cowork adopts this gateway if it is already running.">
+                <TextInput
+                  value={settings.hermesApiBaseUrl ?? 'http://127.0.0.1:8642'}
+                  onChange={(v) => setSetting('hermesApiBaseUrl', v)}
+                  placeholder="http://127.0.0.1:8642"
+                />
+              </Section>
+              <Section title="Hermes API key" subtitle="Optional bearer token when the Hermes gateway requires one.">
+                <ApiKeyInput
+                  value={settings.hermesApiKey ?? ''}
+                  onChange={(v) => setSetting('hermesApiKey', v)}
+                  placeholder="optional"
+                />
               </Section>
             </CollapsibleGroup>
 

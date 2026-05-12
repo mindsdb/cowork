@@ -1166,6 +1166,10 @@ export const MOCK_DATA = {
   ],
 
   settings: {
+    harnessProvider: 'anton',
+    hermesApiBaseUrl: 'http://127.0.0.1:8642',
+    hermesApiKey: '',
+    hermesAutoStart: true,
     greeting: "Let's knock something off your list",
     tone: 'balanced',
     defaultModel: 'claude-sonnet-4-6',

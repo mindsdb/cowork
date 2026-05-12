@@ -8,14 +8,10 @@ frontend uses as its task id.
 
 from __future__ import annotations
 
-import json
 import logging
-import time
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from anton_api import conversation_manager
-from anton_api.formatter import format_responses_stream
 from anton_api.models import (
     Message,
     ResponseObject,
@@ -24,6 +20,8 @@ from anton_api.models import (
     ResponseStatus,
     ResponsesRequest,
 )
+from harnesses.base import HarnessConfigurationError, HarnessRuntimeError
+from harnesses.registry import get_active_harness
 from .attachments import attachment_context
 from .settings import get_config_status
 
@@ -53,10 +51,12 @@ def _assembled_user_input(content: str, project_name: str | None, session_id: st
 
 @router.post("/responses")
 async def create_response(req: ResponsesRequest):
-    if not conversation_manager.is_anton_available():
+    harness = get_active_harness()
+    health = await harness.health()
+    if not health.get("available"):
         raise HTTPException(
             status_code=503,
-            detail="Anton is not installed in this desktop environment.",
+            detail=health.get("error") or f"{harness.label} is not available.",
         )
 
     config = get_config_status()
@@ -73,77 +73,19 @@ async def create_response(req: ResponsesRequest):
         req.conversation,
         req.attachment_ids,
     )
+    dc_payload = None
+    if req.disabled_connections is not None:
+        dc_payload = [d.model_dump() for d in req.disabled_connections]
     
     if req.stream:
-        async def stream():
-            cid: str | None = None
-            # Per-turn event capture for the cowork sidecar. The sink is
-            # called by `format_responses_stream` for every event before
-            # serialisation so we record exactly the SSE-shape dicts the
-            # client adapter consumes (no parsing back from the wire).
-            recorded_events: list[dict] = []
-            started_at_ms: int | None = None
-
-            def _record(event_type: str, data: dict) -> None:
-                nonlocal started_at_ms
-                if started_at_ms is None:
-                    started_at_ms = int(time.time() * 1000)
-                # Defensive copy so later mutations of `data` (rare but
-                # cheap to guard against) don't churn what we'll persist.
-                recorded_events.append({**data})
-
-            try:
-                dc_payload = None
-                if req.disabled_connections is not None:
-                    dc_payload = [d.model_dump() for d in req.disabled_connections]
-                event_stream, cid = await conversation_manager.chat_stream(
-                    final_input,
-                    conversation_id=req.conversation,
-                    project=req.project,
-                    model=req.model if req.model and req.model != "anton" else None,
-                    disabled_connections=dc_payload,
-                )
-
-                async for chunk in format_responses_stream(
-                    event_stream,
-                    model=req.model or "anton",
-                    conversation_id=cid,
-                    event_sink=_record,
-                ):
-                    yield chunk
-            except conversation_manager.AntonConfigurationError as exc:
-                logger.warning("Anton configuration error: %s", exc)
-                yield (
-                    "event: response.failed\n"
-                    f"data: {json.dumps({'type': 'response.failed', 'code': 'config_required', 'error': 'Configuration error'})}\n\n"
-                )
-            except conversation_manager.AntonRuntimeError as exc:
-                logger.error("Anton runtime error: %s", exc)
-                yield (
-                    "event: response.failed\n"
-                    f"data: {json.dumps({'type': 'response.failed', 'code': 'anton_error', 'error': 'An unexpected error occurred'})}\n\n"
-                )
-            except Exception:
-                logger.exception("response stream failed")
-                yield (
-                    "event: response.failed\n"
-                    f"data: {json.dumps({'type': 'response.failed', 'code': 'server_error', 'error': 'Internal server error'})}\n\n"
-                )
-            finally:
-                # Persist whatever we captured so reopening the
-                # conversation rebuilds the Thinking block + scratchpad
-                # tabs. Runs even on failed/aborted streams so partial
-                # turns are still recoverable.
-                if cid and recorded_events:
-                    try:
-                        conversation_manager.record_turn_events(
-                            cid, started_at_ms, recorded_events,
-                        )
-                    except Exception:
-                        logger.debug("Could not record turn events", exc_info=True)
-
         return StreamingResponse(
-            stream(),
+            harness.stream_response(
+                user_input=final_input,
+                conversation_id=req.conversation,
+                project=req.project,
+                model=req.model,
+                disabled_connections=dc_payload,
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -153,35 +95,26 @@ async def create_response(req: ResponsesRequest):
         )
 
     # Non-streaming: collect text and return a single ResponseObject.
-    from anton.core.llm.provider import StreamTextDelta
-
-    collected: list[str] = []
     try:
-        dc_payload = None
-        if req.disabled_connections is not None:
-            dc_payload = [d.model_dump() for d in req.disabled_connections]
-        event_stream, cid = await conversation_manager.chat_stream(
-            final_input,
+        text, _cid = await harness.complete_text(
+            user_input=final_input,
             conversation_id=req.conversation,
             project=req.project,
-            model=req.model if req.model and req.model != "anton" else None,
+            model=req.model,
             disabled_connections=dc_payload,
         )
-        async for event in event_stream:
-            if isinstance(event, StreamTextDelta):
-                collected.append(event.text)
-    except conversation_manager.AntonConfigurationError as exc:
-        logger.warning("Anton configuration error: %s", exc)
-        raise HTTPException(status_code=400, detail="Configuration error")
-    except conversation_manager.AntonRuntimeError as exc:
-        logger.error("Anton runtime error: %s", exc)
-        raise HTTPException(status_code=500, detail="An unexpected error occurred")
+    except HarnessConfigurationError as exc:
+        logger.warning("%s configuration error: %s", harness.label, exc)
+        raise HTTPException(status_code=400, detail=str(exc) or "Configuration error")
+    except HarnessRuntimeError as exc:
+        logger.error("%s runtime error: %s", harness.label, exc)
+        raise HTTPException(status_code=500, detail=str(exc) or "An unexpected error occurred")
 
     return ResponseObject(
-        model=req.model or "anton",
+        model="hermes-agent" if harness.id == "hermes" else (req.model or harness.id),
         status=ResponseStatus.completed,
         output=[ResponseOutput(
             status=ResponseStatus.completed,
-            content=[ResponseOutputContent(text="".join(collected))],
+            content=[ResponseOutputContent(text=text)],
         )],
     )

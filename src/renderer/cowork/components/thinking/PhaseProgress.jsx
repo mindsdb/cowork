@@ -122,15 +122,17 @@ function PhaseRow({
 
 export function PhaseProgress({ steps = [], streamStatus = null, conversationId = '', onActivateStep }) {
   const scratchpadSteps = steps.filter((s) => s._isScratchpad);
+  const genericSteps = steps.filter((s) => s._isGenericProgress && s.badge !== 'Artifact');
   const artifactSteps = steps.filter((s) => s.badge === 'Artifact');
   const isInFlight = streamStatus === 'thinking' || streamStatus === 'streaming';
   const isDone = streamStatus === 'done';
+  const hasVisibleWork = scratchpadSteps.length > 0 || genericSteps.length > 0 || artifactSteps.length > 0;
 
   // Thinking phase: appears the moment a request fires, resolves
   // when the first scratchpad cell starts (or the response goes
   // straight to the body for "no compute" answers).
   const thinkingStatus =
-    scratchpadSteps.length === 0 && !isDone
+    !hasVisibleWork && !isDone
       ? 'in_progress'
       : 'completed';
 
@@ -147,7 +149,7 @@ export function PhaseProgress({ steps = [], streamStatus = null, conversationId 
   if (!isInFlight && !isDone && steps.length === 0) {
     return (
       <p className="px-1 py-2 text-[12.5px] text-ink-4">
-        Steps appear here while Anton works.
+        Steps appear here while the agent works.
       </p>
     );
   }
@@ -200,6 +202,37 @@ export function PhaseProgress({ steps = [], streamStatus = null, conversationId 
             : null
         }
       />
+
+      {genericSteps.map((step) => {
+        const isReasoning = step._progressPhase === 'reasoning';
+        const status = step.status === 'failed' ? 'completed' : step.status;
+        const message = step.data?.message || null;
+        const toolName = step.data?.tool_name || null;
+        const label = isReasoning
+          ? 'Reasoned through the request'
+          : (step.label || toolName || 'Used a tool');
+        const sublabel = isReasoning
+          ? message
+          : (toolName && toolName !== label ? toolName : message);
+        const hint = step.status === 'failed'
+          ? 'failed'
+          : formatDuration(
+              step.startedAt && step.completedAt
+                ? step.completedAt - step.startedAt
+                : null,
+            );
+        return (
+          <PhaseRow
+            key={step.id}
+            bank={isReasoning ? 'reasoning' : 'working'}
+            phaseKey={`${conversationId}:${step.id}`}
+            status={status}
+            label={label}
+            sublabel={sublabel}
+            hint={hint}
+          />
+        );
+      })}
 
       {workingStarted && (
         <PhaseRow
