@@ -6,7 +6,7 @@
 
 # Anton Desktop
 
-The official Electron desktop app for **[Anton](https://github.com/mindsdb/anton)** — MindsDB's autonomous AI coworker. Cross-platform (macOS + Windows), auto-installs Anton on first run, and provides a polished terminal interface with project management and Minds integration.
+The official Electron desktop app for **[Anton](https://github.com/mindsdb/anton)** — MindsDB's autonomous AI coworker. Cross-platform (macOS + Windows), auto-installs Anton on first run, and provides a chat-based cowork UI backed by a FastAPI sidecar, with Minds integration.
 
 ---
 
@@ -15,9 +15,6 @@ The official Electron desktop app for **[Anton](https://github.com/mindsdb/anton
 ```bash
 # Install dependencies
 npm install
-
-# Rebuild node-pty for Electron's Node ABI
-npx electron-rebuild -f -w node-pty
 
 # Build everything (main + renderer)
 npm run build
@@ -145,18 +142,20 @@ unset (the Electron path), behavior is byte-identical to before.
 ```
 src/
   main/                  # Electron main process (Node.js)
-    index.ts             # Window creation, IPC handlers, menu, project/minds management
-    anton-process.ts     # PTY process manager (Map<projectName, ptyProcess>)
+    index.ts             # Window creation, IPC handlers, menu
     installer.ts         # Auto-installer for Anton CLI (uv + git + Xcode CLT)
+    server-process.ts    # FastAPI sidecar lifecycle (start/stop/health)
     ui-updater.ts        # OTA UI update system (fetch, verify, cache, rollback)
     preload.ts           # contextBridge — exposes antontron API to renderer
   renderer/              # React UI (bundled by Vite)
-    App.tsx              # App flow: loading -> setup -> onboarding -> terminal
+    App.tsx              # App flow: loading -> setup -> onboarding -> cowork
+    CoworkApp.tsx        # Main chat-based cowork shell
     pages/
       Setup.tsx          # Install wizard with step progress
       Onboarding.tsx     # LLM provider selection (Anthropic / Minds)
-      Terminal.tsx       # Multi-terminal interface, projects sidebar, minds panel
-    styles.css           # Full dark cyberpunk theme
+    cowork/              # Shared SPA — never imports window.antontron
+    platform/host.ts     # Shell abstraction (the only sanctioned bridge surface)
+    styles.css           # Full dark theme
     global.d.ts          # TypeScript types for window.antontron API
   shared/
     ipc-channels.ts      # All IPC channel constants
@@ -166,13 +165,7 @@ assets/
 
 ### Key Design Decisions
 
-- **Multi-process terminals**: Each project gets its own independent `node-pty` process. Switching projects shows/hides xterm instances — no restart. Managed via `Map<string, ptyProcess>` in `anton-process.ts`.
-
-- **Login shell spawning**: On macOS, Anton is launched via `zsh -l -i -c anton` so packaged `.app` bundles inherit the user's PATH (homebrew, cargo, uv, etc).
-
-- **Banner suppression**: The app sets `ANTON_SUPPRESS_BANNER=1` env var when spawning Anton to skip the ASCII art banner in the terminal.
-
-- **Clipboard image paste**: Intercepts paste events on the xterm container, saves image to temp file via IPC, and auto-sends `/image <path>` to the PTY.
+- **FastAPI sidecar**: The Electron main process manages a bundled Python FastAPI server on `127.0.0.1:26866`. The renderer communicates with Anton exclusively through this HTTP API — there is no PTY or terminal emulator.
 
 - **Minds integration**: The GUI replicates Anton's `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes the same env vars to `~/.anton/.env`, and auto-restarts Anton to pick up new config.
 
@@ -189,31 +182,15 @@ All channels defined in `src/shared/ipc-channels.ts`:
 | `install:check`                                     | invoke    | Check if Anton CLI is installed           |
 | `install:start`                                     | invoke    | Run the installer                         |
 | `install:log/progress/done/error`                   | send      | Installer status events                   |
-| `anton:start`                                       | invoke    | Start PTY for a project                   |
-| `anton:data`                                        | send      | PTY stdout data (tagged with projectName) |
-| `anton:input`                                       | send      | Write to PTY stdin                        |
-| `anton:resize`                                      | send      | Resize PTY                                |
-| `anton:exit`                                        | send      | PTY exit event                            |
-| `anton:kill`                                        | send      | Kill a project's PTY                      |
-| `minds:status/list/get/connect/disconnect`          | invoke    | Minds server integration                  |
-| `clipboard:save-image`                              | invoke    | Save clipboard image to temp file         |
-| `settings:save/check-configured/validate`           | invoke    | Settings & API key management             |
-| `projects:list/create/delete/get-active/set-active` | invoke    | Project CRUD                              |
+| `server:get-info/start/stop/toggle`                 | invoke    | FastAPI sidecar lifecycle                  |
+| `server:get-diagnostics`                            | invoke    | Last error, exit code, recent log tail    |
+| `oauth:connect`                                     | invoke    | PKCE OAuth loopback flow                  |
+| `settings:read/save/check-configured/validate`      | invoke    | Settings & API key management             |
 | `ui:update-check`                                   | invoke    | Check for OTA UI updates                  |
 | `ui:update-apply`                                   | invoke    | Download and apply a pending UI update    |
 | `ui:update-status`                                  | send      | Update status events (available/reloading)|
-
----
-
-## Project Management
-
-Projects live in `{userData}/projects/`. Each project is a directory with its own `.anton/` folder (memory, episodes, secrets). The `default` project is always created and pinned to the top of the sidebar.
-
-State is tracked in `{userData}/state.json`:
-
-```json
-{ "activeProject": "default" }
-```
+| `app:get-platform/ui-version/open-external`         | invoke    | Platform info, open URLs                  |
+| `shell:open-path/show-item-in-folder/trash-item`    | invoke    | OS shell operations                       |
 
 ---
 
@@ -270,9 +247,7 @@ npm run release:win:local
 npm run dist:win:all
 ```
 
-> **Note**: Windows builds can be cross-compiled from macOS, but `node-pty` native modules require the target platform. For production Windows builds, build on a Windows machine or use CI.
->
-> Production Windows installers are built by [`.github/workflows/prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which is fired automatically by the auto-release flow described in [Releasing](#releasing). Don't push `v*` tags manually — bump `"version"` in `package.json` and merge to `main` instead.
+> **Note**: Production Windows installers are built by [`.github/workflows/prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which is fired automatically by the auto-release flow described in [Releasing](#releasing). Don't push `v*` tags manually — bump `"version"` in `package.json` and merge to `main` instead.
 
 ---
 
@@ -363,7 +338,7 @@ afterSign: scripts/notarize.js
 </plist>
 ```
 
-> These entitlements are required because `node-pty` uses native code and JIT.
+> These entitlements are required because Electron uses JIT and dynamic linking.
 
 #### 5. Notarization script (already included)
 
@@ -421,15 +396,6 @@ xcrun stapler validate "release/Anton-0.1.0-universal.dmg"
 
 # If "Developer ID" identity not found, open Keychain Access
 # and verify the certificate is in "login" keychain, not expired
-```
-
-If you get `ModuleNotFoundError: No module named 'distutils'` while rebuilding `node-pty`:
-
-```bash
-# node-gyp@9.x requires Python <= 3.11
-export npm_config_python=/opt/homebrew/bin/python3.11
-npm rebuild node-pty
-npm run dist:mac
 ```
 
 ---
@@ -514,7 +480,7 @@ npm run dist:win
 
 ## Over-the-Air UI Updates
 
-The desktop shell (Electron main process) handles PTY, IPC, and native OS integration — it changes rarely. The renderer (React UI) is where most iteration happens. Anton Desktop ships with an **OTA update system** that lets you push UI updates to every installed app without shipping a new `.dmg` or `.exe`.
+The desktop shell (Electron main process) handles IPC, the FastAPI sidecar, and native OS integration — it changes rarely. The renderer (React UI) is where most iteration happens. Anton Desktop ships with an **OTA update system** that lets you push UI updates to every installed app without shipping a new `.dmg` or `.exe`.
 
 ### Two-Repo Architecture
 
@@ -853,23 +819,12 @@ These are written to `~/.anton/.env` by the app and read by Anton at startup:
 | `ANTON_PLANNING_MODEL`          | Settings    | Model for planning tasks            |
 | `ANTON_CODING_MODEL`            | Settings    | Model for coding tasks              |
 | `ANTON_MEMORY_MODE`             | Settings    | Memory mode (autopilot/copilot/off) |
-| `ANTON_SUPPRESS_BANNER`         | Auto-set    | Suppresses ASCII art banner in PTY  |
 | `DEV_MODE`                      | Manual      | Renderer source override for developers (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
 | `UI_UPDATE_MODE`                | Settings    | OTA update behavior (`auto` = apply silently, `manual` = show banner; default `manual`) |
 
 ---
 
 ## Troubleshooting
-
-### `node-pty` build fails during install
-
-```bash
-# Ensure Python setuptools is available (needed by node-gyp)
-pip3 install setuptools
-
-# Rebuild for Electron's Node version
-npx electron-rebuild -f -w node-pty
-```
 
 ### App shows blank white screen
 
@@ -883,7 +838,7 @@ ls dist/renderer/index.html
 
 ### Anton shows "Disconnected" immediately after launch
 
-The packaged `.app` doesn't inherit shell PATH. This is handled by spawning through a login shell (`zsh -l -i -c anton`). If issues persist, check that Anton is in `~/.local/bin/` or on the default PATH.
+The packaged `.app` doesn't inherit shell PATH. The sidecar is spawned via the `uv tool install` interpreter, so ensure Anton is installed via `uv tool install anton`. If issues persist, check that the Python interpreter at `~/.local/share/uv/tools/anton/bin/python` exists.
 
 ### macOS Gatekeeper blocks unsigned app
 
@@ -900,11 +855,10 @@ xattr -cr "/Applications/Anton.app"
 | --------- | -------------------------------------- |
 | Framework | Electron 34                            |
 | Renderer  | React 19 + TypeScript + Vite 6         |
-| Terminal  | xterm.js 5                             |
-| PTY       | node-pty 1                             |
+| Backend   | FastAPI (Python, bundled sidecar)       |
 | Markdown  | marked 17                              |
 | Packaging | electron-builder 25                    |
-| Styling   | Pure CSS (custom dark cyberpunk theme) |
+| Styling   | Tailwind CSS + custom theme            |
 
 ---
 
