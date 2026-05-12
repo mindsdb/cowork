@@ -77,6 +77,11 @@ def _text_for_message(message: dict) -> str:
     return str(content or "")
 
 
+def _ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 class HermesHarnessProvider:
     id = "hermes"
     label = "Hermes Agent"
@@ -122,6 +127,7 @@ class HermesHarnessProvider:
     # ------------------------------------------------------------------
 
     def _project_base(self, project: str | None) -> Path:
+        projects_store.ensure_general_project()
         try:
             _, base = projects_store.resolve_project(project)
             return base
@@ -136,6 +142,9 @@ class HermesHarnessProvider:
 
     def _episodes_dir(self, project: str | None) -> Path:
         return self._project_base(project) / ".cowork" / "hermes" / "episodes"
+
+    def _ensure_episodes_dir(self, project: str | None) -> Path:
+        return _ensure_dir(self._episodes_dir(project))
 
     def _meta_path(self, project: str | None, conversation_id: str) -> Path:
         return self._episodes_dir(project) / f"{conversation_id}_meta.json"
@@ -156,7 +165,10 @@ class HermesHarnessProvider:
                     out.append((proj["name"], ep))
             return out
         if project:
-            _, base = projects_store.resolve_project(project)
+            try:
+                _, base = projects_store.resolve_project(project)
+            except FileNotFoundError:
+                return []
             ep = base / ".cowork" / "hermes" / "episodes"
             return [(project, ep)] if ep.is_dir() else []
         project_name, base = projects_store.resolve_project(None)
@@ -225,7 +237,11 @@ class HermesHarnessProvider:
         cid = conversation_id or _new_conversation_id()
         project_name = self._conversation_project(cid, project)
         if project_name is None:
-            project_name, _ = projects_store.resolve_project(project)
+            try:
+                project_name, _ = projects_store.resolve_project(project)
+            except FileNotFoundError:
+                project_name = projects_store.get_active()
+        self._ensure_episodes_dir(project_name)
 
         history = self._load_history(project_name, cid)
         meta = self._load_meta(project_name, cid) or {}
@@ -507,6 +523,7 @@ class HermesHarnessProvider:
         )
         prompt = self._build_prompt(history_before, user_input)
         self._append_message(project_name, cid, "user", user_input)
+        self._ensure_artifact_root(project_name)
         artifact_snapshot = self._artifact_snapshot(project_name)
 
         recorded_events: list[dict] = []
@@ -748,6 +765,9 @@ class HermesHarnessProvider:
 
     def _artifact_root(self, project_name: str | None) -> Path:
         return self._project_base(project_name) / "artifacts"
+
+    def _ensure_artifact_root(self, project_name: str | None) -> Path:
+        return _ensure_dir(self._artifact_root(project_name))
 
     def _artifact_snapshot(self, project_name: str | None) -> dict[str, float]:
         root = self._artifact_root(project_name)

@@ -181,6 +181,12 @@ def _hermes_memory_dir() -> Path:
     return _hermes_home() / "memories"
 
 
+def _ensure_hermes_memory_dir() -> Path:
+    root = _hermes_memory_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def _hermes_config_text() -> str:
     return _safe_text(_hermes_home() / "config.yaml", 24_000)
 
@@ -321,10 +327,9 @@ class MemorySaveRequest(BaseModel):
 async def save_memory(req: MemorySaveRequest):
     if _active_harness_name() == "hermes":
         filename = _resolve_hermes_memory_filename(req.relativePath)
-        root = _hermes_memory_dir()
+        root = _ensure_hermes_memory_dir()
         target = root / filename
         content = _normalise_hermes_memory_content(filename, req.content)
-        target.parent.mkdir(parents=True, exist_ok=True)
         _backup_target(target, "hermes-memory")
         target.write_text(content, encoding="utf-8")
         return {
@@ -370,6 +375,12 @@ async def delete_memory(scope: str, relative_path: str, project_path: Optional[s
 
 def _hermes_skills_root() -> Path:
     return _hermes_home() / "skills"
+
+
+def _ensure_hermes_skills_root() -> Path:
+    root = _hermes_skills_root()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def _is_hermes_cowork_skill(path: Path) -> bool:
@@ -476,8 +487,9 @@ def _render_hermes_skill(req: "SkillSaveRequest", label: str) -> str:
     ])
 
 
-def _hermes_cowork_skill_dir(label: str) -> Path:
-    return _hermes_skills_root() / "cowork" / _skill_label(label)
+def _hermes_cowork_skill_dir(label: str, *, create_root: bool = False) -> Path:
+    root = _ensure_hermes_skills_root() if create_root else _hermes_skills_root()
+    return root / "cowork" / _skill_label(label)
 
 
 @router.get("/skills")
@@ -538,7 +550,7 @@ async def save_skill(req: SkillSaveRequest):
             raise HTTPException(status_code=400, detail="Skill name is required.")
         if not req.declarative.strip():
             raise HTTPException(status_code=400, detail="Skill instructions are required.")
-        skill_dir = _hermes_cowork_skill_dir(label)
+        skill_dir = _hermes_cowork_skill_dir(label, create_root=True)
         skill_path = skill_dir / "SKILL.md"
         skill_dir.mkdir(parents=True, exist_ok=True)
         _backup_target(skill_path, "hermes-skills")

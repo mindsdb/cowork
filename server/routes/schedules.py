@@ -224,7 +224,9 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
     # to `general` (the orphan-fallback project provisioned by
     # `ensure_general_project`) so they always land somewhere stable.
     project_name = schedule.get("project") or projects_store.GENERAL_PROJECT
+    conversation_id: str | None = f"sched_{uuid.uuid4().hex[:12]}"
     task = {
+        "id": conversation_id,
         "title": title,
         "summary": "Scheduled Cowork task",
         "project": project_name,
@@ -244,16 +246,16 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
         ],
     }
 
-    conversation_id: str | None = None
     error_message: str | None = None
     try:
-        answer, conversation_id = await get_active_harness().complete_text(
+        answer, returned_conversation_id = await get_active_harness().complete_text(
             user_input=schedule.get("prompt", ""),
-            conversation_id=None,
+            conversation_id=conversation_id,
             project=project_name,
             model=schedule.get("model"),
             disabled_connections=None,
         )
+        conversation_id = returned_conversation_id or conversation_id
         task["id"] = conversation_id
         answer = (answer or "").strip()
         task["messages"].append({"role": "assistant", "content": answer, "createdAt": utc_now_iso()})
@@ -261,9 +263,7 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
         task["updatedAt"] = utc_now_iso()
         schedule["lastError"] = None
     except Exception as exc:
-        if conversation_id is None:
-            conversation_id = f"sched_{uuid.uuid4().hex[:12]}"
-            task["id"] = conversation_id
+        task["id"] = conversation_id
         error_message = str(exc)
         task["status"] = "error"
         task["error"] = error_message

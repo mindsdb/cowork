@@ -63,6 +63,7 @@ def _parse_for_display(
 
     out: list[dict] = []
     assistant_idx = 0
+    used_assistant_event_indices: set[int] = set()
     for msg in history:
         if not isinstance(msg, dict):
             continue
@@ -117,23 +118,47 @@ def _parse_for_display(
                     started_at = saved.get("started_at")
                     if isinstance(events, list) and events:
                         prev["events"] = events
+                        used_assistant_event_indices.add(idx)
                     if started_at is not None and "startedAt" not in prev:
                         prev["startedAt"] = started_at
                 continue
 
             entry: dict = {"role": role, "content": text}
             saved = by_assistant_turn.get(str(assistant_idx))
+            current_assistant_idx = assistant_idx
             assistant_idx += 1
             if isinstance(saved, dict):
                 events = saved.get("events")
                 started_at = saved.get("started_at")
                 if isinstance(events, list) and events:
                     entry["events"] = events
+                    used_assistant_event_indices.add(current_assistant_idx)
                 if started_at is not None:
                     entry["startedAt"] = started_at
             out.append(entry)
         else:
             out.append({"role": role, "content": text})
+    def _turn_key(item: tuple[object, object]) -> int:
+        try:
+            return int(item[0])
+        except (TypeError, ValueError):
+            return 10**9
+
+    for key, saved in sorted(by_assistant_turn.items(), key=_turn_key):
+        try:
+            idx = int(key)
+        except (TypeError, ValueError):
+            continue
+        if idx in used_assistant_event_indices or not isinstance(saved, dict):
+            continue
+        events = saved.get("events")
+        if not isinstance(events, list) or not events:
+            continue
+        entry: dict = {"role": "assistant", "content": "", "events": events}
+        started_at = saved.get("started_at")
+        if started_at is not None:
+            entry["startedAt"] = started_at
+        out.append(entry)
     return out
 
 

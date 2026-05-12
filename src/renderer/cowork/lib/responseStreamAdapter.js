@@ -133,6 +133,38 @@ function addArtifactStep(state, payload, eventTs) {
   };
 }
 
+function addFailureStep(state, event, eventTs) {
+  const message = event.error || event.message || 'Response failed';
+  const closedSteps = closeOpenScratchpadStep(state.steps, eventTs);
+  const step = {
+    id: `progress-${closedSteps.length + 1}`,
+    label: message,
+    badge: 'Error',
+    icon: 'sparkle',
+    status: 'failed',
+    startedAt: eventTs,
+    completedAt: eventTs,
+    data: {
+      phase: 'error',
+      progress_status: 'failed',
+      code: event.code || null,
+      message,
+    },
+    output: null,
+    result: null,
+    _isScratchpad: false,
+    _isGenericProgress: true,
+    _progressPhase: 'error',
+    _toolName: null,
+  };
+  return {
+    ...state,
+    steps: [...closedSteps, step],
+    status: 'error',
+    error: message,
+  };
+}
+
 function progressMessage(event) {
   const message = event.message ?? event.content ?? '';
   return typeof message === 'string' ? message.trim() : '';
@@ -204,12 +236,7 @@ export function reduceStream(state, event, now = Date.now) {
   }
 
   if (type === 'response.failed') {
-    return {
-      ...state,
-      steps: closeOpenScratchpadStep(state.steps, now()),
-      status: 'error',
-      error: event.error || event.message || 'Response failed',
-    };
+    return addFailureStep(state, event, eventTs);
   }
 
   if (type === 'response.output_text.delta') {
