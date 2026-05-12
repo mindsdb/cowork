@@ -20,13 +20,11 @@
   ],
   "description": "Connect to Coralogix to query logs, metrics, and traces across your observability platform.",
   "category": "observability",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "coralogix-connector",
     "title": "Connect Coralogix",
     "subtitle": "Paste your Coralogix API key and region domain to start querying logs, metrics, and traces.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -85,6 +83,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/coralogix.svg"
+  },
+  "logo_url": "logos/coralogix.svg"
 }

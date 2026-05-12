@@ -18,13 +18,11 @@
   ],
   "description": "Enrich contacts with verified emails and phone numbers using Lusha's API.",
   "category": "enrichment",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "lusha-connector",
     "title": "Connect Lusha",
     "subtitle": "Paste your Lusha API key to start enriching contacts with emails and phone numbers.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -46,6 +44,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/lusha.svg"
+  },
+  "logo_url": "logos/lusha.svg"
 }

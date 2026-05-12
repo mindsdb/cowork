@@ -19,13 +19,11 @@
   ],
   "description": "Connect ChurnZero to track customer engagement scores, churn risk, and account health data.",
   "category": "customer-success",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "churnzero-connector",
     "title": "Connect ChurnZero",
     "subtitle": "Paste your API Key and App Key to give Anton access to your ChurnZero customer engagement data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -64,6 +62,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/churnzero.svg"
+  },
+  "logo_url": "logos/churnzero.svg"
 }

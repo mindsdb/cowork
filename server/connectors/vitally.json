@@ -19,13 +19,11 @@
   ],
   "description": "Connect Anton to Vitally to read account health, trigger playbooks, and sync customer success data.",
   "category": "customer-success",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "vitally-connector",
     "title": "Connect Vitally",
     "subtitle": "Paste your Vitally API key and subdomain to give Anton access to your customer success workspace.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -55,6 +53,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/vitally.svg"
+  },
+  "logo_url": "logos/vitally.svg"
 }

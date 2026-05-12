@@ -20,13 +20,11 @@
   ],
   "description": "Fetch aggregated news headlines and full articles from thousands of sources via the NewsAPI.org service.",
   "category": "public-data",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "newsapi-connector",
     "title": "Connect NewsAPI",
     "subtitle": "Paste your NewsAPI key to start pulling headlines and articles from thousands of global sources.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -48,6 +46,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/newsapi.svg"
+  },
+  "logo_url": "logos/newsapi.svg"
 }

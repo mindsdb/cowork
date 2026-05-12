@@ -23,13 +23,11 @@
   ],
   "description": "Multi-carrier shipping, tracking, and insurance via the EasyPost API.",
   "category": "logistics",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "easypost-connector",
     "title": "Connect EasyPost",
     "subtitle": "Paste your EasyPost API key to start creating shipments, buying postage, and tracking packages.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -69,6 +67,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/easypost.svg"
+  },
+  "logo_url": "logos/easypost.svg"
 }

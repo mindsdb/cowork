@@ -18,13 +18,11 @@
   ],
   "description": "Automate cold email outreach and multi-channel sequences with Lemlist.",
   "category": "sales-engagement",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "lemlist-connector",
     "title": "Connect Lemlist",
     "subtitle": "Paste your Lemlist API key to give Anton access to your campaigns and leads.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -46,6 +44,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/lemlist.svg"
+  },
+  "logo_url": "logos/lemlist.svg"
 }

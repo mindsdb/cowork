@@ -19,13 +19,11 @@
   ],
   "description": "Connect to Ashby to read and manage candidates, job postings, and hiring pipelines.",
   "category": "hr",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "ashby-connector",
     "title": "Connect Ashby",
     "subtitle": "Paste your Ashby API key to give Anton access to your recruiting data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -47,6 +45,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/ashby.svg"
+  },
+  "logo_url": "logos/ashby.svg"
 }

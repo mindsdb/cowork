@@ -23,13 +23,11 @@
   ],
   "description": "Connect to Logz.io's hosted ELK, Prometheus, and APM platform to ship logs and query observability data.",
   "category": "observability",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "logz_io-connector",
     "title": "Connect Logz.io",
     "subtitle": "Paste your shipping token and API token to start ingesting logs and querying observability data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -147,6 +145,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/logz_io.svg"
+  },
+  "logo_url": "logos/logz_io.svg"
 }

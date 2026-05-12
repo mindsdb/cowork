@@ -17,13 +17,11 @@
   ],
   "description": "Manage contacts, pipelines, and relationship intelligence inside Folk's people-first CRM.",
   "category": "crm",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "folk-connector",
     "title": "Connect Folk",
     "subtitle": "Paste your Folk API key to give Anton access to your contacts and pipelines.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -45,6 +43,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/folk.svg"
+  },
+  "logo_url": "logos/folk.svg"
 }

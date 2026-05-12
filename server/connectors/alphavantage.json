@@ -23,13 +23,11 @@
   ],
   "description": "Fetch real-time and historical data for stocks, forex, crypto, and economic indicators via the Alpha Vantage REST API.",
   "category": "public-data",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "alphavantage-connector",
     "title": "Connect Alpha Vantage",
     "subtitle": "Paste your Alpha Vantage API key to start pulling market and economic data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -78,6 +76,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/alphavantage.svg"
+  },
+  "logo_url": "logos/alphavantage.svg"
 }

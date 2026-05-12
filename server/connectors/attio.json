@@ -17,13 +17,11 @@
   ],
   "description": "Modern, flexible CRM with custom objects — connect Anton via an access token from your Attio developer settings.",
   "category": "crm",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "attio-connector",
     "title": "Connect Attio",
     "subtitle": "Paste your Attio access token to give Anton read/write access to your workspace.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -82,6 +80,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/attio.svg"
+  },
+  "logo_url": "logos/attio.svg"
 }

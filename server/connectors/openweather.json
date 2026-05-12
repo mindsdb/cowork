@@ -21,13 +21,11 @@
   ],
   "description": "Fetch real-time weather forecasts and historical climate data from OpenWeatherMap.",
   "category": "public-data",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "openweather-connector",
     "title": "Connect OpenWeather",
     "subtitle": "Paste your OpenWeatherMap API key to access forecasts and historical weather data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -89,6 +87,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/openweather.svg"
+  },
+  "logo_url": "logos/openweather.svg"
 }

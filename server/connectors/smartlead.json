@@ -18,13 +18,11 @@
   ],
   "description": "Connect to Smartlead to manage cold email campaigns, mailboxes, and deliverability from Anton.",
   "category": "sales-engagement",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "smartlead-connector",
     "title": "Connect Smartlead",
     "subtitle": "Paste your Smartlead API key to give Anton access to your campaigns and mailboxes.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -55,6 +53,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/smartlead.svg"
+  },
+  "logo_url": "logos/smartlead.svg"
 }

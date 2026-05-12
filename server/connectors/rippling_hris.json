@@ -20,13 +20,11 @@
   ],
   "description": "Connect to Rippling's HRIS API to read employee records, payroll data, benefits, and org structure.",
   "category": "hr",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "rippling_hris-connector",
     "title": "Connect Rippling HR",
     "subtitle": "Authorize Anton to access your Rippling HRIS data via OAuth 2.0.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -67,6 +65,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/rippling_hris.svg"
+  },
+  "logo_url": "logos/rippling_hris.svg"
 }

@@ -19,13 +19,11 @@
   ],
   "description": "Connect to a Zipkin server to query distributed traces and span data.",
   "category": "observability",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "zipkin-connector",
     "title": "Connect Zipkin",
     "subtitle": "Point Anton at your Zipkin server to browse and query distributed traces.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -141,6 +139,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/zipkin.svg"
+  },
+  "logo_url": "logos/zipkin.svg"
 }

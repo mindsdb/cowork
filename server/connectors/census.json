@@ -18,13 +18,11 @@
   ],
   "description": "Sync data from your warehouse to CRMs, ad platforms, and other tools using Census's Reverse ETL platform.",
   "category": "data",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "census-connector",
     "title": "Connect Census",
     "subtitle": "Paste your Census API key to let Anton read syncs, segments, and destination statuses.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -54,6 +52,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/census.svg"
+  },
+  "logo_url": "logos/census.svg"
 }

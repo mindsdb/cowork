@@ -18,13 +18,11 @@
   ],
   "description": "Connect to Workable to read jobs, candidates, and pipeline data from your applicant tracking system.",
   "category": "hr",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "workable-connector",
     "title": "Connect Workable",
     "subtitle": "Paste your Workable API token and subdomain to give Anton access to your hiring data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -91,6 +89,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/workable.svg"
+  },
+  "logo_url": "logos/workable.svg"
 }

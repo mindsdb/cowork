@@ -20,13 +20,11 @@
   ],
   "description": "Route and book inbound meetings instantly using Chili Piper's smart scheduling and lead-routing engine.",
   "category": "scheduling",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "chili_piper-connector",
     "title": "Connect Chili Piper",
     "subtitle": "Paste your Chili Piper API key to give Anton access to your meeting routing and booking data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -92,6 +90,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/chili_piper.svg"
+  },
+  "logo_url": "logos/chili_piper.svg"
 }

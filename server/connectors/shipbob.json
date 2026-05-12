@@ -18,13 +18,11 @@
   ],
   "description": "Connect to ShipBob to sync orders, inventory, and shipments from your 3PL fulfillment warehouse.",
   "category": "logistics",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "shipbob-connector",
     "title": "Connect ShipBob",
     "subtitle": "Paste your ShipBob personal access token to sync fulfillment, inventory, and shipping data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -54,6 +52,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/shipbob.svg"
+  },
+  "logo_url": "logos/shipbob.svg"
 }

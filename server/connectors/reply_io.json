@@ -22,13 +22,11 @@
   ],
   "description": "Automate multi-channel sales outreach via email, LinkedIn, calls, and SMS using Reply.io sequences.",
   "category": "sales-engagement",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "reply_io-connector",
     "title": "Connect Reply.io",
     "subtitle": "Paste your Reply.io API key to give Anton access to your sequences, contacts, and stats.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -50,6 +48,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/reply_io.svg"
+  },
+  "logo_url": "logos/reply_io.svg"
 }

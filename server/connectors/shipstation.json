@@ -19,13 +19,11 @@
   ],
   "description": "Multi-carrier shipping and label printing platform for ecommerce, connecting orders to carriers and automating fulfillment.",
   "category": "logistics",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "shipstation-connector",
     "title": "Connect ShipStation",
     "subtitle": "Paste your ShipStation API key and secret to start syncing orders, shipments, and labels.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -63,6 +61,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/shipstation.svg"
+  },
+  "logo_url": "logos/shipstation.svg"
 }

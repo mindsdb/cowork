@@ -20,13 +20,11 @@
   ],
   "description": "Monitor website and service uptime, check status, and retrieve alert data from UptimeRobot.",
   "category": "observability",
-  "logo": "link",
   "logo_color": "#3B82F6",
   "form": {
     "form_id": "uptimerobot-connector",
     "title": "Connect UptimeRobot",
     "subtitle": "Paste your UptimeRobot API key to start pulling monitor status and uptime data.",
-    "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -75,6 +73,8 @@
           }
         ]
       }
-    ]
-  }
+    ],
+    "logo_url": "logos/uptimerobot.svg"
+  },
+  "logo_url": "logos/uptimerobot.svg"
 }
