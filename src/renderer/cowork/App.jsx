@@ -21,6 +21,7 @@ import UtilitiesView from './views/UtilitiesView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
+import RenameTaskModal from './components/task/RenameTaskModal';
 import { setForm as setDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
 import { host } from '../platform/host';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -557,6 +558,8 @@ function AppCore() {
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null);
   // Pending project delete — same pattern but for entire projects.
   const [pendingDeleteProject, setPendingDeleteProject] = useState(null);
+  const [pendingRenameTaskId, setPendingRenameTaskId] = useState(null);
+  const [renamingTask, setRenamingTask] = useState(false);
 
   // Live stream control — refs to the active fetch's AbortController
   // and the latest scratchpad name so we can fire a Stop that aborts
@@ -2051,14 +2054,38 @@ function AppCore() {
   const handleRenameTask = async (taskId, newTitle) => {
     if (!newTitle?.trim()) return;
     const next = newTitle.trim();
+    const wasPinned =
+      pins.some((p) => p.type === 'task' && p.id === taskId) ||
+      tasks.some((t) => t.id === taskId && t.pinned);
     // Optimistic update — flip back if the server rejects.
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, title: next } : t));
     try {
       await renameConversation(taskId, next);
-    } catch {
+      if (wasPinned) {
+        await pinTask({ id: taskId, title: next });
+        const data = await fetchPins();
+        setPins(data.pins || []);
+      }
+    } catch (err) {
       // Reload from server on failure to recover the canonical title.
       const fresh = await fetchSessions();
       if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+      throw err;
+    }
+  };
+
+  const requestRenameTask = (taskId) => {
+    if (!taskId) return;
+    setPendingRenameTaskId(taskId);
+  };
+
+  const submitRenameTask = async (newTitle) => {
+    if (!pendingRenameTaskId) return;
+    setRenamingTask(true);
+    try {
+      await handleRenameTask(pendingRenameTaskId, newTitle);
+    } finally {
+      setRenamingTask(false);
     }
   };
 
@@ -2378,7 +2405,7 @@ function AppCore() {
           }
           onPinTask={handlePinTask}
           onUnpinTask={handleUnpinTask}
-          onRenameTask={handleRenameTask}
+          onRenameTask={requestRenameTask}
           onDeleteTask={handleDeleteTask}
           onMoveTaskToProject={handleMoveTaskToProject}
           projects={projects}
@@ -2481,7 +2508,7 @@ function AppCore() {
             onUpdateConnectorMute={handleComposerConnectorMute}
             onPinTask={handlePinTask}
             onUnpinTask={handleUnpinTask}
-            onRenameTask={handleRenameTask}
+            onRenameTask={requestRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
             onMoveTaskToProject={handleMoveTaskToProject}
@@ -2735,6 +2762,15 @@ function AppCore() {
           setPendingDeleteTaskId(null);
           await performDeleteTask(id);
         }}
+      />
+      <RenameTaskModal
+        open={!!pendingRenameTaskId}
+        task={tasks.find((t) => t.id === pendingRenameTaskId) || null}
+        busy={renamingTask}
+        onClose={() => {
+          if (!renamingTask) setPendingRenameTaskId(null);
+        }}
+        onSubmit={submitRenameTask}
       />
 
       <ConfirmModal

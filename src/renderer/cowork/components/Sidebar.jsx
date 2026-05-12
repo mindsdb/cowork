@@ -148,12 +148,10 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         onClose={() => setMenuOpen(false)}
         onPin={() => onPin?.(task)}
         onUnpin={() => onUnpin?.(task.id)}
-        onRename={() => {
-          const next = window.prompt('Rename task', task.title || '');
-          if (next != null) onRename?.(task.id, next);
-        }}
+        onRename={() => onRename?.(task.id)}
         onDelete={() => onDelete?.(task.id)}
         onMoveToProject={(p) => onMoveToProject?.(task.id, p.name)}
+        hideRename={false}
       />
     </div>
   );

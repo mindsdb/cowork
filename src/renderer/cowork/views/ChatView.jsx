@@ -827,7 +827,7 @@ export default function ChatView({
     // fires for HTML, so we can dispatch straight to the viewer.
     setPreviewArt(artifact);
   };
-  // Task settings menu (kebab in header).
+  // Task settings menu (chevron in header).
   const settingsBtnRef = useRef(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsAnchor, setSettingsAnchor] = useState(null);
@@ -850,33 +850,6 @@ export default function ChatView({
   // to lift it further; the panel reads via the `highlighted`
   // prop we pass it below.
   const [formHighlight, setFormHighlight] = useState(false);
-  // Inline title rename — same affordance the project detail header
-  // uses. Hover surfaces the kebab; Rename in the menu flips the
-  // title span into an <input>; Enter commits, Esc cancels.
-  const [titleHover, setTitleHover] = useState(false);
-  const [titleEditing, setTitleEditing] = useState(false);
-  const titleInputRef = useRef(null);
-
-  useLayoutEffect(() => {
-    if (!titleEditing) return;
-    const id = requestAnimationFrame(() => {
-      const el = titleInputRef.current;
-      if (!el) return;
-      el.focus();
-      try { el.select(); } catch {}
-    });
-    return () => cancelAnimationFrame(id);
-  }, [titleEditing]);
-
-  const submitTitleRename = () => {
-    const next = titleInputRef.current?.value ?? task.title ?? '';
-    const trimmed = next.trim();
-    setTitleEditing(false);
-    if (!trimmed || trimmed === (task.title || '').trim()) return;
-    onRenameTask?.(task.id, trimmed);
-  };
-  const cancelTitleRename = () => setTitleEditing(false);
-
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error'].includes(m.role)).length;
@@ -1113,96 +1086,60 @@ export default function ChatView({
             })()}
             <CrumbSep />
             <div
-              onMouseEnter={() => setTitleHover(true)}
-              onMouseLeave={() => setTitleHover(false)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 minWidth: 0, flex: '1 1 0',
               }}
             >
-              {titleEditing ? (
-                <input
-                  ref={titleInputRef}
-                  type="text"
-                  defaultValue={task.title || ''}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      submitTitleRename();
-                    } else if (e.key === 'Escape') {
-                      e.preventDefault();
-                      cancelTitleRename();
-                    }
-                  }}
-                  onBlur={submitTitleRename}
-                  spellCheck={false}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  style={{
-                    flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--accent)',
-                    borderRadius: 5, padding: '2px 6px', outline: 'none',
-                  }}
-                />
-              ) : (
-                <span title={task.title} style={{
-                  fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                  letterSpacing: '0.04em', color: T.ink,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  overflowWrap: 'anywhere',
-                  minWidth: 0, flex: '0 1 auto',
-                }}>{task.title}</span>
-              )}
-              {task.pinned && !titleEditing && (
+              <span title={task.title} style={{
+                fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+                letterSpacing: '0.04em', color: T.ink,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                overflowWrap: 'anywhere',
+                minWidth: 0, flex: '0 1 auto',
+              }}>{task.title}</span>
+              {task.pinned && (
                 <span aria-hidden style={{ display: 'inline-flex', flexShrink: 0, color: T.accent }}>
                   {Ico.pin(11)}
                 </span>
               )}
-              {!titleEditing && (
-                <button
-                  ref={settingsBtnRef}
-                  type="button"
-                  aria-label="Task menu"
-                  title="Task menu"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (settingsOpen) {
-                      setSettingsOpen(false);
-                      return;
-                    }
-                    const rect = settingsBtnRef.current?.getBoundingClientRect();
-                    setSettingsAnchor(rect || null);
-                    setSettingsOpen(true);
-                  }}
-                  style={{
-                    width: 22, height: 22, borderRadius: 5,
-                    background: settingsOpen ? 'var(--surface-2)' : 'transparent',
-                    border: 0,
-                    color: 'var(--ink-3)',
-                    display: 'inline-grid', placeItems: 'center',
-                    flexShrink: 0,
-                    opacity: (titleHover || settingsOpen) ? 1 : 0,
-                    pointerEvents: (titleHover || settingsOpen) ? 'auto' : 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-                    WebkitAppRegion: 'no-drag',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = settingsOpen ? 'var(--surface-2)' : 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-                >
-                  {Ico.moreVert(13)}
-                </button>
-              )}
+              <button
+                ref={settingsBtnRef}
+                type="button"
+                aria-label="Task menu"
+                title="Task menu"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (settingsOpen) {
+                    setSettingsOpen(false);
+                    return;
+                  }
+                  const rect = settingsBtnRef.current?.getBoundingClientRect();
+                  setSettingsAnchor(rect || null);
+                  setSettingsOpen(true);
+                }}
+                style={{
+                  width: 22, height: 22, borderRadius: 5,
+                  background: settingsOpen ? 'var(--surface-2)' : 'transparent',
+                  border: 0,
+                  color: 'var(--ink-3)',
+                  display: 'inline-grid', placeItems: 'center',
+                  flexShrink: 0,
+                  opacity: 1,
+                  pointerEvents: 'auto',
+                  cursor: 'pointer',
+                  transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+                  WebkitAppRegion: 'no-drag',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = settingsOpen ? 'var(--surface-2)' : 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+              >
+                {Ico.chevDown(13)}
+              </button>
             </div>
           </div>
 
-          {/* Right side reserved for future header chips. The kebab
+          {/* Right side reserved for future header chips. The chevron
               and rail toggle moved out; pin lives inline with the
               title now (above) so it stays visually attached to the
               task it acts on. */}
@@ -1211,7 +1148,7 @@ export default function ChatView({
             flexShrink: 0,
           }} />
         </div>
-        {/* Task menu — anchored to the kebab next to the title.
+        {/* Task menu — anchored to the chevron next to the title.
             Items: Pin/Unpin · Rename · Delete. Move-to-project,
             Schedule and Turn-into-skill are intentionally excluded
             here — the focused three-action set matches the project
@@ -1226,7 +1163,7 @@ export default function ChatView({
           onClose={() => setSettingsOpen(false)}
           onPin={() => onPinTask?.(task)}
           onUnpin={() => onUnpinTask?.(task.id)}
-          onRename={() => setTitleEditing(true)}
+          onRename={() => onRenameTask?.(task.id)}
           onDelete={() => onDeleteTask?.(task.id)}
           onMoveToProject={(p) => onMoveTaskToProject?.(task.id, p.name)}
           onSchedule={() => {
