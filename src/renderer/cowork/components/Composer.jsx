@@ -75,10 +75,11 @@ export default function Composer({
   const taRef = useRef(null);
   const fileRef = useRef(null);
   const wrapRef = useRef(null);
-  const composerStageRef = useRef(null);
+  /** Positioning context for the attach (+) menu — tight box around the + control so the menu aligns with the activator. */
+  const attachAnchorRef = useRef(null);
   const attachMenuRef = useRef(null);
 
-  /** Space we want cleared above the composer before opening the menu upward (~collapsed height + margin). */
+  /** Space we want cleared above the + control before opening the menu upward (~menu height + margin). */
   const ATTACH_MENU_TOP_RESERVE_PX = 200;
 
   // Typing notifier — fires `onTypingChange(true)` on input and
@@ -133,9 +134,9 @@ export default function Composer({
   }, []);
 
   const updateAttachPlacement = () => {
-    const stage = composerStageRef.current;
-    if (!stage) return;
-    const r = stage.getBoundingClientRect();
+    const anchor = attachAnchorRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
     const measured = attachMenuRef.current?.offsetHeight;
     const reserve = Math.max(measured ?? 0, ATTACH_MENU_TOP_RESERVE_PX) + 24;
     setAttachMenuBelow(r.top < reserve);
@@ -213,7 +214,7 @@ export default function Composer({
         onChange={(event) => handleAttachFiles(event.target.files)}
       />
 
-      <div ref={composerStageRef} style={{ position: 'relative', width: '100%' }}>
+      <div style={{ width: '100%' }}>
         <div className={`composer-wrap${focused ? ' focused' : ''}`}>
           {attachments.length > 0 && (
             <div className="attachment-strip">
@@ -242,25 +243,129 @@ export default function Composer({
           />
 
           <div className="composer-toolbar">
-            <button
-              className="composer-icon"
-              title="Add context"
-              disabled={disabled || busy}
-              onClick={() => {
-                if (openMenu === 'attach') {
-                  setOpenMenu(null);
-                  return;
-                }
-                const stage = composerStageRef.current;
-                if (stage) {
-                  const r = stage.getBoundingClientRect();
-                  setAttachMenuBelow(r.top < ATTACH_MENU_TOP_RESERVE_PX + 24);
-                } else setAttachMenuBelow(false);
-                setOpenMenu('attach');
-              }}
+            <span
+              ref={attachAnchorRef}
+              style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
             >
-              {Ico.plus(15)}
-            </button>
+              <button
+                className="composer-icon"
+                title="Add context"
+                disabled={disabled || busy}
+                onClick={() => {
+                  if (openMenu === 'attach') {
+                    setOpenMenu(null);
+                    return;
+                  }
+                  const anchor = attachAnchorRef.current;
+                  if (anchor) {
+                    const r = anchor.getBoundingClientRect();
+                    setAttachMenuBelow(r.top < ATTACH_MENU_TOP_RESERVE_PX + 24);
+                  } else setAttachMenuBelow(false);
+                  setOpenMenu('attach');
+                }}
+              >
+                {Ico.plus(15)}
+              </button>
+              {openMenu === 'attach' && (
+                <div
+                  ref={attachMenuRef}
+                  className={`menu${attachMenuBelow ? ' menu--drop-down' : ''}`}
+                  style={{
+                    left: 0,
+                    minWidth: 240,
+                    ...(attachMenuBelow
+                      ? { top: 'calc(100% + 6px)' }
+                      : { bottom: 'calc(100% + 6px)' }),
+                  }}
+                >
+                  <button className="menu-item" onClick={() => fileRef.current?.click()}>
+                    {Ico.attach(14)} Attach files or photos
+                  </button>
+                  <button
+                    className="menu-item"
+                    onClick={() => setConnectorsOpen((o) => !o)}
+                    aria-expanded={connectorsOpen}
+                  >
+                    {Ico.link(14)}
+                    <span style={{ flex: 1 }}>Connectors</span>
+                    <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>
+                      {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
+                    </span>
+                  </button>
+                  <div
+                    className={`menu-connectors-accordion${connectorsOpen ? ' is-open' : ''}`}
+                    aria-hidden={!connectorsOpen}
+                  >
+                    <div className="menu-connectors-accordion__inner">
+                      <div
+                        className="menu-connectors-accordion__scroll"
+                        inert={!connectorsOpen || undefined}
+                      >
+                        {connectors.length === 0 ? (
+                          <div style={{ padding: '8px 14px', fontSize: 12.5, color: 'var(--frost-600)' }}>
+                            No connectors yet. Add one in Utilities → Datasources.
+                          </div>
+                        ) : (
+                          connectors.map((c) => {
+                            const muted = isConnectionDisabled(c);
+                            return (
+                              <div
+                                key={`${c.engine}:${c.name}`}
+                                className="menu-item"
+                                style={{
+                                  paddingLeft: 12,
+                                  paddingRight: 12,
+                                  cursor: 'default',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 10,
+                                  flexWrap: 'nowrap',
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <span style={{ display: 'inline-flex', color: 'var(--frost-700)', flexShrink: 0 }}>{Ico.link(13)}</span>
+                                <span style={{
+                                  flex: '1 1 120px',
+                                  minWidth: 0,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'flex-start',
+                                  gap: 2,
+                                }}
+                                >
+                                  <span style={{ fontWeight: 500 }}>{c.name}</span>
+                                  <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>{c.displayName || c.engine}</span>
+                                </span>
+                                {canMuteConnectors ? (
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={!muted}
+                                    aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
+                                    className={`toggle${!muted ? ' on' : ''}`}
+                                    disabled={busy}
+                                    style={{ flexShrink: 0 }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConnectorUseInChat(c, muted);
+                                    }}
+                                  >
+                                    <span className="toggle-thumb" />
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {error && (
+                    <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--danger-600, #b3261e)' }}>{error}</div>
+                  )}
+                </div>
+              )}
+            </span>
             <div style={{ flex: 1 }} />
             {/* Mic / voice input intentionally hidden — voice flow isn't
                 wired through anton yet. We keep speechSupported state
@@ -308,106 +413,6 @@ export default function Composer({
             )}
           </div>
         </div>
-
-        {openMenu === 'attach' && (
-          <div
-            ref={attachMenuRef}
-            className={`menu${attachMenuBelow ? ' menu--drop-down' : ''}`}
-            style={{
-              left: 0,
-              minWidth: 240,
-              ...(attachMenuBelow
-                ? { top: 'calc(100% + 6px)' }
-                : { bottom: 'calc(100% + 6px)' }),
-            }}
-          >
-          <button className="menu-item" onClick={() => fileRef.current?.click()}>
-            {Ico.attach(14)} Attach files or photos
-          </button>
-          <button
-            className="menu-item"
-            onClick={() => setConnectorsOpen((o) => !o)}
-            aria-expanded={connectorsOpen}
-          >
-            {Ico.link(14)}
-            <span style={{ flex: 1 }}>Connectors</span>
-            <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>
-              {connectorsOpen ? Ico.chevDown(12) : Ico.chevRight(12)}
-            </span>
-          </button>
-          <div
-            className={`menu-connectors-accordion${connectorsOpen ? ' is-open' : ''}`}
-            aria-hidden={!connectorsOpen}
-          >
-            <div className="menu-connectors-accordion__inner">
-              <div
-                className="menu-connectors-accordion__scroll"
-                inert={!connectorsOpen || undefined}
-              >
-                {connectors.length === 0 ? (
-                  <div style={{ padding: '8px 14px', fontSize: 12.5, color: 'var(--frost-600)' }}>
-                    No connectors yet. Add one in Utilities → Datasources.
-                  </div>
-                ) : (
-                  connectors.map((c) => {
-                    const muted = isConnectionDisabled(c);
-                    return (
-                      <div
-                        key={`${c.engine}:${c.name}`}
-                        className="menu-item"
-                        style={{
-                          paddingLeft: 12,
-                          paddingRight: 12,
-                          cursor: 'default',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 10,
-                          flexWrap: 'nowrap',
-                        }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                      >
-                        <span style={{ display: 'inline-flex', color: 'var(--frost-700)', flexShrink: 0 }}>{Ico.link(13)}</span>
-                        <span style={{
-                          flex: '1 1 120px',
-                          minWidth: 0,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'flex-start',
-                          gap: 2,
-                        }}
-                        >
-                          <span style={{ fontWeight: 500 }}>{c.name}</span>
-                          <span style={{ fontSize: 11, color: 'var(--frost-600)' }}>{c.displayName || c.engine}</span>
-                        </span>
-                        {canMuteConnectors ? (
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={!muted}
-                            aria-label={muted ? `Enable ${c.name} for this chat` : `Disable ${c.name} for this chat`}
-                            className={`toggle${!muted ? ' on' : ''}`}
-                            disabled={busy}
-                            style={{ flexShrink: 0 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConnectorUseInChat(c, muted);
-                            }}
-                          >
-                            <span className="toggle-thumb" />
-                          </button>
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-          {error && (
-            <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--danger-600, #b3261e)' }}>{error}</div>
-          )}
-        </div>
-        )}
       </div>
 
       {!hideMeta && (
