@@ -41,9 +41,12 @@ html, body, #root {
   width: 100%;
   overflow: hidden;
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
   -webkit-font-smoothing: antialiased;
 }
+/* Body / root typography comes from cowork/globals.css (Inter). A legacy
+   rule here used SF Mono on #root, which overrode globals (styles.css loads
+   after globals) and made surfaces that inherit — e.g. HomeView dropdowns —
+   render in monospace while ChatView forced FONT_BODY on its subtree. */
 
 /* The body background is now controlled by .gf-theme-dark / .gf-theme-light
    from the gravity-field kit. Don't set it on html/body or it will mask
