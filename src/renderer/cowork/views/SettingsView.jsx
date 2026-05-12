@@ -48,11 +48,17 @@ const PROVIDER_MODELS = {
 // Per-provider credential relevance map. Drives the Required / Optional /
 // Unused badges and the dimming of unrelated rows in the Credentials card.
 const CREDENTIAL_RELEVANCE = {
+  // Minds-related credentials live in their own card but are only on
+  // the auth path for the `minds-cloud` preset. Marking them `unused`
+  // for everything else dims the rows (and drops the Optional badge) so
+  // attention sticks to the credentials the active provider actually
+  // touches. The fields stay editable for users who keep a Minds key
+  // around for routing/publishing.
   anthropic: {
     anthropicApiKey: 'required',
     openaiApiKey:    'unused',
     openaiBaseUrl:   'unused',
-    mindsApiKey:     'optional',
+    mindsApiKey:     'unused',
     mindsUrl:        'unused',
     mindsMindName:   'unused',
     mindsDatasource: 'unused',
@@ -61,7 +67,7 @@ const CREDENTIAL_RELEVANCE = {
     anthropicApiKey: 'unused',
     openaiApiKey:    'required',
     openaiBaseUrl:   'unused',
-    mindsApiKey:     'optional',
+    mindsApiKey:     'unused',
     mindsUrl:        'unused',
     mindsMindName:   'unused',
     mindsDatasource: 'unused',
@@ -70,7 +76,7 @@ const CREDENTIAL_RELEVANCE = {
     anthropicApiKey: 'unused',
     openaiApiKey:    'required',
     openaiBaseUrl:   'auto',
-    mindsApiKey:     'optional',
+    mindsApiKey:     'unused',
     mindsUrl:        'unused',
     mindsMindName:   'unused',
     mindsDatasource: 'unused',
@@ -79,7 +85,7 @@ const CREDENTIAL_RELEVANCE = {
     anthropicApiKey: 'unused',
     openaiApiKey:    'required',
     openaiBaseUrl:   'required',
-    mindsApiKey:     'optional',
+    mindsApiKey:     'unused',
     mindsUrl:        'unused',
     mindsMindName:   'unused',
     mindsDatasource: 'unused',
@@ -261,6 +267,43 @@ function TextInput({ value, onChange, placeholder }) {
   );
 }
 
+// Drop-in for TextInput in Credentials rows. Adds a × button inside the
+// field that empties the value — pairs with the trash icon on the API
+// key fields so the whole Credentials card uses one clear gesture.
+// Save settings still has to be clicked to commit the deletion to env.
+function ClearableTextInput({ value, onChange, placeholder }) {
+  const v = value ?? '';
+  const hasValue = v.length > 0;
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        className="field-input"
+        value={v}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={hasValue ? { paddingRight: 36 } : undefined}
+      />
+      {hasValue && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          title="Clear (commits on Save settings)"
+          aria-label="Clear value"
+          style={{
+            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 26, borderRadius: 6,
+            border: 0, background: 'transparent', cursor: 'pointer',
+            color: 'var(--ink-3)', padding: 0,
+          }}
+        >
+          {Ico.close(13)}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Masked credential input. The backend returns "***" as a sentinel for
 // stored keys (the real value never leaves disk on a plain GET), so the
 // eye icon does two things:
@@ -321,6 +364,17 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
     onChange(next);
   };
 
+  // Trash → empty the field locally. The change only hits the server
+  // on Save settings, where update_settings sees an empty string and
+  // routes the key to its delete branch (`_stage_string_env` / the API
+  // key block). Also resets reveal state so we don't keep a fetched
+  // plaintext copy around.
+  const onClearField = () => {
+    setRevealedValue(null);
+    setShow(false);
+    onChange('');
+  };
+
   const btnStyle = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     width: 28, height: 26, borderRadius: 6,
@@ -340,7 +394,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
         disabled={disabled}
         autoComplete="off"
         spellCheck={false}
-        style={{ paddingRight: 76 }}
+        style={{ paddingRight: 108 }}
       />
       <div style={{
         position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
@@ -370,6 +424,16 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
           style={show ? btnStyleActive : btnStyle}
         >
           {show ? Ico.eyeOff(13) : Ico.eye(13)}
+        </button>
+        <button
+          type="button"
+          onClick={onClearField}
+          disabled={!hasValue}
+          title="Clear this key (commits on Save settings)"
+          aria-label="Clear key"
+          style={hasValue ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
+        >
+          {Ico.trash(13)}
         </button>
       </div>
     </div>
@@ -753,7 +817,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       status={relevance.openaiBaseUrl}
                       hasValue={has('openaiBaseUrl')}
                     >
-                      <TextInput
+                      <ClearableTextInput
                         value={settings.openaiBaseUrl ?? ''}
                         onChange={(v) => setSetting('openaiBaseUrl', v)}
                         placeholder="https://example.com/v1"
@@ -778,7 +842,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       status={relevance.mindsUrl}
                       hasValue={has('mindsUrl')}
                     >
-                      <TextInput
+                      <ClearableTextInput
                         value={settings.mindsUrl ?? 'https://mdb.ai'}
                         onChange={(v) => setSetting('mindsUrl', v)}
                         placeholder="https://mdb.ai"
@@ -790,7 +854,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       status={relevance.mindsMindName}
                       hasValue={has('mindsMindName')}
                     >
-                      <TextInput
+                      <ClearableTextInput
                         value={settings.mindsMindName ?? ''}
                         onChange={(v) => setSetting('mindsMindName', v)}
                         placeholder="sales_data_expert"
@@ -803,12 +867,12 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       hasValue={has('mindsDatasource') || has('mindsDatasourceEngine')}
                     >
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <TextInput
+                        <ClearableTextInput
                           value={settings.mindsDatasource ?? ''}
                           onChange={(v) => setSetting('mindsDatasource', v)}
                           placeholder="datasource name"
                         />
-                        <TextInput
+                        <ClearableTextInput
                           value={settings.mindsDatasourceEngine ?? ''}
                           onChange={(v) => setSetting('mindsDatasourceEngine', v)}
                           placeholder="postgres"

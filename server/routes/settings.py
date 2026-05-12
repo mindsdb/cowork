@@ -378,6 +378,53 @@ async def update_settings(patch: SettingsPatch):
             logger.warning("Failed to write settings: %s", e)
             raise HTTPException(status_code=500, detail="Settings could not be saved.") from e
 
+    # Post-write hygiene: the save handler intentionally skips "***"
+    # sentinel patches to preserve stored keys, which means a cross-
+    # provider switch can leave a key from the *previous* provider
+    # sitting in ANTON_OPENAI_API_KEY and silently fail auth against
+    # the new endpoint. Catch the two unambiguous cases:
+    #
+    #   1. Active state = Minds Cloud, but ANTON_OPENAI_API_KEY holds a
+    #      non-Minds value → router auth will 401 against mdb.ai.
+    #   2. Active state = OpenAI / non-Minds compatible, but
+    #      ANTON_OPENAI_API_KEY holds an `mdb_…` Minds key → will 401
+    #      against api.openai.com (or any non-Minds host).
+    #
+    # In both cases we *delete* the stale key. AntonSettings.model_post_init
+    # then derives openai auth from minds_api_key for case 1, and case 2
+    # prompts the user to paste the right OpenAI key.
+    provider_now = _get_env("ANTON_PLANNING_PROVIDER")
+    minds_url_now = (_get_env("ANTON_MINDS_URL") or "").rstrip("/")
+    minds_key_now = _get_env("ANTON_MINDS_API_KEY")
+    openai_base_now = (_get_env("ANTON_OPENAI_BASE_URL") or "").rstrip("/")
+    openai_key_now = _get_env("ANTON_OPENAI_API_KEY")
+
+    is_minds_cloud_now = bool(
+        provider_now == "openai-compatible"
+        and minds_url_now
+        and openai_base_now.startswith(minds_url_now)
+    )
+
+    stale_to_clear: list[str] = []
+    if is_minds_cloud_now:
+        if openai_key_now and openai_key_now != minds_key_now:
+            stale_to_clear.append("ANTON_OPENAI_API_KEY")
+    elif provider_now in ("openai", "openai-compatible"):
+        if openai_key_now.startswith("mdb_"):
+            stale_to_clear.append("ANTON_OPENAI_API_KEY")
+
+    if stale_to_clear:
+        try:
+            _write_dotenv(GLOBAL_ENV_PATH, {}, tuple(stale_to_clear))
+            for key in stale_to_clear:
+                os.environ.pop(key, None)
+            logger.info(
+                "Cleared stale credential(s) after preset switch (provider=%s, minds_cloud=%s): %s",
+                provider_now, is_minds_cloud_now, stale_to_clear,
+            )
+        except Exception as e:
+            logger.warning("Failed to clear stale credentials: %s", e)
+
     if pref_writes:
         try:
             update_state(lambda state: state.setdefault("preferences", {}).update(pref_writes))
