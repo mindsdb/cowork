@@ -18,7 +18,7 @@ import uuid
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +48,18 @@ class Message(BaseModel):
     content: str | list[Any] | None = None
 
 
+class DisabledConnection(BaseModel):
+    """Saved data-vault connection the user muted for this conversation."""
+
+    engine: str = Field(..., min_length=1, max_length=120)
+    name: str = Field(..., min_length=1, max_length=200)
+
+    @field_validator("engine", "name", mode="before")
+    @classmethod
+    def strip_ws(cls, v: object) -> object:
+        return v.strip() if isinstance(v, str) else v
+
+
 # ---------------------------------------------------------------------------
 # Responses API
 # ---------------------------------------------------------------------------
@@ -61,6 +73,8 @@ class ResponsesRequest(BaseModel):
     # Cowork-side extensions — optional, ignored by non-cowork clients.
     project: str | None = None  # project name (folder); None = active project
     attachment_ids: list[str] = Field(default_factory=list)
+    # When set, applied to conversation meta after ensure (same turn as stream).
+    disabled_connections: list[DisabledConnection] | None = None
 
 
 class ResponseStatus(str, Enum):
@@ -114,6 +128,7 @@ class ConversationMeta(BaseModel):
     created_at: str = ""
     updated_at: str = ""
     project: str | None = None
+    disabled_connections: list[DisabledConnection] = Field(default_factory=list)
 
 
 class ConversationPatch(BaseModel):
@@ -122,6 +137,9 @@ class ConversationPatch(BaseModel):
     # conversation_manager.move_conversation rather than the title patch
     # path because it physically relocates files between project dirs.
     project: str | None = None
+    # Saved vault connections (engine + name) excluded from env injection
+    # and called out in per-turn prompt context. Empty list clears all mutes.
+    disabled_connections: list[DisabledConnection] | None = None
 
 
 # ---------------------------------------------------------------------------

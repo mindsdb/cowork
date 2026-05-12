@@ -225,7 +225,9 @@ export default function HomeView({
   greeting, showDots,
   activeTasks, onSelectTask, onClearActive,
   onSend, project, onProjectChange, model, onModelChange, projects, models,
-  attachments, connectors, onAttachFiles, onAttachConnector, onRemoveAttachment,
+  attachments, connectors, onAttachFiles, onRemoveAttachment,
+  disabledConnections = [],
+  onUpdateConnectorMute,
   configReady, configError, onOpenSettings,
   serverOnline = false, onShowServerHelp,
   skipIntro = false,
@@ -502,8 +504,9 @@ export default function HomeView({
               attachments={attachments}
               connectors={connectors}
               onAttachFiles={onAttachFiles}
-              onAttachConnector={onAttachConnector}
               onRemoveAttachment={onRemoveAttachment}
+              disabledConnections={disabledConnections}
+              onUpdateConnectorMute={onUpdateConnectorMute}
               hideModel
               onTypingChange={setIsTyping}
             />

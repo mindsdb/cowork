@@ -6,7 +6,7 @@ import { ContextCard } from './ContextCard';
 
 export function ContextBox({
   project,
-  /** Conversation / task id — when set, lists attachments assigned to this session (GET /v1/attachments?session_id=…). */
+  /** Conversation / task id — with `project`, lists uploads (GET /v1/attachments/{project}/{session}). */
   conversationId,
   /** Bumps when the task transcript changes so attachment assignments after a send are re-fetched. */
   refreshKey,

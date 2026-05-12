@@ -224,11 +224,19 @@ function EmptyState({ onConnectNew }) {
 
 // ─── Composed view ───────────────────────────────────────────────────────
 
-export default function CustomizeView({ connectors: initialConnectors = [], onConnectNew, onModifyConnection }) {
+export default function CustomizeView({
+  connectors: initialConnectors = [],
+  onConnectNew,
+  onModifyConnection,
+  /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
+  onConnectionsSynced,
+}) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const searchRef = useRef(null);
+  const onConnectionsSyncedRef = useRef(onConnectionsSynced);
+  onConnectionsSyncedRef.current = onConnectionsSynced;
   // Sub-view: when true, the connect-data workflow renders in place
   // (the apps directory + per-app credential form). Hitting "Back"
   // from inside the workflow returns to this listing. Local-only —
@@ -240,7 +248,11 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
   // (e.g. browser OAuth flow from the chat panel) are always visible.
   useEffect(() => {
     fetchDatasources()
-      .then((data) => setList(Array.isArray(data?.connections) ? data.connections : []))
+      .then((data) => {
+        const next = Array.isArray(data?.connections) ? data.connections : [];
+        setList(next);
+        onConnectionsSyncedRef.current?.(next);
+      })
       .catch(() => {});
   }, []);
 
@@ -269,7 +281,9 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
     // refetch so the listing reflects whatever changed.
     try {
       const fresh = await fetchDatasources();
-      setList(Array.isArray(fresh?.connections) ? fresh.connections : []);
+      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+      setList(next);
+      onConnectionsSyncedRef.current?.(next);
     } catch {}
   };
 
@@ -306,7 +320,9 @@ export default function CustomizeView({ connectors: initialConnectors = [], onCo
     try {
       await deleteDatasource(connection.engine, connection.name);
       const fresh = await fetchDatasources();
-      setList(Array.isArray(fresh?.connections) ? fresh.connections : []);
+      const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+      setList(next);
+      onConnectionsSyncedRef.current?.(next);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);

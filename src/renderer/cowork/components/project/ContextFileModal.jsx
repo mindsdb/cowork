@@ -1,7 +1,7 @@
 // ContextFileModal — view + edit for any markdown file the user
 // can open from the rail or the Memory page. Originally this only
-// drove project context files (`anton.md` + anything under
-// `.context/`); it has since been generalised so memory entries
+// drove project instructions (`anton.md` under `.anton/`) + legacy
+// `.context/` files; it has since been generalised so memory entries
 // (rules, lessons, identity notes) can ride the same modal — the
 // design language, keyboard handling, and edit↔view rhythm should
 // feel identical regardless of where the file lives.

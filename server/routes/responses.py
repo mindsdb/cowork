@@ -24,7 +24,7 @@ from anton_api.models import (
     ResponseStatus,
     ResponsesRequest,
 )
-from .attachments import assign_attachments, attachment_context
+from .attachments import attachment_context
 from .settings import get_config_status
 
 
@@ -44,8 +44,8 @@ def _resolve_input(req: ResponsesRequest) -> str:
     return content
 
 
-def _assembled_user_input(content: str, attachment_ids: list[str]) -> str:
-    context = attachment_context(attachment_ids)
+def _assembled_user_input(content: str, project_name: str | None, session_id: str | None, attachment_ids: list[str]) -> str:
+    context = attachment_context(project_name, session_id, attachment_ids)
     if not context:
         return content
     return f"{content}\n\n{context}"
@@ -67,13 +67,15 @@ async def create_response(req: ResponsesRequest):
         )
 
     user_text = _resolve_input(req)
-    final_input = _assembled_user_input(user_text, req.attachment_ids)
-    if req.attachment_ids and req.conversation:
-        assign_attachments(req.attachment_ids, req.conversation)
-
+    final_input = _assembled_user_input(
+        user_text,
+        req.project,
+        req.conversation,
+        req.attachment_ids,
+    )
+    
     if req.stream:
         async def stream():
-            assigned_for_new = False
             cid: str | None = None
             # Per-turn event capture for the cowork sidecar. The sink is
             # called by `format_responses_stream` for every event before
@@ -91,17 +93,16 @@ async def create_response(req: ResponsesRequest):
                 recorded_events.append({**data})
 
             try:
+                dc_payload = None
+                if req.disabled_connections is not None:
+                    dc_payload = [d.model_dump() for d in req.disabled_connections]
                 event_stream, cid = await conversation_manager.chat_stream(
                     final_input,
                     conversation_id=req.conversation,
                     project=req.project,
                     model=req.model if req.model and req.model != "anton" else None,
+                    disabled_connections=dc_payload,
                 )
-                # If this is a new conversation, retroactively assign attachments
-                # to the conversation id we just minted.
-                if req.attachment_ids and not req.conversation and not assigned_for_new:
-                    assign_attachments(req.attachment_ids, cid)
-                    assigned_for_new = True
 
                 async for chunk in format_responses_stream(
                     event_stream,
@@ -156,14 +157,16 @@ async def create_response(req: ResponsesRequest):
 
     collected: list[str] = []
     try:
+        dc_payload = None
+        if req.disabled_connections is not None:
+            dc_payload = [d.model_dump() for d in req.disabled_connections]
         event_stream, cid = await conversation_manager.chat_stream(
             final_input,
             conversation_id=req.conversation,
             project=req.project,
             model=req.model if req.model and req.model != "anton" else None,
+            disabled_connections=dc_payload,
         )
-        if req.attachment_ids and not req.conversation:
-            assign_attachments(req.attachment_ids, cid)
         async for event in event_stream:
             if isinstance(event, StreamTextDelta):
                 collected.append(event.text)

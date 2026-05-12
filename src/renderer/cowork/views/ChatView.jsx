@@ -298,6 +298,35 @@ function ConnectIntroPillButton({ kind, renderIcon, label, onClick }) {
   );
 }
 
+function userTurnAttachmentIcon(a) {
+  const src = a.source || a.kind || 'file';
+  if (src === 'connector') return Ico.link(13);
+  if (a.mime && String(a.mime).startsWith('image/')) return Ico.image(13);
+  return Ico.doc(13);
+}
+
+function userTurnAttachmentMeta(a) {
+  if (a.extractionStatus && a.extractionStatus !== 'ready') {
+    return String(a.extractionStatus).replace(/_/g, ' ');
+  }
+  if (typeof a.size === 'number' && a.size > 0) {
+    return `${Math.ceil(a.size / 1024)} KB`;
+  }
+  if (a.mime) {
+    const tail = String(a.mime).split('/').pop();
+    return tail || '';
+  }
+  return '';
+}
+
+function userTurnAttachmentLabel(a) {
+  const src = a.source || a.kind || 'file';
+  if (a.name) return a.name;
+  if (src === 'connector') return 'Connector';
+  if (a.mime && String(a.mime).startsWith('image/')) return 'Image';
+  return 'File';
+}
+
 function UserTurn({ content, attachments, time, onDelete }) {
   const [hover, setHover] = useState(false);
   const [trashHover, setTrashHover] = useState(false);
@@ -365,11 +394,11 @@ function UserTurn({ content, attachments, time, onDelete }) {
             fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink2,
           }}>
             <span style={{ color: T.ink3, display: 'inline-flex' }}>
-              {a.kind === 'url' ? Ico.globe(13) : a.kind === 'snippet' ? Ico.code(13) : Ico.doc(13)}
+              {userTurnAttachmentIcon(a)}
             </span>
-            <span style={{ color: T.ink }}>{a.name || (a.kind === 'url' ? 'URL' : a.kind === 'snippet' ? 'Snippet' : 'File')}</span>
+            <span style={{ color: T.ink }}>{userTurnAttachmentLabel(a)}</span>
             <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4 }}>
-              {a.size || a.extractionStatus || ''}
+              {userTurnAttachmentMeta(a)}
             </span>
           </div>
         ))}
@@ -759,7 +788,8 @@ export default function ChatView({
   attachments,
   connectors,
   onAttachFiles,
-  onAttachConnector,
+  disabledConnections,
+  onUpdateConnectorMute,
   onRemoveAttachment,
   onPinTask,
   onUnpinTask,
@@ -1427,7 +1457,9 @@ export default function ChatView({
             attachments={attachments}
             connectors={connectors}
             onAttachFiles={onAttachFiles}
-            onAttachConnector={onAttachConnector}
+            conversationId={task.id}
+            disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
+            onUpdateConnectorMute={onUpdateConnectorMute}
             onRemoveAttachment={onRemoveAttachment}
             placeholder="Reply…"
             metaReadOnly

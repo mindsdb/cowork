@@ -6,7 +6,7 @@
 //      empty / whitespace).
 //   2. POST /v1/projects to create the folder.
 //   3. If the user supplied instructions text, PUT it at
-//      ANTON_PROJECT_INSTRUCTIONS_PATH (`.context/anton.md`).
+//      ANTON_PROJECT_INSTRUCTIONS_PATH (`.anton/anton.md`).
 //   4. If files are queued, upload them in one multipart request.
 //
 // Failure handling: each step that touches the server is independent
@@ -292,7 +292,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 fontFamily: FONT_MONO,
                 background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 3,
                 color: 'var(--ink-3)',
-              }}>anton.md</code> in the project's context directory.
+              }}>.anton/anton.md</code>
             </span>
           </label>
 

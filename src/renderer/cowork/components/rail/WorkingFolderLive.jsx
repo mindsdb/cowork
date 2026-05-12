@@ -1,7 +1,7 @@
 // Live working-folder card body.
 //
 // - Orphans resolve active project name → full { name, path } via projects list.
-// - Loads files from GET /v1/projects/{name}/files (excludes `.context/` + `.anton/`).
+// - Loads files from GET /v1/projects/{name}/files (excludes `.anton/` + `.context/`).
 // - Polls every 3s while streaming, plus once when streaming ends.
 // - Poll-driven refresh only; row icons stay static (no streaming pulse).
 // - Click → HTML opens in-app viewer; other types → OS openPath.

@@ -676,6 +676,47 @@ def build_cowork_lookup_connector_tool():
     )
 
 
+async def _cowork_list_conversation_datasources(session: Any, _tc_input: dict) -> str:
+    from anton_api import conversation_manager as cm
+
+    cid = getattr(session, "_session_id", None) or ""
+    if not cid:
+        return json.dumps({
+            "error": "no_conversation_id",
+            "message": "This session is not scoped to a CoWork conversation yet.",
+        })
+    payload = cm.conversation_datasource_scope_for_id(cid)
+    return json.dumps(payload, indent=2)
+
+
+_LIST_CONVERSATION_DATASOURCES_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": False,
+}
+
+
+def build_list_conversation_datasources_tool():
+    from anton.core.tools.tool_defs import ToolDef
+    return ToolDef(
+        name="list_conversation_datasources",
+        description=(
+            "Return every saved data-vault connection for this workspace plus whether "
+            "the user disabled each one for this conversation (`disabled: true` means "
+            "do not use it). Call with `{}` before connector-related work; re-call if muting "
+            "may have changed."
+        ),
+        input_schema=_LIST_CONVERSATION_DATASOURCES_SCHEMA,
+        handler=_cowork_list_conversation_datasources,
+        prompt=(
+            "Call `list_conversation_datasources` with `{}` before any connector- or "
+            "datasource-related action (queries, probes, `connect_datasource`, choosing "
+            "which saved connection applies). Use the returned `disabled` flags — do not "
+            "assume env vars alone reflect what is allowed for this conversation."
+        ),
+    )
+
+
 async def _cowork_fetch_submission(session: Any, tc_input: dict) -> str:
     """Tool handler for `fetch_submission` — return staged values for
     a previously-submitted form, by submission_id.

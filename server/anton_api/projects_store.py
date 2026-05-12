@@ -123,7 +123,10 @@ def ensure_projects_dir() -> Path:
 
 
 def _scaffold(target: Path) -> None:
-    (target / ".anton").mkdir(parents=True, exist_ok=True)
+    anton_dir = target / ".anton"
+    anton_dir.mkdir(parents=True, exist_ok=True)
+    # Create the anton.md file to store project instructions
+    (anton_dir / "anton.md").touch()
 
 
 def ensure_general_project() -> None:

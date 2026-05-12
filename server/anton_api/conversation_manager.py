@@ -6,14 +6,14 @@ Owns:
     using inside anton_bridge._build_chat_session.
   - On-disk history persistence (delegated to anton.memory.HistoryStore).
   - Conversation metadata (id / title / turns / preview / created_at /
-    updated_at / project) persisted alongside history.
+    updated_at / project, disabled_connections) persisted alongside history.
 
 The public API is small:
-  - chat_stream(input, conversation_id, project, model)        → (stream, id)
+  - chat_stream(input, conversation_id, project, model, disabled_connections=None) → (stream, id)
   - list_conversations(limit, project)
   - get_conversation(id)
   - get_messages(id)
-  - update_conversation(id, **patch)
+  - update_conversation(id, **patch)  # title, disabled_connections
   - delete_conversation(id)
   - close_all()
   - is_anton_available()
@@ -192,6 +192,89 @@ def _load_meta(project: Optional[str], conversation_id: str) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def _connection_pair_key(engine: str, name: str) -> tuple[str, str]:
+    return (engine.strip().lower(), name.strip())
+
+
+def normalize_disabled_connections(raw: object) -> list[dict[str, str]]:
+    """Return a deduped list of ``{engine, name}`` dicts for vault scoping."""
+    if raw is None or not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        eng = item.get("engine")
+        nm = item.get("name")
+        if not isinstance(eng, str) or not isinstance(nm, str):
+            continue
+        eng, nm = eng.strip(), nm.strip()
+        if not eng or not nm:
+            continue
+        key = _connection_pair_key(eng, nm)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"engine": eng, "name": nm})
+    return out
+
+
+def load_disabled_connections(project: Optional[str], conversation_id: str) -> list[dict[str, str]]:
+    meta = _load_meta(project, conversation_id)
+    if not meta:
+        return []
+    return normalize_disabled_connections(meta.get("disabled_connections"))
+
+
+def load_disabled_connections_for_conversation(conversation_id: str) -> list[dict[str, str]]:
+    """Load the denylist using the project directory where this id's episodes live."""
+    located = _find_conversation_dir(conversation_id)
+    if not located:
+        return []
+    project_name, _ = located
+    return load_disabled_connections(project_name, conversation_id)
+
+
+def conversation_datasource_scope_for_id(conversation_id: str) -> dict[str, Any]:
+    """All vault connections plus which are muted for this conversation (for tools / API)."""
+    disabled = load_disabled_connections_for_conversation(conversation_id)
+    dset = {_connection_pair_key(d["engine"], d["name"]) for d in disabled}
+    connections: list[dict[str, Any]] = []
+    vault_available = False
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+    except Exception:
+        return {
+            "conversation_id": conversation_id,
+            "disabled_connections": disabled,
+            "connections": [],
+            "vault_available": False,
+        }
+    vault = LocalDataVault()
+    vault_available = True
+    try:
+        for conn in vault.list_connections():
+            eng = conn.get("engine")
+            nm = conn.get("name")
+            if not eng or not nm:
+                continue
+            key = _connection_pair_key(str(eng), str(nm))
+            connections.append({
+                "engine": eng,
+                "name": nm,
+                "disabled": key in dset,
+            })
+    except Exception:
+        logger.debug("conversation_datasource_scope: list_connections failed", exc_info=True)
+    return {
+        "conversation_id": conversation_id,
+        "disabled_connections": disabled,
+        "connections": connections,
+        "vault_available": vault_available,
+    }
 
 
 def _save_meta(project: Optional[str], conversation_id: str, meta: dict) -> None:
@@ -689,6 +772,7 @@ def _ensure_meta(
         "created_at": now,
         "updated_at": now,
         "project": name,
+        "disabled_connections": [],
     }
     _save_meta(project, conversation_id, meta)
     return meta
@@ -874,12 +958,14 @@ async def _build_chat_session(
         build_cowork_fetch_submission_tool,
         build_cowork_update_form_tool,
         build_cowork_lookup_connector_tool,
+        build_list_conversation_datasources_tool,
     )
     PUBLISH_TOOL = build_cowork_publish_tool()
     REQUEST_CREDENTIALS_TOOL = build_cowork_request_credentials_tool()
     FETCH_SUBMISSION_TOOL = build_cowork_fetch_submission_tool()
     UPDATE_FORM_TOOL = build_cowork_update_form_tool()
     LOOKUP_CONNECTOR_TOOL = build_cowork_lookup_connector_tool()
+    LIST_CONVERSATION_DATASOURCES_TOOL = build_list_conversation_datasources_tool()
 
     try:
         from anton.core.datasources.data_vault import LocalDataVault
@@ -954,8 +1040,8 @@ async def _build_chat_session(
 
     project_context = (
         f"You are operating in the project {project}."
-        f"You have access to all of the files in the project at {str(base)} except for the .anton/ and .context/ directories."
-        "They are off limits. Do not mention the .anton/ and .context/ directories in your responses."
+        f"You have access to all of the files in the project at {str(base)} except for the .anton/ directory."
+        "They are off limits. Do not mention the .anton/ directory in your responses."
         "You can perform operations on these files via the scratchpad."
         "You can freely read any of these project files."
         "If you need to perform any actions on these files, ask the user for permission first."
@@ -986,12 +1072,16 @@ async def _build_chat_session(
 
     data_vault = LocalDataVault() if LocalDataVault is not None else None
     google_drive_oauth_connected = False
+    disabled = load_disabled_connections(project, conversation_id)
+    disabled_keys = {_connection_pair_key(d["engine"], d["name"]) for d in disabled}
     if data_vault is not None:
         try:
             for conn in data_vault.list_connections():
                 engine = conn.get("engine")
                 name = conn.get("name")
                 if engine and name:
+                    if _connection_pair_key(str(engine), str(name)) in disabled_keys:
+                        continue
                     data_vault.inject_env(engine, name)
                     if engine == "google_drive":
                         fields = data_vault.load(engine, name) or {}
@@ -1007,6 +1097,19 @@ async def _build_chat_session(
             "in the injected `DS_GOOGLE_DRIVE_<CONNECTION>__...` environment variables. "
             "Only claim Google Drive access if you can actually use those credentials successfully."
         )
+
+    datasource_scope_guidance = (
+        " SAVED DATASOURCES: Before you run queries, connection tests, `connect_datasource`, "
+        "scratchpad probes, or any step that assumes a specific saved vault connection is in play, "
+        "call `list_conversation_datasources` with `{}` and treat its JSON as authoritative: "
+        "each connection includes `disabled` when the user muted it for this conversation "
+        "(those credentials are not injected for this chat). Re-call the tool later in the "
+        "thread if the user may have changed muting. Do not infer availability only from "
+        "environment variables."
+        "This tool should be called before any action taken on connectors, even if the conversation "
+        "history implies that you previously had access to the connector. This is because the user may "
+        "have muted the connector since the last time you called this tool."
+    )
 
     config = ChatSessionConfig(
         llm_client=llm_client,
@@ -1024,6 +1127,7 @@ async def _build_chat_session(
                 "is itself the final answer the user needs."
                 f"{project_context}"
                 f"{integration_guidance}"
+                f"{datasource_scope_guidance}"
             ),
             output_context=output_context,
         ),
@@ -1040,6 +1144,7 @@ async def _build_chat_session(
             REQUEST_CREDENTIALS_TOOL,
             FETCH_SUBMISSION_TOOL,
             UPDATE_FORM_TOOL,
+            LIST_CONVERSATION_DATASOURCES_TOOL,
         ],
     )
     return ChatSession(config)
@@ -1167,6 +1272,7 @@ async def chat_stream(
     conversation_id: Optional[str] = None,
     project: Optional[str] = None,
     model: Optional[str] = None,
+    disabled_connections: Optional[list[dict[str, str]]] = None,
 ) -> tuple[AsyncIterator, str]:
     """Run one turn against a conversation, returning (event_stream, conversation_id).
 
@@ -1186,6 +1292,8 @@ async def chat_stream(
 
     cid = conversation_id or _new_conversation_id()
     _ensure_meta(project, cid)
+    if disabled_connections is not None:
+        update_conversation(cid, disabled_connections=disabled_connections)
 
     # Seed the conversation's title + preview from the user's first
     # message immediately, so the recents listing shows the right
@@ -1417,6 +1525,12 @@ def list_conversations(limit: int = 200, project: Optional[str] = None) -> list[
                 meta["id"] = cid
             if not meta.get("project"):
                 meta["project"] = project_name
+            if "disabled_connections" not in meta:
+                meta["disabled_connections"] = []
+            else:
+                meta["disabled_connections"] = normalize_disabled_connections(
+                    meta.get("disabled_connections"),
+                )
             # Backfill turns/preview from history if meta is sparse
             if not meta.get("turns") or not meta.get("preview"):
                 hist_path = ep_dir / f"{cid}_history.json"
@@ -1475,6 +1589,12 @@ def get_conversation(conversation_id: str) -> dict | None:
             data["id"] = conversation_id
             if not data.get("project"):
                 data["project"] = project_name
+            if "disabled_connections" not in data:
+                data["disabled_connections"] = []
+            else:
+                data["disabled_connections"] = normalize_disabled_connections(
+                    data.get("disabled_connections"),
+                )
             return data
         except Exception:
             return None
@@ -1500,6 +1620,7 @@ def get_conversation(conversation_id: str) -> dict | None:
                     "created_at": "",
                     "updated_at": "",
                     "project": project_name,
+                    "disabled_connections": [],
                 }
         except Exception:
             return None
@@ -1535,11 +1656,14 @@ def update_conversation(conversation_id: str, **patch) -> dict | None:
             meta = {}
     else:
         meta = {}
-    allowed = {"title"}
+    allowed = {"title", "disabled_connections"}
+    evict_session = False
     for k, v in patch.items():
-        if k not in allowed or v is None:
+        if k not in allowed:
             continue
         if k == "title":
+            if v is None:
+                continue
             cleaned = sanitize_title(v)
             # Empty-after-sanitization → preserve the existing title
             # instead of blanking it. Callers that genuinely want a
@@ -1549,8 +1673,11 @@ def update_conversation(conversation_id: str, **patch) -> dict | None:
             if cleaned is None:
                 continue
             meta[k] = cleaned
-        else:
-            meta[k] = v
+        elif k == "disabled_connections":
+            if v is None:
+                continue
+            meta[k] = normalize_disabled_connections(v)
+            evict_session = True
     meta["id"] = conversation_id
     if not meta.get("project"):
         meta["project"] = project_name
@@ -1559,6 +1686,8 @@ def update_conversation(conversation_id: str, **patch) -> dict | None:
         _atomic_write(meta_path, meta)
     except Exception:
         logger.debug("Could not update conversation meta", exc_info=True)
+    if evict_session:
+        _evict_session(conversation_id)
     return meta
 
 

@@ -773,8 +773,9 @@ function ProjectDetail({
   attachments = [],
   connectors = [],
   onAttachFiles,
-  onAttachConnector,
   onRemoveAttachment,
+  disabledConnections = [],
+  onUpdateConnectorMute,
   // Header kebab + inline rename — lets users rename / reveal / delete
   // the active project without bouncing back to the grid. Pin is
   // intentionally absent: the only pin store today is localStorage on
@@ -996,8 +997,9 @@ function ProjectDetail({
               attachments={attachments}
               connectors={connectors}
               onAttachFiles={onAttachFiles}
-              onAttachConnector={onAttachConnector}
               onRemoveAttachment={onRemoveAttachment}
+              disabledConnections={disabledConnections}
+              onUpdateConnectorMute={onUpdateConnectorMute}
               hideModel
               metaReadOnly
               placeholder={`Start a new task in ${project.name}…`}
@@ -1073,8 +1075,9 @@ export default function ProjectsView({
   attachments = [],
   connectors = [],
   onAttachFiles,
-  onAttachConnector,
   onRemoveAttachment,
+  disabledConnections = [],
+  onUpdateConnectorMute,
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
   // clicking a row routes to the schedule detail page.
   onOpenSchedule,
@@ -1202,8 +1205,9 @@ export default function ProjectsView({
         attachments={attachments}
         connectors={connectors}
         onAttachFiles={onAttachFiles}
-        onAttachConnector={onAttachConnector}
         onRemoveAttachment={onRemoveAttachment}
+        disabledConnections={disabledConnections}
+        onUpdateConnectorMute={onUpdateConnectorMute}
         onShowAll={() => setDetailProject(null)}
         editing={editingProjectName === detailProject.name}
         onRenameStart={handleRenameStart}

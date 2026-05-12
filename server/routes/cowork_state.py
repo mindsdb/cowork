@@ -35,16 +35,6 @@ def state_path() -> Path:
     return cowork_dir() / "state.json"
 
 
-def attachments_dir() -> Path:
-    path = cowork_dir() / "attachments"
-    path.mkdir(parents=True, exist_ok=True)
-    try:
-        path.chmod(0o700)
-    except OSError:
-        pass
-    return path
-
-
 def backups_dir() -> Path:
     path = cowork_dir() / "backups"
     path.mkdir(parents=True, exist_ok=True)
@@ -58,7 +48,6 @@ def backups_dir() -> Path:
 def default_state() -> dict[str, Any]:
     return {
         "version": STATE_VERSION,
-        "attachments": {},
         "pins": [],
         "preferences": {},
         "visit_counts": {},
@@ -89,7 +78,6 @@ def _normalise_state(data: dict[str, Any]) -> dict[str, Any]:
     state.update(data)
 
     expected_types = {
-        "attachments": dict,
         "pins": list,
         "preferences": dict,
         "visit_counts": dict,

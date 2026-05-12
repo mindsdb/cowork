@@ -1,7 +1,8 @@
 // Context card body — surfaces memories (Project + Global) AND
-// files under `.context/` (anton.md + uploads). Listed via the same
-// GET /projects/{name}/files as Working folder, but only `.context/`
-// rows appear here; everything else lives in Working folder only.
+// project instructions (`.anton/anton.md`) plus any legacy `.context/`
+// files. Listed via GET /projects/{name}/files; Working folder hides
+// `.anton/` and `.context/` trees except this rail shows instructions
+// (and legacy context paths).
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
@@ -10,6 +11,7 @@ import {
   deleteMemory,
   fetchAttachments,
   fetchMemory,
+  isProjectInstructionsPath,
   isUnderContextDir,
   listProjectFiles,
   saveMemory,
@@ -61,10 +63,10 @@ function MemoryRow({ entry, onOpen }) {
 // Row for a project context file (anton.md or any uploaded file).
 // Same visual rhythm as MemoryRow but distinguishes the always-
 // present anton.md with a subtle "Project instructions" label.
-function attachmentKindIcon(kind) {
-  if (kind === 'url') return Ico.globe(13);
-  if (kind === 'snippet') return Ico.code(13);
-  if (kind === 'connector') return Ico.link(13);
+function attachmentSourceIcon(item) {
+  const source = item.source || item.kind || 'file';
+  if (source === 'connector') return Ico.link(13);
+  if (item.mime && String(item.mime).startsWith('image/')) return Ico.image(13);
   return Ico.doc(13);
 }
 
@@ -73,7 +75,7 @@ function SessionAttachmentRow({ item }) {
   const sub = item.textPreview
     || (item.mime ? String(item.mime).split('/').pop() : '')
     || (item.size ? `${Math.ceil(item.size / 1024)} KB` : '');
-  const when = item.updatedAt || item.createdAt;
+  const when = item.updated_at || item.created_at || item.updatedAt || item.createdAt;
   return (
     <div
       className={clsx(
@@ -83,7 +85,7 @@ function SessionAttachmentRow({ item }) {
       style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
       title={item.note || item.textPreview || label}
     >
-      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{attachmentKindIcon(item.kind)}</span>
+      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{attachmentSourceIcon(item)}</span>
       <span className="min-w-0">
         <span className="block truncate text-[12.5px] text-ink">{label}</span>
         {sub ? (
@@ -169,7 +171,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       .then((data) => {
         if (ticket !== loadVersion.current) return;
         const raw = Array.isArray(data?.files) ? data.files : [];
-        setProjectFiles(raw.filter((f) => isUnderContextDir(f.path)));
+        setProjectFiles(raw.filter((f) => isProjectInstructionsPath(f.path) || isUnderContextDir(f.path)));
       })
       .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
   }, [project?.name]);
@@ -185,7 +187,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     reloadFiles();
   }, [project?.name, reloadFiles]);
 
-  const sessionRelevant = conversationId && !String(conversationId).startsWith('tmp-');
+  const sessionRelevant = conversationId
+    && !String(conversationId).startsWith('tmp-')
+    && !!project?.name;
 
   // `useEffect` runs after paint — switching tasks would briefly show the
   // previous task's rows with "Loading attachments…". This runs first
@@ -209,13 +213,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     }
     let cancelled = false;
     setAttachmentsError(null);
-    fetchAttachments(conversationId)
+    fetchAttachments(project.name, conversationId)
       .then((data) => {
         if (cancelled) return;
         const raw = Array.isArray(data?.attachments) ? data.attachments : [];
         const sorted = [...raw].sort((a, b) => {
-          const ta = new Date(a.updatedAt || a.createdAt || 0).getTime();
-          const tb = new Date(b.updatedAt || b.createdAt || 0).getTime();
+          const ta = new Date(a.updated_at || a.created_at || a.updatedAt || a.createdAt || 0).getTime();
+          const tb = new Date(b.updated_at || b.created_at || b.updatedAt || b.createdAt || 0).getTime();
           return tb - ta;
         });
         setSessionAttachments(sorted);
@@ -230,7 +234,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         if (!cancelled) setAttachmentsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [sessionRelevant, conversationId, refreshKey]);
+  }, [sessionRelevant, conversationId, refreshKey, project?.name]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {
@@ -263,7 +267,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
 
   return (
     <div className="flex flex-col gap-3 pt-2">
-      {/* `.context/` only — Working folder lists the rest of the project tree. */}
+      {/* Instructions (`.anton/anton.md`) + legacy `.context/` only. */}
       {project?.name && hasProjectFiles && (
         <div className="flex flex-col gap-0.5">
           <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">

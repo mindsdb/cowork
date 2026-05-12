@@ -8,8 +8,7 @@ Mirrors the original antontron IPC handlers (src/main/index.ts):
   PATCH  /v1/projects/{name}                → rename
   DELETE /v1/projects/{name}                → delete
 
-Project file CRUD (files live at the project root; `anton.md` alone is
-stored under `.context/` and exposed in the API as `anton.md`):
+Project file CRUD (files live at the project root;
   GET    /v1/projects/{name}/files          → list files
   GET    /v1/projects/{name}/files/{path}   → read file body (text)
   PUT    /v1/projects/{name}/files/{path}   → write/replace file body
@@ -110,15 +109,11 @@ async def delete_project(name: str):
     return {"status": "deleted", "name": name}
 
 
-# ── Project files (context directory) ──────────────────────────────
+# ── Project files ─────────────────────────────────────────────────
 #
-# Each project owns a `.context/` subdir for human-curated reference
-# files: `anton.md` (working instructions surfaced to the LLM) plus
-# whatever the user drops in (lessons, schemas, sample data, etc).
-# Kept separate from `.anton/` so the runtime state and the user's
-# context never collide.
+# Each project owns a `anton.md` for human-curated reference
+# This exists in the `.anton/` directory.
 
-CONTEXT_DIRNAME = ".context"
 ANTON_INSTRUCTIONS_FILENAME = "anton.md"
 
 # Cap text-file reads/writes at this size — we don't want the API to
@@ -140,15 +135,8 @@ def _project_dir(name: str) -> Path:
     return base
 
 
-def _context_dir(project_name: str) -> Path:
-    base = _project_dir(project_name)
-    ctx = base / CONTEXT_DIRNAME
-    ctx.mkdir(parents=True, exist_ok=True)
-    return ctx
-
-
 def _anton_md_disk_path(project_name: str) -> Path:
-    return _context_dir(project_name) / ANTON_INSTRUCTIONS_FILENAME
+    return _project_dir(project_name) / ".anton" / ANTON_INSTRUCTIONS_FILENAME
 
 
 def _safe_relpath(rel: str, base: Path) -> Path:
@@ -200,7 +188,7 @@ def _file_meta(p: Path, base: Path) -> dict[str, Any] | None:
 
 @router.get("/{name}/files")
 async def list_project_files(name: str):
-    """List every file under the project's context dir, recursively.
+    """List every file under the project root, recursively.
 
     Anton.md is always included in the response — when it doesn't
     exist on disk yet we emit a synthetic entry with size=0 so the UI
@@ -288,7 +276,7 @@ async def upload_project_files(
     name: str,
     files: list[UploadFile] = File(...),
 ):
-    """Multipart upload — saves each file under the context dir using
+    """Multipart upload — saves each file at the project root using
     its original filename (sanitised). Returns a per-file result so
     the caller can tell which uploads succeeded.
     """
@@ -302,7 +290,7 @@ async def upload_project_files(
         # malicious or sloppy client can't write to ../whatever.
         safe_name = os.path.basename(f.filename).strip()
         if not safe_name or safe_name.startswith("."):
-            # Don't allow dotfiles via upload (would shadow .context
+            # Don't allow dotfiles via upload (would shadow .anton
             # housekeeping). The user can write `.foo` via the PUT
             # endpoint with an explicit path if they really want.
             results.append({"name": f.filename, "ok": False, "error": "invalid filename"})
