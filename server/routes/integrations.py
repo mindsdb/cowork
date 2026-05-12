@@ -847,7 +847,7 @@ async def google_drive_oauth_callback(
         _clear_google_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
         return _callback_page(
             "Google Drive connection failed",
-            str(exc.detail),
+            "An error occurred during the Google Drive sign-in flow. Return to Anton CoWork and try again.",
             success=False,
         )
     except Exception as exc:
@@ -1029,7 +1029,7 @@ async def google_calendar_oauth_callback(
         _clear_google_calendar_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
         return _callback_page(
             "Google Calendar connection failed",
-            str(exc.detail),
+            "An error occurred during the Google Calendar sign-in flow. Return to Anton CoWork and try again.",
             success=False,
         )
     except Exception as exc:
@@ -1302,14 +1302,14 @@ async def gmail_oauth_callback(
         _clear_gmail_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
         return _callback_page(
             "Gmail connection failed",
-            str(exc.detail),
+            "An error occurred during the Gmail sign-in flow. Return to Anton CoWork and try again.",
             success=False,
         )
     except Exception as exc:
         _clear_gmail_oauth_pending(lastError=str(exc), lastErrorAt=_iso_now())
         return _callback_page(
             "Gmail connection failed",
-            str(exc),
+            "Anton CoWork could not finish the Gmail sign-in flow.",
             success=False,
         )
 
