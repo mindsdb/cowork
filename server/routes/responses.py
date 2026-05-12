@@ -93,11 +93,15 @@ async def create_response(req: ResponsesRequest):
                 recorded_events.append({**data})
 
             try:
+                dc_payload = None
+                if req.disabled_connections is not None:
+                    dc_payload = [d.model_dump() for d in req.disabled_connections]
                 event_stream, cid = await conversation_manager.chat_stream(
                     final_input,
                     conversation_id=req.conversation,
                     project=req.project,
                     model=req.model if req.model and req.model != "anton" else None,
+                    disabled_connections=dc_payload,
                 )
 
                 async for chunk in format_responses_stream(
@@ -153,11 +157,15 @@ async def create_response(req: ResponsesRequest):
 
     collected: list[str] = []
     try:
+        dc_payload = None
+        if req.disabled_connections is not None:
+            dc_payload = [d.model_dump() for d in req.disabled_connections]
         event_stream, cid = await conversation_manager.chat_stream(
             final_input,
             conversation_id=req.conversation,
             project=req.project,
             model=req.model if req.model and req.model != "anton" else None,
+            disabled_connections=dc_payload,
         )
         async for event in event_stream:
             if isinstance(event, StreamTextDelta):
