@@ -540,7 +540,7 @@ ANTON_SERVER_HOST=<span class="str">127.0.0.1</span> ANTON_SERVER_PORT=<span cla
 <!-- ───────────────────────────────────────────  ATTACHMENTS  ─────────────────────────────────────────── -->
 <h2 id="attachments">Attachments</h2>
 <p>
-  Attachments are files, snippets or URLs that augment a turn.
+  Attachments are files that augment a turn.
   Upload first, then pass the returned ids in <code>attachment_ids</code> on
   <code>POST /v1/responses</code>. Attachments are scoped to a project and attach to a
   conversation as soon as one exists.
@@ -548,8 +548,6 @@ ANTON_SERVER_HOST=<span class="str">127.0.0.1</span> ANTON_SERVER_PORT=<span cla
 <div class="endpoints">
   <div class="endpoint"><span class="verb verb-GET">GET</span><span class="path">/v1/attachments</span><span class="desc">List attachments, optionally filtered by <code>project</code> or <code>session_id</code>.</span></div>
   <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/attachments/upload</span><span class="desc">Multipart upload. Files are extracted and indexed; status reports as <code>ready</code>, <code>processing</code>, or <code>failed</code>.</span></div>
-  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/attachments/snippet</span><span class="desc">Attach raw text as a titled snippet. Body: <code>{ title, content, project_path?, session_id? }</code>.</span></div>
-  <div class="endpoint"><span class="verb verb-POST">POST</span><span class="path">/v1/attachments/url</span><span class="desc">Attach a URL. Anton will fetch and extract content. Body: <code>{ url, project_path?, session_id? }</code>.</span></div>
   <div class="endpoint"><span class="verb verb-DELETE">DELETE</span><span class="path">/v1/attachments/{id}</span><span class="desc">Drop a pending or attached attachment.</span></div>
 </div>
 
