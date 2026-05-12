@@ -26,15 +26,23 @@ const PROVIDER_DEFAULTS = {
   openai:              { planning: 'gpt-5.4',           coding: 'gpt-5.4-mini' },
   gemini:              { planning: 'gemini-2.5-pro',    coding: 'gemini-2.5-flash' },
   'openai-compatible': { planning: '',                  coding: '' },
-  'minds-cloud':       { planning: '',                  coding: '' },
+  // Minds Cloud uses sentinel model names that its OpenAI-compatible
+  // router resolves to the right backing model. `_reasoning_` for
+  // planning, `_code_` for scratchpad coding — these are the only pair
+  // the mdb.ai router currently accepts. (Earlier codebase comments
+  // referenced `_reason_`; that name 4xx's against the live router.)
+  'minds-cloud':       { planning: '_reasoning_',       coding: '_code_' },
 };
 
 // Known model lists per provider — surfaced as quick-pick chips below
 // the text input so users can swap models without typing.
 const PROVIDER_MODELS = {
-  anthropic: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
-  openai:    ['gpt-5.4', 'gpt-5.4-mini', 'o3', 'o4-mini'],
-  gemini:    ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
+  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
+  openai:        ['gpt-5.4', 'gpt-5.4-mini', 'o3', 'o4-mini'],
+  gemini:        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
+  // Minds Cloud intentionally has no quick-picks: the planning/coding
+  // pair is fixed (`_reasoning_` / `_code_`) and gets auto-filled by
+  // applyProviderPreset, so a chip row would just be noise.
 };
 
 // Per-provider credential relevance map. Drives the Required / Optional /
@@ -392,15 +400,68 @@ function RelevanceBadge({ status }) {
   );
 }
 
+// Small green pill that confirms a credential is stored. Pairs with the
+// Required / Optional relevance badge so users can answer two questions
+// at a glance: "do I need this?" and "is it filled in?". Independent of
+// reveal — driven purely by whether the field has a non-empty value
+// (which for API keys means either the "***" sentinel from the server
+// or a freshly typed key not yet saved).
+//
+// `active` lifts the badge visually when the credential is on the
+// active provider's hot path (required / optional / auto-managed for
+// this preset). Idle rows that just happen to still hold a value keep
+// the muted look so the eye is drawn to what's currently in use.
+function SetBadge({ hasValue, active }) {
+  if (!hasValue) return null;
+  return (
+    <span
+      title={active
+        ? 'Stored and used by the active provider'
+        : 'A value is stored, but the active provider does not use it'}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        marginLeft: 8, padding: '1px 8px 1px 7px',
+        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        color: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
+        background: active ? 'rgba(124,196,182,0.18)' : 'rgba(93,146,135,0.10)',
+        border: `1px solid ${active ? 'rgba(124,196,182,0.55)' : 'rgba(93,146,135,0.28)'}`,
+        borderRadius: 999, verticalAlign: 'middle',
+        boxShadow: active
+          ? '0 0 0 1px rgba(124,196,182,0.20), 0 0 14px rgba(124,196,182,0.45), 0 0 28px rgba(93,146,135,0.25)'
+          : 'none',
+        animation: active ? 'set-badge-pulse 2.4s ease-in-out infinite' : 'none',
+        transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
+      }}
+    >
+      <span style={{
+        width: 6, height: 6, borderRadius: 999,
+        background: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
+        boxShadow: active
+          ? '0 0 8px #7CC4B6, 0 0 14px rgba(124,196,182,0.6)'
+          : '0 0 4px rgba(93,146,135,0.45)',
+      }} />
+      Set
+    </span>
+  );
+}
+
 // Wrapper that dims a Section row when the credential is unused for the
 // active provider. Built on the existing Section grid so layout stays
 // consistent.
-function CredentialRow({ title, subtitle, status, children }) {
+function CredentialRow({ title, subtitle, status, hasValue, children }) {
   const dimmed = status === 'unused';
+  // The Set badge only glows when this credential is on the active
+  // provider's actual auth path — i.e. the active preset *requires* it
+  // (or auto-manages it). `optional` credentials (e.g. Minds API key
+  // while on Anthropic) and `unused` ones show Set in a muted style so
+  // the glow stays meaningful: "this is what's authenticating you now."
+  const setActive = hasValue && (status === 'required' || status === 'auto');
   const titleNode = (
-    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 4 }}>
       {title}
       <RelevanceBadge status={status} />
+      <SetBadge hasValue={hasValue} active={setActive} />
     </span>
   );
   return (
@@ -413,6 +474,8 @@ function CredentialRow({ title, subtitle, status, children }) {
 export default function SettingsView({ settings, setSetting, onSave, theme, onThemeChange }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState(false);
   const configReady = validation?.configReady ?? settings.configReady;
   const configError = validation?.configError || settings.configError;
 
@@ -432,18 +495,35 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     }
   };
 
+  // Re-validate config against the server. Without explicit progress +
+  // success states the button looks dead when the config was already
+  // green (the banner has nothing to flip to), so we drive a brief
+  // "Testing…" → "Tested" sequence on the button itself.
   const validate = async () => {
+    if (testing) return;
+    setTesting(true);
+    setTested(false);
     try {
       const result = await validateSettings();
       setValidation(result);
+      setTested(true);
+      setTimeout(() => setTested(false), 2400);
     } catch (err) {
       setValidation({
         status: 'error',
         configReady: false,
         configError: err.message || 'Settings could not be validated.',
       });
+    } finally {
+      setTesting(false);
     }
   };
+
+  const testButtonLabel = testing
+    ? 'Testing…'
+    : tested
+      ? (<><span style={{ display: 'inline-flex', marginRight: 6, verticalAlign: 'middle' }}>{Ico.check(13)}</span>Tested</>)
+      : 'Test';
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -483,7 +563,13 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   {configError || 'Provider, model, and credentials are ready.'}
                 </div>
               </div>
-              <button className="btn-secondary" onClick={validate}>Test</button>
+              <button
+                className="btn-secondary"
+                onClick={validate}
+                disabled={testing}
+                aria-busy={testing}
+                style={testing ? { opacity: 0.7, cursor: 'progress' } : undefined}
+              >{testButtonLabel}</button>
             </div>
 
             <CollapsibleGroup title="Appearance">
@@ -527,6 +613,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               const configuredForActive = isProviderConfigured(activePreset, settings);
               const relevance = CREDENTIAL_RELEVANCE[activePreset] || {};
               const quickPicks = PROVIDER_MODELS[activePreset] || [];
+              // Drives the green "Set" badge on each credential row.
+              const has = (field) => Boolean(String(settings[field] ?? '').trim());
 
               const ChipRow = ({ items, current, onPick }) => items.length === 0 ? null : (
                 <div style={{
@@ -635,6 +723,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       title="Anthropic API key"
                       subtitle="Required for Claude models."
                       status={relevance.anthropicApiKey}
+                      hasValue={has('anthropicApiKey')}
                     >
                       <ApiKeyInput
                         value={settings.anthropicApiKey ?? ''}
@@ -647,6 +736,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       title="OpenAI API key"
                       subtitle="Required for GPT, Gemini, and OpenAI-compatible providers."
                       status={relevance.openaiApiKey}
+                      hasValue={has('openaiApiKey')}
                     >
                       <ApiKeyInput
                         value={settings.openaiApiKey ?? ''}
@@ -661,6 +751,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                         ? 'Auto-managed by the selected preset.'
                         : 'Required for OpenAI-compatible providers unless Minds credentials derive it.'}
                       status={relevance.openaiBaseUrl}
+                      hasValue={has('openaiBaseUrl')}
                     >
                       <TextInput
                         value={settings.openaiBaseUrl ?? ''}
@@ -672,6 +763,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       title="Minds API key"
                       subtitle="Used for Minds-backed routing and publishing."
                       status={relevance.mindsApiKey}
+                      hasValue={has('mindsApiKey')}
                     >
                       <ApiKeyInput
                         value={settings.mindsApiKey ?? ''}
@@ -684,6 +776,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       title="Minds URL"
                       subtitle="Base URL for Minds-backed Anton features."
                       status={relevance.mindsUrl}
+                      hasValue={has('mindsUrl')}
                     >
                       <TextInput
                         value={settings.mindsUrl ?? 'https://mdb.ai'}
@@ -695,6 +788,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       title="Minds mind"
                       subtitle="Optional Mind name to use for data-aware tasks."
                       status={relevance.mindsMindName}
+                      hasValue={has('mindsMindName')}
                     >
                       <TextInput
                         value={settings.mindsMindName ?? ''}
@@ -706,6 +800,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       title="Minds datasource"
                       subtitle="Optional datasource name and engine."
                       status={relevance.mindsDatasource}
+                      hasValue={has('mindsDatasource') || has('mindsDatasourceEngine')}
                     >
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         <TextInput
@@ -776,7 +871,15 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
           borderTop: '1px solid var(--border-subtle)',
         }}>
           <div style={{ flex: 1, fontSize: 12.5, color: 'var(--text-muted)' }}>
-            {saved ? 'Settings saved.' : configError ? configError : 'Changes apply on save.'}
+            {testing
+              ? 'Testing configuration…'
+              : tested
+                ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
+                : saved
+                  ? 'Settings saved.'
+                  : configError
+                    ? configError
+                    : 'Changes apply on save.'}
           </div>
           <button className="btn-secondary" onClick={validate}>Test</button>
           <button
