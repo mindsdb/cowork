@@ -49,7 +49,9 @@ function boolValue(value: string | undefined, fallback: boolean): boolean {
 
 export function getSelectedHarness(): 'anton' | 'hermes' {
   const vars = readEnvFile();
-  return normalizeHarness(process.env.COWORK_HARNESS_PROVIDER || vars.COWORK_HARNESS_PROVIDER);
+  // The settings UI writes ~/.anton/.env. Let that persisted choice beat
+  // the launch environment so a Hermes-launched app can switch back to Anton.
+  return normalizeHarness(vars.COWORK_HARNESS_PROVIDER || process.env.COWORK_HARNESS_PROVIDER);
 }
 
 function getHermesCommand(): string | null {
@@ -70,17 +72,17 @@ function getHermesCommand(): string | null {
 function hermesSettings() {
   const vars = readEnvFile();
   const baseUrl = (
-    process.env.COWORK_HERMES_API_BASE_URL ||
     vars.COWORK_HERMES_API_BASE_URL ||
+    process.env.COWORK_HERMES_API_BASE_URL ||
     process.env.HERMES_API_BASE_URL ||
     DEFAULT_HERMES_URL
   ).replace(/\/+$/, '');
   const apiKey =
-    process.env.COWORK_HERMES_API_KEY ||
     vars.COWORK_HERMES_API_KEY ||
+    process.env.COWORK_HERMES_API_KEY ||
     process.env.API_SERVER_KEY ||
     '';
-  const autoStart = boolValue(process.env.COWORK_HERMES_AUTO_START || vars.COWORK_HERMES_AUTO_START, true);
+  const autoStart = boolValue(vars.COWORK_HERMES_AUTO_START || process.env.COWORK_HERMES_AUTO_START, true);
   return { baseUrl, apiKey, autoStart };
 }
 
