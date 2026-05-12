@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import httpx
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -1184,18 +1185,20 @@ def _validate_anthropic(api_key: str, model: str) -> dict[str, Any]:
 
 
 def _validate_minds(api_key: str, base_url: str) -> dict[str, Any]:
+    # mdb.ai requires HTTP/2; urllib only speaks HTTP/1.1 and gets a 401.
+    # httpx (already a transitive dep via anton) handles HTTP/2 via ALPN.
     try:
         base = base_url.rstrip("/")
-        status, _text = _http_json(
-            f"{base}/api/v1/minds/",
-            "GET",
-            {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        )
-        if status in (401, 403):
+        with httpx.Client(http2=True, timeout=15) as client:
+            resp = client.get(
+                f"{base}/api/v1/minds/",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if resp.status_code in (401, 403):
             return {"ok": False, "error": "Invalid API key"}
-        if 200 <= status < 300:
+        if 200 <= resp.status_code < 300:
             return {"ok": True}
-        return {"ok": False, "error": f"Server returned HTTP {status}"}
+        return {"ok": False, "error": f"Server returned HTTP {resp.status_code}"}
     except Exception as e:
         return {"ok": False, "error": f"Cannot connect: {e}"}
 
