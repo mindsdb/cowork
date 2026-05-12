@@ -24,21 +24,17 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Anton via uv tool
+        run: uv tool install anton@git+https://github.com/mindsdb/anton.git
 
       - name: Install Node dependencies
         run: npm ci
 
       - name: Install Playwright browsers
         run: npx playwright install chromium
-
-      - name: Install Python dependencies
-        run: |
-          pip install -r server/requirements.txt
-          pip install anton@git+https://github.com/mindsdb/anton.git
 
       - name: Run e2e tests
         run: npm run test:e2e
