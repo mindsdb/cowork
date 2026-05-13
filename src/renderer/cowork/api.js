@@ -641,6 +641,19 @@ export async function validateSettings() {
   return req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
 }
 
+// Fetch the real (unmasked) value of a stored API key — drives the eye
+// icon "reveal" in Settings. The GET /settings endpoint returns "***"
+// for stored keys; this endpoint returns the actual stored value so the
+// user can verify which key is configured.
+export async function revealSettingKey(name) {
+  try {
+    const res = await req(`/settings/reveal-key/${encodeURIComponent(name)}`);
+    return res?.value || '';
+  } catch {
+    return '';
+  }
+}
+
 export async function fetchIntegrations() {
   try {
     return await req('/integrations');

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Ico from '../components/Icons';
-import { validateSettings } from '../api';
+import { validateSettings, revealSettingKey } from '../api';
 
 // Provider preset → underlying canonical fields. The backend only knows
 // three providers (anthropic / openai / openai-compatible). Gemini and
@@ -17,6 +17,94 @@ const PROVIDER_PRESETS = [
   { value: 'minds-cloud',       label: 'Minds Cloud' },
 ];
 
+// Default models we drop into the planning/coding fields when the user
+// switches providers. Empty strings mean "user must fill in" (true for
+// generic openai-compatible and minds-cloud where the model name depends
+// on the deployment).
+const PROVIDER_DEFAULTS = {
+  anthropic:           { planning: 'claude-sonnet-4-6', coding: 'claude-haiku-4-5-20251001' },
+  openai:              { planning: 'gpt-5.4',           coding: 'gpt-5.4-mini' },
+  gemini:              { planning: 'gemini-2.5-pro',    coding: 'gemini-2.5-flash' },
+  'openai-compatible': { planning: '',                  coding: '' },
+  // Minds Cloud uses sentinel model names that its OpenAI-compatible
+  // router resolves to the right backing model. `_reasoning_` for
+  // planning, `_code_` for scratchpad coding — these are the only pair
+  // the mdb.ai router currently accepts. (Earlier codebase comments
+  // referenced `_reason_`; that name 4xx's against the live router.)
+  'minds-cloud':       { planning: '_reasoning_',       coding: '_code_' },
+};
+
+// Known model lists per provider — surfaced as quick-pick chips below
+// the text input so users can swap models without typing.
+const PROVIDER_MODELS = {
+  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
+  openai:        ['gpt-5.4', 'gpt-5.4-mini', 'o3', 'o4-mini'],
+  gemini:        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
+  // Minds Cloud intentionally has no quick-picks: the planning/coding
+  // pair is fixed (`_reasoning_` / `_code_`) and gets auto-filled by
+  // applyProviderPreset, so a chip row would just be noise.
+};
+
+// Per-provider credential relevance map. Drives the Required / Optional /
+// Unused badges and the dimming of unrelated rows in the Credentials card.
+const CREDENTIAL_RELEVANCE = {
+  // Minds-related credentials live in their own card but are only on
+  // the auth path for the `minds-cloud` preset. Marking them `unused`
+  // for everything else dims the rows (and drops the Optional badge) so
+  // attention sticks to the credentials the active provider actually
+  // touches. The fields stay editable for users who keep a Minds key
+  // around for routing/publishing.
+  anthropic: {
+    anthropicApiKey: 'required',
+    openaiApiKey:    'unused',
+    openaiBaseUrl:   'unused',
+    mindsApiKey:     'unused',
+    mindsUrl:        'unused',
+    mindsMindName:   'unused',
+    mindsDatasource: 'unused',
+  },
+  openai: {
+    anthropicApiKey: 'unused',
+    openaiApiKey:    'required',
+    openaiBaseUrl:   'unused',
+    mindsApiKey:     'unused',
+    mindsUrl:        'unused',
+    mindsMindName:   'unused',
+    mindsDatasource: 'unused',
+  },
+  gemini: {
+    anthropicApiKey: 'unused',
+    openaiApiKey:    'required',
+    openaiBaseUrl:   'auto',
+    mindsApiKey:     'unused',
+    mindsUrl:        'unused',
+    mindsMindName:   'unused',
+    mindsDatasource: 'unused',
+  },
+  'openai-compatible': {
+    anthropicApiKey: 'unused',
+    openaiApiKey:    'required',
+    openaiBaseUrl:   'required',
+    mindsApiKey:     'unused',
+    mindsUrl:        'unused',
+    mindsMindName:   'unused',
+    mindsDatasource: 'unused',
+  },
+  'minds-cloud': {
+    // OpenAI key + base URL are populated as a side-effect of the Minds
+    // preset (the backend reuses the openai-compatible pipeline). They
+    // aren't something the user maintains — keep them dimmed so attention
+    // stays on the Minds credentials.
+    anthropicApiKey: 'unused',
+    openaiApiKey:    'unused',
+    openaiBaseUrl:   'unused',
+    mindsApiKey:     'required',
+    mindsUrl:        'required',
+    mindsMindName:   'optional',
+    mindsDatasource: 'optional',
+  },
+};
+
 function inferProviderPreset(s) {
   const provider = s.planningProvider || 'anthropic';
   const baseUrl = (s.openaiBaseUrl || '').trim();
@@ -32,7 +120,20 @@ function inferProviderPreset(s) {
   return 'anthropic';
 }
 
+// True iff the credentials needed for `preset` are present in `s`.
+function isProviderConfigured(preset, s) {
+  const trim = (v) => (typeof v === 'string' ? v.trim() : '');
+  if (preset === 'anthropic') return Boolean(trim(s.anthropicApiKey));
+  if (preset === 'openai') return Boolean(trim(s.openaiApiKey));
+  if (preset === 'gemini') return Boolean(trim(s.openaiApiKey));
+  if (preset === 'openai-compatible') return Boolean(trim(s.openaiApiKey) && trim(s.openaiBaseUrl));
+  if (preset === 'minds-cloud') return Boolean(trim(s.mindsApiKey) && trim(s.mindsUrl));
+  return false;
+}
+
 function applyProviderPreset(preset, settings, setSetting) {
+  // 1. Wire the canonical provider field(s) to the underlying backend
+  //    representation. Gemini + Minds Cloud are openai-compatible presets.
   if (preset === 'anthropic') {
     setSetting('planningProvider', 'anthropic');
     setSetting('codingProvider', 'anthropic');
@@ -60,6 +161,15 @@ function applyProviderPreset(preset, settings, setSetting) {
       setSetting('openaiApiKey', settings.mindsApiKey);
     }
   }
+
+  // 2. Reset planning + coding models to the new provider's defaults so
+  //    the user never lands on a "claude-sonnet-4-6 on OpenAI" mismatch.
+  //    For providers without sensible defaults (compatible, minds-cloud)
+  //    we clear the fields rather than leaving stale Claude/GPT names.
+  const defaults = PROVIDER_DEFAULTS[preset] || { planning: '', coding: '' };
+  setSetting('planningModel', defaults.planning);
+  setSetting('defaultModel', defaults.planning);
+  setSetting('codingModel', defaults.coding);
 }
 
 function Section({ title, subtitle, children }) {
@@ -157,31 +267,271 @@ function TextInput({ value, onChange, placeholder }) {
   );
 }
 
-function ApiKeyInput({ value, onChange, placeholder }) {
+// Drop-in for TextInput in Credentials rows. Adds a × button inside the
+// field that empties the value — pairs with the trash icon on the API
+// key fields so the whole Credentials card uses one clear gesture.
+// Save settings still has to be clicked to commit the deletion to env.
+function ClearableTextInput({ value, onChange, placeholder }) {
+  const v = value ?? '';
+  const hasValue = v.length > 0;
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        className="field-input"
+        value={v}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={hasValue ? { paddingRight: 36 } : undefined}
+      />
+      {hasValue && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          title="Clear (commits on Save settings)"
+          aria-label="Clear value"
+          style={{
+            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 26, borderRadius: 6,
+            border: 0, background: 'transparent', cursor: 'pointer',
+            color: 'var(--ink-3)', padding: 0,
+          }}
+        >
+          {Ico.close(13)}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Masked credential input. The backend returns "***" as a sentinel for
+// stored keys (the real value never leaves disk on a plain GET), so the
+// eye icon does two things:
+//   (a) toggles the input type between password and text, and
+//   (b) when revealing a sentinel and `revealName` is set, asks the
+//       server for the real stored value via /settings/reveal-key.
+// The fetched value is held in local component state — we never push it
+// into the parent settings object, so saving an untouched revealed value
+// still sends "***" and the server skips overwriting the stored key.
+function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [revealedValue, setRevealedValue] = useState(null); // null = no fetched override
+  const [revealing, setRevealing] = useState(false);
+
+  const stored = value ?? '';
+  const isSentinel = stored === '***';
+  // What the input renders. While the user hasn't toggled reveal we show
+  // `stored` (typically "***" if the server has a key, or "" if not).
+  // After a successful reveal we show the fetched value.
+  const v = revealedValue ?? stored;
+  const hasValue = v.length > 0;
+
+  const onCopy = async () => {
+    if (!hasValue) return;
+    try {
+      await navigator.clipboard.writeText(v);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard may be unavailable in some browser sandboxes */
+    }
+  };
+
+  const onToggleShow = async () => {
+    if (!show && revealName && isSentinel && revealedValue === null) {
+      // Reveal the real stored key from the loopback server.
+      setRevealing(true);
+      try {
+        const real = await revealSettingKey(revealName);
+        if (real) setRevealedValue(real);
+      } finally {
+        setRevealing(false);
+      }
+    }
+    if (show) {
+      // Going back to hidden — drop any fetched value so the next
+      // reveal re-fetches (and we don't keep a plaintext key around).
+      setRevealedValue(null);
+    }
+    setShow((s) => !s);
+  };
+
+  // If the user types, treat that as a fresh local edit. Clear any
+  // revealed-from-server value and forward straight to the parent.
+  const onInput = (next) => {
+    if (revealedValue !== null) setRevealedValue(null);
+    onChange(next);
+  };
+
+  // Trash → empty the field locally. The change only hits the server
+  // on Save settings, where update_settings sees an empty string and
+  // routes the key to its delete branch (`_stage_string_env` / the API
+  // key block). Also resets reveal state so we don't keep a fetched
+  // plaintext copy around.
+  const onClearField = () => {
+    setRevealedValue(null);
+    setShow(false);
+    onChange('');
+  };
+
+  const btnStyle = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 28, height: 26, borderRadius: 6,
+    border: 0, background: 'transparent', cursor: 'pointer',
+    color: 'var(--ink-3)', padding: 0,
+  };
+  const btnStyleActive = { ...btnStyle, color: 'var(--text-strong)', background: 'var(--surface-2, rgba(255,255,255,0.04))' };
+
   return (
     <div style={{ position: 'relative' }}>
       <input
         className="field-input mono"
         type={show ? 'text' : 'password'}
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder || '********************'}
-        style={{ paddingRight: 56 }}
+        value={v}
+        onChange={(e) => onInput(e.target.value)}
+        placeholder={placeholder || '••••••••••••••••••'}
+        disabled={disabled}
+        autoComplete="off"
+        spellCheck={false}
+        style={{ paddingRight: 108 }}
       />
-      <button
-        type="button"
-        onClick={() => setShow(!show)}
-        style={{
-          position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-          border: 0, background: 'transparent', cursor: 'pointer',
-          fontSize: 11, color: 'var(--ink-3)', padding: '4px 8px',
-          fontFamily: 'var(--font-mono)', letterSpacing: '0.04em',
-          textTransform: 'uppercase',
-        }}
-      >
-        {show ? 'hide' : 'show'}
-      </button>
+      <div style={{
+        position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+        display: 'inline-flex', alignItems: 'center', gap: 2,
+      }}>
+        <button
+          type="button"
+          onClick={onCopy}
+          disabled={!hasValue || isSentinel}
+          title={
+            isSentinel ? 'Reveal the key first to copy it'
+            : copied  ? 'Copied'
+            : 'Copy to clipboard'
+          }
+          aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
+          style={(hasValue && !isSentinel) ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
+        >
+          {copied ? Ico.check(13) : Ico.copy(13)}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleShow}
+          disabled={revealing}
+          title={show ? 'Hide key' : (revealing ? 'Revealing…' : 'Reveal key')}
+          aria-label={show ? 'Hide key' : 'Reveal key'}
+          aria-pressed={show}
+          style={show ? btnStyleActive : btnStyle}
+        >
+          {show ? Ico.eyeOff(13) : Ico.eye(13)}
+        </button>
+        <button
+          type="button"
+          onClick={onClearField}
+          disabled={!hasValue}
+          title="Clear this key (commits on Save settings)"
+          aria-label="Clear key"
+          style={hasValue ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
+        >
+          {Ico.trash(13)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Pill that hangs off a credential row's title to show whether the field
+// is required, optional, auto-managed, or unused for the active provider.
+// Drives the eye flow toward what matters for the current selection.
+function RelevanceBadge({ status }) {
+  if (!status || status === 'unused') return null;
+  const palette = {
+    required: { fg: '#E5B57A', bg: 'rgba(229,181,122,0.12)', bd: 'rgba(229,181,122,0.30)', label: 'Required' },
+    optional: { fg: 'var(--text-muted)', bg: 'rgba(127,127,127,0.10)', bd: 'var(--border-subtle)', label: 'Optional' },
+    auto:     { fg: 'var(--sage-500, #5d9287)', bg: 'rgba(93,146,135,0.12)', bd: 'rgba(93,146,135,0.30)', label: 'Auto' },
+  }[status];
+  if (!palette) return null;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      marginLeft: 8, padding: '1px 7px',
+      fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
+      textTransform: 'uppercase',
+      color: palette.fg, background: palette.bg,
+      border: `1px solid ${palette.bd}`, borderRadius: 999,
+      verticalAlign: 'middle',
+    }}>{palette.label}</span>
+  );
+}
+
+// Small green pill that confirms a credential is stored. Pairs with the
+// Required / Optional relevance badge so users can answer two questions
+// at a glance: "do I need this?" and "is it filled in?". Independent of
+// reveal — driven purely by whether the field has a non-empty value
+// (which for API keys means either the "***" sentinel from the server
+// or a freshly typed key not yet saved).
+//
+// `active` lifts the badge visually when the credential is on the
+// active provider's hot path (required / optional / auto-managed for
+// this preset). Idle rows that just happen to still hold a value keep
+// the muted look so the eye is drawn to what's currently in use.
+function SetBadge({ hasValue, active }) {
+  if (!hasValue) return null;
+  return (
+    <span
+      title={active
+        ? 'Stored and used by the active provider'
+        : 'A value is stored, but the active provider does not use it'}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        marginLeft: 8, padding: '1px 8px 1px 7px',
+        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        color: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
+        background: active ? 'rgba(124,196,182,0.18)' : 'rgba(93,146,135,0.10)',
+        border: `1px solid ${active ? 'rgba(124,196,182,0.55)' : 'rgba(93,146,135,0.28)'}`,
+        borderRadius: 999, verticalAlign: 'middle',
+        // When active, the box-shadow comes from the set-badge-pulse
+        // keyframes; the static value would never paint. When inactive
+        // we explicitly clear any inherited shadow.
+        boxShadow: active ? undefined : 'none',
+        animation: active ? 'set-badge-pulse 2.4s ease-in-out infinite' : 'none',
+        transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
+      }}
+    >
+      <span style={{
+        width: 6, height: 6, borderRadius: 999,
+        background: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
+        boxShadow: active
+          ? '0 0 8px #7CC4B6, 0 0 14px rgba(124,196,182,0.6)'
+          : '0 0 4px rgba(93,146,135,0.45)',
+      }} />
+      Set
+    </span>
+  );
+}
+
+// Wrapper that dims a Section row when the credential is unused for the
+// active provider. Built on the existing Section grid so layout stays
+// consistent.
+function CredentialRow({ title, subtitle, status, hasValue, children }) {
+  const dimmed = status === 'unused';
+  // The Set badge only glows when this credential is on the active
+  // provider's actual auth path — i.e. the active preset *requires* it
+  // (or auto-manages it). `optional` credentials (e.g. Minds API key
+  // while on Anthropic) and `unused` ones show Set in a muted style so
+  // the glow stays meaningful: "this is what's authenticating you now."
+  const setActive = hasValue && (status === 'required' || status === 'auto');
+  const titleNode = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', rowGap: 4 }}>
+      {title}
+      <RelevanceBadge status={status} />
+      <SetBadge hasValue={hasValue} active={setActive} />
+    </span>
+  );
+  return (
+    <div style={{ opacity: dimmed ? 0.5 : 1, transition: 'opacity .15s ease' }}>
+      <Section title={titleNode} subtitle={subtitle}>{children}</Section>
     </div>
   );
 }
@@ -189,6 +539,8 @@ function ApiKeyInput({ value, onChange, placeholder }) {
 export default function SettingsView({ settings, setSetting, onSave, theme, onThemeChange }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState(false);
   const configReady = validation?.configReady ?? settings.configReady;
   const configError = validation?.configError || settings.configError;
 
@@ -208,18 +560,35 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     }
   };
 
+  // Re-validate config against the server. Without explicit progress +
+  // success states the button looks dead when the config was already
+  // green (the banner has nothing to flip to), so we drive a brief
+  // "Testing…" → "Tested" sequence on the button itself.
   const validate = async () => {
+    if (testing) return;
+    setTesting(true);
+    setTested(false);
     try {
       const result = await validateSettings();
       setValidation(result);
+      setTested(true);
+      setTimeout(() => setTested(false), 2400);
     } catch (err) {
       setValidation({
         status: 'error',
         configReady: false,
         configError: err.message || 'Settings could not be validated.',
       });
+    } finally {
+      setTesting(false);
     }
   };
+
+  const testButtonLabel = testing
+    ? 'Testing…'
+    : tested
+      ? (<><span style={{ display: 'inline-flex', marginRight: 6, verticalAlign: 'middle' }}>{Ico.check(13)}</span>Tested</>)
+      : 'Test';
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -259,7 +628,13 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   {configError || 'Provider, model, and credentials are ready.'}
                 </div>
               </div>
-              <button className="btn-secondary" onClick={validate}>Test</button>
+              <button
+                className="btn-secondary"
+                onClick={validate}
+                disabled={testing}
+                aria-busy={testing}
+                style={testing ? { opacity: 0.7, cursor: 'progress' } : undefined}
+              >{testButtonLabel}</button>
             </div>
 
             <CollapsibleGroup title="Appearance">
@@ -295,96 +670,220 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               </Section>
             </CollapsibleGroup>
 
-            <CollapsibleGroup title="Models">
-              {/* Provider section now 2-row: provider type Segmented on the
-                  left, planning + coding models stacked on the right.
-                  Gemini + Minds Cloud remain in the Segmented as presets
-                  that auto-fill the openai-compatible base URL. */}
-              <Section title="Provider" subtitle="Both planning + coding. Gemini and Minds Cloud are presets that map to OpenAI-compatible with the right base URL.">
-                <Segmented
-                  value={inferProviderPreset(settings)}
-                  onChange={(v) => applyProviderPreset(v, settings, setSetting)}
-                  options={PROVIDER_PRESETS}
-                  style={{ display: 'flex', flexWrap: 'wrap', width: '100%' }}
-                />
-              </Section>
-              <Section title="Planning model" subtitle="Used for reasoning, orchestration, and responses.">
-                <TextInput
-                  value={settings.planningModel ?? settings.defaultModel ?? ''}
-                  onChange={(v) => {
-                    setSetting('planningModel', v);
-                    setSetting('defaultModel', v);
-                  }}
-                  placeholder="claude-sonnet-4-6"
-                />
-              </Section>
-              <Section title="Coding model" subtitle="Used for scratchpad code generation.">
-                <TextInput
-                  value={settings.codingModel ?? 'claude-haiku-4-5-20251001'}
-                  onChange={(v) => setSetting('codingModel', v)}
-                  placeholder="claude-haiku-4-5-20251001"
-                />
-              </Section>
-            </CollapsibleGroup>
+            {(() => {
+              // Computed once per render — these drive Models + Credentials
+              // visuals (active provider chip, credential badges, quick-picks).
+              const activePreset = inferProviderPreset(settings);
+              const activeLabel = PROVIDER_PRESETS.find((p) => p.value === activePreset)?.label || activePreset;
+              const configuredForActive = isProviderConfigured(activePreset, settings);
+              const relevance = CREDENTIAL_RELEVANCE[activePreset] || {};
+              const quickPicks = PROVIDER_MODELS[activePreset] || [];
+              // Drives the green "Set" badge on each credential row.
+              const has = (field) => Boolean(String(settings[field] ?? '').trim());
 
-            <CollapsibleGroup title="Credentials">
-              <Section title="Anthropic API key" subtitle="Required for Claude models.">
-                <ApiKeyInput
-                  value={settings.anthropicApiKey ?? ''}
-                  onChange={(v) => setSetting('anthropicApiKey', v)}
-                  placeholder="sk-ant-********"
-                />
-              </Section>
-              <Section title="OpenAI API key" subtitle="Required for GPT models when you use OpenAI directly.">
-                <ApiKeyInput
-                  value={settings.openaiApiKey ?? ''}
-                  onChange={(v) => setSetting('openaiApiKey', v)}
-                  placeholder="sk-********"
-                />
-              </Section>
-              <Section title="OpenAI-compatible base URL" subtitle="Required for OpenAI-compatible providers unless Minds credentials derive it.">
-                <TextInput
-                  value={settings.openaiBaseUrl ?? ''}
-                  onChange={(v) => setSetting('openaiBaseUrl', v)}
-                  placeholder="https://example.com/v1"
-                />
-              </Section>
-              <Section title="Minds API key" subtitle="Used for Minds-backed routing and publishing.">
-                <ApiKeyInput
-                  value={settings.mindsApiKey ?? ''}
-                  onChange={(v) => setSetting('mindsApiKey', v)}
-                  placeholder="mdb_********"
-                />
-              </Section>
-              <Section title="Minds URL" subtitle="Base URL for Minds-backed Anton features.">
-                <TextInput
-                  value={settings.mindsUrl ?? 'https://mdb.ai'}
-                  onChange={(v) => setSetting('mindsUrl', v)}
-                  placeholder="https://mdb.ai"
-                />
-              </Section>
-              <Section title="Minds mind" subtitle="Optional Mind name to use for data-aware tasks.">
-                <TextInput
-                  value={settings.mindsMindName ?? ''}
-                  onChange={(v) => setSetting('mindsMindName', v)}
-                  placeholder="sales_data_expert"
-                />
-              </Section>
-              <Section title="Minds datasource" subtitle="Optional datasource name and engine.">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <TextInput
-                    value={settings.mindsDatasource ?? ''}
-                    onChange={(v) => setSetting('mindsDatasource', v)}
-                    placeholder="datasource name"
-                  />
-                  <TextInput
-                    value={settings.mindsDatasourceEngine ?? ''}
-                    onChange={(v) => setSetting('mindsDatasourceEngine', v)}
-                    placeholder="postgres"
-                  />
+              const ChipRow = ({ items, current, onPick }) => items.length === 0 ? null : (
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8,
+                }}>
+                  {items.map((m) => {
+                    const active = m === current;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => onPick(m)}
+                        style={{
+                          fontFamily: 'var(--font-mono)', fontSize: 11.5,
+                          padding: '3px 8px', borderRadius: 999,
+                          background: active ? 'var(--surface-0)' : 'transparent',
+                          color: active ? 'var(--text-strong)' : 'var(--text-muted)',
+                          border: `1px solid ${active ? 'var(--line-2, var(--border-subtle))' : 'var(--border-subtle)'}`,
+                          cursor: 'pointer',
+                        }}
+                      >{m}</button>
+                    );
+                  })}
                 </div>
-              </Section>
-            </CollapsibleGroup>
+              );
+
+              return (
+                <>
+                  <CollapsibleGroup title="Models">
+                    {/* Provider row + active-state summary. The segmented
+                        control spans the full row so the 5 presets fit on
+                        one line instead of wrapping. */}
+                    <div style={{ padding: '16px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>Provider</div>
+                          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4, maxWidth: 480 }}>
+                            Drives planning + coding. Gemini and Minds Cloud are presets that map to OpenAI-compatible with the right base URL.
+                          </div>
+                        </div>
+                        {/* Active-provider status pill */}
+                        <div
+                          title={configuredForActive ? 'Credentials present for this provider' : 'This provider is missing credentials'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                            padding: '4px 10px', borderRadius: 999,
+                            fontSize: 12, fontWeight: 600,
+                            color: configuredForActive ? 'var(--sage-500, #5d9287)' : '#E07060',
+                            background: configuredForActive ? 'rgba(93,146,135,0.10)' : 'rgba(211,80,80,0.08)',
+                            border: `1px solid ${configuredForActive ? 'rgba(93,146,135,0.30)' : 'rgba(211,80,80,0.30)'}`,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <span style={{
+                            width: 7, height: 7, borderRadius: 999,
+                            background: configuredForActive ? 'var(--sage-500, #5d9287)' : '#E07060',
+                            boxShadow: configuredForActive ? '0 0 6px rgba(93,146,135,0.6)' : 'none',
+                          }} />
+                          {activeLabel}
+                          <span style={{ fontWeight: 500, color: 'inherit', opacity: 0.85 }}>
+                            · {configuredForActive ? 'Active' : 'Needs key'}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <Segmented
+                          value={activePreset}
+                          onChange={(v) => applyProviderPreset(v, settings, setSetting)}
+                          options={PROVIDER_PRESETS}
+                          style={{ display: 'inline-flex', flexWrap: 'wrap' }}
+                        />
+                      </div>
+                    </div>
+
+                    <Section title="Planning model" subtitle="Used for reasoning, orchestration, and responses.">
+                      <TextInput
+                        value={settings.planningModel ?? settings.defaultModel ?? ''}
+                        onChange={(v) => {
+                          setSetting('planningModel', v);
+                          setSetting('defaultModel', v);
+                        }}
+                        placeholder={PROVIDER_DEFAULTS[activePreset]?.planning || 'model-id'}
+                      />
+                      <ChipRow
+                        items={quickPicks}
+                        current={settings.planningModel ?? settings.defaultModel ?? ''}
+                        onPick={(m) => { setSetting('planningModel', m); setSetting('defaultModel', m); }}
+                      />
+                    </Section>
+                    <Section title="Coding model" subtitle="Used for scratchpad code generation.">
+                      <TextInput
+                        value={settings.codingModel ?? ''}
+                        onChange={(v) => setSetting('codingModel', v)}
+                        placeholder={PROVIDER_DEFAULTS[activePreset]?.coding || 'model-id'}
+                      />
+                      <ChipRow
+                        items={quickPicks}
+                        current={settings.codingModel ?? ''}
+                        onPick={(m) => setSetting('codingModel', m)}
+                      />
+                    </Section>
+                  </CollapsibleGroup>
+
+                  <CollapsibleGroup title="Credentials">
+                    <CredentialRow
+                      title="Anthropic API key"
+                      subtitle="Required for Claude models."
+                      status={relevance.anthropicApiKey}
+                      hasValue={has('anthropicApiKey')}
+                    >
+                      <ApiKeyInput
+                        value={settings.anthropicApiKey ?? ''}
+                        onChange={(v) => setSetting('anthropicApiKey', v)}
+                        placeholder="sk-ant-••••••••"
+                        revealName="anthropic"
+                      />
+                    </CredentialRow>
+                    <CredentialRow
+                      title="OpenAI API key"
+                      subtitle="Required for GPT, Gemini, and OpenAI-compatible providers."
+                      status={relevance.openaiApiKey}
+                      hasValue={has('openaiApiKey')}
+                    >
+                      <ApiKeyInput
+                        value={settings.openaiApiKey ?? ''}
+                        onChange={(v) => setSetting('openaiApiKey', v)}
+                        placeholder="sk-••••••••"
+                        revealName="openai"
+                      />
+                    </CredentialRow>
+                    <CredentialRow
+                      title="OpenAI-compatible base URL"
+                      subtitle={relevance.openaiBaseUrl === 'auto'
+                        ? 'Auto-managed by the selected preset.'
+                        : 'Required for OpenAI-compatible providers unless Minds credentials derive it.'}
+                      status={relevance.openaiBaseUrl}
+                      hasValue={has('openaiBaseUrl')}
+                    >
+                      <ClearableTextInput
+                        value={settings.openaiBaseUrl ?? ''}
+                        onChange={(v) => setSetting('openaiBaseUrl', v)}
+                        placeholder="https://example.com/v1"
+                      />
+                    </CredentialRow>
+                    <CredentialRow
+                      title="Minds API key"
+                      subtitle="Used for Minds-backed routing and publishing."
+                      status={relevance.mindsApiKey}
+                      hasValue={has('mindsApiKey')}
+                    >
+                      <ApiKeyInput
+                        value={settings.mindsApiKey ?? ''}
+                        onChange={(v) => setSetting('mindsApiKey', v)}
+                        placeholder="mdb_••••••••"
+                        revealName="minds"
+                      />
+                    </CredentialRow>
+                    <CredentialRow
+                      title="Minds URL"
+                      subtitle="Base URL for Minds-backed Anton features."
+                      status={relevance.mindsUrl}
+                      hasValue={has('mindsUrl')}
+                    >
+                      <ClearableTextInput
+                        value={settings.mindsUrl ?? 'https://mdb.ai'}
+                        onChange={(v) => setSetting('mindsUrl', v)}
+                        placeholder="https://mdb.ai"
+                      />
+                    </CredentialRow>
+                    <CredentialRow
+                      title="Minds mind"
+                      subtitle="Optional Mind name to use for data-aware tasks."
+                      status={relevance.mindsMindName}
+                      hasValue={has('mindsMindName')}
+                    >
+                      <ClearableTextInput
+                        value={settings.mindsMindName ?? ''}
+                        onChange={(v) => setSetting('mindsMindName', v)}
+                        placeholder="sales_data_expert"
+                      />
+                    </CredentialRow>
+                    <CredentialRow
+                      title="Minds datasource"
+                      subtitle="Optional datasource name and engine."
+                      status={relevance.mindsDatasource}
+                      hasValue={has('mindsDatasource') || has('mindsDatasourceEngine')}
+                    >
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <ClearableTextInput
+                          value={settings.mindsDatasource ?? ''}
+                          onChange={(v) => setSetting('mindsDatasource', v)}
+                          placeholder="datasource name"
+                        />
+                        <ClearableTextInput
+                          value={settings.mindsDatasourceEngine ?? ''}
+                          onChange={(v) => setSetting('mindsDatasourceEngine', v)}
+                          placeholder="postgres"
+                        />
+                      </div>
+                    </CredentialRow>
+                  </CollapsibleGroup>
+                </>
+              );
+            })()}
 
             <CollapsibleGroup title="Updates" defaultOpen={false}>
               <Section
@@ -437,7 +936,15 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
           borderTop: '1px solid var(--border-subtle)',
         }}>
           <div style={{ flex: 1, fontSize: 12.5, color: 'var(--text-muted)' }}>
-            {saved ? 'Settings saved.' : configError ? configError : 'Changes apply on save.'}
+            {testing
+              ? 'Testing configuration…'
+              : tested
+                ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
+                : saved
+                  ? 'Settings saved.'
+                  : configError
+                    ? configError
+                    : 'Changes apply on save.'}
           </div>
           <button className="btn-secondary" onClick={validate}>Test</button>
           <button
