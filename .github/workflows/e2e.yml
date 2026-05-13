@@ -1,0 +1,55 @@
+name: E2E smoke tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # Allow manual trigger for debugging.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Anton via uv tool
+        run: >
+          uv tool install
+          anton@git+https://github.com/mindsdb/anton.git
+          --with "fastapi>=0.115.0"
+          --with "uvicorn[standard]>=0.32.0"
+          --with "python-multipart>=0.0.12"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run e2e tests
+        run: npm run test:e2e
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

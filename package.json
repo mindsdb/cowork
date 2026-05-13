@@ -27,9 +27,11 @@
     "release:mac:pkg:notarized": "bash ./scripts/release-mac-pkg-notarized.sh",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never",
     "dist:win:all": "npm run build && electron-builder --win --publish never",
-    "release:win:local": "npm run dist:win"
+    "release:win:local": "npm run dist:win",
+    "test:e2e": "npx playwright test --config e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
