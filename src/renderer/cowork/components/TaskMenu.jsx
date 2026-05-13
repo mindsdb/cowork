@@ -1,17 +1,17 @@
 // Task action menu — used in two places:
-//   1. Sidebar RecentItem / pinned items, on hover
+//   1. Sidebar RecentItem / pinned items (kebab click)
 //   2. Chat header (with extra Schedule + Turn into skill items)
 //
-// Renders a positioned popover anchored to the trigger. The popover is
-// wrapped in a transparent hit-zone that covers `trigger + gap + menu`
-// so cursor traversal between trigger and menu never falls through dead
-// space — onMouseEnter / onMouseLeave on the wrapper see continuous
-// hover for the whole corridor.
+// Renders a positioned popover anchored to the trigger via a portal to
+// document.body. The portal is required because ancestors (e.g. the
+// sidebar) may have `transform` or `will-change: transform`, which
+// creates a new containing block for `position: fixed` and shifts the
+// menu away from its intended position.
 //
-// Project list is fetched lazily once when "Move to project" hovers
-// open, then cached for the lifetime of the menu.
+// Closes on click-outside or Escape — no hover-based auto-close.
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Ico from './Icons';
 
 function MenuButton({ icon, label, onClick, danger = false, hint, hasSubmenu = false, onMouseEnter, onMouseLeave }) {
@@ -22,14 +22,14 @@ function MenuButton({ icon, label, onClick, danger = false, hint, hasSubmenu = f
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{
-        all: 'unset', cursor: 'pointer',
+        all: 'unset', boxSizing: 'border-box', cursor: 'pointer',
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '7px 10px',
         fontFamily: "'Inter', sans-serif",
         fontSize: 13,
         color: danger ? 'var(--danger)' : 'var(--ink-2)',
         borderRadius: 6,
-        width: 'calc(100% - 20px)',
+        width: 'calc(100% - 8px)',
         margin: '0 4px',
       }}
       onMouseOver={(e) => { e.currentTarget.style.background = danger ? 'color-mix(in srgb, var(--danger) 12%, transparent)' : 'var(--surface-2)'; }}
@@ -83,19 +83,13 @@ export function TaskMenu({
   const moveItemRef = useRef(null);
   const [submenuPos, setSubmenuPos] = useState(null);
 
-  // Auto-close grace timer. Only fires after the user has entered the
-  // menu and then moved out — the wrapper covers the trigger+gap+menu
-  // corridor so the cursor never accidentally "exits" while traveling.
+  // Safety net — cancel any lingering timer on unmount / close.
   const closeTimer = useRef(null);
   const cancelCloseTimer = () => {
     if (closeTimer.current) {
       clearTimeout(closeTimer.current);
       closeTimer.current = null;
     }
-  };
-  const scheduleClose = (ms = 450) => {
-    cancelCloseTimer();
-    closeTimer.current = setTimeout(() => onClose?.(), ms);
   };
 
   const submenuTimer = useRef(null);
@@ -111,7 +105,10 @@ export function TaskMenu({
     if (!open) return;
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
     const onMouseDown = (e) => {
-      const inMain = wrapperRef.current?.contains(e.target);
+      // Check against the visible popover, not the transparent corridor
+      // wrapper — the wrapper covers a large invisible area and would
+      // swallow clicks that visually appear "outside" the menu.
+      const inMain = popoverRef.current?.contains(e.target);
       const inSub  = submenuRef.current?.contains(e.target);
       if (!inMain && !inSub) onClose?.();
     };
@@ -176,6 +173,10 @@ export function TaskMenu({
 
   if (!open) return null;
 
+  // Portal to document.body so `position: fixed` is always relative to
+  // the viewport — ancestors with `transform` or `will-change: transform`
+  // (e.g. the sidebar) would otherwise create a new containing block and
+  // shift the menu away from the intended anchor position.
   const VW = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const wantedLeft = align === 'right'
     ? (anchorRect?.right ?? 0) - MENU_WIDTH
@@ -201,16 +202,14 @@ export function TaskMenu({
   // wrapperTop by `kebabHeight + VISIBLE_GAP` (normal) or by 0 (flipped).
   const menuOffsetWithinWrapper = layout.flipped ? 0 : (layout.menuTop - layout.wrapperTop);
 
-  return (
+  return createPortal(
     <div
       ref={wrapperRef}
-      onMouseEnter={cancelCloseTimer}
-      onMouseLeave={scheduleClose}
       onClick={(e) => e.stopPropagation()}
       style={{
-        // Transparent corridor covering kebab + gap + menu so cursor
-        // travel between them never crosses dead space. The wrapper
-        // catches all hover events; the visible chrome sits inside.
+        // Wrapper provides a measurement / portal container. Pointer
+        // events pass through the transparent area so clicks outside
+        // the visible menu reach the document and trigger close.
         position: 'fixed',
         top: layout.wrapperTop,
         left,
@@ -219,10 +218,7 @@ export function TaskMenu({
         zIndex: 60,
         WebkitAppRegion: 'no-drag',
         visibility: layout.measured ? 'visible' : 'hidden',
-        // Crucial: pointer-events on the wrapper itself, not just its
-        // children. The transparent area of the wrapper still needs to
-        // catch mouse events for the corridor to function.
-        pointerEvents: 'auto',
+        pointerEvents: 'none',
       }}
     >
       <div
@@ -233,6 +229,7 @@ export function TaskMenu({
           top: menuOffsetWithinWrapper,
           left: 0,
           right: 0,
+          pointerEvents: 'auto',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
           borderRadius: 10,
@@ -275,12 +272,13 @@ export function TaskMenu({
             {moveOpen && submenuPos && (
               <div
                 ref={submenuRef}
-                onMouseEnter={() => { cancelSubmenuTimer(); cancelCloseTimer(); }}
-                onMouseLeave={() => { scheduleSubmenuClose(); scheduleClose(); }}
+                onMouseEnter={() => { cancelSubmenuTimer(); }}
+                onMouseLeave={() => { scheduleSubmenuClose(); }}
                 style={{
                   position: 'fixed',
                   top: submenuPos.top, left: submenuPos.left,
                   zIndex: 61,
+                  pointerEvents: 'auto',
                   width: 200,
                   maxHeight: 280, overflowY: 'auto',
                   background: 'var(--surface)',
@@ -344,6 +342,7 @@ export function TaskMenu({
           onClick={() => { onDelete?.(); onClose?.(); }}
         />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
