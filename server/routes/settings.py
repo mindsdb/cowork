@@ -1180,8 +1180,9 @@ def _validate_anthropic(api_key: str, model: str) -> dict[str, Any]:
         except Exception:
             msg = f"HTTP {status}"
         return {"ok": False, "error": msg}
-    except Exception as e:
-        return {"ok": False, "error": f"Cannot connect: {e}"}
+    except Exception:
+        logger.warning("Anthropic provider validation failed", exc_info=True)
+        return {"ok": False, "error": "Cannot connect"}
 
 
 def _validate_minds(api_key: str, base_url: str) -> dict[str, Any]:
@@ -1199,8 +1200,9 @@ def _validate_minds(api_key: str, base_url: str) -> dict[str, Any]:
         if 200 <= resp.status_code < 300:
             return {"ok": True}
         return {"ok": False, "error": f"Server returned HTTP {resp.status_code}"}
-    except Exception as e:
-        return {"ok": False, "error": f"Cannot connect: {e}"}
+    except Exception:
+        logger.warning("Minds provider validation failed", exc_info=True)
+        return {"ok": False, "error": "Cannot connect"}
 
 
 def _validate_openai_compatible(api_key: str, base_url: str, model: Optional[str]) -> dict[str, Any]:
@@ -1226,8 +1228,9 @@ def _validate_openai_compatible(api_key: str, base_url: str, model: Optional[str
         except Exception:
             msg = f"HTTP {status}"
         return {"ok": False, "error": msg}
-    except Exception as e:
-        return {"ok": False, "error": f"Cannot connect: {e}"}
+    except Exception:
+        logger.warning("OpenAI-compatible provider validation failed", exc_info=True)
+        return {"ok": False, "error": "Cannot connect"}
 
 
 @router.post("/validate-provider")
