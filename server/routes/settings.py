@@ -61,13 +61,12 @@ PROVIDER_TYPE_LABELS = {
 # Server-owned so the UI doesn't drift from what each backend actually
 # accepts. Empty list = user must supply (openai-compatible).
 RECOMMENDED_MODELS: dict[str, list[str]] = {
-    "minds-cloud":       [
-        "_reason_", "_code_",
-        "latest:sonnet", "latest:opus", "latest:haiku",
-        "latest:gpt", "gpt-low", "gpt-medium", "gpt-high",
-        "latest:gpt-codex", "latest:gpt-mini", "latest:gpt-nano",
-        "latest:kmi", "latest:deepseek", "latest:kimi", "latest:qwen",
-    ],
+    # mdb.ai's router currently only accepts the `_reason_` / `_code_`
+    # sentinel pair — every other model name returns
+    # "Mind 'X' not found" (HTTP 500). The earlier expansion
+    # (latest:sonnet, latest:gpt, gpt-low, …) was rolled back after
+    # an end-to-end test against the live router.
+    "minds-cloud":       ["_reason_", "_code_"],
     "anthropic":         ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
     "openai":            ["gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini"],
     "gemini":            ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
@@ -237,37 +236,30 @@ def _ui_settings() -> dict[str, Any]:
     merged = dict(UI_DEFAULTS)
     merged.update({key: value for key, value in prefs.items() if key in UI_DEFAULTS})
 
+    # `defaultModel` is no longer a user-editable preference — the
+    # planning role's model (projected onto ANTON_PLANNING_MODEL on
+    # every save) is the single source of truth for "what the renderer
+    # should send as the active model". Reading state.preferences for
+    # this field caused a long-standing bug: a stale `defaultModel`
+    # (e.g. `gpt-5.4` from an earlier OpenAI experiment) silently
+    # overrode the active env model, the renderer sent it on every
+    # chat, and mdb.ai 500'd with "Mind 'gpt-5.4' not found". Now we
+    # always derive from env and aggressively clean up legacy values.
     env_planning_model = _get_env("ANTON_PLANNING_MODEL", "claude-sonnet-4-6")
-    env_planning_provider = _get_env("ANTON_PLANNING_PROVIDER", "anthropic")
-
-    # Drop a stale Minds sentinel the moment the active provider can't
-    # resolve it. Falls through to the env's planning model, which is
-    # the source of truth for "what model will the request actually
-    # talk to." Without this guard the cowork UI keeps showing
-    # `_reason_` indefinitely after a provider switch.
-    saved_default = merged.get("defaultModel") or ""
-    if _is_minds_sentinel(saved_default) and env_planning_provider != "openai-compatible":
-        # Persist the cleanup so state.json reflects reality and we
-        # don't keep doing this masking work on every request. Best-
-        # effort — a write failure only means we'll re-mask next time.
+    if "defaultModel" in prefs:
         try:
-            def _drop_default_model(state: dict) -> None:
-                prefs = state.get("preferences")
-                if isinstance(prefs, dict):
-                    prefs.pop("defaultModel", None)
-            update_state(_drop_default_model)
+            def _drop_legacy_default_model(state: dict) -> None:
+                p = state.get("preferences")
+                if isinstance(p, dict):
+                    p.pop("defaultModel", None)
+            update_state(_drop_legacy_default_model)
             logger.info(
-                "Dropped stale Minds sentinel %r from cowork preferences "
-                "(active planning_provider=%r).",
-                saved_default, env_planning_provider,
+                "Dropped legacy state.preferences.defaultModel=%r (now derived from env).",
+                prefs.get("defaultModel"),
             )
         except Exception as e:
             logger.debug("Could not persist defaultModel cleanup: %s", e)
-        saved_default = ""
-
-    if not saved_default:
-        saved_default = env_planning_model
-    merged["defaultModel"] = saved_default
+    merged["defaultModel"] = env_planning_model
 
     return merged
 
@@ -757,8 +749,10 @@ async def update_settings(patch: SettingsPatch):
         pref_writes["greeting"] = patch.greeting
     if patch.tone is not None:
         pref_writes["tone"] = patch.tone
-    if patch.defaultModel is not None:
-        pref_writes["defaultModel"] = patch.defaultModel
+    # `defaultModel` is derived from ANTON_PLANNING_MODEL on every read
+    # (see _ui_settings); ignore inbound writes so a renderer round-
+    # trip can't re-seed the legacy preference.
+    _ = patch.defaultModel  # accepted but discarded
     if patch.autoPin is not None:
         pref_writes["autoPin"] = patch.autoPin
     if patch.showDots is not None:
@@ -801,8 +795,8 @@ async def update_settings(patch: SettingsPatch):
     else:
         _stage_string_env(patch.planningProvider, "ANTON_PLANNING_PROVIDER", writes, delete_keys)
         _stage_string_env(patch.planningModel, "ANTON_PLANNING_MODEL", writes, delete_keys)
-        if patch.planningModel is not None and patch.planningModel.strip() and patch.defaultModel is None:
-            pref_writes["defaultModel"] = patch.planningModel
+        # defaultModel is derived from env on every read; do not mirror
+        # planningModel into the legacy preference here.
         _stage_string_env(patch.codingProvider, "ANTON_CODING_PROVIDER", writes, delete_keys)
         _stage_string_env(patch.codingModel, "ANTON_CODING_MODEL", writes, delete_keys)
         _stage_string_env(patch.openaiBaseUrl, "ANTON_OPENAI_BASE_URL", writes, delete_keys)
