@@ -92,8 +92,12 @@ export default function App() {
     setPage('onboarding');
   };
   const handleOnboardingComplete = () => {
-    setPage('launching');
-    setTimeout(() => setPage('terminal'), 1200);
+    // Skip the launching splash on this path — the Onboarding screen
+    // already shows the orb-in-done state for ~800ms as its success
+    // confirmation, so adding another 1.2s splash on top reads as
+    // dead time. Cross-fade straight to the cowork shell's new-task
+    // landing (HomeView) where the user can start typing immediately.
+    setPage('terminal');
   };
 
   const isMac = window.antontron.getPlatform() === 'darwin';

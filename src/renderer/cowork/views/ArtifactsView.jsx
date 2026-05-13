@@ -179,15 +179,16 @@ function PublishedPill() {
         background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
         border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
         color: 'var(--accent)',
-        padding: '3px 8px', borderRadius: 999,
-        fontSize: 10.5, fontWeight: 600,
-        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '1px 6px', borderRadius: 999,
+        fontSize: 9, fontWeight: 700,
+        lineHeight: 1.2,
+        display: 'inline-flex', alignItems: 'center', gap: 4,
         flexShrink: 0,
-        letterSpacing: '0.04em', textTransform: 'uppercase',
+        letterSpacing: '0.05em', textTransform: 'uppercase',
         fontFamily: FONT_BODY,
       }}
     >
-      <span style={{ width: 5, height: 5, borderRadius: 99, background: 'var(--accent)' }} />
+      <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />
       Published
     </span>
   );

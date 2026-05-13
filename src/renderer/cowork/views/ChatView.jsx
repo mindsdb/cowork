@@ -806,6 +806,11 @@ export default function ChatView({
   onStop,
   projects = [],
   sidebarCollapsed = false,
+  // Messages the user typed while Anton was mid-turn. Displayed as
+  // pills above the Composer; drain into onSend automatically when
+  // the active turn finishes.
+  queuedMessages = [],
+  onRemoveFromQueue,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -1486,10 +1491,88 @@ export default function ChatView({
             shadow give enough visual separation on its own. */}
         <div className="chat-floating-composer" style={{
           position: 'absolute', left: 28, right: 28, bottom: 22,
-          display: 'flex', justifyContent: 'center',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          gap: 8,
           pointerEvents: 'auto',
           ['--composer-max-width']: '720px',
         }}>
+          {/* Queued-messages strip — pills with each waiting prompt
+              + a × to drop it. The pills cross-fade in/out so the
+              transition between queue states reads as deliberate. */}
+          {queuedMessages.length > 0 && (
+            <div style={{
+              width: '100%', maxWidth: 720,
+              display: 'flex', flexDirection: 'column',
+              gap: 6,
+              padding: '10px 12px',
+              borderRadius: 14,
+              background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
+              border: '1px solid color-mix(in srgb, var(--accent) 22%, var(--line))',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+              animation: 'queue-pop-in 220ms cubic-bezier(0.32, 0.72, 0, 1)',
+            }}>
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: 10.5,
+                color: 'var(--accent)', letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span className="pulse-dot" style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: 'var(--accent)',
+                  boxShadow: '0 0 6px var(--accent-glow)',
+                }} />
+                {queuedMessages.length} queued · waiting for Anton
+              </div>
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: 6,
+              }}>
+                {queuedMessages.map((q) => (
+                  <span
+                    key={q.id}
+                    title={q.text}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      maxWidth: '100%',
+                      padding: '5px 4px 5px 12px',
+                      borderRadius: 999,
+                      background: 'var(--surface)',
+                      border: '1px solid var(--line)',
+                      fontFamily: 'var(--font-body)', fontSize: 12.5,
+                      color: 'var(--ink-2)',
+                      transition: 'background 120ms ease, border-color 120ms ease',
+                    }}
+                  >
+                    <span style={{
+                      maxWidth: 360,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{q.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveFromQueue?.(q.id)}
+                      title="Remove from queue"
+                      aria-label="Remove from queue"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, borderRadius: 999,
+                        background: 'transparent', border: 0,
+                        color: 'var(--ink-4)', cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'color-mix(in srgb, var(--danger) 14%, transparent)';
+                        e.currentTarget.style.color = 'var(--danger)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = 'var(--ink-4)';
+                      }}
+                    >{Ico.close(11)}</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <Composer
             onSend={onSend}
             project={project}

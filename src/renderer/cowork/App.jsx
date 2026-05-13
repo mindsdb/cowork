@@ -575,6 +575,41 @@ function AppCore() {
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
+  // Per-task queue of user messages waiting for the current turn to
+  // finish before they get sent. When the user fires another message
+  // while a stream is in flight we push to this queue instead of
+  // trying to start a parallel turn (anton-core can't handle that
+  // gracefully). After the active turn's onDone/onError fires we
+  // drain one item from the queue.
+  const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text}] }
+  const messageQueueRef = useRef({});
+  useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
+  const enqueueMessage = (taskId, text) => {
+    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text };
+    setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
+  };
+  const removeFromQueue = (taskId, itemId) => {
+    setMessageQueue((prev) => {
+      const arr = (prev[taskId] || []).filter((q) => q.id !== itemId);
+      const next = { ...prev };
+      if (arr.length === 0) delete next[taskId];
+      else next[taskId] = arr;
+      return next;
+    });
+  };
+  const popQueueHead = (taskId) => {
+    const arr = messageQueueRef.current[taskId] || [];
+    if (arr.length === 0) return null;
+    const [head, ...rest] = arr;
+    setMessageQueue((prev) => {
+      const next = { ...prev };
+      if (rest.length === 0) delete next[taskId];
+      else next[taskId] = rest;
+      return next;
+    });
+    return head;
+  };
+
   const handleStopStream = useCallback(async () => {
     // 1) Cancel the running scratchpad (if any) so anton stops
     //    executing user code mid-cell.
@@ -1824,6 +1859,27 @@ function AppCore() {
     if (!currentTask) return;
     const id = currentTask.id;
 
+    // Anton-core can't run two turns in parallel against the same
+    // conversation, so if a stream is in flight (or one is about to
+    // start) for this task we queue the new message and let
+    // onDone/onError drain it.
+    //
+    // The check covers two race conditions:
+    //   1) `activeStreamCtrlRef` is already set — a fully launched
+    //      stream is in flight.
+    //   2) `activeStreamingTaskIdRef` matches but the controller
+    //      hasn't been assigned yet — a previous invocation is mid-
+    //      await (resolving attachments). Without this leg, two
+    //      rapid clicks both pass the guard and we'd end up with
+    //      two parallel streams, the first one's controller leaked.
+    if (activeStreamingTaskIdRef.current === id || activeStreamCtrlRef.current) {
+      enqueueMessage(id, text);
+      return;
+    }
+    // Synchronous reservation so a second invocation that fires
+    // before our awaits resolve sees us as "in flight."
+    activeStreamingTaskIdRef.current = id;
+
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
 
     const taskProjectName = currentTask.projectName
@@ -1834,11 +1890,20 @@ function AppCore() {
       || null;
     const taskModel = currentTask.model || selectedModel?.id || null;
 
-    const { merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
-      taskProjectName,
-      id,
-      composerAttachments,
-    );
+    let sendingAttachments, attachmentIds;
+    try {
+      ({ merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
+        taskProjectName,
+        id,
+        composerAttachments,
+      ));
+    } catch (err) {
+      // Attachment resolution failed before we ever started the
+      // stream — release the reservation so the user's next send
+      // doesn't get stuck in the queue forever.
+      activeStreamingTaskIdRef.current = null;
+      throw err;
+    }
 
     setTasks((prev) => prev.map((t) =>
       t.id === id
@@ -1925,6 +1990,13 @@ function AppCore() {
           persistTurnState(id, assistantTurnIndex, finalSteps, finalStartedAt);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+        // Drain the next queued message for this task (if any) so a
+        // user who fired multiple prompts mid-stream gets each one
+        // sent in order.
+        const next = popQueueHead(id);
+        if (next) {
+          Promise.resolve().then(() => handleSendInTask(next.text));
+        }
       },
       onError(message, event) {
         activeStreamCtrlRef.current = null;
@@ -1936,6 +2008,12 @@ function AppCore() {
           return { ...t, status: 'error', messages: [...msgs, { role: 'error', content: message || 'Anton could not complete this task.', code: event?.code }] };
         }));
         fetchHealth().then((h) => setHealth(h));
+        // Same drain on error so a failed turn doesn't strand the
+        // queue. The next item gets its own shot at the LLM.
+        const next = popQueueHead(id);
+        if (next) {
+          Promise.resolve().then(() => handleSendInTask(next.text));
+        }
       },
     });
   };
@@ -2493,6 +2571,8 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
+            queuedMessages={messageQueue[currentTask?.id] || []}
+            onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
               // Returning home = "new task in this project". Pre-select
               // the task's project so the home composer is ready to go.

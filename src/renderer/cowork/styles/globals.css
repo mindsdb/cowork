@@ -2770,6 +2770,16 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
       0 0 34px rgba(93,146,135,0.32);
   }
 }
+
+/* Queue strip drops in above the composer with a soft fade + slide. */
+@keyframes queue-pop-in {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.985); }
+  60%  { opacity: 1; transform: translateY(0)   scale(1.005); }
+  100% { opacity: 1; transform: translateY(0)   scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes queue-pop-in { 0%, 100% { opacity: 1; transform: none; } }
+}
 @media (prefers-reduced-motion: reduce) {
   /* Honour OS-level reduced-motion. Hold the mid-pulse state so the
      badge still reads as "active" without animating. */

@@ -273,10 +273,24 @@ def save_connector(connector_id: str, req: SaveConnectorRequest) -> dict:
             )
         else:
             merged_payload, secure_keys = payload, None
-        # LocalDataVault.save(engine, name, values, secure_keys=…) is
-        # the canonical write path. Older vaults don't accept the
-        # kwarg — fall back to the positional shape on TypeError so
-        # a stale anton install still saves successfully.
+        # Guard against the empty-fields failure mode that produced
+        # vault rows like `{ fields: {}, secure_keys: [access_token] }`
+        # — Anton then thought the connection was present but had no
+        # DS_* vars to inject. Strip the meta-only keys before this
+        # check so a payload that's literally only `_method` /
+        # `_connector_id` (which the renderer can send if all real
+        # fields were sentinels/blank) still trips the guard.
+        meaningful = {k: v for k, v in (merged_payload or {}).items()
+                      if not (isinstance(k, str) and k.startswith("_"))}
+        if not meaningful:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Refusing to save empty credential record for connector "
+                    f"{connector_id!r}. Fill in the required fields for the "
+                    f"selected method and try again."
+                ),
+            )
         try:
             vault.save(connector_id, name, merged_payload, secure_keys=secure_keys)
         except TypeError:

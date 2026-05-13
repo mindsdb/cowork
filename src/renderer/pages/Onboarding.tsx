@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import OrbitMorph from '../cowork/components/ui/OrbitMorph';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
@@ -294,23 +295,32 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
     return (
       <div className="onboard-content-inner">
         {phase === 'validating' && (
-          <>
-            <div className="onboard-status">
-              <div className="spinner" />
-              <span className="onboard-status-text">Validating LLM provider...</span>
-            </div>
-          </>
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: 14, padding: '28px 0',
+            animation: 'fadeInUp 0.4s ease-out both',
+          }}>
+            <OrbitMorph state="thinking" size={72} title="Validating…" />
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontSize: 11.5,
+              color: 'var(--text-muted)', letterSpacing: '0.10em',
+              textTransform: 'uppercase',
+            }}>Validating LLM provider…</span>
+          </div>
         )}
 
         {showLlmForm && (
           <>
             <StepIndicator step={2} />
             <div className="onboard-heading">Choose your LLM provider</div>
-
-            <div className="onboard-notice">
+            <div style={{
+              fontSize: 12.5, color: 'var(--text-muted)',
+              lineHeight: 1.5, marginBottom: 4,
+              maxWidth: 456, textAlign: 'left',
+            }}>
               {skippedMinds
-                ? 'You skipped MindsHub. Pick an LLM provider for Anton to use. (You can add MindsHub later from Settings → Providers — it\'s required to publish artifacts to the web.)'
-                : 'Your MindsHub API key is valid and saved for publishing and data connectors. However, you don\'t seem to have LLM credits. You can top up your balance or select an LLM provider of your choice.'}
+                ? 'You skipped MindsHub. Pick an LLM provider for Anton to use. You can add MindsHub later from Settings → Providers — it\'s required to publish artifacts to the web.'
+                : 'Your MindsHub API key is valid and saved for publishing and data connectors. However, you don\'t seem to have LLM credits. Top up your balance or pick an LLM provider below.'}
             </div>
 
             <button
@@ -438,14 +448,11 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
     <div className="onboard-content-inner">
       <StepIndicator step={1} />
       <div className="onboard-heading">Connect MindsHub</div>
-      <div className="onboard-notice" style={{ marginBottom: 16 }}>
-        MindsHub routes your requests to the best LLM, ships secure data
-        connectors, and lets Anton publish artifacts to the web. Skip
-        this step if you'd rather bring your own LLM provider key.
-      </div>
 
-      {/* Single recommended provider card (no chooser anymore). */}
-      <div className="provider-cards" style={{ gridTemplateColumns: '1fr' }}>
+      {/* Single info card — the BYOK ("Skip Minds Cloud") card from
+          the original two-card chooser is gone in the split flow;
+          users skip via the dedicated link below the Connect button. */}
+      <div className="provider-cards" style={{ maxWidth: 456 }}>
         <div className="provider-card selected" style={{ cursor: 'default' }}>
           <span className="recommended-pill">recommended</span>
           <div className="provider-card-name">MindsHub</div>
@@ -583,16 +590,32 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
 
       {/* Validation status */}
       {phase === 'validating' && (
-        <div className="onboard-status">
-          <div className="spinner" />
-          <span className="onboard-status-text">Validating connection...</span>
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          gap: 14, padding: '20px 0 8px',
+          animation: 'fadeInUp 0.4s ease-out both',
+        }}>
+          <OrbitMorph state="thinking" size={64} title="Validating\u2026" />
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 11.5,
+            color: 'var(--text-muted)', letterSpacing: '0.10em',
+            textTransform: 'uppercase',
+          }}>Validating connection\u2026</span>
         </div>
       )}
 
       {phase === 'success' && (
-        <div className="onboard-status success">
-          <span className="onboard-check">{'\u2713'}</span>
-          <span className="onboard-status-text">Connected</span>
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          gap: 14, padding: '20px 0 8px',
+          animation: 'fadeInUp 0.4s ease-out both',
+        }}>
+          <OrbitMorph state="done" size={64} title="Connected" />
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontSize: 11.5,
+            color: 'var(--accent, #7CC4B6)', letterSpacing: '0.10em',
+            textTransform: 'uppercase',
+          }}>Connected</span>
         </div>
       )}
 

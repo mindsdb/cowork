@@ -147,6 +147,21 @@ def _save_connection(engine: str, name: str, credentials: dict, auth_method: str
             vault, engine, save_name, cleaned,
             spec_secret_keys=spec_secret_names,
         )
+        # Refuse to persist an empty record. This guards against the
+        # silent failure that produced records like
+        # `gmail/gmail-1: { fields: {}, secure_keys: [access_token] }` —
+        # the slot exists, anton-core then tries to inject DS_* env
+        # vars from nothing, and the next task can't reach the
+        # underlying service. Raising here lets the caller surface a
+        # real "fill in <required-fields>" message.
+        if not merged:
+            raise ValueError(
+                f"Refusing to save empty credential record for engine={engine!r}, "
+                f"name={save_name!r}. None of the submitted values matched the "
+                f"connector spec's field names. Submitted keys: "
+                f"{sorted(credentials.keys())!r}; expected one of: "
+                f"{sorted({getattr(f, 'name', '') for f in (locals().get('fields') or [])}) if locals().get('fields') else 'unknown'}"
+            )
         try:
             vault.save(engine, save_name, merged, secure_keys=secure_keys)
         except TypeError:
@@ -163,6 +178,12 @@ def _save_connection(engine: str, name: str, credentials: dict, auth_method: str
             "`uv tool install --reinstall --force-reinstall anton`) "
             "to enable sentinel-based credential preservation."
         )
+        if not cleaned:
+            raise ValueError(
+                f"Refusing to save empty credential record for engine={engine!r}, "
+                f"name={save_name!r}. None of the submitted values matched the "
+                f"engine's known fields."
+            )
         vault.save(engine, save_name, cleaned)
     return save_name
 
