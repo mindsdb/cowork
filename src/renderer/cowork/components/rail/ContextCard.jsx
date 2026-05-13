@@ -11,7 +11,7 @@ import {
   deleteMemory,
   fetchAttachments,
   fetchMemory,
-  fetchProjectInstructions,
+  listProjectFiles,
   saveMemory,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
@@ -99,35 +99,30 @@ function SessionAttachmentRow({ item }) {
 
 function ContextFileRow({ file, onOpen }) {
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
-  const isEmpty = !file.size || file.synthetic === true;
+  // Single-line row: filename only — the previous version added a
+  // subtitle ("Project instructions" / "X KB") under every file
+  // which doubled row height and pushed long lists off-screen. The
+  // age column on the right carries enough freshness signal; size
+  // is in the tooltip.
   return (
     <button
       type="button"
       onClick={onOpen}
-      title={file.path}
+      title={`${file.path}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}`}
       className={clsx(
-        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
+        'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'border-0 bg-transparent w-full'
       )}
       style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
     >
-      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
-      <span className="min-w-0">
-        <span className="block truncate text-[12.5px] text-ink">
-          {/* Display name for the canonical instructions file. The
-              raw filename (`anton.md`) is jargon — most users don't
-              know what it does. "Instructions" reads as a noun and
-              matches the project-level mental model. The on-disk
-              path is unchanged; the modal still writes to anton.md. */}
-          {isAnton ? 'Instructions' : file.path}
-        </span>
-        <span className="mt-0.5 block truncate text-[11px] text-ink-4">
-          {isAnton
-            ? (isEmpty ? 'Empty — click to add instructions' : 'Project instructions')
-            : (isEmpty ? 'Empty file' : `${Math.ceil((file.size || 0) / 1024)} KB`)}
-        </span>
+      <span className="text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
+      <span className="block truncate text-[12.5px] text-ink min-w-0">
+        {isAnton ? 'Instructions' : (file.path || file.name)}
       </span>
+      {file.modified ? (
+        <span className="text-[10.5px] text-ink-4">{relativeAge(file.modified * 1000)}</span>
+      ) : null}
     </button>
   );
 }
@@ -162,18 +157,41 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   // bug WorkingFolderLive had.
   const loadVersion = useRef(0);
 
-  // Stat just `.anton/anton.md` instead of walking the whole project
-  // tree. The rail only needs the one row; the old recursive listing
-  // was the dominant cost when projects had large directories
-  // (node_modules, .venv, …) anywhere under the root.
+  // List every file in the working folder (the project root). Anton
+  // creates files in here as the project evolves (the instructions
+  // file, scratchpad outputs, generated artifacts, etc.). The card
+  // surfaces all of them so the user has a single view of the
+  // project's real state. Hidden dirs (`.anton/` body, `.git/`, etc.)
+  // are filtered out, with the canonical `.anton/anton.md`
+  // instructions row pinned to the top so it's always reachable.
   const reloadFiles = useCallback(() => {
     if (!project?.name) { setProjectFiles([]); return; }
     const ticket = ++loadVersion.current;
-    fetchProjectInstructions(project.name)
+    listProjectFiles(project.name)
       .then((data) => {
         if (ticket !== loadVersion.current) return;
-        const file = data?.file;
-        setProjectFiles(file ? [file] : []);
+        const all = Array.isArray(data?.files) ? data.files : [];
+        // Filter: keep the canonical instructions file from `.anton/`
+        // but otherwise hide hidden trees (anything starting with `.`
+        // at any path segment) so the rail isn't drowned in
+        // metadata. Same heuristic as WorkingFolderLive's filter
+        // before we switched it to the artifacts-only registry.
+        const visible = all.filter((f) => {
+          if (!f || f.is_dir) return false;
+          const p = String(f.path || '');
+          if (p === ANTON_PROJECT_INSTRUCTIONS_PATH) return true;
+          // Hide hidden segments.
+          if (p.split('/').some((seg) => seg.startsWith('.'))) return false;
+          return true;
+        });
+        // Instructions first, then everything else by mtime desc.
+        visible.sort((a, b) => {
+          const ai = a.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
+          const bi = b.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
+          if (ai !== bi) return ai - bi;
+          return (b.modified || 0) - (a.modified || 0);
+        });
+        setProjectFiles(visible);
       })
       .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
   }, [project?.name]);
@@ -269,19 +287,29 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
 
   return (
     <div className="flex flex-col gap-3 pt-2">
-      {/* Instructions (`.anton/anton.md`) + legacy `.context/` only. */}
+      {/* All working-folder files. Instructions row is pinned first;
+          the rest follow by most-recent-mtime. >10 files gets a
+          fixed-height scroll container so the rail stays compact. */}
       {project?.name && hasProjectFiles && (
         <div className="flex flex-col gap-0.5">
           <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
-            Files
+            Files{projectFiles.length > 1 ? ` · ${projectFiles.length}` : ''}
           </span>
-          {projectFiles.map((f) => (
-            <ContextFileRow
-              key={f.path}
-              file={f}
-              onOpen={() => setOpenFile(f)}
-            />
-          ))}
+          <div
+            className={clsx(
+              'flex flex-col gap-0.5',
+              projectFiles.length > 10 && 'overflow-y-auto pr-1 scroll-clean',
+            )}
+            style={projectFiles.length > 10 ? { maxHeight: 220 } : undefined}
+          >
+            {projectFiles.map((f) => (
+              <ContextFileRow
+                key={f.path}
+                file={f}
+                onOpen={() => setOpenFile(f)}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -393,6 +421,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       <ContextFileModal
         open={!!openFile}
         projectName={project?.name}
+        projectPath={project?.path}
         filePath={openFile?.path}
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
         onClose={() => setOpenFile(null)}

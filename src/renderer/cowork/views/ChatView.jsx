@@ -327,9 +327,26 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-function UserTurn({ content, attachments, time, onDelete }) {
+function UserTurn({ content, attachments, time, onDelete, onEdit }) {
   const [hover, setHover] = useState(false);
   const [trashHover, setTrashHover] = useState(false);
+  const [editHover, setEditHover] = useState(false);
+  // Stack the action buttons just outside the bubble's left edge.
+  // Edit is always available on user messages so the user can pull
+  // any prior prompt back into the composer to refine + resend
+  // (matches what Stop+resend currently requires manually). Trash
+  // stays orphan-only — paired user→answer cycles delete via the
+  // assistant's MessageActions to keep the gesture in one place.
+  const baseBtn = {
+    position: 'absolute',
+    left: -32,
+    width: 24, height: 24, borderRadius: 6,
+    background: 'transparent',
+    border: 0,
+    display: 'inline-grid', placeItems: 'center',
+    cursor: 'pointer',
+    transition: 'opacity 140ms ease, color 140ms ease',
+  };
   return (
     <div
       style={{
@@ -345,6 +362,27 @@ function UserTurn({ content, attachments, time, onDelete }) {
         alignItems: 'flex-end',
         position: 'relative',
       }}>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(content)}
+            onMouseEnter={() => setEditHover(true)}
+            onMouseLeave={() => setEditHover(false)}
+            title="Edit and resend"
+            aria-label="Edit and resend this message"
+            style={{
+              ...baseBtn,
+              // Above the trash slot when both are present; otherwise
+              // sit at the bottom edge.
+              bottom: (onDelete ? 48 : (time ? 18 : 0)),
+              color: editHover ? 'var(--accent)' : 'var(--ink-4)',
+              opacity: hover ? 1 : 0,
+              pointerEvents: hover ? 'auto' : 'none',
+            }}
+          >
+            {Ico.edit ? Ico.edit(13) : Ico.pencil ? Ico.pencil(13) : Ico.code(13)}
+          </button>
+        )}
         {onDelete && (
           <button
             type="button"
@@ -354,20 +392,11 @@ function UserTurn({ content, attachments, time, onDelete }) {
             title="Delete this message"
             aria-label="Delete this message"
             style={{
-              position: 'absolute',
-              // Just outside the bubble's bottom-left edge.
-              left: -32,
+              ...baseBtn,
               bottom: time ? 18 : 0,
-              width: 24, height: 24, borderRadius: 6,
-              background: 'transparent',
-              border: 0,
-              display: 'inline-grid',
-              placeItems: 'center',
-              cursor: 'pointer',
               color: trashHover ? 'var(--danger)' : 'var(--ink-4)',
               opacity: hover ? 1 : 0,
               pointerEvents: hover ? 'auto' : 'none',
-              transition: 'opacity 140ms ease, color 140ms ease',
             }}
           >
             {Ico.trash(13)}
@@ -817,6 +846,10 @@ export default function ChatView({
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
+  // Composer prefill — set by clicking Edit on a user message.
+  // `bump` is a monotonically-increasing nonce so the Composer's
+  // sync effect runs even when re-editing the same text.
+  const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
   // Inline rail only active on wide screens.
   const effectiveRailOpen = !isNarrow && railOpen;
   // Narrow-screen overlay rail.
@@ -1335,6 +1368,16 @@ export default function ChatView({
                     attachments={m.attachments}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    onEdit={(text) => {
+                      // Pull the message text back into the composer
+                      // for refine-and-resend. Each click bumps the
+                      // nonce so identical text re-fills the input
+                      // even after the user has cleared it.
+                      setComposerPrefill((prev) => ({
+                        text,
+                        bump: (prev?.bump || 0) + 1,
+                      }));
+                    }}
                   />
                 );
               }
@@ -1593,6 +1636,7 @@ export default function ChatView({
             hideMeta
             streaming={isStreaming}
             onStop={onStop}
+            prefill={composerPrefill}
           />
         </div>
       </div>
