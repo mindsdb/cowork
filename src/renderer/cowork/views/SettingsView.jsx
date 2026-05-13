@@ -331,6 +331,13 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
   // After a successful reveal we show the fetched value.
   const v = revealedValue ?? stored;
   const hasValue = v.length > 0;
+  // Copy is gated on what the input is *displaying* — not the prop. After
+  // a reveal, `v` is the real key (held locally; we never push it up to
+  // the parent) so `stored` still equals "***" but the user can copy the
+  // resolved value. Using `v === '***'` here keeps the "reveal first"
+  // hint while the field still shows the masked sentinel.
+  const isDisplayingSentinel = v === '***';
+  const canCopy = hasValue && !isDisplayingSentinel;
 
   const onCopy = async () => {
     if (!hasValue) return;
@@ -405,20 +412,45 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
         position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
         display: 'inline-flex', alignItems: 'center', gap: 2,
       }}>
-        <button
-          type="button"
-          onClick={onCopy}
-          disabled={!hasValue || isSentinel}
-          title={
-            isSentinel ? 'Reveal the key first to copy it'
-            : copied  ? 'Copied'
-            : 'Copy to clipboard'
-          }
-          aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
-          style={(hasValue && !isSentinel) ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
-        >
-          {copied ? Ico.check(13) : Ico.copy(13)}
-        </button>
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <button
+            type="button"
+            onClick={onCopy}
+            disabled={!canCopy}
+            title={
+              isDisplayingSentinel ? 'Reveal the key first to copy it'
+              : copied              ? 'Copied'
+              :                       'Copy to clipboard'
+            }
+            aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
+            style={canCopy ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
+          >
+            {copied ? Ico.check(13) : Ico.copy(13)}
+          </button>
+          {copied && (
+            <span
+              role="status"
+              aria-live="polite"
+              style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 6px)',
+                left: '50%',
+                padding: '3px 8px',
+                fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                color: '#7CC4B6',
+                background: 'rgba(20,28,28,0.92)',
+                border: '1px solid rgba(124,196,182,0.45)',
+                borderRadius: 6,
+                whiteSpace: 'nowrap',
+                pointerEvents: 'none',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                animation: 'copied-pop 1.5s ease forwards',
+                zIndex: 5,
+              }}
+            >Copied</span>
+          )}
+        </span>
         <button
           type="button"
           onClick={onToggleShow}

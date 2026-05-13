@@ -2783,6 +2783,17 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   }
 }
 
+/* ─── Copied toast ───────────────────────────────────────────────────────
+   Floating "Copied" pill that briefly pops above the copy button. Drives
+   the whole 1.5s lifecycle from one animation so the React side just has
+   to render the element while `copied` is true. */
+@keyframes copied-pop {
+  0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.92); }
+  12%  { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
+  78%  { opacity: 1; transform: translate(-50%, 0)   scale(1);    }
+  100% { opacity: 0; transform: translate(-50%, -2px) scale(0.98);}
+}
+
 /* ─── Coming soon banner ─────────────────────────────────────────────────── */
 .coming-soon-banner {
   display: flex; align-items: center; gap: 10px;
