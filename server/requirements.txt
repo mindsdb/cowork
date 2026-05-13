@@ -3,5 +3,17 @@ uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
 pydantic>=2.0.0
 httpx>=0.24
+# Slack Socket Mode — opens an outbound WebSocket to Slack so we don't
+# need a publicly reachable webhook URL in dev. aiohttp is the async
+# transport slack-sdk uses for SocketModeClient.
+slack-sdk>=3.27.0
+aiohttp>=3.9.0
+# Discord Gateway client — same role as slack-sdk for Discord. The bridge
+# imports it lazily, so the cowork server boots without it; only the
+# Discord adapter sits idle until installed.
+discord.py>=2.3.0
+# Ed25519 verification for Discord interaction webhooks (slash commands,
+# button presses). Lazy-imported by the Discord bridge.
+PyNaCl>=1.5.0
 # Anton itself — install separately: pip install anton
 # anton @ git+https://github.com/mindsdb/anton.git

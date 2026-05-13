@@ -1,15 +1,64 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Electron / Vite
 node_modules/
 dist/
 release/
 .vite/
 *.js.map
-.DS_Store
-Thumbs.db
-__pycache__/
-*.pyc
-*.pyo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Apple Developer
-CertificateSigningRequest.certSigningRequest
-developerID_application.cer
---apple-id
+# Python bytecode and native extensions
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python virtual environments and local env
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.tox/
+.nox/
+__pypackages__/
+
+# Test / coverage artifacts
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Runtime / local app data
+*.log
+instance/
+db.sqlite3
+db.sqlite3-journal
+
+# Notebook / docs build output
+.ipynb_checkpoints
+docs/_build/
+site/
+
+# Optional local tool files
+.pdm.toml
+.pdm-python
+.pdm-build/
+.cursorignore
+.cursorindexingignore

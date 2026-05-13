@@ -17,6 +17,8 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+
+
 # Load ~/.anton/.env if it exists (before anything else)
 _env_path = Path.home() / ".anton" / ".env"
 if _env_path.exists():
@@ -117,6 +119,16 @@ from routes.schedules import router as schedules_router, start_scheduler
 from routes.browse import router as browse_router
 from routes.integrations import router as integrations_router, refresh_google_oauth_tokens
 from routes.datavault import router as datavault_router
+from routes.dispatch import (
+    router as dispatch_router,
+    close_repo as close_dispatch_repo,
+    start_dispatch,
+    stop_dispatch,
+)
+from routes.dispatch_slack import router as dispatch_slack_router
+from routes.dispatch_telegram import router as dispatch_telegram_router
+from routes.dispatch_discord import router as dispatch_discord_router
+from routes.dispatch_whatsapp import router as dispatch_whatsapp_router
 from routes.connectors import router as connectors_router
 
 logging.basicConfig(
@@ -155,6 +167,10 @@ async def _google_token_refresh_loop() -> None:
 async def lifespan(app: FastAPI):
     projects_store.ensure_general_project()
     start_scheduler()
+    await start_dispatch()
+    yield
+    await stop_dispatch()
+    await close_dispatch_repo()
     refresh_task = asyncio.create_task(_google_token_refresh_loop())
     yield
     refresh_task.cancel()
@@ -199,6 +215,11 @@ app.include_router(schedules_router)
 app.include_router(browse_router)
 app.include_router(integrations_router, prefix="/v1/integrations", tags=["integrations"])
 app.include_router(datavault_router, prefix="/v1/datavault", tags=["datavault"])
+app.include_router(dispatch_router, prefix="/v1/dispatch", tags=["dispatch"])
+app.include_router(dispatch_slack_router, prefix="/v1/dispatch", tags=["dispatch-slack"])
+app.include_router(dispatch_telegram_router, prefix="/v1/dispatch", tags=["dispatch-telegram"])
+app.include_router(dispatch_discord_router, prefix="/v1/dispatch", tags=["dispatch-discord"])
+app.include_router(dispatch_whatsapp_router, prefix="/v1/dispatch", tags=["dispatch-whatsapp"])
 # Predefined connector registry — server/connectors/*.json
 app.include_router(connectors_router)
 

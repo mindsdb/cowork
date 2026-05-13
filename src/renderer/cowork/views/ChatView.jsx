@@ -24,6 +24,7 @@ import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact } from '../api';
+import { openPath } from '../lib/host';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';

@@ -1,0 +1,37 @@
+# Build output (rebuilt inside the image)
+dist
+build
+node_modules
+
+# Electron desktop wrapper resources — not needed in the headless image
+electron-builder.yml
+dmg-background.png
+assets
+docs
+examples
+
+# VCS / dev / IDE config
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Local Anton state — never bake into image
+.anton
+.env
+.venv
+venv
+__pycache__
+*.pyc
+
+# Docs / non-runtime that bloats build context
+README.md
+
+# OS-bound shipping artifacts
+release
+*.dmg
+*.exe
+*.zip
