@@ -136,29 +136,21 @@ GOOGLE_CALENDAR_BLOCK = dedent(
 ).strip()
 
 
-GMAIL_BLOCK = dedent(
-    """
-    ## Gmail
-
-    ```yaml
-    engine: gmail
-    display_name: Gmail
-    pip: google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
-    popular: true
-    fields:
-      - { name: access_token, required: false, secret: true, description: "OAuth access token (managed by Anton)" }
-    test_snippet: |
-      import os
-      from google.oauth2.credentials import Credentials
-      from googleapiclient.discovery import build
-
-      creds = Credentials(token=os.environ.get('DS_ACCESS_TOKEN', ''))
-      service = build('gmail', 'v1', credentials=creds, cache_discovery=False)
-      result = service.users().getProfile(userId='me').execute()
-      print('ok — email:', result.get('emailAddress', ''))
-    ```
-    """
-).strip()
+# Gmail intentionally has NO managed-integration block here. The
+# previous block hard-coded a single-field OAuth schema
+# (`access_token` only), which clobbered anton-core's built-in
+# definition (`email` + `app_password`). With the override active,
+# app-password saves were filtered to `{}` because the user's
+# submitted fields didn't match the registry's `access_token`
+# whitelist — producing the silent "empty record" failure that the
+# server's save guard now rejects with a clear error.
+#
+# Removing the override lets anton-core's built-in IMAP-based gmail
+# definition take over, so the app-password method saves correctly.
+# OAuth-saved Gmail records still work in scratchpads because
+# LocalDataVault.inject_env reads whatever fields are on disk
+# unfiltered — engine_def isn't consulted at injection time.
+GMAIL_BLOCK = ""
 
 
 def _replace_managed_block(existing: str, managed_body: str) -> str:
