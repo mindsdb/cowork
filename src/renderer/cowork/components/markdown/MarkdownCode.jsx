@@ -10,6 +10,7 @@ import { useEffect, useMemo } from 'react';
 import { ChartLoadingState, ChartErrorState } from './ChartStates';
 import { MessageChart } from './MessageChart';
 import { parseChartIntent } from './utils';
+import { highlightCode } from './hljs';
 import Ico from '../Icons';
 import { patchForm, setForm } from '../datavault/formStore';
 import { parseFormSpec } from '../datavault/parseFormSpec';
@@ -49,6 +50,20 @@ export function MarkdownCode(props) {
     if (lang === 'chart' && text) return parseChartIntent(text);
     return null;
   }, [lang, text]);
+
+  // Highlighted output for ordinary fenced blocks. We skip the special
+  // langs (chartjs/chart/data-vault-form*) so we don't pay the hljs
+  // cost on blocks that have their own renderer. Computed unconditionally
+  // (i.e. always returning `null` for the special branches) keeps the
+  // hook count stable across renders, in line with the comment above
+  // about rules-of-hooks discipline.
+  const highlighted = useMemo(() => {
+    const isSpecial = isFormLang || lang === 'chart' || lang === 'chartjs';
+    if (!lang || isSpecial) return null;
+    // Strip a single trailing newline left by remark — keeps Copy output
+    // clean and avoids a phantom blank line at the bottom of the block.
+    return highlightCode(text.replace(/\n$/, ''), lang);
+  }, [lang, isFormLang, text]);
 
   useEffect(() => {
     if (!isFormLang || !conversationId || !complete) return;
@@ -177,17 +192,43 @@ export function MarkdownCode(props) {
     return complete ? <MessageChart id={id || 'chart'} text={text} /> : <ChartLoadingState />;
   }
 
-  // Default — fall through to a styled <code>. react-markdown distinguishes
-  // inline code (no className) from fenced code (className="language-xxx").
-  // We render both with the same monospace token styling; the surrounding
-  // <pre> from remark-gfm handles block-level wrapping for fenced blocks.
+  // Ordinary fenced block — Claude-style card with a language header,
+  // a Copy button (handled by a delegated listener in MarkdownContent),
+  // and a syntax-highlighted body. MarkdownContent strips the outer
+  // <pre> for fenced children so the <div> wrapper stays valid HTML.
+  if (lang && highlighted) {
+    const raw = text.replace(/\n$/, '');
+    return (
+      <div className="anton-code-block" data-language={highlighted.language}>
+        <div className="anton-code-block-header">
+          <span className="anton-code-block-lang">{highlighted.language}</span>
+          <button
+            type="button"
+            className="anton-code-block-copy"
+            data-copy-code=""
+            aria-label={`Copy ${highlighted.language} code`}
+          >
+            <span className="anton-code-block-copy-icon" aria-hidden="true">
+              {Ico.doc(12)}
+            </span>
+            <span className="anton-code-block-copy-label">Copy</span>
+          </button>
+        </div>
+        <pre className="anton-code-block-pre">
+          <code
+            className={`hljs language-${highlighted.language}`}
+            data-source={raw}
+            dangerouslySetInnerHTML={{ __html: highlighted.html }}
+          />
+        </pre>
+      </div>
+    );
+  }
+
+  // Inline code (single backticks) — kept visually distinct from fenced
+  // blocks: no header, lighter background, in-flow.
   return (
-    <code
-      className={
-        'font-mono text-[12.5px] text-ink ' +
-        (lang ? 'block whitespace-pre overflow-x-auto rounded-md border border-line bg-surface-2 p-3 my-2' : 'rounded bg-surface-2 px-1 py-0.5')
-      }
-    >
+    <code className="font-mono text-[12.5px] text-ink rounded bg-surface-2 px-1 py-0.5">
       {props.children}
     </code>
   );

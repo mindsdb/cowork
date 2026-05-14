@@ -5,7 +5,7 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -157,11 +157,48 @@ const _SIZES = {
 };
 
 export function MarkdownContent({ text, id, complete = true, conversationId = null, dense = false }) {
+  const rootRef = useRef(null);
   const normalized = useMemo(
     () => _renderEngramComments(_normalizeFormFences(text)),
     [text],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
+
+  // Delegated click listener — every anton-code-block ships a [data-copy-code]
+  // button rendered by MarkdownCode. A single listener at this root survives
+  // streaming re-renders (blocks come and go as chunks arrive) without
+  // attaching/detaching per-block handlers.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const onClick = (event) => {
+      const btn = event.target?.closest?.('[data-copy-code]');
+      if (!btn || !root.contains(btn)) return;
+      const block = btn.closest('.anton-code-block');
+      const codeEl = block?.querySelector('pre > code');
+      if (!codeEl) return;
+      // `data-source` carries the raw source captured at render time —
+      // safer than reading the highlighted DOM's textContent.
+      const source = codeEl.getAttribute('data-source') ?? codeEl.textContent ?? '';
+      const finish = () => {
+        const label = btn.querySelector('.anton-code-block-copy-label');
+        btn.classList.add('is-copied');
+        if (label) label.textContent = 'Copied';
+        clearTimeout(btn._copyTimer);
+        btn._copyTimer = setTimeout(() => {
+          if (label) label.textContent = 'Copy';
+          btn.classList.remove('is-copied');
+        }, 1200);
+      };
+      const clip = navigator.clipboard;
+      if (clip && typeof clip.writeText === 'function') {
+        clip.writeText(source).then(finish).catch(() => {});
+      }
+    };
+    root.addEventListener('click', onClick);
+    return () => root.removeEventListener('click', onClick);
+  }, []);
+
   const components = useMemo(() => ({
     code: (props) => <MarkdownCode id={id} complete={complete} conversationId={conversationId} {...props} />,
     table: (props) => <MarkdownTable {...props} />,
@@ -210,12 +247,24 @@ export function MarkdownContent({ text, id, complete = true, conversationId = nu
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
     hr: () => <hr className="my-3 border-t border-line" />,
-    pre: (props) => <pre className="my-2 overflow-x-auto" {...props} />,
+    pre: (props) => {
+      // Fenced code blocks (className starts with `language-`) are handed
+      // off to MarkdownCode, which renders its own anton-code-block
+      // wrapper. We drop the outer <pre> in that case so block-level
+      // markup isn't nested inside a <pre>. Indented blocks (no
+      // className) keep the original styled <pre>.
+      const child = Array.isArray(props.children) ? props.children[0] : props.children;
+      const childClass = child?.props?.className || '';
+      if (typeof childClass === 'string' && childClass.startsWith('language-')) {
+        return props.children;
+      }
+      return <pre className="my-2 overflow-x-auto" {...props} />;
+    },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [id, complete, conversationId, dense]);
 
   return (
-    <div className={sz.root}>
+    <div ref={rootRef} className={sz.root}>
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
