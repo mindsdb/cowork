@@ -190,9 +190,31 @@ export function MarkdownContent({ text, id, complete = true, conversationId = nu
           btn.classList.remove('is-copied');
         }, 1200);
       };
+      // navigator.clipboard requires a secure context + clipboard-write
+      // permission; Electron renderers can run in contexts where it's
+      // unavailable OR rejects silently, which is why the original
+      // `.catch(() => {})` made copies look broken. Fall back to a
+      // hidden-textarea + execCommand('copy') path which works anywhere
+      // the document has focus.
+      const fallbackCopy = (text) => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch {}
+        document.body.removeChild(ta);
+        return ok;
+      };
       const clip = navigator.clipboard;
       if (clip && typeof clip.writeText === 'function') {
-        clip.writeText(source).then(finish).catch(() => {});
+        clip.writeText(source).then(finish, () => {
+          if (fallbackCopy(source)) finish();
+        });
+      } else if (fallbackCopy(source)) {
+        finish();
       }
     };
     root.addEventListener('click', onClick);

@@ -4372,11 +4372,14 @@ body[data-theme="dark"] .mshell__drawer-title {
   box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
   user-select: text;
 }
-/* Hover-revealed action toolbar — opacity transition replaces the three
-   JS useState flags the component used to carry. `right: -32px` parks the
-   buttons just outside the bubble's right edge. `has-meta` lifts the
-   button above the "you · time" line; `is-stacked` adds another row
-   when both Edit and Trash are visible. */
+/* Action toolbar — always present, subtle at rest, brightens on bubble-
+   or self-hover. The previous opacity:0 + pointer-events:none default
+   broke clickability: buttons sit at right:-32px, outside `.user-turn`'s
+   bounding box, so the cursor couldn't reach them without losing the
+   parent's :hover. Keeping them always interactive (with a low-opacity
+   resting state) sidesteps that entirely. `has-meta` lifts the button
+   above the "you · time" line; `is-stacked` adds another row when both
+   Edit and Trash are visible. */
 .user-turn-action {
   position: absolute;
   right: -32px;
@@ -4390,14 +4393,13 @@ body[data-theme="dark"] .mshell__drawer-title {
   display: inline-grid;
   place-items: center;
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 140ms ease, color 140ms ease;
+  opacity: 0.55;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
 }
 .user-turn:hover .user-turn-action,
+.user-turn-action:hover,
 .user-turn-action:focus-visible {
   opacity: 1;
-  pointer-events: auto;
 }
 .user-turn-action:hover { color: var(--accent); }
 .user-turn-action--danger:hover { color: var(--danger); }
@@ -4515,17 +4517,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-size: 11px;
   color: var(--ink-3);
   cursor: pointer;
-  /* Hidden at rest — revealed by the parent's :hover (or by :focus-visible
-     for keyboard users, and while is-copied is on so the success state
-     stays visible long enough to read). `opacity` rather than display
-     avoids layout shift in the header. */
-  opacity: 0;
-  transition: opacity 0.14s, background 0.12s, color 0.12s, border-color 0.12s;
-}
-.anton-code-block:hover .anton-code-block-copy,
-.anton-code-block-copy:focus-visible,
-.anton-code-block-copy.is-copied {
-  opacity: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .anton-code-block-copy:hover {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
