@@ -6,6 +6,7 @@ import {
   stackEmptyBeforeLine,
   parseOpenerLine,
 } from './composerFences';
+import { HighlightOverlay } from './composerHighlight';
 
 function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
@@ -88,6 +89,11 @@ export default function Composer({
       position in a ref and only set state on the derived flag. */
   const [inFence, setInFence] = useState(false);
   const taRef = useRef(null);
+  /** Mirror element for the source-mode highlight overlay. Sized and
+      styled to match the textarea exactly so the overlay aligns with
+      the underlying chars; scrollTop is synced from the textarea's
+      onScroll so long content scrolls in lockstep. */
+  const overlayRef = useRef(null);
   const fileRef = useRef(null);
   const wrapRef = useRef(null);
   /** Caret position the textarea last reported. Updated on input and

@@ -195,7 +195,7 @@ const _SIZES = {
 export function MarkdownContent({ text, id, complete = true, conversationId = null, dense = false }) {
   const rootRef = useRef(null);
   const normalized = useMemo(
-    () => _renderEngramComments(_normalizeFormFences(text)),
+    () => _renderEngramComments(_normalizeFormFences(_mergeInlineCodeLines(text))),
     [text],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
