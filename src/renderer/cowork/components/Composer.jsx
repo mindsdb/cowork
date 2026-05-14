@@ -152,17 +152,13 @@ export default function Composer({
   const parsedFences = useMemo(() => parseFences(value), [value]);
 
   // Auto-resize the textarea up to a max height; past that it scrolls.
-  // The highlight overlay shares the same height so its scroll position
-  // stays in lockstep when content exceeds the visible box.
+  // The overlay is absolutely positioned with `inset: 0`, so it follows
+  // the shell (which sizes to the textarea) automatically — no separate
+  // height bookkeeping needed here.
   useEffect(() => {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    const next = Math.min(220, ta.scrollHeight);
-    ta.style.height = next + 'px';
-    if (overlayRef.current) {
-      overlayRef.current.style.height = next + 'px';
-    }
+    if (!taRef.current) return;
+    taRef.current.style.height = 'auto';
+    taRef.current.style.height = Math.min(220, taRef.current.scrollHeight) + 'px';
   }, [value]);
 
   // After every commit: apply any pending caret position from the
