@@ -300,7 +300,26 @@ export default function Composer({
 
   const handleSend = async () => {
     if (disabled || !editor) return;
-    const markdown = editor.storage.markdown.getMarkdown().trim();
+    // tiptap-markdown's hardBreak serializer emits "\<newline>" (a
+    // CommonMark backslash hard break). That's valid in the middle of a
+    // paragraph, but the moment the next line is a paragraph-interrupting
+    // block (a code fence, heading, list, etc.) the `\` becomes the last
+    // char of the paragraph and renders as a literal backslash. Convert
+    // every hard break to a paragraph break before sending — slightly
+    // larger visual gap than a `<br>`, but robust for the mixed
+    // text-then-codeblock case the chat sees most often.
+    //
+    // Second pass: tiptap-markdown's text serializer (via prosemirror-
+    // markdown's `esc`) backslash-escapes every backtick the user typed
+    // as plain text, so a fence the user typed inline (rather than via
+    // the codeBlock node) goes on the wire as `\`\`\`` and CommonMark
+    // renders three literal backticks instead of opening a fence. For
+    // chat we want the markdown rendered, not round-tripped, so drop
+    // those escapes.
+    const markdown = editor.storage.markdown.getMarkdown()
+      .replace(/\\\n/g, '\n\n')
+      .replace(/\\`/g, '`')
+      .trim();
     if (!markdown) return;
     setError('');
     setBusy(true);

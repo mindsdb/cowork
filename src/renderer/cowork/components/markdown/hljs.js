@@ -66,6 +66,17 @@ function resolveLanguage(lang) {
   return language ? lower : null;
 }
 
+// Minimal HTML escape for the plaintext fallback. We don't route through
+// `hljs.highlight(..., { language: 'plaintext' })` because the core build
+// doesn't ship a plaintext language module — registering one just to
+// escape three characters isn't worth the extra weight.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /**
  * Highlight `source` for `lang`. If `lang` isn't registered (or is
  * empty), returns plaintext-escaped HTML so callers can render the
@@ -74,10 +85,7 @@ function resolveLanguage(lang) {
 export function highlightCode(source, lang) {
   const resolved = resolveLanguage(lang);
   if (!resolved) {
-    return {
-      html: hljs.highlight(source ?? '', { language: 'plaintext', ignoreIllegals: true }).value,
-      language: 'plaintext',
-    };
+    return { html: escapeHtml(source), language: 'plaintext' };
   }
   try {
     return {
@@ -85,9 +93,6 @@ export function highlightCode(source, lang) {
       language: resolved,
     };
   } catch {
-    return {
-      html: hljs.highlight(source ?? '', { language: 'plaintext', ignoreIllegals: true }).value,
-      language: 'plaintext',
-    };
+    return { html: escapeHtml(source), language: 'plaintext' };
   }
 }
