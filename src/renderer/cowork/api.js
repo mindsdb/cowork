@@ -610,6 +610,10 @@ export async function mountArtifactPreview(path) {
     token: data?.token,
     entry: data?.entry,
     artifactDir: data?.artifactDir || '',
+    // Backend port for proxy previews — surfaced so the viewer can
+    // build a direct `http://127.0.0.1:<port>` URL for "Open in OS"
+    // without going through the Electron-main proxy.
+    port: typeof data?.port === 'number' ? data.port : null,
     // Absolute URL the iframe can load directly for static previews.
     // Empty for proxy previews — the caller resolves the URL via
     // window.antontron.preview.startProxy(artifactDir).

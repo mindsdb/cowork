@@ -198,7 +198,7 @@ function ActionsPopover({ open, anchorRect, onClose, items }) {
   );
 }
 
-const NON_PUBLISHABLE_TYPES = new Set(['fullstack-stateless-app', 'fullstack-stateful-app']);
+const BACKEND_ARTIFACT_TYPES = new Set(['fullstack-stateless-app', 'fullstack-stateful-app']);
 const NOT_PUBLISHABLE_REASON = "Publishing isn't supported for this artifact type";
 
 export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) {
@@ -206,7 +206,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const displayPath = artifact?.displayPath || actionPath;
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
-  const isPublishable = !NON_PUBLISHABLE_TYPES.has(artifact?.type);
+  const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  const isPublishable = !isBackendArtifact;
+  // Backend artifacts treat the folder, not the entry html, as the
+  // "thing" the user opens in their OS or browser.
+  const artifactFolder = actionPath.replace(/[\\/][^\\/]*$/, '') || actionPath;
+  const folderDisplayPath = displayPath.replace(/[\\/][^\\/]*$/, '') || displayPath;
   // Mounted preview URL — iframe loads this with `src=` so relative
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
@@ -214,6 +219,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
+  const [backendPort, setBackendPort] = useState(null);
   const [busy, setBusy] = useState(false);
   const [menuRect, setMenuRect] = useState(null);
   const kebabRef = useRef(null);
@@ -244,10 +250,11 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setLoading(true);
     setErr('');
     setPreviewUrl('');
+    setBackendPort(null);
     let cancelled = false;
     let usedProxy = false;
     mountArtifactPreview(actionPath)
-      .then(async ({ kind, url, artifactDir, publishedUrl: serverPublishedUrl }) => {
+      .then(async ({ kind, url, artifactDir, port, publishedUrl: serverPublishedUrl }) => {
         if (kind === 'proxy') {
           if (!artifactDir) throw new Error('Preview mount returned no artifact dir');
           const proxy = await window.antontron?.preview?.startProxy?.(artifactDir);
@@ -255,6 +262,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           if (cancelled) return;
           usedProxy = true;
           setPreviewUrl(proxy.url);
+          if (typeof port === 'number') setBackendPort(port);
           return;
         }
         if (!url) throw new Error('Preview mount returned no URL');
@@ -318,6 +326,18 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     }
   };
   const onOpenOS = async () => {
+    if (isBackendArtifact) {
+      if (!backendPort) {
+        setErr('Backend port not available yet — preview is still loading.');
+        return;
+      }
+      try {
+        await host.openExternal(`http://127.0.0.1:${backendPort}`);
+      } catch (e) {
+        setErr(e?.message || 'Open failed');
+      }
+      return;
+    }
     if (!hasActionPath) {
       setErr(disabledReason || 'This artifact does not have a local file path.');
       return;
@@ -363,9 +383,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // artifacts this opens the default browser; for everything else
   // (md, pdf, etc.) it routes to the user's default app.
   const onOpenLocal = async () => {
-    if (!actionPath) return;
+    const target = isBackendArtifact ? artifactFolder : actionPath;
+    if (!target) return;
     try {
-      const result = await window.antontron?.openPath?.(actionPath);
+      const result = await window.antontron?.openPath?.(target);
       if (result && result.ok === false) {
         setErr(result.reason || 'Could not open file.');
       }
@@ -442,8 +463,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             )}
             <PathRow
               label="local"
-              value={displayPath}
-              copyValue={actionPath}
+              value={isBackendArtifact ? folderDisplayPath : displayPath}
+              copyValue={isBackendArtifact ? artifactFolder : actionPath}
               onActivate={hasActionPath ? onOpenLocal : undefined}
             />
             {publishedUrl && (
@@ -569,7 +590,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             ...(host.isWeb ? [] : [{
               label: 'Open in OS',
               icon: Ico.externalLink(13),
-              disabled: !hasActionPath,
+              disabled: !hasActionPath || (isBackendArtifact && !backendPort),
+              title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
               onClick: onOpenOS,
             }]),
             {
