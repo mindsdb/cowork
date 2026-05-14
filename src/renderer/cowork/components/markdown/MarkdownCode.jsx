@@ -18,6 +18,7 @@ import { parseFormSpec } from '../datavault/parseFormSpec';
 export function MarkdownCode(props) {
   const lang = props?.className?.replace('language-', '') || '';
   const text = String(props?.children ?? '');
+  const isBlock = props?.block === true;
   const id = props?.id;
   const complete = props?.complete !== false; // assume complete unless told otherwise
   const conversationId = props?.conversationId || null;
@@ -69,11 +70,19 @@ export function MarkdownCode(props) {
   const highlighted = useMemo(() => {
     const isChartLang = lang === 'chart' || lang === 'chartjs';
     const isSpecial = isFormLang || (enableCharts && isChartLang);
-    if (!lang || isSpecial) return null;
+
+    if (isSpecial) return null;
+
+    // Inline code has no language and is not inside a <pre>, so it should
+    // remain inline. Fenced/indented code without a language is marked by
+    // MarkdownContent's pre override as `block: true` and should render as
+    // a full plaintext code block.
+    if (!lang && !isBlock) return null;
+
     // Strip a single trailing newline left by remark — keeps Copy output
     // clean and avoids a phantom blank line at the bottom of the block.
-    return highlightCode(text.replace(/\n$/, ''), lang);
-  }, [lang, isFormLang, enableCharts, text]);
+    return highlightCode(text.replace(/\n$/, ''), lang || 'plaintext');
+  }, [lang, isBlock, isFormLang, enableCharts, text]);
 
   useEffect(() => {
     if (!isFormLang || !conversationId || !complete) return;
@@ -208,17 +217,22 @@ export function MarkdownCode(props) {
   // a Copy button (handled by a delegated listener in MarkdownContent),
   // and a syntax-highlighted body. MarkdownContent strips the outer
   // <pre> for fenced children so the <div> wrapper stays valid HTML.
-  if (lang && highlighted) {
+  if ((lang || isBlock) && highlighted) {
     const raw = text.replace(/\n$/, '');
+    // No-language fences render via the plaintext fallback; suppress the
+    // label so the header reads as a bare Copy affordance instead of a
+    // noisy "plaintext" tag. The accessible Copy label is generalised
+    // for the same reason.
+    const isPlaintext = highlighted.language === 'plaintext';
     return (
       <div className="anton-code-block" data-language={highlighted.language}>
         <div className="anton-code-block-header">
-          <span className="anton-code-block-lang">{highlighted.language}</span>
+          <span className="anton-code-block-lang">{isPlaintext ? '' : highlighted.language}</span>
           <button
             type="button"
             className="anton-code-block-copy"
             data-copy-code=""
-            aria-label={`Copy ${highlighted.language} code`}
+            aria-label={isPlaintext ? 'Copy code' : `Copy ${highlighted.language} code`}
           >
             <span className="anton-code-block-copy-icon anton-code-block-copy-icon--idle" aria-hidden="true">
               {Ico.copy(12)}

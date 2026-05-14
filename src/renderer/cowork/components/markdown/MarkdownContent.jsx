@@ -5,7 +5,7 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { useEffect, useMemo, useRef } from 'react';
+import { cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -389,16 +389,25 @@ export function MarkdownContent({
     em: (props) => <em className="italic text-ink-2" {...props} />,
     hr: () => <hr className="my-3 border-t border-line" />,
     pre: (props) => {
-      // Fenced code blocks (className starts with `language-`) are handed
-      // off to MarkdownCode, which renders its own anton-code-block
-      // wrapper. We drop the outer <pre> in that case so block-level
-      // markup isn't nested inside a <pre>. Indented blocks (no
-      // className) keep the original styled <pre>.
+      // Fenced code blocks with a language are handled by MarkdownCode,
+      // which renders its own anton-code-block wrapper. We drop the outer
+      // <pre> in that case so block-level markup is not nested inside <pre>.
+      //
+      // Fenced code blocks without a language still arrive as <pre><code>
+      // but the code child has no language-* class. Mark that child as a
+      // block so MarkdownCode renders the full code-block card instead of
+      // falling through to inline-code styling.
       const child = Array.isArray(props.children) ? props.children[0] : props.children;
       const childClass = child?.props?.className || '';
+
       if (typeof childClass === 'string' && childClass.startsWith('language-')) {
         return props.children;
       }
+
+      if (isValidElement(child)) {
+        return cloneElement(child, { block: true });
+      }
+
       return <pre className="my-2 overflow-x-auto" {...props} />;
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
