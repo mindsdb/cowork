@@ -4393,3 +4393,140 @@ body[data-theme="dark"] .mshell__drawer-title {
   }
 }
 
+/* ─── Chat fenced code blocks (Claude-style) ─────────────────────────────
+   Rendered by MarkdownCode for any fenced block whose language isn't
+   one of our special kinds (chartjs / chart / data-vault-form*).
+   Header carries the language tag + a Copy button driven by a delegated
+   click listener mounted on the MarkdownContent root. */
+.anton-code-block {
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+.anton-code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 6px 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-3));
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--ink-3);
+}
+.anton-code-block-lang {
+  color: var(--accent);
+  font-weight: 500;
+}
+.anton-code-block-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.anton-code-block-copy:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.anton-code-block-copy.is-copied {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.anton-code-block-copy-icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+.anton-code-block-pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: transparent;
+  white-space: pre;
+}
+.anton-code-block-pre code.hljs {
+  display: inline;
+  padding: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* Scoped highlight.js theme — dark (default). Only matches tokens
+   inside our wrapper so the page can't accidentally inherit hljs
+   styling elsewhere. The palette pulls from the cyberpunk accent set:
+   cyan for names/titles, mint for strings, purple for keywords,
+   sand for numbers/built-ins, low-contrast ink-4 for comments. */
+.anton-code-block .hljs-keyword,
+.anton-code-block .hljs-selector-tag,
+.anton-code-block .hljs-literal,
+.anton-code-block .hljs-doctag { color: rgb(196, 144, 255); }
+.anton-code-block .hljs-string,
+.anton-code-block .hljs-regexp,
+.anton-code-block .hljs-attr,
+.anton-code-block .hljs-symbol,
+.anton-code-block .hljs-template-tag,
+.anton-code-block .hljs-template-variable { color: rgb(125, 226, 184); }
+.anton-code-block .hljs-number,
+.anton-code-block .hljs-built_in,
+.anton-code-block .hljs-builtin-name { color: rgb(246, 199, 121); }
+.anton-code-block .hljs-comment,
+.anton-code-block .hljs-quote { color: var(--ink-4); font-style: italic; }
+.anton-code-block .hljs-title,
+.anton-code-block .hljs-title.class_,
+.anton-code-block .hljs-title.function_,
+.anton-code-block .hljs-section { color: rgb(82, 224, 240); }
+.anton-code-block .hljs-name,
+.anton-code-block .hljs-tag,
+.anton-code-block .hljs-meta,
+.anton-code-block .hljs-variable,
+.anton-code-block .hljs-bullet { color: rgb(123, 178, 255); }
+.anton-code-block .hljs-property,
+.anton-code-block .hljs-params { color: var(--ink-2); }
+.anton-code-block .hljs-deletion { color: rgb(255, 122, 145); background: color-mix(in srgb, rgb(255, 122, 145) 12%, transparent); }
+.anton-code-block .hljs-addition { color: rgb(125, 226, 184); background: color-mix(in srgb, rgb(125, 226, 184) 12%, transparent); }
+.anton-code-block .hljs-emphasis { font-style: italic; }
+.anton-code-block .hljs-strong { font-weight: 600; }
+
+/* Light-mode palette — same hue families, lower brightness so they
+   stay readable against the pale surface tokens. */
+body[data-theme="light"] .anton-code-block .hljs-keyword,
+body[data-theme="light"] .anton-code-block .hljs-selector-tag,
+body[data-theme="light"] .anton-code-block .hljs-literal,
+body[data-theme="light"] .anton-code-block .hljs-doctag { color: rgb(124, 58, 175); }
+body[data-theme="light"] .anton-code-block .hljs-string,
+body[data-theme="light"] .anton-code-block .hljs-regexp,
+body[data-theme="light"] .anton-code-block .hljs-attr,
+body[data-theme="light"] .anton-code-block .hljs-symbol,
+body[data-theme="light"] .anton-code-block .hljs-template-tag,
+body[data-theme="light"] .anton-code-block .hljs-template-variable { color: rgb(20, 121, 79); }
+body[data-theme="light"] .anton-code-block .hljs-number,
+body[data-theme="light"] .anton-code-block .hljs-built_in,
+body[data-theme="light"] .anton-code-block .hljs-builtin-name { color: rgb(170, 100, 0); }
+body[data-theme="light"] .anton-code-block .hljs-title,
+body[data-theme="light"] .anton-code-block .hljs-title.class_,
+body[data-theme="light"] .anton-code-block .hljs-title.function_,
+body[data-theme="light"] .anton-code-block .hljs-section { color: rgb(17, 85, 98); }
+body[data-theme="light"] .anton-code-block .hljs-name,
+body[data-theme="light"] .anton-code-block .hljs-tag,
+body[data-theme="light"] .anton-code-block .hljs-meta,
+body[data-theme="light"] .anton-code-block .hljs-variable,
+body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169); }
+
