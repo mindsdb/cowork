@@ -209,7 +209,7 @@ export function MarkdownCode(props) {
             aria-label={`Copy ${highlighted.language} code`}
           >
             <span className="anton-code-block-copy-icon" aria-hidden="true">
-              {Ico.doc(12)}
+              {Ico.copy(12)}
             </span>
             <span className="anton-code-block-copy-label">Copy</span>
           </button>
