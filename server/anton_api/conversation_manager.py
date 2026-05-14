@@ -1400,9 +1400,26 @@ async def chat_stream(
     async def _stream() -> AsyncGenerator:
         nonlocal session
         retried = False
+        # Capture streaming text deltas as they pass through so that
+        # if the client aborts (stop button) we can persist the partial
+        # assistant response. anton-core only calls `_persist_history()`
+        # at the END of `turn_stream()` — on abort, GeneratorExit
+        # propagates out and that call never runs, so both the user
+        # prompt and any partial assistant text would otherwise be lost
+        # on reload.
+        try:
+            from anton.core.llm.provider import StreamTextDelta as _StreamTextDelta
+        except Exception:
+            _StreamTextDelta = None
+        partial_assistant_parts: list[str] = []
         try:
             try:
                 async for event in _drain_one_attempt(session, user_input):
+                    if _StreamTextDelta is not None and isinstance(event, _StreamTextDelta):
+                        try:
+                            partial_assistant_parts.append(event.text or "")
+                        except Exception:
+                            pass
                     yield event
             except FileNotFoundError as exc:
                 # Cached session pointed at a path that no longer exists
@@ -1453,6 +1470,11 @@ async def chat_stream(
                     session = await _resolve_session(cid, project, model)
                     try:
                         async for event in _drain_one_attempt(session, user_input):
+                            if _StreamTextDelta is not None and isinstance(event, _StreamTextDelta):
+                                try:
+                                    partial_assistant_parts.append(event.text or "")
+                                except Exception:
+                                    pass
                             yield event
                     except Exception as retry_exc:
                         logger.exception(
@@ -1469,6 +1491,66 @@ async def chat_stream(
                         _evict_session(cid)
                     raise AntonRuntimeError(_safe_error(exc)) from exc
         finally:
+            # If the client aborted mid-turn (stop button → SSE close →
+            # GeneratorExit), anton-core's `turn_stream` never reaches
+            # its trailing `_persist_history()` call. The user message
+            # is already in `session.history` (appended on entry) but
+            # disk wouldn't see it on reload, and any partial assistant
+            # text would be dropped. Detect that state here and persist
+            # both the user msg and a synthesized assistant response
+            # carrying whatever streamed before the abort.
+            try:
+                hist = session.history or []
+                last = hist[-1] if hist else None
+                last_role = last.get("role") if isinstance(last, dict) else None
+                needs_finalize = False
+                if last_role == "user":
+                    # Either the very-first-user message we appended on
+                    # entry, or a tool_result that never got a follow-up
+                    # assistant — both indicate an interrupted turn.
+                    needs_finalize = True
+                elif last_role == "assistant" and isinstance(last.get("content"), list):
+                    # Assistant turn was committed (tool_use) but the
+                    # tool dispatcher never appended its tool_result —
+                    # leave Anthropic-compliant via seal helper below.
+                    if any(
+                        isinstance(b, dict) and b.get("type") == "tool_use"
+                        for b in last.get("content") or []
+                    ):
+                        needs_finalize = True
+                if needs_finalize:
+                    try:
+                        session._seal_dangling_tool_uses("stopped by user")
+                    except Exception:
+                        logger.debug("Seal dangling tool_uses failed on abort", exc_info=True)
+                    # After sealing, the last message may have flipped
+                    # to user (tool_results). If so, append a placeholder
+                    # assistant message so the turn pair is complete.
+                    hist = session.history or []
+                    last = hist[-1] if hist else None
+                    last_role = last.get("role") if isinstance(last, dict) else None
+                    if last_role == "user":
+                        partial_text = "".join(partial_assistant_parts).strip()
+                        if partial_text:
+                            placeholder = f"{partial_text}\n\n_[Stopped by user]_"
+                        else:
+                            placeholder = "_[Stopped by user before a response was produced.]_"
+                        try:
+                            session._append_history(
+                                {"role": "assistant", "content": placeholder}
+                            )
+                        except Exception:
+                            logger.debug("Append stop placeholder failed", exc_info=True)
+                    try:
+                        session._turn_count += 1
+                    except Exception:
+                        pass
+                    try:
+                        session._persist_history()
+                    except Exception:
+                        logger.debug("Persist history on abort failed", exc_info=True)
+            except Exception:
+                logger.debug("Mid-turn abort finalization failed", exc_info=True)
             try:
                 _update_meta_after_turn(project, cid, session.history)
             except Exception:
