@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Ico from './Icons';
 import {
   parseFences,
-  fenceCtxAt,
+  fenceCtxAtParsed,
   stackEmptyBeforeLine,
   parseOpenerLine,
 } from './composerFences';
@@ -146,11 +146,23 @@ export default function Composer({
   }, []);
   const recognitionRef = useRef(null);
 
+  // Memoized fence parse — recomputed only when `value` changes. Caret
+  // and key handlers branch off this instead of reparsing the full
+  // composer string on every keystroke / selection event.
+  const parsedFences = useMemo(() => parseFences(value), [value]);
+
   // Auto-resize the textarea up to a max height; past that it scrolls.
+  // The highlight overlay shares the same height so its scroll position
+  // stays in lockstep when content exceeds the visible box.
   useEffect(() => {
-    if (!taRef.current) return;
-    taRef.current.style.height = 'auto';
-    taRef.current.style.height = Math.min(220, taRef.current.scrollHeight) + 'px';
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const next = Math.min(220, ta.scrollHeight);
+    ta.style.height = next + 'px';
+    if (overlayRef.current) {
+      overlayRef.current.style.height = next + 'px';
+    }
   }, [value]);
 
   // After every commit: apply any pending caret position from the
@@ -168,8 +180,14 @@ export default function Composer({
     }
     const pos = ta.selectionStart;
     caretPosRef.current = pos;
-    const next = fenceCtxAt(ta.value, pos) !== null;
+    const next = fenceCtxAtParsed(parsedFences.fences, pos) !== null;
     setInFence((prev) => (prev === next ? prev : next));
+    // Re-sync overlay scroll after any value change so the freshly
+    // re-laid-out overlay matches the textarea's current scrollTop.
+    if (overlayRef.current) {
+      overlayRef.current.scrollTop = ta.scrollTop;
+      overlayRef.current.scrollLeft = ta.scrollLeft;
+    }
   });
 
   // Refresh the caret-position ref + derived inFence flag on selection
@@ -180,8 +198,18 @@ export default function Composer({
     if (!ta) return;
     const pos = ta.selectionStart;
     caretPosRef.current = pos;
-    const next = fenceCtxAt(ta.value, pos) !== null;
+    const next = fenceCtxAtParsed(parsedFences.fences, pos) !== null;
     setInFence((prev) => (prev === next ? prev : next));
+  };
+
+  // Mirror the textarea's scroll position onto the overlay so long
+  // content stays char-for-char aligned through wheel/keyboard scroll.
+  const handleScroll = (e) => {
+    const ta = e.currentTarget;
+    if (overlayRef.current) {
+      overlayRef.current.scrollTop = ta.scrollTop;
+      overlayRef.current.scrollLeft = ta.scrollLeft;
+    }
   };
 
   // execCommand('insertText') routes the mutation through the
@@ -329,7 +357,15 @@ export default function Composer({
             </div>
           )}
 
-          <textarea
+          <div className="composer-input-shell">
+            <div
+              ref={overlayRef}
+              className="composer-textarea-overlay"
+              aria-hidden="true"
+            >
+              <HighlightOverlay text={value} />
+            </div>
+            <textarea
             ref={taRef}
             className="composer-textarea"
             placeholder={placeholder}
@@ -340,11 +376,13 @@ export default function Composer({
             onBlur={() => setFocused(false)}
             onSelect={syncCaret}
             onClick={syncCaret}
+            onScroll={handleScroll}
             onKeyDown={(e) => {
               if (disabled) return;
               const ta = e.currentTarget;
               const pos = ta.selectionStart;
               const txt = value;
+              const fences = parsedFences.fences;
 
               if (e.key === 'Enter') {
                 // (A) Cmd/Ctrl+Enter sends from anywhere — including
@@ -358,7 +396,7 @@ export default function Composer({
                 if (e.shiftKey) return;
 
                 // Inside a fenced block — Enter inserts a newline, never sends.
-                const ctx = fenceCtxAt(txt, pos);
+                const ctx = fenceCtxAtParsed(fences, pos);
                 if (ctx) {
                   e.preventDefault();
                   if (!insertTextWithUndo('\n', pos + 1)) {
@@ -373,8 +411,7 @@ export default function Composer({
                 // ABOVE the closer and land on it, staying inside the
                 // (now-extended) block.
                 const lineStart = txt.lastIndexOf('\n', pos - 1) + 1;
-                const parsed = parseFences(txt);
-                const onCloser = parsed.fences.find(
+                const onCloser = fences.find(
                   (f) => f.char === lineStart && !f.isOpening,
                 );
                 if (onCloser) {
@@ -420,7 +457,7 @@ export default function Composer({
               // right after the closing ```. If there's no line after,
               // append one. No content inserted inside the fence.
               if (e.key === 'Escape') {
-                const ctx = fenceCtxAt(txt, pos);
+                const ctx = fenceCtxAtParsed(fences, pos);
                 if (!ctx) return;
                 e.preventDefault();
                 const afterClosingNL = txt.indexOf('\n', ctx.close.end);
@@ -438,7 +475,7 @@ export default function Composer({
               }
 
               if (e.key === 'ArrowDown') {
-                const ctx = fenceCtxAt(txt, pos);
+                const ctx = fenceCtxAtParsed(fences, pos);
                 if (ctx) {
                   const lineEndIdx = txt.indexOf('\n', pos);
                   const lineEnd = lineEndIdx === -1 ? txt.length : lineEndIdx;
@@ -460,7 +497,6 @@ export default function Composer({
                 const prevLineStart = txt.lastIndexOf('\n', prevLineEnd - 1) + 1;
                 const prevLine = txt.slice(prevLineStart, prevLineEnd);
                 if (/^`{3,}\s*$/.test(prevLine)) {
-                  const { fences } = parseFences(txt);
                   const idx = fences.findIndex((f) => f.char === prevLineStart);
                   if (idx >= 0 && !fences[idx].isOpening) {
                     e.preventDefault();
@@ -473,6 +509,7 @@ export default function Composer({
             }}
             rows={1}
           />
+          </div>
 
           <div className="composer-toolbar">
             <span

@@ -86,7 +86,15 @@ export function parseFences(text) {
  * leading newline. Caret on a fence LINE itself is NOT inside.
  */
 export function fenceCtxAt(text, pos) {
-  const { fences } = parseFences(text);
+  return fenceCtxAtParsed(parseFences(text).fences, pos);
+}
+
+/**
+ * Same as `fenceCtxAt` but accepts a pre-parsed fence list so callers
+ * that have already invoked `parseFences(text)` once per value (e.g.
+ * the composer's memoized fences) can reuse it instead of reparsing.
+ */
+export function fenceCtxAtParsed(fences, pos) {
   for (const f of fences) {
     if (!f.isOpening || !f.pairedWith) continue;
     const open = f;
