@@ -4324,6 +4324,15 @@ body[data-theme="dark"] .mshell__drawer-title {
    one of our special kinds (chartjs / chart / data-vault-form*).
    Header carries the language tag + a Copy button driven by a delegated
    click listener mounted on the MarkdownContent root. */
+/* Text selection inside chat-rendered markdown — scoped so it can't leak
+   into other surfaces (composer, side panels, etc.). Replaces the OS-
+   default blue with an on-palette accent wash; `color: inherit` keeps
+   the underlying ink colour readable through the highlight. */
+.markdown-content ::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit;
+}
+
 /* Inline `code` chip — accent-tinted so it pops out of any bubble
    surface (user-message `--surface`, assistant flow `transparent`,
    light mode `#FFF`). Tint is gentle in both themes; the thin border
@@ -4351,6 +4360,12 @@ body[data-theme="dark"] .mshell__drawer-title {
   overflow: hidden;
   font-family: var(--font-mono);
 }
+/* When the code block is the first or last child of a chat bubble, its
+   own 12px outer margin stacks with the bubble's padding (14px 18px) and
+   we end up with a fat empty band. Reset the edge margins so the block
+   sits flush against the bubble's inner padding. */
+.markdown-content > .anton-code-block:first-child { margin-top: 0; }
+.markdown-content > .anton-code-block:last-child { margin-bottom: 0; }
 .anton-code-block-header {
   display: flex;
   align-items: center;
@@ -4381,7 +4396,17 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-size: 11px;
   color: var(--ink-3);
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  /* Hidden at rest — revealed by the parent's :hover (or by :focus-visible
+     for keyboard users, and while is-copied is on so the success state
+     stays visible long enough to read). `opacity` rather than display
+     avoids layout shift in the header. */
+  opacity: 0;
+  transition: opacity 0.14s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.anton-code-block:hover .anton-code-block-copy,
+.anton-code-block-copy:focus-visible,
+.anton-code-block-copy.is-copied {
+  opacity: 1;
 }
 .anton-code-block-copy:hover {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
