@@ -37,6 +37,42 @@ const sanitizeSchema = {
   },
 };
 
+function _mergeInlineCodeLines(text) {
+  if (!text || typeof text !== 'string') return text;
+  const INLINE_ONLY = /^`([^`\n]+)`$/;
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const m = INLINE_ONLY.exec(lines[i]);
+    if (!m) {
+      out.push(lines[i]);
+      i += 1;
+      continue;
+    }
+    // Found a candidate line — scan forward for more.
+    const run = [m[1]];
+    let j = i + 1;
+    while (j < lines.length) {
+      const mj = INLINE_ONLY.exec(lines[j]);
+      if (!mj) break;
+      run.push(mj[1]);
+      j += 1;
+    }
+    if (run.length >= 2) {
+      out.push('```');
+      out.push(...run);
+      out.push('```');
+      i = j;
+    } else {
+      // Just one inline-code line — leave it as inline.
+      out.push(lines[i]);
+      i += 1;
+    }
+  }
+  return out.join('\n');
+}
+
 // Make sure ```data-vault-form fences always start on their own line.
 // LLMs frequently glue the opening fence to the end of a sentence
 // ("…fill in the form.```data-vault-form\n…"), which collapses the
