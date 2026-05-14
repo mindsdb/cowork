@@ -163,6 +163,7 @@ function ActionsPopover({ open, anchorRect, onClose, items }) {
             key={it.label}
             type="button"
             disabled={it.disabled}
+            title={it.title}
             onClick={(e) => { e.stopPropagation(); it.onClick?.(); onClose?.(); }}
             style={{
               width: 'calc(100% - 8px)', margin: '0 4px',
@@ -197,11 +198,15 @@ function ActionsPopover({ open, anchorRect, onClose, items }) {
   );
 }
 
+const NON_PUBLISHABLE_TYPES = new Set(['fullstack-stateless-app', 'fullstack-stateful-app']);
+const NOT_PUBLISHABLE_REASON = "Publishing isn't supported for this artifact type";
+
 export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) {
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const displayPath = artifact?.displayPath || actionPath;
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
+  const isPublishable = !NON_PUBLISHABLE_TYPES.has(artifact?.type);
   // Mounted preview URL — iframe loads this with `src=` so relative
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
@@ -497,15 +502,19 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             <button
               type="button"
               onClick={onPublish}
-              disabled={busy || !hasActionPath}
-              title={hasActionPath ? 'Publish' : disabledReason || 'No local artifact path'}
+              disabled={busy || !hasActionPath || !isPublishable}
+              title={
+                !isPublishable
+                  ? NOT_PUBLISHABLE_REASON
+                  : hasActionPath ? 'Publish' : disabledReason || 'No local artifact path'
+              }
               style={{
-                cursor: busy ? 'progress' : hasActionPath ? 'pointer' : 'not-allowed',
+                cursor: busy ? 'progress' : (hasActionPath && isPublishable) ? 'pointer' : 'not-allowed',
                 background: 'var(--accent)', border: '1px solid var(--accent)',
                 color: '#fff',
                 padding: '6px 12px', borderRadius: 8,
                 fontSize: 12.5, fontWeight: 600,
-                opacity: busy || !hasActionPath ? 0.7 : 1,
+                opacity: busy || !hasActionPath || !isPublishable ? 0.7 : 1,
               }}
             >
               {busy ? 'Publishing…' : 'Publish'}
@@ -566,7 +575,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             {
               label: publishedUrl ? 'Unpublish' : 'Publish',
               icon: Ico.upload(13),
-              disabled: busy || !hasActionPath,
+              disabled: busy || !hasActionPath || (!publishedUrl && !isPublishable),
+              title: (!publishedUrl && !isPublishable) ? NOT_PUBLISHABLE_REASON : undefined,
               onClick: publishedUrl ? onUnpublish : onPublish,
             },
             ...(host.isWeb ? [] : [
