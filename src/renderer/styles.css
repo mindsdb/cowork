@@ -792,6 +792,12 @@ body[data-theme="dark"] .legal-viewer-overlay {
   font-size: 12px;
   outline: none;
 }
+/* WCAG 2.4.7 / 2.4.11 — keyboard focus needs a visible cue; the
+   permanent cyan border doesn't change on focus on its own. */
+.new-project-input:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
 
 .new-project-input::placeholder {
   color: var(--text-muted);
@@ -823,6 +829,11 @@ body[data-theme="dark"] .legal-viewer-overlay {
   font-size: 12px;
   outline: none;
   box-sizing: border-box;
+}
+/* WCAG 2.4.7 / 2.4.11 — visible keyboard focus indicator. */
+.project-rename-input:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
 }
 
 .project-rename-error {
@@ -1256,6 +1267,14 @@ body[data-theme="dark"] .legal-viewer-overlay {
 .settings-select:focus {
   border-color: var(--accent-cyan);
 }
+/* WCAG 2.4.7 / 2.4.11 — border-color change alone isn't a reliable
+   focus indicator (hue swap, marginal non-text contrast). The
+   focus-visible outline gives keyboard users an unambiguous ring. */
+.settings-input:focus-visible,
+.settings-select:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
 
 .settings-input::placeholder {
   color: var(--text-muted);
@@ -1632,6 +1651,13 @@ body[data-theme="dark"] .legal-viewer-overlay {
   outline: none;
   border-color: var(--accent-cyan);
   box-shadow: 0 0 10px rgba(0, 229, 255, 0.12);
+}
+/* WCAG 2.4.7 / 2.4.11 — the 0.12-alpha glow above is too faint to count
+   as a focus indicator. focus-visible adds a solid ring for keyboard
+   users while mouse focus keeps the subtle glow. */
+.settings-select:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
 }
 
 .settings-select option {

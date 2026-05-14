@@ -408,6 +408,25 @@ a[href],
 
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 .typing-dot { animation: typing 1.2s ease-in-out infinite; }
+
+/* WCAG 2.3.3 Animation from Interactions — users with vestibular
+   sensitivity get every infinite/looping animation halted (state still
+   reaches its end value so the UI stays informative). One-shot
+   transitions/entrance animations are left untouched so the UI doesn't
+   feel broken. */
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot,
+  .typing-dot,
+  .proj-shimmer,
+  .composer-icon.listening,
+  .spinner,
+  .status-dot.busy,
+  .status-pill.is-busy .status-text__live,
+  .btn-busy-pulse,
+  [class*="set-badge-pulse"] {
+    animation: none !important;
+  }
+}
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .typing-dot:nth-child(3) { animation-delay: 0.30s; }
 
@@ -1295,6 +1314,14 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .customize-search-input input:focus {
   border-color: #cfcac0;
   box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.08);
+}
+/* WCAG 2.4.7 / 2.4.11 — the 8% alpha glow above is too faint for a
+   focus indicator. Keyboard users get a solid ring; mouse focus keeps
+   the subtle glow. */
+.customize-input:focus-visible,
+.customize-search-input input:focus-visible {
+  outline: 2px solid var(--accent, #2f6fed);
+  outline-offset: 2px;
 }
 
 .customize-field small {
@@ -2267,6 +2294,14 @@ body:not([data-theme="dark"]) .btn-primary {
   border-color: var(--accent);
   box-shadow: var(--ring);
 }
+/* WCAG 2.4.7 / 2.4.11 — the soft alpha ring above can fall under 3:1
+   non-text contrast against the surface. focus-visible promotes a
+   solid outline so keyboard focus is always unambiguous. */
+.field-input:focus-visible,
+.field-textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .field-input:disabled,
 .field-textarea:disabled {
   opacity: 0.55; cursor: not-allowed;
@@ -3162,6 +3197,16 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   border-color: var(--primary-300);
   box-shadow: 0 0 0 3px rgba(31,156,176,0.12);
 }
+/* WCAG 2.4.7 / 2.4.11 — the 12% alpha glow above is too faint for a
+   keyboard focus indicator. focus-visible adds a solid ring. */
+.dialog-input:focus-visible,
+.dialog-textarea:focus-visible,
+.schedule-form input:focus-visible,
+.schedule-form textarea:focus-visible,
+.schedule-form select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .dialog-textarea {
   min-height: 140px; resize: vertical; margin-top: 8px;
   font-family: var(--font-mono); font-size: 12px;
@@ -3267,6 +3312,24 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .search-head input {
   flex: 1; border: 0; outline: 0; font-size: 15px;
   color: var(--text-strong); background: transparent;
+}
+/* WCAG 2.4.7 — borderless inputs still need a visible keyboard-focus
+   cue. The parent `.search-head` already has a divider; the focus-
+   within rule promotes that divider's colour so keyboard users can see
+   the active field without the search modal getting noisy for mouse
+   users. */
+.search-head:focus-within {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+/* Generic focus-within ring — apply to any parent that hosts a
+   borderless input whose `outline:0` is enforced by inline styles
+   (e.g. labels wrapping a search field). The ring lands on the
+   wrapper, not the input, so the rounded surface stays intact.
+   WCAG 2.4.7 / 2.4.11. */
+.focus-within-ring:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .search-results {
   max-height: 560px; overflow: auto; padding: 8px;

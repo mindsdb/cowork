@@ -744,7 +744,10 @@ function CrumbButton({ label, onClick, title, maxWidth }) {
         cursor: 'pointer',
         background: 'transparent',
         border: 0,
-        outline: 0,
+        // `outline: 0` removed — global rule
+        // `button:focus:not(:focus-visible) { outline: none }` already
+        // suppresses the mouse-click ring while preserving the
+        // keyboard-focus ring for WCAG 2.4.7.
         font: 'inherit',
         fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
         letterSpacing: '0.04em', color: T.ink3,

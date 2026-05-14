@@ -649,12 +649,12 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 8 }}>
-              <input value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill_label" style={inputStyle} disabled={editing === 'edit'} />
-              <input value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
+              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill_label" style={inputStyle} disabled={editing === 'edit'} />
+              <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
             </div>
-            <input value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" style={inputStyle} />
-            <input value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When Anton should use this skill" style={inputStyle} />
-            <textarea value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
+            <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" style={inputStyle} />
+            <input aria-label="When Anton should use this skill" value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When Anton should use this skill" style={inputStyle} />
+            <textarea aria-label="Skill instructions" value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
             <div className="dialog-actions">
               <button className="secondary-btn" onClick={() => setEditing(null)}>Cancel</button>
               <button className="primary-btn" disabled={!draft.label.trim() || !draft.name.trim() || !draft.declarative.trim()} onClick={save}>Save skill</button>
@@ -793,15 +793,15 @@ function ConnectView({ data, setData, setStatus }) {
         )) : <EmptyState>No data vault connections found.</EmptyState>}
       </div>
       <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <select value={engine} onChange={(e) => setEngineAndTemplate(e.target.value)} style={inputStyle}>
+        <select aria-label="Engine" value={engine} onChange={(e) => setEngineAndTemplate(e.target.value)} style={inputStyle}>
           {(data.engines || []).map((item) => <option key={item.engine} value={item.engine}>{item.displayName}</option>)}
         </select>
         {(engineDef?.authMethods || []).length > 0 && (
-          <select value={selectedAuth?.name || ''} onChange={(e) => setAuthAndTemplate(e.target.value)} style={inputStyle}>
+          <select aria-label="Authentication method" value={selectedAuth?.name || ''} onChange={(e) => setAuthAndTemplate(e.target.value)} style={inputStyle}>
             {(engineDef.authMethods || []).map((method) => <option key={method.name} value={method.name}>{method.display}</option>)}
           </select>
         )}
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" style={inputStyle} />
+        <input aria-label="Connection name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" style={inputStyle} />
         {fields.length > 0 && (
           <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>
             Required: {fields.filter((field) => field.required).map((field) => field.name).join(', ') || 'none'}

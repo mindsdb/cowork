@@ -185,10 +185,11 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
           <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.search(14)}</span>
           <input
             ref={inputRef}
-            type="text"
+            type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search recent tasks…"
+            aria-label="Search recent tasks"
             style={{
               flex: 1, minWidth: 0,
               background: 'transparent', border: 0, outline: 'none',

@@ -741,7 +741,10 @@ function Crumb({ label, onClick, title, maxWidth }) {
       onClick={onClick}
       title={title}
       style={{
-        cursor: 'pointer', background: 'transparent', border: 0, outline: 0,
+        // outline:0 removed for WCAG 2.4.7 — keyboard focus relies on
+        // the global `button:focus:not(:focus-visible) { outline:none }`
+        // rule, which keeps the ring for true keyboard nav.
+        cursor: 'pointer', background: 'transparent', border: 0,
         fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
         letterSpacing: '0.04em', color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
