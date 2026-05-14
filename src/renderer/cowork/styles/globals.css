@@ -4378,6 +4378,12 @@ body[data-theme="dark"] .mshell__drawer-title {
   align-items: center;
   line-height: 0;
 }
+/* Two icons sit in the DOM at once (copy + check); CSS picks which is
+   visible based on the `.is-copied` class the delegated click handler
+   toggles. Keeping both mounted means no layout shift on the swap. */
+.anton-code-block-copy-icon--done { display: none; }
+.anton-code-block-copy.is-copied .anton-code-block-copy-icon--idle { display: none; }
+.anton-code-block-copy.is-copied .anton-code-block-copy-icon--done { display: inline-flex; }
 .anton-code-block-pre {
   margin: 0;
   padding: 12px 14px;

@@ -208,8 +208,11 @@ export function MarkdownCode(props) {
             data-copy-code=""
             aria-label={`Copy ${highlighted.language} code`}
           >
-            <span className="anton-code-block-copy-icon" aria-hidden="true">
+            <span className="anton-code-block-copy-icon anton-code-block-copy-icon--idle" aria-hidden="true">
               {Ico.copy(12)}
+            </span>
+            <span className="anton-code-block-copy-icon anton-code-block-copy-icon--done" aria-hidden="true">
+              {Ico.check(12)}
             </span>
             <span className="anton-code-block-copy-label">Copy</span>
           </button>
