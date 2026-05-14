@@ -4,12 +4,129 @@
 // when the artifact has a live URL, plus Publish / Unpublish / Open
 // in OS actions.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { mountArtifactPreview, publishArtifact, unpublishArtifact } from '../../api';
+import {
+  mountArtifactPreview,
+  previewArtifact,
+  publishArtifact,
+  unpublishArtifact,
+} from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { Modal } from '../ui/Modal';
 import { host } from '../../../platform/host';
+import { MarkdownContent } from '../markdown/MarkdownContent';
+
+// Extensions we render inline with the lightweight text preview path
+// (server `/v1/artifacts/preview` → text body). `.md` gets the full
+// markdown renderer; `.csv` gets a parsed table; `.txt` and friends
+// fall back to a monospace block.
+const TEXT_PREVIEW_EXTS = new Set(['.md', '.txt', '.csv']);
+
+function _extOfPath(p) {
+  if (!p || typeof p !== 'string') return '';
+  const m = p.toLowerCase().match(/\.[a-z0-9]+$/);
+  return m ? m[0] : '';
+}
+
+function _isTextArtifact(a) {
+  if (!a) return false;
+  const declared = (a.ext || '').toLowerCase();
+  const ext = declared || _extOfPath(a.canonicalPath || a.file_path || a.path);
+  return TEXT_PREVIEW_EXTS.has(ext);
+}
+
+// How many CSV rows we render inline. Past this we cut off the table
+// and show a "showing N of M" notice with an Open/Download affordance.
+// 100 keeps the markdown render fast and the modal scroll predictable
+// even for large datasets.
+const CSV_PREVIEW_ROW_LIMIT = 100;
+
+// Minimal CSV parser — handles quoted fields, escaped quotes ("") and
+// commas inside quotes. Good enough for visualising agent-produced
+// CSVs without pulling in a parser dependency. Bails out as soon as
+// we have `limit` rows (counted *after* the header) so we never walk
+// a million-row file just to throw the tail away.
+function _parseCsv(text, limit = Infinity) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 1; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\n') {
+      row.push(field); field = '';
+      rows.push(row); row = [];
+      // header + `limit` data rows. Stop scanning early on large files.
+      if (rows.length > limit) break;
+    } else if (c === '\r') {
+      // swallow — handled with the next \n
+    } else {
+      field += c;
+    }
+  }
+  if ((field.length || row.length) && rows.length <= limit) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Cheap full-file row count — we only need it to decide whether the
+// "showing N of M" notice should appear and what M is. Counting bytes
+// is fine since `previewArtifact` already capped the content at 200KB.
+function _countCsvRows(text) {
+  if (!text) return 0;
+  let n = 0;
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '"') {
+      if (inQuotes && text[i + 1] === '"') { i += 1; }
+      else inQuotes = !inQuotes;
+    } else if (!inQuotes && c === '\n') {
+      n += 1;
+    }
+  }
+  // Trailing line without a final newline still counts.
+  if (text.length && text[text.length - 1] !== '\n') n += 1;
+  return n;
+}
+
+// Turn parsed CSV rows into a GFM pipe-table string so we can feed it
+// straight to `MarkdownContent`. Pipes and newlines inside cells would
+// break the table syntax — escape pipes, collapse line breaks to a
+// space. The first row is always treated as the header.
+function _csvRowsToGfmTable(rows) {
+  if (!rows || rows.length === 0) return '';
+  const escape = (cell) => String(cell ?? '')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
+  const header = rows[0].map(escape);
+  const sep = header.map(() => '---');
+  const body = rows.slice(1).map((r) => {
+    // Normalise short rows so the markdown parser sees a rectangle.
+    const padded = r.length === header.length
+      ? r
+      : [...r, ...Array(Math.max(0, header.length - r.length)).fill('')];
+    return padded.slice(0, header.length).map(escape);
+  });
+  const lines = [
+    `| ${header.join(' | ')} |`,
+    `| ${sep.join(' | ')} |`,
+    ...body.map((r) => `| ${r.join(' | ')} |`),
+  ];
+  return lines.join('\n');
+}
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "'Josefin Sans', sans-serif";
@@ -206,12 +323,23 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
   const [previewUrl, setPreviewUrl] = useState('');
+  // Text preview state for .md/.txt/.csv — populated via
+  // `/v1/artifacts/preview`. Holds `{ content, truncated, mime }` from
+  // the server so we can render markdown, csv tables, or plain text
+  // inline (no iframe, no OS handoff).
+  const [textPreview, setTextPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
   const [busy, setBusy] = useState(false);
   const [menuRect, setMenuRect] = useState(null);
   const kebabRef = useRef(null);
+
+  const isText = _isTextArtifact(artifact);
+  const textExt = isText
+    ? ((artifact?.ext || '').toLowerCase()
+        || _extOfPath(actionPath))
+    : '';
 
   // Refresh state when the artifact changes (e.g. user opens a
   // different one without closing first).
@@ -224,17 +352,37 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // Mount the artifact when opened. The server registers the parent
   // dir under a token and returns a URL that serves the entry HTML;
   // assets at sibling paths resolve naturally because they share the
-  // same URL prefix.
+  // same URL prefix. For text artifacts (.md/.txt/.csv) we skip the
+  // iframe path entirely and fetch the file body so it can render
+  // inline.
   useEffect(() => {
     if (!open || !artifact) return;
     if (!hasActionPath) {
       setPreviewUrl('');
+      setTextPreview(null);
       setErr(disabledReason || 'This artifact does not have a local file path.');
       return;
     }
     setLoading(true);
     setErr('');
     setPreviewUrl('');
+    setTextPreview(null);
+    if (isText) {
+      previewArtifact(actionPath)
+        .then((data) => {
+          if (!data || typeof data.content !== 'string') {
+            throw new Error('Preview returned no content');
+          }
+          setTextPreview({
+            content: data.content,
+            truncated: !!data.truncated,
+            mime: data.mime || '',
+          });
+        })
+        .catch((e) => setErr(e?.message || 'Could not load preview'))
+        .finally(() => setLoading(false));
+      return;
+    }
     mountArtifactPreview(actionPath)
       .then(({ url, publishedUrl: serverPublishedUrl }) => {
         if (!url) throw new Error('Preview mount returned no URL');
@@ -250,7 +398,25 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       })
       .catch((e) => setErr(e?.message || 'Could not load artifact'))
       .finally(() => setLoading(false));
-  }, [open, artifact?.path, actionPath, hasActionPath, disabledReason]);
+  }, [open, artifact?.path, actionPath, hasActionPath, disabledReason, isText]);
+
+  // Parse CSV → GFM pipe table once per loaded text. We cap at
+  // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
+  // snappy on large files; the total row count is computed separately
+  // so we can show a "showing N of M" notice.
+  const csvPreview = useMemo(() => {
+    if (!isText || textExt !== '.csv' || !textPreview?.content) return null;
+    const rows = _parseCsv(textPreview.content, CSV_PREVIEW_ROW_LIMIT);
+    if (rows.length === 0) return null;
+    const totalRows = Math.max(0, _countCsvRows(textPreview.content) - 1);
+    const shownRows = Math.max(0, rows.length - 1);
+    return {
+      markdown: _csvRowsToGfmTable(rows),
+      totalRows,
+      shownRows,
+      truncated: shownRows < totalRows,
+    };
+  }, [isText, textExt, textPreview?.content]);
 
   if (!open || !artifact) return null;
 
@@ -301,6 +467,31 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     } catch (e) {
       setErr(e?.message || 'Open failed');
     }
+  };
+  // Web-shell download — Electron exposes openPath via the IPC bridge,
+  // but the browser build has no filesystem access. We already loaded
+  // the file body via `previewArtifact`, so wrap it in a Blob and
+  // trigger a synthetic anchor click. Only meaningful when textPreview
+  // is populated (i.e. for .md/.txt/.csv).
+  const onDownloadText = () => {
+    if (!textPreview?.content) {
+      setErr('No content available to download.');
+      return;
+    }
+    const filename = (actionPath || '').split('/').pop() || artifact.title || 'artifact.txt';
+    const blob = new Blob([textPreview.content], {
+      type: textPreview.mime || 'text/plain;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke after the click lands — Safari needs a tick before the
+    // download actually starts; revoking synchronously cancels it.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const onTrash = async () => {
     if (busy) return;
@@ -560,13 +751,70 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           ]}
         />
 
-        {/* Body — iframe with srcdoc, sandbox just enough to render
-            ECharts/Chart.js etc. but not touch the parent app. */}
-        <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-2)' }}>
+        {/* Body — branches by artifact type:
+            • text (.md/.txt/.csv) → inline render via MarkdownContent,
+              a parsed CSV table, or a monospace block.
+            • everything else      → sandboxed iframe served by the
+              preview-mount endpoint. */}
+        <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-2)', overflow: isText ? 'auto' : 'hidden' }}>
           {err ? (
             <div style={{ padding: 28, color: 'var(--danger)', fontSize: 13 }}>{err}</div>
           ) : loading ? (
             <div style={{ padding: 28, color: 'var(--ink-3)', fontSize: 13 }}>Loading preview…</div>
+          ) : isText && textPreview ? (
+            <div style={{
+              maxWidth: 920, margin: '0 auto', padding: '24px 28px',
+              background: 'var(--surface)',
+              minHeight: '100%',
+            }}>
+              {textExt === '.md' ? (
+                <MarkdownContent text={textPreview.content} id={artifact.path} />
+              ) : textExt === '.csv' && csvPreview ? (
+                <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
+              ) : (
+                <pre style={{
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontFamily: FONT_MONO, fontSize: 12.5,
+                  color: 'var(--ink-2)',
+                  lineHeight: 1.55,
+                }}>{textPreview.content}</pre>
+              )}
+              {(textPreview.truncated || (csvPreview && csvPreview.truncated)) && (
+                <div style={{
+                  marginTop: 18, padding: '10px 14px',
+                  borderRadius: 8,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  color: 'var(--ink-3)', fontSize: 12.5,
+                  fontFamily: FONT_BODY,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 12, flexWrap: 'wrap',
+                }}>
+                  <span>
+                    {csvPreview && csvPreview.truncated
+                      ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
+                      : 'Preview is truncated.'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={host.isWeb ? onDownloadText : onOpenOS}
+                    style={{
+                      cursor: 'pointer',
+                      background: 'transparent',
+                      border: '1px solid var(--line)',
+                      color: 'var(--accent)',
+                      padding: '5px 11px', borderRadius: 6,
+                      fontSize: 12, fontWeight: 600,
+                      fontFamily: FONT_BODY,
+                    }}
+                  >
+                    {host.isWeb ? 'Download full file' : 'Open full file in OS'}
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             // src= (not srcdoc) so relative asset refs resolve against
             // the served URL. We deliberately drop `allow-same-origin`

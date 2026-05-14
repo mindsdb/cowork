@@ -645,6 +645,13 @@ def load_turns(conversation_id: str) -> dict | None:
 def _displayable_text_for(msg: object) -> str | None:
     """Return the text the UI would render for this message, or None
     if it gets filtered out (mirroring `_parse_for_display`).
+
+    Must apply the SAME filters as the display layer — empty
+    content, SYSTEM: auto-retry prompts, non-user/assistant roles.
+    Otherwise `_count_displayable_assistant_bubbles` (which drives
+    the per-turn sidecar key) reads a different bubble count than
+    the renderer renders, and event metadata lands under the wrong
+    index after a reload.
     """
     if not isinstance(msg, dict):
         return None
@@ -660,8 +667,18 @@ def _displayable_text_for(msg: object) -> str | None:
             for block in content
             if isinstance(block, dict) and block.get("type") == "text"
         )
-        return text if text else None
-    return str(content) if str(content) else None
+        if not text:
+            return None
+    else:
+        text = str(content)
+        if not text:
+            return None
+    # Filter anton-core's auto-retry / failure-recovery prompts the
+    # same way `_parse_for_display` does. Keeps the bubble count in
+    # lockstep with what the renderer actually shows.
+    if role == "user" and text.lstrip().startswith("SYSTEM:"):
+        return None
+    return text
 
 
 def _count_displayable_assistant_bubbles(history: list[dict]) -> int:
@@ -1383,9 +1400,26 @@ async def chat_stream(
     async def _stream() -> AsyncGenerator:
         nonlocal session
         retried = False
+        # Capture streaming text deltas as they pass through so that
+        # if the client aborts (stop button) we can persist the partial
+        # assistant response. anton-core only calls `_persist_history()`
+        # at the END of `turn_stream()` — on abort, GeneratorExit
+        # propagates out and that call never runs, so both the user
+        # prompt and any partial assistant text would otherwise be lost
+        # on reload.
+        try:
+            from anton.core.llm.provider import StreamTextDelta as _StreamTextDelta
+        except Exception:
+            _StreamTextDelta = None
+        partial_assistant_parts: list[str] = []
         try:
             try:
                 async for event in _drain_one_attempt(session, user_input):
+                    if _StreamTextDelta is not None and isinstance(event, _StreamTextDelta):
+                        try:
+                            partial_assistant_parts.append(event.text or "")
+                        except Exception:
+                            pass
                     yield event
             except FileNotFoundError as exc:
                 # Cached session pointed at a path that no longer exists
@@ -1436,6 +1470,11 @@ async def chat_stream(
                     session = await _resolve_session(cid, project, model)
                     try:
                         async for event in _drain_one_attempt(session, user_input):
+                            if _StreamTextDelta is not None and isinstance(event, _StreamTextDelta):
+                                try:
+                                    partial_assistant_parts.append(event.text or "")
+                                except Exception:
+                                    pass
                             yield event
                     except Exception as retry_exc:
                         logger.exception(
@@ -1452,6 +1491,66 @@ async def chat_stream(
                         _evict_session(cid)
                     raise AntonRuntimeError(_safe_error(exc)) from exc
         finally:
+            # If the client aborted mid-turn (stop button → SSE close →
+            # GeneratorExit), anton-core's `turn_stream` never reaches
+            # its trailing `_persist_history()` call. The user message
+            # is already in `session.history` (appended on entry) but
+            # disk wouldn't see it on reload, and any partial assistant
+            # text would be dropped. Detect that state here and persist
+            # both the user msg and a synthesized assistant response
+            # carrying whatever streamed before the abort.
+            try:
+                hist = session.history or []
+                last = hist[-1] if hist else None
+                last_role = last.get("role") if isinstance(last, dict) else None
+                needs_finalize = False
+                if last_role == "user":
+                    # Either the very-first-user message we appended on
+                    # entry, or a tool_result that never got a follow-up
+                    # assistant — both indicate an interrupted turn.
+                    needs_finalize = True
+                elif last_role == "assistant" and isinstance(last.get("content"), list):
+                    # Assistant turn was committed (tool_use) but the
+                    # tool dispatcher never appended its tool_result —
+                    # leave Anthropic-compliant via seal helper below.
+                    if any(
+                        isinstance(b, dict) and b.get("type") == "tool_use"
+                        for b in last.get("content") or []
+                    ):
+                        needs_finalize = True
+                if needs_finalize:
+                    try:
+                        session._seal_dangling_tool_uses("stopped by user")
+                    except Exception:
+                        logger.debug("Seal dangling tool_uses failed on abort", exc_info=True)
+                    # After sealing, the last message may have flipped
+                    # to user (tool_results). If so, append a placeholder
+                    # assistant message so the turn pair is complete.
+                    hist = session.history or []
+                    last = hist[-1] if hist else None
+                    last_role = last.get("role") if isinstance(last, dict) else None
+                    if last_role == "user":
+                        partial_text = "".join(partial_assistant_parts).strip()
+                        if partial_text:
+                            placeholder = f"{partial_text}\n\n_[Stopped by user]_"
+                        else:
+                            placeholder = "_[Stopped by user before a response was produced.]_"
+                        try:
+                            session._append_history(
+                                {"role": "assistant", "content": placeholder}
+                            )
+                        except Exception:
+                            logger.debug("Append stop placeholder failed", exc_info=True)
+                    try:
+                        session._turn_count += 1
+                    except Exception:
+                        pass
+                    try:
+                        session._persist_history()
+                    except Exception:
+                        logger.debug("Persist history on abort failed", exc_info=True)
+            except Exception:
+                logger.debug("Mid-turn abort finalization failed", exc_info=True)
             try:
                 _update_meta_after_turn(project, cid, session.history)
             except Exception:
@@ -1700,8 +1799,15 @@ def update_conversation(conversation_id: str, **patch) -> dict | None:
 
 def _is_user_input_message(msg: object) -> bool:
     """True iff this is a real user-typed message (vs a tool_result
-    user message that anton inserts mid-turn). User input messages
-    are the boundaries between displayable turns.
+    user message that anton inserts mid-turn, OR a SYSTEM: error-
+    recovery prompt anton appends after a tool failure). User input
+    messages are the boundaries between displayable turns.
+
+    MUST stay in sync with `_parse_for_display`'s filter in
+    `routes/conversations.py` — both must skip the same messages, or
+    the renderer's trash-button turn index won't match what
+    `delete_turn` operates on, and deleting bubble N silently
+    removes a different slice on the server side.
     """
     if not isinstance(msg, dict):
         return False
@@ -1709,12 +1815,35 @@ def _is_user_input_message(msg: object) -> bool:
         return False
     content = msg.get("content")
     if isinstance(content, str):
-        return bool(content)
+        if not content:
+            return False
+        # Skip anton-core's auto-retry / failure-recovery prompts —
+        # they live in `_history.json` (the LLM needs them as
+        # context on the next turn) but the user never typed them
+        # and `_parse_for_display` strips them from the chat
+        # render. Anything starting with "SYSTEM:" is treated the
+        # same way; legit user text starting with that token is
+        # vanishingly unlikely.
+        if content.lstrip().startswith("SYSTEM:"):
+            return False
+        return True
     if isinstance(content, list):
-        return any(
-            isinstance(b, dict) and b.get("type") == "text" and b.get("text")
-            for b in content
-        )
+        # Multi-block user messages can carry tool_result + text
+        # blocks side by side. We only count the message as a
+        # user-input boundary when it actually carries typed text;
+        # purely-tool_result messages (anton's mid-turn responses)
+        # are skipped. Same SYSTEM: filter applies to the text
+        # blocks for consistency with the string-content path.
+        text_blocks = [
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        if not any(text_blocks):
+            return False
+        joined = "\n".join(text_blocks).lstrip()
+        if joined.startswith("SYSTEM:"):
+            return False
+        return True
     return False
 
 

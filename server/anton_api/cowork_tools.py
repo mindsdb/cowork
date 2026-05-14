@@ -29,6 +29,64 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _read_published_state(file_path: Path) -> dict[str, str]:
+    """Return `{report_id, url, last_md5}` for the given artifact file,
+    pulled from its parent dir's `.published.json` registry. Empty
+    dict if the file isn't a known publish target."""
+    try:
+        registry = file_path.parent / ".published.json"
+        if not registry.is_file():
+            return {}
+        data = json.loads(registry.read_text(encoding="utf-8"))
+        entry = data.get(file_path.name) if isinstance(data, dict) else None
+        if isinstance(entry, dict):
+            return {
+                "report_id": str(entry.get("report_id") or ""),
+                "url": str(entry.get("url") or ""),
+                "last_md5": str(entry.get("last_md5") or ""),
+            }
+    except Exception:
+        logger.debug("Could not read .published.json next to %s", file_path, exc_info=True)
+    return {}
+
+
+# Cowork-flavoured description/prompt for the publish_or_preview tool.
+# The CLI-flavoured copies inside anton-core's `tools.py` mention the
+# legacy `.anton/output/` artifacts dir and reference a `/publish`
+# slash command that doesn't exist in antontron — both confuse the
+# LLM in the desktop context, so we override them in `build_cowork_publish_tool`.
+COWORK_PUBLISH_DESCRIPTION = (
+    "Preview, check, or publish an HTML dashboard / report. Files live "
+    "under the project's `artifacts/<artifact-id>/<name>.html`. Actions: "
+    "'ask' (default) and 'preview' check whether the file is already "
+    "published and return the public URL if so — they DON'T publish; "
+    "use them when generating a new file to confirm state. 'publish' "
+    "actually publishes (or re-publishes if a report_id already exists) "
+    "and returns the public URL. In the desktop app the user can also "
+    "publish via the Live Artifacts panel — but you should call "
+    "action='publish' directly whenever the user asks to publish, "
+    "share, deploy, or make-public any artifact you generated. No "
+    "slash command, no extra confirmation."
+)
+COWORK_PUBLISH_PROMPT = (
+    "CONTENT SHARING POLICY (desktop chat):\n"
+    "- Publishing dashboards or reports to the web is done ONLY via the `publish_or_preview` tool.\n"
+    "- When the user asks to publish / share / deploy / make-public a generated artifact, call this\n"
+    "  tool with `action: 'publish'` directly. Don't ask the user to use a slash command or a UI\n"
+    "  panel — publishing works straight from chat when MindsHub is configured.\n"
+    "- To check whether something is already published (e.g. the user asks 'is it live?'), call with\n"
+    "  `action: 'ask'` or `action: 'preview'` — both return the public URL if one exists, without\n"
+    "  publishing or re-publishing.\n"
+    "- Re-running with `action: 'publish'` on a file that was already published reuses its\n"
+    "  `report_id` so the public URL stays stable across edits.\n"
+    "- Do NOT upload, post, or share generated files (HTML, data, images) to external hosting\n"
+    "  services (paste sites, gists, CDNs, file hosts) via scratchpad code — unless the user\n"
+    "  explicitly names the service and confirms. This rule applies only to sharing generated\n"
+    "  output with the public internet; reading public APIs and writing to the user's connected\n"
+    "  datasources (databases, CRMs, etc.) is fine."
+)
+
+
 async def _cowork_publish_or_preview(session: Any, tc_input: dict) -> str:
     """Server-side equivalent of anton.tools.handle_publish_or_preview.
 
@@ -59,15 +117,35 @@ async def _cowork_publish_or_preview(session: Any, tc_input: dict) -> str:
     if not file_path.exists():
         return f"File not found: {file_path}"
 
-    # 'ask' and 'preview' are no-ops in the desktop chat — the artifact
-    # is already visible in the Live Artifacts panel and inline in the
-    # assistant turn. Returning a clear string lets the LLM continue
-    # without ever invoking a CLI prompt.
+    # 'ask' and 'preview' are non-destructive — the artifact is already
+    # visible in the Live Artifacts panel. We use these calls to also
+    # report the publish state so the LLM can decide on the next step
+    # (re-publish vs publish-for-first-time) without a separate tool.
+    #
+    # Why this is worded so directly: the previous version of this
+    # message told the LLM "the user can publish from the Live
+    # Artifacts panel — they don't need a /publish command". The LLM
+    # read that as "publishing is the user's job, not mine" and never
+    # called the tool with action='publish' even when the user
+    # explicitly asked for it. The fix is to spell out the publish
+    # path so the LLM knows it CAN act.
     if action in ("ask", "preview"):
+        existing = _read_published_state(file_path)
+        if existing.get("url"):
+            return (
+                f"{title} is already published at {existing['url']}. "
+                f"It is also visible inline + in the Live Artifacts panel. "
+                f"If the user asks to re-publish (overwrite the public copy), "
+                f"call this tool again with action='publish' — the same "
+                f"report_id will be reused so the URL stays stable."
+            )
         return (
-            f"Created {title} at {file_path}. The user can preview, publish, "
-            f"or copy a public URL from the Live Artifacts panel — they don't "
-            f"need a /publish command in the desktop app."
+            f"{title} is at {file_path} and visible in the Live Artifacts "
+            f"panel. It has NOT been published to the public web yet. "
+            f"If the user asks to publish / share / make it public, call "
+            f"this tool again with action='publish' — MindsHub publishing "
+            f"works directly from chat in the desktop app, no slash "
+            f"command needed."
         )
 
     if action != "publish":
@@ -76,8 +154,16 @@ async def _cowork_publish_or_preview(session: Any, tc_input: dict) -> str:
     # ── action == 'publish' ───────────────────────────────────────────
     # Read the API key the same way the cowork HTTP endpoint does so
     # both code paths agree on what's "configured".
+    #
+    # The settings helper lives in `routes.settings` (one level up
+    # from this package). A long-standing typo here pointed at a
+    # `.settings` module that doesn't exist inside `anton_api/`,
+    # so every publish call hit `PUBLISH FAILED: settings module
+    # unavailable (...)`. The LLM then recovered by telling the
+    # user to publish via the Live Artifacts panel — which made
+    # the bug look like a missing-publish-flow, not a typo.
     try:
-        from .settings import _get_env
+        from routes.settings import _get_env
     except Exception as exc:
         logger.exception("Cowork publish tool could not import settings helper")
         return f"PUBLISH FAILED: settings module unavailable ({exc})"
@@ -163,16 +249,23 @@ def build_cowork_publish_tool():
     """Construct a ToolDef matching anton's PUBLISH_TOOL schema, but
     with the cowork-aware handler. Lazy-imports anton.tools so callers
     can build the session config without paying the import cost twice.
+
+    The description and prompt are replaced with cowork-flavoured copy
+    that names the right artifacts path (`artifacts/<id>/<file>.html`,
+    not the legacy `.anton/output/`) and tells the LLM publishing
+    works directly from chat — no slash command, no UI dance. Without
+    these overrides the LLM defaults to CLI-era guidance and refuses
+    to call `action: 'publish'` even when the user explicitly asked.
     """
     from anton.tools import PUBLISH_TOOL
     from anton.core.tools.tool_defs import ToolDef
 
     return ToolDef(
         name=PUBLISH_TOOL.name,
-        description=PUBLISH_TOOL.description,
+        description=COWORK_PUBLISH_DESCRIPTION,
         input_schema=PUBLISH_TOOL.input_schema,
         handler=_cowork_publish_or_preview,
-        prompt=PUBLISH_TOOL.prompt,
+        prompt=COWORK_PUBLISH_PROMPT,
     )
 
 

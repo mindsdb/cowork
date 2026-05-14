@@ -101,6 +101,20 @@ function isHtmlArtifact(a) {
     || (a.path || '').toLowerCase().endsWith('.html');
 }
 
+// Extensions we can preview inline in the in-app ArtifactViewer (text
+// branch). Keep in sync with the viewer's own TEXT_PREVIEW_EXTS so the
+// click handlers and the body renderer agree on what's previewable.
+const _INLINE_TEXT_EXTS = new Set(['.md', '.txt', '.csv']);
+function isInlinePreviewable(a) {
+  if (!a) return false;
+  if (isHtmlArtifact(a)) return true;
+  const declared = (a.ext || '').toLowerCase();
+  if (_INLINE_TEXT_EXTS.has(declared)) return true;
+  const p = (a.path || '').toLowerCase();
+  for (const ext of _INLINE_TEXT_EXTS) if (p.endsWith(ext)) return true;
+  return false;
+}
+
 // "Updated" is already pre-formatted by the server (e.g. "3h ago",
 // "Yesterday"). For sorting we need a numeric stamp — fall back to the
 // raw `updatedAt` / `mtime` if present, otherwise 0 so unknown items
@@ -317,6 +331,7 @@ function LocalPathRow({ path }) {
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, busy, onOpenProject }) {
   const isHtml = isHtmlArtifact(artifact);
+  const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
 
   const [hover, setHover] = useState(false);
@@ -358,8 +373,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       tabIndex={0}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => isHtml ? onOpenViewer(artifact) : openArtifact(artifact.path)}
-      onKeyDown={(e) => { if (e.key === 'Enter') (isHtml ? onOpenViewer(artifact) : openArtifact(artifact.path)); }}
+      onClick={() => canPreview ? onOpenViewer(artifact) : openArtifact(artifact.path)}
+      onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifact(artifact.path)); }}
       style={{
         position: 'relative',
         cursor: 'pointer',
@@ -762,6 +777,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const triggerRef = useRef(null);
 
   const isHtml = isHtmlArtifact(artifact);
+  const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const project = projectNameOf(artifact, projects);
   const projectMatch = projectOf(artifact, projects);
@@ -772,7 +788,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     return copyText(artifact.publishedUrl);
   };
   const onRowOpen = () => {
-    if (isHtml) onOpenViewer?.(artifact);
+    if (canPreview) onOpenViewer?.(artifact);
     else openArtifact(artifact.path);
   };
 

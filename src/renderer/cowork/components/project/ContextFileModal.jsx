@@ -33,18 +33,145 @@ import {
   readProjectFile,
   writeProjectFile,
   deleteProjectFile,
+  mountProjectFilePreview,
+  projectFileDownloadUrl,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
+  BASE,
 } from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
+import { host } from '../../../platform/host';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
+
+// Join a project root + relative path into a forward-slash absolute
+// path so `window.antontron.openPath(...)` resolves correctly even
+// when the relative side carries embedded slashes.
+function joinAbs(root, rel) {
+  if (!root || !rel) return '';
+  const r = String(root).replace(/\/+$/, '');
+  const p = String(rel).replace(/^\/+/, '');
+  return `${r}/${p}`;
+}
+
+
+// Header chip that handles "reveal in Finder" / "open in default app"
+// on desktop and falls back to a download link on the web. Used by
+// both the HTML and binary branches — they live in the modal header
+// so the user always has an escape hatch regardless of what's
+// rendered inline.
+function FileAccessButton({ projectPath, projectName, filePath }) {
+  const isWeb = !!host.isWeb;
+  const abs = joinAbs(projectPath, filePath);
+  const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
+
+  if (isWeb) {
+    if (!dlUrl) return null;
+    return (
+      <a
+        href={dlUrl}
+        download
+        title="Download"
+        style={{
+          textDecoration: 'none',
+          cursor: 'pointer',
+          background: 'transparent', border: '1px solid var(--line)',
+          color: 'var(--ink-2)',
+          padding: '6px 12px', borderRadius: 6,
+          fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</a>
+    );
+  }
+
+  return (
+    <div style={{ display: 'inline-flex', gap: 4 }}>
+      <button
+        type="button"
+        onClick={() => abs && window.antontron?.showItemInFolder?.(abs)}
+        title="Reveal in Finder"
+        style={{
+          cursor: 'pointer',
+          background: 'transparent', border: '1px solid var(--line)',
+          color: 'var(--ink-2)',
+          padding: '6px 12px', borderRadius: 6,
+          fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</button>
+      <button
+        type="button"
+        onClick={() => abs && window.antontron?.openPath?.(abs)}
+        title="Open in default app"
+        style={{
+          cursor: 'pointer',
+          background: 'transparent', border: '1px solid var(--line)',
+          color: 'var(--ink-2)',
+          padding: '6px 12px', borderRadius: 6,
+          fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}
+      >{Ico.externalLink ? Ico.externalLink(13) : '↗'} Open</button>
+    </div>
+  );
+}
+
+
+// Empty-state panel for binary / oversized / non-UTF-8 files.
+// Renders a centered icon + the filename + one-line explanation
+// + the same reveal/download affordances as the header chip, so the
+// modal stays useful even when nothing can be displayed inline.
+function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath }) {
+  return (
+    <div style={{
+      flex: 1, minHeight: 0,
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      gap: 14, textAlign: 'center',
+      padding: '32px 20px',
+      borderRadius: 8,
+      background: 'var(--surface-2)',
+      border: '1px solid transparent',
+    }}>
+      <div style={{
+        display: 'inline-grid', placeItems: 'center',
+        width: 56, height: 56, borderRadius: 12,
+        background: 'color-mix(in srgb, var(--ink-4) 14%, transparent)',
+        color: 'var(--ink-3)',
+      }}>{Ico.doc ? Ico.doc(26) : '📄'}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{
+          fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
+          color: 'var(--ink)',
+        }}>{fileName}</span>
+        <span style={{
+          fontFamily: FONT_BODY, fontSize: 12.5,
+          color: 'var(--ink-3)', maxWidth: 380, lineHeight: 1.5,
+        }}>
+          This file can't be displayed inline (binary, too large, or not text). Use the
+          actions below to view it.
+        </span>
+      </div>
+      <FileAccessButton
+        projectPath={projectPath}
+        projectName={projectName}
+        filePath={filePath}
+      />
+    </div>
+  );
+}
+
 export default function ContextFileModal({
   open,
   // ── Project file mode ─────────────────────────────────────────
   projectName,
+  projectPath,     // absolute project root path (optional) — enables
+                   //   reveal-in-finder / open-in-default-app via the
+                   //   Electron IPC. Falls back to the download URL on
+                   //   the web.
   filePath,        // project-relative path (instructions: ANTON_PROJECT_INSTRUCTIONS_PATH)
   isAntonMd,       // optional override; otherwise derived from filePath
   // ── Generic / shared ─────────────────────────────────────────
@@ -68,6 +195,16 @@ export default function ContextFileModal({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Which render branch the modal is in:
+  //   'text'   — Markdown / plain text, the original editable view.
+  //   'html'   — load as an iframe via projects preview-mount (parity
+  //              with how artifacts surface HTML dashboards).
+  //   'binary' — can't render inline (too large, not UTF-8, image,
+  //              archive…). Show "Open in Finder" / "Download"
+  //              affordances instead of dumping bytes into the modal.
+  const [mode, setMode] = useState('text');
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [binaryDetail, setBinaryDetail] = useState('');
   const textareaRef = useRef(null);
 
   const isAnton = !!(isAntonMd ?? (filePath === ANTON_PROJECT_INSTRUCTIONS_PATH));
@@ -99,19 +236,46 @@ export default function ContextFileModal({
 
   // Load on open. Anton.md is special-cased server-side: the read
   // endpoint returns an empty body when the file doesn't exist yet,
-  // so we always get a clean string here.
+  // so we always get a clean string here. HTML project files take a
+  // separate path (preview-mount → iframe); binary or oversized
+  // files fall through to a "Reveal / Download" affordance.
   useEffect(() => {
     if (!open) return;
     if (!genericMode && (!filePath || !projectName)) return;
     let cancelled = false;
     setError('');
+    setPreviewUrl('');
+    setBinaryDetail('');
+    setMode('text');
+
+    // HTML branch: project-file preview-mount, iframe srcs `BASE + relUrl`.
+    if (!genericMode && filePath && /\.html?$/i.test(filePath)) {
+      setLoading(true);
+      mountProjectFilePreview(projectName, filePath)
+        .then((res) => {
+          if (cancelled) return;
+          // `relUrl` ships with `/v1/...`; the API helpers' BASE already
+          // includes the `/v1` prefix so we splice it onto the origin.
+          const origin = String(BASE || '').replace(/\/v1\/?$/, '');
+          const url = `${origin}${res?.relUrl || ''}`;
+          if (!url) throw new Error('Preview mount returned no URL');
+          setPreviewUrl(url);
+          setMode('html');
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setMode('binary');
+          setBinaryDetail(e?.message || 'Could not load preview');
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
+    }
+
     if (initialContent != null) {
       // Hot path — caller had the content already (from a recent
       // fetch / a draft). Skip the round trip.
       setContent(initialContent);
       setDraft(initialContent);
-      // anton.md with empty content → straight to edit mode (the
-      // user opened it to author it). Other files default to view.
       setEditing(startInEditMode ?? (isAnton && !initialContent.trim()));
       return undefined;
     }
@@ -129,7 +293,17 @@ export default function ContextFileModal({
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e?.message || 'Could not read file');
+        const msg = e?.message || 'Could not read file';
+        // 413 (too large) and 415 (not UTF-8 / not a text file) are
+        // expected for binary or oversized files. Surface a graceful
+        // "Reveal in Finder / Download" affordance instead of the
+        // raw error.
+        if (!genericMode && /HTTP 413|HTTP 415|too large|not valid UTF-8/i.test(msg)) {
+          setMode('binary');
+          setBinaryDetail(msg);
+        } else {
+          setError(msg);
+        }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -245,7 +419,7 @@ export default function ContextFileModal({
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {!editing && !loading && (
+            {mode === 'text' && !editing && !loading && (
               <button
                 type="button"
                 onClick={() => setEditing(true)}
@@ -258,6 +432,17 @@ export default function ContextFileModal({
                   fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
                 }}
               >Edit</button>
+            )}
+            {/* HTML preview + binary modes both expose a "Reveal" /
+                "Download" affordance in the header so the user can
+                always get at the file even when the modal renders
+                something else inline. */}
+            {(mode === 'html' || mode === 'binary') && !loading && (
+              <FileAccessButton
+                projectPath={projectPath}
+                projectName={projectName}
+                filePath={filePath}
+              />
             )}
             <button
               type="button"
@@ -296,7 +481,34 @@ export default function ContextFileModal({
               flexShrink: 0,
             }}>{error}</div>
           )}
-          {!loading && (editing ? (
+          {/* HTML branch — render inside a sandboxed iframe with the
+              preview-mount URL so relative assets resolve. */}
+          {!loading && mode === 'html' && previewUrl && (
+            <div style={{
+              flex: 1, minHeight: 0,
+              borderRadius: 8, overflow: 'hidden',
+              border: '1px solid var(--line)',
+              background: 'var(--surface-2)',
+            }}>
+              <iframe
+                title={headerTitle || 'Preview'}
+                src={previewUrl}
+                sandbox="allow-scripts allow-popups allow-forms allow-modals"
+                style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
+              />
+            </div>
+          )}
+          {/* Binary / oversized branch — graceful escape hatch. */}
+          {!loading && mode === 'binary' && (
+            <BinaryFilePanel
+              fileName={filePath || title || 'file'}
+              detail={binaryDetail}
+              projectPath={projectPath}
+              projectName={projectName}
+              filePath={filePath}
+            />
+          )}
+          {!loading && mode === 'text' && (editing ? (
             <textarea
               ref={textareaRef}
               value={draft}

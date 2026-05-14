@@ -15,7 +15,7 @@ const API_ORIGIN = (() => {
     : '';
 })();
 
-const BASE = `${API_ORIGIN}/v1`;
+export const BASE = `${API_ORIGIN}/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
 async function req(path, options = {}) {
@@ -498,6 +498,24 @@ export async function readProjectFile(projectName, path) {
   // route would treat as a single literal segment).
   const safe = path.split('/').map(enc).join('/');
   return req(`/projects/${enc(projectName)}/files/${safe}`);
+}
+
+// HTML preview-mount for a project file — server registers the
+// parent dir under a token and returns a relative URL the iframe
+// should load with `src=`. Mirrors the artifact preview flow.
+export async function mountProjectFilePreview(projectName, path) {
+  return req(`/projects/preview-mount-file`, {
+    method: 'POST',
+    body: JSON.stringify({ name: projectName, path }),
+  });
+}
+
+// Absolute URL for downloading a project file's raw bytes. Server
+// sets `Content-Disposition: attachment` so browsers trigger a save
+// dialog rather than rendering inline.
+export function projectFileDownloadUrl(projectName, path) {
+  const safe = path.split('/').map(enc).join('/');
+  return `${BASE}/projects/${enc(projectName)}/files-raw/${safe}`;
 }
 
 export async function writeProjectFile(projectName, path, content) {

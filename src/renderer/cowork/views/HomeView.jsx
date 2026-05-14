@@ -203,7 +203,26 @@ function ActiveList({ tasks, onSelect, onClear }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {tasks.map((t) => (
-          <div key={t.id} className="task-row" onClick={() => onSelect(t.id)}>
+          <button
+            key={t.id}
+            type="button"
+            className="task-row"
+            onClick={() => onSelect(t.id)}
+            aria-label={t.title}
+            style={{
+              // Reset default <button> chrome so the row visually matches
+              // the prior <div> layout. Using <button> is required so the
+              // global `button { -webkit-app-region: no-drag }` rule takes
+              // effect — without it, the window-shell's outer drag region
+              // swallows mousedown and the onClick never fires.
+              border: 0,
+              background: 'transparent',
+              textAlign: 'left',
+              font: 'inherit',
+              color: 'inherit',
+              width: '100%',
+            }}
+          >
             <span
               className="pulse-dot"
               style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--primary-400)', marginTop: 7 }}
@@ -213,7 +232,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
               <div style={{ fontSize: 12, color: 'var(--frost-600)', marginTop: 2 }}>{t.subtitle}</div>
             </div>
             <span style={{ display: 'inline-flex', color: 'var(--frost-500)', marginTop: 4 }}>{Ico.chevRight(14)}</span>
-          </div>
+          </button>
         ))}
       </div>
     </div>

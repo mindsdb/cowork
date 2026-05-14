@@ -62,6 +62,11 @@ export default function Composer({
   // and `false` after a short idle window. The home view uses this
   // to wake up the OrbitMorph from idle while the user is typing.
   onTypingChange,
+  // Optional `{ text, bump }`. When `bump` changes, the composer's
+  // value resets to `text` and the textarea focuses. Used by Edit-
+  // and-resend on prior user messages; bump-based so repeated edits
+  // of the same text still re-fill the input.
+  prefill = null,
 }) {
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
@@ -121,6 +126,26 @@ export default function Composer({
     taRef.current.style.height = 'auto';
     taRef.current.style.height = Math.min(220, taRef.current.scrollHeight) + 'px';
   }, [value]);
+
+  // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
+  // text into the composer and focus the textarea so the user can
+  // immediately tweak + send. Guarded on `bump > 0` so the initial
+  // `{text: '', bump: 0}` doesn't clobber a draft on mount.
+  useEffect(() => {
+    if (!prefill || !prefill.bump) return;
+    setValue(prefill.text || '');
+    setError('');
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      try {
+        const end = (prefill.text || '').length;
+        ta.setSelectionRange(end, end);
+      } catch {}
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.bump]);
 
   useEffect(() => {
     const handler = (e) => {

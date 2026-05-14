@@ -148,10 +148,17 @@ export function WorkingFolderLive({ project, isStreaming }) {
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
   };
+  // Inline-previewable artifacts open the ArtifactViewer modal; the
+  // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
+  // the inline text path. Anything else falls through to the OS
+  // handler so the user's default app picks it up.
+  const _INLINE_PREVIEW_EXTS = ['.html', '.md', '.txt', '.csv'];
   const onOpenArtifact = (artifact) => {
-    const isHtml = (artifact.ext || '').toLowerCase() === '.html'
-      || (artifact.path || '').toLowerCase().endsWith('.html');
-    if (isHtml) {
+    const ext = (artifact.ext || '').toLowerCase();
+    const path = (artifact.path || '').toLowerCase();
+    const canPreview = _INLINE_PREVIEW_EXTS.includes(ext)
+      || _INLINE_PREVIEW_EXTS.some((e) => path.endsWith(e));
+    if (canPreview) {
       setPreviewArt(artifact);
     } else {
       onOpen(artifact.path);
