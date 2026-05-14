@@ -4468,30 +4468,34 @@ body[data-theme="dark"] .mshell__drawer-title {
   margin-bottom: 4px;
 }
 
-/* Inline `code` chip — accent-tinted so it pops out of any bubble
-   surface (user-message `--surface`, assistant flow `transparent`,
-   light mode `#FFF`). Tint is gentle in both themes; the thin border
-   carries most of the separation. */
+/* Inline `code` chip — Claude-style coral. Light coral foreground on a
+   gentle warm wash, thin warm outline. Hard-coded coral values (rather
+   than going through the cyan --accent ramp) because Claude's identity
+   for code-as-text is intentionally divergent from the cyan accent. */
 .anton-inline-code {
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: inherit;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface-3));
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  color: rgb(232, 132, 110);
+  background: rgba(232, 132, 110, 0.10);
+  border: 1px solid rgba(232, 132, 110, 0.20);
   border-radius: 4px;
   padding: 1px 5px;
   word-break: break-word;
 }
+body[data-theme="light"] .anton-inline-code {
+  /* Darker coral on light mode keeps AA contrast against the pale
+     bubble surface. */
+  color: rgb(168, 76, 60);
+  background: rgba(232, 132, 110, 0.14);
+  border-color: rgba(168, 76, 60, 0.25);
+}
 
 .anton-code-block {
   margin: 12px 0;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border: 1px solid var(--line);
   border-radius: 10px;
-  /* Same accent family as the header tint and the inline-code chip, so the
-     whole block reads as one cohesive accent-washed surface and pops out
-     of the surrounding bubble (which sits on plain `--surface`). */
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+  background: var(--surface-2);
   overflow: hidden;
   font-family: var(--font-mono);
 }
@@ -4501,32 +4505,35 @@ body[data-theme="dark"] .mshell__drawer-title {
    sits flush against the bubble's inner padding. */
 .markdown-content > .anton-code-block:first-child { margin-top: 0; }
 .markdown-content > .anton-code-block:last-child { margin-bottom: 0; }
+/* Header sits flush on the block body — no divider line, no tinted
+   background. Claude's pattern: language label in muted ink on the
+   left, single Copy icon on the right, both the same surface as the
+   code beneath. */
 .anton-code-block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px 6px 12px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface-3));
-  border-bottom: 1px solid var(--line);
+  padding: 10px 14px 4px;
+  background: transparent;
+  border-bottom: 0;
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   text-transform: lowercase;
   color: var(--ink-3);
 }
 .anton-code-block-lang {
-  /* `--accent-2` reads crisper on the header's accent-tinted background
-     than `--accent` itself (which competes with the wash); contrast
-     against the tint goes from ~5.2:1 up to ~6.8:1 on dark mode. */
-  color: var(--accent-2);
-  font-weight: 500;
+  color: var(--ink-3);
+  font-weight: 400;
 }
 .anton-code-block-copy {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
+  /* No text label visible — Claude shows the icon only. We keep the
+     label in the DOM for the aria-live announcement; CSS just hides it
+     visually (see .anton-code-block-copy-label below). */
+  padding: 4px 6px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -4537,13 +4544,25 @@ body[data-theme="dark"] .mshell__drawer-title {
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .anton-code-block-copy:hover {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--ink);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .anton-code-block-copy.is-copied {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: rgb(232, 132, 110);
+}
+/* Hide the visible "Copy" / "Copied" label; the icon carries the
+   affordance. The element stays in the DOM with aria-live="polite" so
+   screen readers still get the success announcement. */
+.anton-code-block-copy-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
 }
 .anton-code-block-copy-icon {
   display: inline-flex;
@@ -4592,11 +4611,11 @@ body[data-theme="dark"] .mshell__drawer-title {
 .anton-code-block .hljs-built_in,
 .anton-code-block .hljs-builtin-name { color: rgb(246, 199, 121); }
 .anton-code-block .hljs-comment,
-.anton-code-block .hljs-quote { color: var(--ink-4); font-style: italic; }
+.anton-code-block .hljs-quote { color: var(--ink-4); }
 .anton-code-block .hljs-title,
 .anton-code-block .hljs-title.class_,
 .anton-code-block .hljs-title.function_,
-.anton-code-block .hljs-section { color: rgb(82, 224, 240); }
+.anton-code-block .hljs-section { color: var(--ink); }
 .anton-code-block .hljs-name,
 .anton-code-block .hljs-tag,
 .anton-code-block .hljs-meta,

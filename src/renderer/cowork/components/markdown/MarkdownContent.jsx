@@ -39,8 +39,14 @@ const sanitizeSchema = {
 
 function _mergeInlineCodeLines(text) {
   if (!text || typeof text !== 'string') return text;
-  const INLINE_ONLY = /^`([^`\n]+)`$/;
-  const lines = text.split('\n');
+  // Trailing-whitespace tolerant: a line that's just `code` followed by
+  // any combination of spaces/tabs/CR (Windows line endings) still
+  // counts as an "inline only" line. Without the \s*$ the regex
+  // silently misses any message that crossed a CRLF transport.
+  const INLINE_ONLY = /^`([^`\n\r]+)`\s*$/;
+  // Split on either LF or CRLF so lines don't carry a trailing \r that
+  // breaks the $ anchor on the regex above.
+  const lines = text.split(/\r?\n/);
   const out = [];
   let i = 0;
   while (i < lines.length) {
