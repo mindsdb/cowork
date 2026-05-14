@@ -551,17 +551,23 @@ function ArtifactCard({ artifact, onOpen }) {
     statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
   };
 
-  // Match the Working folder card's behavior: HTML opens the in-app
-  // iframe viewer (so it can publish/unpublish + handle assets);
-  // anything else goes to the OS handler via the Electron bridge.
-  const isHtml = (artifact.ext || '').toLowerCase() === '.html'
-    || (path || '').toLowerCase().endsWith('.html');
+  // Match the Working folder card's behavior: HTML and text artifacts
+  // (.md/.txt/.csv) open the in-app viewer — HTML via sandboxed iframe,
+  // text via inline markdown / table / preformatted render. Anything
+  // else falls through to the OS handler via the Electron bridge.
+  const lcExt = (artifact.ext || '').toLowerCase();
+  const lcPath = (path || '').toLowerCase();
+  const isHtml = lcExt === '.html' || lcPath.endsWith('.html');
+  const _INLINE_TEXT_EXTS = ['.md', '.txt', '.csv'];
+  const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
+    || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
+  const canPreviewInline = isHtml || isInlineText;
   const handleOpen = async () => {
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
       return;
     }
-    if (isHtml && onOpen) {
+    if (canPreviewInline && onOpen) {
       onOpen(artifact);
       return;
     }
@@ -856,13 +862,15 @@ export default function ChatView({
   const railOverlayOpen = isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
-  // Inline ArtifactCard → viewer. HTML artifacts open in the in-app
-  // iframe modal (matching the Working folder card's behaviour); other
-  // types route through the Electron OS handler via openPath.
+  // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
+  // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
+  // but render via the inline text path (no iframe, no OS handoff).
+  // Anything else still routes through the Electron OS handler via
+  // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
   const handleArtifactOpen = (artifact) => {
-    // The card already routes non-HTML artifacts to the OS; this only
-    // fires for HTML, so we can dispatch straight to the viewer.
+    // The card already filters: it only calls onOpen for previewable
+    // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
