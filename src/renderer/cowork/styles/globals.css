@@ -4333,6 +4333,122 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: inherit;
 }
 
+/* Force unbreakable strings (URLs, file paths, hashes) to wrap inside
+   chat-rendered markdown. Tailwind's `break-words` (overflow-wrap:
+   break-word) only breaks once the word has already pushed the box,
+   which lets long URLs blow past the user-bubble's 78% width cap.
+   `anywhere` allows breaks before that overflow can happen. */
+.markdown-content {
+  overflow-wrap: anywhere;
+}
+
+/* ─── User message turn ────────────────────────────────────────────────
+   Refactored out of inline-style sprawl in ChatView.UserTurn. Layout
+   wrapper + bubble + hover-revealed action toolbar + attachment chip +
+   timestamp. Hover affordances are pure CSS (`:hover`) so the component
+   doesn't need useState flags any more. */
+.user-turn {
+  display: flex;
+  justify-content: flex-end;
+  position: relative;
+}
+.user-turn-inner {
+  max-width: 78%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  position: relative;
+}
+.user-turn-bubble {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px 18px;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
+  user-select: text;
+}
+/* Hover-revealed action toolbar — opacity transition replaces the three
+   JS useState flags the component used to carry. `right: -32px` parks the
+   buttons just outside the bubble's right edge. `has-meta` lifts the
+   button above the "you · time" line; `is-stacked` adds another row
+   when both Edit and Trash are visible. */
+.user-turn-action {
+  position: absolute;
+  right: -32px;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-4);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+.user-turn:hover .user-turn-action,
+.user-turn-action:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.user-turn-action:hover { color: var(--accent); }
+.user-turn-action--danger:hover { color: var(--danger); }
+.user-turn-action.has-meta { bottom: 18px; }
+.user-turn-action.is-stacked { bottom: 48px; }
+
+.user-turn-attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.user-turn-attachment-icon {
+  color: var(--ink-3);
+  display: inline-flex;
+}
+.user-turn-attachment-name { color: var(--ink); }
+.user-turn-attachment-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+.user-turn-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+}
+
+/* Heading scale inside user-message bubbles — MarkdownContent's defaults
+   (h1: 20px, h2: 17px) overpower the 14.5px bubble body when someone
+   sends `# Title`. Clamp them to body-adjacent sizes so the bubble keeps
+   a chat-message feel rather than a document banner. h3 is already
+   uppercase/small in MarkdownContent, no adjustment needed. */
+.user-turn .markdown-content h1 {
+  font-size: 16px;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+.user-turn .markdown-content h2 {
+  font-size: 15px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
 /* Inline `code` chip — accent-tinted so it pops out of any bubble
    surface (user-message `--surface`, assistant flow `transparent`,
    light mode `#FFF`). Tint is gentle in both themes; the thin border

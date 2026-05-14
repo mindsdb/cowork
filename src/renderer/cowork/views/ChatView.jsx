@@ -328,57 +328,28 @@ function userTurnAttachmentLabel(a) {
 }
 
 function UserTurn({ content, attachments, time, onDelete, onEdit }) {
-  const [hover, setHover] = useState(false);
-  const [trashHover, setTrashHover] = useState(false);
-  const [editHover, setEditHover] = useState(false);
-  // Stack the action buttons just outside the bubble's left edge.
-  // Edit is always available on user messages so the user can pull
-  // any prior prompt back into the composer to refine + resend
-  // (matches what Stop+resend currently requires manually). Trash
-  // stays orphan-only — paired user→answer cycles delete via the
-  // assistant's MessageActions to keep the gesture in one place.
-  const baseBtn = {
-    position: 'absolute',
-    left: -32,
-    width: 24, height: 24, borderRadius: 6,
-    background: 'transparent',
-    border: 0,
-    display: 'inline-grid', placeItems: 'center',
-    cursor: 'pointer',
-    transition: 'opacity 140ms ease, color 140ms ease',
-  };
+  // Hover affordances are CSS now (`.user-turn:hover .user-turn-action`),
+  // so no useState flags here. Edit/Trash stack just outside the bubble's
+  // right edge — user messages are right-aligned, so the toolbar belongs
+  // on the same side as the speaker (Linear / Slack DM pattern). The
+  // `has-meta` / `is-stacked` modifiers raise the buttons over the meta
+  // line and over each other when both are present.
+  const editClass =
+    'user-turn-action'
+    + (onDelete ? ' is-stacked' : (time ? ' has-meta' : ''));
+  const trashClass =
+    'user-turn-action user-turn-action--danger'
+    + (time ? ' has-meta' : '');
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'flex-end',
-        position: 'relative',
-      }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <div style={{
-        maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8,
-        alignItems: 'flex-end',
-        position: 'relative',
-      }}>
+    <div className="user-turn">
+      <div className="user-turn-inner">
         {onEdit && (
           <button
             type="button"
+            className={editClass}
             onClick={() => onEdit(content)}
-            onMouseEnter={() => setEditHover(true)}
-            onMouseLeave={() => setEditHover(false)}
             title="Edit and resend"
             aria-label="Edit and resend this message"
-            style={{
-              ...baseBtn,
-              // Above the trash slot when both are present; otherwise
-              // sit at the bottom edge.
-              bottom: (onDelete ? 48 : (time ? 18 : 0)),
-              color: editHover ? 'var(--accent)' : 'var(--ink-4)',
-              opacity: hover ? 1 : 0,
-              pointerEvents: hover ? 'auto' : 'none',
-            }}
           >
             {Ico.edit ? Ico.edit(13) : Ico.pencil ? Ico.pencil(13) : Ico.code(13)}
           </button>
@@ -386,60 +357,31 @@ function UserTurn({ content, attachments, time, onDelete, onEdit }) {
         {onDelete && (
           <button
             type="button"
+            className={trashClass}
             onClick={onDelete}
-            onMouseEnter={() => setTrashHover(true)}
-            onMouseLeave={() => setTrashHover(false)}
             title="Delete this message"
             aria-label="Delete this message"
-            style={{
-              ...baseBtn,
-              bottom: time ? 18 : 0,
-              color: trashHover ? 'var(--danger)' : 'var(--ink-4)',
-              opacity: hover ? 1 : 0,
-              pointerEvents: hover ? 'auto' : 'none',
-            }}
           >
             {Ico.trash(13)}
           </button>
         )}
-        <div style={{
-          background: T.surface,
-          border: `1px solid ${T.line}`,
-          borderRadius: 18,
-          padding: '14px 18px',
-          fontFamily: FONT_BODY,
-          fontSize: 14.5, lineHeight: 1.55, color: T.ink,
-          boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-          userSelect: 'text',
-        }}>
-          {/* User messages now flow through the same markdown pipeline as
+        <div className="user-turn-bubble">
+          {/* User messages flow through the same markdown pipeline as
               assistant turns so fenced code blocks, bold/italic, lists,
-              etc. typed in the composer render properly (previously we
-              dumped raw text under white-space: pre-wrap, which left
-              backslash-escaped backticks and inline ``` showing as
-              literal characters). */}
-          <MarkdownContent text={content} complete />
+              etc. typed in the composer render properly. */}
+          <MarkdownContent text={content} />
         </div>
         {attachments?.map((a) => (
-          <div key={a.id} style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: T.surface, border: `1px solid ${T.line}`,
-            borderRadius: 12, padding: '8px 12px',
-            fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink2,
-          }}>
-            <span style={{ color: T.ink3, display: 'inline-flex' }}>
+          <div key={a.id} className="user-turn-attachment">
+            <span className="user-turn-attachment-icon">
               {userTurnAttachmentIcon(a)}
             </span>
-            <span style={{ color: T.ink }}>{userTurnAttachmentLabel(a)}</span>
-            <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4 }}>
-              {userTurnAttachmentMeta(a)}
-            </span>
+            <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+            <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
           </div>
         ))}
         {time && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
-            you · {time}
-          </span>
+          <span className="user-turn-meta">you · {time}</span>
         )}
       </div>
     </div>
