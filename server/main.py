@@ -309,7 +309,7 @@ if ANTON_SERVE_SPA and SPA_DIR is not None:
     # they get correct MIME-types and range-request handling for free.
     # Any future top-level subdir of SPA_DIR that should be served must
     # be added to this tuple (or as its own dedicated mount).
-    for _sub in ("assets", "fonts", "gravity-field"):
+    for _sub in ("assets", "fonts", "gravity-field", "logos"):
         _sub_path = SPA_DIR / _sub
         if _sub_path.exists():
             app.mount(f"/{_sub}", StaticFiles(directory=str(_sub_path)), name=f"spa-{_sub}")
