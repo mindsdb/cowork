@@ -25,6 +25,7 @@ from harnesses.legacy_events import (
     normalize_legacy_payloads,
 )
 from runtime.artifacts import scan_updated_artifacts, snapshot_artifacts
+from runtime.artifact_events import TurnArtifactCollector, artifact_created_event
 from runtime.access import (
     build_access_policy,
     classify_resource,
@@ -249,6 +250,32 @@ class RuntimeSchemaTests(unittest.TestCase):
         self.assertEqual(len(artifacts), 1)
         self.assertEqual(artifacts[0]["title"], "Deck")
         self.assertTrue(artifacts[0]["path"].endswith("deck.md"))
+
+    def test_turn_artifact_collector_dedupes_harness_hints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "artifacts"
+            root.mkdir()
+            collector = TurnArtifactCollector(root)
+            folder = root / "deck"
+            folder.mkdir()
+            metadata = {
+                "name": "Deck",
+                "type": "document",
+                "primary": "deck.md",
+            }
+            (folder / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+            (folder / "README.md").write_text("# Deck", encoding="utf-8")
+            primary = folder / "deck.md"
+            primary.write_text("Hello", encoding="utf-8")
+
+            collector.note_event(artifact_created_event("turn_1", {
+                "title": "Deck",
+                "folder": str(folder),
+                "path": str(primary),
+            }))
+            events = collector.collect("turn_1")
+
+        self.assertEqual(events, [])
 
 
 class CoworkConversationStoreTests(unittest.TestCase):

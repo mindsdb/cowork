@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import AsyncIterator, Any
+from typing import AsyncIterator
 
 from anton_api import projects_store
 from harnesses.config import selected_harness_id
@@ -17,13 +16,13 @@ from .access import (
     current_approvals_mode,
     event_for_access_denied,
     event_for_approval,
-    event_for_artifact_ignored,
     file_resource_from_event,
     make_approval,
     preflight_resources,
 )
 from .approvals import approval_coordinator
-from .artifacts import ensure_artifact_root, scan_ignored_artifacts, scan_updated_artifacts, snapshot_artifacts
+from .artifact_events import TurnArtifactCollector
+from .artifacts import ensure_artifact_root
 from .events import cowork_event_to_legacy_sse, iter_sse_payloads
 from .inference import resolve_inference_profile, validate_inference_profile
 from .schemas import (
@@ -50,61 +49,6 @@ class RuntimeService:
 
     def _artifact_root(self, project_name: str) -> str:
         return str(ensure_artifact_root(projects_store.project_path(project_name)))
-
-    def _artifact_key(self, artifact: dict[str, Any]) -> str:
-        return str(artifact.get("folder") or artifact.get("path") or artifact.get("file_path") or artifact.get("id") or "")
-
-    def _artifact_event(self, turn_id: str, artifact: dict[str, Any]) -> CoworkEvent:
-        title = str(artifact.get("title") or artifact.get("name") or "Artifact")
-        legacy = {
-            "type": "response.in_progress",
-            "thought_role": "thought.progress",
-            "phase": "artifact",
-            "progress_status": "completed",
-            "message": f"Created artifact: {title}",
-            "content": title,
-            "artifact": artifact,
-        }
-        return CoworkEvent(
-            type="artifact.created",
-            turn_id=turn_id,
-            payload={
-                "legacy": legacy,
-                "legacy_type": "response.in_progress",
-                "label": title,
-                "status": "completed",
-                "artifact": artifact,
-            },
-        )
-
-    def _new_artifact_events(
-        self,
-        *,
-        turn_id: str,
-        artifact_root: str,
-        before: dict[str, float],
-        emitted: set[str],
-    ) -> list[CoworkEvent]:
-        events: list[CoworkEvent] = []
-        for artifact in scan_updated_artifacts(Path(artifact_root), before):
-            key = self._artifact_key(artifact)
-            if key and key in emitted:
-                continue
-            if key:
-                emitted.add(key)
-            events.append(self._artifact_event(turn_id, artifact))
-        for ignored in scan_ignored_artifacts(Path(artifact_root), before):
-            key = str(ignored.get("path") or "")
-            if key and key in emitted:
-                continue
-            if key:
-                emitted.add(key)
-            events.append(event_for_artifact_ignored(
-                turn_id,
-                key,
-                str(ignored.get("reason") or "Artifact metadata is invalid"),
-            ))
-        return events
 
     def _failed_event(self, turn_id: str, code: str, message: str) -> CoworkEvent:
         legacy = {"type": "response.failed", "code": code, "error": message}
@@ -326,8 +270,7 @@ class RuntimeService:
             runtime_options={"cowork_canonical": True},
         )
         terminal_seen = False
-        artifact_snapshot = snapshot_artifacts(Path(artifact_root))
-        emitted_artifacts: set[str] = set()
+        artifacts = TurnArtifactCollector(artifact_root)
         try:
             async for event in harness.start_turn(request):
                 conv = store.get(conv.id) or conv
@@ -347,30 +290,15 @@ class RuntimeService:
                     store.append_event(conv, turn.id, failed)
                     yield cowork_event_to_legacy_sse(failed)
                     return
-                if event.type == "artifact.created":
-                    artifact = event.payload.get("artifact")
-                    if isinstance(artifact, dict):
-                        key = self._artifact_key(artifact)
-                        if key:
-                            emitted_artifacts.add(key)
+                artifacts.note_event(event)
                 if event.type == "response.completed":
-                    for artifact_event in self._new_artifact_events(
-                        turn_id=turn.id,
-                        artifact_root=artifact_root,
-                        before=artifact_snapshot,
-                        emitted=emitted_artifacts,
-                    ):
+                    for artifact_event in artifacts.collect(turn.id):
                         store.append_event(conv, turn.id, artifact_event)
                         yield cowork_event_to_legacy_sse(artifact_event)
                     terminal_seen = True
                     store.finish_turn(conv, turn.id, "completed")
                 elif event.type == "response.failed":
-                    for artifact_event in self._new_artifact_events(
-                        turn_id=turn.id,
-                        artifact_root=artifact_root,
-                        before=artifact_snapshot,
-                        emitted=emitted_artifacts,
-                    ):
+                    for artifact_event in artifacts.collect(turn.id):
                         store.append_event(conv, turn.id, artifact_event)
                         yield cowork_event_to_legacy_sse(artifact_event)
                     terminal_seen = True
@@ -385,12 +313,7 @@ class RuntimeService:
         except Exception as exc:
             logger.exception("Cowork runtime turn failed")
             conv = store.get(conv.id) or conv
-            for artifact_event in self._new_artifact_events(
-                turn_id=turn.id,
-                artifact_root=artifact_root,
-                before=artifact_snapshot,
-                emitted=emitted_artifacts,
-            ):
+            for artifact_event in artifacts.collect(turn.id):
                 store.append_event(conv, turn.id, artifact_event)
                 yield cowork_event_to_legacy_sse(artifact_event)
             failed = self._failed_event(turn.id, "runtime_error", str(exc) or "Runtime error")
@@ -401,12 +324,7 @@ class RuntimeService:
         finally:
             if not terminal_seen:
                 conv = store.get(conv.id) or conv
-                for artifact_event in self._new_artifact_events(
-                    turn_id=turn.id,
-                    artifact_root=artifact_root,
-                    before=artifact_snapshot,
-                    emitted=emitted_artifacts,
-                ):
+                for artifact_event in artifacts.collect(turn.id):
                     store.append_event(conv, turn.id, artifact_event)
                 last = next((t for t in conv.turns if t.id == turn.id), None)
                 if last and last.status == "running":
