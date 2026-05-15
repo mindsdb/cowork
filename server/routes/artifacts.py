@@ -1,13 +1,13 @@
 """
 Artifacts — outputs Anton produces, surfaced to the user.
 
-Each artifact is a folder under `<project>/artifacts/<slug>/` — the
-same path Anton's `settings.artifacts_dir` resolves to at runtime
-(`base / "artifacts"`, see anton/workspace.py). The folder owns its
-`metadata.json` (Pydantic-validated source of truth) and `README.md`
-(rendered from metadata). Multi-file outputs (HTML + CSS + JS, app +
-dataset) cluster together; single-file outputs (document, image) live
-in their own folder anyway so provenance can attach.
+Each artifact is a folder under `<project>/.anton/artifacts/<slug>/` —
+the same path Anton's `settings.artifacts_dir` resolves to at runtime
+(`base / ".anton" / "artifacts"`, see anton/workspace.py). The folder
+owns its `metadata.json` (Pydantic-validated source of truth) and
+`README.md` (rendered from metadata). Multi-file outputs (HTML + CSS +
+JS, app + dataset) cluster together; single-file outputs (document,
+image) live in their own folder anyway so provenance can attach.
 
 This module:
   - Lists every artifact across registered projects, newest first.
@@ -155,13 +155,13 @@ def _registered_project_dirs() -> list[Path]:
 
 
 def _scan_artifact_dirs() -> list[Path]:
-    """Every registered project's `<base>/artifacts/` dir that exists.
+    """Every registered project's `<base>/.anton/artifacts/` dir that exists.
 
-    Matches Anton's runtime `settings.artifacts_dir` (defaults to
-    `<base>/artifacts`, see anton/config/settings.py:52). This must
-    stay in sync with where `create_artifact` actually writes —
-    sniffing `<base>/.anton/artifacts/` would leave new artifacts
-    invisible because the agent never puts anything there.
+    Matches Anton's runtime `settings.artifacts_dir`, which resolves to
+    `<base>/.anton/artifacts/` (see anton/workspace.py:38 — joined as
+    `_anton_dir / settings.artifacts_dir`). This must stay in sync with
+    where `create_artifact` actually writes; older builds wrote to
+    `<base>/artifacts/` — those are no longer scanned.
 
     Project paths are funnelled through `_registered_project_dirs`
     so a tampered projects-store entry (symlink pointing outside
@@ -174,7 +174,7 @@ def _scan_artifact_dirs() -> list[Path]:
     """
     dirs: dict[str, Path] = {}
     for project_dir in _registered_project_dirs():
-        candidate = project_dir / "artifacts"
+        candidate = project_dir / ".anton" / "artifacts"
         if candidate.is_dir():
             dirs[str(candidate.resolve())] = candidate
     return list(dirs.values())
@@ -188,7 +188,7 @@ def _iter_artifact_folders(project_path: str | None = None) -> Iterator[Path]:
     or user-stashed dirs the agent hasn't claimed).
 
     When `project_path` is provided, restrict the walk to that single
-    project's `<base>/artifacts/`. The argument arrives from
+    project's `<base>/.anton/artifacts/`. The argument arrives from
     an unauthenticated query parameter, so it's treated as untrusted:
     it must resolve to one of the directories in
     `_registered_project_dirs()` (allowlist match against the canonical
@@ -207,7 +207,7 @@ def _iter_artifact_folders(project_path: str | None = None) -> Iterator[Path]:
         registered = {p for p in _registered_project_dirs()}
         if requested not in registered:
             return
-        candidate = requested / "artifacts"
+        candidate = requested / ".anton" / "artifacts"
         if not candidate.is_dir():
             return
         roots = [candidate]
@@ -332,7 +332,7 @@ async def list_artifacts(project_path: str | None = Query(default=None)):
     about `path` / `kind` / `updated` keep working.
 
     `project_path` scopes the response to one project's
-    `<base>/artifacts/` tree. The rail card uses this so each
+    `<base>/.anton/artifacts/` tree. The rail card uses this so each
     project-detail mount doesn't pay for reading every other
     project's metadata.json.
     """
@@ -398,11 +398,12 @@ async def list_artifacts(project_path: str | None = Query(default=None)):
 
 
 def _candidate_relative_artifacts(raw_path: str) -> list[Path]:
-    """Resolve a relative path against every project's artifacts/ dir.
+    """Resolve a relative path against every project's `.anton/artifacts/` dir.
 
     Accepts any of:
-      - `<slug>/dashboard.html`        → matches `<base>/artifacts/<slug>/dashboard.html`
-      - `artifacts/<slug>/dashboard.html` (callers may include the prefix)
+      - `<slug>/dashboard.html`                      → matches `<base>/.anton/artifacts/<slug>/dashboard.html`
+      - `artifacts/<slug>/dashboard.html`            (legacy prefix, still tolerated)
+      - `.anton/artifacts/<slug>/dashboard.html`     (full-prefix form)
     """
     text = (raw_path or "").strip().replace("\\", "/")
     while text.startswith("./"):
@@ -410,7 +411,9 @@ def _candidate_relative_artifacts(raw_path: str) -> list[Path]:
     parts = [p for p in text.split("/") if p]
     if not text or any(p in (".", "..") for p in parts):
         raise HTTPException(status_code=400, detail="Invalid artifact path")
-    if text.startswith("artifacts/"):
+    if text.startswith(".anton/artifacts/"):
+        text = text[len(".anton/artifacts/"):]
+    elif text.startswith("artifacts/"):
         text = text[len("artifacts/"):]
     matches: dict[str, Path] = {}
     for art_root in _scan_artifact_dirs():
@@ -428,9 +431,9 @@ def _resolve_artifact_path(raw_path: str) -> Path:
     """Turn an artifact request path into an absolute path on disk.
 
     Accepts:
-      - Absolute paths under any registered project's `artifacts/` dir.
-      - Relative paths anchored at any artifact root (slug-prefixed or
-        with a leading `artifacts/`).
+      - Absolute paths under any registered project's `.anton/artifacts/` dir.
+      - Relative paths anchored at any artifact root (slug-prefixed, or
+        with a leading `artifacts/` / `.anton/artifacts/`).
     Path-traversal guarded; non-existent files yield 404.
     """
     # Reject null bytes, which are used in path injection attacks.
@@ -551,7 +554,7 @@ def _resolve_project_root(artifact_dir: Path) -> Path | None:
     """The registered project root that owns this artifact dir, if any.
 
     `artifact_dir` is the parent of the primary file (e.g.
-    `<project>/artifacts/<slug>/`). We walk back to the registered
+    `<project>/.anton/artifacts/<slug>/`). We walk back to the registered
     project root by checking ancestors against `_registered_project_dirs()`.
     Returns None when the dir isn't under any registered project — in
     which case auto-launch is a non-starter anyway.
