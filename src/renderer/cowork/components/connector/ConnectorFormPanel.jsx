@@ -26,6 +26,7 @@ const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 export default function ConnectorFormPanel({
   open,
   connector,        // full registry record { id, label, form, ... }
+  existingName,     // when set, save overwrites this connection instead of creating new
   onClose,          // user dismissed (cancel / close / esc)
   onSaved,          // saved successfully — host can refresh + close
 }) {
@@ -136,7 +137,7 @@ export default function ConnectorFormPanel({
     try {
       const payload = {
         engine: connector.id,
-        name: '',
+        name: existingName || '',
         authMethod: action.authMethod || null,
         credentials: action.values || {},
       };
