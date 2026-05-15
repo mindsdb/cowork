@@ -1,6 +1,12 @@
-// Anton /v1/responses → ThinkingStep adapter.
+// Cowork /v1/responses → ThinkingStep adapter.
 //
-// Anton's SSE stream emits one of three top-level event types:
+// The runtime owns canonical `cowork.event.v1` events. For UI
+// compatibility the server transports them through Responses-shaped SSE
+// payloads and stamps each payload with `cowork_event_type`. Older Anton
+// streams may omit that field, so this reducer still keeps the legacy
+// fallbacks below.
+//
+// Legacy Anton SSE streams emit one of these top-level event types:
 //
 //   response.created            — initial; carries response.id + conversation_id
 //   response.in_progress        — wraps everything during work; the
@@ -209,6 +215,9 @@ function bestEffortField(text, field) {
 export function reduceStream(state, event, now = Date.now) {
   if (!event || typeof event !== 'object') return state;
   const type = event.type;
+  const canonicalType = typeof event.cowork_event_type === 'string'
+    ? event.cowork_event_type
+    : null;
 
   // Wall-clock timestamp the server stamped on this event. Live
   // streams: equals (≈) Date.now() at arrival. Historical replays:
@@ -239,7 +248,7 @@ export function reduceStream(state, event, now = Date.now) {
     return addFailureStep(state, event, eventTs);
   }
 
-  if (type === 'response.output_text.delta') {
+  if (canonicalType === 'message.delta' || type === 'response.output_text.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta) return state;
     return { ...state, status: 'streaming', bodyText: state.bodyText + delta };
@@ -354,7 +363,7 @@ export function reduceStream(state, event, now = Date.now) {
     // Hermes emits Cowork-compatible generic progress events instead
     // of Anton scratchpad cells. Artifact events carry their payload
     // directly on the event, or as JSON in `content`.
-    if (phase === 'artifact') {
+    if (canonicalType === 'artifact.created' || phase === 'artifact') {
       const payload = (event.artifact && typeof event.artifact === 'object')
         ? event.artifact
         : safeJsonParse(content);
@@ -366,7 +375,15 @@ export function reduceStream(state, event, now = Date.now) {
       source: { badge: 'Source', label: event.source_path || progressMessage(event) || 'Source used' },
       approval: { badge: 'Approval', label: progressMessage(event) || 'Approval required' },
       access: { badge: 'Access', label: progressMessage(event) || 'Access denied' },
-    }[phase];
+    }[canonicalType === 'file.accessed'
+      ? 'file'
+      : canonicalType === 'source.used'
+        ? 'source'
+        : canonicalType && canonicalType.startsWith('approval.')
+          ? 'approval'
+          : canonicalType === 'access.denied'
+            ? 'access'
+            : phase];
     if (genericProgress) {
       const failed = progressStatus === 'failed' || Boolean(event.error);
       const completed = failed || progressStatus === 'completed' || progressStatus === 'done';
@@ -533,12 +550,15 @@ export function reduceStream(state, event, now = Date.now) {
       return { ...state, awaitingArtifactPayload: false };
     }
 
-    if (phase === 'tool') {
+    if ((canonicalType && canonicalType.startsWith('tool.')) || phase === 'tool') {
       const toolName = String(event.tool_name || event.tool || 'tool');
       const message = progressMessage(event);
       const label = message || toolName;
-      const failed = progressStatus === 'failed' || Boolean(event.error);
-      const completed = failed || progressStatus === 'completed' || progressStatus === 'done';
+      const failed = canonicalType === 'tool.failed' || progressStatus === 'failed' || Boolean(event.error);
+      const completed = failed
+        || canonicalType === 'tool.completed'
+        || progressStatus === 'completed'
+        || progressStatus === 'done';
       if (!completed) {
         const step = {
           id: `progress-${state.steps.length + 1}`,
@@ -605,7 +625,7 @@ export function reduceStream(state, event, now = Date.now) {
       };
     }
 
-    if (phase === 'reasoning') {
+    if (canonicalType === 'reasoning' || phase === 'reasoning') {
       const message = progressMessage(event);
       if (!message) return state;
       const step = {

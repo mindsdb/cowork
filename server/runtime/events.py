@@ -37,6 +37,8 @@ def _legacy_progress_payload(event: CoworkEvent) -> dict[str, Any] | None:
     base = {
         "type": "response.in_progress",
         "at_ms": event.at_ms,
+        "cowork_event_type": event.type,
+        "cowork_event_schema": event.schema_version,
         "thought_role": "thought.progress",
         "progress_status": status,
         "message": label,
@@ -118,7 +120,12 @@ def cowork_event_to_legacy_sse(event: CoworkEvent) -> str:
     legacy = event.payload.get("legacy")
     if isinstance(legacy, dict):
         event_name = str(legacy.get("type") or event.type)
-        return f"event: {event_name}\ndata: {json.dumps(legacy)}\n\n"
+        payload = {
+            **legacy,
+            "cowork_event_type": event.type,
+            "cowork_event_schema": event.schema_version,
+        }
+        return f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
 
     progress = _legacy_progress_payload(event)
     if progress is not None:
@@ -128,6 +135,8 @@ def cowork_event_to_legacy_sse(event: CoworkEvent) -> str:
         payload = {
             "type": "response.output_text.delta",
             "at_ms": event.at_ms,
+            "cowork_event_type": event.type,
+            "cowork_event_schema": event.schema_version,
             "delta": event.payload.get("delta") or "",
             **{k: v for k, v in event.payload.items() if k not in {"delta", "legacy", "legacy_type"}},
         }
@@ -137,6 +146,8 @@ def cowork_event_to_legacy_sse(event: CoworkEvent) -> str:
         payload = {
             "type": "response.failed",
             "at_ms": event.at_ms,
+            "cowork_event_type": event.type,
+            "cowork_event_schema": event.schema_version,
             "code": event.payload.get("code") or "cancelled",
             "error": event.payload.get("message") or "Response cancelled",
         }
@@ -145,6 +156,8 @@ def cowork_event_to_legacy_sse(event: CoworkEvent) -> str:
     payload = {
         "type": event.type,
         "at_ms": event.at_ms,
+        "cowork_event_type": event.type,
+        "cowork_event_schema": event.schema_version,
         **event.payload,
     }
     return f"event: {event.type}\ndata: {json.dumps(payload)}\n\n"

@@ -57,6 +57,8 @@ class RuntimeSchemaTests(unittest.TestCase):
         payloads = iter_sse_payloads(emitted)
         self.assertEqual(payloads[0][0], "response.output_text.delta")
         self.assertEqual(payloads[0][1]["delta"], "hello")
+        self.assertEqual(payloads[0][1]["cowork_event_type"], "message.delta")
+        self.assertEqual(payloads[0][1]["cowork_event_schema"], "cowork.event.v1")
 
     def test_canonical_event_schema_rejects_unknown_types(self) -> None:
         from pydantic import ValidationError
@@ -153,6 +155,7 @@ class RuntimeSchemaTests(unittest.TestCase):
         payloads = iter_sse_payloads(emitted)
         self.assertEqual(payloads[0][1]["type"], "response.in_progress")
         self.assertEqual(payloads[0][1]["phase"], "file")
+        self.assertEqual(payloads[0][1]["cowork_event_type"], "file.accessed")
 
     def test_access_policy_classifies_paths_and_actions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -221,8 +224,10 @@ class RuntimeSchemaTests(unittest.TestCase):
 
         self.assertEqual(approval_payload["phase"], "approval")
         self.assertEqual(approval_payload["approval_id"], approval.id)
+        self.assertEqual(approval_payload["cowork_event_type"], "approval.required")
         self.assertEqual(denied_payload["phase"], "access")
         self.assertEqual(denied_payload["progress_status"], "failed")
+        self.assertEqual(denied_payload["cowork_event_type"], "access.denied")
 
     def test_artifact_scan_uses_canonical_project_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
