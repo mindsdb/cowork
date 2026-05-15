@@ -19,6 +19,8 @@ from runtime.conversations import CoworkConversationStore
 from runtime.events import (
     cowork_event_to_legacy_sse,
     iter_sse_payloads,
+)
+from harnesses.legacy_events import (
     normalize_legacy_payload,
     normalize_legacy_payloads,
 )

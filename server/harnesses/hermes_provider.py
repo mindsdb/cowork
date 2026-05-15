@@ -40,8 +40,8 @@ from runtime.artifacts import (
 )
 from runtime.events import (
     iter_sse_payloads,
-    normalize_legacy_payloads,
 )
+from .legacy_events import normalize_legacy_payloads
 from runtime.inference import resolve_inference_profile
 from runtime.schemas import (
     CoworkEvent,

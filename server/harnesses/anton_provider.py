@@ -15,7 +15,8 @@ from anton_api.models import (
     ResponseOutputContent,
     ResponseStatus,
 )
-from runtime.events import iter_sse_payloads, normalize_legacy_payloads
+from runtime.events import iter_sse_payloads
+from .legacy_events import normalize_legacy_payloads
 from runtime.schemas import (
     CoworkEvent,
     HarnessCapabilities,
