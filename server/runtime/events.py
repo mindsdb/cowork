@@ -122,6 +122,7 @@ def cowork_event_to_legacy_sse(event: CoworkEvent) -> str:
         event_name = str(legacy.get("type") or event.type)
         payload = {
             **legacy,
+            "at_ms": legacy.get("at_ms", event.at_ms),
             "cowork_event_type": event.type,
             "cowork_event_schema": event.schema_version,
         }

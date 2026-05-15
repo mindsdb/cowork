@@ -58,6 +58,7 @@ class RuntimeSchemaTests(unittest.TestCase):
         payloads = iter_sse_payloads(emitted)
         self.assertEqual(payloads[0][0], "response.output_text.delta")
         self.assertEqual(payloads[0][1]["delta"], "hello")
+        self.assertEqual(payloads[0][1]["at_ms"], event.at_ms)
         self.assertEqual(payloads[0][1]["cowork_event_type"], "message.delta")
         self.assertEqual(payloads[0][1]["cowork_event_schema"], "cowork.event.v1")
 

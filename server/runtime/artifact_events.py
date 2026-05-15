@@ -76,7 +76,7 @@ class TurnArtifactCollector:
                 self.emitted.add(key)
             events.append(artifact_created_event(turn_id, artifact))
         for ignored in scan_ignored_artifacts(self.artifact_root, self.before):
-            key = str(ignored.get("path") or "")
+            key = artifact_key({"path": ignored.get("path") or ""})
             if key and key in self.emitted:
                 continue
             if key:
