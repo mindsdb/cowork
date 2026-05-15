@@ -2787,11 +2787,7 @@ function AppCore() {
               setConnectors(Array.isArray(next) ? next : [])}
             onOpenSettings={() => setRoute('settings')}
             onConnectNew={handleStartConnectChat}
-            // Modify is disabled for now — pass nothing through so the
-            // card's `canModify` check is false and the click affordance
-            // collapses to the existing Disconnect button only. The
-            // handler + supporting code stay in App.jsx untouched so
-            // re-enabling is a one-line prop pass-through.
+            onReconnect={(spec) => handleConnectorPicked(spec)}
           />
         )}
 

@@ -1100,7 +1100,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // Centralized publish — single source of truth for state updates,
   // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
   // command flow: POST → server zips, scrubs credentials, uploads to
-  // mdb.ai, persists report_id in `.published.json`. We then reflect
+  // MindsHub, persists report_id in `.published.json`. We then reflect
   // the returned URL into the local list so the UI flips to "Published"
   // without a refetch.
   const handlePublish = async (artifact) => {
@@ -1136,7 +1136,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     try {
       await unpublishArtifact(artifact.path);
       updateOne({ ...artifact, publishedUrl: '' });
-      setToast({ kind: 'ok', message: 'Unpublished from mdb.ai.' });
+      setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
     } finally {

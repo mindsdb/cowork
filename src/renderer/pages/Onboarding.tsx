@@ -26,7 +26,7 @@ const GEMINI_MODELS = [
 ];
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const MINDS_REGISTER_URL = 'https://mdb.ai/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fmdb.ai';
+const MINDS_REGISTER_URL = 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fconsole.mindshub.ai';
 
 const CUSTOM_MODEL = '__custom__';
 
@@ -63,7 +63,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [customModel, setCustomModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [llmApiKey, setLlmApiKey] = useState('');
-  const [mindsUrl, setMindsUrl] = useState('https://mdb.ai');
+  const [mindsUrl, setMindsUrl] = useState('https://api.mindshub.ai');
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');
@@ -467,7 +467,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
             className="provider-card-link"
             onClick={(e) => { e.stopPropagation(); host.openExternal(MINDS_REGISTER_URL); }}
           >
-            Get your first month free &rarr;
+            Get your first week free &rarr;
           </span>
         </div>
       </div>
@@ -582,7 +582,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
                 className="onboard-link"
                 onClick={() => host.openExternal(MINDS_REGISTER_URL)}
               >
-                Sign up at mdb.ai for a free month
+                Sign up at mindshub.ai for a free week
               </span>
             </div>
           )}

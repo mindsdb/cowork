@@ -448,7 +448,7 @@ function setupIPC() {
       if (provider === 'anthropic') {
         return validateAnthropic(apiKey, model || 'claude-sonnet-4-6');
       } else if (provider === 'minds') {
-        return validateMinds(apiKey, baseUrl || 'https://mdb.ai');
+        return validateMinds(apiKey, baseUrl || 'https://api.mindshub.ai');
       } else if (provider === 'openai-compatible') {
         return validateOpenAICompatible(apiKey, baseUrl || 'https://api.openai.com/v1', model);
       }

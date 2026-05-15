@@ -26,8 +26,8 @@ const PROVIDER_DEFAULTS = {
   openai:              { planning: 'gpt-5.4',           coding: 'gpt-5.4-mini' },
   gemini:              { planning: 'gemini-2.5-pro',    coding: 'gemini-2.5-flash' },
   'openai-compatible': { planning: '',                  coding: '' },
-  // Minds Cloud is the mdb.ai router's `latest:*` alias namespace. The
-  // router dispatches each alias to the actual upstream provider; the
+  // Minds Cloud is MindsHub's `latest:*` alias namespace. The router
+  // dispatches each alias to the actual upstream provider; the
   // (planning, coding) pair here mirrors `RECOMMENDED_PAIR['minds-cloud']`
   // on the server so switching to this preset auto-fills the same defaults
   // the backend would recommend.
@@ -112,7 +112,7 @@ function inferProviderPreset(s) {
   if (provider === 'openai') return 'openai';
   if (provider === 'openai-compatible') {
     if (baseUrl.startsWith('https://generativelanguage.googleapis.com/')) return 'gemini';
-    if (baseUrl.includes('mdb.ai') || baseUrl.endsWith(MINDS_API_PATH_SUFFIX) && (s.mindsApiKey || s.mindsUrl)) {
+    if (baseUrl.includes('mdb.ai') || baseUrl.includes('mindshub.ai') || baseUrl.endsWith(MINDS_API_PATH_SUFFIX) && (s.mindsApiKey || s.mindsUrl)) {
       return 'minds-cloud';
     }
     return 'openai-compatible';
@@ -154,7 +154,7 @@ function applyProviderPreset(preset, settings, setSetting) {
   } else if (preset === 'minds-cloud') {
     setSetting('planningProvider', 'openai-compatible');
     setSetting('codingProvider', 'openai-compatible');
-    const mindsUrl = (settings.mindsUrl || 'https://mdb.ai').replace(/\/+$/, '');
+    const mindsUrl = (settings.mindsUrl || 'https://api.mindshub.ai').replace(/\/+$/, '');
     setSetting('mindsUrl', mindsUrl);
     setSetting('openaiBaseUrl', `${mindsUrl}${MINDS_API_PATH_SUFFIX}`);
     if (settings.mindsApiKey && !settings.openaiApiKey) {
@@ -591,7 +591,7 @@ function SetBadge({ hasValue, active }) {
 const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
 
 const PROVIDER_TYPE_DESC = {
-  'minds-cloud': 'Routes via mdb.ai with smart model selection.',
+  'minds-cloud': 'Routes via MindsHub with smart model selection.',
   anthropic: 'Use Claude models with your Anthropic API key.',
   openai: 'Use GPT models with your OpenAI API key.',
   gemini: 'Use Gemini models through Google\'s OpenAI-compatible endpoint.',
@@ -599,7 +599,7 @@ const PROVIDER_TYPE_DESC = {
 };
 
 const GET_KEY_URL = {
-  'minds-cloud': 'https://mdb.ai/apiKeys',
+  'minds-cloud': 'https://console.mindshub.ai/api-key',
   anthropic: 'https://console.anthropic.com/settings/keys',
   openai: 'https://platform.openai.com/api-keys',
   gemini: 'https://aistudio.google.com/apikey',
@@ -612,7 +612,7 @@ function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
   if (type === 'openai-compatible') base.baseUrl = '';
   if (type === 'minds-cloud') {
-    base.mindsUrl = 'https://mdb.ai';
+    base.mindsUrl = 'https://api.mindshub.ai';
     base.mindsMindName = '';
     base.mindsDatasource = '';
     base.mindsDatasourceEngine = '';
@@ -1629,9 +1629,9 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       hasValue={has('mindsUrl')}
                     >
                       <ClearableTextInput
-                        value={settings.mindsUrl ?? 'https://mdb.ai'}
+                        value={settings.mindsUrl ?? 'https://api.mindshub.ai'}
                         onChange={(v) => setSetting('mindsUrl', v)}
-                        placeholder="https://mdb.ai"
+                        placeholder="https://api.mindshub.ai"
                       />
                     </CredentialRow>
                     <CredentialRow
