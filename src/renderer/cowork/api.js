@@ -27,7 +27,10 @@ async function req(path, options = {}) {
     let detail = '';
     try {
       const data = await res.json();
-      detail = data?.detail || data?.message || '';
+      const raw = data?.detail;
+      detail = Array.isArray(raw)
+        ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
+        : (raw || data?.message || '');
     } catch {
       detail = await res.text().catch(() => '');
     }

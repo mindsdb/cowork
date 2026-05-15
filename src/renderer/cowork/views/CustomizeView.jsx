@@ -11,7 +11,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import ConnectWorkflowView from './ConnectWorkflowView';
-import ConnectorFormPanel from '../components/connector/ConnectorFormPanel';
 import {
   PageHeader,
   FilterRow,
@@ -255,11 +254,10 @@ function MetaRow({ label, value }) {
 
 const VAULT_KEEP = '__anton_vault_keep__';
 
-function ConnectionDetailPanel({ connection, onClose, onDisconnect, onSaved }) {
+function ConnectionDetailPanel({ connection, onClose, onDisconnect }) {
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     if (!connection) return;
@@ -279,13 +277,40 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onSaved }) {
   if (!connection) return null;
 
   const secureKeys = new Set(saved?.secureKeys || []);
-  const fields = Object.entries(saved?.fields || {});
+  const vaultFields = saved?.fields || {};
+  const vaultKeys = new Set(Object.keys(vaultFields));
 
-  // Build a connector-like object for ConnectorFormPanel using the spec
-  // but with name locked to the existing connection so saving overwrites it.
-  const connectorForEdit = spec
-    ? { ...spec, _existingName: connection.name }
-    : null;
+  // Find the form method whose field names best overlap with the stored
+  // vault keys so we can supplement display with any expected-but-empty
+  // params (e.g. a 'username' field that was left blank when saving).
+  const methods = spec?.form?.methods || [];
+  let bestMethod = null, bestScore = -1;
+  for (const m of methods) {
+    const score = (m.fields || []).filter((f) => vaultKeys.has(f.name)).length;
+    if (score > bestScore) { bestScore = score; bestMethod = m; }
+  }
+  const specFields = bestMethod?.fields || spec?.form?.fields || [];
+  const specKeys = new Set(specFields.map((f) => f.name));
+
+  // Display list: spec fields in order (vault value where available),
+  // followed by any vault fields not covered by the spec.
+  const displayFields = [
+    ...specFields.map((f) => ({
+      key: f.name,
+      label: f.label || humanLabel(f.name),
+      value: vaultFields[f.name] ?? null,
+      isSecret: f.secret === true || f.type === 'password'
+        || secureKeys.has(f.name) || vaultFields[f.name] === VAULT_KEEP,
+    })),
+    ...Object.entries(vaultFields)
+      .filter(([k]) => !specKeys.has(k))
+      .map(([key, value]) => ({
+        key,
+        label: humanLabel(key),
+        value,
+        isSecret: secureKeys.has(key) || value === VAULT_KEEP,
+      })),
+  ];
 
   return (
     <>
@@ -375,7 +400,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onSaved }) {
               </div>
 
               {/* Credentials */}
-              {fields.length > 0 && (
+              {displayFields.length > 0 && (
                 <>
                   <div style={{
                     fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
@@ -388,35 +413,33 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onSaved }) {
                     border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden',
                     marginBottom: 20,
                   }}>
-                    {fields.map(([key, value], i) => {
-                      const isSecret = secureKeys.has(key) || value === VAULT_KEEP;
-                      return (
-                        <div
-                          key={key}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 10,
-                            padding: '10px 14px',
-                            background: 'var(--surface)',
-                            borderBottom: i < fields.length - 1 ? '1px solid var(--line)' : 'none',
-                          }}
-                        >
-                          <span style={{
-                            width: 120, flexShrink: 0,
-                            fontFamily: FONT_BODY, fontSize: 12,
-                            color: 'var(--ink-3)', fontWeight: 500,
-                          }}>
-                            {humanLabel(key)}
-                          </span>
-                          <span style={{
-                            flex: 1, fontFamily: FONT_MONO, fontSize: 12,
-                            color: isSecret ? 'var(--ink-4)' : 'var(--ink)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {isSecret ? '•••••••• saved' : (value || '—')}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {displayFields.map((f, i) => (
+                      <div
+                        key={f.key}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 14px',
+                          background: 'var(--surface)',
+                          borderBottom: i < displayFields.length - 1 ? '1px solid var(--line)' : 'none',
+                        }}
+                      >
+                        <span style={{
+                          width: 120, flexShrink: 0,
+                          fontFamily: FONT_BODY, fontSize: 12,
+                          color: 'var(--ink-3)', fontWeight: 500,
+                        }}>
+                          {f.label}
+                        </span>
+                        <span style={{
+                          flex: 1, fontFamily: FONT_MONO, fontSize: 12,
+                          color: f.isSecret ? 'var(--ink-4)' : (f.value ? 'var(--ink)' : 'var(--ink-4)'),
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          fontStyle: (!f.isSecret && !f.value) ? 'italic' : 'normal',
+                        }}>
+                          {f.isSecret ? '•••••••• saved' : (f.value || '—')}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
@@ -428,19 +451,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onSaved }) {
         <div style={{
           padding: '14px 20px',
           borderTop: '1px solid var(--line)',
-          display: 'flex', flexDirection: 'column', gap: 8,
           flexShrink: 0,
         }}>
-          {connectorForEdit && (
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => setEditOpen(true)}
-              style={{ width: '100%', justifyContent: 'center' }}
-            >
-              Update credentials
-            </button>
-          )}
           <button
             type="button"
             onClick={() => {
@@ -462,21 +474,6 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onSaved }) {
           </button>
         </div>
       </div>
-
-      {/* Edit credentials overlay */}
-      {connectorForEdit && (
-        <ConnectorFormPanel
-          open={editOpen}
-          connector={connectorForEdit}
-          existingName={connection.name}
-          onClose={() => setEditOpen(false)}
-          onSaved={(_saved, latest) => {
-            setEditOpen(false);
-            onSaved?.(latest);
-            onClose();
-          }}
-        />
-      )}
     </>
   );
 }
@@ -686,13 +683,6 @@ export default function CustomizeView({
           onDisconnect={async (conn) => {
             await handleDelete(conn);
             setSelectedConn(null);
-          }}
-          onSaved={(latest) => {
-            if (latest) {
-              const next = Array.isArray(latest) ? latest : (latest.connections || []);
-              setList(next);
-              onConnectionsSyncedRef.current?.(next);
-            }
           }}
         />
       )}
