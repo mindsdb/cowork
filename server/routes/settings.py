@@ -466,7 +466,31 @@ def _load_providers() -> list[dict[str, Any]]:
     migrated = _providers_from_env()
     if migrated:
         try:
-            update_state(lambda s: s.setdefault("preferences", {}).update({"providers": migrated}))
+            pref_update: dict[str, Any] = {"providers": migrated}
+            # When onboarding writes env vars for a non-MindsHub provider
+            # (OpenAI, Anthropic, Gemini, custom), the Settings UI would
+            # show MindsHub as the "active" provider in default modelMode,
+            # making the correct provider's dot grey and its key look unset.
+            # Persist custom modelMode + overrides so the right row is marked
+            # active on first Settings open, without requiring a manual Save.
+            default_p = next((p for p in migrated if p.get("isDefault")), migrated[0] if migrated else None)
+            if default_p and default_p["type"] != "minds-cloud":
+                ptype = default_p["type"]
+                env_planning = _get_env("ANTON_PLANNING_MODEL", "")
+                env_coding = _get_env("ANTON_CODING_MODEL", env_planning)
+                pref_update["modelMode"] = "custom"
+                pref_update["modelOverrides"] = {
+                    "planning": {"providerType": ptype, "model": env_planning},
+                    "coding":   {"providerType": ptype, "model": env_coding},
+                }
+            # Onboarding validates keys before saving them, so seed
+            # providerStatus as "ok" for every migrated provider that has a
+            # key. This avoids a grey "untested" dot on the first Settings
+            # open — the user just validated the key a moment ago.
+            seeded_status = {p["type"]: "ok" for p in migrated if p.get("apiKey")}
+            if seeded_status:
+                pref_update["providerStatus"] = seeded_status
+            update_state(lambda s: s.setdefault("preferences", {}).update(pref_update))
         except Exception as e:
             logger.debug("Could not persist migrated providers: %s", e)
     return migrated
