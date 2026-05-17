@@ -220,17 +220,67 @@ async def _google_token_refresh_loop() -> None:
         await asyncio.sleep(30 * 60)  # every 30 minutes
 
 
+async def _turn_buffer_gc_loop():
+    """Phase 5 — periodic sweep of old turn buffer files.
+
+    Stream buffers are a UI replay log, not the canonical history,
+    so an aggressive age-out policy is safe. Default of 30 days keeps
+    "I closed my laptop for a week" reconnect cases working while
+    not letting the streams tree grow without bound.
+    """
+    from anton_api.turn_buffer import gc_old_buffers as _gc_buffers
+    sweep_every_sec = 6 * 3600  # every 6 hours
+    max_age_days = int(os.environ.get("ANTON_STREAM_GC_MAX_AGE_DAYS", "30"))
+    # First sweep happens after the initial delay so startup stays
+    # fast; the boot-sweep below already handled crash-recovery.
+    while True:
+        await asyncio.sleep(sweep_every_sec)
+        try:
+            for proj in projects_store.list_projects():
+                streams_root = Path(proj["path"]) / ".anton" / "streams"
+                _gc_buffers(streams_root, max_age_days=max_age_days)
+        except Exception:
+            logger.debug("Stream-buffer GC sweep failed", exc_info=True)
+
+
+def _seal_orphan_buffers_on_boot():
+    """Phase 4 — sweep buffer files left open by the previous run.
+
+    A producer crash (SIGKILL, app force-quit, OS reboot) leaves
+    JSONL files without a terminal record. On reconnect, a tail
+    reader would block forever waiting for events that will never
+    come. We append a synthetic ``Interrupted`` record to each
+    orphan so readers see a clean end-of-stream and the renderer
+    can decide whether to surface "the task was interrupted" or
+    silently move on.
+    """
+    from anton_api.turn_buffer import seal_orphan_buffers
+    try:
+        for proj in projects_store.list_projects():
+            streams_root = Path(proj["path"]) / ".anton" / "streams"
+            seal_orphan_buffers(streams_root)
+    except Exception:
+        logger.warning("Boot-time orphan-buffer sweep failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     projects_store.ensure_general_project()
+    # Phase 4: heal any turn buffers left open by a previous crash
+    # BEFORE we start accepting requests, so a returning client never
+    # tails an already-dead producer's file expecting more events.
+    _seal_orphan_buffers_on_boot()
     start_scheduler()
     refresh_task = asyncio.create_task(_google_token_refresh_loop())
+    # Phase 5: periodic GC of old turn buffers.
+    gc_task = asyncio.create_task(_turn_buffer_gc_loop())
     yield
-    refresh_task.cancel()
-    try:
-        await refresh_task
-    except asyncio.CancelledError:
-        pass
+    for t in (refresh_task, gc_task):
+        t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
     await conversation_manager.close_all()
     await scratchpad_runtime.close_all()
 

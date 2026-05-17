@@ -33,8 +33,9 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
-         deleteProject, cancelScratchpad, fetchConnector,
-         fetchSavedConnection, deleteDatasource } from './api';
+         deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
+         fetchSavedConnection, deleteDatasource,
+         fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
@@ -180,9 +181,20 @@ const RUNNING_STEP_STATUSES = new Set([
 //      fresh one. This is renderer-side only; it never goes to the
 //      server (anton's history stays clean) and it gets replaced as
 //      soon as the user sends their next message.
-function reconcileTaskMessages(messages, isLive) {
+function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
   if (!Array.isArray(messages)) return messages;
-  if (isLive) return messages; // legitimate in-flight, leave alone
+  if (isLive) return messages; // legitimate in-flight (local), leave alone
+  // If the server says this conversation's producer is still running,
+  // we're about to (re)attach via tailInFlight — DON'T inject the
+  // "things stopped before I wrapped up" continuation prompt. The
+  // live stream will materialize within ~50ms via the reconnect
+  // path; showing the stopped message first would be both wrong
+  // AND flicker.
+  //
+  // Step-cleanup (RUNNING_STEP_STATUSES → completed) is also skipped
+  // here: those steps may still be progressing under the live tail
+  // and we don't want to prematurely flag them done.
+  if (isServerInFlight) return messages;
   const hadStreaming = messages.some((m) => m && m.role === '_streaming');
   // Pass 1 — strip _streaming + activity placeholders, mark
   // running steps as completed. Each rewritten message gets a flag
@@ -584,6 +596,97 @@ function AppCore() {
   const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
+
+  // Cross-client sync cache (Option B). Conversations that have an
+  // in-flight producer task on the server, regardless of which client
+  // started them. Synchronously consulted by reconcileTaskMessages so
+  // the "things stopped before I wrapped up" prompt never appears for
+  // a conversation that's actually still running.
+  //
+  // Kept fresh by four signals:
+  //   1. App boot — initial fetch.
+  //   2. Window focus — every return from another tab/window/client.
+  //   3. Heartbeat — every 5s, but ONLY while the set is non-empty.
+  //      (No polling when nothing's in flight; idle tabs cost zero.)
+  //   4. Local mutation — markInFlight / markInFlightDone fire when
+  //      this tab itself starts / finishes a stream, so we beat any
+  //      server round-trip for our own activity.
+  const [inFlightSet, setInFlightSet] = useState(() => new Set());
+  const inFlightSetRef = useRef(inFlightSet);
+  useEffect(() => { inFlightSetRef.current = inFlightSet; }, [inFlightSet]);
+
+  const refreshInFlightSet = useCallback(async () => {
+    const items = await fetchInFlightList();
+    const ids = items.map((it) => it.conversation_id).filter(Boolean);
+    setInFlightSet((prev) => {
+      // Diff: if the server says a cid is GONE but we had it, the
+      // stream just finished from elsewhere — that's the signal to
+      // refetch that conversation's messages so the UI catches up.
+      const next = new Set(ids);
+      const finished = [...prev].filter((cid) => !next.has(cid));
+      if (finished.length > 0) {
+        // Defer the refetch so we don't synchronously trigger a
+        // re-render storm.
+        setTimeout(() => {
+          finished.forEach((cid) => {
+            fetchSession(cid).then((fresh) => {
+              if (!fresh || !Array.isArray(fresh.messages)) return;
+              setTasks((tasksPrev) => tasksPrev.map((t) => {
+                if (t.id !== cid) return t;
+                const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
+                const enriched = mergeConvTurns(cid, fromServer);
+                return { ...t, messages: reconcileTaskMessages(enriched, false, false), status: 'idle' };
+              }));
+            }).catch(() => {});
+          });
+        }, 0);
+      }
+      return next;
+    });
+  }, []);
+
+  const markInFlight = useCallback((cid) => {
+    if (!cid) return;
+    setInFlightSet((prev) => {
+      if (prev.has(cid)) return prev;
+      const next = new Set(prev);
+      next.add(cid);
+      return next;
+    });
+  }, []);
+
+  const markInFlightDone = useCallback((cid) => {
+    if (!cid) return;
+    setInFlightSet((prev) => {
+      if (!prev.has(cid)) return prev;
+      const next = new Set(prev);
+      next.delete(cid);
+      return next;
+    });
+  }, []);
+
+  // Boot-time hydration of the in-flight set + focus-event refresh.
+  // Must come AFTER `refreshInFlightSet` is declared — the deps array
+  // is evaluated at render time and would TDZ-throw otherwise.
+  useEffect(() => {
+    refreshInFlightSet();
+    const onFocus = () => { refreshInFlightSet(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshInFlightSet]);
+
+  // Heartbeat poll — every 5 seconds, but ONLY while the set is
+  // non-empty. When nothing's in flight, an idle tab makes zero
+  // background HTTP calls. When something IS in flight, the poll
+  // catches the "the other client just finished it" case for
+  // multi-monitor users who can see both windows at once and don't
+  // generate a focus event to trigger a manual refresh.
+  useEffect(() => {
+    if (inFlightSet.size === 0) return undefined;
+    const timer = setInterval(() => { refreshInFlightSet(); }, 5000);
+    return () => clearInterval(timer);
+  }, [inFlightSet.size, refreshInFlightSet]);
+
   const enqueueMessage = (taskId, text) => {
     const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text };
     setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
@@ -616,13 +719,35 @@ function AppCore() {
     // remove the user turn anyway (delete flow), so the placeholder
     // would just flash on screen for a frame before being pruned.
     const silent = opts?.silent === true;
+    // Snapshot the conversation_id BEFORE we clear the ref — we need
+    // it for the server-side cancel call below.
+    const cidToCancel = activeStreamingTaskIdRef.current;
     // 1) Cancel the running scratchpad (if any) so anton stops
     //    executing user code mid-cell.
     const padName = activeScratchpadRef.current;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
-    // 2) Abort the SSE fetch so the renderer stops accumulating events.
+    // 2) Phase 3 — explicit server-side cancel. Under the Phase 1
+    //    producer/consumer split, aborting the SSE fetch alone no
+    //    longer halts the underlying turn; we have to signal the
+    //    producer task directly. Fire-and-forget: we don't await it
+    //    on the user-facing path because local state teardown is what
+    //    the user actually sees. The producer's CancelledError branch
+    //    handles history finalize + buffer Cancelled terminal.
+    if (cidToCancel) {
+      cancelResponse(cidToCancel).catch(() => { /* idempotent */ });
+      // Cache: we just told the server to cancel, so this conversation
+      // is no longer "in flight" from our point of view. The fetch
+      // abort below will short-circuit the SSE consumer before its
+      // onDone/onError fires, so we can't rely on those to update the
+      // cache — drop the mark here.
+      markInFlightDone(cidToCancel);
+    }
+    // 3) Abort the SSE fetch so the renderer stops accumulating events.
+    //    With Phase 1 this is only consumer-side cleanup; the producer
+    //    is unaffected (good when the user closes a tab, also OK here
+    //    because step 2 already told the producer to stop).
     const ctrl = activeStreamCtrlRef.current;
     if (ctrl) {
       try { ctrl.abort(); } catch {}
@@ -694,6 +819,65 @@ function AppCore() {
   // means the collapse affordance is hidden in those views too.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { isMobile, isNarrow } = useBreakpoint();
+
+  // iOS Safari (and Android Chrome) auto-zoom the page in when a text
+  // input with font-size < 16px gets focus, and don't zoom back out
+  // when it loses focus / the form is submitted — the user is left
+  // viewing a permanently-magnified app after sending a chat message.
+  //
+  // Rather than bumping every input to 16px on mobile (which would
+  // distort the composer's design metrics), we toggle the viewport
+  // meta tag around text-input focus: locking `maximum-scale=1` on
+  // focusin prevents the zoom from happening, restoring the original
+  // value on focusout returns pinch-zoom to the user for the rest of
+  // the app. Net effect matches "auto-dezoom after submit" without
+  // any visible zoom flash.
+  useEffect(() => {
+    if (!isMobile) return undefined;
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return undefined;
+    const original = meta.getAttribute('content') || '';
+    const ZOOM_LOCK = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+
+    // Only the input types that actually trigger iOS auto-zoom — skip
+    // checkboxes / dates / file pickers / buttons (no text caret, no
+    // zoom). contenteditable surfaces count too.
+    const SKIP_INPUT_TYPES = new Set([
+      'button', 'submit', 'reset', 'image', 'file',
+      'checkbox', 'radio', 'range', 'color',
+      'date', 'time', 'datetime-local', 'month', 'week',
+    ]);
+    const isTextInput = (el) => {
+      if (!el || el.nodeType !== 1) return false;
+      const tag = el.tagName;
+      if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (tag === 'INPUT') {
+        const t = (el.type || 'text').toLowerCase();
+        return !SKIP_INPUT_TYPES.has(t);
+      }
+      return !!el.isContentEditable;
+    };
+
+    const onFocusIn = (e) => {
+      if (isTextInput(e.target)) meta.setAttribute('content', ZOOM_LOCK);
+    };
+    const onFocusOut = (e) => {
+      if (!isTextInput(e.target)) return;
+      // Defer the restore one tick — restoring synchronously can race
+      // with iOS committing the blur and leave the viewport stuck at
+      // the zoomed scale on some iOS versions.
+      setTimeout(() => meta.setAttribute('content', original), 0);
+    };
+
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+      meta.setAttribute('content', original);
+    };
+  }, [isMobile]);
+
   // On narrow screens (< 900px), sidebar is a slide-over overlay — track open state separately.
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Routes where the user can collapse the sidebar. Currently:
@@ -1144,6 +1328,109 @@ function AppCore() {
     );
   }, [route, currentTask?.id]);
 
+  // Phase 2 reconnect — when the user opens a conversation whose
+  // turn is still running server-side (closed-tab-and-came-back, or
+  // opened from another window), re-attach to the producer's buffer
+  // and resume the live stream. Idempotent + cheap on the no-op
+  // path: a single GET /responses/in-flight probe, then nothing if
+  // there's no live producer.
+  //
+  // Mirrors handleSendInTask's stream handlers verbatim — duplication
+  // tolerated to keep this surgery contained. (A shared
+  // buildStreamHandlers() refactor is a fine follow-up once both
+  // paths have stabilised.)
+  const reconnectInFlight = useCallback(async (taskId) => {
+    if (!taskId) return false;
+    // Already tailing locally — second-mount of the same task should
+    // not double up.
+    if (activeStreamingTaskIdRef.current === taskId && activeStreamCtrlRef.current) {
+      return true;
+    }
+    let status;
+    try {
+      status = await fetchInFlightStatus(taskId);
+    } catch {
+      return false;
+    }
+    if (!status || !status.in_flight) return false;
+
+    // Cache sync: the probe just confirmed the producer is alive.
+    // Mark it now so any concurrent reconcile (e.g. switching to a
+    // sibling tab) sees the right state without needing its own probe.
+    markInFlight(taskId);
+
+    let assistantContent = '';
+    let streamState = initialStreamState();
+
+    const flushStreaming = () => {
+      setTasks((prev) => prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
+        return { ...t, status: 'active', messages: [...msgs, {
+          role: '_streaming',
+          content: streamState.bodyText || assistantContent,
+          steps: streamState.steps,
+          startedAt: streamState.startedAt,
+          streamStatus: streamState.status,
+        }] };
+      }));
+    };
+
+    activeStreamingTaskIdRef.current = taskId;
+    activeStreamCtrlRef.current = tailInFlight(taskId, {
+      fromSeq: 0, // Replay from the start — the reducer is idempotent
+                  // over text deltas, and from_seq=0 keeps the rebuild
+                  // simple. A per-task last-seen-seq optimisation is
+                  // possible later if we see network overhead.
+      onEvent(ev) {
+        streamState = reduceStream(streamState, ev);
+        const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
+        if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
+        flushSync(() => flushStreaming());
+      },
+      onChunk(chunk) { assistantContent += chunk; },
+      onDone() {
+        activeStreamCtrlRef.current = null;
+        activeScratchpadRef.current = null;
+        activeStreamingTaskIdRef.current = null;
+        markInFlightDone(taskId);
+        const finalContent = streamState.bodyText || assistantContent;
+        const finalSteps = streamState.steps;
+        const finalStartedAt = streamState.startedAt;
+        let assistantTurnIndex = 0;
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== taskId) return t;
+          const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+          assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
+          return finalContent
+            ? { ...t, status: 'idle', messages: [...msgs, {
+                role: 'assistant',
+                content: finalContent,
+                steps: finalSteps,
+                startedAt: finalStartedAt,
+              }] }
+            : { ...t, status: 'idle', messages: msgs };
+        }));
+        if (finalContent) {
+          persistTurnState(taskId, assistantTurnIndex, finalSteps, finalStartedAt);
+        }
+        fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
+      },
+      onError(message, event) {
+        activeStreamCtrlRef.current = null;
+        activeScratchpadRef.current = null;
+        activeStreamingTaskIdRef.current = null;
+        markInFlightDone(taskId);
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== taskId) return t;
+          const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+          return { ...t, status: 'error', messages: [...msgs, { role: 'error', content: message || 'Anton could not complete this task.', code: event?.code }] };
+        }));
+      },
+    });
+    return true;
+  }, [markInFlight, markInFlightDone]);
+
   const selectTask = (id) => {
     if (isNarrow) setMobileSidebarOpen(false);
     const task = tasks.find((t) => t.id === id);
@@ -1166,6 +1453,13 @@ function AppCore() {
         && activeStreamingTaskIdRef.current === id
       );
 
+      // Cross-client cache (Option B): when the server says this
+      // conversation's producer is still running, skip the "things
+      // stopped" continuation prompt. The reconnect path below will
+      // attach to the live tail within ~50ms; showing the stopped
+      // message in between would flicker.
+      const isServerInFlight = inFlightSetRef.current.has(id);
+
       // If this task didn't get its messages preloaded (we only fan
       // out to the recent N at startup), fetch them now so the chat
       // view doesn't render empty.
@@ -1181,7 +1475,7 @@ function AppCore() {
           //      created before the server sidecar shipped.
           const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
           const enriched = mergeConvTurns(id, fromServer);
-          const reconciled = reconcileTaskMessages(enriched, isLive);
+          const reconciled = reconcileTaskMessages(enriched, isLive, isServerInFlight);
           const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
           setTasks((prev) => prev.map((t) =>
             t.id === id ? {
@@ -1198,13 +1492,19 @@ function AppCore() {
           if (t.id !== id) return t;
           const fromServer = hydrateMessagesFromServerEvents(t.messages);
           const enriched = mergeConvTurns(id, fromServer);
-          return { ...t, messages: reconcileTaskMessages(enriched, isLive) };
+          return { ...t, messages: reconcileTaskMessages(enriched, isLive, isServerInFlight) };
         }));
       }
     }
     setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
+    // Phase 2 reconnect — fire-and-forget. If a turn is still running
+    // server-side for this conversation (closed-tab-came-back, or
+    // opened from another tab/device), this re-attaches the live SSE
+    // stream and replays from seq 0. Cheap no-op when the producer
+    // isn't running.
+    reconnectInFlight(id).catch(() => { /* probe failures are silent */ });
   };
 
   const newTask = () => {
@@ -1904,6 +2204,11 @@ function AppCore() {
     // Synchronous reservation so a second invocation that fires
     // before our awaits resolve sees us as "in flight."
     activeStreamingTaskIdRef.current = id;
+    // Cross-client cache: we know this conversation is about to be
+    // mid-stream. Marking immediately (rather than waiting for the
+    // /in-flight-list poll to discover it) means reconcileTaskMessages
+    // never has to lie when another tab opens this conversation.
+    markInFlight(id);
 
     const disabledForSend = normalizeComposerDisabledConnections(composerDisabledConnections);
 
@@ -1993,6 +2298,7 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        markInFlightDone(id);
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -2027,6 +2333,7 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        markInFlightDone(id);
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
