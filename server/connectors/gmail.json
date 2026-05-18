@@ -35,7 +35,7 @@
         "description": "Opens Google sign-in in your browser. No credentials required — just click Connect.",
         "recommended": true,
         "fields": [],
-        "hidden": true
+        "hidden": false
       },
       {
         "id": "oauth",
