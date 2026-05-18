@@ -490,10 +490,17 @@ async def _slack_adapter_factory() -> ChannelAdapter | None:
     else:
         candidates = ["default"]
 
-    # SLACK_APP_TOKEN is app-level (not workspace-scoped). Pull from env so
-    # any per-workspace bridge picks it up automatically and starts Socket
-    # Mode. Falls back through ~/.anton/.env via _slack_env_value.
+    # SLACK_APP_TOKEN and SLACK_SIGNING_SECRET are app-level (not
+    # workspace-scoped). Pull both from env so any per-workspace bridge
+    # picks them up automatically — the app token starts Socket Mode, the
+    # signing secret lets the webhook route verify inbound events. Both
+    # fall back through ~/.anton/.env via _slack_env_value. The signing
+    # secret is what the Configure panel writes (as the plain
+    # SLACK_SIGNING_SECRET key, not DS_SLACK_<ACCOUNT>__SIGNING_SECRET), so
+    # without this overlay a panel-only (no-OAuth) setup would have no
+    # signing secret and reject every webhook delivery with a 401.
     app_token = _slack_env_value("SLACK_APP_TOKEN")
+    signing_secret = _slack_env_value("SLACK_SIGNING_SECRET")
 
     for name in candidates:
         fields: dict[str, str] = {}
@@ -506,6 +513,8 @@ async def _slack_adapter_factory() -> ChannelAdapter | None:
         fields.update(load_channel_secrets("slack", name))
         if app_token:
             fields["app_token"] = app_token
+        if signing_secret:
+            fields["signing_secret"] = signing_secret
         if fields.get("bot_token") and fields.get("signing_secret"):
             logger.info(
                 "SlackBridge factory selected account=%s (socket=%s)",
