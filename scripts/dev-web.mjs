@@ -16,7 +16,7 @@ let viteChild = null;
 let shuttingDown = false;
 
 async function main() {
-  process.stdout.write(`⧖ Waiting for Anton server on :${SERVER_PORT}…`);
+  process.stdout.write(`⧖ Waiting for cowork-server on :${SERVER_PORT}…`);
 
   // Heartbeat: one dot per 500ms while we wait for /health. Health
   // probes run every 250ms inside start-server.mjs; emitting one dot
@@ -33,13 +33,13 @@ async function main() {
   }
   clearInterval(heartbeat);
   process.stdout.write('\n');
-  console.log(`✓ Anton server ready on :${SERVER_PORT}`);
+  console.log(`✓ cowork-server ready on :${SERVER_PORT}`);
 
   // Bail loudly if the server dies after we've handed off to Vite.
   // We don't auto-restart — let the developer re-run.
   onUnexpectedExit((code) => {
     if (shuttingDown) return;
-    console.error(`✗ Anton server exited unexpectedly (code ${code}). Re-run \`npm run dev:web\`.`);
+    console.error(`✗ cowork-server exited unexpectedly (code ${code}). Re-run \`npm run dev:web\`.`);
     if (viteChild) { try { viteChild.kill('SIGTERM'); } catch {} }
     process.exit(1);
   });
