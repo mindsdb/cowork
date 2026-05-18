@@ -473,7 +473,7 @@ def _load_providers() -> list[dict[str, Any]]:
             # making the correct provider's dot grey and its key look unset.
             # Persist custom modelMode + overrides so the right row is marked
             # active on first Settings open, without requiring a manual Save.
-            default_p = next((p for p in migrated if p.get("isDefault")), migrated[0] if migrated else None)
+            default_p = next((p for p in migrated if p.get("isDefault")), migrated[0])
             if default_p and default_p["type"] != "minds-cloud":
                 ptype = default_p["type"]
                 env_planning = _get_env("ANTON_PLANNING_MODEL", "")
