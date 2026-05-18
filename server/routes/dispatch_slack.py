@@ -167,16 +167,18 @@ class SlackBridge(ChatBridgeBase):
     # Webhook plumbing — the FastAPI route delegates to these
     # -----------------------------------------------------------------
 
-    async def dispatch_webhook_events(self, events: list[InboundEvent]) -> None:
-        """Forward parsed events to the router via the cached ``ChannelSetup``."""
+    def dispatch_webhook_events(self, events: list[InboundEvent]) -> None:
+        """Forward parsed events to the router in the background.
+
+        Returns immediately so the webhook route can ACK Slack within its
+        ~3 s Events API budget — a slow ACK makes Slack retry the delivery,
+        which would run (and reply from) the agent twice. Routing happens
+        via :meth:`ChatBridgeBase.schedule_inbound`.
+        """
         if self._setup is None:
             logger.warning("SlackBridge received events before setup completed")
             return
-        for event in events:
-            try:
-                await self._setup.on_inbound(event)
-            except Exception:
-                logger.exception("router.on_inbound raised for slack event %s", event.message.id)
+        self.schedule_inbound(events, self._setup.on_inbound)
 
     # -----------------------------------------------------------------
     # ChatBridgeBase abstracts
@@ -769,5 +771,5 @@ async def slack_events(request: Request):
 
     events = await adapter.parse_inbound(body=body, headers=headers_lower)
     if events:
-        await adapter.dispatch_webhook_events(events)
+        adapter.dispatch_webhook_events(events)
     return {"ok": True, "events": len(events)}

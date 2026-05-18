@@ -558,12 +558,10 @@ async def discord_interactions(request: Request):
         return {"type": 1}
 
     events = await adapter.parse_inbound(body=body, headers=headers_lower)
-    for event in events:
-        try:
-            if adapter._setup is not None:
-                await adapter._setup.on_inbound(event)
-        except Exception:
-            logger.exception("discord interactions: on_inbound failed")
+    # Dispatch in the background so the deferred ACK below is returned within
+    # Discord's 3 s interaction budget instead of waiting on the agent run.
+    if events and adapter._setup is not None:
+        adapter.schedule_inbound(events, adapter._setup.on_inbound)
 
     # type=5 → DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE (ephemeral). Tells Discord
     # "I'll send the real response via follow-up" so the 3-second budget

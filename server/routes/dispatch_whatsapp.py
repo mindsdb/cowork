@@ -487,12 +487,11 @@ async def whatsapp_webhook(request: Request):
         logger.exception("whatsapp webhook: parse_inbound failed")
         return Response(content="parse error", status_code=200)
 
-    for event in events:
-        try:
-            if adapter._setup is not None:
-                await adapter._setup.on_inbound(event)
-        except Exception:
-            logger.exception("whatsapp webhook: on_inbound failed")
+    # Dispatch in the background so the 200 is sent immediately — Meta
+    # retries aggressively on a slow response, and a retry replays every
+    # message in the envelope (duplicate agent runs + replies).
+    if events and adapter._setup is not None:
+        adapter.schedule_inbound(events, adapter._setup.on_inbound)
 
     return {"ok": True, "events": len(events)}
 

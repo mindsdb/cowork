@@ -126,6 +126,11 @@ class ChatBridgeBase(ABC):
         self.secrets = dict(secrets)
         if max_text_length is not None:
             self.max_text_length = max_text_length
+        # Strong references to in-flight background dispatch tasks spawned by
+        # :meth:`schedule_inbound`. asyncio only holds weak refs to tasks, so
+        # without this set a fire-and-forget routing task could be garbage
+        # collected mid-run.
+        self._inbound_tasks: set[asyncio.Task[Any]] = set()
 
     # -----------------------------------------------------------------
     # Abstract surface — subclasses implement
@@ -230,6 +235,40 @@ class ChatBridgeBase(ABC):
             f"channel {self.channel_type!r} does not support open_dm; "
             f"override the method on the bridge to enable DM-opening"
         )
+
+    # -----------------------------------------------------------------
+    # Background inbound dispatch
+    # -----------------------------------------------------------------
+
+    def schedule_inbound(self, events: list[Any], on_inbound) -> None:
+        """Route parsed inbound events to the router without blocking the caller.
+
+        Webhook routes call this so the HTTP handler can ACK the platform
+        immediately. Slack's Events API allows ~3 s before it retries a
+        delivery, and WhatsApp retries aggressively on a slow or non-2xx
+        response — a retry means the agent runs (and replies) twice.
+        Awaiting ``on_inbound`` inline couples the ACK to the full agent
+        run, so each event is instead routed in its own background task.
+
+        A strong reference to every task is held in :attr:`_inbound_tasks`
+        until it finishes (asyncio keeps only weak refs to tasks). Exceptions
+        are logged inside the task, never raised here — by the time
+        ``on_inbound`` runs the webhook response has already been sent.
+        """
+        for event in events:
+            task = asyncio.create_task(self._run_inbound(on_inbound, event))
+            self._inbound_tasks.add(task)
+            task.add_done_callback(self._inbound_tasks.discard)
+
+    async def _run_inbound(self, on_inbound, event: Any) -> None:
+        """Await one ``on_inbound`` call, swallowing + logging any failure."""
+        try:
+            await on_inbound(event)
+        except Exception:
+            logger.exception(
+                "router.on_inbound raised for %s inbound event",
+                self.channel_type,
+            )
 
     # -----------------------------------------------------------------
     # Secret access — never default missing required fields to ""

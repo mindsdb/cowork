@@ -627,12 +627,10 @@ async def telegram_webhook(request: Request):
         # Always return 200 so Telegram doesn't retry indefinitely.
         return Response(content="parse error", status_code=200)
 
-    for event in events:
-        try:
-            if adapter._setup is not None:
-                await adapter._setup.on_inbound(event)
-        except Exception:
-            logger.exception("telegram webhook: on_inbound failed")
+    # Dispatch in the background so the 200 is sent immediately — a slow
+    # response makes Telegram retry the delivery (duplicate agent run).
+    if events and adapter._setup is not None:
+        adapter.schedule_inbound(events, adapter._setup.on_inbound)
 
     return Response(content="ok", status_code=200)
 
