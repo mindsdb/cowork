@@ -16,10 +16,18 @@ interface InstallerOptions {
   shouldAbort?: () => boolean;
 }
 
+// Pinned cowork-server version. Bump this deliberately when shipping a
+// cowork release that requires backend changes. The installer will
+// install exactly this version so frontend and backend stay in sync.
+const COWORK_SERVER_VERSION = '0.1.0';
+
 // Package source for cowork-server. Override with COWORK_SERVER_PACKAGE
 // env var (e.g. a local path or alternative git URL during development).
+// When using the default git source, the version pin is appended as a
+// git tag (e.g. @v0.1.0). When publishing to PyPI, change the default
+// to just 'cowork-server' and the version pin becomes ==0.1.0.
 const COWORK_SERVER_PACKAGE = process.env.COWORK_SERVER_PACKAGE
-  || 'git+https://github.com/mindsdb/cowork-server.git';
+  || `git+https://github.com/mindsdb/cowork-server.git@v${COWORK_SERVER_VERSION}`;
 
 function getSteps(): InstallStep[] {
   const steps: InstallStep[] = [];
@@ -385,13 +393,13 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     // Step 3: Install cowork-server
     if (abortIfRequested()) return false;
     setStep('cowork-server', 'running');
-    sendLog(win, '\n--- Installing cowork-server ---\n');
+    sendLog(win, `\n--- Installing cowork-server v${COWORK_SERVER_VERSION} ---\n`);
 
     const uvBin = fileExists(getUvBinary()) ? getUvBinary() : 'uv';
     const installArgs = [
       'tool', 'install',
       COWORK_SERVER_PACKAGE,
-      '--force', '--reinstall', '--upgrade',
+      '--force', '--reinstall',
     ];
 
     const installResult = await runCommand(uvBin, installArgs, win, { shouldAbort });
