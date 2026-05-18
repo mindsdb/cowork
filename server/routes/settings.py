@@ -88,7 +88,7 @@ RECOMMENDED_PAIR = {
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 OPENAI_BASE_URL = "https://api.openai.com/v1"
-MINDS_API_PATH_SUFFIX = "/api/v1"
+MINDS_API_PATH_SUFFIX = "/v1"
 
 OPENAI_FAMILY = ("openai", "gemini", "openai-compatible", "minds-cloud")
 
@@ -993,12 +993,12 @@ async def _ping_provider(p: dict[str, Any]) -> tuple[str, str]:
             if not key:
                 return "fail", "missing API key"
             base = (p.get("mindsUrl") or "https://api.mindshub.ai").rstrip("/")
-            # MindsHub exposes `/api/v1/minds/` as the auth-checked list
+            # MindsHub exposes `/v1/minds/` as the auth-checked list
             # endpoint (the OpenAI-compatible `/models` route 401s even
             # for valid keys). This matches the URL used by the Electron
             # main process's validateMinds helper.
             return await _check(
-                f"{base}/api/v1/minds/",
+                f"{base}/v1/minds/",
                 {"Authorization": f"Bearer {key}"},
             )
     except httpx.HTTPError as e:
@@ -1192,7 +1192,7 @@ def _validate_minds(api_key: str, base_url: str) -> dict[str, Any]:
         base = base_url.rstrip("/")
         with httpx.Client(http2=True, timeout=15) as client:
             resp = client.get(
-                f"{base}/api/v1/minds/",
+                f"{base}/v1/minds/",
                 headers={"Authorization": f"Bearer {api_key}"},
             )
         if resp.status_code in (401, 403):

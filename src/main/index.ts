@@ -136,7 +136,7 @@ async function validateMinds(
   try {
     // First check the minds API is reachable
     const base = baseUrl.replace(/\/+$/, '');
-    const mindsUrl = base + '/api/v1/minds/';
+    const mindsUrl = base + '/v1/minds/';
     const res = await httpRequest(mindsUrl, {
       method: 'GET',
       headers: {
