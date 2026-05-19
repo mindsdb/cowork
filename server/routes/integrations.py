@@ -301,9 +301,17 @@ def _clear_google_oauth_pending(**updates: Any) -> dict[str, Any]:
 GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
-def _google_oauth_config() -> dict[str, str | bool]:
-    client_id = GOOGLE_CLIENT_ID.strip()
-    client_secret = GOOGLE_CLIENT_SECRET.strip()
+GOOGLE_DRIVE_CLIENT_ID     = os.environ.get("GOOGLE_DRIVE_CLIENT_ID", "")     or GOOGLE_CLIENT_ID
+GOOGLE_DRIVE_CLIENT_SECRET = os.environ.get("GOOGLE_DRIVE_CLIENT_SECRET", "") or GOOGLE_CLIENT_SECRET
+GOOGLE_CALENDAR_CLIENT_ID     = os.environ.get("GOOGLE_CALENDAR_CLIENT_ID", "")     or GOOGLE_CLIENT_ID
+GOOGLE_CALENDAR_CLIENT_SECRET = os.environ.get("GOOGLE_CALENDAR_CLIENT_SECRET", "") or GOOGLE_CLIENT_SECRET
+GMAIL_CLIENT_ID     = os.environ.get("GMAIL_CLIENT_ID", "")     or GOOGLE_CLIENT_ID
+GMAIL_CLIENT_SECRET = os.environ.get("GMAIL_CLIENT_SECRET", "") or GOOGLE_CLIENT_SECRET
+
+
+def _make_oauth_config(client_id: str, client_secret: str) -> dict[str, str | bool]:
+    client_id = client_id.strip()
+    client_secret = client_secret.strip()
     ready = bool(client_id and client_secret
                  and client_id != "YOUR_CLIENT_ID_HERE"
                  and client_secret != "YOUR_CLIENT_SECRET_HERE")
@@ -315,8 +323,12 @@ def _google_oauth_config() -> dict[str, str | bool]:
     }
 
 
+def _google_oauth_config() -> dict[str, str | bool]:
+    return _make_oauth_config(GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET)
+
+
 def _google_calendar_oauth_config() -> dict[str, str | bool]:
-    return _google_oauth_config()
+    return _make_oauth_config(GOOGLE_CALENDAR_CLIENT_ID, GOOGLE_CALENDAR_CLIENT_SECRET)
 
 
 def _google_calendar_oauth_meta() -> dict[str, Any]:
@@ -441,10 +453,6 @@ def refresh_google_oauth_tokens() -> None:
     import logging
     log = logging.getLogger("integrations.token-refresh")
 
-    oauth_config = _google_oauth_config()
-    if not oauth_config["ready"]:
-        return
-
     try:
         from anton.core.datasources.data_vault import LocalDataVault
         vault = LocalDataVault()
@@ -473,6 +481,16 @@ def refresh_google_oauth_tokens() -> None:
         if not refresh_token:
             continue
 
+        cfg = {
+            GOOGLE_DRIVE_ENGINE: _google_oauth_config,
+            GOOGLE_CALENDAR_ENGINE: _google_calendar_oauth_config,
+            GMAIL_ENGINE: _gmail_oauth_config,
+        }.get(engine, _google_oauth_config)()
+        if not cfg["ready"]:
+            continue
+        client_id = str(cfg["client_id"])
+        client_secret = str(cfg["client_secret"])
+
         expires_at_str = fields.get("expires_at", "").strip()
         if expires_at_str:
             try:
@@ -489,8 +507,8 @@ def refresh_google_oauth_tokens() -> None:
                 data={
                     "grant_type": "refresh_token",
                     "refresh_token": refresh_token,
-                    "client_id": str(oauth_config["client_id"]),
-                    "client_secret": str(oauth_config["client_secret"]),
+                    "client_id": client_id,
+                    "client_secret": client_secret,
                 },
             )
             new_access_token = str(token_data.get("access_token", "")).strip()
@@ -665,7 +683,6 @@ async def start_google_drive_oauth():
                 "redirect_uri": redirect_uri,
                 "response_type": "code",
                 "access_type": "offline",
-                "include_granted_scopes": "true",
                 "prompt": "consent",
                 "scope": " ".join(GOOGLE_DRIVE_OAUTH_SCOPES),
                 "state": state,
@@ -918,7 +935,6 @@ async def start_google_calendar_oauth():
                 "redirect_uri": redirect_uri,
                 "response_type": "code",
                 "access_type": "offline",
-                "include_granted_scopes": "true",
                 "prompt": "consent",
                 "scope": " ".join(GOOGLE_CALENDAR_OAUTH_SCOPES),
                 "state": state,
@@ -1073,7 +1089,7 @@ async def google_calendar_oauth_callback(
 # ── Gmail OAuth ──────────────────────────────────────────────────────────────
 
 def _gmail_oauth_config() -> dict[str, str | bool]:
-    return _google_oauth_config()
+    return _make_oauth_config(GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET)
 
 
 def _gmail_redirect_uri() -> str:
@@ -1191,7 +1207,6 @@ async def start_gmail_oauth():
                 "redirect_uri": redirect_uri,
                 "response_type": "code",
                 "access_type": "offline",
-                "include_granted_scopes": "true",
                 "prompt": "consent",
                 "scope": " ".join(GMAIL_OAUTH_SCOPES),
                 "state": state,
