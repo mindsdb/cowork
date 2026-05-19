@@ -35,6 +35,8 @@ GOOGLE_DRIVE_OAUTH_SCOPES = (
     "openid",
     "email",
     "profile",
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive",
 )
 GOOGLE_OAUTH_STATE_KEY = "google_drive_oauth"
@@ -44,6 +46,8 @@ GOOGLE_CALENDAR_OAUTH_SCOPES = (
     "openid",
     "email",
     "profile",
+    "https://www.googleapis.com/auth/calendar.events.readonly",
+    "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/calendar",
 )
 GOOGLE_CALENDAR_OAUTH_STATE_KEY = "google_calendar_oauth"
@@ -53,6 +57,8 @@ GMAIL_OAUTH_SCOPES = (
     "openid",
     "email",
     "profile",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/gmail.modify",
 )
 GMAIL_OAUTH_STATE_KEY = "gmail_oauth"
