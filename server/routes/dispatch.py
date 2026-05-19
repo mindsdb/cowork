@@ -155,12 +155,6 @@ async def start_dispatch() -> None:
         return
 
     try:
-        from anton.core.dispatch.adapter import (
-            ChannelSetup,
-            InboundEvent,
-            ActionResponse,
-            PlatformAddress,
-        )
         from anton.core.dispatch.local_runtime import LocalScratchpadOrchestrator
         from anton.core.dispatch.registry import init_channel_adapters
         from anton.core.dispatch.router import DispatchRouter
@@ -186,15 +180,8 @@ async def start_dispatch() -> None:
     )
     router = DispatchRouter(repo=repo, runtime=orchestrator)
 
-    def _setup_for(adapter: Any) -> ChannelSetup:
-        return ChannelSetup(
-            on_inbound=router.on_inbound,
-            on_metadata=_noop_metadata,
-            on_action_response=getattr(router, "handle_action_response", _noop_action),
-        )
-
     try:
-        await init_channel_adapters(_setup_for)
+        await init_channel_adapters(_make_setup_factory(router))
     except Exception:
         logger.exception("channel adapter init failed; dispatch will run without channels")
 
@@ -234,6 +221,63 @@ async def stop_dispatch() -> None:
         logger.debug("channel adapter shutdown failed", exc_info=True)
 
     _router = None
+
+
+def _make_setup_factory(router: Any):
+    """Build the ``setup_factory`` that ``init_channel_adapters`` expects.
+
+    Each adapter is handed a :class:`ChannelSetup` wired to the shared
+    router. Extracted to module scope so both :func:`start_dispatch` and
+    :func:`reload_dispatch` build adapters the same way.
+    """
+    from anton.core.dispatch.adapter import ChannelSetup
+
+    def _setup_for(adapter: Any) -> Any:
+        return ChannelSetup(
+            on_inbound=router.on_inbound,
+            on_metadata=_noop_metadata,
+            on_action_response=getattr(router, "handle_action_response", _noop_action),
+        )
+
+    return _setup_for
+
+
+async def reload_dispatch() -> list[str]:
+    """Re-initialize channel adapters from current credentials.
+
+    Lets the UI apply saved or cleared channel credentials without a server
+    restart: every live adapter is stopped, then the registry factories are
+    re-run — they re-read the vault + env on each call, so a freshly
+    configured channel comes online and a disconnected one stays down. The
+    router, orchestrator, and delivery loop are left running untouched.
+
+    Returns the channel types active after the reload.
+    """
+    if _router is None:
+        # Dispatch never came up this process (anton missing at boot, a
+        # prior failure, ...) — a reload is then just a first start.
+        await start_dispatch()
+    else:
+        try:
+            from anton.core.dispatch.registry import (
+                init_channel_adapters,
+                shutdown_channel_adapters,
+            )
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=503, detail=f"dispatch module unavailable: {exc}"
+            ) from exc
+        await shutdown_channel_adapters()
+        try:
+            await init_channel_adapters(_make_setup_factory(_router))
+        except Exception:
+            logger.exception("dispatch reload: channel adapter init failed")
+
+    try:
+        from anton.core.dispatch.registry import get_active_adapters
+        return sorted(a.channel_type for a in get_active_adapters())
+    except Exception:
+        return []
 
 
 async def _noop_metadata(addr: Any, meta: dict) -> None:
@@ -544,6 +588,18 @@ async def disconnect_all_channels():
         for channel_type in sorted(_credential_clearers)
     ]
     return {"disconnected": results}
+
+
+@router.post("/reload")
+async def reload_channels():
+    """Re-initialize every channel adapter from current credentials.
+
+    Applies channel config changes (saved or cleared) live, without a
+    server restart — a just-configured channel comes online, a
+    disconnected one stays down. Returns the channel types now active.
+    """
+    active = await reload_dispatch()
+    return {"reloaded": True, "active_channels": active}
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import {
   fetchWhatsAppConfig,
   fetchWirings,
   getApiOrigin,
+  reloadDispatch,
   saveDiscordConfig,
   saveSlackConfig,
   saveTelegramConfig,
@@ -754,43 +755,69 @@ export default function DispatchView() {
   const [disconnectBusy, setDisconnectBusy] = useState({});
   const [clearingAll, setClearingAll] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  // True while a load is in flight — drives the Refresh button's disabled +
+  // "Refreshing…" state so a click gives visible feedback.
+  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  // Re-fetch dispatch state into the view. Used after local mutations
+  // (wiring removed, channel disconnected) that already changed the server.
+  const refetch = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
-      const [s, c, w, mg, configEntries] = await Promise.all([
-        fetchDispatchStatus(),
-        fetchDispatchChannels(),
-        fetchWirings(),
-        fetchMessagingGroups(),
-        // Load every channel's config generically from the registry — a new
-        // client is picked up here without touching this effect.
-        Promise.all(
-          Object.entries(CHANNEL_REGISTRY).map(
-            async ([type, { fetchConfig }]) => [type, await fetchConfig()],
+      try {
+        const [s, c, w, mg, configEntries] = await Promise.all([
+          fetchDispatchStatus(),
+          fetchDispatchChannels(),
+          fetchWirings(),
+          fetchMessagingGroups(),
+          // Load every channel's config generically from the registry — a new
+          // client is picked up here without touching this effect.
+          Promise.all(
+            Object.entries(CHANNEL_REGISTRY).map(
+              async ([type, { fetchConfig }]) => [type, await fetchConfig()],
+            ),
           ),
-        ),
-      ]);
-      if (cancelled) return;
-      setStatus(s);
-      // CLI is built-in plumbing — hide it from the UI.
-      const visible = c.filter((entry) => entry.type !== 'cli');
-      const types = new Set(visible.map((x) => x.type));
-      // Surface every channel we ship a panel for, even before adapter
-      // registration completes, so credentials can be entered first.
-      if (!types.has('whatsapp')) visible.push({ type: 'whatsapp', registered: false, active: false });
-      if (!types.has('discord'))  visible.push({ type: 'discord',  registered: false, active: false });
-      if (!types.has('telegram')) visible.unshift({ type: 'telegram', registered: false, active: false });
-      if (!types.has('slack'))    visible.unshift({ type: 'slack',    registered: false, active: false });
-      setChannels(visible);
-      setWirings(w);
-      setMessagingGroups(mg);
-      setConfigByType(Object.fromEntries(configEntries));
+        ]);
+        if (cancelled) return;
+        setStatus(s);
+        // Channel cards are driven by CHANNEL_REGISTRY: its keys are the
+        // canonical set + order, so the card list is stable across reloads
+        // (no order jumping) and a new client appears automatically. Live
+        // server data is merged in per type; a placeholder fills the gap
+        // before adapter registration completes. CLI is built-in plumbing,
+        // so any server channel without a registry entry is dropped.
+        const byType = new Map(
+          c.filter((entry) => entry.type !== 'cli').map((entry) => [entry.type, entry]),
+        );
+        const visible = Object.keys(CHANNEL_REGISTRY).map(
+          (type) => byType.get(type) ?? { type, registered: false, active: false },
+        );
+        setChannels(visible);
+        setWirings(w);
+        setMessagingGroups(mg);
+        setConfigByType(Object.fromEntries(configEntries));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [refreshKey]);
+
+  // The Refresh button: re-initialize the channel adapters from current
+  // credentials (so a just-saved channel comes online and a disconnected
+  // one drops), then re-fetch the refreshed state.
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      await reloadDispatch();
+    } catch (err) {
+      window.alert(err.message);
+    }
+    refetch();
+  }, [refetch]);
 
   // Update one channel's cached config after its panel saves.
   const setChannelConfig = useCallback((type, next) => {
@@ -836,7 +863,7 @@ export default function DispatchView() {
   const removeWiring = async (mgId, agId) => {
     try {
       await deleteWiring(mgId, agId);
-      refresh();
+      refetch();
     } catch (err) {
       window.alert(err.message);
     }
@@ -851,7 +878,7 @@ export default function DispatchView() {
     setDisconnectBusy((s) => ({ ...s, [channelType]: true }));
     try {
       await disconnectChannel(channelType);
-      refresh();
+      refetch();
     } catch (err) {
       window.alert(err.message);
     } finally {
@@ -867,7 +894,7 @@ export default function DispatchView() {
     setClearingAll(true);
     try {
       await disconnectAllChannels();
-      refresh();
+      refetch();
     } catch (err) {
       window.alert(err.message);
     } finally {
@@ -911,8 +938,14 @@ export default function DispatchView() {
                 {Ico.powerOff(14)}
                 <span>{clearingAll ? 'Clearing…' : 'Clear all connections'}</span>
               </button>
-              <button type="button" className="btn-secondary" onClick={refresh}>
-                Refresh
+              <button
+                type="button"
+                className="btn-secondary dispatch-btn-refresh"
+                onClick={refresh}
+                disabled={loading || clearingAll}
+                title="Reload channel adapters from current credentials and refresh state"
+              >
+                {loading ? 'Refreshing…' : 'Refresh'}
               </button>
             </div>
           </header>
@@ -957,7 +990,7 @@ export default function DispatchView() {
                       x.messaging_group_id === updated.messaging_group_id
                         && x.agent_group_id === updated.agent_group_id
                         ? updated : x));
-                    refresh();
+                    refetch();
                   }}
                   onRemove={() => removeWiring(w.messaging_group_id, w.agent_group_id)}
                 />

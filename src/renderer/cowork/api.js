@@ -926,6 +926,12 @@ export async function disconnectAllChannels() {
   return req('/dispatch/disconnect-all', { method: 'POST', body: JSON.stringify({}) });
 }
 
+// Re-initialize every channel adapter from current credentials — applies
+// saved or cleared config live, no server restart. Returns active channels.
+export async function reloadDispatch() {
+  return req('/dispatch/reload', { method: 'POST', body: JSON.stringify({}) });
+}
+
 export async function startSlackOAuth(redirectUri) {
   const params = new URLSearchParams({ redirect_uri: redirectUri });
   return req(`/dispatch/slack/oauth/start?${params.toString()}`, { method: 'POST', body: JSON.stringify({}) });
