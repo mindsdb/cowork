@@ -539,10 +539,19 @@ def refresh_google_oauth_tokens() -> None:
 
 def _google_drive_oauth_connections(vault) -> list[dict[str, Any]]:
     connections = []
-    for item in vault.list_connections():
+    try:
+        items = vault.list_connections()
+    except Exception:
+        logger.warning("Could not list vault connections for Google Drive", exc_info=True)
+        return connections
+    for item in items:
         if item.get("engine") != GOOGLE_DRIVE_ENGINE or not item.get("name"):
             continue
-        fields = vault.load(GOOGLE_DRIVE_ENGINE, item["name"]) or {}
+        try:
+            fields = vault.load(GOOGLE_DRIVE_ENGINE, item["name"]) or {}
+        except Exception:
+            logger.warning("Skipping unreadable vault entry %s/%s", GOOGLE_DRIVE_ENGINE, item["name"])
+            continue
         if fields.get("auth_type") != "oauth":
             continue
         display_name = fields.get("account_name", "").strip() or fields.get("account_email", "").strip() or item["name"]
@@ -563,10 +572,19 @@ def _google_drive_oauth_connections(vault) -> list[dict[str, Any]]:
 
 def _google_calendar_oauth_connections(vault) -> list[dict[str, Any]]:
     connections = []
-    for item in vault.list_connections():
+    try:
+        items = vault.list_connections()
+    except Exception:
+        logger.warning("Could not list vault connections for Google Calendar", exc_info=True)
+        return connections
+    for item in items:
         if item.get("engine") != GOOGLE_CALENDAR_ENGINE or not item.get("name"):
             continue
-        fields = vault.load(GOOGLE_CALENDAR_ENGINE, item["name"]) or {}
+        try:
+            fields = vault.load(GOOGLE_CALENDAR_ENGINE, item["name"]) or {}
+        except Exception:
+            logger.warning("Skipping unreadable vault entry %s/%s", GOOGLE_CALENDAR_ENGINE, item["name"])
+            continue
         if fields.get("auth_type") != "oauth":
             continue
         display_name = fields.get("account_name", "").strip() or fields.get("account_email", "").strip() or item["name"]
@@ -1133,10 +1151,19 @@ def _clear_gmail_oauth_pending(**updates: Any) -> dict[str, Any]:
 
 def _gmail_oauth_connections(vault) -> list[dict[str, Any]]:
     connections = []
-    for item in vault.list_connections():
+    try:
+        items = vault.list_connections()
+    except Exception:
+        logger.warning("Could not list vault connections for Gmail", exc_info=True)
+        return connections
+    for item in items:
         if item.get("engine") != GMAIL_ENGINE or not item.get("name"):
             continue
-        fields = vault.load(GMAIL_ENGINE, item["name"]) or {}
+        try:
+            fields = vault.load(GMAIL_ENGINE, item["name"]) or {}
+        except Exception:
+            logger.warning("Skipping unreadable vault entry %s/%s", GMAIL_ENGINE, item["name"])
+            continue
         if fields.get("auth_type") != "oauth":
             continue
         display_name = fields.get("account_name", "").strip() or fields.get("account_email", "").strip() or item["name"]
