@@ -74,6 +74,18 @@ jobs:
           if (-not $exe) { throw "No installer .exe found in release/" }
           "exe_path=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Resolve MSI path
+        id: msi
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem release\*.msi -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msi) {
+            "has_msi=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "msi_path=$($msi.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          } else {
+            "has_msi=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
       - name: Resolve app executable path
         id: app_exe
         shell: pwsh
@@ -112,6 +124,20 @@ jobs:
           totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
           file_path: ${{ steps.installer.outputs.exe_path }}
           output_path: ${{ github.workspace }}\signed
+          malware_block: true
+
+      - name: Sign MSI with SSL.com eSigner
+        if: steps.msi.outputs.has_msi == 'true'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{ secrets.SSL_USERNAME }}
+          password: ${{ secrets.SSL_PASSWORD }}
+          credential_id: ${{ secrets.SSL_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
+          file_path: ${{ steps.msi.outputs.msi_path }}
+          output_path: ${{ github.workspace }}\signed
+          malware_block: true
 
       - name: Sign app executable with SSL.com eSigner
         if: steps.app_exe.outputs.has_app_exe == 'true'
@@ -124,6 +150,7 @@ jobs:
           totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
           file_path: ${{ steps.app_exe.outputs.app_exe_path }}
           output_path: ${{ github.workspace }}\signed
+          malware_block: true
 
       - name: Sign uninstaller with SSL.com eSigner
         if: steps.uninstaller.outputs.has_uninstaller == 'true'
@@ -136,6 +163,7 @@ jobs:
           totp_secret: ${{ secrets.SSL_TOTP_SECRET }}
           file_path: ${{ steps.uninstaller.outputs.uninstaller_path }}
           output_path: ${{ github.workspace }}\signed
+          malware_block: true
 
       - name: Replace unsigned installer with signed output
         shell: pwsh
@@ -145,6 +173,18 @@ jobs:
           $signedPath = Join-Path "$env:GITHUB_WORKSPACE\signed" $fileName
           if (!(Test-Path $signedPath)) {
             throw "Signed file not found at $signedPath"
+          }
+          Copy-Item $signedPath $unsignedPath -Force
+
+      - name: Replace unsigned MSI with signed output
+        if: steps.msi.outputs.has_msi == 'true'
+        shell: pwsh
+        run: |
+          $unsignedPath = "${{ steps.msi.outputs.msi_path }}"
+          $fileName = Split-Path $unsignedPath -Leaf
+          $signedPath = Join-Path "$env:GITHUB_WORKSPACE\signed" $fileName
+          if (!(Test-Path $signedPath)) {
+            throw "Signed MSI not found at $signedPath"
           }
           Copy-Item $signedPath $unsignedPath -Force
 
@@ -191,6 +231,18 @@ jobs:
           if (-not $signature.TimeStamperCertificate) {
             throw "Timestamp verification failed: signature does not include a timestamp certificate."
           }
+
+      - name: Verify MSI signature
+        if: steps.msi.outputs.has_msi == 'true'
+        shell: pwsh
+        run: |
+          $msi = "${{ steps.msi.outputs.msi_path }}"
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          if (-not $signtool) {
+            throw "signtool.exe not found; MSI verification requires Windows SDK signtool"
+          }
+          & $signtool verify /pa /all /v "$msi"
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed for MSI with exit code $LASTEXITCODE" }
 
       - name: Verify app executable signature
         if: steps.app_exe.outputs.has_app_exe == 'true'
@@ -251,6 +303,24 @@ jobs:
           $out = Join-Path $env:GITHUB_WORKSPACE "out"
           New-Item -ItemType Directory -Path $out -Force | Out-Null
           $src = "${{ steps.installer.outputs.exe_path }}"
+          $dest = Join-Path $out $name
+          Move-Item $src $dest -Force
+
+      - name: Export MSI artifact
+        if: steps.msi.outputs.has_msi == 'true'
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:GITHUB_WORKSPACE "out"
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          $src = "${{ steps.msi.outputs.msi_path }}"
+          $version = node -p "require('./package.json').version"
+          $sha = "${env:GITHUB_SHA}".Substring(0,7)
+          switch ("${{ inputs.build_kind }}") {
+            "preview" { $name = "anton-${version}-preview-${sha}.msi" }
+            "stable"  { $name = "anton-${version}-stable-${sha}.msi" }
+            "prod"    { $name = "anton-${version}.msi" }
+            default   { throw "Unknown build_kind: ${{ inputs.build_kind }}" }
+          }
           $dest = Join-Path $out $name
           Move-Item $src $dest -Force
 

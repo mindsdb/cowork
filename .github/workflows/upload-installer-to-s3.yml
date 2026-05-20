@@ -80,7 +80,10 @@ jobs:
           PREFIX="anton/${PLATFORM}"
           BASE="s3://${BUCKET}/${PREFIX}"
           EXT="${NAME##*.}"
+          BASENAME="${NAME%.*}"
           SRC="out/${NAME}"
+          MSI_NAME="${BASENAME}.msi"
+          MSI_SRC="out/${MSI_NAME}"
 
           if [ ! -f "$SRC" ]; then
             echo "::error::Expected file $SRC not found in downloaded artifact"
@@ -88,6 +91,11 @@ jobs:
             exit 1
           fi
           LOCAL_SHA=$(sha256sum "$SRC" | awk '{print $1}')
+          HAS_MSI=false
+          if [ "$PLATFORM" = "windows" ] && [ -f "$MSI_SRC" ]; then
+            HAS_MSI=true
+            MSI_SHA=$(sha256sum "$MSI_SRC" | awk '{print $1}')
+          fi
 
           REGION=$(aws s3api get-bucket-location --bucket "$BUCKET" --query LocationConstraint --output text 2>/dev/null || echo "")
           if [ -z "$REGION" ] || [ "$REGION" = "None" ] || [ "$REGION" = "null" ]; then
@@ -107,14 +115,24 @@ jobs:
           case "$KIND" in
             preview)
               upload "$SRC" "${PREFIX}/previews/${NAME}"
+              if [ "$HAS_MSI" = true ]; then
+                upload "$MSI_SRC" "${PREFIX}/previews/${MSI_NAME}"
+              fi
               ;;
             stable)
               upload "$SRC" "${PREFIX}/snapshots/${NAME}"
+              if [ "$HAS_MSI" = true ]; then
+                upload "$MSI_SRC" "${PREFIX}/snapshots/${MSI_NAME}"
+              fi
               ;;
             prod)
               VERSION=$(node -p "require('./package.json').version")
               upload "$SRC" "${PREFIX}/anton-${VERSION}.${EXT}"
               upload "$SRC" "${PREFIX}/anton-latest.${EXT}"
+              if [ "$HAS_MSI" = true ]; then
+                upload "$MSI_SRC" "${PREFIX}/anton-${VERSION}.msi"
+                upload "$MSI_SRC" "${PREFIX}/anton-latest.msi"
+              fi
               ;;
             *)
               echo "::error::Unknown build_kind: $KIND"
@@ -151,8 +169,12 @@ jobs:
             aws s3 cp "${S3_URI}" "$TMP_FILE" >/dev/null
             REMOTE_SHA=$(sha256sum "$TMP_FILE" | awk '{print $1}')
             rm -f "$TMP_FILE"
-            if [ "$REMOTE_SHA" != "$LOCAL_SHA" ]; then
-              echo "::error::SHA256 mismatch for ${S3_URI}. local=${LOCAL_SHA} remote=${REMOTE_SHA}"
+            EXPECTED_SHA="$LOCAL_SHA"
+            if [ "$HAS_MSI" = true ] && [[ "$KEY" == *.msi ]]; then
+              EXPECTED_SHA="$MSI_SHA"
+            fi
+            if [ "$REMOTE_SHA" != "$EXPECTED_SHA" ]; then
+              echo "::error::SHA256 mismatch for ${S3_URI}. local=${EXPECTED_SHA} remote=${REMOTE_SHA}"
               exit 1
             fi
             echo "| \`${S3_URI}\` | ✅ sha256 verified (\`${REMOTE_SHA}\`) | ${CDN_URL} |" >> "$GITHUB_STEP_SUMMARY"
