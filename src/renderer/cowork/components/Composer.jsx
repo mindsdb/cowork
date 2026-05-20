@@ -84,14 +84,19 @@ export default function Composer({
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
-  /** When the user clicks "+ New project" in the project menu, the row
-      flips into an inline text input. Track edit state + busy + error
-      separately from the rest of the composer so the input keeps its
-      own lifecycle (focus on flip, clear on close). */
-  const [creatingProject, setCreatingProject] = useState(false);
-  const [newProjectBusy, setNewProjectBusy] = useState(false);
-  const [newProjectError, setNewProjectError] = useState('');
-  const newProjectInputRef = useRef(null);
+  /** Project-picker menu state. The menu is a search-first picker:
+      one input at the top filters the project list AND doubles as
+      the "+ Create '<typed>'" entry when no results match — same
+      pattern as Linear/Notion's command palette, so the user goes
+      from "I can't find it" to "make it" without changing surfaces.
+      `flipUp` anchors the menu above the pill when there's no room
+      below (chat composer glued to the viewport bottom). */
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectMenuFlipUp, setProjectMenuFlipUp] = useState(false);
+  const [projectMenuBusy, setProjectMenuBusy] = useState(false);
+  const [projectMenuError, setProjectMenuError] = useState('');
+  const projectSearchRef = useRef(null);
+  const projectPillRef = useRef(null);
   /** Attach menu opens above the composer by default; flip down when clipped (e.g. project view composer at scroll top). */
   const [attachMenuBelow, setAttachMenuBelow] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
@@ -279,46 +284,89 @@ export default function Composer({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // When the project menu closes (or flips to another menu), drop any
-  // half-typed new-project state so reopening lands back on the "+ New
-  // project" affordance rather than an empty input. When the input is
-  // first revealed, focus it on the next frame so the keyboard target
-  // matches what the user just clicked.
+  // Reset the project menu's transient state every time it closes, and
+  // autofocus the search input on open so the user can start filtering
+  // immediately (also doubles as "tap-to-type" on mobile where there's
+  // no keyboard shortcut to open the menu).
   useEffect(() => {
     if (openMenu !== 'project') {
-      setCreatingProject(false);
-      setNewProjectBusy(false);
-      setNewProjectError('');
+      setProjectSearch('');
+      setProjectMenuBusy(false);
+      setProjectMenuError('');
       return;
     }
-    if (!creatingProject) return;
     const id = requestAnimationFrame(() => {
-      newProjectInputRef.current?.focus();
+      projectSearchRef.current?.focus();
     });
     return () => cancelAnimationFrame(id);
-  }, [openMenu, creatingProject]);
+  }, [openMenu]);
 
-  const submitNewProject = async () => {
-    if (!onCreateProject || newProjectBusy) return;
-    const next = (newProjectInputRef.current?.value || '').trim();
-    if (!next) {
-      setCreatingProject(false);
-      return;
-    }
-    setNewProjectBusy(true);
-    setNewProjectError('');
+  // Flip the menu UP when there isn't room below the project pill.
+  // The chat composer is glued to the viewport bottom, so the default
+  // "open downward" placement always overflows there; in the home /
+  // project-view composer there's usually plenty of room. ~320px is
+  // a search row + ~6 project rows + sticky create footer + a bit of
+  // margin — enough to feel like a list rather than a cramped pill.
+  useLayoutEffect(() => {
+    if (openMenu !== 'project') return;
+    const measure = () => {
+      const pill = projectPillRef.current;
+      if (!pill) return;
+      const r = pill.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom;
+      setProjectMenuFlipUp(below < 320);
+    };
+    measure();
+    window.addEventListener('resize', measure, { passive: true });
+    return () => window.removeEventListener('resize', measure);
+  }, [openMenu]);
+
+  // Filter + create logic shared by Enter-on-search-input and the
+  // explicit create footer. Defined inside the component body so the
+  // menu render can call into them without prop-drilling.
+  const _projectSearchTrimmed = projectSearch.trim();
+  const _filteredProjects = _projectSearchTrimmed
+    ? projects.filter((p) => p.name.toLowerCase().includes(_projectSearchTrimmed.toLowerCase()))
+    : projects;
+  // Case-insensitive exact match short-circuits "create" so Enter on
+  // a search term that already names a project selects it rather than
+  // POSTing a duplicate (the server would reject anyway, but failing
+  // fast on the client keeps the UX snappy).
+  const _projectExactMatch = _projectSearchTrimmed
+    ? projects.find((p) => p.name.toLowerCase() === _projectSearchTrimmed.toLowerCase())
+    : null;
+  const _canCreateFromSearch = !!onCreateProject && !!_projectSearchTrimmed && !_projectExactMatch;
+
+  const createProjectFromSearch = async () => {
+    if (!_canCreateFromSearch || projectMenuBusy) return;
+    setProjectMenuBusy(true);
+    setProjectMenuError('');
     try {
-      const created = await onCreateProject({ name: next });
-      // Pre-select the new project for the task being composed; the
-      // parent passes back the created record (or a `{ name }` stub),
-      // either of which onProjectChange accepts.
+      const created = await onCreateProject({ name: _projectSearchTrimmed });
       if (created) onProjectChange?.(created);
-      setCreatingProject(false);
       setOpenMenu(null);
     } catch (e) {
-      setNewProjectError(e?.message || 'Could not create project.');
+      setProjectMenuError(e?.message || 'Could not create project.');
     } finally {
-      setNewProjectBusy(false);
+      setProjectMenuBusy(false);
+    }
+  };
+
+  const submitProjectSearch = () => {
+    if (projectMenuBusy) return;
+    // Any results → Enter selects the top match (or the exact match
+    // when it's not at the top, e.g. an alphabetised list where the
+    // exact "acme" sits below "acme-engineering" / "acme-marketing").
+    if (_filteredProjects.length > 0) {
+      const pick = _projectExactMatch || _filteredProjects[0];
+      onProjectChange?.(pick);
+      setOpenMenu(null);
+      return;
+    }
+    // Zero results with text → create. Empty search is a no-op
+    // (Enter on an empty filter shouldn't do anything surprising).
+    if (_canCreateFromSearch) {
+      createProjectFromSearch();
     }
   };
 
@@ -757,6 +805,7 @@ export default function Composer({
           ) : (
             <>
               <button
+                ref={projectPillRef}
                 className="meta-pill"
                 onClick={() => setOpenMenu(openMenu === 'project' ? null : 'project')}
                 title="Choose project"
@@ -781,92 +830,146 @@ export default function Composer({
       )}
 
       {openMenu === 'project' && !metaReadOnly && (
-        <div className="menu" style={{ left: 8, top: 'calc(100% + 6px)', minWidth: 240 }}>
-          <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Projects</div>
-          {projects.map((p) => (
-            <button
-              key={p.name}
-              className={`menu-item${project?.name === p.name ? ' checked' : ''}`}
-              onClick={() => { onProjectChange(p); setOpenMenu(null); }}
-            >
-              <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(14)}</span>
-              <span style={{ flex: 1 }}>{p.name}</span>
-              {project?.name === p.name && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
-            </button>
-          ))}
-          {onCreateProject && (
+        <div
+          className={`menu${projectMenuFlipUp ? '' : ' menu--drop-down'}`}
+          style={{
+            left: 8,
+            // Anchor above the pill when there's no room below
+            // (chat composer near viewport bottom). The
+            // `bottom: calc(100% + 6px)` form mirrors the default
+            // `top: calc(100% + 6px)` so the gap to the pill is
+            // identical in either direction.
+            ...(projectMenuFlipUp
+              ? { bottom: 'calc(100% + 6px)' }
+              : { top: 'calc(100% + 6px)' }),
+            minWidth: 260,
+            // Cap the menu height + clip scrolling to the list
+            // region (see project-menu-list below). `min(60vh, 360px)`
+            // gives ≥half the viewport on mobile but never grows so
+            // tall that the picker dominates desktop.
+            maxHeight: 'min(60vh, 360px)',
+            display: 'flex', flexDirection: 'column',
+            // Prevent the outer .menu from scrolling — the inner
+            // list owns the scroll so the search input + create
+            // footer stay pinned in view.
+            overflow: 'hidden',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Search input — sticky-ish header (it's just the first
+              flex child of a non-scrolling container, so it's always
+              visible without needing position:sticky). */}
+          <div style={{ padding: '4px 6px 6px' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 6, padding: '4px 8px',
+            }}>
+              <span style={{ display: 'inline-flex', color: 'var(--frost-600)' }}>{Ico.folder(13)}</span>
+              <input
+                ref={projectSearchRef}
+                type="text"
+                value={projectSearch}
+                onChange={(e) => {
+                  setProjectSearch(e.target.value);
+                  setProjectMenuError('');
+                }}
+                placeholder={onCreateProject ? 'Search or create…' : 'Search projects…'}
+                disabled={projectMenuBusy}
+                spellCheck={false}
+                autoCapitalize="none"
+                autoCorrect="off"
+                onKeyDown={(e) => {
+                  // Stop bubbling so the global shortcut keys
+                  // (Cmd+N etc.) don't fire while typing here.
+                  e.stopPropagation();
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitProjectSearch();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    // Two-step Escape: clear text first, close on
+                    // second press. Matches Linear/Notion behaviour.
+                    if (_projectSearchTrimmed) setProjectSearch('');
+                    else setOpenMenu(null);
+                  }
+                }}
+                style={{
+                  flex: 1, minWidth: 0,
+                  background: 'transparent', border: 0, outline: 'none',
+                  color: 'var(--ink)', fontSize: 13,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Filtered project list — the only scrollable region.
+              max-height comes from the outer .menu cap minus the
+              search header + create footer; `flex: 1` lets it absorb
+              whatever space is left. */}
+          <div
+            className="project-menu-list"
+            style={{
+              flex: 1, minHeight: 0,
+              overflowY: 'auto',
+              padding: '2px 0',
+            }}
+          >
+            {_filteredProjects.length === 0 ? (
+              <div style={{
+                padding: '10px 12px', fontSize: 12,
+                color: 'var(--frost-600)',
+              }}>
+                {_projectSearchTrimmed
+                  ? `No project matches “${_projectSearchTrimmed}”.`
+                  : 'No projects yet.'}
+              </div>
+            ) : _filteredProjects.map((p) => (
+              <button
+                key={p.name}
+                className={`menu-item${project?.name === p.name ? ' checked' : ''}`}
+                onClick={() => { onProjectChange(p); setOpenMenu(null); }}
+              >
+                <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(14)}</span>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                {project?.name === p.name && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* Create footer — only when onCreateProject is wired AND
+              the typed text doesn't already name an existing
+              project. Renders the typed text inline so it's clear
+              what Enter / clicking will create. */}
+          {_canCreateFromSearch && (
             <>
-              <div style={{ height: 1, background: 'var(--border-0)', margin: '4px 0' }} />
-              {creatingProject ? (
-                // Inline create row — replaces the "+ New project"
-                // menu item while editing. Enter creates+selects+
-                // closes the menu; Escape cancels back to the row.
-                // Blur commits if there's a value, otherwise cancels —
-                // same convention as the inline rename on project
-                // cards (ProjectsView NewProjectCard) so muscle memory
-                // carries across surfaces.
-                <div
-                  style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 8px' }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(14)}</span>
-                    <input
-                      ref={newProjectInputRef}
-                      type="text"
-                      placeholder="Project name"
-                      disabled={newProjectBusy}
-                      spellCheck={false}
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          submitNewProject();
-                        } else if (e.key === 'Escape') {
-                          e.preventDefault();
-                          setCreatingProject(false);
-                        }
-                      }}
-                      onBlur={() => {
-                        // Skip the blur-commit while the create call
-                        // is in flight — the request itself will close
-                        // the menu, and a blur-fired second submit
-                        // would race with it.
-                        if (newProjectBusy) return;
-                        const val = (newProjectInputRef.current?.value || '').trim();
-                        if (val) submitNewProject();
-                        else setCreatingProject(false);
-                      }}
-                      style={{
-                        flex: 1, minWidth: 0,
-                        fontSize: 13, color: 'var(--ink)',
-                        background: 'var(--surface-2)',
-                        border: '1px solid var(--line)',
-                        borderRadius: 6,
-                        padding: '4px 8px',
-                        outline: 'none',
-                      }}
-                    />
-                  </div>
-                  <div style={{ fontSize: 10.5, color: newProjectError ? 'var(--danger)' : 'var(--frost-600)', paddingLeft: 22 }}>
-                    {newProjectError || (newProjectBusy ? 'Creating…' : '↵ create · esc cancel')}
-                  </div>
-                </div>
-              ) : (
-                <button
-                  className="menu-item"
-                  onClick={() => {
-                    setNewProjectError('');
-                    setCreatingProject(true);
-                  }}
-                >
-                  <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.plus(14)}</span>
-                  <span>New project</span>
-                </button>
-              )}
+              <div style={{ height: 1, background: 'var(--border-0)', margin: '2px 0' }} />
+              <button
+                className="menu-item"
+                disabled={projectMenuBusy}
+                onClick={createProjectFromSearch}
+                style={{ color: 'var(--primary-700)' }}
+              >
+                <span style={{ display: 'inline-flex', color: 'var(--primary-700)' }}>{Ico.plus(14)}</span>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {projectMenuBusy ? 'Creating…' : <>Create <strong style={{ fontWeight: 600 }}>“{_projectSearchTrimmed}”</strong></>}
+                </span>
+              </button>
             </>
+          )}
+
+          {/* Error row — only visible when a create call failed.
+              Stays out of the scrollable list so it's never hidden
+              under fold. */}
+          {projectMenuError && (
+            <div style={{
+              padding: '6px 10px', fontSize: 11.5,
+              color: 'var(--danger)',
+              borderTop: '1px solid var(--border-0)',
+            }}>
+              {projectMenuError}
+            </div>
           )}
         </div>
       )}

@@ -1647,6 +1647,18 @@ async def chat_stream(
     # Defer config check to the route layer (it has access to get_config_status)
     # so this module stays free of cowork-route imports.
 
+    # `tmp-` prefixed ids are renderer-side temporaries (e.g. the
+    # `tmp-connect-<ts>` used by Composer's connector picker). They
+    # must NEVER land on disk as the canonical id — once `_ensure_meta`
+    # creates `<id>_meta.json` for a tmp- id, the conversation is
+    # stuck with the prefix forever and shows up as "empty" tasks in
+    # recents (a turn-zero shell where the user abandoned before any
+    # text was persisted). Replacing the id here forces the server to
+    # mint a fresh `YYYYMMDD_HHMMSS_<hex>` id; the new value flows
+    # back to the client via `response.created.conversation_id` so the
+    # stream-consumer can rewrite its local task in place.
+    if conversation_id and conversation_id.startswith("tmp-"):
+        conversation_id = None
     cid = conversation_id or _new_conversation_id()
     _ensure_meta(project, cid)
     if disabled_connections is not None:

@@ -300,6 +300,17 @@ export default function Sidebar({
       if (!g._scheduleGroup) continue;
       g.title = g._scheduleGroup.baseTitle;
     }
+    // Sort by `updatedAt` descending so reviving a task (replying in
+    // an open task — App.jsx's handleSendInTask bumps updatedAt at
+    // send-time) or creating a new one immediately floats it to the
+    // top of recents. Without this, the panel mirrors whatever order
+    // `tasks` happens to be in: the server sorts on each fetch, but
+    // in-session edits use `prev.map(...)` which keeps the array
+    // order frozen until the next fetchSessions. Falling back to
+    // `subtitle` (a parseable timestamp on schedule-run rows) keeps
+    // legacy rows without an explicit updatedAt in roughly the right
+    // place rather than dumping them at the bottom.
+    out.sort((a, b) => _ts(b.updatedAt || b.subtitle) - _ts(a.updatedAt || a.subtitle));
     return out;
   })();
 

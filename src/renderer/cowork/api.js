@@ -466,7 +466,16 @@ export function tailInFlight(conversationId, {
 }
 
 export function streamMessage(sessionId, text, opts = {}) {
-  return _streamResponse(text, { ...opts, conversationId: sessionId });
+  // Strip renderer-side temp ids (`tmp-connect-…` from the connector
+  // picker) before they hit the wire — the server has a defensive
+  // guard, but skipping the value here means the server doesn't even
+  // have to consider it, and the `response.created` event carries
+  // the canonical id straight back. The caller's stream consumer
+  // (App.jsx adoptServerId) rewrites the local task in place.
+  const conversationId = sessionId && !String(sessionId).startsWith('tmp-')
+    ? sessionId
+    : null;
+  return _streamResponse(text, { ...opts, conversationId });
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
