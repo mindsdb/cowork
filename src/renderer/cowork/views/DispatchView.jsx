@@ -37,7 +37,7 @@ const CHANNEL_LIBRARY = {
     name: 'Telegram',
     description: 'Receive messages via a Telegram bot. Uses long-polling by default — no public URL needed. Group chats require @mention to trigger.',
     style: 'telegram',
-    connectable: false,  // No connect-button flow — saving the bot token is the install.
+    connectable: true,
   },
   discord: {
     id: 'discord',
