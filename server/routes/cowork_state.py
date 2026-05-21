@@ -1,4 +1,4 @@
-"""Persistent local state for Anton CoWork desktop features."""
+"""Persistent local state for Anton Cowork desktop features."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Pinning and visit-count APIs for Anton CoWork."""
+"""Pinning and visit-count APIs for Anton Cowork."""
 
 from __future__ import annotations
 
