@@ -5,13 +5,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
-import {
-  SERVER_PYTHON_DEPS,
-  checkPythonImports,
-  getAntonToolPython,
-  getPythonUtf8Env,
-  getServerDepsVerifyScript,
-} from './server-deps';
 
 interface InstallStep {
   id: string;
@@ -23,6 +16,19 @@ interface InstallerOptions {
   shouldAbort?: () => boolean;
 }
 
+// Pinned cowork-server version. Bump this deliberately when shipping a
+// cowork release that requires backend changes. The installer will
+// install exactly this version so frontend and backend stay in sync.
+const COWORK_SERVER_VERSION = '0.1.0';
+
+// Package source for cowork-server. Override with COWORK_SERVER_PACKAGE
+// env var (e.g. a local path or alternative git URL during development).
+// When using the default git source, the version pin is appended as a
+// git tag (e.g. @v0.1.0). When publishing to PyPI, change the default
+// to just 'cowork-server' and the version pin becomes ==0.1.0.
+const COWORK_SERVER_PACKAGE = process.env.COWORK_SERVER_PACKAGE
+  || `git+https://github.com/mindsdb/cowork-server.git@v${COWORK_SERVER_VERSION}`;
+
 function getSteps(): InstallStep[] {
   const steps: InstallStep[] = [];
   if (process.platform === 'darwin') {
@@ -31,26 +37,23 @@ function getSteps(): InstallStep[] {
   steps.push(
     { id: 'git', label: 'Check for git (required)', status: 'pending' },
     { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
-    { id: 'anton', label: 'Install Anton (with server extras)', status: 'pending' },
+    { id: 'cowork-server', label: 'Install cowork-server', status: 'pending' },
     { id: 'verify', label: 'Verify installation', status: 'pending' },
-    { id: 'server', label: 'Start Anton server', status: 'pending' },
+    { id: 'server', label: 'Start server', status: 'pending' },
   );
   return steps;
 }
 
 function getLocalBin(): string {
-  if (process.platform === 'win32') {
-    return path.join(os.homedir(), '.local', 'bin');
-  }
   return path.join(os.homedir(), '.local', 'bin');
 }
 
-function getAntonBinary(): string {
+function getCoworkServerBinary(): string {
   const localBin = getLocalBin();
   if (process.platform === 'win32') {
-    return path.join(localBin, 'anton.exe');
+    return path.join(localBin, 'cowork-server.exe');
   }
-  return path.join(localBin, 'anton');
+  return path.join(localBin, 'cowork-server');
 }
 
 function getUvBinary(): string {
@@ -97,10 +100,8 @@ function runCommand(
     const env = {
       ...process.env,
       PATH: getEnvPath(),
-      // Windows GUI launches can inherit a legacy code page. Keep Python
-      // subprocess output deterministic so installer verification never
-      // fails after successful imports because stdout cannot encode text.
-      ...getPythonUtf8Env(),
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8',
     };
     const proc = spawn(command, args, {
       env,
@@ -168,7 +169,6 @@ function fileExists(p: string): boolean {
 
 function xcodeCliInstalled(): Promise<boolean> {
   return new Promise((resolve) => {
-    // xcode-select -p returns 0 if CLT are installed
     execFile('xcode-select', ['-p'], (err) => {
       resolve(!err);
     });
@@ -177,17 +177,12 @@ function xcodeCliInstalled(): Promise<boolean> {
 
 function triggerXcodeInstall(win: BrowserWindow): Promise<boolean> {
   return new Promise((resolve) => {
-    // Try xcode-select --install first — needs stdio piped so the system dialog can launch
     const proc = spawn('xcode-select', ['--install'], { stdio: 'pipe' });
-    let stderr = '';
-    proc.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
     proc.on('close', (code) => {
       if (code === 0) {
-        // Dialog was launched successfully
         resolve(true);
         return;
       }
-      // xcode-select --install failed (e.g. inside sandbox), try open(1) as fallback
       sendLog(win, 'Trying alternate install method...\n');
       const fallback = spawn('open', ['/System/Library/CoreServices/Install Command Line Developer Tools.app']);
       fallback.on('close', (fbCode) => {
@@ -195,10 +190,7 @@ function triggerXcodeInstall(win: BrowserWindow): Promise<boolean> {
       });
       fallback.on('error', () => resolve(false));
     });
-    proc.on('error', () => {
-      // xcode-select binary not found — shouldn't happen on macOS but handle it
-      resolve(false);
-    });
+    proc.on('error', () => resolve(false));
   });
 }
 
@@ -249,37 +241,22 @@ function sendInstallCancelled(win: BrowserWindow) {
   } catch {}
 }
 
-export async function checkAntonInstalled(): Promise<boolean> {
-  if (fileExists(getAntonBinary())) return true;
-  return commandExists('anton');
-}
-
-// True iff every server-runtime Python dependency imports cleanly
-// from the tool venv. Catches the common case where a user already
-// has `anton` (CLI) installed via `uv tool install anton` or
-// `pip install anton` — but WITHOUT the server extras (fastapi,
-// uvicorn, etc.) that the bundled FastAPI server in server/main.py
-// needs to spawn. Without this check, antontron would skip its setup
-// screen and the server would silently fail to start with a Python
-// ImportError surfaced as a generic "backend offline."
-export async function checkServerDepsReady(): Promise<boolean> {
-  const py = getAntonToolPython();
-  if (!fileExists(py)) return false;
-  return checkPythonImports(py, { ...process.env, PATH: getEnvPath() });
+export async function checkCoworkServerInstalled(): Promise<boolean> {
+  if (fileExists(getCoworkServerBinary())) return true;
+  return commandExists('cowork-server');
 }
 
 // Convenience wrapper used by the boot flow IPC. Returns the full
-// readiness picture so the renderer can branch cleanly: setup is
-// needed when EITHER the CLI binary OR the server deps are missing.
+// readiness picture so the renderer can branch cleanly.
 export async function checkInstallStatus(): Promise<{
   antonInstalled: boolean;
   serverDepsReady: boolean;
 }> {
-  const antonInstalled = await checkAntonInstalled();
-  // Only probe the deps if the tool itself is present — without it
-  // there's no python interpreter to import from.
-  const serverDepsReady = antonInstalled ? await checkServerDepsReady() : false;
-  return { antonInstalled, serverDepsReady };
+  const installed = await checkCoworkServerInstalled();
+  // Both fields report the same value — cowork-server is a single
+  // package that includes all server dependencies. The two-field
+  // shape is kept for renderer compatibility with the old boot flow.
+  return { antonInstalled: installed, serverDepsReady: installed };
 }
 
 export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions): Promise<boolean> {
@@ -336,7 +313,6 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
         } else {
           sendLog(win, 'Could not launch Xcode installer automatically.\n');
           sendLog(win, 'Please run manually in Terminal: xcode-select --install\n');
-          sendLog(win, 'Alternative fallback: install Homebrew first, then run brew install git\n');
           setStep('xcode', 'warning');
         }
       } else {
@@ -356,11 +332,10 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
       sendLog(win, '\nERROR: git is not installed.\n');
       if (process.platform === 'darwin') {
         sendLog(win, 'Install it with: xcode-select --install\n');
-        sendLog(win, 'Alternative: install Homebrew then run: brew install git\n');
       } else {
         sendLog(win, 'Install it from: https://git-scm.com/downloads/win\n');
       }
-      sendInstallError(win, 'git is required but not found. Install CLT (xcode-select --install) or Homebrew git.');
+      sendInstallError(win, 'git is required but not found.');
       return false;
     }
     sendLog(win, 'git found.\n');
@@ -402,7 +377,6 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           return false;
         }
       }
-      // Verify uv installed
       hasUv = await commandExists('uv') || fileExists(getUvBinary());
       if (!hasUv) {
         setStep('uv', 'error');
@@ -416,110 +390,53 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     }
     setStep('uv', 'done');
 
-    // Step 3: Install Anton (with fastapi + uvicorn + multipart + pydantic
-    // so the bundled FastAPI server in server/main.py can actually start).
+    // Step 3: Install cowork-server
     if (abortIfRequested()) return false;
-    setStep('anton', 'running');
-    sendLog(win, '\n--- Installing Anton (with server extras) ---\n');
-    sendLog(win, 'Server extras:\n');
-    for (const dep of SERVER_PYTHON_DEPS) {
-      sendLog(win, `  - ${dep.spec}\n`);
-    }
-
-    // Build the args list dynamically so the dep set lives in ONE place
-    // (SERVER_PYTHON_DEPS). Each spec is appended as a separate `--with`
-    // arg — `uv tool install` requires a flag per package.
-    const installArgs = [
-      'tool', 'install',
-      'git+https://github.com/mindsdb/anton.git',
-    ];
-    for (const dep of SERVER_PYTHON_DEPS) {
-      installArgs.push('--with', dep.spec);
-    }
-    // --force allows replacing an existing tool entry; --reinstall makes uv
-    // rebuild the environment contents too. Both matter when a user already
-    // has an anton tool venv that predates the server dependency set.
-    installArgs.push('--force', '--reinstall', '--upgrade');
+    setStep('cowork-server', 'running');
+    sendLog(win, `\n--- Installing cowork-server v${COWORK_SERVER_VERSION} ---\n`);
 
     const uvBin = fileExists(getUvBinary()) ? getUvBinary() : 'uv';
+    const installArgs = [
+      'tool', 'install',
+      COWORK_SERVER_PACKAGE,
+      '--force', '--reinstall',
+    ];
+
     const installResult = await runCommand(uvBin, installArgs, win, { shouldAbort });
     if (abortIfRequested()) return false;
 
     if (installResult.code !== 0) {
-      setStep('anton', 'error');
-      sendLog(win, '\nERROR: Failed to install Anton.\n');
-      sendInstallError(win, 'Anton installation failed');
+      setStep('cowork-server', 'error');
+      sendLog(win, '\nERROR: Failed to install cowork-server.\n');
+      sendInstallError(win, 'cowork-server installation failed');
       return false;
     }
-    sendLog(win, 'Anton installed.\n');
-    setStep('anton', 'done');
+    sendLog(win, 'cowork-server installed.\n');
+    setStep('cowork-server', 'done');
 
     // Step 4: Verify
-    //
-    // Two checks here, in order — the second one is the part most
-    // commonly missing in user reports of "server won't start":
-    //   (a) the `anton` CLI binary exists at the expected path
-    //   (b) the bundled server's Python deps are importable from the
-    //       same interpreter `server-process.ts` will spawn. A silent
-    //       failure mid-install (network blip, partial venv) leaves
-    //       (a) green and (b) red, which is exactly the symptom users
-    //       report ("Anton installed but the server never starts").
     if (abortIfRequested()) return false;
     setStep('verify', 'running');
     sendLog(win, '\n--- Verifying installation ---\n');
-    const antonInstalled = await checkAntonInstalled();
-    if (!antonInstalled) {
+    const installed = await checkCoworkServerInstalled();
+    if (!installed) {
       setStep('verify', 'error');
-      sendLog(win, 'ERROR: Anton binary not found after installation.\n');
+      sendLog(win, 'ERROR: cowork-server binary not found after installation.\n');
       sendInstallError(win, 'Verification failed');
       return false;
     }
-    sendLog(win, 'Anton CLI found.\n');
-
-    // (b) — import the server deps via the tool venv's python.
-    const toolPython = getAntonToolPython();
-    if (!fileExists(toolPython)) {
-      setStep('verify', 'error');
-      sendLog(win, `ERROR: tool python not found at ${toolPython}\n`);
-      sendInstallError(win, 'Tool venv missing');
-      return false;
-    }
-    sendLog(win, 'Verifying server dependencies...\n');
-    // Print version per dep so the install log is self-diagnosing
-    // when a user reports a problem; missing imports produce a
-    // single ImportError that surfaces the offending module.
-    const verifyScript = getServerDepsVerifyScript();
-    const verifyDeps = await runCommand(toolPython, ['-c', verifyScript], win, { shouldAbort });
-    if (abortIfRequested()) return false;
-    if (verifyDeps.code !== 0) {
-      setStep('verify', 'error');
-      sendLog(win,
-        '\nERROR: server dependencies could not be imported.\n' +
-        'This usually means the previous install step finished with a ' +
-        'partial venv. Try re-running the installer; if it persists, ' +
-        'manually run:\n' +
-        `  uv tool install --force git+https://github.com/mindsdb/anton.git ${
-          SERVER_PYTHON_DEPS.map((d) => `--with '${d.spec}'`).join(' ')
-        }\n`
-      );
-      sendInstallError(win, 'Server dependencies missing');
-      return false;
-    }
-    sendLog(win, 'Anton is ready!\n');
+    sendLog(win, 'cowork-server is ready!\n');
     setStep('verify', 'done');
 
-    // Step 5: Start the bundled FastAPI server (server/main.py) using the
-    // python interpreter uv just installed. Failure here doesn't roll back
-    // the install — anton itself is fine. The server can be retried later
-    // by re-launching the app.
+    // Step 5: Start the server
     if (abortIfRequested()) return false;
     setStep('server', 'running');
-    sendLog(win, '\n--- Starting Anton server ---\n');
+    sendLog(win, '\n--- Starting server ---\n');
     try {
       const { startServer } = await import('./server-process');
       const result = await startServer();
       if (result.ok) {
-        sendLog(win, `Anton server running on http://127.0.0.1:${result.port}\n`);
+        sendLog(win, `Server running on http://127.0.0.1:${result.port}\n`);
         setStep('server', 'done');
       } else {
         sendLog(win, `WARNING: server did not start: ${result.reason}\n`);
@@ -542,4 +459,3 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     return false;
   }
 }
-

@@ -1,7 +1,11 @@
-// Spawns the bundled Python FastAPI server (server/main.py) and waits for
-// /health to come up. Uses the python interpreter that the antontron
-// installer puts at ~/.local/share/uv/tools/anton/bin/python — same env
-// `uv tool install --with fastapi --with uvicorn` populated.
+// Spawns the cowork-server FastAPI backend and waits for /health to come up.
+//
+// In dev: `uv run cowork-server` from the sibling cowork-server directory
+// so local source edits are picked up immediately.
+//
+// In production (packaged Electron or web): runs the `cowork-server`
+// binary installed via `uv tool install cowork-server`. No bundled source
+// directory needed — the installer handles package installation.
 
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
@@ -9,7 +13,6 @@ import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
-import { checkPythonImports, getAntonToolPython, getPythonUtf8Env } from './server-deps';
 
 const DEFAULT_PORT = 26866; // ANTON on T9 keypad
 const SERVER_HOST = '127.0.0.1';
@@ -58,9 +61,13 @@ export function getServerOrigin(): string {
   return `http://${SERVER_HOST}:${serverPort}`;
 }
 
-function getAntonPython(): string | null {
-  const candidate = getAntonToolPython();
-  return fs.existsSync(candidate) ? candidate : null;
+function getUvPath(): string | null {
+  const localBin = path.join(os.homedir(), '.local', 'bin', 'uv');
+  if (fs.existsSync(localBin)) return localBin;
+  // Check common install paths
+  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', 'uv');
+  if (fs.existsSync(cargoBin)) return cargoBin;
+  return null;
 }
 
 // Build a PATH with ~/.local/bin and ~/.cargo/bin prepended. Critical
@@ -68,14 +75,6 @@ function getAntonPython(): string | null {
 // starts from Finder/Dock, process.env.PATH is the minimal launchd PATH
 // (`/usr/bin:/bin:/usr/sbin:/sbin`) — shell init files aren't read,
 // so `~/.local/bin` (where the installer puts `uv`) is missing.
-//
-// The Python server we spawn inherits this PATH; anton's scratchpad
-// runtime uses `shutil.which("uv")` to pick the fast venv path. Without
-// uv on PATH it falls back to stdlib `venv.create(... with_pip=False)`,
-// which is the failure mode users see as "Python venv creation is failing"
-// — the venv has no pip, so subsequent `pip install` calls inside the
-// scratchpad fail. With uv on PATH the runtime gets a proper, seeded
-// venv and everything works.
 function getEnvPath(): string {
   const localBin = path.join(os.homedir(), '.local', 'bin');
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
@@ -84,13 +83,24 @@ function getEnvPath(): string {
   return parts.join(path.delimiter);
 }
 
-function getServerDir(): string {
-  // Packaged: server/ shipped via electron-builder extraResources at
-  // process.resourcesPath/server. Dev: server/ at repo root.
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'server');
+// In dev mode, return the sibling cowork-server source directory so we
+// can run `uv run cowork-server` against local source. Returns null when
+// packaged (the installed binary is used instead).
+function getDevServerDir(): string | null {
+  if (app.isPackaged) return null;
+  if (process.env.COWORK_SERVER_DIR) {
+    return path.resolve(process.env.COWORK_SERVER_DIR);
   }
-  return path.join(__dirname, '..', '..', '..', 'server');
+  return path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
+}
+
+// Locate the installed `cowork-server` binary (installed via
+// `uv tool install cowork-server`). Lives in ~/.local/bin on
+// POSIX, %LOCALAPPDATA%/bin on Windows.
+function getCoworkServerBin(): string | null {
+  const localBin = path.join(os.homedir(), '.local', 'bin', 'cowork-server');
+  if (fs.existsSync(localBin)) return localBin;
+  return null;
 }
 
 async function probeHealth(timeoutMs: number): Promise<boolean> {
@@ -125,7 +135,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   // instead of spawning a second python that would clash on the port.
   if (pendingStart) return pendingStart;
 
-  serverPort = opts.port ?? (Number(process.env.ANTON_SERVER_PORT) || DEFAULT_PORT);
+  serverPort = opts.port ?? (Number(process.env.COWORK_SERVER_PORT) || Number(process.env.ANTON_SERVER_PORT) || DEFAULT_PORT);
 
   // Pre-flight: somebody might already be on our port. The most
   // common cause is an orphan python from a prior antontron session
@@ -155,64 +165,48 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   // transition to "not running" reflects this start cycle's reason.
   lastStopIntentional = null;
   _stopRequested = false;
-  const pythonCmd = getAntonPython();
-  if (!pythonCmd) {
-    lastStartError = 'Anton Python interpreter not found. Run the installer first.';
-    return {
-      ok: false,
-      reason: lastStartError,
-    };
-  }
 
-  const baseEnv = {
-    ...process.env,
-    PATH: getEnvPath(),
-    ...getPythonUtf8Env(),
-  };
-  const depsReady = await checkPythonImports(pythonCmd, baseEnv);
-  if (!depsReady) {
-    lastStartError = 'Anton server dependencies are missing from the uv tool environment. Run the installer to repair the Anton tool venv.';
-    return {
-      ok: false,
-      reason: lastStartError,
-    };
-  }
+  // Determine how to spawn the server:
+  //   Dev mode:  `uv run cowork-server` from the sibling source dir
+  //   Packaged:  run the installed `cowork-server` binary directly
+  const devDir = getDevServerDir();
+  let spawnCmd: string;
+  let spawnArgs: string[];
+  let spawnCwd: string | undefined;
 
-  const serverDir = getServerDir();
-  if (!fs.existsSync(path.join(serverDir, 'main.py'))) {
-    lastStartError = `Server source not found at ${serverDir}/main.py`;
-    return {
-      ok: false,
-      reason: lastStartError,
-    };
+  if (devDir && fs.existsSync(path.join(devDir, 'pyproject.toml'))) {
+    // Dev: use uv to run from source so local edits are picked up
+    const uvCmd = getUvPath();
+    if (!uvCmd) {
+      lastStartError = 'uv not found. Install uv first: https://docs.astral.sh/uv/getting-started/installation/';
+      return { ok: false, reason: lastStartError };
+    }
+    spawnCmd = uvCmd;
+    spawnArgs = ['run', 'cowork-server'];
+    spawnCwd = devDir;
+  } else {
+    // Packaged: use the installed cowork-server binary
+    const bin = getCoworkServerBin();
+    if (!bin) {
+      lastStartError = 'cowork-server not installed. Run the installer to set up the backend.';
+      return { ok: false, reason: lastStartError };
+    }
+    spawnCmd = bin;
+    spawnArgs = [];
+    spawnCwd = undefined;
   }
 
   pendingStart = (async (): Promise<StartServerResult> => {
     const env = {
-      ...baseEnv,
+      ...process.env,
+      PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
-      ANTON_SERVER_PORT: String(serverPort),
-      ANTON_SERVER_HOST: SERVER_HOST,
-      ANTON_PROJECTS_DIR: path.join(app.getPath('userData'), 'projects'),
+      COWORK_SERVER_PORT: String(serverPort),
+      COWORK_SERVER_HOST: SERVER_HOST,
     };
 
-    // Spawn the python with a STABLE cwd (`~`) and pass `main.py` as
-    // an absolute path. Earlier we used `cwd: serverDir`, which sat
-    // inside the .app bundle — fine until the bundle was replaced
-    // under a running server (`npm run pack` in dev wipes
-    // `release/mac-arm64/`; in-place app updates do the same in
-    // production). Once the cwd directory is gone, anton-core's
-    // `anton/config/settings.py:_build_env_files` calls `Path.cwd()`
-    // at import time, which calls `os.getcwd()`, which raises
-    // FileNotFoundError. That surfaces in the chat as the cryptic
-    // "[Errno 2] No such file or directory" with no recoverable
-    // context. Pinning cwd to home avoids the problem entirely —
-    // the server uses absolute paths everywhere internally, cwd is
-    // only load-bearing for anton-core's optional `cwd/.env` lookup
-    // which we deliberately skip here (the server's `.env` chain
-    // resolves through `~/.anton/.env`).
-    const child = spawn(pythonCmd, [path.join(serverDir, 'main.py')], {
-      cwd: os.homedir(),
+    const child = spawn(spawnCmd, spawnArgs, {
+      cwd: spawnCwd,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -224,12 +218,12 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       // through logging.error often land on stdout too. Buffer both
       // so the help modal has the complete picture.
       appendStderr(text);
-      process.stdout.write(`[anton-server] ${text}`);
+      process.stdout.write(`[cowork-server] ${text}`);
     });
     child.stderr.on('data', (d) => {
       const text = d.toString();
       appendStderr(text);
-      process.stderr.write(`[anton-server] ${text}`);
+      process.stderr.write(`[cowork-server] ${text}`);
     });
     child.on('exit', (code) => {
       serverStarted = false;
@@ -243,7 +237,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       lastStopIntentional = _stopRequested;
       _stopRequested = false;
       if (code !== 0 && code !== null) {
-        console.error(`[anton-server] exited with code ${code}`);
+        console.error(`[cowork-server] exited with code ${code}`);
       }
     });
 

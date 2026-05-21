@@ -60,11 +60,5 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
-  - from: server/
-    to: server/
-    filter:
-      - "**/*"
-      - "!**/__pycache__/**"
-      - "!.venv/**"
 
 afterSign: scripts/notarize.js

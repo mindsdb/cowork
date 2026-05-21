@@ -1,7 +1,7 @@
-// Standalone Anton FastAPI server spawn — used by `npm run dev:web` to
-// boot the python sidecar alongside Vite, so a developer who already
-// has anton installed (`uv tool install anton`) doesn't have to start
-// it in a second terminal.
+// Standalone cowork-server spawn — used by `npm run dev:web` to boot
+// the FastAPI backend alongside Vite. Uses `uv run python -m cowork`
+// from the cowork-server sibling directory, which lets uv manage the
+// virtualenv and dependencies automatically.
 //
 // Mirrors src/main/server-process.ts intentionally. We accept the small
 // duplication: server-process.ts is electron-coupled (uses app.isPackaged,
@@ -24,20 +24,26 @@ const SERVER_HOST = '127.0.0.1';
 let serverProcess = null;
 let serverStarted = false;
 
-function getAntonPython() {
-  const dataHome = process.env.XDG_DATA_HOME ||
-    path.join(os.homedir(), process.platform === 'win32' ? 'AppData/Roaming' : '.local/share');
-  const candidate = path.join(
-    dataHome, 'uv', 'tools', 'anton',
-    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
-  );
-  return fs.existsSync(candidate) ? candidate : null;
+// Locate the cowork-server directory. Convention: sibling of this repo
+// (../cowork-server relative to the cowork repo root). Override with
+// COWORK_SERVER_DIR env var for non-standard layouts.
+function getServerDir() {
+  if (process.env.COWORK_SERVER_DIR) {
+    return path.resolve(process.env.COWORK_SERVER_DIR);
+  }
+  return path.resolve('..', 'cowork-server');
+}
+
+function getUvPath() {
+  const localBin = path.join(os.homedir(), '.local', 'bin', 'uv');
+  if (fs.existsSync(localBin)) return localBin;
+  // Fall back to PATH lookup
+  return 'uv';
 }
 
 // Prepend ~/.local/bin and ~/.cargo/bin so the spawned server can find
-// `uv` (anton's scratchpad runtime calls `shutil.which("uv")` for fast
-// venv creation). Important for any launch context where shell init
-// files aren't read.
+// `uv` and other tools. Important for any launch context where shell
+// init files aren't read.
 function getEnvPath() {
   const localBin = path.join(os.homedir(), '.local', 'bin');
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
@@ -71,43 +77,23 @@ export const SERVER_PORT = DEFAULT_PORT;
 export async function start({ readyTimeoutMs = 15000 } = {}) {
   if (serverStarted) return { port: DEFAULT_PORT };
 
-  const pythonCmd = getAntonPython();
-  if (!pythonCmd) {
-    const expected = path.join(
-      process.env.XDG_DATA_HOME ||
-        path.join(os.homedir(), process.platform === 'win32' ? 'AppData/Roaming' : '.local/share'),
-      'uv', 'tools', 'anton',
-      process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
-    );
+  const serverDir = getServerDir();
+  if (!fs.existsSync(path.join(serverDir, 'pyproject.toml'))) {
     process.stderr.write('\n');
-    console.error(`✗ Anton Python interpreter not found at ${expected}.`);
-    console.error('  Run `uv tool install anton` first, then re-run `npm run dev:web`.');
+    console.error(`✗ cowork-server not found at ${serverDir}.`);
+    console.error('  Expected a sibling directory ../cowork-server with pyproject.toml.');
+    console.error('  Set COWORK_SERVER_DIR to override.');
     process.exit(1);
   }
 
-  const serverDir = path.resolve('./server');
-  if (!fs.existsSync(path.join(serverDir, 'main.py'))) {
-    throw new Error(`Server source not found at ${serverDir}/main.py (expected to run from cowork repo root).`);
-  }
+  const uvCmd = getUvPath();
 
-  // We deliberately don't set ANTON_PROJECTS_DIR. The server uses
-  // ~/.anton/* defaults, which shares vault and settings with anton CLI
-  // naturally. Note this is NOT the same path as the Electron app uses
-  // for projects — Electron stores projects at app.getPath('userData')
-  // (e.g. ~/Library/Application Support/Anton/projects on macOS), which
-  // is intentionally Electron-isolated. If a developer wants dev:web
-  // to share projects with the Electron app specifically, they can:
-  //
-  //   ANTON_PROJECTS_DIR="$HOME/Library/Application Support/Anton/projects" npm run dev:web
-  //
-  // Vault and settings (~/.anton/.env, ~/.anton/data_vault) are always
-  // shared with anton CLI regardless.
   const env = {
     ...process.env,
     PATH: getEnvPath(),
     PYTHONUNBUFFERED: '1',
-    ANTON_SERVER_PORT: String(DEFAULT_PORT),
-    ANTON_SERVER_HOST: SERVER_HOST,
+    COWORK_SERVER_PORT: String(DEFAULT_PORT),
+    COWORK_SERVER_HOST: SERVER_HOST,
   };
 
   // detached:true puts the python in its own process group so the
@@ -115,7 +101,7 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
   // controls shutdown order explicitly: vite quiesces first, THEN we
   // SIGTERM python — avoids ECONNREFUSED noise from vite proxying
   // /v1/* during shutdown.
-  const child = spawn(pythonCmd, ['main.py'], {
+  const child = spawn(uvCmd, ['run', 'cowork-server'], {
     cwd: serverDir,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -123,16 +109,16 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
   });
 
   child.stdout.on('data', (d) => {
-    process.stdout.write(`[anton-server] ${d.toString()}`);
+    process.stdout.write(`[cowork-server] ${d.toString()}`);
   });
   child.stderr.on('data', (d) => {
-    process.stderr.write(`[anton-server] ${d.toString()}`);
+    process.stderr.write(`[cowork-server] ${d.toString()}`);
   });
   child.on('exit', (code) => {
     serverStarted = false;
     serverProcess = null;
     if (code !== 0 && code !== null) {
-      console.error(`[anton-server] exited with code ${code}`);
+      console.error(`[cowork-server] exited with code ${code}`);
     }
   });
 
