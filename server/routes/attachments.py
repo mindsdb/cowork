@@ -137,6 +137,48 @@ def attachment_context(project_name: str | None, session_id: str | None, ids: li
     return "\n\n".join(sections)
 
 
+def attachment_content_blocks(
+    project_name: str | None, session_id: str | None, ids: list[str] | None, user_text: str
+) -> list[dict]:
+    """Build multimodal content blocks for the user turn.
+
+    Image attachments are base64-encoded and returned as Anthropic image
+    blocks so the model can see them directly via vision.  Non-image files
+    fall back to the text-path context.
+    """
+    import base64
+
+    selected = get_attachments(project_name, session_id, ids)
+    if not selected:
+        return [{"type": "text", "text": user_text}]
+
+    blocks: list[dict] = [{"type": "text", "text": user_text}]
+    non_image_sections: list[str] = []
+
+    for item in selected:
+        if item.mime.startswith("image/"):
+            try:
+                data = base64.standard_b64encode(Path(item.path).read_bytes()).decode()
+                blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": item.mime,
+                        "data": data,
+                    },
+                })
+            except OSError:
+                non_image_sections.append(f"### {item.name} ({item.mime})\nFile path: {item.path}")
+        else:
+            non_image_sections.append(f"### {item.name} ({item.mime})\nFile path: {item.path}")
+
+    if non_image_sections:
+        context = "Attached context supplied by the user:\n\n" + "\n\n".join(non_image_sections)
+        blocks.append({"type": "text", "text": context})
+
+    return blocks
+
+
 @router.get("/{project_name}/{session_id}")
 def list_attachments(
     project_name: str,

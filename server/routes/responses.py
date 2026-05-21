@@ -24,7 +24,7 @@ from anton_api.models import (
     ResponseStatus,
     ResponsesRequest,
 )
-from .attachments import attachment_context
+from .attachments import attachment_context, attachment_content_blocks
 from .settings import get_config_status
 
 
@@ -44,7 +44,16 @@ def _resolve_input(req: ResponsesRequest) -> str:
     return content
 
 
-def _assembled_user_input(content: str, project_name: str | None, session_id: str | None, attachment_ids: list[str]) -> str:
+def _assembled_user_input(
+    content: str, project_name: str | None, session_id: str | None, attachment_ids: list[str]
+) -> "str | list[dict]":
+    if not attachment_ids:
+        return content
+    from .attachments import get_attachments
+    selected = get_attachments(project_name, session_id, attachment_ids)
+    has_images = any(a.mime.startswith("image/") for a in selected)
+    if has_images:
+        return attachment_content_blocks(project_name, session_id, attachment_ids, content)
     context = attachment_context(project_name, session_id, attachment_ids)
     if not context:
         return content
