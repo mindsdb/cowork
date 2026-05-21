@@ -1,4 +1,4 @@
-# Anton CoWork — build & dev notes
+# Anton Cowork — build & dev notes
 
 Electron + Vite + React + Tailwind desktop app with a FastAPI Python sidecar.
 

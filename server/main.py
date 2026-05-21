@@ -1,5 +1,5 @@
 """
-Anton CoWork — FastAPI backend server.
+Anton Cowork — FastAPI backend server.
 
 Runs on http://127.0.0.1:8765
 Wraps Anton's Python API and exposes /v1/* REST + SSE endpoints.
@@ -285,7 +285,7 @@ async def lifespan(app: FastAPI):
     await scratchpad_runtime.close_all()
 
 
-app = FastAPI(title="Anton CoWork API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Anton Cowork API", version="1.0.0", lifespan=lifespan)
 
 _renderer_url = os.environ.get("VITE_RENDERER_URL", "").rstrip("/")
 _allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "app://-", "null"]
@@ -345,7 +345,7 @@ async def root():
     if ANTON_SERVE_SPA and SPA_DIR is not None:
         return FileResponse(str(SPA_DIR / "index-web.html"))
     return {
-        "message": "Anton CoWork API",
+        "message": "Anton Cowork API",
         "anton_available": conversation_manager.is_anton_available(),
     }
 
@@ -407,7 +407,7 @@ if __name__ == "__main__":
     host = os.environ.get("ANTON_SERVER_HOST", "127.0.0.1")
 
     logger.info("─" * 50)
-    logger.info("Anton CoWork server starting on %s:%d", host, port)
+    logger.info("Anton Cowork server starting on %s:%d", host, port)
     logger.info("Anton available: %s", conversation_manager.is_anton_available())
     if not conversation_manager.is_anton_available():
         logger.info("Anton is not installed; chat endpoints will return 503")
