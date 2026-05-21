@@ -7,7 +7,7 @@ import { validateSettings, revealSettingKey, testProviders } from '../api';
 // Minds Cloud are presets that translate to openai-compatible + a known
 // base URL on save, and are recognized back from those values on load.
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const MINDS_API_PATH_SUFFIX = '/api/v1';
+const MINDS_API_PATH_SUFFIX = '/v1';
 
 const PROVIDER_PRESETS = [
   { value: 'anthropic',         label: 'Anthropic' },

@@ -1348,7 +1348,30 @@ export default function ChatView({
                   />
                 );
               }
-              if (m.role === 'activity') return null; // surfaced in the rail's Progress
+              if (m.role === 'activity') {
+                // Activity rows normally live in the rail's Progress
+                // only. Exception: when this is the just-sent
+                // "thinking" placeholder AND no streaming row exists
+                // yet (some code path stripped the stub injected by
+                // `withThinkingPlaceholder`, or a future caller adds
+                // an activity without the stub), surface it inline as
+                // a thinking bubble so the chat scroll never goes
+                // silent between user-send and first SSE chunk.
+                if (m.placeholder && !streamingMsg) {
+                  return (
+                    <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false}>
+                      <div style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                      }}>
+                        <StreamCursor />
+                        <span>{m._label || 'Thinking…'}</span>
+                      </div>
+                    </AnswerTurn>
+                  );
+                }
+                return null;
+              }
               if (m._kind === 'connect_intro') {
                 // The card is clickable: clicking it re-opens the
                 // form panel when it's been closed. We stash the
@@ -1468,7 +1491,13 @@ export default function ChatView({
                     fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
                   }}>
                     <StreamCursor />
-                    <span>Thinking…</span>
+                    {/* `_placeholderLabel` is set by the pre-first-
+                        event stub in App.jsx `withThinkingPlaceholder`
+                        ("Creating task…" for new tasks, "Thinking…"
+                        for replies). Once flushStreamingMessage runs
+                        on the first SSE event, the new streaming row
+                        has no label and falls back to "Thinking…". */}
+                    <span>{streamingMsg._placeholderLabel || 'Thinking…'}</span>
                   </div>
                 )}
                 {streamingMsg.content && (

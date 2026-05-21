@@ -8,14 +8,22 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
+  attachmentRawUrl,
+  deleteAttachment,
   deleteMemory,
+  deleteProjectFile,
   fetchAttachments,
   fetchMemory,
   listProjectFiles,
+  moveAttachmentToProject,
   saveMemory,
+  uploadAttachments,
+  uploadProjectFiles,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 import ContextFileModal from '../project/ContextFileModal';
+import { ConfirmModal } from '../ConfirmModal';
+import * as host from '../../../platform/host';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -68,51 +76,156 @@ function attachmentSourceIcon(item) {
   return Ico.doc(13);
 }
 
-function SessionAttachmentRow({ item }) {
+function SessionAttachmentRow({
+  item, menuOpen, onMenuToggle, onOpen, onMove, onDelete, menuRef,
+}) {
   const label = item.name || item.id || 'Attachment';
-  const sub = item.textPreview
-    || (item.mime ? String(item.mime).split('/').pop() : '')
-    || (item.size ? `${Math.ceil(item.size / 1024)} KB` : '');
   const when = item.updated_at || item.created_at || item.updatedAt || item.createdAt;
+  // The mime/size used to be a second visible line — moved to the
+  // hover tooltip so the row is one line like Project Files. Same
+  // info, half the vertical weight in the rail.
+  const titleSegments = [
+    item.note || item.textPreview || null,
+    item.mime || null,
+    item.size ? `${Math.ceil(item.size / 1024)} KB` : null,
+  ].filter(Boolean);
+  const titleText = titleSegments.length ? `${label} — ${titleSegments.join(' · ')}` : label;
+  const canOpen = !!onOpen;
   return (
     <div
+      role={canOpen ? 'button' : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      onClick={canOpen ? onOpen : undefined}
+      onKeyDown={canOpen
+        ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(); } }
+        : undefined}
+      title={titleText}
       className={clsx(
-        'group grid items-start gap-2 rounded-md px-1 py-1 text-left',
-        'border-0 bg-transparent w-full'
+        'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
+        canOpen && 'cursor-pointer transition-colors hover:bg-surface-2',
+        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
       )}
       style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
-      title={item.note || item.textPreview || label}
     >
-      <span className="mt-0.5 text-ink-4 inline-flex flex-none">{attachmentSourceIcon(item)}</span>
-      <span className="min-w-0">
-        <span className="block truncate text-[12.5px] text-ink">{label}</span>
-        {sub ? (
-          <span className="mt-0.5 block truncate text-[11px] text-ink-4">{sub}</span>
+      <span className="text-ink-4 inline-flex flex-none">{attachmentSourceIcon(item)}</span>
+      <span className="block truncate text-[12.5px] text-ink min-w-0">{label}</span>
+      {/* Trailing slot: age normally, kebab on hover or while the
+          row's menu is open. Same shared-slot trick as Project Files'
+          trash so the row width doesn't jump. */}
+      <span className="relative inline-flex items-center justify-end flex-none" style={{ minWidth: 16 }}>
+        {when ? (
+          <span className={clsx(
+            'text-[10.5px] text-ink-4 transition-opacity',
+            (onMenuToggle) && 'group-hover:opacity-0',
+            menuOpen && 'opacity-0',
+          )}>
+            {relativeAge(when)}
+          </span>
         ) : null}
+        {onMenuToggle && (
+          <button
+            type="button"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title="More actions"
+            onClick={(e) => {
+              // Don't let the kebab click open the file — the menu
+              // takes over here.
+              e.stopPropagation();
+              onMenuToggle();
+            }}
+            className={clsx(
+              'absolute inset-0 inline-flex items-center justify-center',
+              menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+              'transition-opacity rounded',
+              'text-ink-4 hover:text-ink',
+              'bg-transparent border-0 cursor-pointer p-0',
+            )}
+          >
+            {Ico.moreVert(13)}
+          </button>
+        )}
       </span>
-      {when ? (
-        <span className="text-[10.5px] text-ink-4 mt-0.5">{relativeAge(when)}</span>
-      ) : null}
+
+      {menuOpen && (
+        <div
+          ref={menuRef}
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+          className="menu absolute z-50"
+          style={{
+            // Anchor the menu under the kebab (trailing-right slot)
+            // so it doesn't cover the row's filename. minWidth is
+            // sized for the longest label ("Move to project files").
+            right: 4, top: 'calc(100% + 2px)',
+            minWidth: 180,
+          }}
+        >
+          {canOpen && (
+            <button
+              type="button"
+              className="menu-item"
+              onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
+            >
+              <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.upload(13)}</span>
+              <span>Open</span>
+            </button>
+          )}
+          {onMove && (
+            <button
+              type="button"
+              className="menu-item"
+              onClick={(e) => { e.stopPropagation(); onMove(); }}
+            >
+              <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(13)}</span>
+              <span>Move to project files</span>
+            </button>
+          )}
+          {onDelete && (
+            <>
+              {(canOpen || onMove) && (
+                <div style={{ height: 1, background: 'var(--border-0)', margin: '4px 0' }} />
+              )}
+              <button
+                type="button"
+                className="menu-item"
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                style={{ color: 'var(--danger)' }}
+              >
+                <span style={{ display: 'inline-flex', color: 'var(--danger)' }}>{Ico.trash(13)}</span>
+                <span>Delete</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function ContextFileRow({ file, onOpen }) {
+function ContextFileRow({ file, onOpen, onRequestDelete }) {
   const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
-  // Single-line row: filename only — the previous version added a
-  // subtitle ("Project instructions" / "X KB") under every file
-  // which doubled row height and pushed long lists off-screen. The
-  // age column on the right carries enough freshness signal; size
-  // is in the tooltip.
+  // The instructions file is foundational (Anton reads it on every
+  // turn). Surfacing a delete on hover would tempt a misclick; the
+  // ContextFileModal opened by clicking the row also hides the
+  // delete affordance for `.anton/anton.md` — same rule both places.
+  const canDelete = !isAnton && !!onRequestDelete;
+  // The row was a <button>, but nesting a <button> inside a
+  // <button> is invalid HTML and breaks the trash icon's click in
+  // some browsers. Switch the outer to a div with role="button" so
+  // the trash can be a real interactive child.
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(); } }}
       title={`${file.path}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}`}
       className={clsx(
         'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
-        'border-0 bg-transparent w-full'
+        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
       )}
       style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
     >
@@ -120,10 +233,45 @@ function ContextFileRow({ file, onOpen }) {
       <span className="block truncate text-[12.5px] text-ink min-w-0">
         {isAnton ? 'Instructions' : (file.path || file.name)}
       </span>
-      {file.modified ? (
-        <span className="text-[10.5px] text-ink-4">{relativeAge(file.modified * 1000)}</span>
-      ) : null}
-    </button>
+      {/* Trailing slot: age normally, trash on hover. Both share
+          the same column with relative/absolute stacking so the
+          row width doesn't change between hover states. The age
+          drives the column's intrinsic width (the trash icon is
+          ~14px wide, roughly the same as "1m"/"2h"/"3d"). */}
+      <span className="relative inline-flex items-center justify-end flex-none" style={{ minWidth: 16 }}>
+        {file.modified ? (
+          <span className={clsx(
+            'text-[10.5px] text-ink-4 transition-opacity',
+            canDelete && 'group-hover:opacity-0 group-focus-within:opacity-0',
+          )}>
+            {relativeAge(file.modified * 1000)}
+          </span>
+        ) : null}
+        {canDelete && (
+          <button
+            type="button"
+            aria-label={`Delete ${file.path || file.name}`}
+            title="Delete file"
+            onClick={(e) => {
+              // Don't let the click bubble up to the row — that
+              // would open the file modal instead of confirming
+              // a delete.
+              e.stopPropagation();
+              onRequestDelete(file);
+            }}
+            className={clsx(
+              'absolute inset-0 inline-flex items-center justify-center',
+              'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+              'transition-opacity rounded',
+              'text-ink-4 hover:text-danger',
+              'bg-transparent border-0 cursor-pointer p-0',
+            )}
+          >
+            {Ico.trash(13)}
+          </button>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -140,6 +288,36 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const [openEntry, setOpenEntry] = useState(null);
   const [openFile, setOpenFile] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  // Row-level delete + header-level upload state.
+  // `pendingDeleteFile` drives the ConfirmModal — set when the user
+  // clicks the trash icon on a row, cleared on close/confirm. We
+  // follow the established ConfirmModal pattern (lifted state +
+  // payload) but keep it local to ContextCard rather than prop-
+  // drilling up to App.jsx — the delete is internal to the rail
+  // and doesn't need to participate in app-level routing.
+  const [pendingDeleteFile, setPendingDeleteFile] = useState(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef(null);
+  // Mirror state for the Task Uploads section — separate from project
+  // files because upload/delete hit different endpoints and a busy
+  // state in one shouldn't grey out the other.
+  const [taskUploadBusy, setTaskUploadBusy] = useState(false);
+  const [taskUploadError, setTaskUploadError] = useState('');
+  const taskUploadInputRef = useRef(null);
+  // Which attachment's kebab menu is currently open. Single-open
+  // policy — clicking one closes any other. `attachmentMenuRef` is
+  // attached to the open menu's outer div so the document
+  // outside-click listener can ignore clicks inside it (without it,
+  // mousedown would null `openAttachmentMenuId` before the menu
+  // item's own click handler ran, so Move/Delete never fired).
+  const [openAttachmentMenuId, setOpenAttachmentMenuId] = useState(null);
+  const [pendingDeleteAttachment, setPendingDeleteAttachment] = useState(null);
+  const attachmentMenuRef = useRef(null);
+  // Bump to re-run the attachments effect after a mutation (upload /
+  // delete / move) without needing to wire `onChanged` up to App.jsx.
+  const [attachmentsTick, setAttachmentsTick] = useState(0);
+  const bumpAttachments = useCallback(() => setAttachmentsTick((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,7 +432,31 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         if (!cancelled) setAttachmentsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [sessionRelevant, conversationId, refreshKey, project?.name]);
+  }, [sessionRelevant, conversationId, refreshKey, project?.name, attachmentsTick]);
+
+  // Click anywhere outside an open attachment kebab menu closes it.
+  // Three subtleties:
+  //   1. Listen for `click`, not `mousedown` — `mousedown` fires
+  //      BEFORE the menu item's own click handler, and would null
+  //      `openAttachmentMenuId` before the menu item's onClick ever
+  //      ran (so Move-to-project / Delete never fired).
+  //   2. Attach on the next tick so the click that OPENED the menu
+  //      doesn't immediately propagate up and close it.
+  //   3. Check the ref so clicks INSIDE the menu (which stopPropagate
+  //      on React's synthetic event but still bubble at the native
+  //      document level) don't fall through to "close".
+  useEffect(() => {
+    if (openAttachmentMenuId == null) return undefined;
+    const onClick = (e) => {
+      if (attachmentMenuRef.current && attachmentMenuRef.current.contains(e.target)) return;
+      setOpenAttachmentMenuId(null);
+    };
+    const id = setTimeout(() => document.addEventListener('click', onClick), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', onClick);
+    };
+  }, [openAttachmentMenuId]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {
@@ -275,7 +477,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const totalMemoryFiles = useMemo(() => ordered.reduce((n, s) => n + s.files.length, 0), [ordered]);
   const hasProjectFiles = projectFiles.length > 0;
 
-  const blockGlobalEmpty = totalMemoryFiles === 0 && !hasProjectFiles && !sessionRelevant;
+  // Suppress the whole card only when there's truly nothing to act
+  // on AND no project to upload into. Inside a project we always
+  // render the Files section so the new "+ Add file" / empty-state
+  // upload affordance is reachable on a fresh project too.
+  const blockGlobalEmpty = !project?.name
+    && totalMemoryFiles === 0
+    && !hasProjectFiles
+    && !sessionRelevant;
 
   if (blockGlobalEmpty) {
     return (
@@ -289,35 +498,148 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     <div className="flex flex-col gap-3 pt-2">
       {/* All working-folder files. Instructions row is pinned first;
           the rest follow by most-recent-mtime. >10 files gets a
-          fixed-height scroll container so the rail stays compact. */}
-      {project?.name && hasProjectFiles && (
+          fixed-height scroll container so the rail stays compact.
+          Always render the section (even when empty) when the
+          project is loaded, so the "+ Add file" affordance is
+          reachable on fresh projects too. */}
+      {project?.name && (
         <div className="flex flex-col gap-0.5">
-          <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
-            Files{projectFiles.length > 1 ? ` · ${projectFiles.length}` : ''}
-          </span>
-          <div
-            className={clsx(
-              'flex flex-col gap-0.5',
-              projectFiles.length > 10 && 'overflow-y-auto pr-1 scroll-clean',
-            )}
-            style={projectFiles.length > 10 ? { maxHeight: 220 } : undefined}
-          >
-            {projectFiles.map((f) => (
-              <ContextFileRow
-                key={f.path}
-                file={f}
-                onOpen={() => setOpenFile(f)}
-              />
-            ))}
+          <div className="flex items-center justify-between px-1 mb-1">
+            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+              Project files{projectFiles.length > 1 ? ` · ${projectFiles.length}` : ''}
+            </span>
+            <button
+              type="button"
+              aria-label="Add files to this project"
+              title={uploadBusy ? 'Uploading…' : 'Add files to this project'}
+              disabled={uploadBusy}
+              onClick={() => fileInputRef.current?.click()}
+              className={clsx(
+                'inline-flex items-center justify-center',
+                'h-5 w-5 rounded',
+                'text-ink-4 hover:text-ink hover:bg-surface-2',
+                'transition-colors bg-transparent border-0 cursor-pointer',
+                'disabled:opacity-50 disabled:cursor-wait',
+              )}
+            >
+              {Ico.plus(13)}
+            </button>
           </div>
+          {/* Hidden file input — driven by the visible "+" button so
+              we get the OS file picker for free. `multiple` matches
+              the upload API which accepts a list. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={async (e) => {
+              const files = Array.from(e.target.files || []);
+              // Reset the input so re-uploading the same filename
+              // re-triggers `onChange` (browsers dedupe by value).
+              e.target.value = '';
+              if (!files.length || !project?.name) return;
+              setUploadBusy(true);
+              setUploadError('');
+              try {
+                await uploadProjectFiles(project.name, files);
+                reloadFiles();
+              } catch (err) {
+                setUploadError(err?.message || 'Upload failed.');
+              } finally {
+                setUploadBusy(false);
+              }
+            }}
+          />
+          {uploadError && (
+            <p className="text-[11px] px-1 pb-0.5" style={{ color: 'var(--danger)' }}>
+              {uploadError}
+            </p>
+          )}
+          {!hasProjectFiles && !uploadBusy && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className={clsx(
+                'flex items-center gap-2 px-1 py-1 rounded-md',
+                'text-[12px] text-ink-4 hover:text-ink hover:bg-surface-2',
+                'cursor-pointer bg-transparent border-0 text-left',
+              )}
+            >
+              <span className="text-ink-4 inline-flex flex-none">{Ico.upload(13)}</span>
+              <span>Add files to give Anton context.</span>
+            </button>
+          )}
+          {hasProjectFiles && (
+            <div
+              className={clsx(
+                'flex flex-col gap-0.5',
+                projectFiles.length > 10 && 'overflow-y-auto pr-1 scroll-clean',
+              )}
+              style={projectFiles.length > 10 ? { maxHeight: 220 } : undefined}
+            >
+              {projectFiles.map((f) => (
+                <ContextFileRow
+                  key={f.path}
+                  file={f}
+                  onOpen={() => setOpenFile(f)}
+                  onRequestDelete={(file) => setPendingDeleteFile(file)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {sessionRelevant && (
         <div className="flex flex-col gap-0.5">
-          <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
-            Uploads
-          </span>
+          <div className="flex items-center justify-between px-1 mb-1">
+            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+              Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
+            </span>
+            <button
+              type="button"
+              aria-label="Attach files to this task"
+              title={taskUploadBusy ? 'Uploading…' : 'Attach files to this task'}
+              disabled={taskUploadBusy}
+              onClick={() => taskUploadInputRef.current?.click()}
+              className={clsx(
+                'inline-flex items-center justify-center',
+                'h-5 w-5 rounded',
+                'text-ink-4 hover:text-ink hover:bg-surface-2',
+                'transition-colors bg-transparent border-0 cursor-pointer',
+                'disabled:opacity-50 disabled:cursor-wait',
+              )}
+            >
+              {Ico.plus(13)}
+            </button>
+          </div>
+          <input
+            ref={taskUploadInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={async (e) => {
+              const files = Array.from(e.target.files || []);
+              e.target.value = '';
+              if (!files.length || !project?.name || !conversationId) return;
+              setTaskUploadBusy(true);
+              setTaskUploadError('');
+              try {
+                await uploadAttachments(files, { projectName: project.name, sessionId: conversationId });
+                bumpAttachments();
+              } catch (err) {
+                setTaskUploadError(err?.message || 'Upload failed.');
+              } finally {
+                setTaskUploadBusy(false);
+              }
+            }}
+          />
+          {taskUploadError && (
+            <p className="text-[11px] px-1 pb-0.5" style={{ color: 'var(--danger)' }}>
+              {taskUploadError}
+            </p>
+          )}
           {attachmentsLoading && (
             <p className="text-[12px] text-ink-4 px-1 pb-0.5">Loading attachments…</p>
           )}
@@ -326,19 +648,83 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
               {attachmentsError}
             </p>
           )}
-          {!attachmentsLoading && !attachmentsError && sessionAttachments.length === 0 && (
-            <div className="flex items-center gap-2 px-1 pb-0.5 text-[12px] text-ink-4">
-              {/* Empty-state glyph mirrors the row icon style above
-                  (paperclip ~ "attachment") so the row reads as a
-                  placeholder for what would otherwise live there. */}
+          {!attachmentsLoading && !attachmentsError && sessionAttachments.length === 0 && !taskUploadBusy && (
+            <button
+              type="button"
+              onClick={() => taskUploadInputRef.current?.click()}
+              className={clsx(
+                'flex items-center gap-2 px-1 py-1 rounded-md',
+                'text-[12px] text-ink-4 hover:text-ink hover:bg-surface-2',
+                'cursor-pointer bg-transparent border-0 text-left',
+              )}
+            >
+              {/* Same attach-paperclip glyph the empty-state used,
+                  but the row is now an active "click to upload"
+                  affordance — the explicit "+" header button is the
+                  primary surface, this is a fallback for when the
+                  list is empty and the user might miss the header. */}
               <span className="text-ink-4 inline-flex flex-none">{Ico.attach(13)}</span>
-              <span>No files attached yet.</span>
-            </div>
+              <span>No files attached yet — click to add.</span>
+            </button>
           )}
           {!attachmentsLoading
-            && sessionAttachments.map((item) => (
-              <SessionAttachmentRow key={item.id} item={item} />
-            ))}
+            && sessionAttachments.map((item) => {
+              const rawUrl = attachmentRawUrl(project?.name, conversationId, item.id);
+              return (
+                <SessionAttachmentRow
+                  key={item.id}
+                  item={item}
+                  menuOpen={openAttachmentMenuId === item.id}
+                  menuRef={openAttachmentMenuId === item.id ? attachmentMenuRef : null}
+                  onMenuToggle={() => setOpenAttachmentMenuId(
+                    openAttachmentMenuId === item.id ? null : item.id,
+                  )}
+                  onOpen={rawUrl
+                    ? () => {
+                        // Browser shell + Electron shell both supported
+                        // through host.openExternal — Electron forwards
+                        // to shell.openExternal (OS default app); web
+                        // does window.open in a new tab where the
+                        // server's `inline` Content-Disposition lets
+                        // the browser render images/PDFs natively.
+                        setOpenAttachmentMenuId(null);
+                        host.openExternal(rawUrl);
+                      }
+                    : null}
+                  onMove={() => {
+                    setOpenAttachmentMenuId(null);
+                    // Optimistic: drop from Task uploads right away
+                    // so the row disappears the moment the user
+                    // clicks. The server move is fast (rename(2) on
+                    // local disk) but the followup fetchAttachments
+                    // round-trip adds visible latency. We refetch
+                    // project files after the server confirms so the
+                    // moved row appears in PROJECT FILES, and on
+                    // error we reattach the row to TASK UPLOADS.
+                    const previous = item;
+                    setSessionAttachments((prev) => prev.filter((a) => a.id !== item.id));
+                    (async () => {
+                      try {
+                        await moveAttachmentToProject(project.name, conversationId, item.id);
+                        reloadFiles();
+                      } catch (err) {
+                        setTaskUploadError(err?.message || 'Could not move file.');
+                        // Restore the row so the user sees the
+                        // file still belongs to the task.
+                        setSessionAttachments((prev) => {
+                          if (prev.find((a) => a.id === previous.id)) return prev;
+                          return [previous, ...prev];
+                        });
+                      }
+                    })();
+                  }}
+                  onDelete={() => {
+                    setOpenAttachmentMenuId(null);
+                    setPendingDeleteAttachment(item);
+                  }}
+                />
+              );
+            })}
         </div>
       )}
 
@@ -426,6 +812,81 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
         onClose={() => setOpenFile(null)}
         onChanged={() => reloadFiles()}
+      />
+
+      {/* Hover-trash confirm — same in-app pattern as App.jsx's
+          delete-task / delete-project modals (ConfirmModal with
+          `destructive` style). We don't surface server failures in
+          a toast yet — if the DELETE fails the reloadFiles() call
+          below will leave the row visible, which is the same self-
+          correcting behavior the memory rail uses on edit. */}
+      <ConfirmModal
+        open={!!pendingDeleteFile}
+        title={`Delete "${pendingDeleteFile?.path || pendingDeleteFile?.name || 'file'}"?`}
+        message="The file will be removed from the project working folder. This can't be undone."
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteFile(null)}
+        onConfirm={async () => {
+          const target = pendingDeleteFile;
+          setPendingDeleteFile(null);
+          if (!target || !project?.name) return;
+          // Optimistic remove: pull the row from local state the
+          // instant the user confirms so the modal closing + row
+          // disappearing happen in the same frame. The DELETE +
+          // refetch happens in the background; on failure we
+          // reloadFiles() to restore the canonical list and surface
+          // the error.
+          setProjectFiles((prev) => prev.filter((f) => f.path !== target.path));
+          try {
+            await deleteProjectFile(project.name, target.path);
+            // Quiet success — reloadFiles would also re-bring back
+            // the row if the server actually kept it. We skip the
+            // automatic reload here; the periodic listings on view
+            // remount will re-sync. (If you want belt + suspenders,
+            // uncomment reloadFiles() below.)
+            // reloadFiles();
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[context] delete file failed', err);
+            setUploadError(err?.message || 'Could not delete file.');
+            // Restore by refetching the canonical list from server.
+            reloadFiles();
+          }
+        }}
+      />
+
+      <ConfirmModal
+        open={!!pendingDeleteAttachment}
+        title={`Delete "${pendingDeleteAttachment?.name || pendingDeleteAttachment?.id || 'attachment'}"?`}
+        message="The file will be removed from this task's uploads. Future turns won't see it. This can't be undone."
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteAttachment(null)}
+        onConfirm={async () => {
+          const target = pendingDeleteAttachment;
+          setPendingDeleteAttachment(null);
+          if (!target?.id) return;
+          // Optimistic remove — same rationale as project-file
+          // delete above. The attachments fetch isn't instant, and
+          // waiting for it before clearing the row leaves the modal-
+          // close → row-still-there gap that felt like "nothing
+          // happened".
+          setSessionAttachments((prev) => prev.filter((a) => a.id !== target.id));
+          try {
+            await deleteAttachment(target.id, {
+              projectName: project?.name,
+              sessionId: conversationId,
+            });
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[context] delete attachment failed', err);
+            setTaskUploadError(err?.message || 'Could not delete attachment.');
+            bumpAttachments();
+          }
+        }}
       />
     </div>
   );

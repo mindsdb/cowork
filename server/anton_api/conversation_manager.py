@@ -28,6 +28,8 @@ because that's anton-core's name. The API noun is "conversation."
 
 from __future__ import annotations
 
+import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -37,6 +39,14 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator, AsyncIterator, Optional
+
+from anton_api import stream_registry as _stream_registry
+from anton_api.turn_buffer import (
+    BufferedTurnWriter,
+    TurnRecord,
+    tail_buffer,
+    turn_buffer_path,
+)
 
 
 _TITLE_MAX_LEN = 160
@@ -1285,6 +1295,329 @@ async def _resolve_session(
 
 
 # ---------------------------------------------------------------------------
+# Stream event serialization (Phase 1 — file-backed turn buffer)
+# ---------------------------------------------------------------------------
+
+
+def _serialize_event(event: Any) -> dict:
+    """Convert an anton-core stream event into a JSON-safe dict.
+
+    Anton-core's stream events are small dataclasses defined in
+    ``anton.core.llm.provider`` (``StreamTextDelta``,
+    ``StreamTaskProgress``, ``StreamToolResult``,
+    ``StreamContextCompacted``, ``StreamComplete``, etc.). They're
+    pure data — no methods, no references — so ``asdict`` plus a
+    best-effort repr fallback covers every shape we've seen.
+
+    The producer side (``_produce_turn``) calls this on every event
+    before writing to the buffer. The reader side
+    (``_reconstruct_event``) does the inverse on each replayed
+    record.
+    """
+    if dataclasses.is_dataclass(event) and not isinstance(event, type):
+        try:
+            return dataclasses.asdict(event)
+        except Exception:
+            pass
+    # Defensive fallback — never raise here, the producer can't
+    # afford to lose an event over a serialization quirk. ``_repr``
+    # is enough to debug without breaking the JSONL shape.
+    return {"_repr": repr(event)[:500]}
+
+
+_RECONSTRUCT_CACHE: dict[str, Any] = {}
+
+
+def _reconstruct_event(rec: TurnRecord) -> Any:
+    """Rebuild an anton-core event from a buffered ``TurnRecord``.
+
+    Returns ``None`` for records the route doesn't care about
+    (terminal markers — the reader handles those out-of-band). For
+    real events, looks up the dataclass in
+    ``anton.core.llm.provider`` by record type name and instantiates
+    it. If reconstruction fails (a future event type, schema drift),
+    we surface the raw dict back to the caller as a fallback so
+    nothing silently disappears.
+    """
+    if rec.type in ("Done", "Cancelled", "Error", "Interrupted"):
+        return None  # terminal — the reader handles these explicitly
+
+    cls = _RECONSTRUCT_CACHE.get(rec.type)
+    if cls is None and rec.type not in _RECONSTRUCT_CACHE:
+        # First sighting of this type — try to resolve it. Cache the
+        # answer (including the None / "not found" case) so a stream
+        # of identical event types doesn't hit the import machinery.
+        try:
+            import anton.core.llm.provider as _provider
+            candidate = getattr(_provider, rec.type, None)
+            if candidate is not None and dataclasses.is_dataclass(candidate):
+                cls = candidate
+        except Exception:
+            cls = None
+        _RECONSTRUCT_CACHE[rec.type] = cls
+
+    if cls is None:
+        # Unknown / non-dataclass type — return the raw dict shape.
+        # The route's formatter is tolerant of dict-shaped events.
+        return rec.data
+    try:
+        return cls(**rec.data)
+    except Exception:
+        logger.debug(
+            "Could not reconstruct %s from buffered record (data=%r)",
+            rec.type, rec.data,
+            exc_info=True,
+        )
+        return rec.data
+
+
+# ---------------------------------------------------------------------------
+# Producer — runs anton-core's turn_stream into a buffer (detached task)
+# ---------------------------------------------------------------------------
+
+
+def _is_tool_use_error(exc: Exception) -> bool:
+    """Detect Anthropic's tool-pairing 400s — same shape the old
+    ``_stream()`` inline helper recognized. Hoisted to module level so
+    ``_produce_turn`` can call it without a closure.
+    """
+    s = str(exc)
+    if "tool_use" not in s and "tool_use_id" not in s and "tool_result" not in s:
+        return False
+    return (
+        "tool_result" in s
+        or "without `tool_result`" in s
+        or "ids were found" in s
+        or "unexpected `tool_use_id`" in s
+        or "unexpected tool_use_id" in s
+        or "corresponding `tool_use`" in s
+        or "corresponding tool_use" in s
+    )
+
+
+async def _finalize_history_on_explicit_cancel(
+    session: Any,
+    partial_assistant_parts: list[str],
+) -> None:
+    """When the producer is explicitly cancelled (Phase 3 ``/cancel``
+    endpoint), persist whatever partial state we had so the next time
+    this conversation loads, the user sees the truncated answer rather
+    than a stranded user message.
+
+    NOT called on consumer disconnect — that's the whole point of the
+    rewrite. The producer keeps going regardless of who's listening;
+    only an explicit cancel path triggers this finalize.
+    """
+    try:
+        hist = session.history or []
+        last = hist[-1] if hist else None
+        last_role = last.get("role") if isinstance(last, dict) else None
+        needs_finalize = False
+        if last_role == "user":
+            needs_finalize = True
+        elif last_role == "assistant" and isinstance(last.get("content"), list):
+            if any(
+                isinstance(b, dict) and b.get("type") == "tool_use"
+                for b in last.get("content") or []
+            ):
+                needs_finalize = True
+        if not needs_finalize:
+            return
+
+        try:
+            session._seal_dangling_tool_uses("stopped by user")
+        except Exception:
+            logger.debug("Seal dangling tool_uses failed on cancel", exc_info=True)
+
+        hist = session.history or []
+        last = hist[-1] if hist else None
+        last_role = last.get("role") if isinstance(last, dict) else None
+        if last_role == "user":
+            partial_text = "".join(partial_assistant_parts).strip()
+            placeholder = (
+                f"{partial_text}\n\n_[Stopped by user]_"
+                if partial_text
+                else "_[Stopped by user before a response was produced.]_"
+            )
+            try:
+                session._append_history(
+                    {"role": "assistant", "content": placeholder}
+                )
+            except Exception:
+                logger.debug("Append stop placeholder failed", exc_info=True)
+        try:
+            session._turn_count += 1
+        except Exception:
+            pass
+        try:
+            session._persist_history()
+        except Exception:
+            logger.debug("Persist history on cancel failed", exc_info=True)
+    except Exception:
+        logger.debug("Mid-turn cancel finalization failed", exc_info=True)
+
+
+async def _produce_turn(
+    *,
+    buf: BufferedTurnWriter,
+    cid: str,
+    project: Optional[str],
+    model: Optional[str],
+    user_input: str,
+    session: Any,
+    artifacts_root: Path,
+    artifact_snapshot_before: dict,
+    turn_index: int,
+) -> None:
+    """Drive anton-core's ``turn_stream`` into the buffer.
+
+    Lives on its own ``asyncio.Task`` so closing the SSE consumer
+    never reaches it. Every event from ``turn_stream`` becomes one
+    JSONL record in the buffer; readers (HTTP / reconnect) tail the
+    file independently.
+
+    Failure modes:
+      - **Natural completion** → ``buf.close("completed")``.
+      - **Unrecoverable exception** → write Error record, then
+        ``buf.close("error")``. The reader replays this as
+        ``AntonRuntimeError`` so the route emits ``response.failed``.
+      - **ENOENT (stale path)** → evict the session, write Error,
+        close. Next request rebuilds against current paths.
+      - **Anthropic tool_use/tool_result mismatch** → repair history,
+        evict session, retry once. If retry fails, treat as
+        unrecoverable.
+      - **Explicit cancel** (``CancelledError``) → finalize history,
+        close with reason="cancelled".
+
+    Post-turn housekeeping (meta update, artifact reconcile) runs in
+    the ``finally`` block regardless of how the turn ended.
+    """
+    retried = False
+    partial_assistant_parts: list[str] = []
+    try:
+        from anton.core.llm.provider import StreamTextDelta as _StreamTextDelta
+    except Exception:
+        _StreamTextDelta = None
+
+    def _write_event(event: Any) -> None:
+        # Capture partial text for the cancel finalization path. This
+        # mirrors what the legacy ``_stream()`` did, but only matters
+        # on explicit cancel — consumer disconnect no longer triggers
+        # any finalization.
+        if _StreamTextDelta is not None and isinstance(event, _StreamTextDelta):
+            try:
+                partial_assistant_parts.append(event.text or "")
+            except Exception:
+                pass
+        try:
+            buf.append(type(event).__name__, _serialize_event(event))
+        except Exception:
+            logger.exception(
+                "Failed to write turn event for conversation %s", cid,
+            )
+
+    nonlocal_session: dict[str, Any] = {"s": session}
+
+    async def _drain(prompt: str) -> None:
+        async for event in nonlocal_session["s"].turn_stream(prompt):
+            _write_event(event)
+
+    try:
+        try:
+            await _drain(user_input)
+        except FileNotFoundError as exc:
+            logger.warning(
+                "Conversation %s hit ENOENT mid-turn; evicting cached "
+                "session so the next attempt rebuilds. (%s)", cid, exc,
+            )
+            _evict_session(cid)
+            buf.append("Error", {
+                "code": "missing_file",
+                "message": (
+                    "A file referenced by this conversation went missing "
+                    "(likely the project directory was moved or deleted). "
+                    "Try sending the message again — it will recover automatically."
+                ),
+            })
+            buf.close("error")
+            return
+        except asyncio.CancelledError:
+            # Explicit cancel. Persist whatever partial state we had,
+            # then propagate so the task ends in a CANCELLED state.
+            await _finalize_history_on_explicit_cancel(
+                nonlocal_session["s"], partial_assistant_parts,
+            )
+            buf.close("cancelled", {
+                "partial_text_chars": sum(len(t) for t in partial_assistant_parts),
+            })
+            raise
+        except Exception as exc:
+            if not retried and _is_tool_use_error(exc):
+                logger.warning(
+                    "Conversation %s failed with tool_use/tool_result "
+                    "mismatch — repairing history and retrying once.", cid,
+                )
+                try:
+                    repair_history_if_needed(project, cid)
+                except Exception:
+                    logger.debug("Repair before retry failed", exc_info=True)
+                _evict_session(cid)
+                retried = True
+                try:
+                    nonlocal_session["s"] = await _resolve_session(cid, project, model)
+                except Exception as resolve_exc:
+                    logger.exception("Conversation %s resolve after repair failed", cid)
+                    buf.append("Error", {"message": _safe_error(resolve_exc)})
+                    buf.close("error")
+                    return
+                try:
+                    await _drain(user_input)
+                except asyncio.CancelledError:
+                    await _finalize_history_on_explicit_cancel(
+                        nonlocal_session["s"], partial_assistant_parts,
+                    )
+                    buf.close("cancelled")
+                    raise
+                except Exception as retry_exc:
+                    logger.exception(
+                        "Conversation %s retry after history repair also failed", cid,
+                    )
+                    buf.append("Error", {"message": _safe_error(retry_exc)})
+                    buf.close("error")
+                    return
+            else:
+                logger.exception("Conversation %s failed", cid)
+                if "Errno 2" in str(exc) or "No such file or directory" in str(exc):
+                    _evict_session(cid)
+                buf.append("Error", {"message": _safe_error(exc)})
+                buf.close("error")
+                return
+
+        # Natural completion.
+        buf.close("completed")
+    finally:
+        # Post-turn housekeeping runs in every exit path. These calls
+        # were previously inside ``_stream()``'s finally block; they
+        # have the same contract (best-effort, swallow exceptions, never
+        # block the next turn).
+        try:
+            _update_meta_after_turn(project, cid, nonlocal_session["s"].history)
+        except Exception:
+            logger.debug("Could not update conversation meta", exc_info=True)
+        try:
+            _reconcile_artifacts_after_turn(
+                artifacts_root=artifacts_root,
+                conversation_id=cid,
+                project=project,
+                user_input=user_input,
+                turn_index=turn_index,
+                snapshot_before=artifact_snapshot_before,
+            )
+        except Exception:
+            logger.debug("Could not reconcile artifacts after turn", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
 # Public chat API
 # ---------------------------------------------------------------------------
 
@@ -1313,6 +1646,18 @@ async def chat_stream(
     # Defer config check to the route layer (it has access to get_config_status)
     # so this module stays free of cowork-route imports.
 
+    # `tmp-` prefixed ids are renderer-side temporaries (e.g. the
+    # `tmp-connect-<ts>` used by Composer's connector picker). They
+    # must NEVER land on disk as the canonical id — once `_ensure_meta`
+    # creates `<id>_meta.json` for a tmp- id, the conversation is
+    # stuck with the prefix forever and shows up as "empty" tasks in
+    # recents (a turn-zero shell where the user abandoned before any
+    # text was persisted). Replacing the id here forces the server to
+    # mint a fresh `YYYYMMDD_HHMMSS_<hex>` id; the new value flows
+    # back to the client via `response.created.conversation_id` so the
+    # stream-consumer can rewrite its local task in place.
+    if conversation_id and conversation_id.startswith("tmp-"):
+        conversation_id = None
     cid = conversation_id or _new_conversation_id()
     _ensure_meta(project, cid)
     if disabled_connections is not None:
@@ -1343,44 +1688,6 @@ async def chat_stream(
 
     session = await _resolve_session(cid, project, model)
 
-    def _is_tool_use_error(exc: Exception) -> bool:
-        """Detect either of Anthropic's two tool-pairing 400s:
-
-          • "tool_use ids were found without tool_result blocks
-             immediately after"  (dangling tool_use)
-          • "unexpected tool_use_id found in tool_result blocks …
-             Each tool_result block must have a corresponding
-             tool_use block in the previous message"  (orphan
-             tool_result)
-
-        Both heal via `_sanitize_history_for_anthropic` (pass 1
-        synthesises tool_results, pass 2 strips orphans). String
-        match because the error reaches us wrapped inside one of
-        several layers (anton's auto-retry fallback path, a generic
-        400, the SDK's own exception type).
-        """
-        s = str(exc)
-        if "tool_use" not in s and "tool_use_id" not in s and "tool_result" not in s:
-            return False
-        return (
-            "tool_result" in s
-            or "without `tool_result`" in s
-            or "ids were found" in s
-            or "unexpected `tool_use_id`" in s
-            or "unexpected tool_use_id" in s
-            or "corresponding `tool_use`" in s
-            or "corresponding tool_use" in s
-        )
-
-    async def _drain_one_attempt(active_session, prompt):
-        """One pass through anton's turn_stream — yields events,
-        re-raises the underlying exception so the caller can decide
-        whether to retry. Kept inside chat_stream so it captures
-        `cid` / `project` from the closure for the retry path.
-        """
-        async for event in active_session.turn_stream(prompt):
-            yield event
-
     # Pre-turn artifact snapshot. Pinned at the start of `_stream()`
     # rather than at chat_stream entry so it captures the state right
     # before the agent fires — covers retries cleanly (a retried turn
@@ -1396,177 +1703,102 @@ async def chat_stream(
         artifact_snapshot_before = {}
     turn_index = sum(1 for m in (session.history or []) if m.get("role") == "user")
 
-    async def _stream() -> AsyncGenerator:
-        nonlocal session
-        retried = False
-        # Capture streaming text deltas as they pass through so that
-        # if the client aborts (stop button) we can persist the partial
-        # assistant response. anton-core only calls `_persist_history()`
-        # at the END of `turn_stream()` — on abort, GeneratorExit
-        # propagates out and that call never runs, so both the user
-        # prompt and any partial assistant text would otherwise be lost
-        # on reload.
-        try:
-            from anton.core.llm.provider import StreamTextDelta as _StreamTextDelta
-        except Exception:
-            _StreamTextDelta = None
-        partial_assistant_parts: list[str] = []
-        try:
-            try:
-                async for event in _drain_one_attempt(session, user_input):
-                    if _StreamTextDelta is not None and isinstance(event, _StreamTextDelta):
-                        try:
-                            partial_assistant_parts.append(event.text or "")
-                        except Exception:
-                            pass
-                    yield event
-            except FileNotFoundError as exc:
-                # Cached session pointed at a path that no longer exists
-                # (project deleted, .anton/ wiped, etc.). Evict so the
-                # next turn rebuilds against current paths.
-                logger.warning(
-                    "Conversation %s hit ENOENT mid-turn; evicting cached "
-                    "session so the next attempt rebuilds. (%s)", cid, exc,
-                )
-                _evict_session(cid)
-                raise AntonRuntimeError(
-                    "A file referenced by this conversation went missing "
-                    "(likely the project directory was moved or deleted). "
-                    "Try sending the message again — it will recover automatically."
-                ) from exc
-            except Exception as exc:
-                # Recovery for the classic Anthropic
-                # "tool_use ids were found without tool_result blocks"
-                # 400. By the time we land here, anton's own auto-retry
-                # has exhausted itself — its retry path appends a
-                # "SYSTEM error" user message that DOESN'T acknowledge
-                # the dangling tool_use, so subsequent retries fail with
-                # the same 400.
-                #
-                # What heals it: our `_sanitize_history_for_anthropic`
-                # synthesises matching `tool_result` blocks for every
-                # unpaired `tool_use`. After running that, evicting the
-                # cached session forces a fresh load from the now-clean
-                # disk history, and a single restart of turn_stream
-                # almost always succeeds.
-                #
-                # This only fires once per turn (`retried` guard) so a
-                # genuinely broken request can't loop forever.
-                if not retried and _is_tool_use_error(exc):
-                    logger.warning(
-                        "Conversation %s failed with tool_use/tool_result "
-                        "mismatch — repairing history and retrying once.",
-                        cid,
-                    )
-                    try:
-                        repair_history_if_needed(project, cid)
-                    except Exception:
-                        logger.debug("Repair before retry failed", exc_info=True)
-                    _evict_session(cid)
-                    retried = True
-                    # Re-resolve a fresh session against the repaired
-                    # history and replay the same user input.
-                    session = await _resolve_session(cid, project, model)
-                    try:
-                        async for event in _drain_one_attempt(session, user_input):
-                            if _StreamTextDelta is not None and isinstance(event, _StreamTextDelta):
-                                try:
-                                    partial_assistant_parts.append(event.text or "")
-                                except Exception:
-                                    pass
-                            yield event
-                    except Exception as retry_exc:
-                        logger.exception(
-                            "Conversation %s retry after history repair also failed",
-                            cid,
-                        )
-                        raise AntonRuntimeError(_safe_error(retry_exc)) from retry_exc
-                else:
-                    logger.exception("Conversation %s failed", cid)
-                    # Defensive: some libraries wrap ENOENT inside a
-                    # different exception class but keep the substring
-                    # in str(exc). Treat as stale-path too.
-                    if "Errno 2" in str(exc) or "No such file or directory" in str(exc):
-                        _evict_session(cid)
-                    raise AntonRuntimeError(_safe_error(exc)) from exc
-        finally:
-            # If the client aborted mid-turn (stop button → SSE close →
-            # GeneratorExit), anton-core's `turn_stream` never reaches
-            # its trailing `_persist_history()` call. The user message
-            # is already in `session.history` (appended on entry) but
-            # disk wouldn't see it on reload, and any partial assistant
-            # text would be dropped. Detect that state here and persist
-            # both the user msg and a synthesized assistant response
-            # carrying whatever streamed before the abort.
-            try:
-                hist = session.history or []
-                last = hist[-1] if hist else None
-                last_role = last.get("role") if isinstance(last, dict) else None
-                needs_finalize = False
-                if last_role == "user":
-                    # Either the very-first-user message we appended on
-                    # entry, or a tool_result that never got a follow-up
-                    # assistant — both indicate an interrupted turn.
-                    needs_finalize = True
-                elif last_role == "assistant" and isinstance(last.get("content"), list):
-                    # Assistant turn was committed (tool_use) but the
-                    # tool dispatcher never appended its tool_result —
-                    # leave Anthropic-compliant via seal helper below.
-                    if any(
-                        isinstance(b, dict) and b.get("type") == "tool_use"
-                        for b in last.get("content") or []
-                    ):
-                        needs_finalize = True
-                if needs_finalize:
-                    try:
-                        session._seal_dangling_tool_uses("stopped by user")
-                    except Exception:
-                        logger.debug("Seal dangling tool_uses failed on abort", exc_info=True)
-                    # After sealing, the last message may have flipped
-                    # to user (tool_results). If so, append a placeholder
-                    # assistant message so the turn pair is complete.
-                    hist = session.history or []
-                    last = hist[-1] if hist else None
-                    last_role = last.get("role") if isinstance(last, dict) else None
-                    if last_role == "user":
-                        partial_text = "".join(partial_assistant_parts).strip()
-                        if partial_text:
-                            placeholder = f"{partial_text}\n\n_[Stopped by user]_"
-                        else:
-                            placeholder = "_[Stopped by user before a response was produced.]_"
-                        try:
-                            session._append_history(
-                                {"role": "assistant", "content": placeholder}
-                            )
-                        except Exception:
-                            logger.debug("Append stop placeholder failed", exc_info=True)
-                    try:
-                        session._turn_count += 1
-                    except Exception:
-                        pass
-                    try:
-                        session._persist_history()
-                    except Exception:
-                        logger.debug("Persist history on abort failed", exc_info=True)
-            except Exception:
-                logger.debug("Mid-turn abort finalization failed", exc_info=True)
-            try:
-                _update_meta_after_turn(project, cid, session.history)
-            except Exception:
-                logger.debug("Could not update conversation meta", exc_info=True)
-            try:
-                _reconcile_artifacts_after_turn(
-                    artifacts_root=artifacts_root,
-                    conversation_id=cid,
-                    project=project,
-                    user_input=user_input,
-                    turn_index=turn_index,
-                    snapshot_before=artifact_snapshot_before,
-                )
-            except Exception:
-                logger.debug("Could not reconcile artifacts after turn", exc_info=True)
+    # Spawn the producer as a detached asyncio.Task. Anything that
+    # cares about events (the SSE response, a reconnecting tail) reads
+    # from the on-disk buffer at `buf_path`. Closing the SSE consumer
+    # has zero effect on the producer.
+    streams_dir = _project_base(project) / ".anton" / "streams"
+    buf_path = turn_buffer_path(streams_dir, cid, turn_index)
+    buf = BufferedTurnWriter(buf_path)
+    handle = await _stream_registry.registry.start(
+        conversation_id=cid,
+        turn_id=turn_index,
+        project=project,
+        buffer=buf,
+        producer_coro=_produce_turn(
+            buf=buf,
+            cid=cid,
+            project=project,
+            model=model,
+            user_input=user_input,
+            session=session,
+            artifacts_root=artifacts_root,
+            artifact_snapshot_before=artifact_snapshot_before,
+            turn_index=turn_index,
+        ),
+    )
 
-    return _stream(), cid
+    return _read_handle_events(handle, from_seq=0), cid
+
+
+async def _read_handle_events(handle, *, from_seq: int = 0) -> AsyncGenerator:
+    """Tail a ``TurnHandle``'s buffer and yield anton-core events.
+
+    Shared reader for both ``chat_stream`` (start-of-turn) and the
+    Phase 2 ``tail_response`` endpoint (mid-turn reconnect). The two
+    callers differ only in ``from_seq``: a fresh stream starts at 0;
+    a reconnecting client passes whatever ``last_seen_seq`` they
+    stored.
+
+    Terminal records control the generator's lifetime:
+      - ``Done``        → end the generator cleanly.
+      - ``Cancelled`` / ``Interrupted`` → also end cleanly; the
+        buffer has already captured everything the consumer should
+        see, and the cancel placeholder (if any) lives in persisted
+        history.
+      - ``Error``       → raise ``AntonRuntimeError`` so the route
+        emits ``response.failed`` — preserves the existing
+        exception-based control flow at the route layer.
+
+    Safe to cancel at any time (client closes the tab, fetch aborts):
+    the underlying producer task is unaffected.
+    """
+    async for rec in tail_buffer(handle.buffer, from_seq=from_seq):
+        if rec.type == "Error":
+            msg = rec.data.get("message") or "Anton encountered an unexpected error."
+            raise AntonRuntimeError(msg)
+        if rec.type in ("Done", "Cancelled", "Interrupted"):
+            return
+        event = _reconstruct_event(rec)
+        if event is not None:
+            yield event
+
+
+async def cancel_in_flight(conversation_id: str) -> bool:
+    """Phase 3 — cancel the in-flight producer task for a conversation.
+
+    Returns ``True`` if a running task was cancelled, ``False`` if
+    there was nothing to cancel (no handle, or the producer had
+    already finished). Idempotent — safe for the renderer to call
+    even if it lost track of the in-flight state.
+
+    The actual finalization (history seal + persist + buffer
+    ``Cancelled`` terminal) happens inside ``_produce_turn``'s
+    ``CancelledError`` branch. This helper only delivers the signal.
+    """
+    return await _stream_registry.registry.cancel(conversation_id)
+
+
+def tail_conversation(
+    conversation_id: str, *, from_seq: int = 0,
+) -> Optional[AsyncIterator]:
+    """Return an event iterator tailing the in-flight (or
+    just-finished) buffer for *conversation_id*.
+
+    Returns ``None`` when no buffer exists in the registry — the
+    caller should fall back to the persisted history endpoint.
+    A returning client is expected to pass ``from_seq`` so events
+    they already rendered aren't replayed.
+
+    Phase 2 contract: only looks in the in-memory registry. Phase 4
+    (boot-time interrupted-sweep) makes restart cases visible via the
+    same buffers, but those are already terminated — the iterator
+    yields nothing and exits.
+    """
+    handle = _stream_registry.registry.get(conversation_id)
+    if handle is None:
+        return None
+    return _read_handle_events(handle, from_seq=from_seq)
 
 
 # ---------------------------------------------------------------------------

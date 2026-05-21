@@ -27,7 +27,10 @@ async function req(path, options = {}) {
     let detail = '';
     try {
       const data = await res.json();
-      detail = data?.detail || data?.message || '';
+      const raw = data?.detail;
+      detail = Array.isArray(raw)
+        ? raw.map((e) => e.msg || JSON.stringify(e)).join(', ')
+        : (raw || data?.message || '');
     } catch {
       detail = await res.text().catch(() => '');
     }
@@ -345,8 +348,134 @@ export function streamNewSession(text, opts = {}) {
   return _streamResponse(text, opts);
 }
 
+// Phase 2 — reconnect helpers. Built so a tab that mounted on an
+// already-streaming conversation can re-attach without restarting
+// the turn. The cheap probe (`fetchInFlightStatus`) decides whether
+// it's worth opening an SSE; `tailInFlight` reuses the same callback
+// signature as `_streamResponse` so the caller's adapter logic
+// (onChunk / onProgress / onToolResult / onDone / onError / onEvent)
+// is identical between fresh-turn and reconnect paths.
+export async function fetchInFlightStatus(conversationId) {
+  if (!conversationId) return { in_flight: false, has_buffer: false, latest_seq: 0 };
+  try {
+    return await req(`/responses/in-flight?conversation_id=${encodeURIComponent(conversationId)}`);
+  } catch {
+    return { in_flight: false, has_buffer: false, latest_seq: 0 };
+  }
+}
+
+// Cross-client sync feed (Option B). Returns every conversation_id
+// whose producer task is currently running. The renderer mirrors this
+// into a local Set so reconcileTaskMessages can synchronously decide
+// "is this conversation alive on the server right now?" without a
+// per-task probe.
+export async function fetchInFlightList() {
+  try {
+    const res = await req('/responses/in-flight-list');
+    return Array.isArray(res?.in_flight) ? res.in_flight : [];
+  } catch {
+    return [];
+  }
+}
+
+export function tailInFlight(conversationId, {
+  fromSeq = 0,
+  model = 'anton',
+  onChunk, onProgress, onToolResult, onDone, onError, onEvent,
+} = {}) {
+  const ctrl = new AbortController();
+  (async () => {
+    try {
+      const url = `${BASE}/responses/tail?conversation_id=${encodeURIComponent(conversationId)}&from_seq=${fromSeq}&model=${encodeURIComponent(model)}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'text/event-stream' },
+        signal: ctrl.signal,
+      });
+      if (res.status === 404) {
+        // Buffer's gone — nothing to tail. Treat as a clean no-op so
+        // the caller can fall back to history.
+        onDone?.(conversationId);
+        return;
+      }
+      if (!res.ok) throw await responseError(res, `Tail stream failed (${res.status})`);
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buffer = '';
+      let cid = conversationId;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += dec.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+        for (const block of events) {
+          const dataLine = block.split('\n').find((line) => line.startsWith('data:'));
+          if (!dataLine) continue;
+          const raw = dataLine.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let msg;
+          try { msg = JSON.parse(raw); } catch { continue; }
+          onEvent?.(msg);
+          switch (msg.type) {
+            case 'response.created':
+              cid = msg.conversation_id || cid;
+              break;
+            case 'response.output_text.delta':
+              onChunk?.(msg.delta || '', cid);
+              break;
+            case 'response.in_progress': {
+              const role = msg.thought_role || '';
+              if (role === 'thought.scratchpad.result') {
+                onToolResult?.({
+                  type: 'tool_result',
+                  name: msg.tool_name || '',
+                  action: msg.tool_action || '',
+                  content: msg.content || '',
+                }, cid);
+              } else {
+                onProgress?.({
+                  type: 'progress',
+                  phase: msg.phase || role.replace(/^thought\./, '') || 'progress',
+                  message: msg.message || msg.content || '',
+                  etaSeconds: msg.eta_seconds ?? null,
+                  thoughtRole: role,
+                }, cid);
+              }
+              break;
+            }
+            case 'response.completed':
+              onDone?.(cid);
+              return;
+            case 'response.failed':
+              onError?.(msg.error || msg.message || 'Anton failed', { ...msg, code: msg.code });
+              return;
+            default:
+              break;
+          }
+        }
+      }
+      onDone?.(cid);
+    } catch (err) {
+      if (err.name !== 'AbortError') onError?.(err.message);
+    }
+  })();
+  return ctrl;
+}
+
 export function streamMessage(sessionId, text, opts = {}) {
-  return _streamResponse(text, { ...opts, conversationId: sessionId });
+  // Strip renderer-side temp ids (`tmp-connect-…` from the connector
+  // picker) before they hit the wire — the server has a defensive
+  // guard, but skipping the value here means the server doesn't even
+  // have to consider it, and the `response.created` event carries
+  // the canonical id straight back. The caller's stream consumer
+  // (App.jsx adoptServerId) rewrites the local task in place.
+  const conversationId = sessionId && !String(sessionId).startsWith('tmp-')
+    ? sessionId
+    : null;
+  return _streamResponse(text, { ...opts, conversationId });
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -402,6 +531,29 @@ export async function cancelScratchpad(name) {
   } catch {
     // 404 = pad already gone, treat as success.
     return { status: 'gone', name };
+  }
+}
+
+// Phase 3 — explicit cancel of an in-flight LLM turn.
+//
+// Under the new producer/consumer split (Phase 1), aborting the SSE
+// fetch only tears down the consumer; the server-side producer keeps
+// running. The Stop button needs this dedicated signal to actually
+// halt the work.
+//
+// Idempotent: hitting it for an already-finished conversation returns
+// {cancelled: false} rather than failing.
+export async function cancelResponse(conversationId) {
+  if (!conversationId) return null;
+  try {
+    return await req('/responses/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId }),
+    });
+  } catch {
+    // 404 / network blip — treat as "already done." The local-state
+    // teardown in handleStopStream is the user-visible part anyway.
+    return { cancelled: false, conversation_id: conversationId };
   }
 }
 
@@ -1002,8 +1154,44 @@ export async function fetchAttachments(projectName, sessionId, { ids } = {}) {
   return { attachments: raw };
 }
 
-export async function deleteAttachment(id) {
+export async function deleteAttachment(id, { projectName, sessionId } = {}) {
+  // Prefer the path-scoped route — the legacy `DELETE /attachments/{id}`
+  // looked up a JSON state file the upload code never populates and
+  // always 404'd. When the caller passes project + session, hit the
+  // new endpoint that walks the on-disk directory directly.
+  if (projectName && sessionId && id) {
+    const enc = encodeURIComponent;
+    return req(`/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(id)}`, { method: 'DELETE' });
+  }
+  // Back-compat — kept so any older call site that hasn't migrated
+  // still hits the original route (and gets the same 404 it always
+  // did, surfacing the problem rather than failing silently).
   return req(`/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Absolute URL to the attachment's underlying file, served inline so
+ * the browser's default handler (image / pdf / text preview) takes
+ * over when the row is clicked. Works in both Electron and the web
+ * SPA — `host.openExternal(url)` does the right thing for each. */
+export function attachmentRawUrl(projectName, sessionId, attachmentId) {
+  if (!projectName || !sessionId || !attachmentId) return null;
+  const enc = encodeURIComponent;
+  return `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(attachmentId)}/raw`;
+}
+
+/** Promote a task upload to a project-level file. Returns
+ * `{ ok, project_path, absolute_path }` on success. The client must
+ * refresh BOTH the task uploads list and the project files list — the
+ * file moves out of one and into the other on disk. */
+export async function moveAttachmentToProject(projectName, sessionId, attachmentId) {
+  if (!projectName || !sessionId || !attachmentId) {
+    throw new Error('projectName, sessionId, and attachmentId are required.');
+  }
+  const enc = encodeURIComponent;
+  return req(
+    `/attachments/${enc(projectName)}/${enc(sessionId)}/${enc(attachmentId)}/move-to-project`,
+    { method: 'POST' },
+  );
 }
 
 // ─── Search, Pins, Schedules ───────────────────────────────────────────────

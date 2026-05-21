@@ -108,23 +108,31 @@ function _countCsvRows(text) {
 // space. The first row is always treated as the header.
 function _csvRowsToGfmTable(rows) {
   if (!rows || rows.length === 0) return '';
+
   const escape = (cell) => String(cell ?? '')
+    // Escape Markdown's escape character first. This must happen before
+    // escaping pipes, otherwise the backslash we add for `|` would also
+    // be doubled.
+    .replace(/\\/g, '\\\\')
     .replace(/\|/g, '\\|')
     .replace(/\r?\n/g, ' ');
+
   const header = rows[0].map(escape);
   const sep = header.map(() => '---');
   const body = rows.slice(1).map((r) => {
-    // Normalise short rows so the markdown parser sees a rectangle.
     const padded = r.length === header.length
       ? r
       : [...r, ...Array(Math.max(0, header.length - r.length)).fill('')];
+
     return padded.slice(0, header.length).map(escape);
   });
+
   const lines = [
     `| ${header.join(' | ')} |`,
     `| ${sep.join(' | ')} |`,
     ...body.map((r) => `| ${r.join(' | ')} |`),
   ];
+
   return lines.join('\n');
 }
 

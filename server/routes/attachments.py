@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .cowork_state import load_state, save_state, utc_now_iso
@@ -183,3 +184,111 @@ def delete_attachment(attachment_id: str):
         if parent.name == attachment_id:
             shutil.rmtree(parent, ignore_errors=True)
     return {"ok": True}
+
+
+def _attachment_dir(project_name: str, session_id: str, attachment_id: str) -> Path:
+    """Resolve `<project>/.anton/uploads/<session_id>/<attachment_id>/`.
+
+    Bounds-checks `attachment_id` so a caller can't path-traverse into a
+    different project's uploads. Raises 404 if the directory doesn't
+    exist (caller hasn't created it yet), 400 if the id looks tampered.
+    """
+    if "/" in attachment_id or attachment_id.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid attachment id")
+    _, project_path = resolve_project(project_name)
+    target_dir = uploads_dir(project_path) / session_id / attachment_id
+    try:
+        target_dir.resolve().relative_to(uploads_dir(project_path).resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid attachment path") from exc
+    if not target_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return target_dir
+
+
+@router.delete("/{project_name}/{session_id}/{attachment_id}")
+def delete_attachment_by_path(project_name: str, session_id: str, attachment_id: str):
+    """Remove the attachment dir from disk.
+
+    The legacy `DELETE /v1/attachments/{id}` route below looks up state
+    in a JSON sidecar that the upload code never populates, so it
+    always 404s — keeping it for back-compat but the renderer now
+    calls this path-scoped variant instead. Reuses `_attachment_dir`
+    for the path-traversal guard.
+    """
+    target_dir = _attachment_dir(project_name, session_id, attachment_id)
+    shutil.rmtree(target_dir, ignore_errors=True)
+    return {"ok": True}
+
+
+@router.get("/{project_name}/{session_id}/{attachment_id}/raw")
+def download_attachment(project_name: str, session_id: str, attachment_id: str):
+    """Stream the underlying attachment bytes inline so a browser tab
+    can render images/PDFs directly. Mirrors `projects.download_project_file`
+    but uses `Content-Disposition: inline` rather than `attachment` —
+    the UI uses this for "open in browser" semantics on a task upload
+    row click, where forcing a download would be surprising.
+    """
+    target_dir = _attachment_dir(project_name, session_id, attachment_id)
+    leaf = _file_inside_attachment_dir(target_dir)
+    if leaf is None or not leaf.is_file():
+        raise HTTPException(status_code=404, detail="Attachment file missing")
+    media_type = mimetypes.guess_type(str(leaf))[0] or "application/octet-stream"
+    return FileResponse(
+        leaf,
+        media_type=media_type,
+        filename=leaf.name,
+        headers={"Content-Disposition": f'inline; filename="{leaf.name}"'},
+    )
+
+
+@router.post("/{project_name}/{session_id}/{attachment_id}/move-to-project")
+def move_attachment_to_project(project_name: str, session_id: str, attachment_id: str):
+    """Promote a task upload into a project-level file.
+
+    The on-disk file moves from
+        <project>/.anton/uploads/<session_id>/<attachment_id>/<filename>
+    to
+        <project>/<filename>
+    so it becomes part of the project working folder (visible in the
+    Files rail, mounted by future tasks, etc.). If the destination
+    already exists, a numeric suffix is appended (e.g. `report (2).pdf`)
+    rather than overwriting silently. Returns the new project-relative
+    path so the client can refresh both lists.
+    """
+    target_dir = _attachment_dir(project_name, session_id, attachment_id)
+    leaf = _file_inside_attachment_dir(target_dir)
+    if leaf is None or not leaf.is_file():
+        raise HTTPException(status_code=404, detail="Attachment file missing")
+
+    _, project_path = resolve_project(project_name)
+    project_root = project_path.resolve()
+    # Collision-safe destination: `<stem> (N)<suffix>` until we find a
+    # free slot. Caps at 99 retries to avoid pathological loops on a
+    # filesystem that errors on stat.
+    dest = project_root / leaf.name
+    if dest.exists():
+        stem = leaf.stem
+        suffix = leaf.suffix
+        for i in range(2, 100):
+            candidate = project_root / f"{stem} ({i}){suffix}"
+            if not candidate.exists():
+                dest = candidate
+                break
+        else:
+            raise HTTPException(status_code=409, detail="Could not pick a unique filename")
+
+    try:
+        shutil.move(str(leaf), str(dest))
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Move failed: {exc}") from exc
+    # The attachment dir is now empty (it only ever held one leaf file
+    # — see `_file_inside_attachment_dir`). Clean it up so the
+    # attachments list doesn't surface a phantom entry.
+    shutil.rmtree(target_dir, ignore_errors=True)
+
+    return {
+        "ok": True,
+        "project_path": dest.name,
+        "absolute_path": str(dest),
+    }

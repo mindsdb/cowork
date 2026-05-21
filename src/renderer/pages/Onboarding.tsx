@@ -147,7 +147,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
       const llmResult = await host.validateProvider(
         'openai-compatible',
         apiKey.trim(),
-        `${mindsBase}/api/v1`,
+        `${mindsBase}/v1`,
         '_code_'
       );
 
@@ -156,7 +156,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
         const lines = [
           ...mindsLines,
           `ANTON_OPENAI_API_KEY=${apiKey.trim()}`,
-          `ANTON_OPENAI_BASE_URL=${mindsBase}/api/v1`,
+          `ANTON_OPENAI_BASE_URL=${mindsBase}/v1`,
           'ANTON_PLANNING_PROVIDER=openai-compatible',
           'ANTON_CODING_PROVIDER=openai-compatible',
           'ANTON_PLANNING_MODEL=_reason_',

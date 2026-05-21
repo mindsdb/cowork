@@ -4875,3 +4875,42 @@ body[data-theme="light"] .anton-code-block .hljs-meta,
 body[data-theme="light"] .anton-code-block .hljs-variable,
 body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169); }
 
+/* ─── iOS auto-zoom suppression (mobile only) ─────────────────────────
+   iOS Safari (and a few Android browsers) auto-zoom the page when a
+   text input with computed font-size < 16px receives focus. The
+   viewport-meta toggle in App.jsx (focusin → maximum-scale=1) catches
+   most cases but races with the zoom commit on programmatic focus
+   (menu opens, then focuses input via rAF) and on the FIRST input
+   tapped after a route change — exactly the cases the user hit on
+   the "+ New project" menu input and the chat reply composer.
+   Bumping computed font-size to ≥16px on the mobile breakpoint stops
+   the zoom from firing in the first place, which is the robust fix.
+
+   `!important` is required because several inputs ship inline
+   `style={{ fontSize: 13 }}` (menu inputs, modal inputs) and inline
+   styles outrank normal CSS rules. Scoped to the mobile breakpoint so
+   desktop visual metrics stay exactly as designed. The composer uses
+   `--composer-font-size` (set in .composer-input-shell) so the
+   textarea + highlight overlay both pick this up via the var. */
+@media (max-width: 640px) {
+  /* Main composer + chat-floating composer — both consume
+     --composer-font-size from .composer-input-shell. Bumping the var
+     keeps the textarea and its source-mode overlay in lockstep. */
+  .composer-input-shell { --composer-font-size: 16px !important; }
+
+  /* Ad-hoc text inputs scattered across modals + menus (new project
+     row in the project picker, NewProjectModal name/instructions,
+     settings inputs, search). `:where()` keeps specificity at 0 so
+     existing styles still cascade, but the `!important` on the
+     declaration overrides inline font-size:13/13.5/14. */
+  input:where(
+    [type="text"], [type="search"], [type="email"], [type="url"],
+    [type="tel"], [type="password"], [type="number"], :not([type])
+  ),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: max(16px, 1em) !important;
+  }
+}
+

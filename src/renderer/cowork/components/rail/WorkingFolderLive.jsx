@@ -11,15 +11,19 @@
 // - Polls every 3s while streaming, plus once when streaming ends.
 // - Click → HTML opens in-app viewer; other types → OS openPath.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import {
   fetchActiveProject,
   fetchArtifacts,
   fetchProjects,
+  publishArtifact,
+  unpublishArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
+import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -145,8 +149,146 @@ export function WorkingFolderLive({ project, isStreaming }) {
   }, [isStreaming, effectiveProject?.name, effectiveProject?.path]);
 
   const [previewArt, setPreviewArt] = useState(null);
+  // Per-row kebab menu state (single-open) + portal coords.
+  //
+  // Why a portal: the rail-card body wraps this component with
+  // `overflow-y: auto` (RailCard.jsx). A `position: absolute`
+  // dropdown child of an artifact row gets visually clipped by that
+  // ancestor's overflow — so the menu appeared to "hide behind" the
+  // card. createPortal escapes to document.body, where no ancestor
+  // overflow can touch it. We compute viewport-fixed coords from the
+  // clicked kebab's getBoundingClientRect() and close on scroll +
+  // resize since the kebab might move under a stale menu.
+  const [openMenuPath, setOpenMenuPath] = useState(null);
+  const [menuPos, setMenuPos] = useState(null);
+  const [busyPath, setBusyPath] = useState(null);
+  const [rowError, setRowError] = useState('');
+  // Pending artifact-delete payload — drives the ConfirmModal, same
+  // lifted-state pattern as the project-files / task-uploads deletes
+  // in ContextCard and the task / project deletes in App.jsx.
+  const [pendingDeleteArtifact, setPendingDeleteArtifact] = useState(null);
+  const menuRef = useRef(null);
+  // Map of artifact.path → kebab button DOM node. Stored in a ref
+  // so renders don't replace the map; cleaned up implicitly when
+  // rows unmount via the ref callback's null branch.
+  const kebabRefs = useRef(new Map());
+  const setKebabRef = (path) => (el) => {
+    if (el) kebabRefs.current.set(path, el);
+    else kebabRefs.current.delete(path);
+  };
+
+  const openMenuFor = (path) => {
+    const btn = kebabRefs.current.get(path);
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    // Menu opens just below the kebab, right-anchored so it can't
+    // extend past the right edge of the viewport. `position: fixed`
+    // applies these directly to viewport coordinates.
+    setMenuPos({
+      top: r.bottom + 4,
+      right: Math.max(8, window.innerWidth - r.right),
+    });
+    setOpenMenuPath(path);
+  };
+
+  useEffect(() => {
+    if (openMenuPath == null) return undefined;
+    const onClick = (e) => {
+      if (menuRef.current && menuRef.current.contains(e.target)) return;
+      setOpenMenuPath(null);
+    };
+    // The kebab that's anchoring the menu might scroll out from
+    // under it (rail-card body has overflow-y:auto) or the window
+    // may resize — close in either case so the menu doesn't dangle.
+    const onClose = () => setOpenMenuPath(null);
+    // Defer one tick so the click that OPENED the menu doesn't
+    // propagate up and immediately close it.
+    const id = setTimeout(() => document.addEventListener('click', onClick), 0);
+    window.addEventListener('resize', onClose);
+    document.addEventListener('scroll', onClose, true); // capture catches all scrollers
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', onClick);
+      window.removeEventListener('resize', onClose);
+      document.removeEventListener('scroll', onClose, true);
+    };
+  }, [openMenuPath]);
+
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
+  };
+  // Used by the kebab menu's "Open" action. Naming + behaviour adapts
+  // to the shell:
+  //   - Electron → host.openPath routes to the OS default app.
+  //   - Web      → host.openPath returns `unsupported`. Fall back to
+  //                openExternal(publishedUrl) when available; otherwise
+  //                emit a row-error so the user knows nothing happened.
+  const openArtifactExternal = async (a) => {
+    if (host.isWeb) {
+      if (a?.publishedUrl) {
+        try { await host.openExternal(a.publishedUrl); } catch {}
+        return;
+      }
+      setRowError('This artifact has no local file or published URL to open from the browser. Publish it first.');
+      return;
+    }
+    try {
+      const result = await host.openPath(a.path);
+      if (result && result.ok === false) {
+        setRowError(result.reason || 'Could not open file.');
+      }
+    } catch (e) {
+      setRowError(e?.message || 'Could not open file.');
+    }
+  };
+
+  const onTogglePublish = async (a) => {
+    if (!a?.path) return;
+    setBusyPath(a.path);
+    setRowError('');
+    try {
+      if (a.publishedUrl) {
+        await unpublishArtifact(a.path);
+        setRows((prev) => prev.map((r) => r.path === a.path ? { ...r, publishedUrl: '' } : r));
+      } else {
+        const r = await publishArtifact(a.path);
+        const url = r?.url || r?.publishedUrl || '';
+        setRows((prev) => prev.map((row) => row.path === a.path ? { ...row, publishedUrl: url } : row));
+      }
+    } catch (e) {
+      setRowError(e?.message || 'Publish toggle failed.');
+    } finally {
+      setBusyPath(null);
+    }
+  };
+
+  const onDeleteArtifact = async (a) => {
+    if (!a?.path) return;
+    setBusyPath(a.path);
+    setRowError('');
+    // Optimistic remove — mirrors the Project Files / Task Uploads
+    // deletes so the row vanishes the same frame the user confirms.
+    // Reached only after the ConfirmModal is accepted (see the
+    // menu's Delete item, which sets `pendingDeleteArtifact`).
+    const previous = a;
+    setRows((prev) => prev.filter((r) => r.path !== a.path));
+    try {
+      if (host.isWeb) {
+        // Web has no FS access. Surface a clear error instead of
+        // silently failing.
+        throw new Error('Delete is not available in the browser shell.');
+      }
+      const result = await host.trashItem(a.path);
+      if (result && result.ok === false) {
+        throw new Error(result.reason || 'Could not move to Trash.');
+      }
+    } catch (e) {
+      setRowError(e?.message || 'Delete failed.');
+      // Restore the row on failure.
+      setRows((prev) => prev.find((r) => r.path === previous.path) ? prev : [previous, ...prev]);
+    } finally {
+      setBusyPath(null);
+    }
   };
   // Inline-previewable artifacts open the ArtifactViewer modal; the
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
@@ -173,6 +315,11 @@ export function WorkingFolderLive({ project, isStreaming }) {
 
   return (
     <div className="pt-2">
+      {rowError && (
+        <p className="text-[11px] px-1 pb-0.5" style={{ color: 'var(--danger)' }}>
+          {rowError}
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="text-[12.5px] text-ink-4 px-1 pb-1">
           No artifacts yet — Anton will save dashboards, reports, and
@@ -180,37 +327,187 @@ export function WorkingFolderLive({ project, isStreaming }) {
         </p>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {rows.map((a) => (
-              <button
+          {rows.map((a) => {
+            const isPublished = !!a.publishedUrl;
+            const menuOpen = openMenuPath === a.path;
+            return (
+              <div
                 key={a.path}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => onOpenArtifact(a)}
-                title={a.path}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onOpenArtifact(a);
+                  }
+                }}
+                title={`${a.path}${isPublished ? ` · published` : ''}`}
                 className={clsx(
-                  'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
+                  'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
                   'cursor-pointer transition-colors hover:bg-surface-2',
-                  'border-0 bg-transparent'
+                  'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
                 )}
                 style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
               >
-                <span className="text-ink-4 inline-flex">
+                {/* Icon — picks up the accent color when the artifact
+                    has a publishedUrl so the user can spot what's
+                    published at a glance without opening each row. */}
+                <span
+                  className="inline-flex"
+                  style={{ color: isPublished ? 'var(--accent)' : 'var(--ink-4)' }}
+                >
                   {(Ico[iconForRow(a)] || Ico.doc)(13)}
                 </span>
                 <span className="text-[12.5px] text-ink truncate">
                   {a.title || (a.path?.split('/').pop() || '')}
                 </span>
-                {/* Server pre-formats `updated` as a phrase like
-                    "updated 3h ago" — surface it verbatim. Strip
-                    the redundant leading "updated " so the right
-                    column reads as a timestamp instead of a
-                    sentence. */}
-                <span className="text-[10.5px] text-ink-4">
-                  {String(a.updated || '').replace(/^updated\s+/i, '')}
+                {/* Trailing slot: timestamp normally, kebab on hover
+                    or while THIS row's menu is open. Shared-slot
+                    trick keeps row width stable. */}
+                <span className="relative inline-flex items-center justify-end flex-none" style={{ minWidth: 22 }}>
+                  <span className={clsx(
+                    'text-[10.5px] text-ink-4 transition-opacity',
+                    'group-hover:opacity-0',
+                    menuOpen && 'opacity-0',
+                  )}>
+                    {/* Server pre-formats `updated` as a phrase like
+                        "updated 3h ago" — strip the redundant leading
+                        "updated " so the column reads as a timestamp
+                        rather than a sentence. */}
+                    {String(a.updated || '').replace(/^updated\s+/i, '')}
+                  </span>
+                  <button
+                    ref={setKebabRef(a.path)}
+                    type="button"
+                    aria-label="More actions"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    title="More actions"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (menuOpen) setOpenMenuPath(null);
+                      else openMenuFor(a.path);
+                    }}
+                    className={clsx(
+                      // `justify-end` (not center) pins the kebab to
+                      // the right edge of the trailing slot so it sits
+                      // flush against the row's right margin — matching
+                      // where the project-files trash icon lands. The
+                      // artifact timestamp ("3h ago") is wider than the
+                      // project-file one ("3h"), so a centered kebab
+                      // floated noticeably left of the edge.
+                      'absolute inset-0 inline-flex items-center justify-end',
+                      menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                      'transition-opacity rounded',
+                      'text-ink-4 hover:text-ink',
+                      'bg-transparent border-0 cursor-pointer p-0',
+                    )}
+                  >
+                    {Ico.moreVert(13)}
+                  </button>
                 </span>
-              </button>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* Portaled menu for the currently-open kebab. Lives at
+          document.body so the rail-card body's overflow:auto can't
+          clip it. `position: fixed` uses viewport coords computed
+          from the kebab's getBoundingClientRect() in openMenuFor. */}
+      {openMenuPath != null && menuPos != null && createPortal(
+        (() => {
+          const a = rows.find((r) => r.path === openMenuPath);
+          if (!a) return null;
+          const isPublished = !!a.publishedUrl;
+          const openLabel = host.isWeb ? 'Open in new tab' : 'Open in OS';
+          return (
+            <div
+              ref={menuRef}
+              role="menu"
+              onClick={(e) => e.stopPropagation()}
+              className="menu"
+              style={{
+                position: 'fixed',
+                top: menuPos.top,
+                right: menuPos.right,
+                minWidth: 180,
+                zIndex: 100,
+              }}
+            >
+              <button
+                type="button"
+                className="menu-item"
+                disabled={busyPath === a.path}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMenuPath(null);
+                  openArtifactExternal(a);
+                }}
+              >
+                <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>
+                  {(Ico.externalLink || Ico.upload)(13)}
+                </span>
+                <span>{openLabel}</span>
+              </button>
+              <button
+                type="button"
+                className="menu-item"
+                disabled={busyPath === a.path}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMenuPath(null);
+                  onTogglePublish(a);
+                }}
+              >
+                <span style={{
+                  display: 'inline-flex',
+                  color: isPublished ? 'var(--accent)' : 'var(--frost-700)',
+                }}>
+                  {Ico.globe ? Ico.globe(13) : Ico.upload(13)}
+                </span>
+                <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
+              </button>
+              <div style={{ height: 1, background: 'var(--border-0)', margin: '4px 0' }} />
+              <button
+                type="button"
+                className="menu-item"
+                disabled={busyPath === a.path}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMenuPath(null);
+                  // Open the confirm modal rather than deleting
+                  // immediately — matches the project files / task
+                  // uploads / task / project delete flows.
+                  setPendingDeleteArtifact(a);
+                }}
+                style={{ color: 'var(--danger)' }}
+              >
+                <span style={{ display: 'inline-flex', color: 'var(--danger)' }}>{Ico.trash(13)}</span>
+                <span>Delete</span>
+              </button>
+            </div>
+          );
+        })(),
+        document.body,
+      )}
+
+      <ConfirmModal
+        open={!!pendingDeleteArtifact}
+        title={`Delete "${pendingDeleteArtifact?.title || pendingDeleteArtifact?.path?.split('/').pop() || 'artifact'}"?`}
+        message="The artifact will be moved to your Trash, so it's recoverable from there. It will disappear from this project's artifacts."
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteArtifact(null)}
+        onConfirm={() => {
+          const target = pendingDeleteArtifact;
+          setPendingDeleteArtifact(null);
+          if (target) onDeleteArtifact(target);
+        }}
+      />
 
       <ArtifactViewer
         open={!!previewArt}

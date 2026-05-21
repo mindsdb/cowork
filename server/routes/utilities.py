@@ -405,25 +405,41 @@ def _resolve_modify_merge(
     )
 
 
-def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
-    """Build the modify-flow read response.
+_VAULT_KEEP_FALLBACK = "__anton_vault_keep__"
+_SECRET_NAME_RE = re.compile(
+    r"(password|secret|token|api[_\-]?key|access[_\-]?key|private[_\-]?key|credential|auth)",
+    re.IGNORECASE,
+)
 
-    Substitutes `ANTON_VAULT_KEEP` into every secret-shaped slot so
-    the renderer can pre-fill the form without ever seeing the
-    underlying credential. Identity + timestamps + the secure-keys
-    list pass through verbatim.
+
+def _is_secret_key_fallback(key: str, *, secure_keys=None) -> bool:
+    if secure_keys is not None:
+        return key in secure_keys
+    return bool(_SECRET_NAME_RE.search(key))
+
+
+def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
+    """Build the connection-detail response.
+
+    Substitutes a sentinel into every secret-shaped slot so plaintext
+    credentials are never sent to the renderer. Falls back to a
+    name-based heuristic when the installed Anton version doesn't
+    export `ANTON_VAULT_KEEP` / `is_secret_key`.
     """
     try:
         from anton.core.datasources.data_vault import ANTON_VAULT_KEEP, is_secret_key
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+        vault_keep = ANTON_VAULT_KEEP
+        _is_secret = is_secret_key
+    except ImportError:
+        vault_keep = _VAULT_KEEP_FALLBACK
+        _is_secret = _is_secret_key_fallback
 
     raw_fields = record.get("fields") or {}
     secure_keys = record.get("secure_keys")  # may be None on legacy records
     fields_out: dict[str, str] = {}
     for key, value in raw_fields.items():
-        if is_secret_key(key, secure_keys=secure_keys):
-            fields_out[key] = ANTON_VAULT_KEEP
+        if _is_secret(key, secure_keys=secure_keys):
+            fields_out[key] = vault_keep
         else:
             fields_out[key] = value
     return {
@@ -431,13 +447,12 @@ def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
         "name": record.get("name", ""),
         "createdAt": record.get("created_at"),
         "updatedAt": record.get("updated_at"),
-        # Echo the secure-key set the renderer should treat as "saved · keep".
-        # On legacy records (no stored list), recompute from the heuristic
-        # so the renderer's UX is identical regardless of schema age.
+        # Echo the secure-key set the renderer should treat as masked.
+        # On legacy records (no stored list), recompute from the heuristic.
         "secureKeys": (
             secure_keys
             if secure_keys is not None
-            else sorted(k for k in raw_fields.keys() if is_secret_key(k))
+            else sorted(k for k in raw_fields.keys() if _is_secret(k))
         ),
         "fields": fields_out,
     }
@@ -506,18 +521,21 @@ async def read_datasource(engine: str, name: str):
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
     vault = LocalDataVault()
-    # Older anton installs don't have `read_record` — fall back to
-    # synthesizing a minimal record from `load()`. The renderer's
-    # modify form still works (heuristic fills in for the missing
-    # secure-keys list); only created_at / updated_at are missing.
+    # Older anton installs don't have `read_record`. Fall back to
+    # reading the raw vault JSON file directly so we preserve
+    # timestamps and the stored secure_keys list (vault.load() strips
+    # those away, returning only the fields dict).
     if hasattr(vault, "read_record"):
         record = vault.read_record(engine.strip(), name.strip())
     else:
-        fields = vault.load(engine.strip(), name.strip())
-        record = (
-            None if fields is None
-            else {"engine": engine.strip(), "name": name.strip(), "fields": fields}
-        )
+        vault_path = vault._path_for(engine.strip(), name.strip())
+        if vault_path.is_file():
+            try:
+                record = json.loads(vault_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                record = None
+        else:
+            record = None
     if record is None:
         raise HTTPException(status_code=404, detail="Datasource connection not found")
     return _datasource_record_payload(record)

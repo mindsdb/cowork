@@ -201,6 +201,17 @@ async def process_submission_stream(
     response.completed). Single SSE envelope from start to finish —
     the probe's events are translated and forwarded INSIDE this turn.
     """
+    # See the matching guard in `conversation_manager.chat_stream` —
+    # `tmp-` ids are renderer-side temporaries (`tmp-connect-<ts>`
+    # from the connector picker) and must not be persisted as the
+    # canonical conversation id. Promote to a fresh server-minted id
+    # before any meta / history file is touched; the client picks up
+    # the new id from `response.created.conversation_id` below and
+    # rewrites its local task.
+    if conversation_id and conversation_id.startswith("tmp-"):
+        from . import conversation_manager as _cm
+        conversation_id = _cm._new_conversation_id()
+
     started_at_ms = int(time.time() * 1000)
     response_id = _new_response_id()
     message_id = _new_message_id()
