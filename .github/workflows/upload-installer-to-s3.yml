@@ -107,6 +107,7 @@ jobs:
               ;;
             stable)
               upload "$SRC" "${PREFIX}/snapshots/${NAME}"
+              upload "$SRC" "${PREFIX}/anton-latest.${EXT}"
               ;;
             prod)
               upload "$SRC" "${PREFIX}/${NAME}"
