@@ -965,6 +965,33 @@ export async function saveConnector(connectorId, payload) {
   });
 }
 
+// ─── Web (redirect-based) connector OAuth ──────────────────────────────────
+// The desktop app authenticates connectors through an Electron loopback
+// PKCE flow (host.oauthConnect). The web SPA can't open a loopback server,
+// so it drives the server-side redirect flow instead:
+//   1. startConnectorOAuth → server mints PKCE + state, returns authUrl.
+//   2. open authUrl (new tab); the user consents; the provider redirects
+//      to the server callback, which exchanges the code + saves the vault
+//      record itself.
+//   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
+// The SPA never handles the code or tokens directly.
+
+export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
+  return req(`/connectors/${encodeURIComponent(connectorId)}/oauth/start`, {
+    method: 'POST',
+    body: JSON.stringify({
+      method: method || null,
+      name: name || '',
+      client_id: clientId || '',
+      client_secret: clientSecret || '',
+    }),
+  });
+}
+
+export async function pollConnectorOAuth(state) {
+  return req(`/connectors/oauth/status?state=${encodeURIComponent(state)}`);
+}
+
 export async function fetchPublishable() {
   return req('/publish');
 }
