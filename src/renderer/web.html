@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Web-mode CSP. Connect-src is wider than Electron's (allows the
+         browser's same origin for the API + websocket variants of it) so
+         the canonical /v1/* fetches and SSE streams reach the FastAPI
+         through the reverse proxy. frame-src/child-src widened similarly
+         for any inline previews that load via blob: or same-origin. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-src 'self' blob:; child-src 'self' blob:" />
+    <title>Anton CoWork</title>
+    <link rel="stylesheet" href="./gravity-field/gravity-field.css" />
+  </head>
+  <body class="gf-theme-dark">
+    <canvas id="gravity-field-bg" class="gravity-field" aria-hidden="true"></canvas>
+    <div id="root"></div>
+    <script src="./gravity-field/gravity-field.js"></script>
+    <script>
+      window.gravityField = window.GravityField.mount(
+        document.getElementById('gravity-field-bg'),
+        { theme: 'dark', trackPointer: false },
+      );
+    </script>
+    <script type="module" src="./web-main.tsx"></script>
+  </body>
+</html>

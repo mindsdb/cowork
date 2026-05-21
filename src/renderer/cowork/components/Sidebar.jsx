@@ -6,7 +6,9 @@ import RecentsModal from './RecentsModal';
 import { host } from '../../platform/host';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
-// Windows/Linux use Ctrl+ literal.
+// Windows/Linux use Ctrl+ literal. host.isMac() works in both Electron
+// (delegates to preload's getPlatform) and web (navigator.userAgentData);
+// the navigator-UA fallback covers older browsers.
 const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
@@ -524,6 +526,7 @@ export default function Sidebar({
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
           <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
+          <NavItem icon={Ico.chats(15)}   label="Dispatch"        onClick={() => onNavigate('dispatch')}  active={activeRoute === 'dispatch'} />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in
@@ -775,29 +778,34 @@ export default function Sidebar({
               )}
             </span>
           </button>
-          <div className="anton-sidebar__footer-actions">
-            <button
-              className={
-                'chrome-btn--small server-toggle' +
-                (serverOnline ? ' is-on' : '') +
-                (serverBusy ? ' is-busy' : '')
-              }
-              onClick={onToggleServer}
-              disabled={serverBusy}
-              title={
-                serverBusy
-                  ? `Backend ${serverBusyKind}…`
-                  : serverOnline ? 'Stop Anton backend' : 'Start Anton backend'
-              }
-              aria-label={serverOnline ? 'Stop backend' : 'Start backend'}
-              aria-busy={serverBusy ? 'true' : undefined}
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              {serverBusy
-                ? <Spinner intervalMs={70} />
-                : (serverOnline ? Ico.powerOff(13) : Ico.power(13))}
-            </button>
-          </div>
+          {/* Server-toggle hidden in web mode — the FastAPI is container/Lightsail
+              managed there, not user-controllable from the renderer. The status
+              pill above still surfaces connected/offline as a read-only signal. */}
+          {!host.isWeb && (
+            <div className="anton-sidebar__footer-actions">
+              <button
+                className={
+                  'chrome-btn--small server-toggle' +
+                  (serverOnline ? ' is-on' : '') +
+                  (serverBusy ? ' is-busy' : '')
+                }
+                onClick={onToggleServer}
+                disabled={serverBusy}
+                title={
+                  serverBusy
+                    ? `Backend ${serverBusyKind}…`
+                    : serverOnline ? 'Stop Anton backend' : 'Start Anton backend'
+                }
+                aria-label={serverOnline ? 'Stop backend' : 'Start backend'}
+                aria-busy={serverBusy ? 'true' : undefined}
+                style={{ WebkitAppRegion: 'no-drag' }}
+              >
+                {serverBusy
+                  ? <Spinner intervalMs={70} />
+                  : (serverOnline ? Ico.powerOff(13) : Ico.power(13))}
+              </button>
+            </div>
+          )}
         </div>
         )}
       </div>

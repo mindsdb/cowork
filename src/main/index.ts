@@ -32,6 +32,18 @@ function readEnvFile(): Record<string, string> {
   return vars;
 }
 
+/** Load ~/.anton/.env into process.env so all main-process modules
+ *  (installer, server-process, etc.) can read dev overrides like
+ *  ANTON_DEV_PATH without needing their own file reads. Existing
+ *  process.env values are NOT overwritten — system env takes priority.
+ */
+function loadAntonEnvIntoProcess(): void {
+  const vars = readEnvFile();
+  for (const [k, v] of Object.entries(vars)) {
+    if (!(k in process.env)) process.env[k] = v;
+  }
+}
+
 /** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null.
  *
  * Defaults to 'full' when the user hasn't set anything — the OTA
@@ -586,6 +598,7 @@ app.whenReady().then(() => {
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
 
+  loadAntonEnvIntoProcess();
   ensureDefaultProject();
   setupIPC();
   createWindow();

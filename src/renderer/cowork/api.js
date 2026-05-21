@@ -10,13 +10,38 @@ const ANTON_SERVER_PORT = 26866;
 const API_ORIGIN = (() => {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
-  return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${ANTON_SERVER_PORT}`
-    : '';
+  // Packaged Electron (file:// or app://) OR dev Electron (http:// but
+  // window.antontron is present — Electron injected the preload bridge)
+  if (
+    protocol === 'file:' ||
+    protocol === 'app:' ||
+    typeof window.antontron !== 'undefined'
+  ) {
+    return `http://127.0.0.1:${ANTON_SERVER_PORT}`;
+  }
+  return '';
 })();
 
 export const BASE = `${API_ORIGIN}/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
+
+/**
+ * Absolute origin of the antontron API, suitable for building redirect URLs
+ * that must be reached from outside the app (e.g. Slack OAuth callback).
+ *
+ *   Electron:           "http://127.0.0.1:26866"  (Python child process)
+ *   Web (vite/dev):     window.location.origin    ("http://localhost:5173")
+ *   Web (docker/prod):  window.location.origin    ("https://cw-*.localhost")
+ *
+ * Always returns a usable absolute origin; never an empty string.
+ */
+export function getApiOrigin() {
+  if (API_ORIGIN) return API_ORIGIN;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
+}
 
 async function req(path, options = {}) {
   const res = await fetch(BASE + path, {
@@ -847,6 +872,179 @@ export async function startGoogleDriveAuth() {
 
 export async function startGoogleCalendarAuth() {
   return req('/integrations/google-calendar/oauth/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
+// ─── Dispatch (channels + wirings) ────────────────────────────────────────────
+// Dispatch routes every channel to a single shared "Anton" agent group, ensured
+// server-side — there are no agent-group management endpoints.
+export async function fetchDispatchStatus() {
+  try {
+    return await req('/dispatch/status');
+  } catch {
+    return { ready: false, registered_channels: [], active_channels: [], agent_group_count: 0, wiring_count: 0 };
+  }
+}
+
+export async function fetchDispatchChannels() {
+  try {
+    const data = await req('/dispatch/channels');
+    return data.channels ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchWirings() {
+  try {
+    const data = await req('/dispatch/wirings');
+    return data.wirings ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchMessagingGroups() {
+  try {
+    const data = await req('/dispatch/messaging-groups');
+    return data.messaging_groups ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createWiring(payload) {
+  return req('/dispatch/wirings', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function deleteWiring(mgId, agId) {
+  return req(`/dispatch/wirings/${encodeURIComponent(mgId)}/${encodeURIComponent(agId)}`, { method: 'DELETE' });
+}
+
+// Disconnect one channel — stops its live adapter, clears stored credentials
+// (env vars + vault), and removes its wirings. Sticky across server restarts.
+export async function disconnectChannel(channelType) {
+  return req(`/dispatch/channels/${encodeURIComponent(channelType)}/disconnect`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+// Disconnect every channel — full dispatch reset (all adapters, credentials,
+// and wirings). Sessions and message history are left intact.
+export async function disconnectAllChannels() {
+  return req('/dispatch/disconnect-all', { method: 'POST', body: JSON.stringify({}) });
+}
+
+// Re-initialize every channel adapter from current credentials — applies
+// saved or cleared config live, no server restart. Returns active channels.
+export async function reloadDispatch() {
+  return req('/dispatch/reload', { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function startSlackOAuth(redirectUri) {
+  const params = new URLSearchParams({ redirect_uri: redirectUri });
+  return req(`/dispatch/slack/oauth/start?${params.toString()}`, { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function fetchSlackConfig() {
+  try {
+    return await req('/dispatch/slack/config');
+  } catch {
+    return {
+      client_id_set: false,
+      client_secret_set: false,
+      signing_secret_set: false,
+      app_token_set: false,
+      install_ready: false,
+      socket_mode_ready: false,
+    };
+  }
+}
+
+export async function saveSlackConfig({ clientId, clientSecret, signingSecret, appToken }) {
+  const payload = {};
+  if (clientId !== undefined)      payload.client_id      = clientId;
+  if (clientSecret !== undefined)  payload.client_secret  = clientSecret;
+  if (signingSecret !== undefined) payload.signing_secret = signingSecret;
+  if (appToken !== undefined)      payload.app_token      = appToken;
+  return req('/dispatch/slack/config', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export async function fetchTelegramConfig() {
+  try {
+    return await req('/dispatch/telegram/config');
+  } catch {
+    return {
+      bot_token_set: false,
+      bot_username_set: false,
+      webhook_url_set: false,
+      install_ready: false,
+      mode: 'long-poll',
+    };
+  }
+}
+
+export async function saveTelegramConfig({ botToken, botUsername, webhookUrl }) {
+  const payload = {};
+  if (botToken    !== undefined) payload.bot_token    = botToken;
+  if (botUsername !== undefined) payload.bot_username = botUsername;
+  if (webhookUrl  !== undefined) payload.webhook_url  = webhookUrl;
+  return req('/dispatch/telegram/config', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export async function fetchDiscordConfig() {
+  try {
+    return await req('/dispatch/discord/config');
+  } catch {
+    return {
+      client_id_set: false,
+      client_secret_set: false,
+      bot_token_set: false,
+      public_key_set: false,
+      gateway_ready: false,
+      interactions_ready: false,
+      install_ready: false,
+    };
+  }
+}
+
+export async function saveDiscordConfig({ clientId, clientSecret, botToken, publicKey }) {
+  const payload = {};
+  if (clientId     !== undefined) payload.client_id     = clientId;
+  if (clientSecret !== undefined) payload.client_secret = clientSecret;
+  if (botToken     !== undefined) payload.bot_token     = botToken;
+  if (publicKey    !== undefined) payload.public_key    = publicKey;
+  return req('/dispatch/discord/config', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export async function startDiscordInstall(redirectUri) {
+  const params = new URLSearchParams({ redirect_uri: redirectUri });
+  return req(`/dispatch/discord/oauth/install?${params.toString()}`, { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function fetchWhatsAppConfig() {
+  try {
+    return await req('/dispatch/whatsapp/config');
+  } catch {
+    return {
+      phone_number_id_set: false,
+      access_token_set: false,
+      verify_token_set: false,
+      app_secret_set: false,
+      business_account_id_set: false,
+      install_ready: false,
+    };
+  }
+}
+
+export async function saveWhatsAppConfig({ phoneNumberId, accessToken, verifyToken, appSecret, businessAccountId }) {
+  const payload = {};
+  if (phoneNumberId     !== undefined) payload.phone_number_id     = phoneNumberId;
+  if (accessToken       !== undefined) payload.access_token        = accessToken;
+  if (verifyToken       !== undefined) payload.verify_token        = verifyToken;
+  if (appSecret         !== undefined) payload.app_secret          = appSecret;
+  if (businessAccountId !== undefined) payload.business_account_id = businessAccountId;
+  return req('/dispatch/whatsapp/config', { method: 'PUT', body: JSON.stringify(payload) });
 }
 
 export async function startGmailAuth() {

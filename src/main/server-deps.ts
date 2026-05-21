@@ -12,6 +12,10 @@ export const SERVER_PYTHON_DEPS: Array<{ spec: string; importName: string }> = [
   { spec: 'python-multipart>=0.0.12', importName: 'multipart' },
   { spec: 'pydantic>=2.0.0', importName: 'pydantic' },
   { spec: 'httpx[http2]>=0.27.0', importName: 'h2' },
+  // slack-sdk powers Slack Socket Mode (dispatch_slack._run_socket_mode).
+  // It is not an Anton dependency, so without this the bare editable
+  // install drops it and Socket Mode silently falls back to disabled.
+  { spec: 'slack-sdk>=3.27.0', importName: 'slack_sdk' },
 ];
 
 export function getUvDataHome(): string {

@@ -429,17 +429,40 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     // Build the args list dynamically so the dep set lives in ONE place
     // (SERVER_PYTHON_DEPS). Each spec is appended as a separate `--with`
     // arg — `uv tool install` requires a flag per package.
+    // ANTON_DEV_PATH lets a local checkout take priority over the published
+    // release. Set it in ~/.anton/.env (e.g. ANTON_DEV_PATH=/path/to/anton)
+    // to pin cowork to a local branch. When absent, the normal git+PyPI
+    // install path is used unchanged.
+    const antonDevPath = (process.env.ANTON_DEV_PATH || '').trim();
+    const antonSource = antonDevPath
+      ? antonDevPath
+      : 'git+[DS_GITHUB_GITHUB_1__BASE_URL]/mindsdb/anton.git';
+
     const installArgs = [
       'tool', 'install',
-      'git+https://github.com/mindsdb/anton.git',
     ];
+    // For a local checkout, install editable (-e) so source edits take
+    // effect without a reinstall — that is the whole point of pinning to
+    // a local branch. Without -e, `uv tool install <dir>` COPIES the
+    // source into the tool venv's site-packages and edits are silently
+    // ignored until the next reinstall.
+    if (antonDevPath) {
+      installArgs.push('--editable');
+    }
+    installArgs.push(antonSource);
     for (const dep of SERVER_PYTHON_DEPS) {
       installArgs.push('--with', dep.spec);
     }
     // --force allows replacing an existing tool entry; --reinstall makes uv
     // rebuild the environment contents too. Both matter when a user already
     // has an anton tool venv that predates the server dependency set.
-    installArgs.push('--force', '--reinstall', '--upgrade');
+    // Skip --upgrade for local paths so uv doesn't try to resolve a
+    // newer version from PyPI and clobber the editable install.
+    if (antonDevPath) {
+      installArgs.push('--force', '--reinstall');
+    } else {
+      installArgs.push('--force', '--reinstall', '--upgrade');
+    }
 
     const uvBin = fileExists(getUvBinary()) ? getUvBinary() : 'uv';
     const installResult = await runCommand(uvBin, installArgs, win, { shouldAbort });

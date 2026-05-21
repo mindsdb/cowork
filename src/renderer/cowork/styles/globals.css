@@ -3028,8 +3028,14 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #faf9f6;
-  color: #1f1e1c;
+  /* Transparent so the gravity-field canvas painted behind the
+     React root shows through, matching every other collection
+     surface (Projects, Live artifacts, Scheduled, …). The earlier
+     `background: var(--surface)` painted a solid sheet over the
+     mesh, making this page feel like a different application. */
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
 }
 .dispatch-top {
   height: 64px;
@@ -3037,9 +3043,12 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   display: flex;
   align-items: center;
   padding: 0 28px;
+  font-family: var(--font-display);
   font-size: 14px;
   font-weight: 650;
-  color: #1f1e1c;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
 }
 .dispatch-content {
   flex: 1;
@@ -3062,28 +3071,28 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   align-items: center;
   gap: 14px;
   margin-bottom: 28px;
-  color: #1f1e1c;
+  color: var(--ink);
 }
 .dispatch-illustration svg {
   display: block;
   flex: 0 0 auto;
 }
 .dispatch-signal {
-  color: #c96442;
+  color: var(--accent);
 }
 .dispatch-pair h1 {
   margin: 0 0 14px;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 34px;
   line-height: 1.15;
   font-weight: 500;
-  letter-spacing: 0;
-  color: #1f1e1c;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 .dispatch-pair p {
   max-width: 420px;
   margin: 0 0 28px;
-  color: #6b6862;
+  color: var(--ink-3);
   font-size: 15px;
   line-height: 1.55;
 }
@@ -3093,8 +3102,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   margin-bottom: 28px;
   padding: 14px;
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
 }
 .dispatch-qr svg {
   display: block;
@@ -3117,23 +3126,9 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  font-family: var(--font-body);
   font-size: 14.5px;
   font-weight: 500;
-}
-.dispatch-btn-primary {
-  background: #1a1916;
-  color: #fff;
-}
-.dispatch-btn-primary:disabled {
-  cursor: not-allowed;
-  opacity: 0.86;
-}
-.dispatch-btn-ghost {
-  background: transparent;
-  color: #1f1e1c;
-}
-.dispatch-btn-ghost:hover {
-  background: #ece8df;
 }
 .dispatch-button-badge {
   display: inline-flex;
@@ -3141,8 +3136,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   height: 20px;
   padding: 0 8px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.16);
-  color: rgba(255,255,255,0.86);
+  background: color-mix(in srgb, var(--surface) 16%, transparent);
+  color: var(--ink-3);
   font-size: 11px;
   line-height: 1;
 }
@@ -4547,6 +4542,415 @@ body[data-theme="dark"] .mshell__drawer-title {
   }
 }
 
+/* ─── Dispatch — channels + agent groups + wirings ──────────────────────── */
+/* Theme-aware: every color references the design tokens defined in :root /
+   body[data-theme="dark"]. No hardcoded greys. */
+
+.dispatch-content-wide {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 24px 32px 48px;
+  flex-direction: column;
+  gap: 32px;
+  overflow-y: auto;
+}
+.dispatch-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dispatch-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dispatch-section-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dispatch-status-line {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  color: var(--ink-3);
+}
+
+/* ── Channel cards ─────────────────────────────────────────────────────── */
+.dispatch-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.dispatch-channel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.dispatch-channel-card:hover {
+  border-color: var(--line-2);
+}
+.dispatch-channel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.dispatch-channel-head h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.005em;
+}
+.dispatch-channel-desc {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.dispatch-channel-chip {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* ── Coming-soon (disabled) channel ────────────────────────────────────── */
+.dispatch-channel-coming-soon {
+  opacity: 0.6;
+  pointer-events: none;
+  background: var(--surface-2);
+}
+.dispatch-channel-coming-soon:hover {
+  border-color: var(--line);
+}
+.dispatch-channel-coming-soon .dispatch-channel-chip {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-2, var(--accent));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Status pill ───────────────────────────────────────────────────────── */
+.dispatch-status {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.dispatch-status-active {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+}
+.dispatch-status-pending {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-2, var(--accent));
+}
+.dispatch-status-idle {
+  background: var(--surface-2);
+  color: var(--ink-4);
+}
+
+/* ── Lists ─────────────────────────────────────────────────────────────── */
+.dispatch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dispatch-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.dispatch-list-name {
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+.dispatch-list-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  flex: 1 1 auto;
+}
+.dispatch-empty {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+/* ── Forms / inputs ────────────────────────────────────────────────────── */
+.dispatch-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+.dispatch-form-wide .dispatch-input {
+  min-width: 160px;
+}
+.dispatch-input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink);
+  flex: 1 1 220px;
+  min-width: 180px;
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.dispatch-input::placeholder {
+  color: var(--ink-4);
+}
+.dispatch-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+select.dispatch-input {
+  cursor: pointer;
+}
+
+/* Inline-editable wiring row — compact controls between the row name and
+   its Save/delete buttons. The wrapper takes the free space so the
+   buttons stay flush right. */
+.dispatch-wiring-edit {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dispatch-input-sm {
+  height: 32px;
+  font-size: 12px;
+  padding: 0 8px;
+}
+.dispatch-form-wide .dispatch-input-sm,
+.dispatch-input-sm {
+  min-width: 0;
+}
+
+/* ── Buttons (override the original .dispatch-btn-* hardcoded colors) ── */
+.dispatch-btn {
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.dispatch-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.dispatch-btn-primary {
+  background: var(--accent);
+  color: var(--surface);
+  border: 1px solid var(--accent);
+}
+.dispatch-btn-primary:hover:not(:disabled) {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+.dispatch-btn-secondary {
+  background: var(--ink);
+  color: var(--surface);
+  border: 1px solid var(--ink);
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.dispatch-btn-secondary:hover:not(:disabled) {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+}
+.dispatch-btn-ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+.dispatch-btn-ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--line-2);
+}
+/* ── Disconnect / clear-connection controls ────────────────────────────── */
+.dispatch-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Refresh button. `min-width` pins the width so the "Refresh" → "Refreshing…"
+   label swap can't resize it (which would shove the neighbouring button).
+   The `:disabled` rule gives it a real disabled state — bare `.btn-secondary`
+   has none, and its `:hover` is unguarded, so mid-refresh the disabled button
+   would otherwise light up with hover styling under the cursor. */
+.dispatch-btn-refresh {
+  min-width: 112px;
+}
+.dispatch-btn-refresh:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.dispatch-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.dispatch-btn-danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: var(--danger-bg);
+}
+.dispatch-channel-disconnect {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
+}
+.dispatch-channel-disconnect:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
+  background: var(--danger-bg);
+}
+.dispatch-btn-icon {
+  background: transparent;
+  color: var(--ink-3);
+  border: 0;
+  min-height: 30px;
+  padding: 0 6px;
+}
+.dispatch-btn-icon:hover:not(:disabled) {
+  color: var(--accent);
+}
+.dispatch-btn-link {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dispatch-btn-link:hover:not(:disabled) {
+  color: var(--accent-2);
+}
+
+.dispatch-error {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+/* ── Slack config sub-panel ────────────────────────────────────────────── */
+.dispatch-config-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
+}
+.dispatch-config-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dispatch-config-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+}
+.dispatch-config-flag-set {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+.dispatch-config-flag-unset {
+  background: var(--surface-3);
+  color: var(--ink-4);
+}
+.dispatch-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+/* Inside a column-flex form the parent's `flex: 1 1 220px` would treat 220px
+   as a vertical basis and stretch each input to ~220px tall. Reset to a
+   fixed 36px row height when inputs live inside the column-direction
+   config form. (`.dispatch-form` and `.dispatch-form-wide` are row flexes
+   and keep the original 220px horizontal basis.) */
+.dispatch-config-form .dispatch-input {
+  flex: 0 0 auto;
+  height: 36px;
+  width: 100%;
+  min-width: 0;
+}
+.dispatch-config-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.dispatch-config-hint {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
 /* ─── Chat fenced code blocks (Claude-style) ─────────────────────────────
    Rendered by MarkdownCode for any fenced block whose language isn't
    one of our special kinds (chartjs / chart / data-vault-form*).
