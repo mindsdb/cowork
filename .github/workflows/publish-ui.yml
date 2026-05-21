@@ -60,10 +60,10 @@ jobs:
       - name: Check if version already published
         id: check
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          if gh release view "$TAG" --repo mindsdb/antontron-releases &>/dev/null; then
+          if gh release view "$TAG" &>/dev/null; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Version $TAG already published — skipping"
           else
@@ -78,58 +78,40 @@ jobs:
           cd ../..
           sha256sum ui-bundle.tar.gz | awk '{print $1}' > ui-bundle.sha256
 
-      - name: Publish to antontron-releases
+      - name: Create GitHub Release
         if: steps.check.outputs.skip != 'true'
         env:
-          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # -e: halt on first failure (so a bad token fails here, not
-          # three commands later). pipefail: propagate failure of the
-          # `echo | gh auth login` pipe. (-u omitted on purpose — the
-          # gh-pages git steps below use `|| fallback` idioms that are
-          # fine with unset edge cases.)
+          set -eo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+
+          gh release create "$TAG" \
+            --title "UI $VERSION" \
+            --notes "Renderer UI bundle v${VERSION}" \
+            ui-bundle.tar.gz \
+            || { echo "Release may already exist, uploading asset..."; gh release upload "$TAG" ui-bundle.tar.gz --clobber; }
+
+      - name: Update latest.json on gh-pages
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           set -eo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag }}"
           SHA256=$(cat ui-bundle.sha256)
-          DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/ui-bundle.tar.gz"
 
-          # Fail loudly if the token secret is missing/empty. Without
-          # this the public-repo clone below still succeeds (no auth
-          # needed to read a public repo), and the failure only shows
-          # up later as a confusing 401 from `gh`.
-          if [ -z "${RELEASES_TOKEN}" ]; then
-            echo "::error::RELEASES_TOKEN secret is empty. Set a PAT (or app token) with contents:write on mindsdb/antontron-releases."
-            exit 1
-          fi
+          # Work on gh-pages in a separate clone so we don't disturb the
+          # main checkout that built the bundle.
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages-work
+          cd gh-pages-work
+          git fetch origin gh-pages 2>/dev/null && git checkout gh-pages || git checkout --orphan gh-pages
+          # If we orphaned, wipe inherited files so gh-pages only holds the manifest.
+          git rm -rf . 2>/dev/null || true
 
-          # Authenticate gh explicitly with the token. `gh` prefers the
-          # GH_TOKEN env var over a logged-in credential, so we must NOT
-          # have GH_TOKEN set here (note it's been removed from this
-          # step's env above) — otherwise `gh auth login` is a no-op and
-          # gh keeps using the env value. `gh auth status` then surfaces
-          # an invalid/expired token immediately rather than as a vague
-          # 401 three commands later.
-          unset GH_TOKEN || true
-          echo "${RELEASES_TOKEN}" | gh auth login --with-token
-          gh auth status
-
-          # Clone the public releases repo
-          git clone "https://x-access-token:${RELEASES_TOKEN}@github.com/mindsdb/antontron-releases.git" releases-repo
-
-          # Create release with the bundle via gh CLI
-          cd releases-repo
-          gh release create "$TAG" \
-            --title "UI $VERSION" \
-            --notes "Renderer UI bundle v${VERSION}" \
-            ../ui-bundle.tar.gz \
-            || { echo "Release may already exist, uploading asset..."; gh release upload "$TAG" ../ui-bundle.tar.gz --clobber; }
-
-          # Update latest.json on gh-pages
-          git fetch origin gh-pages || git checkout --orphan gh-pages
-          git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
-
-          # Write manifest
           cat > latest.json << MANIFEST
           {
             "version": "${VERSION}",
