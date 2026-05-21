@@ -662,7 +662,7 @@ async def delete_datasource(engine: str, name: str):
 
 
 def _html_artifacts() -> list[dict[str, Any]]:
-    """List every HTML file under every project's `artifacts/` tree.
+    """List every HTML file under every project's `.anton/artifacts/` tree.
 
     Recursive — multi-file artifacts (HTML + assets) get their main
     file plus any sibling HTML pages all surfaced as publishable

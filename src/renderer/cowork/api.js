@@ -762,22 +762,37 @@ export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
 
-// Mount an HTML artifact's parent directory for iframe preview. Returns
-// `{ token, entry, relUrl }` — `entry` is the filename, `relUrl` is the
-// path the iframe should load (relative to BASE). Use this so relative
-// `<script>` / `<link>` refs in the HTML resolve against a real URL.
+// Mount an artifact for iframe preview. Two response shapes:
+//   - kind="static" (HTML artifacts): server returns `relUrl` under
+//     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
+//   - kind="proxy"  (backend+frontend artifacts): server returns the
+//     artifact dir; the renderer then asks the Electron main process to
+//     point the local preview proxy at that dir and gets back the URL.
+// `kind` is the discriminator; legacy callers can keep using `url`.
 export async function mountArtifactPreview(path) {
   const data = await req('/artifacts/preview-mount', {
     method: 'POST',
     body: JSON.stringify({ path }),
   });
+  const kind = data?.kind || (data?.relUrl ? 'static' : '');
   return {
+    kind,
     token: data?.token,
     entry: data?.entry,
-    // Absolute URL the iframe can load directly. The server returns a
-    // path without scheme; combine with BASE so the renderer doesn't
-    // need to know the API origin.
+    artifactDir: data?.artifactDir || '',
+    // Backend port for proxy previews — surfaced so the viewer can
+    // build a direct `http://127.0.0.1:<port>` URL for "Open in OS"
+    // without going through the Electron-main proxy.
+    port: typeof data?.port === 'number' ? data.port : null,
+    // Absolute URL the iframe can load directly for static previews.
+    // Empty for proxy previews — the caller resolves the URL via
+    // host.startPreviewProxy(artifactDir, proxyUrl), which uses the
+    // Electron-main proxy when running in Electron and the in-process
+    // FastAPI proxy (`proxyUrl`) when running in the web shell.
     url: data?.relUrl ? `${BASE}${data.relUrl}` : '',
+    // Loopback URL of the cowork-process preview proxy. Used by the
+    // web shell; Electron ignores it and goes through its own bridge.
+    proxyUrl: data?.proxyUrl || '',
     // Server-side sidecar lookup of the artifact's published URL (if
     // any). Forwarded so the viewer shows the "Published" pill even
     // when opened from a chat bubble — those carry no publishedUrl on

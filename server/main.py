@@ -170,14 +170,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from anton_api import conversation_manager, projects_store, scratchpad_runtime
+from anton_api import (
+    conversation_manager,
+    preview_proxy,
+    projects_store,
+    scratchpad_runtime,
+)
 from routes.responses import router as responses_router
 from routes.conversations import router as conversations_router
 from routes.scratchpad import router as scratchpad_router
 from routes.projects import router as projects_router
 from routes.settings import router as settings_router
 from routes.settings import get_config_status
-from routes.artifacts import router as artifacts_router
+from routes.artifacts import router as artifacts_router, shutdown_launched_backends
 from routes.utilities import router as utilities_router
 from routes.attachments import router as attachments_router
 from routes.search import router as search_router
@@ -272,6 +277,15 @@ async def lifespan(app: FastAPI):
     _seal_orphan_buffers_on_boot()
     start_scheduler()
     refresh_task = asyncio.create_task(_google_token_refresh_loop())
+    # In-process HTTP proxy for backend+frontend artifact previews —
+    # the web shell's equivalent of Electron's main-process proxy. The
+    # bind happens lazily on the first preview-mount; starting here
+    # just reserves the listener so artifacts.py can hand out a URL
+    # without waiting for the first request.
+    try:
+        await preview_proxy.start()
+    except Exception as exc:
+        logger.warning("preview_proxy failed to start: %s", exc)
     # Phase 5: periodic GC of old turn buffers.
     gc_task = asyncio.create_task(_turn_buffer_gc_loop())
     yield
@@ -283,6 +297,12 @@ async def lifespan(app: FastAPI):
             pass
     await conversation_manager.close_all()
     await scratchpad_runtime.close_all()
+    await preview_proxy.shutdown()
+    # Reap any artifact backends we auto-launched from the preview path.
+    # Without this they outlive cowork, hold their TCP port, and the
+    # next preview attempt finds the port "alive" pointing at a dead
+    # previous session's process.
+    shutdown_launched_backends()
 
 
 app = FastAPI(title="Anton CoWork API", version="1.0.0", lifespan=lifespan)

@@ -57,7 +57,7 @@ def _read_published_state(file_path: Path) -> dict[str, str]:
 # LLM in the desktop context, so we override them in `build_cowork_publish_tool`.
 COWORK_PUBLISH_DESCRIPTION = (
     "Preview, check, or publish an HTML dashboard / report. Files live "
-    "under the project's `artifacts/<artifact-id>/<name>.html`. Actions: "
+    "under the project's `.anton/artifacts/<artifact-id>/<name>.html`. Actions: "
     "'ask' (default) and 'preview' check whether the file is already "
     "published and return the public URL if so — they DON'T publish; "
     "use them when generating a new file to confirm state. 'publish' "
@@ -251,7 +251,7 @@ def build_cowork_publish_tool():
     can build the session config without paying the import cost twice.
 
     The description and prompt are replaced with cowork-flavoured copy
-    that names the right artifacts path (`artifacts/<id>/<file>.html`,
+    that names the right artifacts path (`.anton/artifacts/<id>/<file>.html`,
     not the legacy `.anton/output/`) and tells the LLM publishing
     works directly from chat — no slash command, no UI dance. Without
     these overrides the LLM defaults to CLI-era guidance and refuses

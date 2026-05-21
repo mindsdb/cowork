@@ -288,6 +288,7 @@ function ActionsPopover({ open, anchorRect, onClose, items }) {
             key={it.label}
             type="button"
             disabled={it.disabled}
+            title={it.title}
             onClick={(e) => { e.stopPropagation(); it.onClick?.(); onClose?.(); }}
             style={{
               width: 'calc(100% - 8px)', margin: '0 4px',
@@ -322,11 +323,20 @@ function ActionsPopover({ open, anchorRect, onClose, items }) {
   );
 }
 
+const BACKEND_ARTIFACT_TYPES = new Set(['fullstack-stateless-app', 'fullstack-stateful-app']);
+const NOT_PUBLISHABLE_REASON = "Publishing isn't supported for this artifact type";
+
 export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) {
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const displayPath = artifact?.displayPath || actionPath;
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
+  const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  const isPublishable = !isBackendArtifact;
+  // Backend artifacts treat the folder, not the entry html, as the
+  // "thing" the user opens in their OS or browser.
+  const artifactFolder = actionPath.replace(/[\\/][^\\/]*$/, '') || actionPath;
+  const folderDisplayPath = displayPath.replace(/[\\/][^\\/]*$/, '') || displayPath;
   // Mounted preview URL — iframe loads this with `src=` so relative
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
@@ -339,6 +349,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
+  const [backendPort, setBackendPort] = useState(null);
   const [busy, setBusy] = useState(false);
   const [menuRect, setMenuRect] = useState(null);
   const kebabRef = useRef(null);
@@ -357,12 +368,16 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
   // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
-  // Mount the artifact when opened. The server registers the parent
-  // dir under a token and returns a URL that serves the entry HTML;
-  // assets at sibling paths resolve naturally because they share the
-  // same URL prefix. For text artifacts (.md/.txt/.csv) we skip the
-  // iframe path entirely and fetch the file body so it can render
-  // inline.
+  // Mount the artifact when opened.
+  //   - Text (.md/.txt/.csv): skip the iframe entirely and fetch the
+  //     body via `/v1/artifacts/preview` so we can render it inline.
+  //   - Static (HTML-only): server registers the parent dir under a
+  //     token and returns a URL that serves the entry HTML; sibling
+  //     assets resolve naturally because they share the URL prefix.
+  //   - Proxy (backend+frontend): main hosts a loopback HTTP forwarder
+  //     pointed at the artifact's backend port (read lazily from
+  //     metadata.json on every request, so a restarted backend on a
+  //     new port keeps working).
   useEffect(() => {
     if (!open || !artifact) return;
     if (!hasActionPath) {
@@ -374,10 +389,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setLoading(true);
     setErr('');
     setPreviewUrl('');
+    setBackendPort(null);
     setTextPreview(null);
+    let cancelled = false;
     if (isText) {
       previewArtifact(actionPath)
         .then((data) => {
+          if (cancelled) return;
           if (!data || typeof data.content !== 'string') {
             throw new Error('Preview returned no content');
           }
@@ -387,13 +405,32 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             mime: data.mime || '',
           });
         })
-        .catch((e) => setErr(e?.message || 'Could not load preview'))
-        .finally(() => setLoading(false));
-      return;
+        .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load preview'); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
     }
     mountArtifactPreview(actionPath)
-      .then(({ url, publishedUrl: serverPublishedUrl }) => {
+      .then(async ({ kind, url, artifactDir, port, proxyUrl, publishedUrl: serverPublishedUrl }) => {
+        if (kind === 'proxy') {
+          if (!artifactDir) throw new Error('Preview mount returned no artifact dir');
+          if (!proxyUrl) throw new Error('Preview proxy unavailable');
+          // Realign hostname onto the SPA's own host so the parent page
+          // and iframe stay same-site — the server hardcodes
+          // `127.0.0.1`, but the SPA may be on `localhost`, and Chrome
+          // treats those as distinct sites under tracking protection.
+          let iframeUrl = proxyUrl;
+          try {
+            const u = new URL(proxyUrl);
+            if (window.location?.hostname) u.hostname = window.location.hostname;
+            iframeUrl = u.toString();
+          } catch { /* fall through with the raw URL */ }
+          if (cancelled) return;
+          setPreviewUrl(iframeUrl);
+          if (typeof port === 'number') setBackendPort(port);
+          return;
+        }
         if (!url) throw new Error('Preview mount returned no URL');
+        if (cancelled) return;
         setPreviewUrl(url);
         // The mount endpoint now also reports the artifact's published
         // URL from `.published.json`. Adopt it whenever the server
@@ -404,8 +441,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         // may have just published; we don't want a flicker).
         if (serverPublishedUrl) setPublishedUrl(serverPublishedUrl);
       })
-      .catch((e) => setErr(e?.message || 'Could not load artifact'))
-      .finally(() => setLoading(false));
+      .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load artifact'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [open, artifact?.path, actionPath, hasActionPath, disabledReason, isText]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
@@ -465,6 +503,18 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     }
   };
   const onOpenOS = async () => {
+    if (isBackendArtifact) {
+      if (!backendPort) {
+        setErr('Backend port not available yet — preview is still loading.');
+        return;
+      }
+      try {
+        await host.openExternal(`http://127.0.0.1:${backendPort}`);
+      } catch (e) {
+        setErr(e?.message || 'Open failed');
+      }
+      return;
+    }
     if (!hasActionPath) {
       setErr(disabledReason || 'This artifact does not have a local file path.');
       return;
@@ -535,9 +585,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // artifacts this opens the default browser; for everything else
   // (md, pdf, etc.) it routes to the user's default app.
   const onOpenLocal = async () => {
-    if (!actionPath) return;
+    const target = isBackendArtifact ? artifactFolder : actionPath;
+    if (!target) return;
     try {
-      const result = await host.openPath(actionPath);
+      const result = await host.openPath(target);
       if (result && result.ok === false) {
         setErr(result.reason || 'Could not open file.');
       }
@@ -614,8 +665,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             )}
             <PathRow
               label="local"
-              value={displayPath}
-              copyValue={actionPath}
+              value={isBackendArtifact ? folderDisplayPath : displayPath}
+              copyValue={isBackendArtifact ? artifactFolder : actionPath}
               onActivate={hasActionPath ? onOpenLocal : undefined}
             />
             {publishedUrl && (
@@ -674,15 +725,19 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             <button
               type="button"
               onClick={onPublish}
-              disabled={busy || !hasActionPath}
-              title={hasActionPath ? 'Publish' : disabledReason || 'No local artifact path'}
+              disabled={busy || !hasActionPath || !isPublishable}
+              title={
+                !isPublishable
+                  ? NOT_PUBLISHABLE_REASON
+                  : hasActionPath ? 'Publish' : disabledReason || 'No local artifact path'
+              }
               style={{
-                cursor: busy ? 'progress' : hasActionPath ? 'pointer' : 'not-allowed',
+                cursor: busy ? 'progress' : (hasActionPath && isPublishable) ? 'pointer' : 'not-allowed',
                 background: 'var(--accent)', border: '1px solid var(--accent)',
                 color: '#fff',
                 padding: '6px 12px', borderRadius: 8,
                 fontSize: 12.5, fontWeight: 600,
-                opacity: busy || !hasActionPath ? 0.7 : 1,
+                opacity: busy || !hasActionPath || !isPublishable ? 0.7 : 1,
               }}
             >
               {busy ? 'Publishing…' : 'Publish'}
@@ -737,13 +792,15 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             ...(host.isWeb ? [] : [{
               label: 'Open in OS',
               icon: Ico.externalLink(13),
-              disabled: !hasActionPath,
+              disabled: !hasActionPath || (isBackendArtifact && !backendPort),
+              title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
               onClick: onOpenOS,
             }]),
             {
               label: publishedUrl ? 'Unpublish' : 'Publish',
               icon: Ico.upload(13),
-              disabled: busy || !hasActionPath,
+              disabled: busy || !hasActionPath || (!publishedUrl && !isPublishable),
+              title: (!publishedUrl && !isPublishable) ? NOT_PUBLISHABLE_REASON : undefined,
               onClick: publishedUrl ? onUnpublish : onPublish,
             },
             ...(host.isWeb ? [] : [

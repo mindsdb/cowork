@@ -1085,10 +1085,9 @@ async def _build_chat_session(
         f"Your scratchpad's working directory is {str(base)} — bare relative paths like `open('data.csv')` resolve from the project root."
     )
     output_context = (
-        # Artifacts now live in their own visible folder at the
-        # project root (`<base>/artifacts/<slug>/...`), one folder
-        # per output. The agent never picks the folder name itself
-        # — it calls `create_artifact` to claim one, then writes
+        # Artifacts now live under `<base>/.anton/artifacts/<slug>/...`,
+        # one folder per output. The agent never picks the folder name
+        # itself — it calls `create_artifact` to claim one, then writes
         # files into the absolute path the tool returns. Provenance
         # (which conversation, which turns) is tracked server-side
         # and stamped into each folder's metadata.json + README.md
@@ -1162,8 +1161,8 @@ async def _build_chat_session(
                 f"{project_context}"
                 f"{integration_guidance}"
                 f"{datasource_scope_guidance}"
+                f"{output_context}"
             ),
-            output_context=output_context,
         ),
         workspace=workspace,
         data_vault=data_vault,
@@ -1695,7 +1694,7 @@ async def chat_stream(
     # still diffs against the same baseline). Turn index is the
     # current count of user-role messages in history; the about-to-
     # fire turn slots in at this position.
-    artifacts_root = _project_base(project) / "artifacts"
+    artifacts_root = _project_base(project) / ".anton" / "artifacts"
     try:
         from anton.core.artifacts import snapshot_dir as _snapshot_dir
         artifact_snapshot_before = _snapshot_dir(artifacts_root)

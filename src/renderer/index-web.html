@@ -6,8 +6,13 @@
     <!-- Web CSP: no file:// or app:// origins (those are Electron-only).
          connect-src is broadened to https/wss for hosted deployments where
          the SPA and FastAPI may share an https origin behind a proxy.
+         frame-src/child-src allow loopback at any port so the artifact
+         preview iframe (served by `anton_api.preview_proxy` on a free
+         port) loads — without these, Chrome blocks the iframe with
+         "Refused to frame ... violates Content Security Policy
+         directive: frame-src 'self'".
          Tighten per-deployment via reverse-proxy headers if needed. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss: http: https:; frame-src 'self'; child-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:*; child-src 'self' http://127.0.0.1:* http://localhost:*" />
     <title>Anton</title>
     <link rel="stylesheet" href="./gravity-field/gravity-field.css" />
   </head>
