@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 
 // Where we read latest.json from — GitHub Pages, no API rate limits
-const MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
+const MANIFEST_URL = 'https://mindsdb.github.io/cowork/latest.json';
 
 export interface UIManifest {
   version: string;

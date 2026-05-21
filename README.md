@@ -484,37 +484,37 @@ npm run dist:win
 
 The desktop shell (Electron main process) handles IPC, the FastAPI sidecar, and native OS integration — it changes rarely. The renderer (React UI) is where most iteration happens. Anton Desktop ships with an **OTA update system** that lets you push UI updates to every installed app without shipping a new `.dmg` or `.exe`.
 
-### Two-Repo Architecture
+### Architecture
 
-Because `mindsdb/antontron` is **private**, the app can't fetch releases from it without baked-in tokens. Instead, OTA assets are published to a **separate public repo**: [`mindsdb/antontron-releases`](https://github.com/mindsdb/antontron-releases).
+OTA assets are published from and to `mindsdb/cowork` itself. GitHub Releases hold the bundle artifacts; the `gh-pages` branch hosts `latest.json` via GitHub Pages.
 
 ```
-┌─────────────────────────────────────┐        ┌──────────────────────────────────┐
-│  mindsdb/antontron (PRIVATE)        │        │  mindsdb/antontron-releases      │
-│                                     │        │  (PUBLIC)                        │
-│  source code lives here             │        │                                  │
-│                                     │  push  │  GitHub Releases:                │
-│  .github/workflows/publish-ui.yml ──┼───────▶│    ui-v1.2.0/ui-bundle.tar.gz   │
-│                                     │        │                                  │
-│                                     │        │  GitHub Pages (gh-pages branch): │
-│                                     │        │    latest.json                   │
-└─────────────────────────────────────┘        └──────────────────────────────────┘
-                                                              ▲
-                                                              │ HTTPS (no auth)
-                                                              │
-                                                 ┌────────────┴─────────────┐
-                                                 │   Anton Desktop App      │
-                                                 │   (every user's machine) │
-                                                 └──────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  mindsdb/cowork (PUBLIC)                                         │
+│                                                                  │
+│  source code on main                                             │
+│                                                                  │
+│  .github/workflows/publish-ui.yml                                │
+│    │                                                             │
+│    ├──▶ GitHub Releases:  ui-v1.2.0/ui-bundle.tar.gz             │
+│    │                                                             │
+│    └──▶ GitHub Pages (gh-pages branch):  latest.json             │
+└────────────────────────────────────┬─────────────────────────────┘
+                                     │ HTTPS (no auth)
+                                     ▼
+                        ┌────────────────────────┐
+                        │  Anton Desktop App     │
+                        │  (every user's machine)│
+                        └────────────────────────┘
 ```
 
 ### How It Works
 
 1. Code is merged to `main` (or a `ui-v*` tag is pushed)
-2. The `publish-ui` workflow in the **private** repo builds the renderer
-3. It creates a `.tar.gz` bundle, computes a SHA-256 checksum
-4. Using a `RELEASES_TOKEN`, it pushes the bundle as a **GitHub Release** and updates `latest.json` on **GitHub Pages** — both on the **public** `antontron-releases` repo
-5. Every Anton Desktop launch, the app fetches `https://mindsdb.github.io/antontron-releases/latest.json` (static file, no auth, no API rate limits)
+2. The `publish-ui` workflow builds the renderer
+3. It creates a `.tar.gz` bundle and computes a SHA-256 checksum
+4. Using the workflow's automatic `GITHUB_TOKEN`, it pushes the bundle as a **GitHub Release** and updates `latest.json` on the `gh-pages` branch (served via **GitHub Pages**)
+5. Every Anton Desktop launch, the app fetches `https://mindsdb.github.io/cowork/latest.json` (static file, no auth, no API rate limits)
 6. If a newer version exists, it downloads the bundle, **verifies the SHA-256 checksum**, and caches it
 7. **Next launch** loads the updated UI — zero user interaction required
 
@@ -526,7 +526,7 @@ The workflow triggers automatically on three events:
 | --- | --- | --- | --- |
 | **Push to `main`** | Any merge that changes `src/renderer/`, `src/shared/`, or `package.json` | `{pkg.version}-{sha}` | `1.0.1-a3b4c5d` |
 | **Tag push** | `git tag ui-v1.2.0 && git push origin ui-v1.2.0` | Clean version from tag | `1.2.0` |
-| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml) → Run workflow | Whatever you enter (or pkg.version + sha if empty) | `1.2.0` |
+| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml) → Run workflow | Whatever you enter (or pkg.version + sha if empty) | `1.2.0` |
 
 This means **every merge to `main` that touches UI files automatically deploys to all users**. No manual tagging required for day-to-day work. Use explicit tags (`ui-v*`) for milestone releases.
 
@@ -543,7 +543,7 @@ git push origin ui-v1.2.0
 
 #### Option B: GitHub UI
 
-1. Go to [**Actions → Publish UI Bundle**](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml)
+1. Go to [**Actions → Publish UI Bundle**](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml)
 2. Click **"Run workflow"** (top right)
 3. Branch: `main`
 4. Version: `1.2.0` (leave empty to auto-generate from package.json)
@@ -557,8 +557,8 @@ If your PR changes anything in `src/renderer/`, `src/shared/`, or `package.json`
 
 After the workflow completes:
 
-- **Manifest**: https://mindsdb.github.io/antontron-releases/latest.json — should show the new version, download URL, and SHA-256
-- **Release**: https://github.com/mindsdb/antontron-releases/releases — should show the new `ui-v*` release with `ui-bundle.tar.gz` attached
+- **Manifest**: https://mindsdb.github.io/cowork/latest.json — should show the new version, download URL, and SHA-256
+- **Release**: https://github.com/mindsdb/cowork/releases — should show the new `ui-v*` release with `ui-bundle.tar.gz` attached
 - **In the app**: Launch Anton Desktop, then check **Anton → About Anton** — shows `1.0.1 (UI: 1.2.0)` when OTA is active
 
 ### Security
@@ -567,7 +567,7 @@ After the workflow completes:
 - Checksum mismatch → update is silently discarded, app loads last known good UI
 - Previous version is kept on disk for automatic **rollback** if the new UI fails to load
 - All downloads over HTTPS from GitHub's CDN
-- The `RELEASES_TOKEN` only has write access to the public `antontron-releases` repo — source code in the private repo is never exposed
+- The workflow uses the run-scoped `GITHUB_TOKEN`, which only exists for the duration of the run — no long-lived PAT to leak
 
 ### Boot Sequence
 
@@ -598,7 +598,7 @@ On disk (Electron `userData` directory):
   previous/             # Rollback copy of the prior version
 ```
 
-On GitHub (`mindsdb/antontron-releases`):
+On GitHub (`mindsdb/cowork`):
 
 ```
 gh-pages branch:
@@ -736,13 +736,13 @@ The layout mirrors the MindsDB `dev-/staging-/prod-` pattern: one small top-leve
 | [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called (`workflow_call`) | — | Builds + signs + notarizes the `.pkg` on `macos-latest`, renames to the final artifact name, uploads as GitHub artifact |
 | [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called (`workflow_call`) | — | Builds + SSL.com-signs + verifies the `.exe` on `windows-latest`, renames, uploads as GitHub artifact |
 | [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called (`workflow_call`) | — | Runs on `mdb-prod`, downloads the GitHub artifact, runs the prod version check, `aws s3 cp` to the correct path |
-| [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Standalone | Push to `main` (renderer changes), `ui-v*` tag, manual | Publishes the renderer bundle to `mindsdb/antontron-releases` (unrelated to installer flow) |
+| [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Standalone | Push to `main` (renderer changes), `ui-v*` tag, manual | Publishes the renderer bundle as a GitHub Release on `mindsdb/cowork` and updates `latest.json` on the `gh-pages` branch (unrelated to installer flow) |
 
 The build workflows expose an `artifact_name` output; the instance workflows pass it through to the upload workflow so the artifact name is the single source of truth and no filename is computed twice.
 
 ### Required GitHub Secrets
 
-Configured in [**antontron → Settings → Secrets → Repository secrets**](https://github.com/mindsdb/antontron/settings/secrets/actions).
+Configured in [**cowork → Settings → Secrets → Repository secrets**](https://github.com/mindsdb/cowork/settings/secrets/actions).
 
 Apple signing / notarization (used by `build-macos-pkg.yml`):
 
@@ -764,7 +764,7 @@ Windows signing via SSL.com eSigner (used by `build-windows-installer.yml`):
 
 OTA UI publishing (used by `publish-ui.yml`):
 
-- `RELEASES_TOKEN` — fine-grained PAT scoped to `mindsdb/antontron-releases` with **Contents** (read/write) + **Metadata** (read)
+- No repo secrets needed — the workflow uses the run-scoped `GITHUB_TOKEN` (granted `contents: write` via `permissions:` in the workflow).
 
 > **No AWS secrets.** The upload job runs on `mdb-prod` and picks up AWS credentials from the pod's IAM role. The role must have `s3:PutObject` on `arn:aws:s3:::anton-installer/anton/*`.
 
@@ -772,18 +772,12 @@ OTA UI publishing (used by `publish-ui.yml`):
 
 This section covers the one-time setup for [`publish-ui.yml`](.github/workflows/publish-ui.yml) only — it's independent of the installer flow above.
 
-1. Create [`mindsdb/antontron-releases`](https://github.com/mindsdb/antontron-releases) as a **public** repo. It only holds release assets and `latest.json` — no source code.
-2. Create the `RELEASES_TOKEN`:
-   - [**GitHub → Settings → Developer settings → Fine-grained tokens**](https://github.com/settings/tokens?type=beta)
-   - Name: `antontron-releases-deploy`
-   - Repository access: only `mindsdb/antontron-releases`
-   - Permissions: Contents (read/write), Metadata (read)
-   - Save the token as `RELEASES_TOKEN` in [antontron → Settings → Secrets → Actions](https://github.com/mindsdb/antontron/settings/secrets/actions).
-3. Enable GitHub Pages on `antontron-releases`: Settings → Pages → Source "Deploy from a branch" → Branch `gh-pages` / `/ (root)`. The `gh-pages` branch is created automatically by the first workflow run.
-4. Verify with:
+1. Enable GitHub Pages on `mindsdb/cowork`: Settings → Pages → Source "Deploy from a branch" → Branch `gh-pages` / `/ (root)`. The `gh-pages` branch is created automatically by the first workflow run, so save the config first and let the workflow create the branch.
+2. Confirm the workflow has the right permissions — the `permissions: contents: write` block at the top of [`publish-ui.yml`](.github/workflows/publish-ui.yml) grants the run-scoped `GITHUB_TOKEN` enough access to cut releases and push to `gh-pages`. No PAT, no repo secret.
+3. Verify after the first run:
 
 ```bash
-curl https://mindsdb.github.io/antontron-releases/latest.json
+curl https://mindsdb.github.io/cowork/latest.json
 ```
 
 ---

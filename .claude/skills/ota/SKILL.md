@@ -15,9 +15,9 @@ This skill helps you answer: **"Are users seeing what's in our code?"** and mana
 |------|------|
 | Config file | `~/.anton/.env` |
 | OTA cache | `~/Library/Application Support/Anton/ui-cache/` |
-| Published manifest | `https://mindsdb.github.io/antontron-releases/latest.json` |
+| Published manifest | `https://mindsdb.github.io/cowork/latest.json` |
 | Publish workflow | `.github/workflows/publish-ui.yml` (repo: `mindsdb/cowork`) |
-| Releases repo | `mindsdb/antontron-releases` |
+| Releases | `https://github.com/mindsdb/cowork/releases` (filter `ui-v*`) |
 
 ## Actions
 
@@ -32,7 +32,7 @@ When the user invokes `/ota`, determine which action they want. **If unclear, de
 Steps:
 
 1. Read `~/.anton/.env` and report the current `DEV_MODE` value. Explain what it means using the friendly names from the dev mode table below.
-2. Fetch `https://mindsdb.github.io/antontron-releases/latest.json` — extract the published version (which includes a git short SHA, e.g. `2.0.4-e94e713`).
+2. Fetch `https://mindsdb.github.io/cowork/latest.json` — extract the published version (which includes a git short SHA, e.g. `2.0.4-e94e713`).
 3. Run `git log --oneline -1 origin/main -- src/renderer/ src/shared/ package.json` to get the latest commit on main that would trigger a publish.
 4. Compare the SHA in the published version against the SHA from step 3. Report whether they match.
 5. If they don't match, check if a publish workflow is currently running: `gh run list --workflow=publish-ui.yml --repo mindsdb/cowork --limit 3` and report its status.
