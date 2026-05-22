@@ -844,6 +844,10 @@ export async function startGmailAuth() {
   return req('/integrations/gmail/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export async function startGithubAuth() {
+  return req('/integrations/github/oauth/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
 export async function fetchMemory(projectPath) {
   const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
