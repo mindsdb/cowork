@@ -130,8 +130,16 @@ def run(folder: Path, port: int) -> None:
         try:
             result = state["mod"].lambda_handler(event, _make_context())
         except Exception as e:
+            # Full traceback goes to the operator's terminal (this is a
+            # local dev server — they're staring at the log). The HTTP
+            # response keeps only the exception class name so a handler
+            # that accidentally embeds secrets in its message can't leak
+            # them through the response body.
             logger.exception("handler.lambda_handler raised")
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse(
+                {"error": "handler raised an exception", "type": type(e).__name__},
+                status_code=500,
+            )
 
         status  = result.get("statusCode", 200)
         headers = result.get("headers", {})
