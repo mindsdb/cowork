@@ -37,7 +37,7 @@ const PROVIDER_DEFAULTS = {
 // Known model lists per provider — surfaced as quick-pick chips below
 // the text input so users can swap models without typing.
 const PROVIDER_MODELS = {
-  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
+  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
   openai:        ['gpt-5.4', 'gpt-5.4-mini', 'o3', 'o4-mini'],
   gemini:        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
   // Minds Cloud intentionally has no quick-picks: the planning/coding

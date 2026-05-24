@@ -22,18 +22,24 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, fetchIntegrations, fetchDatasources } from '../../api';
+import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, startGoogleAdsAuth, startGoogleAnalyticsAuth, startGcpAuth, fetchIntegrations, fetchDatasources } from '../../api';
 import { host } from '../../../platform/host';
 
 const BROWSER_OAUTH_START = {
   google_drive: startGoogleDriveAuth,
   google_calendar: startGoogleCalendarAuth,
   gmail: startGmailAuth,
+  google_ads: startGoogleAdsAuth,
+  google_analytics_4: startGoogleAnalyticsAuth,
+  gcp: startGcpAuth,
 };
 const BROWSER_OAUTH_TITLE = {
   google_drive: 'Google Drive connected',
   google_calendar: 'Google Calendar connected',
   gmail: 'Gmail connected',
+  google_ads: 'Google Ads connected',
+  google_analytics_4: 'Google Analytics connected',
+  gcp: 'Google Cloud connected',
 };
 import { submitDataVaultForm } from '../../api';
 
@@ -556,8 +562,9 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           conversationId={conversationId}
           onMethodChange={async (methodId) => {
             if (methodId !== 'browser_oauth_builtin') return;
-            const engine = spec.engine || 'google_drive';
-            const startFn = BROWSER_OAUTH_START[engine] || startGoogleDriveAuth;
+            const engine = spec.engine || spec._connector_id || 'google_drive';
+            const startFn = BROWSER_OAUTH_START[engine];
+            if (!startFn) { setError(`No OAuth start handler for engine "${engine}".`); return; }
             const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
             setBusy(true);
             setError('');

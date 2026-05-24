@@ -853,6 +853,18 @@ export async function startGmailAuth() {
   return req('/integrations/gmail/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export async function startGoogleAdsAuth() {
+  return req('/integrations/google-ads/oauth/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function startGoogleAnalyticsAuth() {
+  return req('/integrations/google-analytics/oauth/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function startGcpAuth() {
+  return req('/integrations/gcp/oauth/start', { method: 'POST', body: JSON.stringify({}) });
+}
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
 export async function fetchMemory(projectPath) {
   const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
