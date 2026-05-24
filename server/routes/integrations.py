@@ -1,4 +1,4 @@
-"""Curated integration catalogue for Anton CoWork."""
+"""Curated integration catalogue for Anton Cowork."""
 
 from __future__ import annotations
 
@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-MANAGED_BEGIN = "# >>> Anton CoWork managed integrations >>>"
-MANAGED_END = "# <<< Anton CoWork managed integrations <<<"
+MANAGED_BEGIN = "# >>> Anton Cowork managed integrations >>>"
+MANAGED_END = "# <<< Anton Cowork managed integrations <<<"
 USER_DATASOURCES_PATH = Path.home() / ".anton" / "datasources.md"
 GOOGLE_DRIVE_ENGINE = "google_drive"
 GOOGLE_DRIVE_OAUTH_SCOPES = (
@@ -847,14 +847,14 @@ async def google_drive_oauth_callback(
         _clear_google_oauth_pending(lastError=f"Google sign-in returned: {error}", lastErrorAt=_iso_now())
         return _callback_page(
             "Google Drive connection was cancelled",
-            "You can return to Anton CoWork and try the connection again whenever you are ready.",
+            "You can return to Anton Cowork and try the connection again whenever you are ready.",
             success=False,
         )
 
     if not pending:
         return _callback_page(
             "Google Drive sign-in expired",
-            "Anton CoWork could not find a pending Google Drive sign-in request. Start the connection again from Customize.",
+            "Anton Cowork could not find a pending Google Drive sign-in request. Start the connection again from Customize.",
             success=False,
         )
 
@@ -863,7 +863,7 @@ async def google_drive_oauth_callback(
         _clear_google_oauth_pending(lastError="Google sign-in state did not match the pending request.", lastErrorAt=_iso_now())
         return _callback_page(
             "Google Drive connection could not be verified",
-            "Anton CoWork rejected the callback because the Google sign-in state did not match.",
+            "Anton Cowork rejected the callback because the Google sign-in state did not match.",
             success=False,
         )
 
@@ -871,7 +871,7 @@ async def google_drive_oauth_callback(
         _clear_google_oauth_pending(lastError="Google sign-in did not return an authorization code.", lastErrorAt=_iso_now())
         return _callback_page(
             "Google Drive connection could not be completed",
-            "Google did not return an authorization code to Anton CoWork.",
+            "Google did not return an authorization code to Anton Cowork.",
             success=False,
         )
 
@@ -950,21 +950,21 @@ async def google_drive_oauth_callback(
         _clear_google_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
         return _callback_page(
             "Google Drive connection failed",
-            "An error occurred during the Google Drive sign-in flow. Return to Anton CoWork and try again.",
+            "An error occurred during the Google Drive sign-in flow. Return to Anton Cowork and try again.",
             success=False,
         )
     except Exception as exc:
         _clear_google_oauth_pending(lastError=str(exc), lastErrorAt=_iso_now())
         return _callback_page(
             "Google Drive connection failed",
-            "Anton CoWork could not finish the Google sign-in flow.",
+            "Anton Cowork could not finish the Google sign-in flow.",
             success=False,
         )
 
     _clear_google_oauth_pending(lastError="", lastErrorAt="", lastSuccessAt=_iso_now())
     return _callback_page(
         "Google Drive connected",
-        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton CoWork.",
+        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton Cowork.",
         success=True,
     )
 
@@ -1028,14 +1028,14 @@ async def google_calendar_oauth_callback(
         _clear_google_calendar_oauth_pending(lastError=f"Google sign-in returned: {error}", lastErrorAt=_iso_now())
         return _callback_page(
             "Google Calendar connection was cancelled",
-            "You can return to Anton CoWork and try the connection again whenever you are ready.",
+            "You can return to Anton Cowork and try the connection again whenever you are ready.",
             success=False,
         )
 
     if not pending:
         return _callback_page(
             "Google Calendar sign-in expired",
-            "Anton CoWork could not find a pending Google Calendar sign-in request. Start the connection again from Customize.",
+            "Anton Cowork could not find a pending Google Calendar sign-in request. Start the connection again from Customize.",
             success=False,
         )
 
@@ -1044,7 +1044,7 @@ async def google_calendar_oauth_callback(
         _clear_google_calendar_oauth_pending(lastError="Google sign-in state did not match.", lastErrorAt=_iso_now())
         return _callback_page(
             "Google Calendar connection could not be verified",
-            "Anton CoWork rejected the callback because the Google sign-in state did not match.",
+            "Anton Cowork rejected the callback because the Google sign-in state did not match.",
             success=False,
         )
 
@@ -1052,7 +1052,7 @@ async def google_calendar_oauth_callback(
         _clear_google_calendar_oauth_pending(lastError="Google sign-in did not return an authorization code.", lastErrorAt=_iso_now())
         return _callback_page(
             "Google Calendar connection could not be completed",
-            "Google did not return an authorization code to Anton CoWork.",
+            "Google did not return an authorization code to Anton Cowork.",
             success=False,
         )
 
@@ -1131,7 +1131,7 @@ async def google_calendar_oauth_callback(
         _clear_google_calendar_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
         return _callback_page(
             "Google Calendar connection failed",
-            "An error occurred during the Google Calendar sign-in flow. Return to Anton CoWork and try again.",
+            "An error occurred during the Google Calendar sign-in flow. Return to Anton Cowork and try again.",
             success=False,
         )
     except Exception as exc:
@@ -1139,14 +1139,14 @@ async def google_calendar_oauth_callback(
         _clear_google_calendar_oauth_pending(lastError=str(exc), lastErrorAt=_iso_now())
         return _callback_page(
             "Google Calendar connection failed",
-            "Anton CoWork could not finish the Google sign-in flow.",
+            "Anton Cowork could not finish the Google sign-in flow.",
             success=False,
         )
 
     _clear_google_calendar_oauth_pending(lastError="", lastErrorAt="", lastSuccessAt=_iso_now())
     return _callback_page(
         "Google Calendar connected",
-        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton CoWork.",
+        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton Cowork.",
         success=True,
     )
 
@@ -1309,14 +1309,14 @@ async def gmail_oauth_callback(
         _clear_gmail_oauth_pending(lastError=f"Google sign-in returned: {error}", lastErrorAt=_iso_now())
         return _callback_page(
             "Gmail connection was cancelled",
-            "You can return to Anton CoWork and try the connection again whenever you are ready.",
+            "You can return to Anton Cowork and try the connection again whenever you are ready.",
             success=False,
         )
 
     if not pending:
         return _callback_page(
             "Gmail sign-in expired",
-            "Anton CoWork could not find a pending Gmail sign-in request. Start the connection again from Customize.",
+            "Anton Cowork could not find a pending Gmail sign-in request. Start the connection again from Customize.",
             success=False,
         )
 
@@ -1325,7 +1325,7 @@ async def gmail_oauth_callback(
         _clear_gmail_oauth_pending(lastError="Google sign-in state did not match.", lastErrorAt=_iso_now())
         return _callback_page(
             "Gmail connection could not be verified",
-            "Anton CoWork rejected the callback because the Google sign-in state did not match.",
+            "Anton Cowork rejected the callback because the Google sign-in state did not match.",
             success=False,
         )
 
@@ -1333,7 +1333,7 @@ async def gmail_oauth_callback(
         _clear_gmail_oauth_pending(lastError="Google sign-in did not return an authorization code.", lastErrorAt=_iso_now())
         return _callback_page(
             "Gmail connection could not be completed",
-            "Google did not return an authorization code to Anton CoWork.",
+            "Google did not return an authorization code to Anton Cowork.",
             success=False,
         )
 
@@ -1412,21 +1412,21 @@ async def gmail_oauth_callback(
         _clear_gmail_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
         return _callback_page(
             "Gmail connection failed",
-            "An error occurred during the Gmail sign-in flow. Return to Anton CoWork and try again.",
+            "An error occurred during the Gmail sign-in flow. Return to Anton Cowork and try again.",
             success=False,
         )
     except Exception as exc:
         _clear_gmail_oauth_pending(lastError=str(exc), lastErrorAt=_iso_now())
         return _callback_page(
             "Gmail connection failed",
-            "Anton CoWork could not finish the Gmail sign-in flow.",
+            "Anton Cowork could not finish the Gmail sign-in flow.",
             success=False,
         )
 
     _clear_gmail_oauth_pending(lastError="", lastErrorAt="", lastSuccessAt=_iso_now())
     return _callback_page(
         "Gmail connected",
-        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton CoWork.",
+        f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton Cowork.",
         success=True,
     )
 

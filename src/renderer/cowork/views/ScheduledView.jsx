@@ -143,7 +143,7 @@ export default function ScheduledView({
     <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <PageHeader
         title="Scheduled Tasks"
-        subtitle="Local scheduled Anton tasks run while Anton CoWork is open. Runs that slip while the app is closed are skipped — Anton resumes from the next scheduled occurrence."
+        subtitle="Local scheduled Anton tasks run while Anton Cowork is open. Runs that slip while the app is closed are skipped — Anton resumes from the next scheduled occurrence."
         actions={
           <button className="btn-primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task

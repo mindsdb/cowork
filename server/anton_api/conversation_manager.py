@@ -1154,7 +1154,7 @@ async def _build_chat_session(
         system_prompt_context=SystemPromptContext(
             runtime_context=build_runtime_context(settings),
             suffix=(
-                "The Anton CoWork desktop UI displays progress, tool usage, and actions "
+                "The Anton Cowork desktop UI displays progress, tool usage, and actions "
                 "as separate structured activity rows. Keep assistant text focused on the "
                 "user-facing answer; do not narrate internal work with status phrases like "
                 "\"I'll check\", \"let me query\", or \"I have access\" unless that wording "
