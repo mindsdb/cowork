@@ -11,6 +11,7 @@ import { oauthConnect } from './oauth-service';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { installNativeContextMenus } from './context-menu';
 
 function getAntonEnvPath(): string {
   return path.join(os.homedir(), '.anton', '.env');
@@ -231,6 +232,7 @@ function getIconPath(): string {
 let mainWindow: BrowserWindow | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
 
+
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
@@ -293,6 +295,8 @@ function createWindow() {
       mainWindow?.webContents.openDevTools({ mode: 'detach' });
     });
   }
+
+  installNativeContextMenus(mainWindow);
 
   // Grant the renderer access to the microphone so the Web Speech API
   // (composer voice input) can capture audio. Other permissions stay
