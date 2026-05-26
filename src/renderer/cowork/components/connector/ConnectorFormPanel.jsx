@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { DataVaultForm } from '../datavault/DataVaultForm';
-import { saveDatasource, fetchDatasources, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, startGoogleAdsAuth, startGoogleAnalyticsAuth, startGcpAuth, fetchIntegrations } from '../../api';
+import { saveDatasource, fetchDatasources, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, startGoogleAdsAuth, startGoogleAnalyticsAuth, startGcpAuth, startGithubAuth, fetchIntegrations } from '../../api';
 
 const BROWSER_OAUTH_START = {
   google_drive: startGoogleDriveAuth,
@@ -19,6 +19,7 @@ const BROWSER_OAUTH_START = {
   google_ads: startGoogleAdsAuth,
   google_analytics_4: startGoogleAnalyticsAuth,
   gcp: startGcpAuth,
+  github: startGithubAuth,
 };
 
 const BROWSER_OAUTH_POLL_MS      = 3000;

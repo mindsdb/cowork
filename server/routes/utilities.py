@@ -650,8 +650,9 @@ async def delete_datasource(engine: str, name: str):
         raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
 
     try:
-        from routes.integrations import revoke_google_token
+        from routes.integrations import revoke_google_token, revoke_github_token
         await asyncio.to_thread(revoke_google_token, engine, name)
+        await asyncio.to_thread(revoke_github_token, engine, name)
     except Exception:
         pass
 

@@ -714,6 +714,7 @@ async def list_integrations():
         _google_ads_integration_item(vault),
         _google_analytics_integration_item(vault),
         _gcp_integration_item(vault),
+        _github_integration_item(vault),
     ]}
 
 
@@ -2099,5 +2100,348 @@ async def gcp_oauth_callback(
     return _callback_page(
         "Google Cloud connected",
         f"{account_name or account_email or 'Your Google account'} is now connected. You can close this tab and return to Anton CoWork.",
+        success=True,
+    )
+
+
+# ─── GitHub OAuth ─────────────────────────────────────────────────────────────
+
+GITHUB_ENGINE = "github"
+GITHUB_OAUTH_SCOPES = ("repo", "read:org", "read:user", "user:email")
+GITHUB_OAUTH_STATE_KEY = "github_oauth"
+GITHUB_AUTH_ENDPOINT = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_ENDPOINT = "https://github.com/login/oauth/access_token"
+GITHUB_USERINFO_ENDPOINT = "https://api.github.com/user"
+
+GITHUB_CLIENT_ID     = os.environ.get("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
+GITHUB_REVOKE_ENDPOINT = "https://api.github.com/applications/{client_id}/token"
+
+
+def revoke_github_token(engine: str, name: str) -> None:
+    import logging
+    import json as _json
+    import base64
+    log = logging.getLogger("integrations.revoke")
+
+    if engine != GITHUB_ENGINE:
+        return
+
+    client_id = GITHUB_CLIENT_ID.strip()
+    client_secret = GITHUB_CLIENT_SECRET.strip()
+    if not client_id or not client_secret:
+        return
+
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+        fields = LocalDataVault().load(engine, name) or {}
+    except Exception:
+        return
+
+    if fields.get("auth_type") != "oauth":
+        return
+
+    access_token = fields.get("access_token", "").strip()
+    if not access_token:
+        return
+
+    try:
+        from urllib.request import urlopen, Request as _Request
+        url = GITHUB_REVOKE_ENDPOINT.format(client_id=client_id)
+        credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        body = _json.dumps({"access_token": access_token}).encode()
+        req = _Request(
+            url,
+            data=body,
+            method="DELETE",
+            headers={
+                "Authorization": f"Basic {credentials}",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urlopen(req, timeout=10):
+            pass
+        log.info("Revoked GitHub token for %s/%s", engine, name)
+    except Exception as exc:
+        log.warning("Could not revoke GitHub token for %s/%s: %s", engine, name, exc)
+
+
+def _github_oauth_config() -> dict[str, str | bool]:
+    client_id     = GITHUB_CLIENT_ID.strip()
+    client_secret = GITHUB_CLIENT_SECRET.strip()
+    ready = bool(client_id and client_secret)
+    return {
+        "ready": ready,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "error": "" if ready else "GitHub OAuth credentials are not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
+    }
+
+
+def _github_oauth_meta() -> dict[str, Any]:
+    state = load_state()
+    utility_state = state.get("utility_state") if isinstance(state, dict) else {}
+    meta = utility_state.get(GITHUB_OAUTH_STATE_KEY) if isinstance(utility_state, dict) else {}
+    if not isinstance(meta, dict):
+        meta = {}
+    if not isinstance(meta.get("pending"), dict):
+        meta["pending"] = {}
+    return meta
+
+
+def _write_github_oauth_meta(**updates: Any) -> dict[str, Any]:
+    def mutate(state: dict[str, Any]) -> dict[str, Any]:
+        utility_state = state.setdefault("utility_state", {})
+        meta = utility_state.get(GITHUB_OAUTH_STATE_KEY)
+        if not isinstance(meta, dict):
+            meta = {}
+        meta.update(updates)
+        if not isinstance(meta.get("pending"), dict):
+            meta["pending"] = {}
+        utility_state[GITHUB_OAUTH_STATE_KEY] = meta
+        return dict(meta)
+
+    return update_state(mutate)
+
+
+def _clear_github_oauth_pending(**updates: Any) -> dict[str, Any]:
+    return _write_github_oauth_meta(pending={}, **updates)
+
+
+def _github_redirect_uri() -> str:
+    return f"{_server_origin()}/v1/integrations/github/oauth/callback"
+
+
+def _github_oauth_connections(vault) -> list[dict[str, Any]]:
+    connections = []
+    try:
+        items = vault.list_connections()
+    except Exception:
+        logger.warning("Could not list vault connections for GitHub", exc_info=True)
+        return connections
+    for item in items:
+        if item.get("engine") != GITHUB_ENGINE or not item.get("name"):
+            continue
+        try:
+            fields = vault.load(GITHUB_ENGINE, item["name"]) or {}
+        except Exception:
+            logger.warning("Skipping unreadable vault entry %s/%s", GITHUB_ENGINE, item["name"])
+            continue
+        if fields.get("auth_type") != "oauth":
+            continue
+        display_name = fields.get("account_name", "").strip() or fields.get("account_login", "").strip() or item["name"]
+        subtitle = fields.get("account_login", "").strip() or item["name"]
+        connections.append(
+            {
+                "engine": GITHUB_ENGINE,
+                "name": item["name"],
+                "slug": f"{GITHUB_ENGINE}-{item['name']}",
+                "label": display_name,
+                "subtitle": subtitle,
+                "connectedVia": "browser_oauth",
+                "createdAt": item.get("created_at", ""),
+            }
+        )
+    return connections
+
+
+def _github_integration_item(vault) -> dict[str, Any]:
+    oauth_config = _github_oauth_config()
+    oauth_meta = _github_oauth_meta()
+    github_connections = _github_oauth_connections(vault)
+    return {
+        "id": GITHUB_ENGINE,
+        "title": "GitHub",
+        "engine": GITHUB_ENGINE,
+        "status": "connected" if github_connections else ("available" if oauth_config["ready"] else "needs_config"),
+        "description": "Connect your GitHub account so Anton can read repositories, pull requests, issues, and commits.",
+        "setupMode": "browser_oauth",
+        "connections": github_connections,
+        "connectionCount": len(github_connections),
+        "engineAvailable": True,
+        "oauth": {
+            "ready": oauth_config["ready"],
+            "configError": oauth_config["error"],
+            "pending": bool(oauth_meta.get("pending")),
+            "lastSuccessAt": oauth_meta.get("lastSuccessAt", ""),
+            "lastError": oauth_meta.get("lastError", ""),
+            "lastErrorAt": oauth_meta.get("lastErrorAt", ""),
+            "launchLabel": "Connect GitHub",
+            "redirectUri": _github_redirect_uri(),
+        },
+    }
+
+
+@router.post("/github/oauth/start")
+async def start_github_oauth():
+    oauth_config = _github_oauth_config()
+    if not oauth_config["ready"]:
+        raise HTTPException(status_code=400, detail=str(oauth_config["error"]))
+
+    started_at = _iso_now()
+    state = secrets.token_urlsafe(24)
+    redirect_uri = _github_redirect_uri()
+
+    _write_github_oauth_meta(
+        pending={
+            "state": state,
+            "redirectUri": redirect_uri,
+            "startedAt": started_at,
+        },
+        lastError="",
+        lastErrorAt="",
+    )
+
+    auth_url = (
+        f"{GITHUB_AUTH_ENDPOINT}?"
+        + urlencode(
+            {
+                "client_id": oauth_config["client_id"],
+                "redirect_uri": redirect_uri,
+                "scope": " ".join(GITHUB_OAUTH_SCOPES),
+                "state": state,
+            }
+        )
+    )
+    return {
+        "status": "ok",
+        "authUrl": auth_url,
+        "redirectUri": redirect_uri,
+        "startedAt": started_at,
+    }
+
+
+@router.get("/github/oauth/callback")
+async def github_oauth_callback(
+    code: str = Query(default=""),
+    state: str = Query(default=""),
+    error: str = Query(default=""),
+    error_description: str = Query(default=""),
+):
+    oauth_meta = _github_oauth_meta()
+    pending = oauth_meta.get("pending") or {}
+
+    if error:
+        msg = error_description or error
+        _clear_github_oauth_pending(lastError=f"GitHub sign-in returned: {msg}", lastErrorAt=_iso_now())
+        return _callback_page(
+            "GitHub connection was cancelled",
+            "You can return to Anton CoWork and try the connection again whenever you are ready.",
+            success=False,
+        )
+
+    if not pending:
+        return _callback_page(
+            "GitHub sign-in expired",
+            "Anton CoWork could not find a pending GitHub sign-in request. Start the connection again from Customize.",
+            success=False,
+        )
+
+    pending_state = str(pending.get("state", "")).strip()
+    if not state or state != pending_state:
+        _clear_github_oauth_pending(lastError="GitHub sign-in state did not match the pending request.", lastErrorAt=_iso_now())
+        return _callback_page(
+            "GitHub connection could not be verified",
+            "Anton CoWork rejected the callback because the GitHub sign-in state did not match.",
+            success=False,
+        )
+
+    if not code:
+        _clear_github_oauth_pending(lastError="GitHub sign-in did not return an authorization code.", lastErrorAt=_iso_now())
+        return _callback_page(
+            "GitHub connection failed",
+            "GitHub did not return an authorization code. Please try again.",
+            success=False,
+        )
+
+    started_at = str(pending.get("startedAt", "")).strip()
+    if started_at:
+        try:
+            started_dt = datetime.fromisoformat(started_at)
+            if datetime.now(timezone.utc) - started_dt > timedelta(minutes=20):
+                _clear_github_oauth_pending(lastError="GitHub sign-in timed out before it completed.", lastErrorAt=_iso_now())
+                return _callback_page(
+                    "GitHub sign-in expired",
+                    "That GitHub sign-in request took too long. Start the connection again from Customize.",
+                    success=False,
+                )
+        except ValueError:
+            pass
+
+    oauth_config = _github_oauth_config()
+    if not oauth_config["ready"]:
+        _clear_github_oauth_pending(lastError=str(oauth_config["error"]), lastErrorAt=_iso_now())
+        return _callback_page(
+            "GitHub connection is not configured",
+            str(oauth_config["error"]),
+            success=False,
+        )
+
+    try:
+        token_data = _json_request(
+            GITHUB_TOKEN_ENDPOINT,
+            method="POST",
+            data={
+                "code": code,
+                "client_id": str(oauth_config["client_id"]),
+                "client_secret": str(oauth_config["client_secret"]),
+                "redirect_uri": str(pending.get("redirectUri") or _github_redirect_uri()),
+            },
+            headers={"Accept": "application/json"},
+        )
+        access_token = str(token_data.get("access_token", "")).strip()
+        if not access_token:
+            raise HTTPException(status_code=502, detail="GitHub OAuth token exchange did not return an access token.")
+
+        userinfo = _json_request(
+            GITHUB_USERINFO_ENDPOINT,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        account_login = str(userinfo.get("login", "")).strip()
+        account_name  = str(userinfo.get("name", "")).strip()
+        connection_name = account_login or "github"
+
+        try:
+            from anton.core.datasources.data_vault import LocalDataVault
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+
+        LocalDataVault().save(
+            GITHUB_ENGINE,
+            connection_name,
+            {
+                "auth_type": "oauth",
+                "access_token": access_token,
+                "token_type": str(token_data.get("token_type", "bearer")).strip(),
+                "scope": str(token_data.get("scope", "")).strip(),
+                "account_login": account_login,
+                "account_name": account_name,
+            },
+        )
+    except HTTPException as exc:
+        _clear_github_oauth_pending(lastError=str(exc.detail), lastErrorAt=_iso_now())
+        return _callback_page(
+            "GitHub connection failed",
+            "An error occurred during the GitHub sign-in flow. Return to Anton CoWork and try again.",
+            success=False,
+        )
+    except Exception as exc:
+        _clear_github_oauth_pending(lastError=str(exc), lastErrorAt=_iso_now())
+        return _callback_page(
+            "GitHub connection failed",
+            "Anton CoWork could not finish the GitHub sign-in flow.",
+            success=False,
+        )
+
+    _clear_github_oauth_pending(lastError="", lastErrorAt="", lastSuccessAt=_iso_now())
+    return _callback_page(
+        "GitHub connected",
+        f"{account_name or account_login or 'Your GitHub account'} is now connected. You can close this tab and return to Anton CoWork.",
         success=True,
     )

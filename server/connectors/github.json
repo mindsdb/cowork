@@ -24,6 +24,7 @@
   "logo": "code",
   "logo_color": "#24292F",
   "form": {
+    "engine": "github",
     "form_id": "github-connector",
     "title": "Connect GitHub",
     "subtitle": "Authorize Anton to access your GitHub repositories, pull requests, and issues.",
@@ -31,10 +32,18 @@
     "logo_color": "#24292F",
     "methods": [
       {
+        "id": "browser_oauth_builtin",
+        "label": "In-Browser Connect",
+        "description": "Opens GitHub sign-in in your browser. No credentials required — just click Connect.",
+        "recommended": true,
+        "fields": [],
+        "hidden": false
+      },
+      {
         "id": "fine-grained-pat",
         "label": "Fine-grained personal access token",
         "description": "Paste a fine-grained personal access token (github_pat_…) scoped to exactly the repositories and permissions you choose. Simplest and most secure path — no OAuth client setup required.",
-        "recommended": true,
+        "recommended": false,
         "how_to": "## Fine-grained personal access token\n\nFine-grained tokens let you scope access to specific repositories and only the permissions Anton needs — far safer than classic tokens.\n\n### Steps\n\n1. Go to [GitHub Settings](https://github.com/settings) → scroll down to **Developer settings** (bottom of the left sidebar).\n2. Open **Personal access tokens → Fine-grained tokens**.\n3. Click **Generate new token**.\n4. Give it a name like `Anton` and set an expiration (90 days is a reasonable default).\n5. Under **Resource owner**, pick your personal account or an org you belong to.\n6. Under **Repository access**, choose **Only select repositories** and tick the repos Anton should see, or pick **All repositories**.\n7. Under **Permissions → Repository permissions**, enable at minimum:\n   - **Contents** → Read-only (for code and commits)\n   - **Pull requests** → Read-only\n   - **Issues** → Read-only\n   - Add **Metadata** → Read-only (required automatically)\n8. Click **Generate token**. GitHub shows the token once — copy it immediately.\n9. Paste it into the **Personal access token** field below.\n\n### Notes\n\n- The token starts with `github_pat_`. If yours starts with `ghp_`, you generated a classic token instead — see the **Classic personal access token** method.\n- Tokens expire. When one expires, generate a new one and update the field in Anton.\n- If the repo is owned by an org, the org admin may need to approve the token under **Organization settings → Personal access tokens**.\n",
         "help_url": "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token",
         "fields": [
@@ -135,5 +144,6 @@
     ],
     "logo_url": "logos/github.svg"
   },
-  "logo_url": "logos/github.svg"
+  "logo_url": "logos/github.svg",
+  "featured": true
 }
