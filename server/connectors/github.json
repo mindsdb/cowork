@@ -37,7 +37,7 @@
         "description": "Opens GitHub sign-in in your browser. No credentials required — just click Connect.",
         "recommended": true,
         "fields": [],
-        "hidden": false
+        "hidden": true
       },
       {
         "id": "fine-grained-pat",
