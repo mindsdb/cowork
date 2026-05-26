@@ -14,6 +14,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from channels.vault_creds import APP_ACCOUNT
+
 from .artifacts import _resolve_artifact_path, _scan_artifact_dirs
 from .cowork_state import backups_dir, load_state, save_state, utc_now_iso
 from .integrations import ensure_managed_integrations
@@ -486,6 +488,13 @@ async def list_datasources():
     registry = _datasource_registry()
     connections = []
     for item in vault.list_connections():
+        # Skip the `__app__` sentinel rows — they hold app-level OAuth
+        # credentials (slack/discord client_id, signing_secret, etc.) that
+        # the Configure panel in Dispatch writes, not real per-account
+        # connections the user picked from this page. Surfacing them here
+        # would show a confusing "__app__" card with no friendly name.
+        if item.get("name") == APP_ACCOUNT:
+            continue
         safe_item = {k: v for k, v in item.items() if k in {"engine", "name", "path"}}
         engine_def = registry.get(safe_item.get("engine", ""))
         if engine_def:
