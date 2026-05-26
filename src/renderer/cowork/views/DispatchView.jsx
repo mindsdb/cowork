@@ -560,9 +560,11 @@ function ChannelCard({
 }) {
   const info = CHANNEL_LIBRARY[entry.type] || { id: entry.type, name: entry.type, description: '' };
   const ConfigPanel = CHANNEL_REGISTRY[entry.type]?.ConfigPanel || null;
-  // OAuth-install channels can't start the connect flow until their app
-  // credentials are saved; `install_ready` is the channel's own gate.
-  const needsInstall = entry.type === 'slack' || entry.type === 'discord';
+  // Channels can't start the connect flow until their credentials are saved;
+  // `install_ready` is the channel's own gate (OAuth creds for slack/discord,
+  // bot_token for telegram).
+  const needsInstall =
+    entry.type === 'slack' || entry.type === 'discord' || entry.type === 'telegram';
   const connectDisabled =
     busy || (needsInstall && !(channelStatus?.install_ready ?? false));
   // Channels flagged `comingSoon` are visually disabled — the config panel
@@ -613,7 +615,7 @@ function ChannelCard({
           }
         >
           {Ico.plus(14)}
-          <span>{busy ? 'Opening sign-in…' : `Connect ${info.name}`}</span>
+          <span>{busy ? 'Connecting…' : `Connect ${info.name}`}</span>
         </button>
       ) : null}
       {showDisconnect ? (
@@ -782,7 +784,11 @@ export default function DispatchView() {
   }, []);
 
   const handleConnect = async (channelType) => {
-    if (channelType !== 'slack' && channelType !== 'discord') return;
+    if (
+      channelType !== 'slack'
+      && channelType !== 'discord'
+      && channelType !== 'telegram'
+    ) return;
     setConnectBusy((s) => ({ ...s, [channelType]: true }));
     setConnectError((s) => ({ ...s, [channelType]: null }));
     try {
@@ -802,13 +808,19 @@ export default function DispatchView() {
         const redirectUri = `${getApiOrigin()}/v1/dispatch/slack/oauth/callback`;
         const { install_url } = await startSlackOAuth(redirectUri);
         window.open(install_url, '_blank', 'noopener,noreferrer');
-      } else {
+      } else if (channelType === 'discord') {
         // Discord OAuth installs the bot in a guild. The bot token itself
         // is app-level and was set via /discord/config; this flow doesn't
         // mint a per-install token — the callback just records guild_id.
         const redirectUri = `${getApiOrigin()}/v1/dispatch/discord/oauth/callback`;
         const { install_url } = await startDiscordInstall(redirectUri);
         window.open(install_url, '_blank', 'noopener,noreferrer');
+      } else {
+        // Telegram has no OAuth — saving the bot token is the install.
+        // "Connect" just (re)loads the adapter from current credentials so
+        // the long-poll loop starts; refetch picks up the new active state.
+        await reloadDispatch();
+        refetch();
       }
     } catch (err) {
       setConnectError((s) => ({ ...s, [channelType]: err.message }));
