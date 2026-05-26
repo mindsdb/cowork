@@ -432,6 +432,66 @@ def revoke_google_token(engine: str, name: str) -> None:
         log.warning("Could not revoke Google token for %s/%s: %s", engine, name, exc)
 
 
+GITHUB_REVOKE_ENDPOINT = "https://api.github.com/applications/{client_id}/token"
+
+
+def revoke_github_token(engine: str, name: str) -> None:
+    """Revoke a GitHub OAuth token, removing it from the user's GitHub authorized apps page.
+
+    Fire-and-forget — errors are logged but never raised so the caller's
+    delete flow is never blocked by a failed revocation.
+    """
+    import logging
+    log = logging.getLogger("integrations.revoke")
+
+    if engine != GITHUB_ENGINE:
+        return
+
+    try:
+        from anton.core.datasources.data_vault import LocalDataVault
+        fields = LocalDataVault().load(engine, name) or {}
+    except Exception:
+        return
+
+    if fields.get("auth_type") != "oauth":
+        return
+
+    access_token = fields.get("access_token", "").strip()
+    if not access_token:
+        return
+
+    config = _github_oauth_config()
+    client_id = config.get("client_id", "").strip()
+    client_secret = config.get("client_secret", "").strip()
+    if not client_id or not client_secret:
+        log.warning("Cannot revoke GitHub token for %s/%s: OAuth credentials not configured", engine, name)
+        return
+
+    try:
+        import base64
+        import json
+        from urllib.request import urlopen, Request
+        url = GITHUB_REVOKE_ENDPOINT.format(client_id=client_id)
+        credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        body = json.dumps({"access_token": access_token}).encode()
+        req = Request(
+            url,
+            data=body,
+            method="DELETE",
+            headers={
+                "Authorization": f"Basic {credentials}",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urlopen(req, timeout=10):
+            pass
+        log.info("Revoked GitHub token for %s/%s", engine, name)
+    except Exception as exc:
+        log.warning("Could not revoke GitHub token for %s/%s: %s", engine, name, exc)
+
+
 def refresh_google_oauth_tokens() -> None:
     """Proactively refresh Google OAuth tokens that are close to expiry.
 

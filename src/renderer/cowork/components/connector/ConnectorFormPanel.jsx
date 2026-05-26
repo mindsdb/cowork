@@ -106,16 +106,16 @@ export default function ConnectorFormPanel({
       try {
         const startFn = BROWSER_OAUTH_START[connector.id] || startGoogleDriveAuth;
         const result = await startFn();
-        if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
+        if (!result?.authUrl) throw new Error(`Could not start ${connector.label || 'sign-in'}. Is the server running?`);
         oauthStartedAt.current = result.startedAt || '';
         window.open(result.authUrl, '_blank');
         setOauthPending(true);
         setSavedSpec({
           ...spec,
-          form_warning: 'Google sign-in opened in your browser. Complete the flow there, then return here.',
+          form_warning: `${connector.label || 'Sign-in'} opened in your browser. Complete the flow there, then return here.`,
         });
       } catch (err) {
-        setErrorMsg(err?.message || 'Could not start Google sign-in.');
+        setErrorMsg(err?.message || `Could not start ${connector.label || 'sign-in'}.`);
       } finally {
         setBusy(false);
       }
