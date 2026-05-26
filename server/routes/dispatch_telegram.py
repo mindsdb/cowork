@@ -76,11 +76,13 @@ from channels import (
     ChatBridgeBase,
     SignatureMismatch,
     WebhookHandshake,
-    load_channel_secrets,
-    secret_var_name,
+)
+from channels.vault_creds import (
+    load_credentials,
+    migrate_env_to_vault,
+    save_credentials,
 )
 from .dispatch import clear_channel_credentials, register_credential_clearer
-from .settings import _read_dotenv, _write_dotenv, GLOBAL_ENV_PATH
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -128,7 +130,10 @@ class TelegramBridge(ChatBridgeBase):
 
     async def setup(self, setup: ChannelSetup) -> None:
         self._setup = setup
-        webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL", "").strip()
+        # webhook_url is stored on the vault entry alongside the bot token.
+        # The legacy TELEGRAM_WEBHOOK_URL env var is migrated to this field
+        # on first boot; the runtime no longer consults os.environ.
+        webhook_url = (self.secrets.get("webhook_url") or "").strip()
         if webhook_url:
             await self._register_webhook(webhook_url)
             logger.info(
@@ -506,22 +511,24 @@ class TelegramBridge(ChatBridgeBase):
         header on every delivery, and :meth:`verify_signature` requires it —
         without one, webhook ingress refuses every payload. The config panel
         doesn't expose the field, so webhook mode auto-generates a token on
-        first registration and persists it to ``~/.anton/.env`` (under the
-        canonical ``DS_TELEGRAM_<ACCOUNT>__SECRET_TOKEN`` name) so it survives
-        restarts and is picked up by ``load_channel_secrets`` next boot.
+        first registration and persists it onto the vault entry alongside
+        the bot token so it survives restarts.
         """
         existing = (self.secrets.get("secret_token") or "").strip()
         if existing:
             return existing
         token = secrets_mod.token_urlsafe(32)
         self.secrets["secret_token"] = token
-        var_name = secret_var_name("telegram", self.account, "secret_token")
-        os.environ[var_name] = token
         try:
-            _write_dotenv(GLOBAL_ENV_PATH, {var_name: token})
+            save_credentials(
+                "telegram",
+                self.account,
+                writes={"secret_token": token},
+                secure_fields=_TELEGRAM_SECURE_FIELDS,
+            )
         except Exception:
             logger.warning(
-                "could not persist telegram webhook secret_token to .env; "
+                "could not persist telegram webhook secret_token to vault; "
                 "webhook auth will reset on restart",
                 exc_info=True,
             )
@@ -575,6 +582,48 @@ class TelegramBridge(ChatBridgeBase):
 
 
 # ---------------------------------------------------------------------------
+# Vault credential layout
+# ---------------------------------------------------------------------------
+
+# Field names stored on the vault entry. ``secret_token`` is auto-minted by
+# :meth:`TelegramBridge._ensure_secret_token` when webhook mode is enabled;
+# it is never set by the operator and lives alongside the other fields on
+# the same vault row.
+_TELEGRAM_VAULT_FIELDS = ("bot_token", "bot_username", "webhook_url", "secret_token")
+# Fields encrypted at rest (the long-lived secrets).
+_TELEGRAM_SECURE_FIELDS = frozenset({"bot_token", "secret_token"})
+# Legacy env-var layout we migrate from on first boot. The DS_TELEGRAM_*
+# keys are the canonical vault-injection names load_channel_secrets() used
+# to read; TELEGRAM_WEBHOOK_URL is the plain env var setup() consults.
+_TELEGRAM_LEGACY_ENV: dict[str, str] = {
+    "DS_TELEGRAM_DEFAULT__BOT_TOKEN":    "bot_token",
+    "DS_TELEGRAM_DEFAULT__BOT_USERNAME": "bot_username",
+    "DS_TELEGRAM_DEFAULT__SECRET_TOKEN": "secret_token",
+    "TELEGRAM_WEBHOOK_URL":              "webhook_url",
+}
+
+
+def _telegram_account() -> str:
+    """Resolve the configured Telegram account name.
+
+    ANTON_TELEGRAM_ACCOUNT pins a specific account when the operator runs
+    multiple Telegram bots from the same install; otherwise we use the
+    canonical "default" name so a fresh install only has one entry.
+    """
+    return os.environ.get("ANTON_TELEGRAM_ACCOUNT", "").strip() or "default"
+
+
+def _migrate_telegram_legacy_env() -> dict[str, str]:
+    """One-shot migration: seed the vault from any DS_TELEGRAM_* / TELEGRAM_* env."""
+    return migrate_env_to_vault(
+        "telegram",
+        _telegram_account(),
+        env_to_field=_TELEGRAM_LEGACY_ENV,
+        secure_fields=_TELEGRAM_SECURE_FIELDS,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Adapter factory — runs on import so the registry sees Telegram immediately
 # ---------------------------------------------------------------------------
 
@@ -583,9 +632,8 @@ async def _telegram_adapter_factory() -> ChannelAdapter | None:
     """Build a TelegramBridge from the first usable Telegram connection.
 
     Resolution order:
-      1. ``ANTON_TELEGRAM_ACCOUNT`` env var — explicit account name.
+      1. ``ANTON_TELEGRAM_ACCOUNT`` env var pin — explicit account name.
       2. Any ``telegram-*`` entry in the local DataVault.
-      3. ``DS_TELEGRAM_DEFAULT__*`` env vars — pure env-var config.
     """
     try:
         from anton.core.datasources.data_vault import LocalDataVault
@@ -594,7 +642,7 @@ async def _telegram_adapter_factory() -> ChannelAdapter | None:
             c for c in vault.list_connections() if c.get("engine") == "telegram"
         ]
     except Exception:
-        vault, vault_conns = None, []
+        vault_conns = []
 
     explicit = os.environ.get("ANTON_TELEGRAM_ACCOUNT", "").strip()
     if explicit:
@@ -605,14 +653,7 @@ async def _telegram_adapter_factory() -> ChannelAdapter | None:
         candidates = ["default"]
 
     for name in candidates:
-        fields: dict[str, str] = {}
-        if vault is not None:
-            try:
-                stored = vault.load("telegram", name) or {}
-                fields.update({k: str(v) for k, v in stored.items() if v})
-            except Exception:
-                pass
-        fields.update(load_channel_secrets("telegram", name))
+        fields = load_credentials("telegram", name)
         if fields.get("bot_token"):
             logger.info(
                 "TelegramBridge factory selected account=%s",
@@ -625,6 +666,11 @@ async def _telegram_adapter_factory() -> ChannelAdapter | None:
 
 
 if _DISPATCH_AVAILABLE:
+    # Seed the vault from any legacy DS_TELEGRAM_* / TELEGRAM_WEBHOOK_URL env
+    # vars BEFORE the factory runs so existing installs keep working without
+    # operator action. Idempotent — a second boot finds the env empty and
+    # short-circuits without touching the vault.
+    _migrate_telegram_legacy_env()
     register_channel_adapter("telegram", _telegram_adapter_factory)
 else:
     logger.warning(
@@ -687,32 +733,21 @@ async def telegram_webhook(request: Request):
 # ---------------------------------------------------------------------------
 
 # Telegram has no OAuth flow — the operator pastes the bot token from
-# @BotFather and (optionally) the bot's @username. We persist them under the
-# DataVault env-var convention (DS_TELEGRAM_DEFAULT__BOT_TOKEN /
-# DS_TELEGRAM_DEFAULT__BOT_USERNAME) so the existing factory at
-# _telegram_adapter_factory finds them via load_channel_secrets() without
-# any extra wiring. TELEGRAM_WEBHOOK_URL stays as a plain env var because
-# setup() reads it directly from os.environ.
-TELEGRAM_BOT_TOKEN_KEY = "DS_TELEGRAM_DEFAULT__BOT_TOKEN"
-TELEGRAM_BOT_USERNAME_KEY = "DS_TELEGRAM_DEFAULT__BOT_USERNAME"
-TELEGRAM_WEBHOOK_URL_KEY = "TELEGRAM_WEBHOOK_URL"
-
-TELEGRAM_ENV_KEYS = (
-    TELEGRAM_BOT_TOKEN_KEY,
-    TELEGRAM_BOT_USERNAME_KEY,
-    TELEGRAM_WEBHOOK_URL_KEY,
-)
+# @BotFather and (optionally) the bot's @username. Credentials live on the
+# DataVault entry for the active account; the legacy DS_TELEGRAM_* /
+# TELEGRAM_WEBHOOK_URL env-var layout is migrated at import time and is no
+# longer the runtime source of truth.
 
 
 def _clear_telegram_credentials() -> None:
-    """Wipe stored Telegram credentials — env vars + DataVault entries.
+    """Wipe stored Telegram credentials.
 
-    Clears the config keys plus any DS_TELEGRAM_* var (the bot token and
-    the auto-minted webhook secret_token), and removes every `telegram`
-    DataVault connection.
+    Removes every ``telegram`` DataVault connection plus any lingering
+    DS_TELEGRAM_* / TELEGRAM_* env vars (defensive — the migration normally
+    leaves those empty).
     """
     clear_channel_credentials(
-        fixed_keys=TELEGRAM_ENV_KEYS,
+        fixed_keys=tuple(_TELEGRAM_LEGACY_ENV.keys()),
         env_prefix="DS_TELEGRAM_",
         vault_engine="telegram",
     )
@@ -727,87 +762,91 @@ class TelegramConfigPatch(BaseModel):
     webhook_url: str | None = None
 
 
-def _telegram_env_value(key: str) -> str:
-    """Resolve a Telegram env var from process env first, then ~/.anton/.env."""
-    val = os.environ.get(key, "").strip()
-    if val:
-        return val
-    return _read_dotenv(GLOBAL_ENV_PATH).get(key, "").strip()
-
-
 @router.get("/telegram/config")
 async def telegram_get_config():
-    """Return whether each Telegram env var is set. Never returns the values themselves."""
-    flags = {key: bool(_telegram_env_value(key)) for key in TELEGRAM_ENV_KEYS}
+    """Return whether each Telegram credential field is set.
+
+    Never returns the values themselves — the UI only needs "is this
+    configured?" badges. Reads from the vault entry for the active account.
+    """
+    stored = load_credentials("telegram", _telegram_account())
+    bot_token_set = bool(stored.get("bot_token"))
+    bot_username_set = bool(stored.get("bot_username"))
+    webhook_url_set = bool(stored.get("webhook_url"))
     return {
-        "bot_token_set": flags[TELEGRAM_BOT_TOKEN_KEY],
-        "bot_username_set": flags[TELEGRAM_BOT_USERNAME_KEY],
-        "webhook_url_set": flags[TELEGRAM_WEBHOOK_URL_KEY],
+        "bot_token_set": bot_token_set,
+        "bot_username_set": bot_username_set,
+        "webhook_url_set": webhook_url_set,
         # The bot can poll as soon as the token is set; everything else is optional.
-        "install_ready": flags[TELEGRAM_BOT_TOKEN_KEY],
+        "install_ready": bot_token_set,
         # Long-poll is the default; webhook mode kicks in only if the URL is set.
-        "mode": "webhook" if flags[TELEGRAM_WEBHOOK_URL_KEY] else "long-poll",
+        "mode": "webhook" if webhook_url_set else "long-poll",
     }
 
 
 @router.put("/telegram/config")
 async def telegram_put_config(patch: TelegramConfigPatch):
-    """Persist Telegram credentials to ~/.anton/.env and mirror to os.environ.
+    """Persist Telegram credentials to the DataVault.
 
-    Empty strings clear the corresponding key. Restart the server (or trigger an
-    adapter refresh elsewhere) for an already-instantiated bridge to pick up
-    new secrets — this route does not hot-reload the live bridge.
+    Empty strings clear the corresponding field. Restart the server (or
+    trigger an adapter refresh) for an already-instantiated bridge to pick
+    up new secrets — this route does not hot-reload the live bridge.
     """
-    fields: dict[str, str | None] = {
-        TELEGRAM_BOT_TOKEN_KEY:    patch.bot_token,
-        TELEGRAM_BOT_USERNAME_KEY: patch.bot_username,
-        TELEGRAM_WEBHOOK_URL_KEY:  patch.webhook_url,
+    account = _telegram_account()
+    stored = load_credentials("telegram", account)
+
+    field_patch: dict[str, str | None] = {
+        "bot_token":    patch.bot_token,
+        "bot_username": patch.bot_username,
+        "webhook_url":  patch.webhook_url,
     }
 
     writes: dict[str, str] = {}
     deletes: list[str] = []
-    for key, value in fields.items():
+    for field, value in field_patch.items():
         if value is None:
             continue   # field not in the patch — leave existing value alone
         trimmed = value.strip()
         # Bot username is normally entered with a leading "@"; strip it so the
         # mention-detection check (`f"@{bot_username}" in text`) in
         # _normalize_update doesn't double up.
-        if key == TELEGRAM_BOT_USERNAME_KEY and trimmed.startswith("@"):
+        if field == "bot_username" and trimmed.startswith("@"):
             trimmed = trimmed[1:]
         if trimmed:
-            writes[key] = trimmed
+            writes[field] = trimmed
         else:
-            deletes.append(key)
+            deletes.append(field)
 
     # Auto-fill bot_username from Telegram's getMe when the operator pasted a
     # token but didn't supply the username — matches the convenience of Slack's
     # OAuth callback handing you the bot identity. Bot username is needed for
     # @mention detection in group chats (see _normalize_update). Skipped when
-    # the user explicitly cleared the username (deletes contains the key) or
+    # the user explicitly cleared the username (deletes contains the field) or
     # already provided one. Failures are non-fatal: the credentials still save,
     # the user just has to fill the username manually.
-    effective_token = writes.get(TELEGRAM_BOT_TOKEN_KEY) or _telegram_env_value(TELEGRAM_BOT_TOKEN_KEY)
+    effective_token = writes.get("bot_token") or stored.get("bot_token") or ""
     needs_username_lookup = (
         effective_token
-        and TELEGRAM_BOT_USERNAME_KEY not in writes
-        and TELEGRAM_BOT_USERNAME_KEY not in deletes
-        and not _telegram_env_value(TELEGRAM_BOT_USERNAME_KEY)
+        and "bot_username" not in writes
+        and "bot_username" not in deletes
+        and not stored.get("bot_username")
     )
     if needs_username_lookup:
         try:
             me = await _telegram_get_me(effective_token)
             resolved = (me.get("username") or "").strip()
             if resolved:
-                writes[TELEGRAM_BOT_USERNAME_KEY] = resolved
+                writes["bot_username"] = resolved
         except Exception:
             logger.debug("getMe lookup failed; bot_username left blank", exc_info=True)
 
-    _write_dotenv(GLOBAL_ENV_PATH, writes, delete_keys=tuple(deletes))
-
-    os.environ.update(writes)
-    for key in deletes:
-        os.environ.pop(key, None)
+    save_credentials(
+        "telegram",
+        account,
+        writes=writes,
+        deletes=tuple(deletes),
+        secure_fields=_TELEGRAM_SECURE_FIELDS,
+    )
 
     return await telegram_get_config()
 
