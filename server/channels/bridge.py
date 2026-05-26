@@ -110,7 +110,7 @@ class ChatBridgeBase(ABC):
         for credential lookup so multi-account hosts don't collide.
     secrets
         Pre-resolved field→value map (typically from
-        :func:`channels.secrets.load_channel_secrets`).
+        :func:`channels.vault_creds.load_credentials`).
     max_text_length
         Per-platform character cap for outbound messages. Subclasses set their
         own default; ``send_text`` honors this via :meth:`chunked_send`.

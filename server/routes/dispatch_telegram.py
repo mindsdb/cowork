@@ -593,8 +593,8 @@ _TELEGRAM_VAULT_FIELDS = ("bot_token", "bot_username", "webhook_url", "secret_to
 # Fields encrypted at rest (the long-lived secrets).
 _TELEGRAM_SECURE_FIELDS = frozenset({"bot_token", "secret_token"})
 # Legacy env-var layout we migrate from on first boot. The DS_TELEGRAM_*
-# keys are the canonical vault-injection names load_channel_secrets() used
-# to read; TELEGRAM_WEBHOOK_URL is the plain env var setup() consults.
+# keys were the historic vault-injection names; TELEGRAM_WEBHOOK_URL was the
+# plain env var the bridge's setup() used to consult directly.
 _TELEGRAM_LEGACY_ENV: dict[str, str] = {
     "DS_TELEGRAM_DEFAULT__BOT_TOKEN":    "bot_token",
     "DS_TELEGRAM_DEFAULT__BOT_USERNAME": "bot_username",

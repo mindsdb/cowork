@@ -7,16 +7,12 @@ Modules
 -------
 signatures   Webhook HMAC verifiers (Slack v0, WhatsApp Cloud, generic SHA-256).
 text         Outbound text splitting honoring per-platform character limits.
-secrets      DataVault token loading via the canonical DS_<CHANNEL>_<ACCOUNT>__* layout.
+secrets      Required-field guard (raises :class:`MissingChannelSecret`).
+vault_creds  DataVault-backed credential save/load + legacy env-var migration.
 bridge       :class:`ChatBridgeBase` — base class channel adapters extend.
 """
 from .bridge import ChatBridgeBase, PartialSendError, WebhookHandshake
-from .secrets import (
-    MissingChannelSecret,
-    load_channel_secrets,
-    require_secret,
-    secret_var_name,
-)
+from .secrets import MissingChannelSecret, require_secret
 from .signatures import (
     SignatureMismatch,
     verify_hmac_sha256,
@@ -31,9 +27,7 @@ __all__ = [
     "PartialSendError",
     "SignatureMismatch",
     "WebhookHandshake",
-    "load_channel_secrets",
     "require_secret",
-    "secret_var_name",
     "split_for_limit",
     "verify_hmac_sha256",
     "verify_slack",
