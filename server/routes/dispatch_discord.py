@@ -71,11 +71,15 @@ from channels import (
     ChatBridgeBase,
     SignatureMismatch,
     WebhookHandshake,
-    load_channel_secrets,
+)
+from channels.vault_creds import (
+    APP_ACCOUNT,
+    load_credentials,
+    migrate_env_to_vault,
+    save_credentials,
 )
 from .cowork_state import load_state, update_state
 from .dispatch import clear_channel_credentials, register_credential_clearer
-from .settings import _read_dotenv, _write_dotenv, GLOBAL_ENV_PATH
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -459,52 +463,68 @@ class DiscordBridge(ChatBridgeBase):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Vault credential layout
+# ---------------------------------------------------------------------------
+
+# Discord credentials split across two vault rows:
+#   discord/<guild_id>  — workspace-scoped: stamped at OAuth-install time
+#                          with a copy of bot_token + public_key so we know
+#                          which guilds the bot is installed in.
+#   discord/__app__     — app-level: client_id, client_secret, bot_token,
+#                          public_key. Discord bot tokens are app-level
+#                          (one token works across all guilds the bot joins)
+#                          so the canonical token lives on __app__ and is
+#                          layered onto each guild row.
+_DISCORD_APP_FIELDS = ("client_id", "client_secret", "bot_token", "public_key")
+_DISCORD_APP_SECURE = frozenset({"client_secret", "bot_token"})
+_DISCORD_WORKSPACE_SECURE = frozenset({"bot_token"})
+_DISCORD_LEGACY_ENV: dict[str, str] = {
+    "DISCORD_CLIENT_ID":              "client_id",
+    "DISCORD_CLIENT_SECRET":          "client_secret",
+    "DS_DISCORD_DEFAULT__BOT_TOKEN":  "bot_token",
+    "DS_DISCORD_DEFAULT__PUBLIC_KEY": "public_key",
+}
+
+
+def _migrate_discord_legacy_env() -> dict[str, str]:
+    """Seed discord/__app__ from any legacy DISCORD_* / DS_DISCORD_DEFAULT__* env vars."""
+    return migrate_env_to_vault(
+        "discord",
+        APP_ACCOUNT,
+        env_to_field=_DISCORD_LEGACY_ENV,
+        secure_fields=_DISCORD_APP_SECURE,
+    )
+
+
+def _discord_app_creds() -> dict[str, str]:
+    """Return the app-level credential map (client_id, bot_token, etc.)."""
+    return load_credentials("discord", APP_ACCOUNT)
+
+
 async def _discord_adapter_factory() -> ChannelAdapter | None:
-    """Build a DiscordBridge from the first usable Discord connection.
+    """Build a DiscordBridge from app-level credentials.
 
-    Resolution order:
-      1. ``ANTON_DISCORD_ACCOUNT`` env var — explicit account name.
-      2. Any ``discord-*`` entry in the local DataVault.
-      3. ``DS_DISCORD_DEFAULT__*`` env vars — pure env-var config.
+    Discord bot tokens are app-level (one token works across every guild
+    the bot has joined), so we instantiate the bridge from the
+    ``discord/__app__`` vault entry directly — guild rows just record that
+    the bot is installed in a given guild.
+
+    ``ANTON_DISCORD_ACCOUNT`` is honoured for parity with the other channels
+    but Discord's data model doesn't actually need per-account tokens.
     """
-    try:
-        from anton.core.datasources.data_vault import LocalDataVault
-        vault = LocalDataVault()
-        vault_conns = [
-            c for c in vault.list_connections() if c.get("engine") == "discord"
-        ]
-    except Exception:
-        vault, vault_conns = None, []
+    app_creds = _discord_app_creds()
+    if not app_creds.get("bot_token"):
+        logger.debug("No usable Discord credentials found; adapter not started.")
+        return None
 
-    explicit = os.environ.get("ANTON_DISCORD_ACCOUNT", "").strip()
-    if explicit:
-        candidates = [explicit]
-    elif vault_conns:
-        candidates = [c["name"] for c in vault_conns]
-    else:
-        candidates = ["default"]
-
-    for name in candidates:
-        fields: dict[str, str] = {}
-        if vault is not None:
-            try:
-                stored = vault.load("discord", name) or {}
-                fields.update({k: str(v) for k, v in stored.items() if v})
-            except Exception:
-                pass
-        fields.update(load_channel_secrets("discord", name))
-        if fields.get("bot_token"):
-            logger.info(
-                "DiscordBridge factory selected account=%s",
-                name,
-            )
-            return DiscordBridge(account=name, channel_secrets=fields)
-
-    logger.debug("No usable Discord credentials found; adapter not started.")
-    return None
+    name = os.environ.get("ANTON_DISCORD_ACCOUNT", "").strip() or APP_ACCOUNT
+    logger.info("DiscordBridge factory selected account=%s", name)
+    return DiscordBridge(account=name, channel_secrets=app_creds)
 
 
 if _DISPATCH_AVAILABLE:
+    _migrate_discord_legacy_env()
     register_channel_adapter("discord", _discord_adapter_factory)
 else:
     logger.warning(
@@ -583,11 +603,11 @@ async def discord_oauth_install(redirect_uri: str = Query(...)):
     code (bot tokens aren't per-install), but we still mint a state nonce
     so the callback can confirm the install came from us.
     """
-    client_id = _discord_env_value("DISCORD_CLIENT_ID")
+    client_id = (_discord_app_creds().get("client_id") or "").strip()
     if not client_id:
         raise HTTPException(
             status_code=400,
-            detail="DISCORD_CLIENT_ID must be set. Use the Configure panel in Dispatch.",
+            detail="Discord client_id must be set. Use the Configure panel in Dispatch.",
         )
 
     state = secrets_mod.token_urlsafe(24)
@@ -636,16 +656,24 @@ async def discord_oauth_callback(
 
     if guild_id:
         # Stash the guild_id in DataVault so future routes can list which
-        # guilds the bot is installed in without re-querying Discord.
+        # guilds the bot is installed in without re-querying Discord. Bot
+        # token + public_key live on the discord/__app__ row; we stamp a
+        # copy onto the guild row so a later credential rotation doesn't
+        # leave installed guilds pointing at stale tokens until the next
+        # explicit re-install.
         try:
-            from anton.core.datasources.data_vault import LocalDataVault
-
-            vault = LocalDataVault()
-            existing = vault.load("discord", guild_id) or {}
-            existing.setdefault("bot_token", os.environ.get("DS_DISCORD_DEFAULT__BOT_TOKEN", ""))
-            existing.setdefault("public_key", os.environ.get("DS_DISCORD_DEFAULT__PUBLIC_KEY", ""))
-            existing["guild_id"] = guild_id
-            vault.save("discord", guild_id, existing)
+            app_creds = _discord_app_creds()
+            workspace_writes: dict[str, str] = {"guild_id": guild_id}
+            if app_creds.get("bot_token"):
+                workspace_writes["bot_token"] = app_creds["bot_token"]
+            if app_creds.get("public_key"):
+                workspace_writes["public_key"] = app_creds["public_key"]
+            save_credentials(
+                "discord",
+                guild_id,
+                writes=workspace_writes,
+                secure_fields=_DISCORD_WORKSPACE_SECURE,
+            )
         except Exception:
             logger.exception("could not store Discord guild in DataVault")
 
@@ -658,34 +686,19 @@ async def discord_oauth_callback(
 
 
 # ---------------------------------------------------------------------------
-# Config panel — read/write Discord env vars from the UI
+# Config panel — read/write Discord credentials from the UI
 # ---------------------------------------------------------------------------
 
-# CLIENT_ID / CLIENT_SECRET are app-level and used by the install-URL builder;
-# BOT_TOKEN / PUBLIC_KEY are persisted under the DataVault env-var convention
-# so the existing factory at _discord_adapter_factory finds them via
-# load_channel_secrets().
-DISCORD_CLIENT_ID_KEY = "DISCORD_CLIENT_ID"
-DISCORD_CLIENT_SECRET_KEY = "DISCORD_CLIENT_SECRET"
-DISCORD_BOT_TOKEN_KEY = "DS_DISCORD_DEFAULT__BOT_TOKEN"
-DISCORD_PUBLIC_KEY_KEY = "DS_DISCORD_DEFAULT__PUBLIC_KEY"
-
-DISCORD_ENV_KEYS = (
-    DISCORD_CLIENT_ID_KEY,
-    DISCORD_CLIENT_SECRET_KEY,
-    DISCORD_BOT_TOKEN_KEY,
-    DISCORD_PUBLIC_KEY_KEY,
-)
+# All Discord credentials live on the ``discord/__app__`` vault entry.
+# Guild rows written by the OAuth callback record install metadata only
+# (guild_id plus a stamped copy of bot_token / public_key); the canonical
+# token is on __app__.
 
 
 def _clear_discord_credentials() -> None:
-    """Wipe stored Discord credentials — env vars + DataVault entries.
-
-    Clears the DISCORD_* / DS_DISCORD_* config keys and removes every
-    `discord` DataVault connection (guild records keyed by guild_id).
-    """
+    """Wipe stored Discord credentials — every vault entry plus legacy env vars."""
     clear_channel_credentials(
-        fixed_keys=DISCORD_ENV_KEYS,
+        fixed_keys=tuple(_DISCORD_LEGACY_ENV.keys()),
         env_prefix="DS_DISCORD_",
         vault_engine="discord",
     )
@@ -701,62 +714,58 @@ class DiscordConfigPatch(BaseModel):
     public_key: str | None = None
 
 
-def _discord_env_value(key: str) -> str:
-    """Resolve a Discord env var from process env first, then ~/.anton/.env."""
-    val = os.environ.get(key, "").strip()
-    if val:
-        return val
-    return _read_dotenv(GLOBAL_ENV_PATH).get(key, "").strip()
-
-
 @router.get("/discord/config")
 async def discord_get_config():
-    """Return whether each Discord env var is set. Never returns the values themselves."""
-    flags = {key: bool(_discord_env_value(key)) for key in DISCORD_ENV_KEYS}
+    """Return whether each Discord app-level credential is set."""
+    stored = _discord_app_creds()
+    flags = {field: bool(stored.get(field)) for field in _DISCORD_APP_FIELDS}
     return {
-        "client_id_set":     flags[DISCORD_CLIENT_ID_KEY],
-        "client_secret_set": flags[DISCORD_CLIENT_SECRET_KEY],
-        "bot_token_set":     flags[DISCORD_BOT_TOKEN_KEY],
-        "public_key_set":    flags[DISCORD_PUBLIC_KEY_KEY],
+        "client_id_set":     flags["client_id"],
+        "client_secret_set": flags["client_secret"],
+        "bot_token_set":     flags["bot_token"],
+        "public_key_set":    flags["public_key"],
         # Gateway runs as soon as bot_token is set.
-        "gateway_ready":  flags[DISCORD_BOT_TOKEN_KEY],
+        "gateway_ready":      flags["bot_token"],
         # Interactions endpoint additionally needs the app public key.
-        "interactions_ready": flags[DISCORD_BOT_TOKEN_KEY] and flags[DISCORD_PUBLIC_KEY_KEY],
+        "interactions_ready": flags["bot_token"] and flags["public_key"],
         # Install URL needs client_id.
-        "install_ready":  flags[DISCORD_CLIENT_ID_KEY],
+        "install_ready":      flags["client_id"],
     }
 
 
 @router.put("/discord/config")
 async def discord_put_config(patch: DiscordConfigPatch):
-    """Persist Discord credentials to ~/.anton/.env and mirror to os.environ.
+    """Persist Discord credentials to the DataVault.
 
-    Empty strings clear the corresponding key. Restart the server (or trigger
-    an adapter refresh elsewhere) for an already-instantiated bridge to pick
-    up new secrets — this route does not hot-reload the live bridge.
+    Stored on the ``discord/__app__`` vault entry. Empty strings clear the
+    corresponding field. Restart the server (or trigger an adapter refresh)
+    for an already-instantiated bridge to pick up new secrets — this route
+    does not hot-reload the live bridge.
     """
-    fields: dict[str, str | None] = {
-        DISCORD_CLIENT_ID_KEY:     patch.client_id,
-        DISCORD_CLIENT_SECRET_KEY: patch.client_secret,
-        DISCORD_BOT_TOKEN_KEY:     patch.bot_token,
-        DISCORD_PUBLIC_KEY_KEY:    patch.public_key,
+    field_patch: dict[str, str | None] = {
+        "client_id":     patch.client_id,
+        "client_secret": patch.client_secret,
+        "bot_token":     patch.bot_token,
+        "public_key":    patch.public_key,
     }
 
     writes: dict[str, str] = {}
     deletes: list[str] = []
-    for key, value in fields.items():
+    for field, value in field_patch.items():
         if value is None:
             continue  # field not in the patch — leave existing value alone
         trimmed = value.strip()
         if trimmed:
-            writes[key] = trimmed
+            writes[field] = trimmed
         else:
-            deletes.append(key)
+            deletes.append(field)
 
-    _write_dotenv(GLOBAL_ENV_PATH, writes, delete_keys=tuple(deletes))
-
-    os.environ.update(writes)
-    for key in deletes:
-        os.environ.pop(key, None)
+    save_credentials(
+        "discord",
+        APP_ACCOUNT,
+        writes=writes,
+        deletes=tuple(deletes),
+        secure_fields=_DISCORD_APP_SECURE,
+    )
 
     return await discord_get_config()
