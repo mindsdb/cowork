@@ -65,11 +65,14 @@ from channels import (
     ChatBridgeBase,
     SignatureMismatch,
     WebhookHandshake,
-    load_channel_secrets,
     verify_whatsapp,
 )
+from channels.vault_creds import (
+    load_credentials,
+    migrate_env_to_vault,
+    save_credentials,
+)
 from .dispatch import clear_channel_credentials, register_credential_clearer
-from .settings import _read_dotenv, _write_dotenv, GLOBAL_ENV_PATH
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -366,13 +369,48 @@ class WhatsAppBridge(ChatBridgeBase):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Vault credential layout
+# ---------------------------------------------------------------------------
+
+_WHATSAPP_VAULT_FIELDS = (
+    "phone_number_id",
+    "access_token",
+    "verify_token",
+    "app_secret",
+    "business_account_id",
+)
+# access_token + app_secret are the long-lived secrets; verify_token is a
+# shared string the operator sets in Meta's dashboard.
+_WHATSAPP_SECURE_FIELDS = frozenset({"access_token", "app_secret"})
+_WHATSAPP_LEGACY_ENV: dict[str, str] = {
+    "DS_WHATSAPP_DEFAULT__PHONE_NUMBER_ID":     "phone_number_id",
+    "DS_WHATSAPP_DEFAULT__ACCESS_TOKEN":        "access_token",
+    "DS_WHATSAPP_DEFAULT__VERIFY_TOKEN":        "verify_token",
+    "DS_WHATSAPP_DEFAULT__APP_SECRET":          "app_secret",
+    "DS_WHATSAPP_DEFAULT__BUSINESS_ACCOUNT_ID": "business_account_id",
+}
+
+
+def _whatsapp_account() -> str:
+    return os.environ.get("ANTON_WHATSAPP_ACCOUNT", "").strip() or "default"
+
+
+def _migrate_whatsapp_legacy_env() -> dict[str, str]:
+    return migrate_env_to_vault(
+        "whatsapp",
+        _whatsapp_account(),
+        env_to_field=_WHATSAPP_LEGACY_ENV,
+        secure_fields=_WHATSAPP_SECURE_FIELDS,
+    )
+
+
 async def _whatsapp_adapter_factory() -> ChannelAdapter | None:
     """Build a WhatsAppBridge from the first usable WhatsApp connection.
 
     Resolution order:
-      1. ``ANTON_WHATSAPP_ACCOUNT`` env var — explicit account name.
+      1. ``ANTON_WHATSAPP_ACCOUNT`` env var pin — explicit account name.
       2. Any ``whatsapp-*`` entry in the local DataVault.
-      3. ``DS_WHATSAPP_DEFAULT__*`` env vars — pure env-var config.
     """
     try:
         from anton.core.datasources.data_vault import LocalDataVault
@@ -381,7 +419,7 @@ async def _whatsapp_adapter_factory() -> ChannelAdapter | None:
             c for c in vault.list_connections() if c.get("engine") == "whatsapp"
         ]
     except Exception:
-        vault, vault_conns = None, []
+        vault_conns = []
 
     explicit = os.environ.get("ANTON_WHATSAPP_ACCOUNT", "").strip()
     if explicit:
@@ -392,14 +430,7 @@ async def _whatsapp_adapter_factory() -> ChannelAdapter | None:
         candidates = ["default"]
 
     for name in candidates:
-        fields: dict[str, str] = {}
-        if vault is not None:
-            try:
-                stored = vault.load("whatsapp", name) or {}
-                fields.update({k: str(v) for k, v in stored.items() if v})
-            except Exception:
-                pass
-        fields.update(load_channel_secrets("whatsapp", name))
+        fields = load_credentials("whatsapp", name)
         if fields.get("phone_number_id") and fields.get("access_token"):
             logger.info(
                 "WhatsAppBridge factory selected account=%s",
@@ -412,6 +443,7 @@ async def _whatsapp_adapter_factory() -> ChannelAdapter | None:
 
 
 if _DISPATCH_AVAILABLE:
+    _migrate_whatsapp_legacy_env()
     register_channel_adapter("whatsapp", _whatsapp_adapter_factory)
 else:
     logger.warning(
@@ -504,28 +536,15 @@ async def whatsapp_webhook(request: Request):
 
 # WhatsApp Cloud has no in-app OAuth flow we'd drive — the operator sets up
 # the app + system user in Meta Business Manager, then pastes the resulting
-# credentials. We persist them under the DataVault env-var convention
-# (DS_WHATSAPP_DEFAULT__*) so the existing factory at
-# _whatsapp_adapter_factory finds them via load_channel_secrets().
-WHATSAPP_PHONE_NUMBER_ID_KEY = "DS_WHATSAPP_DEFAULT__PHONE_NUMBER_ID"
-WHATSAPP_ACCESS_TOKEN_KEY = "DS_WHATSAPP_DEFAULT__ACCESS_TOKEN"
-WHATSAPP_VERIFY_TOKEN_KEY = "DS_WHATSAPP_DEFAULT__VERIFY_TOKEN"
-WHATSAPP_APP_SECRET_KEY = "DS_WHATSAPP_DEFAULT__APP_SECRET"
-WHATSAPP_BUSINESS_ACCOUNT_ID_KEY = "DS_WHATSAPP_DEFAULT__BUSINESS_ACCOUNT_ID"
-
-WHATSAPP_ENV_KEYS = (
-    WHATSAPP_PHONE_NUMBER_ID_KEY,
-    WHATSAPP_ACCESS_TOKEN_KEY,
-    WHATSAPP_VERIFY_TOKEN_KEY,
-    WHATSAPP_APP_SECRET_KEY,
-    WHATSAPP_BUSINESS_ACCOUNT_ID_KEY,
-)
+# credentials. Credentials live on the DataVault entry for the active
+# account; the legacy DS_WHATSAPP_* env-var layout is migrated at import
+# time and is no longer the runtime source of truth.
 
 
 def _clear_whatsapp_credentials() -> None:
-    """Wipe stored WhatsApp credentials — env vars + DataVault entries."""
+    """Wipe stored WhatsApp credentials."""
     clear_channel_credentials(
-        fixed_keys=WHATSAPP_ENV_KEYS,
+        fixed_keys=tuple(_WHATSAPP_LEGACY_ENV.keys()),
         env_prefix="DS_WHATSAPP_",
         vault_engine="whatsapp",
     )
@@ -542,32 +561,22 @@ class WhatsAppConfigPatch(BaseModel):
     business_account_id: str | None = None
 
 
-def _whatsapp_env_value(key: str) -> str:
-    """Resolve a WhatsApp env var from process env first, then ~/.anton/.env."""
-    val = os.environ.get(key, "").strip()
-    if val:
-        return val
-    return _read_dotenv(GLOBAL_ENV_PATH).get(key, "").strip()
-
-
 @router.get("/whatsapp/config")
 async def whatsapp_get_config():
-    """Return whether each WhatsApp env var is set. Never returns the values themselves."""
-    flags = {key: bool(_whatsapp_env_value(key)) for key in WHATSAPP_ENV_KEYS}
+    """Return whether each WhatsApp credential field is set."""
+    stored = load_credentials("whatsapp", _whatsapp_account())
+    flags = {field: bool(stored.get(field)) for field in _WHATSAPP_VAULT_FIELDS}
     return {
-        "phone_number_id_set":      flags[WHATSAPP_PHONE_NUMBER_ID_KEY],
-        "access_token_set":         flags[WHATSAPP_ACCESS_TOKEN_KEY],
-        "verify_token_set":         flags[WHATSAPP_VERIFY_TOKEN_KEY],
-        "app_secret_set":           flags[WHATSAPP_APP_SECRET_KEY],
-        "business_account_id_set":  flags[WHATSAPP_BUSINESS_ACCOUNT_ID_KEY],
+        "phone_number_id_set":      flags["phone_number_id"],
+        "access_token_set":         flags["access_token"],
+        "verify_token_set":         flags["verify_token"],
+        "app_secret_set":           flags["app_secret"],
+        "business_account_id_set":  flags["business_account_id"],
         # Minimum viable: phone_number_id + access_token to call Graph API,
         # verify_token + app_secret to accept and verify Meta's webhook.
         "install_ready": all(
-            flags[k] for k in (
-                WHATSAPP_PHONE_NUMBER_ID_KEY,
-                WHATSAPP_ACCESS_TOKEN_KEY,
-                WHATSAPP_VERIFY_TOKEN_KEY,
-                WHATSAPP_APP_SECRET_KEY,
+            flags[f] for f in (
+                "phone_number_id", "access_token", "verify_token", "app_secret",
             )
         ),
     }
@@ -575,35 +584,37 @@ async def whatsapp_get_config():
 
 @router.put("/whatsapp/config")
 async def whatsapp_put_config(patch: WhatsAppConfigPatch):
-    """Persist WhatsApp credentials to ~/.anton/.env and mirror to os.environ.
+    """Persist WhatsApp credentials to the DataVault.
 
-    Empty strings clear the corresponding key. Restart the server (or trigger
-    an adapter refresh elsewhere) for an already-instantiated bridge to pick
+    Empty strings clear the corresponding field. Restart the server (or
+    trigger an adapter refresh) for an already-instantiated bridge to pick
     up new secrets — this route does not hot-reload the live bridge.
     """
-    fields: dict[str, str | None] = {
-        WHATSAPP_PHONE_NUMBER_ID_KEY:     patch.phone_number_id,
-        WHATSAPP_ACCESS_TOKEN_KEY:        patch.access_token,
-        WHATSAPP_VERIFY_TOKEN_KEY:        patch.verify_token,
-        WHATSAPP_APP_SECRET_KEY:          patch.app_secret,
-        WHATSAPP_BUSINESS_ACCOUNT_ID_KEY: patch.business_account_id,
+    field_patch: dict[str, str | None] = {
+        "phone_number_id":     patch.phone_number_id,
+        "access_token":        patch.access_token,
+        "verify_token":        patch.verify_token,
+        "app_secret":          patch.app_secret,
+        "business_account_id": patch.business_account_id,
     }
 
     writes: dict[str, str] = {}
     deletes: list[str] = []
-    for key, value in fields.items():
+    for field, value in field_patch.items():
         if value is None:
             continue  # field not in the patch — leave existing value alone
         trimmed = value.strip()
         if trimmed:
-            writes[key] = trimmed
+            writes[field] = trimmed
         else:
-            deletes.append(key)
+            deletes.append(field)
 
-    _write_dotenv(GLOBAL_ENV_PATH, writes, delete_keys=tuple(deletes))
-
-    os.environ.update(writes)
-    for key in deletes:
-        os.environ.pop(key, None)
+    save_credentials(
+        "whatsapp",
+        _whatsapp_account(),
+        writes=writes,
+        deletes=tuple(deletes),
+        secure_fields=_WHATSAPP_SECURE_FIELDS,
+    )
 
     return await whatsapp_get_config()
