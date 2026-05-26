@@ -4,16 +4,19 @@ Components:
     SlackBridge       — concrete :class:`ChatBridgeBase` that also satisfies
                         :class:`anton.core.dispatch.adapter.ChannelAdapter`,
                         so the dispatch registry can hand it to the router.
-    OAuth start/cb    — install URL + token-exchange callback; tokens land in
-                        ``DS_SLACK_<ACCOUNT>__BOT_TOKEN`` and
-                        ``DS_SLACK_<ACCOUNT>__SIGNING_SECRET`` via DataVault.
+    OAuth start/cb    — install URL + token-exchange callback; bot tokens
+                        land in the DataVault under the workspace's team_id.
     POST /events      — Events API webhook. Handles ``url_verification`` and
                         ``event_callback`` envelopes, dispatches inbound
                         messages to the dispatch router via the bridge.
 
-Environment expected:
-    SLACK_CLIENT_ID, SLACK_CLIENT_SECRET — set by the operator before the
-    OAuth install flow can run. Read at start time, not module load.
+Credentials:
+    All Slack credentials live in the DataVault. App-level fields
+    (client_id, client_secret, signing_secret, app_token) sit on a single
+    ``slack/__app__`` entry written by the Configure panel; workspace-level
+    fields (bot_token) sit on per-team rows written by the OAuth callback.
+    Legacy SLACK_* / DS_SLACK_DEFAULT__* env vars are migrated to the vault
+    at import time.
 """
 from __future__ import annotations
 
@@ -54,12 +57,16 @@ from channels import (
     ChatBridgeBase,
     SignatureMismatch,
     WebhookHandshake,
-    load_channel_secrets,
     verify_slack,
+)
+from channels.vault_creds import (
+    APP_ACCOUNT,
+    load_credentials,
+    migrate_env_to_vault,
+    save_credentials,
 )
 from .cowork_state import load_state, update_state
 from .dispatch import clear_channel_credentials, register_credential_clearer
-from .settings import _read_dotenv, _write_dotenv, GLOBAL_ENV_PATH
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -469,60 +476,91 @@ class SlackBridge(ChatBridgeBase):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Vault credential layout
+# ---------------------------------------------------------------------------
+
+# Slack credentials split across two vault rows:
+#   slack/<team_id>   — workspace-scoped: bot_token (from OAuth callback),
+#                        plus a copy of signing_secret stamped at install time.
+#   slack/__app__     — app-level: client_id, client_secret, signing_secret,
+#                        app_token (Socket Mode). One per install.
+# The factory loads the workspace row, then layers app-level values on top
+# so a fresh OAuth install picks up app_token / signing_secret without the
+# operator re-entering them per workspace.
+_SLACK_APP_FIELDS = ("client_id", "client_secret", "signing_secret", "app_token")
+_SLACK_APP_SECURE = frozenset({"client_secret", "signing_secret", "app_token"})
+_SLACK_WORKSPACE_SECURE = frozenset({"bot_token", "signing_secret"})
+# Legacy env vars are app-level: the panel wrote SLACK_* to .env, and any
+# DS_SLACK_DEFAULT__* setups were also app-scoped (no real OAuth install).
+_SLACK_LEGACY_ENV: dict[str, str] = {
+    "SLACK_CLIENT_ID":               "client_id",
+    "SLACK_CLIENT_SECRET":           "client_secret",
+    "SLACK_SIGNING_SECRET":          "signing_secret",
+    "SLACK_APP_TOKEN":               "app_token",
+    "DS_SLACK_DEFAULT__BOT_TOKEN":   "bot_token",
+    "DS_SLACK_DEFAULT__SIGNING_SECRET": "signing_secret",
+    "DS_SLACK_DEFAULT__APP_TOKEN":   "app_token",
+}
+
+
+def _migrate_slack_legacy_env() -> dict[str, str]:
+    """Seed slack/__app__ from any legacy SLACK_* / DS_SLACK_DEFAULT__* env vars."""
+    return migrate_env_to_vault(
+        "slack",
+        APP_ACCOUNT,
+        env_to_field=_SLACK_LEGACY_ENV,
+        secure_fields=_SLACK_APP_SECURE,
+    )
+
+
+def _slack_app_creds() -> dict[str, str]:
+    """Return the app-level credential map (client_id, signing_secret, etc.)."""
+    return load_credentials("slack", APP_ACCOUNT)
+
+
 async def _slack_adapter_factory() -> ChannelAdapter | None:
-    """Build a SlackBridge from the first usable Slack connection.
+    """Build a SlackBridge from the first usable Slack workspace.
 
     Resolution order:
       1. ``ANTON_SLACK_ACCOUNT`` env var pin — explicit account name.
-      2. Any ``slack-*`` entry in the local DataVault (the OAuth callback
-         saves under the workspace's team_id, e.g. ``slack-T0B0DG30BKL``).
-      3. ``DS_SLACK_DEFAULT__*`` env vars — for setups that prefer pure
-         env-var configuration without going through OAuth.
+      2. Any ``slack-*`` entry in the local DataVault other than ``__app__``
+         (the OAuth callback saves under the workspace's team_id, e.g.
+         ``slack-T0B0DG30BKL``).
 
-    Reads the vault directly (env-var injection is too late at startup),
-    overlays env values on top so explicit env wins over stored.
+    App-level credentials (signing_secret, app_token) live on the
+    ``slack/__app__`` vault entry and are layered onto each workspace's
+    field map so Socket Mode and webhook signature verification keep
+    working without per-workspace duplication.
     """
     try:
         from anton.core.datasources.data_vault import LocalDataVault
         vault = LocalDataVault()
-        vault_conns = [
-            c for c in vault.list_connections() if c.get("engine") == "slack"
+        workspace_conns = [
+            c["name"]
+            for c in vault.list_connections()
+            if c.get("engine") == "slack" and c.get("name") != APP_ACCOUNT
         ]
     except Exception:
-        vault, vault_conns = None, []
+        workspace_conns = []
+
+    app_creds = _slack_app_creds()
+    app_token = (app_creds.get("app_token") or "").strip()
+    signing_secret = (app_creds.get("signing_secret") or "").strip()
 
     explicit = os.environ.get("ANTON_SLACK_ACCOUNT", "").strip()
     if explicit:
         candidates = [explicit]
-    elif vault_conns:
-        candidates = [c["name"] for c in vault_conns]
+    elif workspace_conns:
+        candidates = workspace_conns
     else:
         candidates = ["default"]
 
-    # SLACK_APP_TOKEN and SLACK_SIGNING_SECRET are app-level (not
-    # workspace-scoped). Pull both from env so any per-workspace bridge
-    # picks them up automatically — the app token starts Socket Mode, the
-    # signing secret lets the webhook route verify inbound events. Both
-    # fall back through ~/.anton/.env via _slack_env_value. The signing
-    # secret is what the Configure panel writes (as the plain
-    # SLACK_SIGNING_SECRET key, not DS_SLACK_<ACCOUNT>__SIGNING_SECRET), so
-    # without this overlay a panel-only (no-OAuth) setup would have no
-    # signing secret and reject every webhook delivery with a 401.
-    app_token = _slack_env_value("SLACK_APP_TOKEN")
-    signing_secret = _slack_env_value("SLACK_SIGNING_SECRET")
-
     for name in candidates:
-        fields: dict[str, str] = {}
-        if vault is not None:
-            try:
-                stored = vault.load("slack", name) or {}
-                fields.update({k: str(v) for k, v in stored.items() if v})
-            except Exception:
-                pass
-        fields.update(load_channel_secrets("slack", name))
+        fields = load_credentials("slack", name)
         if app_token:
             fields["app_token"] = app_token
-        if signing_secret:
+        if signing_secret and not fields.get("signing_secret"):
             fields["signing_secret"] = signing_secret
         if fields.get("bot_token") and fields.get("signing_secret"):
             logger.info(
@@ -534,6 +572,7 @@ async def _slack_adapter_factory() -> ChannelAdapter | None:
 
 
 if _DISPATCH_AVAILABLE:
+    _migrate_slack_legacy_env()
     register_channel_adapter("slack", _slack_adapter_factory)
 else:
     logger.warning(
@@ -547,25 +586,15 @@ else:
 # ---------------------------------------------------------------------------
 
 
-SLACK_ENV_KEYS = (
-    "SLACK_CLIENT_ID",
-    "SLACK_CLIENT_SECRET",
-    "SLACK_SIGNING_SECRET",
-    # Socket Mode app-level token (xapp-…). When set, SlackBridge opens
-    # an outbound WebSocket to Slack instead of relying on a public
-    # webhook URL. Avoids ngrok/.localhost-reachability issues.
-    "SLACK_APP_TOKEN",
-)
-
-
 def _clear_slack_credentials() -> None:
-    """Wipe stored Slack credentials — env vars + DataVault bot tokens.
+    """Wipe stored Slack credentials — every vault entry plus legacy env vars.
 
-    Clears the SLACK_* config keys plus any DS_SLACK_* env-var connection,
-    and removes every `slack` DataVault entry (the OAuth-saved bot token).
+    Removes every ``slack`` DataVault connection (workspace rows under
+    team_id AND the ``__app__`` row holding client_id/signing_secret) plus
+    any lingering SLACK_* / DS_SLACK_* env vars.
     """
     clear_channel_credentials(
-        fixed_keys=SLACK_ENV_KEYS,
+        fixed_keys=tuple(_SLACK_LEGACY_ENV.keys()),
         env_prefix="DS_SLACK_",
         vault_engine="slack",
     )
@@ -581,64 +610,62 @@ class SlackConfigPatch(BaseModel):
     app_token: str | None = None
 
 
-def _slack_env_value(key: str) -> str:
-    """Resolve a Slack env var from process env first, then ~/.anton/.env."""
-    val = os.environ.get(key, "").strip()
-    if val:
-        return val
-    return _read_dotenv(GLOBAL_ENV_PATH).get(key, "").strip()
-
-
 @router.get("/slack/config")
 async def slack_get_config():
-    """Return whether each Slack env var is set. Never returns the values themselves."""
-    flags = {key: bool(_slack_env_value(key)) for key in SLACK_ENV_KEYS}
+    """Return whether each Slack app-level credential is set.
+
+    Reads from the ``slack/__app__`` vault entry. Workspace bot tokens live
+    under team_id and are surfaced via the channel-status route instead.
+    """
+    stored = _slack_app_creds()
+    flags = {field: bool(stored.get(field)) for field in _SLACK_APP_FIELDS}
     return {
-        "client_id_set": flags["SLACK_CLIENT_ID"],
-        "client_secret_set": flags["SLACK_CLIENT_SECRET"],
-        "signing_secret_set": flags["SLACK_SIGNING_SECRET"],
-        "app_token_set": flags["SLACK_APP_TOKEN"],
+        "client_id_set":      flags["client_id"],
+        "client_secret_set":  flags["client_secret"],
+        "signing_secret_set": flags["signing_secret"],
+        "app_token_set":      flags["app_token"],
         # Webhook OAuth flow needs at minimum client_id + client_secret.
-        "install_ready": flags["SLACK_CLIENT_ID"] and flags["SLACK_CLIENT_SECRET"],
+        "install_ready":     flags["client_id"] and flags["client_secret"],
         # Socket Mode just needs the app-level token + an existing bot token
         # (the OAuth callback or a manual save provides bot_token).
-        "socket_mode_ready": flags["SLACK_APP_TOKEN"],
+        "socket_mode_ready": flags["app_token"],
     }
 
 
 @router.put("/slack/config")
 async def slack_put_config(patch: SlackConfigPatch):
-    """Persist Slack OAuth credentials to ~/.anton/.env and mirror to os.environ.
+    """Persist Slack OAuth credentials to the DataVault.
 
-    Empty strings clear the corresponding key. Restart the server (or trigger an
-    adapter refresh elsewhere) for already-instantiated bridges to pick up new
-    secrets — this route does not hot-reload the live bridge.
+    Stored on the ``slack/__app__`` vault entry. Empty strings clear the
+    corresponding field. Restart the server (or trigger an adapter refresh)
+    for already-instantiated bridges to pick up new secrets — this route
+    does not hot-reload the live bridge.
     """
-    fields: dict[str, str | None] = {
-        "SLACK_CLIENT_ID":      patch.client_id,
-        "SLACK_CLIENT_SECRET":  patch.client_secret,
-        "SLACK_SIGNING_SECRET": patch.signing_secret,
-        "SLACK_APP_TOKEN":      patch.app_token,
+    field_patch: dict[str, str | None] = {
+        "client_id":      patch.client_id,
+        "client_secret":  patch.client_secret,
+        "signing_secret": patch.signing_secret,
+        "app_token":      patch.app_token,
     }
 
     writes: dict[str, str] = {}
     deletes: list[str] = []
-    for key, value in fields.items():
+    for field, value in field_patch.items():
         if value is None:
             continue   # field not in the patch — leave existing value alone
         trimmed = value.strip()
         if trimmed:
-            writes[key] = trimmed
+            writes[field] = trimmed
         else:
-            deletes.append(key)
+            deletes.append(field)
 
-    _write_dotenv(GLOBAL_ENV_PATH, writes, delete_keys=tuple(deletes))
-
-    # Mirror writes into the running process so the OAuth start route works
-    # immediately, without a server restart.
-    os.environ.update(writes)
-    for key in deletes:
-        os.environ.pop(key, None)
+    save_credentials(
+        "slack",
+        APP_ACCOUNT,
+        writes=writes,
+        deletes=tuple(deletes),
+        secure_fields=_SLACK_APP_SECURE,
+    )
 
     return await slack_get_config()
 
@@ -649,12 +676,13 @@ async def slack_put_config(patch: SlackConfigPatch):
 
 
 def _slack_oauth_credentials() -> tuple[str, str]:
-    cid = _slack_env_value("SLACK_CLIENT_ID")
-    secret = _slack_env_value("SLACK_CLIENT_SECRET")
+    creds = _slack_app_creds()
+    cid = (creds.get("client_id") or "").strip()
+    secret = (creds.get("client_secret") or "").strip()
     if not cid or not secret:
         raise HTTPException(
             status_code=400,
-            detail="SLACK_CLIENT_ID and SLACK_CLIENT_SECRET must be set. Use the Configure panel in Dispatch.",
+            detail="Slack client_id and client_secret must be set. Use the Configure panel in Dispatch.",
         )
     return cid, secret
 
@@ -718,18 +746,22 @@ async def slack_oauth_callback(
 
     bot_token = result.get("access_token") or ""
     team = (result.get("team") or {}).get("id") or "default"
-    # Slack's signing secret is per-app, not per-install — the operator must
-    # set it once via env var or settings; we don't get it from OAuth.
-    # Persist only the bot token here.
+    # Slack's signing secret is per-app, not per-install — the operator sets
+    # it once via the Configure panel (lives on slack/__app__). Stamp a copy
+    # onto the workspace row at install time so a later OAuth-only refresh
+    # still has the secret available to verify webhooks even if the operator
+    # rotates app-level credentials independently.
+    signing_secret = (_slack_app_creds().get("signing_secret") or "").strip()
+    workspace_writes: dict[str, str] = {"bot_token": bot_token}
+    if signing_secret:
+        workspace_writes["signing_secret"] = signing_secret
     try:
-        from anton.core.datasources.data_vault import LocalDataVault
-
-        vault = LocalDataVault()
-        existing = vault.load("slack", team) or {}
-        existing.setdefault("signing_secret", os.environ.get("SLACK_SIGNING_SECRET", ""))
-        existing["bot_token"] = bot_token
-        vault.save("slack", team, existing)
-        vault.inject_env("slack", team)
+        save_credentials(
+            "slack",
+            team,
+            writes=workspace_writes,
+            secure_fields=_SLACK_WORKSPACE_SECURE,
+        )
     except Exception:
         logger.exception("could not store Slack token in DataVault")
         return Response(
