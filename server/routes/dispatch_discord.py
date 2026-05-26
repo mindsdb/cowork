@@ -72,12 +72,7 @@ from channels import (
     SignatureMismatch,
     WebhookHandshake,
 )
-from channels.vault_creds import (
-    APP_ACCOUNT,
-    load_credentials,
-    migrate_env_to_vault,
-    save_credentials,
-)
+from channels.vault_creds import APP_ACCOUNT, load_credentials, save_credentials
 from .cowork_state import load_state, update_state
 from .dispatch import clear_channel_credentials, register_credential_clearer
 
@@ -479,22 +474,6 @@ class DiscordBridge(ChatBridgeBase):
 _DISCORD_APP_FIELDS = ("client_id", "client_secret", "bot_token", "public_key")
 _DISCORD_APP_SECURE = frozenset({"client_secret", "bot_token"})
 _DISCORD_WORKSPACE_SECURE = frozenset({"bot_token"})
-_DISCORD_LEGACY_ENV: dict[str, str] = {
-    "DISCORD_CLIENT_ID":              "client_id",
-    "DISCORD_CLIENT_SECRET":          "client_secret",
-    "DS_DISCORD_DEFAULT__BOT_TOKEN":  "bot_token",
-    "DS_DISCORD_DEFAULT__PUBLIC_KEY": "public_key",
-}
-
-
-def _migrate_discord_legacy_env() -> dict[str, str]:
-    """Seed discord/__app__ from any legacy DISCORD_* / DS_DISCORD_DEFAULT__* env vars."""
-    return migrate_env_to_vault(
-        "discord",
-        APP_ACCOUNT,
-        env_to_field=_DISCORD_LEGACY_ENV,
-        secure_fields=_DISCORD_APP_SECURE,
-    )
 
 
 def _discord_app_creds() -> dict[str, str]:
@@ -524,7 +503,6 @@ async def _discord_adapter_factory() -> ChannelAdapter | None:
 
 
 if _DISPATCH_AVAILABLE:
-    _migrate_discord_legacy_env()
     register_channel_adapter("discord", _discord_adapter_factory)
 else:
     logger.warning(
@@ -696,12 +674,8 @@ async def discord_oauth_callback(
 
 
 def _clear_discord_credentials() -> None:
-    """Wipe stored Discord credentials — every vault entry plus legacy env vars."""
-    clear_channel_credentials(
-        fixed_keys=tuple(_DISCORD_LEGACY_ENV.keys()),
-        env_prefix="DS_DISCORD_",
-        vault_engine="discord",
-    )
+    """Wipe every ``discord`` DataVault connection (``__app__`` + guild rows)."""
+    clear_channel_credentials(vault_engine="discord")
 
 
 register_credential_clearer("discord", _clear_discord_credentials)

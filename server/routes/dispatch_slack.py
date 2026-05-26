@@ -15,8 +15,6 @@ Credentials:
     (client_id, client_secret, signing_secret, app_token) sit on a single
     ``slack/__app__`` entry written by the Configure panel; workspace-level
     fields (bot_token) sit on per-team rows written by the OAuth callback.
-    Legacy SLACK_* / DS_SLACK_DEFAULT__* env vars are migrated to the vault
-    at import time.
 """
 from __future__ import annotations
 
@@ -59,12 +57,7 @@ from channels import (
     WebhookHandshake,
     verify_slack,
 )
-from channels.vault_creds import (
-    APP_ACCOUNT,
-    load_credentials,
-    migrate_env_to_vault,
-    save_credentials,
-)
+from channels.vault_creds import APP_ACCOUNT, load_credentials, save_credentials
 from .cowork_state import load_state, update_state
 from .dispatch import clear_channel_credentials, register_credential_clearer
 
@@ -491,27 +484,6 @@ class SlackBridge(ChatBridgeBase):
 _SLACK_APP_FIELDS = ("client_id", "client_secret", "signing_secret", "app_token")
 _SLACK_APP_SECURE = frozenset({"client_secret", "signing_secret", "app_token"})
 _SLACK_WORKSPACE_SECURE = frozenset({"bot_token", "signing_secret"})
-# Legacy env vars are app-level: the panel wrote SLACK_* to .env, and any
-# DS_SLACK_DEFAULT__* setups were also app-scoped (no real OAuth install).
-_SLACK_LEGACY_ENV: dict[str, str] = {
-    "SLACK_CLIENT_ID":               "client_id",
-    "SLACK_CLIENT_SECRET":           "client_secret",
-    "SLACK_SIGNING_SECRET":          "signing_secret",
-    "SLACK_APP_TOKEN":               "app_token",
-    "DS_SLACK_DEFAULT__BOT_TOKEN":   "bot_token",
-    "DS_SLACK_DEFAULT__SIGNING_SECRET": "signing_secret",
-    "DS_SLACK_DEFAULT__APP_TOKEN":   "app_token",
-}
-
-
-def _migrate_slack_legacy_env() -> dict[str, str]:
-    """Seed slack/__app__ from any legacy SLACK_* / DS_SLACK_DEFAULT__* env vars."""
-    return migrate_env_to_vault(
-        "slack",
-        APP_ACCOUNT,
-        env_to_field=_SLACK_LEGACY_ENV,
-        secure_fields=_SLACK_APP_SECURE,
-    )
 
 
 def _slack_app_creds() -> dict[str, str]:
@@ -572,7 +544,6 @@ async def _slack_adapter_factory() -> ChannelAdapter | None:
 
 
 if _DISPATCH_AVAILABLE:
-    _migrate_slack_legacy_env()
     register_channel_adapter("slack", _slack_adapter_factory)
 else:
     logger.warning(
@@ -587,17 +558,12 @@ else:
 
 
 def _clear_slack_credentials() -> None:
-    """Wipe stored Slack credentials — every vault entry plus legacy env vars.
+    """Wipe every ``slack`` DataVault connection.
 
-    Removes every ``slack`` DataVault connection (workspace rows under
-    team_id AND the ``__app__`` row holding client_id/signing_secret) plus
-    any lingering SLACK_* / DS_SLACK_* env vars.
+    Removes both the workspace rows (under team_id) and the ``__app__`` row
+    holding client_id/signing_secret in a single call.
     """
-    clear_channel_credentials(
-        fixed_keys=tuple(_SLACK_LEGACY_ENV.keys()),
-        env_prefix="DS_SLACK_",
-        vault_engine="slack",
-    )
+    clear_channel_credentials(vault_engine="slack")
 
 
 register_credential_clearer("slack", _clear_slack_credentials)

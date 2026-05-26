@@ -67,11 +67,7 @@ from channels import (
     WebhookHandshake,
     verify_whatsapp,
 )
-from channels.vault_creds import (
-    load_credentials,
-    migrate_env_to_vault,
-    save_credentials,
-)
+from channels.vault_creds import load_credentials, save_credentials
 from .dispatch import clear_channel_credentials, register_credential_clearer
 
 logger = logging.getLogger(__name__)
@@ -383,26 +379,10 @@ _WHATSAPP_VAULT_FIELDS = (
 # access_token + app_secret are the long-lived secrets; verify_token is a
 # shared string the operator sets in Meta's dashboard.
 _WHATSAPP_SECURE_FIELDS = frozenset({"access_token", "app_secret"})
-_WHATSAPP_LEGACY_ENV: dict[str, str] = {
-    "DS_WHATSAPP_DEFAULT__PHONE_NUMBER_ID":     "phone_number_id",
-    "DS_WHATSAPP_DEFAULT__ACCESS_TOKEN":        "access_token",
-    "DS_WHATSAPP_DEFAULT__VERIFY_TOKEN":        "verify_token",
-    "DS_WHATSAPP_DEFAULT__APP_SECRET":          "app_secret",
-    "DS_WHATSAPP_DEFAULT__BUSINESS_ACCOUNT_ID": "business_account_id",
-}
 
 
 def _whatsapp_account() -> str:
     return os.environ.get("ANTON_WHATSAPP_ACCOUNT", "").strip() or "default"
-
-
-def _migrate_whatsapp_legacy_env() -> dict[str, str]:
-    return migrate_env_to_vault(
-        "whatsapp",
-        _whatsapp_account(),
-        env_to_field=_WHATSAPP_LEGACY_ENV,
-        secure_fields=_WHATSAPP_SECURE_FIELDS,
-    )
 
 
 async def _whatsapp_adapter_factory() -> ChannelAdapter | None:
@@ -443,7 +423,6 @@ async def _whatsapp_adapter_factory() -> ChannelAdapter | None:
 
 
 if _DISPATCH_AVAILABLE:
-    _migrate_whatsapp_legacy_env()
     register_channel_adapter("whatsapp", _whatsapp_adapter_factory)
 else:
     logger.warning(
@@ -542,12 +521,8 @@ async def whatsapp_webhook(request: Request):
 
 
 def _clear_whatsapp_credentials() -> None:
-    """Wipe stored WhatsApp credentials."""
-    clear_channel_credentials(
-        fixed_keys=tuple(_WHATSAPP_LEGACY_ENV.keys()),
-        env_prefix="DS_WHATSAPP_",
-        vault_engine="whatsapp",
-    )
+    """Wipe every ``whatsapp`` DataVault connection."""
+    clear_channel_credentials(vault_engine="whatsapp")
 
 
 register_credential_clearer("whatsapp", _clear_whatsapp_credentials)

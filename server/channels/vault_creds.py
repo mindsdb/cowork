@@ -1,30 +1,19 @@
 """DataVault-backed credential helpers for dispatch channel adapters.
 
-The dispatch channels (slack, discord, telegram, whatsapp) historically wrote
-their PUT ``/config`` credentials to ``~/.anton/.env`` and resolved them at
-runtime via :func:`load_channel_secrets` (the ``DS_<CHANNEL>_<ACCOUNT>__*``
-env-var layout). That left credentials in two places:
-:class:`LocalDataVault` (written by OAuth callbacks under workspace ids) and
-the env file (written by the Configure panel). The split was confusing and
-forced operators to know which path stored what.
-
-This module is the single write path. The config endpoints call
-:func:`save_credentials` to persist field maps; factories call
-:func:`load_credentials` at startup. :func:`migrate_env_to_vault` seeds the
-vault from any legacy ``DS_*`` / plain env vars present on first boot then
-deletes the migrated keys from both ``~/.anton/.env`` and ``os.environ`` so
-the value lives in exactly one place.
+The dispatch channels (slack, discord, telegram, whatsapp) keep all of their
+credentials on :class:`LocalDataVault`. The Configure-panel PUT endpoints
+call :func:`save_credentials` to persist field maps; factories call
+:func:`load_credentials` at startup. The vault is the single source of
+truth — there is no env-var fallback or filesystem write to ``~/.anton/.env``.
 
 Errors loading or saving (vault module missing, IO failure) are tolerated —
 :func:`load_credentials` returns ``{}`` so the factory's None-adapter pattern
 keeps working, and :func:`save_credentials` logs the failure but doesn't
-raise. The config endpoints still report success because the env-var mirror
-in :func:`save_credentials` keeps the running bridge usable until restart.
+raise.
 """
 from __future__ import annotations
 
 import logging
-import os
 from typing import Mapping
 
 logger = logging.getLogger(__name__)
@@ -84,10 +73,9 @@ def save_credentials(
     named in ``secure_fields`` are flagged for encryption at rest via the
     vault's ``secure_keys`` argument when supported.
 
-    A vault error is logged but not raised: the config-PUT endpoint relies
-    on the in-process env-var mirror its caller maintains, so a transient
-    save failure doesn't break the running bridge — it just won't survive a
-    restart, which the caller can surface in the UI separately.
+    A vault error is logged but not raised: the config-PUT endpoint can
+    surface the failure as a non-fatal warning, leaving the operator's
+    next save attempt to retry.
     """
     vault = _open_vault()
     if vault is None:
@@ -126,9 +114,9 @@ def save_credentials(
 def delete_credentials(channel_type: str, account: str) -> None:
     """Remove one vault entry, swallowing errors.
 
-    Used by the auto-mint paths and the migration helper; the channel-wide
-    ``clear_channel_credentials`` deletes every entry for the engine and
-    lives in dispatch.py.
+    Used by tear-down paths that need to delete a single row; the
+    channel-wide :func:`server.routes.dispatch.clear_channel_credentials`
+    deletes every entry for a given engine.
     """
     vault = _open_vault()
     if vault is None:
@@ -139,90 +127,3 @@ def delete_credentials(channel_type: str, account: str) -> None:
         logger.debug(
             "vault.delete(%s, %s) failed", channel_type, account, exc_info=True
         )
-
-
-def migrate_env_to_vault(
-    channel_type: str,
-    account: str,
-    *,
-    env_to_field: Mapping[str, str],
-    secure_fields: frozenset[str] = frozenset(),
-) -> dict[str, str]:
-    """One-shot migration: seed the vault from legacy env vars, then wipe them.
-
-    For each ``env_var → field`` pair, if the env var is set (process env or
-    ``~/.anton/.env``) AND the vault entry doesn't already have that field,
-    copy the value into the vault entry. After the save succeeds, remove the
-    migrated env vars from both ``os.environ`` and ``~/.anton/.env`` so the
-    credential lives in exactly one place.
-
-    Idempotent: a second call finds the env vars gone and exits without
-    re-touching the vault. Safe to call at module import time.
-
-    Returns the merged field map (or an empty dict if vault was unavailable
-    and nothing was migrated).
-    """
-    # Import locally — settings.py pulls in FastAPI dependencies and we want
-    # vault_creds importable from non-route contexts (tests, scripts).
-    from routes.settings import _read_dotenv, _write_dotenv, GLOBAL_ENV_PATH
-
-    dotenv = _read_dotenv(GLOBAL_ENV_PATH)
-
-    def _env_get(key: str) -> str:
-        # os.environ wins so a session-scoped override (e.g. test fixture)
-        # is honoured, matching the precedence the old _*_env_value helpers
-        # used.
-        raw = os.environ.get(key, "")
-        if raw and raw.strip():
-            return raw.strip()
-        return dotenv.get(key, "").strip()
-
-    candidates: dict[str, tuple[str, str]] = {}
-    for env_var, field in env_to_field.items():
-        value = _env_get(env_var)
-        if value:
-            candidates[field] = (env_var, value)
-
-    if not candidates:
-        return load_credentials(channel_type, account)
-
-    existing = load_credentials(channel_type, account)
-    writes: dict[str, str] = {}
-    for field, (_env_var, value) in candidates.items():
-        if not existing.get(field):
-            writes[field] = value
-
-    merged = existing
-    if writes:
-        merged = save_credentials(
-            channel_type,
-            account,
-            writes=writes,
-            secure_fields=secure_fields,
-        )
-        if not merged:
-            # Save failed — leave env vars in place so the next boot retries.
-            logger.warning(
-                "could not migrate %s/%s env vars to vault; will retry on next boot",
-                channel_type,
-                account,
-            )
-            return existing
-
-    # Vault now has every value we migrated (either freshly written or
-    # pre-existing). Remove the legacy env vars so the vault is the only
-    # source of truth going forward.
-    env_keys_to_wipe = tuple(
-        env_var for env_var, _ in candidates.values()
-    )
-    try:
-        _write_dotenv(GLOBAL_ENV_PATH, {}, delete_keys=env_keys_to_wipe)
-    except Exception:
-        logger.debug(
-            "could not strip migrated env vars from %s", GLOBAL_ENV_PATH,
-            exc_info=True,
-        )
-    for env_var in env_keys_to_wipe:
-        os.environ.pop(env_var, None)
-
-    return merged

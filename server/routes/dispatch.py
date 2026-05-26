@@ -308,29 +308,13 @@ def register_credential_clearer(channel_type: str, clearer: Any) -> None:
     _credential_clearers[channel_type] = clearer
 
 
-def clear_channel_credentials(
-    *,
-    fixed_keys: tuple[str, ...],
-    env_prefix: str,
-    vault_engine: str,
-) -> None:
-    """Wipe a channel's stored credentials — env vars and DataVault entries.
+def clear_channel_credentials(*, vault_engine: str) -> None:
+    """Wipe every DataVault connection for one channel engine.
 
-    Deletes ``fixed_keys`` plus any ``~/.anton/.env`` or process-env var
-    starting with ``env_prefix`` (covers the ``DS_<ENGINE>_<ACCOUNT>__*``
-    vars the adapters mint), then removes every ``vault_engine`` connection.
-    Channel modules call this from the clearer they register.
+    Channel modules call this from the clearer they register so a single
+    "disconnect" tears down the bot's stored credentials regardless of how
+    many workspaces/accounts the operator linked.
     """
-    from .settings import _read_dotenv, _write_dotenv, GLOBAL_ENV_PATH
-
-    existing = _read_dotenv(GLOBAL_ENV_PATH)
-    keys = set(fixed_keys)
-    keys.update(k for k in existing if k.startswith(env_prefix))
-    keys.update(k for k in os.environ if k.startswith(env_prefix))
-    _write_dotenv(GLOBAL_ENV_PATH, {}, delete_keys=tuple(sorted(keys)))
-    for key in keys:
-        os.environ.pop(key, None)
-
     try:
         from anton.core.datasources.data_vault import LocalDataVault
         vault = LocalDataVault()

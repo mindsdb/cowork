@@ -77,11 +77,7 @@ from channels import (
     SignatureMismatch,
     WebhookHandshake,
 )
-from channels.vault_creds import (
-    load_credentials,
-    migrate_env_to_vault,
-    save_credentials,
-)
+from channels.vault_creds import load_credentials, save_credentials
 from .dispatch import clear_channel_credentials, register_credential_clearer
 
 logger = logging.getLogger(__name__)
@@ -585,22 +581,10 @@ class TelegramBridge(ChatBridgeBase):
 # Vault credential layout
 # ---------------------------------------------------------------------------
 
-# Field names stored on the vault entry. ``secret_token`` is auto-minted by
-# :meth:`TelegramBridge._ensure_secret_token` when webhook mode is enabled;
-# it is never set by the operator and lives alongside the other fields on
-# the same vault row.
-_TELEGRAM_VAULT_FIELDS = ("bot_token", "bot_username", "webhook_url", "secret_token")
-# Fields encrypted at rest (the long-lived secrets).
+# Fields encrypted at rest. ``bot_token`` is the long-lived Bot API token;
+# ``secret_token`` is auto-minted by :meth:`TelegramBridge._ensure_secret_token`
+# when webhook mode is enabled and lives on the same vault row.
 _TELEGRAM_SECURE_FIELDS = frozenset({"bot_token", "secret_token"})
-# Legacy env-var layout we migrate from on first boot. The DS_TELEGRAM_*
-# keys were the historic vault-injection names; TELEGRAM_WEBHOOK_URL was the
-# plain env var the bridge's setup() used to consult directly.
-_TELEGRAM_LEGACY_ENV: dict[str, str] = {
-    "DS_TELEGRAM_DEFAULT__BOT_TOKEN":    "bot_token",
-    "DS_TELEGRAM_DEFAULT__BOT_USERNAME": "bot_username",
-    "DS_TELEGRAM_DEFAULT__SECRET_TOKEN": "secret_token",
-    "TELEGRAM_WEBHOOK_URL":              "webhook_url",
-}
 
 
 def _telegram_account() -> str:
@@ -611,16 +595,6 @@ def _telegram_account() -> str:
     canonical "default" name so a fresh install only has one entry.
     """
     return os.environ.get("ANTON_TELEGRAM_ACCOUNT", "").strip() or "default"
-
-
-def _migrate_telegram_legacy_env() -> dict[str, str]:
-    """One-shot migration: seed the vault from any DS_TELEGRAM_* / TELEGRAM_* env."""
-    return migrate_env_to_vault(
-        "telegram",
-        _telegram_account(),
-        env_to_field=_TELEGRAM_LEGACY_ENV,
-        secure_fields=_TELEGRAM_SECURE_FIELDS,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -666,11 +640,6 @@ async def _telegram_adapter_factory() -> ChannelAdapter | None:
 
 
 if _DISPATCH_AVAILABLE:
-    # Seed the vault from any legacy DS_TELEGRAM_* / TELEGRAM_WEBHOOK_URL env
-    # vars BEFORE the factory runs so existing installs keep working without
-    # operator action. Idempotent — a second boot finds the env empty and
-    # short-circuits without touching the vault.
-    _migrate_telegram_legacy_env()
     register_channel_adapter("telegram", _telegram_adapter_factory)
 else:
     logger.warning(
@@ -740,17 +709,8 @@ async def telegram_webhook(request: Request):
 
 
 def _clear_telegram_credentials() -> None:
-    """Wipe stored Telegram credentials.
-
-    Removes every ``telegram`` DataVault connection plus any lingering
-    DS_TELEGRAM_* / TELEGRAM_* env vars (defensive — the migration normally
-    leaves those empty).
-    """
-    clear_channel_credentials(
-        fixed_keys=tuple(_TELEGRAM_LEGACY_ENV.keys()),
-        env_prefix="DS_TELEGRAM_",
-        vault_engine="telegram",
-    )
+    """Wipe every ``telegram`` DataVault connection."""
+    clear_channel_credentials(vault_engine="telegram")
 
 
 register_credential_clearer("telegram", _clear_telegram_credentials)
