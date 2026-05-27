@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from contextlib import asynccontextmanager
@@ -37,25 +38,42 @@ def _missing_server_deps() -> list[str]:
 
 
 def _reinstall_server_deps() -> bool:
-    """pip-install the bundled requirements.txt into the current
-    interpreter. Returns True on success."""
+    """Install the bundled requirements.txt into the current interpreter.
+
+    Tries `uv pip install --python <sys.executable>` first because the
+    common install path is `uv tool install anton`, which produces a
+    pip-less venv at ~/.local/share/uv/tools/anton — `python -m pip`
+    raises ``No module named pip`` there. Falls back to `python -m pip`
+    for interpreters that do ship pip (system Python, manually-created
+    venvs, the packaged Electron binary). Returns True on success.
+    """
     req = Path(__file__).parent / "requirements.txt"
     if not req.is_file():
         print(f"[server] cannot heal venv — requirements.txt not at {req}", flush=True)
         return False
-    print(f"[server] healing venv via {sys.executable} -m pip install -r {req}", flush=True)
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-q", "-r", str(req)],
-            check=True,
-        )
-        return True
-    except subprocess.CalledProcessError as exc:
-        print(f"[server] dep reinstall failed: {exc}", flush=True)
-        return False
-    except Exception as exc:
-        print(f"[server] dep reinstall crashed: {exc}", flush=True)
-        return False
+
+    attempts: list[list[str]] = []
+    uv = shutil.which("uv")
+    if uv:
+        attempts.append([uv, "pip", "install", "--python", sys.executable, "-q", "-r", str(req)])
+    attempts.append([sys.executable, "-m", "pip", "install", "-q", "-r", str(req)])
+
+    last_exc: Exception | None = None
+    for cmd in attempts:
+        print(f"[server] healing venv via {' '.join(cmd)}", flush=True)
+        try:
+            subprocess.run(cmd, check=True)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            last_exc = exc
+            print(f"[server] dep reinstall attempt failed: {exc}", flush=True)
+            continue
+        except Exception as exc:
+            print(f"[server] dep reinstall crashed: {exc}", flush=True)
+            return False
+    if last_exc is not None:
+        print(f"[server] all dep reinstall attempts failed; last error: {last_exc}", flush=True)
+    return False
 
 
 def _heal_and_reexec_if_deps_missing() -> None:
