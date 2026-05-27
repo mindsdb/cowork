@@ -49,8 +49,11 @@ async function main() {
   // BUILD_TARGET=web activates the cowork-web-root-rewrite middleware
   // in vite.config.ts which maps `/` to `/index-web.html` — so the
   // bare URL is the canonical one.
+  // Windows ships `npx` as `npx.cmd`; Node's spawn doesn't resolve the
+  // extension automatically (unlike a shell), so pick the right name
+  // per-platform.
   viteChild = spawn(
-    'npx',
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
     ['vite', 'dev', 'src/renderer', '--open', '/'],
     {
       stdio: 'inherit',
