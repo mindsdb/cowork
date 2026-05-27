@@ -436,7 +436,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     const antonDevPath = (process.env.ANTON_DEV_PATH || '').trim();
     const antonSource = antonDevPath
       ? antonDevPath
-      : 'git+[DS_GITHUB_GITHUB_1__BASE_URL]/mindsdb/anton.git';
+      : 'git+https://github.com/mindsdb/anton.git';
 
     const installArgs = [
       'tool', 'install',
