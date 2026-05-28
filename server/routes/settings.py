@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import httpx
 import urllib.error
 import urllib.request
@@ -64,14 +65,26 @@ PROVIDER_TYPE_LABELS = {
 
 # Server-owned so the UI doesn't drift from what each backend actually
 # accepts. Empty list = user must supply (openai-compatible).
+#
+# minds-cloud is MindsHub's `latest:*` alias namespace. The router
+# dispatches each alias to the actual upstream provider (Anthropic,
+# OpenAI, Google, Fireworks) — the cowork app never needs to know which
+# provider serves a given alias. Direct-provider buckets below stay on
+# concrete model IDs because they hit the providers' own APIs.
 RECOMMENDED_MODELS: dict[str, list[str]] = {
-    # MindsHub's router currently only accepts the `_reason_` / `_code_`
-    # sentinel pair — every other model name returns
-    # "Mind 'X' not found" (HTTP 500). The earlier expansion
-    # (latest:sonnet, latest:gpt, gpt-low, …) was rolled back after
-    # an end-to-end test against the live router.
-    "minds-cloud":       ["_reason_", "_code_"],
-    "anthropic":         ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
+    # Fallback list for minds-cloud. The live set is fetched from the
+    # agent's OpenAI-compatible `/v1/models` endpoint (see
+    # `_fetch_minds_models`); this static list is only used when that
+    # fetch fails (offline, missing key, route unavailable).
+    "minds-cloud": [
+        "latest:sonnet", "latest:opus", "latest:haiku",
+        "latest:gpt", "latest:gpt-low", "latest:gpt-medium",
+        "latest:gpt-high", "latest:gpt-codex",
+        "latest:gpt-mini", "latest:gpt-nano",
+        "latest:gemini", "latest:gemini-flash",
+        "latest:kimi", "latest:deepseek", "latest:qwen",
+    ],
+    "anthropic":         ["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
     "openai":            ["gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini"],
     "gemini":            ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
     "openai-compatible": [],
@@ -79,7 +92,7 @@ RECOMMENDED_MODELS: dict[str, list[str]] = {
 
 # Default planning + coding model per type. Used when modelMode == 'default'.
 RECOMMENDED_PAIR = {
-    "minds-cloud":       ("_reason_", "_code_"),
+    "minds-cloud":       ("latest:sonnet", "latest:haiku"),
     "anthropic":         ("claude-sonnet-4-6", "claude-haiku-4-5-20251001"),
     "openai":            ("gpt-5.4", "gpt-5.4-mini"),
     "gemini":            ("gemini-2.5-pro", "gemini-2.5-flash"),
@@ -91,6 +104,71 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 MINDS_API_PATH_SUFFIX = "/v1"
 
 OPENAI_FAMILY = ("openai", "gemini", "openai-compatible", "minds-cloud")
+
+
+# The agent exposes an OpenAI-compatible `/v1/models` route. We surface
+# that list in the Settings model picker so cowork tracks whatever the
+# router currently supports instead of a hand-maintained constant
+# (RECOMMENDED_MODELS["minds-cloud"] is now only the offline fallback).
+#
+# Cached so a rapid sequence of Settings opens doesn't re-hit the
+# network. Failures are cached too — with a shorter TTL — so a route
+# that isn't deployed yet (prod 404s today; only the alpha host serves
+# it) doesn't add a round-trip to every settings load.
+_MINDS_MODELS_TTL = 300.0       # successful fetch
+_MINDS_MODELS_FAIL_TTL = 30.0   # negative result (down / not deployed)
+_minds_models_cache: dict[str, tuple[float, Optional[list[str]]]] = {}
+
+
+async def _fetch_minds_models(base_url: str, api_key: str) -> Optional[list[str]]:
+    """Fetch supported model ids from the agent's OpenAI-compatible
+    `/v1/models` endpoint. `base_url` already carries the `/v1` suffix
+    (see `_base_url_for`). Returns the model-id list, or None on any
+    failure so the caller falls back to the static list."""
+    base = (base_url or "").rstrip("/")
+    if not base or not api_key:
+        return None
+
+    now = time.monotonic()
+    cached = _minds_models_cache.get(base)
+    if cached:
+        ts, val = cached
+        ttl = _MINDS_MODELS_TTL if val else _MINDS_MODELS_FAIL_TTL
+        if (now - ts) < ttl:
+            return val
+
+    def _remember(val: Optional[list[str]]) -> Optional[list[str]]:
+        _minds_models_cache[base] = (time.monotonic(), val)
+        return val
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(6.0), follow_redirects=True
+        ) as client:
+            r = await client.get(
+                f"{base}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if r.status_code >= 400:
+            logger.debug("minds /models fetch returned HTTP %s", r.status_code)
+            return _remember(None)
+        data = r.json()
+    except Exception as exc:
+        logger.debug("minds /models fetch failed: %s", exc)
+        return _remember(None)
+
+    # OpenAI shape: {"object": "list", "data": [{"id": "...", ...}]}.
+    # Accept a bare list too, defensively.
+    rows = data.get("data") if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        return _remember(None)
+    ids = [
+        str(row.get("id")).strip()
+        for row in rows
+        if isinstance(row, dict) and row.get("id")
+    ]
+    ids = [i for i in ids if i]
+    return _remember(ids or None)
 
 
 def _read_dotenv(path: Path) -> dict[str, str]:
@@ -221,16 +299,6 @@ def get_config_status() -> dict[str, Any]:
         "provider_label": PROVIDER_LABELS.get(provider, provider),
         "migrated": migrated,
     }
-
-
-# Minds Cloud uses sentinel model names (`_reason_`, `_code_`) that
-# only its OpenAI-compatible router resolves. If the user onboards via
-# Minds and later switches `ANTON_PLANNING_PROVIDER` to anthropic /
-# openai / gemini, these sentinels linger in cowork preferences and
-# the UI sends them on every request — every request then 404s
-# because the new provider doesn't know what `_reason_` is.
-def _is_minds_sentinel(model_id: str | None) -> bool:
-    return bool(model_id) and model_id.startswith("_") and model_id.endswith("_")
 
 
 def _ui_settings() -> dict[str, Any]:
@@ -689,6 +757,18 @@ async def get_settings():
     ui = _ui_settings()
     providers = _load_providers()
     model_cfg = _load_model_config()
+
+    # Overlay the agent's live `/v1/models` list onto the minds-cloud
+    # bucket. Falls back to the static list when the key/url are absent
+    # or the endpoint can't be reached.
+    recommended_models = {k: list(v) for k, v in RECOMMENDED_MODELS.items()}
+    minds_key = _get_env("ANTON_MINDS_API_KEY", "")
+    minds_url = (_get_env("ANTON_MINDS_URL", "https://api.mindshub.ai") or "").rstrip("/")
+    if minds_key and minds_url:
+        live = await _fetch_minds_models(f"{minds_url}{MINDS_API_PATH_SUFFIX}", minds_key)
+        if live:
+            recommended_models["minds-cloud"] = live
+
     return {
         "planningProvider": _get_env("ANTON_PLANNING_PROVIDER", "anthropic"),
         "planningModel":    _get_env("ANTON_PLANNING_MODEL", "claude-sonnet-4-6"),
@@ -725,7 +805,7 @@ async def get_settings():
         "modelOverrides": model_cfg["modelOverrides"],
         "providerTypes":  list(PROVIDER_TYPES),
         "providerTypeLabels": PROVIDER_TYPE_LABELS,
-        "recommendedModels": RECOMMENDED_MODELS,
+        "recommendedModels": recommended_models,
         "recommendedPair":   {k: list(v) for k, v in RECOMMENDED_PAIR.items()},
         "providerStatus": (load_state().get("preferences", {}) or {}).get("providerStatus") or {},
     }

@@ -1,4 +1,4 @@
-"""Anton-only local search for CoWork data."""
+"""Anton-only local search for Cowork data."""
 
 from __future__ import annotations
 

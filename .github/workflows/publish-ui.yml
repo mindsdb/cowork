@@ -82,12 +82,37 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         env:
           RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
+          # -e: halt on first failure (so a bad token fails here, not
+          # three commands later). pipefail: propagate failure of the
+          # `echo | gh auth login` pipe. (-u omitted on purpose — the
+          # gh-pages git steps below use `|| fallback` idioms that are
+          # fine with unset edge cases.)
+          set -eo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag }}"
           SHA256=$(cat ui-bundle.sha256)
           DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
+
+          # Fail loudly if the token secret is missing/empty. Without
+          # this the public-repo clone below still succeeds (no auth
+          # needed to read a public repo), and the failure only shows
+          # up later as a confusing 401 from `gh`.
+          if [ -z "${RELEASES_TOKEN}" ]; then
+            echo "::error::RELEASES_TOKEN secret is empty. Set a PAT (or app token) with contents:write on mindsdb/antontron-releases."
+            exit 1
+          fi
+
+          # Authenticate gh explicitly with the token. `gh` prefers the
+          # GH_TOKEN env var over a logged-in credential, so we must NOT
+          # have GH_TOKEN set here (note it's been removed from this
+          # step's env above) — otherwise `gh auth login` is a no-op and
+          # gh keeps using the env value. `gh auth status` then surfaces
+          # an invalid/expired token immediately rather than as a vague
+          # 401 three commands later.
+          unset GH_TOKEN || true
+          echo "${RELEASES_TOKEN}" | gh auth login --with-token
+          gh auth status
 
           # Clone the public releases repo
           git clone "https://x-access-token:${RELEASES_TOKEN}@github.com/mindsdb/antontron-releases.git" releases-repo

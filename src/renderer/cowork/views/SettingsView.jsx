@@ -26,23 +26,23 @@ const PROVIDER_DEFAULTS = {
   openai:              { planning: 'gpt-5.4',           coding: 'gpt-5.4-mini' },
   gemini:              { planning: 'gemini-2.5-pro',    coding: 'gemini-2.5-flash' },
   'openai-compatible': { planning: '',                  coding: '' },
-  // Minds Cloud uses sentinel model names that its OpenAI-compatible
-  // router resolves to the right backing model. `_reasoning_` for
-  // planning, `_code_` for scratchpad coding — these are the only pair
-  // the MindsHub router currently accepts. (Earlier codebase comments
-  // referenced `_reason_`; that name 4xx's against the live router.)
-  'minds-cloud':       { planning: '_reasoning_',       coding: '_code_' },
+  // Minds Cloud is MindsHub's `latest:*` alias namespace. The router
+  // dispatches each alias to the actual upstream provider; the
+  // (planning, coding) pair here mirrors `RECOMMENDED_PAIR['minds-cloud']`
+  // on the server so switching to this preset auto-fills the same defaults
+  // the backend would recommend.
+  'minds-cloud':       { planning: 'latest:sonnet',     coding: 'latest:haiku' },
 };
 
 // Known model lists per provider — surfaced as quick-pick chips below
 // the text input so users can swap models without typing.
 const PROVIDER_MODELS = {
-  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
+  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
   openai:        ['gpt-5.4', 'gpt-5.4-mini', 'o3', 'o4-mini'],
   gemini:        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
-  // Minds Cloud intentionally has no quick-picks: the planning/coding
-  // pair is fixed (`_reasoning_` / `_code_`) and gets auto-filled by
-  // applyProviderPreset, so a chip row would just be noise.
+  // Minds Cloud quick-picks come from the server's `recommendedModels`
+  // bucket (the full `latest:*` alias list) — rendered by the dedicated
+  // minds-cloud panel further down rather than this generic chip row.
 };
 
 // Per-provider credential relevance map. Drives the Required / Optional /

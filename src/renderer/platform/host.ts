@@ -52,6 +52,26 @@ export function getApiOrigin(): string {
     : window.location.origin;
 }
 
+// True when the FastAPI backend the SPA talks to lives on THIS machine
+// (loopback). The deciding factor for "can I open a server-side file
+// path locally?" — a server-returned filesystem path is only openable
+// via the OS shell when the server is the local one. When the desktop
+// app is pointed at a REMOTE Anton server, those paths live on that box,
+// so callers must fetch the file over HTTP (the artifact `serveUrl`)
+// instead of `openPath`. (Web's window.location.origin can itself be
+// localhost in dev — callers still gate on `isElectron` since the web
+// shell has no `openPath` regardless.)
+export function isLocalApiOrigin(): boolean {
+  try {
+    const origin = getApiOrigin();
+    if (!origin) return false;
+    const host = new URL(origin).hostname.replace(/^\[|\]$/g, '');
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
 // In Electron, OAuth runs through a loopback server spawned by main —
 // there is no fixed redirect URI to register, so this returns null and
 // callers should use oauthConnect() for the IPC PKCE flow instead.
@@ -392,6 +412,7 @@ export const host = {
   getPlatform,
   isMac,
   getApiOrigin,
+  isLocalApiOrigin,
   getOAuthRedirectUri,
   serverInfo,
   serverStart,

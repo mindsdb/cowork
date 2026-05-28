@@ -9,6 +9,7 @@
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { OrbitMorph } from '../components/ui';
@@ -21,7 +22,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
-import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm } from '../components/datavault/formStore';
+import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact } from '../api';
 import { openPath } from '../lib/host';
@@ -850,21 +851,6 @@ export default function ChatView({
     () => false,
   );
 
-  // On narrow viewports the rail is closed by default and the floating
-  // expand button is hidden — open the overlay when a form spec
-  // arrives so the form is reachable. Close it again if the spec
-  // goes away (submit/cancel) so the empty fullscreen aside doesn't
-  // sit on top of the chat as a blank surface.
-  useEffect(() => {
-    if (!isNarrow) return;
-    setRailNarrowOpen(!!formActive);
-  }, [isNarrow, formActive]);
-
-  // Hovering the connect-intro chat bubble highlights the form
-  // panel on the right rail. Plain local state so we don't need
-  // to lift it further; the panel reads via the `highlighted`
-  // prop we pass it below.
-  const [formHighlight, setFormHighlight] = useState(false);
   // Inline title rename — same affordance the project detail header
   // uses. Hover surfaces the kebab; Rename in the menu flips the
   // title span into an <input>; Enter commits, Esc cancels.
@@ -1349,7 +1335,30 @@ export default function ChatView({
                   />
                 );
               }
-              if (m.role === 'activity') return null; // surfaced in the rail's Progress
+              if (m.role === 'activity') {
+                // Activity rows normally live in the rail's Progress
+                // only. Exception: when this is the just-sent
+                // "thinking" placeholder AND no streaming row exists
+                // yet (some code path stripped the stub injected by
+                // `withThinkingPlaceholder`, or a future caller adds
+                // an activity without the stub), surface it inline as
+                // a thinking bubble so the chat scroll never goes
+                // silent between user-send and first SSE chunk.
+                if (m.placeholder && !streamingMsg) {
+                  return (
+                    <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false}>
+                      <div style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                      }}>
+                        <StreamCursor />
+                        <span>{m._label || 'Thinking…'}</span>
+                      </div>
+                    </AnswerTurn>
+                  );
+                }
+                return null;
+              }
               if (m._kind === 'connect_intro') {
                 // The card is clickable: clicking it re-opens the
                 // form panel when it's been closed. We stash the
@@ -1358,27 +1367,18 @@ export default function ChatView({
                 // form is currently active there's nothing to do —
                 // the panel is already on the right rail.
                 const cachedSpec = m._form_spec || null;
-                // Card click reopens the form. Two scenarios:
-                //   • Form spec is gone (user dismissed / submitted) →
-                //     re-publish the cached spec so the panel mounts again.
-                //   • Form is already active but the rail is closed
-                //     (common on phone, where the rail starts hidden) →
-                //     just slide the rail back in.
-                const reopenForm = cachedSpec
-                  ? () => {
-                      if (!formActive) setDataVaultForm(task?.id, cachedSpec);
-                      if (isNarrow) setRailNarrowOpen(true);
-                      else setRailOpen(true);
-                    }
-                  : (isNarrow && formActive
-                      ? () => setRailNarrowOpen(true)
-                      : undefined);
+                // Card click re-publishes the cached spec if the user
+                // dismissed/submitted the form — the modal re-mounts.
+                // If the form is already active the modal is visible,
+                // so no action is needed.
+                const reopenForm = cachedSpec && !formActive
+                  ? () => setDataVaultForm(task?.id, cachedSpec)
+                  : undefined;
                 return (
                   <ConnectIntroBubble
                     key={i}
                     title={m.content || 'Connect'}
                     connector={m.connector}
-                    onHoverChange={setFormHighlight}
                     onClickCard={reopenForm}
                     // Modify-flow extras: when set, the bubble
                     // renders Cancel + Disconnect buttons next to
@@ -1469,7 +1469,13 @@ export default function ChatView({
                     fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
                   }}>
                     <StreamCursor />
-                    <span>Thinking…</span>
+                    {/* `_placeholderLabel` is set by the pre-first-
+                        event stub in App.jsx `withThinkingPlaceholder`
+                        ("Creating task…" for new tasks, "Thinking…"
+                        for replies). Once flushStreamingMessage runs
+                        on the first SSE event, the new streaming row
+                        has no label and falls back to "Thinking…". */}
+                    <span>{streamingMsg._placeholderLabel || 'Thinking…'}</span>
                   </div>
                 )}
                 {streamingMsg.content && (
@@ -1681,21 +1687,6 @@ export default function ChatView({
             {Ico.panelCollapseRight(15)}
           </button>
         </div>
-        {/* Data-vault form panel — mounts when the conversation has
-            an active data-vault-form spec; the form's submit/skip/
-            cancel actions become a synthetic chat continuation that
-            re-enters the stream so anton can iterate on the form.
-            Wrapped in an error boundary so a malformed form spec
-            (or render glitch) can't blank the chat surface. */}
-        <FormErrorBoundary>
-          <DataVaultFormPanel
-            conversationId={task.id || ''}
-            onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
-            onSubmit={onSubmitDataVaultForm}
-            onNavigateToConnectors={onNavigateToConnectors}
-            highlighted={formHighlight}
-          />
-        </FormErrorBoundary>
         <ProgressBox
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
@@ -1704,19 +1695,15 @@ export default function ChatView({
             ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
             : null}
         />
-        {!formActive && (
-          <WorkingFolderBox
-            project={project}
-            isStreaming={isStreaming}
-          />
-        )}
-        {!formActive && (
-          <ContextBox
-            project={project}
-            conversationId={task?.id}
-            refreshKey={task?.messages?.length ?? 0}
-          />
-        )}
+        <WorkingFolderBox
+          project={project}
+          isStreaming={isStreaming}
+        />
+        <ContextBox
+          project={project}
+          conversationId={task?.id}
+          refreshKey={task?.messages?.length ?? 0}
+        />
       </aside>
 
       {/* keyframes for the streaming cursor */}
@@ -1742,6 +1729,45 @@ export default function ChatView({
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => setPreviewArt(updated)}
       />
+
+      {/* Data-vault connection form — rendered as a centered modal
+          overlay so it's front-and-center when a connector is picked. */}
+      {formActive && createPortal(
+        <div
+          onClick={() => clearDataVaultForm(task?.id || '')}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 200,
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(3px)',
+            WebkitBackdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(90vw, 460px)',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              borderRadius: 12,
+            }}
+          >
+            <FormErrorBoundary>
+              <DataVaultFormPanel
+                conversationId={task?.id || ''}
+                onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
+                onSubmit={onSubmitDataVaultForm}
+                onNavigateToConnectors={onNavigateToConnectors}
+              />
+            </FormErrorBoundary>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

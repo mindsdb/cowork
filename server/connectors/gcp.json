@@ -36,10 +36,18 @@
     "logo_color": "#4285F4",
     "methods": [
       {
+        "id": "browser_oauth_builtin",
+        "label": "In-Browser Connect",
+        "description": "Opens Google sign-in in your browser. No credentials required — just click Connect.",
+        "recommended": true,
+        "fields": [],
+        "hidden": true
+      },
+      {
         "id": "service-account",
         "label": "Service Account JSON",
         "description": "Paste a GCP service account key file (JSON) and your project ID. The simplest and most portable path — works with any GCP service Anton supports.",
-        "recommended": true,
+        "recommended": false,
         "how_to": "## Connect with a Service Account JSON key\n\nA service account key lets Anton authenticate as a dedicated, permission-scoped identity on your GCP project. No browser sign-in required.\n\n### Steps\n\n1. Open the [Google Cloud Console](https://console.cloud.google.com/) and select your project.\n2. Go to **IAM & Admin → Service Accounts**.\n3. Click **Create service account** (or select an existing one).\n4. Give it a descriptive name like `anton-access` and click **Create and continue**.\n5. On the **Grant access** step, assign the roles Anton needs. Common choices:\n   - **Storage Object Viewer / Storage Object Admin** for Cloud Storage\n   - **Compute Viewer** for Compute Engine\n   - **Pub/Sub Subscriber** for Pub/Sub\n   - Or **Project Viewer** for broad read-only access.\n6. Click **Done**.\n7. Open the service account, go to the **Keys** tab, and click **Add key → Create new key → JSON**.\n8. The JSON key file downloads automatically. Open it and paste its entire contents into the **Service account JSON** field below.\n9. Enter your **GCP Project ID** (visible in the top project picker bar, e.g. `my-project-123456`).\n\n### Notes\n\n- The JSON key is shown and downloadable only once. Store a backup in a secure vault.\n- If the key is compromised, go to **IAM & Admin → Service Accounts → Keys** and delete it, then create a new one.\n- Assign only the minimum roles needed for Anton's tasks — least privilege is best practice.\n- For multi-region projects, confirm the resources Anton accesses are in the region you expect.",
         "help_url": "https://cloud.google.com/iam/docs/creating-managing-service-account-keys",
         "fields": [

@@ -15,6 +15,7 @@ import Ico from '../components/Icons';
 import {
   openArtifact, revealArtifact,
   publishArtifact, unpublishArtifact,
+  artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { ArtifactViewer } from '../components/artifact';
@@ -333,6 +334,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   const isHtml = isHtmlArtifact(artifact);
   const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
+  // In the browser the artifact's address is its HTTP serve URL, not a
+  // local OS path the user can't reach. Surface that "private" URL in
+  // place of the path. Desktop keeps showing the local path.
+  const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
 
   const [hover, setHover] = useState(false);
   const kebabRef = useRef(null);
@@ -345,6 +350,16 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     if (!published) return;
     try { await host.openExternal(artifact.publishedUrl); } catch {
       window.open(artifact.publishedUrl, '_blank', 'noreferrer');
+    }
+  };
+  const onCopyPrivate = async () => {
+    if (!privateUrl) return false;
+    return copyText(privateUrl);
+  };
+  const onOpenPrivate = async () => {
+    if (!privateUrl) return;
+    try { await host.openExternal(privateUrl); } catch {
+      window.open(privateUrl, '_blank', 'noreferrer');
     }
   };
 
@@ -373,8 +388,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       tabIndex={0}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => canPreview ? onOpenViewer(artifact) : openArtifact(artifact.path)}
-      onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifact(artifact.path)); }}
+      onClick={() => canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)}
+      onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
       style={{
         position: 'relative',
         cursor: 'pointer',
@@ -588,14 +603,22 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         </span>
       </div>
 
-      {/* Surface the public URL when published; fall back to the
-          local path (ellipsis-truncated) when not — every card now
-          shows where the artifact actually lives. */}
+      {/* Surface the public URL when published; otherwise the HTTP
+          serve ("private") URL in the browser, where the artifact lives
+          on the server rather than on this machine; falling back to the
+          local OS path on desktop. Every card shows where the artifact
+          actually lives. */}
       {published ? (
         <PublishedUrlRow
           url={artifact.publishedUrl}
           onOpen={onOpenPublished}
           onCopy={onCopyUrl}
+        />
+      ) : privateUrl ? (
+        <PublishedUrlRow
+          url={privateUrl}
+          onOpen={onOpenPrivate}
+          onCopy={onCopyPrivate}
         />
       ) : (
         <LocalPathRow path={artifact.path} />
@@ -789,7 +812,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   };
   const onRowOpen = () => {
     if (canPreview) onOpenViewer?.(artifact);
-    else openArtifact(artifact.path);
+    else openArtifactFile(artifact);
   };
 
   return (
@@ -1361,7 +1384,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
                   try { host.openExternal(a.publishedUrl); }
                   catch { window.open(a.publishedUrl, '_blank', 'noreferrer'); }
                 } else {
-                  openArtifact(a.path);
+                  openArtifactFile(a);
                 }
               },
             });

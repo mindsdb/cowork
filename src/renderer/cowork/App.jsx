@@ -262,16 +262,52 @@ function removeThinkingPlaceholder(messages) {
   return messages.filter((m) => !(m.role === 'activity' && m.placeholder));
 }
 
-function withThinkingPlaceholder(messages) {
+function withThinkingPlaceholder(messages, opts = {}) {
+  // Caller-supplied label so the new-task path can read "Creating
+  // task…" while a reply uses the generic "Thinking…". Both the
+  // activity placeholder (fallback render in ChatView) and the
+  // `_streaming` stub (primary render via the existing streaming
+  // branch) carry the same string, so whichever lands in the
+  // viewport reads consistently.
+  const label = opts.label || 'Thinking…';
+  // Two rows:
+  //   1. The activity placeholder — kept so any code path that
+  //      consumes it (rail Progress card today, future surfaces) sees
+  //      the "user just sent" signal.
+  //   2. A `_streaming` stub — picked up by ChatView's existing
+  //      streaming render block (`!streamingMsg.steps?.length &&
+  //      !streamingMsg.content` branch), which renders an animated
+  //      cursor + label inline below the user's message. Without
+  //      this, the chat scroll is silent between send and the first
+  //      SSE event — fine on a warm session (~sub-second) but
+  //      painful on a brand-new task where anton's bootstrap can
+  //      take 20-30s. The stub gets stripped + replaced by the real
+  //      streaming row on the first `flushStreamingMessage` call,
+  //      at which point `_placeholderLabel` is gone and the label
+  //      naturally falls back to the default "Thinking…".
   return [
     ...removeThinkingPlaceholder(stripStreaming(messages)),
     {
       role: 'activity',
-      content: THINKING_PLACEHOLDER,
+      content: label,
       kind: 'placeholder',
       phase: 'reasoning',
       state: 'running',
       placeholder: true,
+      _label: label,
+    },
+    {
+      role: '_streaming',
+      content: '',
+      steps: [],
+      startedAt: Date.now(),
+      // 'thinking' (not 'starting') so PhaseProgress treats the turn
+      // as `isInFlight` and renders the Thinking phase row in the
+      // rail — otherwise the card falls into its "Steps appear here
+      // while Anton works" placeholder branch, which contradicts
+      // the inline cursor in the chat scroll.
+      streamStatus: 'thinking',
+      _placeholderLabel: label,
     },
   ];
 }
@@ -482,13 +518,31 @@ function mergeTasksFromServer(serverTasks, localTasks) {
   const local = Array.isArray(localTasks) ? localTasks : [];
   if (!Array.isArray(serverTasks)) return local;
   const localById = new Map(local.map((t) => [t.id, t]));
+  // Take whichever of (local, server) updatedAt is newer. A turn
+  // in flight has a fresh client stamp (handleSendInTask /
+  // handleSendFromHome) but a stale server stamp (server only
+  // bumps _meta.json on completion). Without this guard, a
+  // fetchSessions mid-stream would slide the just-revived task
+  // back down the list as soon as it lands.
+  const _newerUpdatedAt = (a, b) => {
+    const aa = Date.parse(a || '') || 0;
+    const bb = Date.parse(b || '') || 0;
+    return aa >= bb ? a : b;
+  };
   const merged = serverTasks.map((server) => {
     const l = localById.get(server.id);
     if (!l) return server;
     const lMessages = Array.isArray(l.messages) ? l.messages : [];
     const isStreaming = lMessages.some((m) => m.role === '_streaming');
     const hasLocalContent = lMessages.length > 0;
-    if (!isStreaming && !hasLocalContent) return server;
+    if (!isStreaming && !hasLocalContent) {
+      // Even without live messages, prefer the locally-bumped
+      // updatedAt if it's newer — handleSendInTask stamps the task
+      // before any stream events arrive, so a fetchSessions that
+      // races between user-click-send and the first SSE event must
+      // not overwrite the bump.
+      return { ...server, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
+    }
     return {
       ...server,
       // Local wins for the live conversation surface.
@@ -501,6 +555,7 @@ function mergeTasksFromServer(serverTasks, localTasks) {
       // Muted-datasource toggles can change while a turn streams; keep
       // the client list when present.
       disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
+      updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
     };
   });
   // Carry over local-only tasks the server hasn't seen yet (e.g. a
@@ -2017,6 +2072,11 @@ function AppCore() {
       model: selectedModel?.id ?? null,
       attachments: sendingAttachments,
       disabledConnections: disabledForSend,
+      // Stamp a client-side timestamp so the Sidebar's sort-by-
+      // updatedAt sees this task as the freshest. Without it, brand-
+      // new tasks would sort to the bottom (no updatedAt) until the
+      // server's first response back-fills the field.
+      updatedAt: new Date().toISOString(),
     };
     setTasks((prev) => [newT, ...prev]);
     setActiveTaskId(taskId);
@@ -2051,9 +2111,17 @@ function AppCore() {
         t.id === taskId
           ? {
               ...t,
-              messages: withThinkingPlaceholder([
-                { role: 'user', content: text, attachments: sendingAttachments },
-              ]),
+              messages: withThinkingPlaceholder(
+                [{ role: 'user', content: text, attachments: sendingAttachments }],
+                // New-task path: the placeholder phase is genuinely
+                // "spinning up the conversation" — anton-core has to
+                // boot the LLM session, attach memories, etc. — so
+                // calling it "Creating task…" is more truthful than
+                // "Thinking…". The reply path (handleSendInTask)
+                // uses the default label since the session is
+                // already warm by then.
+                { label: 'Creating task…' },
+              ),
             }
           : t,
       ));
@@ -2243,6 +2311,14 @@ function AppCore() {
             status: 'active',
             attachments: [...(t.attachments || []), ...sendingAttachments],
             messages: withThinkingPlaceholder([...t.messages, { role: 'user', content: text, attachments: sendingAttachments }]),
+            // "Reviving" a task (replying in an existing one) must
+            // bump updatedAt locally — the server only rewrites
+            // _meta.json when the turn completes, but we want
+            // Sidebar's sort-by-updatedAt to move this task to the
+            // top the instant the user hits send. mergeTasksFromServer
+            // keeps the higher of (local, server) updatedAt so a
+            // mid-stream fetchSessions can't regress this.
+            updatedAt: new Date().toISOString(),
           }
         : t,
     ));
@@ -2250,10 +2326,34 @@ function AppCore() {
 
     let assistantContent = '';
     let streamState = initialStreamState();
+    // `id` is the local task id we started with. If it's a temporary
+    // (`tmp-connect-…`), the server replaces it with a fresh canonical
+    // id and returns the new value via `response.created`. We adopt
+    // that id everywhere the local task is keyed — without this the
+    // server has a real conversation but the client keeps showing
+    // (and persisting in-flight refs against) the tmp- id, and the
+    // next fetchSessions would surface BOTH rows.
+    let resolvedId = id;
+    const adoptServerId = (sid) => {
+      if (!sid || sid === resolvedId) return;
+      const previousId = resolvedId;
+      resolvedId = sid;
+      setTasks((prev) => prev.map((t) =>
+        t.id === previousId || t.id === id ? { ...t, id: sid } : t,
+      ));
+      // Move the in-flight + active refs onto the new id so cancel /
+      // reconcile passes look at the right key.
+      if (activeStreamingTaskIdRef.current === previousId) {
+        activeStreamingTaskIdRef.current = sid;
+      }
+      markInFlightDone(previousId);
+      markInFlight(sid);
+      setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+    };
 
     const flushStreaming = () => {
       setTasks((prev) => prev.map((t) => {
-        if (t.id !== id) return t;
+        if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
@@ -2283,12 +2383,18 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
+        // Adopt the server's canonical id as soon as it lands. The
+        // server's `chat_stream` strips `tmp-` prefixes and mints a
+        // fresh id; the new value rides on `response.created`.
+        const sid = ev?.conversation_id || ev?.response?.conversation_id;
+        if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk) {
+      onChunk(chunk, sid) {
+        if (sid) adoptServerId(sid);
         // The adapter accumulates bodyText already; this callback is
         // redundant for content but cheap and useful as a fallback if
         // the adapter ever fails to parse a delta.
@@ -2298,13 +2404,14 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
-        markInFlightDone(id);
+        markInFlightDone(resolvedId);
+        if (resolvedId !== id) markInFlightDone(id);
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
+          if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           return finalContent
@@ -2318,12 +2425,13 @@ function AppCore() {
         }));
         if (finalContent) {
           // Sidecar — see persistTurnState comment for the full schema.
-          persistTurnState(id, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
         // Drain the next queued message for this task (if any) so a
         // user who fired multiple prompts mid-stream gets each one
-        // sent in order.
+        // sent in order. Keyed off the original local id since that's
+        // what enqueueMessage used while the adoption was pending.
         const next = popQueueHead(id);
         if (next) {
           Promise.resolve().then(() => handleSendInTask(next.text));
@@ -2333,9 +2441,10 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
-        markInFlightDone(id);
+        markInFlightDone(resolvedId);
+        if (resolvedId !== id) markInFlightDone(id);
         setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
+          if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           return { ...t, status: 'error', messages: [...msgs, { role: 'error', content: message || 'Anton could not complete this task.', code: event?.code }] };
         }));
@@ -2367,10 +2476,29 @@ function AppCore() {
 
     let assistantContent = '';
     let streamState = initialStreamState();
+    // See handleSendInTask for the rationale — the datavault stream's
+    // `response.created` carries the server-minted id when the client
+    // sent a `tmp-connect-…` tmp id. Adopting it here keeps the local
+    // task keyed against the same id the server is persisting under,
+    // so a subsequent fetchSessions doesn't end up with two rows for
+    // the same conversation.
+    let resolvedId = id;
+    const adoptServerId = (sid) => {
+      if (!sid || sid === resolvedId) return;
+      const previousId = resolvedId;
+      resolvedId = sid;
+      setTasks((prev) => prev.map((t) =>
+        t.id === previousId || t.id === id ? { ...t, id: sid } : t,
+      ));
+      if (activeStreamingTaskIdRef.current === previousId) {
+        activeStreamingTaskIdRef.current = sid;
+      }
+      setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+    };
 
     const flushStreaming = () => {
       setTasks((prev) => prev.map((t) => {
-        if (t.id !== id) return t;
+        if (t.id !== id && t.id !== resolvedId) return t;
         const msgs = removeThinkingPlaceholder(stripStreaming(t.messages));
         return { ...t, messages: [...msgs, {
           role: '_streaming',
@@ -2385,18 +2513,26 @@ function AppCore() {
     activeStreamingTaskIdRef.current = id;
     activeStreamCtrlRef.current = streamDataVaultSubmission({
       formId,
-      conversationId: id,
+      // Pass the local id only when it's a real server id — otherwise
+      // send null so the server mints a fresh canonical id. (The
+      // server has a defensive guard for this too, but skipping the
+      // tmp- id at the wire saves a round-trip's worth of confusion.)
+      conversationId: id && !String(id).startsWith('tmp-') ? id : null,
       formSpec,
       values,
       skipped,
       onEvent(ev) {
+        const sid = ev?.conversation_id || ev?.response?.conversation_id;
+        if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk) {
+      onChunk(chunk, sid) {
+        if (sid) adoptServerId(sid);
         assistantContent += chunk;
       },
-      onDone() {
+      onDone(sid) {
+        if (sid) adoptServerId(sid);
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalContent = streamState.bodyText || assistantContent;
@@ -2404,7 +2540,7 @@ function AppCore() {
         const finalStartedAt = streamState.startedAt;
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
+          if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
           return finalContent
@@ -2417,7 +2553,7 @@ function AppCore() {
             : { ...t, status: 'idle', messages: msgs };
         }));
         if (finalContent) {
-          persistTurnState(id, assistantTurnIndex, finalSteps, finalStartedAt);
+          persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
         }
         // A successful save changes the connectors list — refetch
         // so the Connect Apps and Data page reflects it immediately.
@@ -2429,7 +2565,7 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeStreamingTaskIdRef.current = null;
         setTasks((prev) => prev.map((t) => {
-          if (t.id !== id) return t;
+          if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           return { ...t, status: 'error', messages: [...msgs, {
             role: 'error',
@@ -2444,7 +2580,7 @@ function AppCore() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleCreateProject = async ({ name, _alreadyCreated }) => {
+  const handleCreateProject = async ({ name, _alreadyCreated, _inline }) => {
     // The new-project modal does the create + anton.md write +
     // file uploads in one atomic flow; when it calls back here it
     // sets `_alreadyCreated` so we skip the duplicate POST and just
@@ -2453,13 +2589,19 @@ function AppCore() {
       ? { name }
       : await createProject(name);
     const latest = await fetchProjects();
+    let selected = project;
     if (Array.isArray(latest)) {
       setProjects(latest);
-      const selected = latest.find((p) => p.name === project.name) || project;
+      selected = latest.find((p) => p.name === project.name) || project;
       setSelectedProject(selected);
     }
-    setRoute('projects');
-    return project;
+    // `_inline` is set by the home composer's "+ New project" row —
+    // the user is mid-task and shouldn't be teleported to the
+    // projects grid just because they named a project for the
+    // pending prompt. All other call sites (the modal, the projects
+    // grid card) already live on or want to land on /projects.
+    if (!_inline) setRoute('projects');
+    return selected;
   };
 
   const handlePinTask = async (task) => {
@@ -2508,7 +2650,12 @@ function AppCore() {
     setPins((prev) => prev.filter((p) => p.id !== taskId));
     if (activeTaskId === taskId) {
       setActiveTaskId(null);
-      setRoute('home');
+      // Only fall back to home when we're *viewing* the task that
+      // just got deleted — leaving the chat view on a phantom id
+      // would be incoherent. From any other surface (project view,
+      // scheduled, settings, etc.) the user expects to stay where
+      // they were and just see the row disappear from the list.
+      if (route === 'task') setRoute('home');
     }
     // Skip the server call for tasks that never got persisted (still
     // wearing a tmp- id from before the first stream chunk arrived).
@@ -2898,6 +3045,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
+            onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={() => setRoute('settings')}

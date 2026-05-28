@@ -821,6 +821,7 @@ These are written to `~/.anton/.env` by the app and read by Anton at startup:
 | `ANTON_PLANNING_MODEL`          | Settings    | Model for planning tasks            |
 | `ANTON_CODING_MODEL`            | Settings    | Model for coding tasks              |
 | `ANTON_MEMORY_MODE`             | Settings    | Memory mode (autopilot/copilot/off) |
+| `ANTON_LANGFUSE_HEADERS`        | Manual      | Set to `1` to emit Langfuse-* headers on openai-compatible LLM calls (auto-enabled for MindsHub) |
 | `DEV_MODE`                      | Manual      | Renderer source override for developers (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
 | `UI_UPDATE_MODE`                | Settings    | OTA update behavior (`auto` = apply silently, `manual` = show banner; default `manual`) |
 

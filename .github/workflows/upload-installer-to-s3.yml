@@ -27,9 +27,6 @@ jobs:
   upload:
     runs-on: mdb-prod
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -110,10 +107,10 @@ jobs:
               ;;
             stable)
               upload "$SRC" "${PREFIX}/snapshots/${NAME}"
+              upload "$SRC" "${PREFIX}/anton-latest.${EXT}"
               ;;
             prod)
-              VERSION=$(node -p "require('./package.json').version")
-              upload "$SRC" "${PREFIX}/anton-${VERSION}.${EXT}"
+              upload "$SRC" "${PREFIX}/${NAME}"
               upload "$SRC" "${PREFIX}/anton-latest.${EXT}"
               ;;
             *)

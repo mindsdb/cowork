@@ -33,10 +33,18 @@
     "logo_color": "#E37400",
     "methods": [
       {
+        "id": "browser_oauth_builtin",
+        "label": "In-Browser Connect",
+        "description": "Opens Google sign-in in your browser. No credentials required — just click Connect.",
+        "recommended": true,
+        "fields": [],
+        "hidden": true
+      },
+      {
         "id": "oauth",
         "label": "Sign in with Google (OAuth 2.0)",
         "description": "Opens a browser consent screen so Anton can read your GA4 properties. Requires setting up a Google Cloud OAuth client — steps below. No passwords stored, revocable from your Google Account at any time.",
-        "recommended": true,
+        "recommended": false,
         "submit_action": "oauth_launch",
         "oauth": {
           "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",

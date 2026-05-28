@@ -27,6 +27,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -312,6 +313,95 @@ def _published_url_for(folder: Path, primary: Path | None) -> str:
     return ""
 
 
+# ─── Stable HTTP serving ─────────────────────────────────────────────────
+#
+# Origin-relative URLs that serve an artifact's files straight off disk:
+#
+#   GET /v1/artifacts/serve/<project_name>/<rel_path_under_.anton/artifacts>
+#
+# Unlike the token-keyed `preview-asset` flow, this is STATELESS — the
+# project + path are resolved at request time, so there's nothing to
+# register, nothing to keep in sync as projects come and go, and the
+# URL is stable + shareable. Origin-relative means it resolves against
+# whatever host the browser is on: 127.0.0.1:26866 in the desktop
+# shell, the public origin in the web deployment. No 127.0.0.1 ever
+# leaks into a URL.
+#
+# Access control is handled entirely by the auth proxy in front of the
+# deployment (it gates every endpoint, this one included), so the route
+# carries no auth logic — same trust model as the rest of /v1/*. The
+# only thing it enforces is that you can't escape a registered
+# project's artifacts tree (project allowlist + path-traversal guard).
+
+
+def _project_artifacts_base(project_name: str) -> Path | None:
+    """Resolve a project NAME to its `<base>/.anton/artifacts` dir, but
+    only when it maps to a registered project (allowlist). Returns None
+    for unknown projects or anything that looks like a path-traversal
+    attempt in the name itself."""
+    if (not project_name or "\x00" in project_name
+            or "/" in project_name or "\\" in project_name
+            or project_name in (".", "..")):
+        return None
+    registered = {p for p in _registered_project_dirs()}
+    try:
+        candidate = projects_store.project_path(project_name).resolve(strict=False)
+    except (OSError, ValueError):
+        return None
+    if candidate not in registered:
+        return None
+    base = candidate / ".anton" / "artifacts"
+    return base if base.is_dir() else None
+
+
+def _serve_url_for(path: str | Path) -> str:
+    """Origin-relative `/v1/artifacts/serve/...` URL for a file that
+    lives under some registered project's `.anton/artifacts` tree.
+    Returns "" when the path isn't inside such a tree (e.g. an artifact
+    whose folder has no primary file yet, so `path` is the folder)."""
+    try:
+        p = Path(path).resolve(strict=False)
+    except (OSError, ValueError):
+        return ""
+    for project_dir in _registered_project_dirs():
+        base = (project_dir / ".anton" / "artifacts")
+        try:
+            rel = p.relative_to(base.resolve())
+        except (ValueError, OSError):
+            continue
+        if not rel.parts:
+            return ""  # the path IS the artifacts dir, not a file under it
+        rel_str = "/".join(quote(part) for part in rel.parts)
+        return f"/v1/artifacts/serve/{quote(project_dir.name)}/{rel_str}"
+    return ""
+
+
+@router.get("/serve/{project_name}/{file_path:path}")
+def serve_artifact(project_name: str, file_path: str):
+    """Serve a file from `<project>/.anton/artifacts/<file_path>` over
+    HTTP. Stateless, origin-relative, frame-able (no X-Frame-Options) so
+    the in-app iframe and a plain new-tab open both work in the web
+    deployment without round-tripping a publish to the external host."""
+    base = _project_artifacts_base(project_name)
+    if base is None:
+        raise HTTPException(status_code=404, detail="Unknown project")
+    try:
+        target = (base / file_path).resolve()
+        target.relative_to(base.resolve())
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid artifact path") from exc
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Artifact file not found")
+    media_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    # Deliberately do NOT set X-Frame-Options — the in-app preview
+    # frames this same-origin. The viewer's iframe sandbox already
+    # drops `allow-same-origin`, so framing can't be abused to read the
+    # API with the user's session.
+    return FileResponse(target, media_type=media_type, headers={
+        "Cache-Control": "private, max-age=60",
+    })
+
+
 # ─── Listing ───────────────────────────────────────────────────────────────
 
 
@@ -376,6 +466,9 @@ async def list_artifacts(project_path: str | None = Query(default=None)):
             # show a small "auto" hint in either direction if useful.
             "primary": meta.get("primary") or None,
             "publishedUrl": _published_url_for(folder, primary),
+            # Origin-relative URL the web client can open / iframe
+            # directly. "" when the artifact has no primary file yet.
+            "serveUrl": _serve_url_for(primary_path),
             "_sortTs": sort_ts,
         })
 
@@ -537,6 +630,11 @@ async def preview_mount(req: PreviewMountRequest):
         "token": token,
         "entry": artifact.name,
         "relUrl": f"/artifacts/preview-asset/{token}/{artifact.name}",
+        # Stateless, stable, shareable URL for the same file. Preferred
+        # by the client over the token `relUrl` — works identically in
+        # desktop + web and survives restarts. `relUrl` is kept for
+        # back-compat / as a fallback when serveUrl can't be computed.
+        "serveUrl": _serve_url_for(artifact),
         "publishedUrl": published_url,
     }
 
