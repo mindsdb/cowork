@@ -199,7 +199,7 @@ def _safe_artifact_dir(raw_path: str) -> Path:
         raise HTTPException(status_code=400, detail="Invalid artifact path") from exc
     for root in _scan_artifact_dirs():
         try:
-            candidate.relative_to(root)
+            candidate.relative_to(root.resolve())
         except ValueError:
             continue
         return candidate

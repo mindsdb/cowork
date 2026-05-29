@@ -179,13 +179,23 @@ def rollback(
         if not root:
             raise RuntimeError("No git repo found")
 
-        # Reject any commit_sha that could be interpreted as an option
-        # (e.g. `--upload-pack=...`). Real SHAs and refnames satisfy the
-        # allowlist; everything else short-circuits before reaching git.
         safe_sha = _safe_ref(commit_sha, kind="commit_sha")
 
         rel = str(artifact_folder.relative_to(root))
-        rc, out = _git(["checkout", safe_sha, "--", rel], cwd=root)
+
+        rc, hist = _git(["log", "--pretty=format:%H", "--", rel], cwd=root)
+        history = hist.split() if rc == 0 else []
+        target = next(
+            (h for h in history if h == safe_sha or h.startswith(safe_sha)),
+            None,
+        )
+        if not target:
+            raise RuntimeError("commit_sha not found in artifact history")
+
+        # `--end-of-options` guarantees git treats `target` as a revision
+        # even if a future history ever produced a `-`-leading token, and
+        # `--` keeps `rel` a pathspec.
+        rc, out = _git(["checkout", "--end-of-options", target, "--", rel], cwd=root)
         if rc != 0:
             raise RuntimeError(f"git checkout failed: {out}")
 
@@ -235,7 +245,9 @@ def push(project_dir: Path, remote: str = "origin", branch: str = "HEAD") -> boo
         # options like `--upload-pack=…`.
         safe_remote = _safe_ref(remote, kind="remote")
         safe_branch = _safe_ref(branch, kind="branch")
-        rc, out = _git(["push", safe_remote, safe_branch], cwd=root)
+        rc, out = _git(
+            ["push", "--end-of-options", safe_remote, safe_branch], cwd=root
+        )
         if rc != 0:
             logger.warning("git push failed: %s", out)
             return False
