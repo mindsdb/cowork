@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import mimetypes
+import os
 import subprocess
 import sys
 import time
@@ -182,10 +183,7 @@ def _safe_artifact_dir(raw_path: str) -> Path:
     query string must run it through here before doing anything with it.
     Resolves the path, then requires it to live under one of the
     `_scan_artifact_dirs()` roots — i.e. inside an allowlisted project's
-    `.anton/artifacts/` tree. The CodeQL `py/path-injection` analyzer
-    recognises the `resolve()` + `relative_to(root)` pair as a sanitizer,
-    same as `_registered_project_dirs()` above.
-
+    `.anton/artifacts/` tree.
     Returns the resolved Path on success. Raises HTTPException(400) on
     null bytes / malformed inputs and HTTPException(404) when the path
     is outside the allowlisted artifact roots — both phrased neutrally
@@ -193,16 +191,17 @@ def _safe_artifact_dir(raw_path: str) -> Path:
     """
     if not isinstance(raw_path, str) or not raw_path or "\x00" in raw_path:
         raise HTTPException(status_code=400, detail="Invalid artifact path")
-    try:
-        candidate = Path(raw_path).expanduser().resolve(strict=False)
-    except (OSError, ValueError, RuntimeError) as exc:
-        raise HTTPException(status_code=400, detail="Invalid artifact path") from exc
+
+    normalized = os.path.normpath(os.path.expanduser(raw_path))
     for root in _scan_artifact_dirs():
-        try:
-            candidate.relative_to(root.resolve())
-        except ValueError:
-            continue
-        return candidate
+        root_str = os.path.normpath(str(root))
+        if normalized == root_str or normalized.startswith(root_str + os.sep):
+            try:
+                resolved = Path(normalized).resolve(strict=False)
+                resolved.relative_to(root.resolve())
+            except (OSError, ValueError, RuntimeError):
+                raise HTTPException(status_code=404, detail="Artifact folder not found")
+            return resolved
     raise HTTPException(status_code=404, detail="Artifact folder not found")
 
 
