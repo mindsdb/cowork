@@ -9,6 +9,7 @@
    from CSS vars so the panel reads correctly in both light and dark themes. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { OrbitMorph } from '../components/ui';
@@ -21,7 +22,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
-import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm } from '../components/datavault/formStore';
+import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
 import { revealArtifact } from '../api';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
@@ -327,85 +328,69 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-function UserTurn({ content, attachments, time, onDelete }) {
-  const [hover, setHover] = useState(false);
-  const [trashHover, setTrashHover] = useState(false);
+function UserTurn({ content, attachments, time, onDelete, onEdit }) {
+  // Hover affordances are CSS now (`.user-turn:hover .user-turn-action`),
+  // so no useState flags here. Edit/Trash stack just outside the bubble's
+  // right edge — user messages are right-aligned, so the toolbar belongs
+  // on the same side as the speaker (Linear / Slack DM pattern). The
+  // `has-meta` / `is-stacked` modifiers raise the buttons over the meta
+  // line and over each other when both are present.
+  const editClass =
+    'user-turn-action'
+    + (onDelete ? ' is-stacked' : (time ? ' has-meta' : ''));
+  const trashClass =
+    'user-turn-action user-turn-action--danger'
+    + (time ? ' has-meta' : '');
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'flex-end',
-        position: 'relative',
-      }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <div style={{
-        maxWidth: '78%', display: 'flex', flexDirection: 'column', gap: 8,
-        alignItems: 'flex-end',
-        position: 'relative',
-      }}>
+    <div className="user-turn">
+      <div className="user-turn-inner">
+        {onEdit && (
+          <button
+            type="button"
+            className={editClass}
+            onClick={() => onEdit(content)}
+            title="Edit and resend"
+            aria-label="Edit and resend this message"
+          >
+            {Ico.edit ? Ico.edit(13) : Ico.pencil ? Ico.pencil(13) : Ico.code(13)}
+          </button>
+        )}
         {onDelete && (
           <button
             type="button"
+            className={trashClass}
             onClick={onDelete}
-            onMouseEnter={() => setTrashHover(true)}
-            onMouseLeave={() => setTrashHover(false)}
             title="Delete this message"
             aria-label="Delete this message"
-            style={{
-              position: 'absolute',
-              // Just outside the bubble's bottom-left edge.
-              left: -32,
-              bottom: time ? 18 : 0,
-              width: 24, height: 24, borderRadius: 6,
-              background: 'transparent',
-              border: 0,
-              display: 'inline-grid',
-              placeItems: 'center',
-              cursor: 'pointer',
-              color: trashHover ? 'var(--danger)' : 'var(--ink-4)',
-              opacity: hover ? 1 : 0,
-              pointerEvents: hover ? 'auto' : 'none',
-              transition: 'opacity 140ms ease, color 140ms ease',
-            }}
           >
             {Ico.trash(13)}
           </button>
         )}
-        <div style={{
-          background: T.surface,
-          border: `1px solid ${T.line}`,
-          borderRadius: 18,
-          padding: '14px 18px',
-          fontFamily: FONT_BODY,
-          fontSize: 14.5, lineHeight: 1.55, color: T.ink,
-          boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-          whiteSpace: 'pre-wrap',
-          userSelect: 'text',
-        }}>
-          {content}
+        <div className="user-turn-bubble">
+          {/* User messages flow through the same markdown pipeline as
+              assistant turns so fenced code blocks, bold/italic, lists,
+              etc. typed in the composer render properly. Forms and
+              charts are gated off so a user typing a special fence in
+              the composer can't trigger the side-effect renderers
+              reserved for assistant output. */}
+          <MarkdownContent
+            text={content}
+            variant="user"
+            enableForms={false}
+            enableCharts={false}
+          />
         </div>
         {attachments?.map((a) => (
-          <div key={a.id} style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: T.surface, border: `1px solid ${T.line}`,
-            borderRadius: 12, padding: '8px 12px',
-            fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink2,
-          }}>
-            <span style={{ color: T.ink3, display: 'inline-flex' }}>
+          <div key={a.id} className="user-turn-attachment">
+            <span className="user-turn-attachment-icon">
               {userTurnAttachmentIcon(a)}
             </span>
-            <span style={{ color: T.ink }}>{userTurnAttachmentLabel(a)}</span>
-            <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4 }}>
-              {userTurnAttachmentMeta(a)}
-            </span>
+            <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+            <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
           </div>
         ))}
         {time && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
-            you · {time}
-          </span>
+          <span className="user-turn-meta">you · {time}</span>
         )}
       </div>
     </div>
@@ -463,7 +448,7 @@ function TextBlock({ text, id, complete = true, conversationId = null }) {
   // Full markdown rendering — GFM tables, lists, code blocks (with
   // chartjs/chart and data-vault-form support), links, etc. via
   // react-markdown + our MarkdownContent override map.
-  return <MarkdownContent text={text} id={id} complete={complete} conversationId={conversationId} />;
+  return <MarkdownContent text={text} id={id} complete={complete} conversationId={conversationId} isAssistant />;
 }
 
 // Convert an artifact step (from the SSE adapter, badge='Artifact')
@@ -522,17 +507,23 @@ function ArtifactCard({ artifact, onOpen }) {
     statusTimerRef.current = setTimeout(() => setStatus(null), kind === 'ok' ? 1800 : 3200);
   };
 
-  // Match the Working folder card's behavior: HTML opens the in-app
-  // iframe viewer (so it can publish/unpublish + handle assets);
-  // anything else goes to the OS handler via the Electron bridge.
-  const isHtml = (artifact.ext || '').toLowerCase() === '.html'
-    || (path || '').toLowerCase().endsWith('.html');
+  // Match the Working folder card's behavior: HTML and text artifacts
+  // (.md/.txt/.csv) open the in-app viewer — HTML via sandboxed iframe,
+  // text via inline markdown / table / preformatted render. Anything
+  // else falls through to the OS handler via the Electron bridge.
+  const lcExt = (artifact.ext || '').toLowerCase();
+  const lcPath = (path || '').toLowerCase();
+  const isHtml = lcExt === '.html' || lcPath.endsWith('.html');
+  const _INLINE_TEXT_EXTS = ['.md', '.txt', '.csv'];
+  const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
+    || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
+  const canPreviewInline = isHtml || isInlineText;
   const handleOpen = async () => {
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
       return;
     }
-    if (isHtml && onOpen) {
+    if (canPreviewInline && onOpen) {
       onOpen(artifact);
       return;
     }
@@ -754,7 +745,10 @@ function CrumbButton({ label, onClick, title, maxWidth }) {
         cursor: 'pointer',
         background: 'transparent',
         border: 0,
-        outline: 0,
+        // `outline: 0` removed — global rule
+        // `button:focus:not(:focus-visible) { outline: none }` already
+        // suppresses the mouse-click ring while preserving the
+        // keyboard-focus ring for WCAG 2.4.7.
         font: 'inherit',
         fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
         letterSpacing: '0.04em', color: T.ink3,
@@ -817,19 +811,25 @@ export default function ChatView({
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
+  // Composer prefill — set by clicking Edit on a user message.
+  // `bump` is a monotonically-increasing nonce so the Composer's
+  // sync effect runs even when re-editing the same text.
+  const [composerPrefill, setComposerPrefill] = useState({ text: '', bump: 0 });
   // Inline rail only active on wide screens.
   const effectiveRailOpen = !isNarrow && railOpen;
   // Narrow-screen overlay rail.
   const railOverlayOpen = isNarrow && railNarrowOpen;
   // Step id whose scratchpad cells are visible in the modal. null = closed.
   const [openScratchpadStepId, setOpenScratchpadStepId] = useState(null);
-  // Inline ArtifactCard → viewer. HTML artifacts open in the in-app
-  // iframe modal (matching the Working folder card's behaviour); other
-  // types route through the Electron OS handler via openPath.
+  // Inline ArtifactCard → viewer. HTML artifacts open in the sandboxed
+  // iframe modal; text artifacts (.md/.txt/.csv) open the same viewer
+  // but render via the inline text path (no iframe, no OS handoff).
+  // Anything else still routes through the Electron OS handler via
+  // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
   const handleArtifactOpen = (artifact) => {
-    // The card already routes non-HTML artifacts to the OS; this only
-    // fires for HTML, so we can dispatch straight to the viewer.
+    // The card already filters: it only calls onOpen for previewable
+    // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -850,21 +850,6 @@ export default function ChatView({
     () => false,
   );
 
-  // On narrow viewports the rail is closed by default and the floating
-  // expand button is hidden — open the overlay when a form spec
-  // arrives so the form is reachable. Close it again if the spec
-  // goes away (submit/cancel) so the empty fullscreen aside doesn't
-  // sit on top of the chat as a blank surface.
-  useEffect(() => {
-    if (!isNarrow) return;
-    setRailNarrowOpen(!!formActive);
-  }, [isNarrow, formActive]);
-
-  // Hovering the connect-intro chat bubble highlights the form
-  // panel on the right rail. Plain local state so we don't need
-  // to lift it further; the panel reads via the `highlighted`
-  // prop we pass it below.
-  const [formHighlight, setFormHighlight] = useState(false);
   // Inline title rename — same affordance the project detail header
   // uses. Hover surfaces the kebab; Rename in the menu flips the
   // title span into an <input>; Enter commits, Esc cancels.
@@ -1295,6 +1280,7 @@ export default function ChatView({
           marginBottom: 25,
           background: 'transparent',
           WebkitAppRegion: 'no-drag',
+          userSelect: 'text',
         }}>
           <div style={{
             maxWidth: 720, margin: '0 auto',
@@ -1335,10 +1321,43 @@ export default function ChatView({
                     attachments={m.attachments}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    onEdit={(text) => {
+                      // Pull the message text back into the composer
+                      // for refine-and-resend. Each click bumps the
+                      // nonce so identical text re-fills the input
+                      // even after the user has cleared it.
+                      setComposerPrefill((prev) => ({
+                        text,
+                        bump: (prev?.bump || 0) + 1,
+                      }));
+                    }}
                   />
                 );
               }
-              if (m.role === 'activity') return null; // surfaced in the rail's Progress
+              if (m.role === 'activity') {
+                // Activity rows normally live in the rail's Progress
+                // only. Exception: when this is the just-sent
+                // "thinking" placeholder AND no streaming row exists
+                // yet (some code path stripped the stub injected by
+                // `withThinkingPlaceholder`, or a future caller adds
+                // an activity without the stub), surface it inline as
+                // a thinking bubble so the chat scroll never goes
+                // silent between user-send and first SSE chunk.
+                if (m.placeholder && !streamingMsg) {
+                  return (
+                    <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false}>
+                      <div style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                      }}>
+                        <StreamCursor />
+                        <span>{m._label || 'Thinking…'}</span>
+                      </div>
+                    </AnswerTurn>
+                  );
+                }
+                return null;
+              }
               if (m._kind === 'connect_intro') {
                 // The card is clickable: clicking it re-opens the
                 // form panel when it's been closed. We stash the
@@ -1347,27 +1366,18 @@ export default function ChatView({
                 // form is currently active there's nothing to do —
                 // the panel is already on the right rail.
                 const cachedSpec = m._form_spec || null;
-                // Card click reopens the form. Two scenarios:
-                //   • Form spec is gone (user dismissed / submitted) →
-                //     re-publish the cached spec so the panel mounts again.
-                //   • Form is already active but the rail is closed
-                //     (common on phone, where the rail starts hidden) →
-                //     just slide the rail back in.
-                const reopenForm = cachedSpec
-                  ? () => {
-                      if (!formActive) setDataVaultForm(task?.id, cachedSpec);
-                      if (isNarrow) setRailNarrowOpen(true);
-                      else setRailOpen(true);
-                    }
-                  : (isNarrow && formActive
-                      ? () => setRailNarrowOpen(true)
-                      : undefined);
+                // Card click re-publishes the cached spec if the user
+                // dismissed/submitted the form — the modal re-mounts.
+                // If the form is already active the modal is visible,
+                // so no action is needed.
+                const reopenForm = cachedSpec && !formActive
+                  ? () => setDataVaultForm(task?.id, cachedSpec)
+                  : undefined;
                 return (
                   <ConnectIntroBubble
                     key={i}
                     title={m.content || 'Connect'}
                     connector={m.connector}
-                    onHoverChange={setFormHighlight}
                     onClickCard={reopenForm}
                     // Modify-flow extras: when set, the bubble
                     // renders Cancel + Disconnect buttons next to
@@ -1458,7 +1468,13 @@ export default function ChatView({
                     fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
                   }}>
                     <StreamCursor />
-                    <span>Thinking…</span>
+                    {/* `_placeholderLabel` is set by the pre-first-
+                        event stub in App.jsx `withThinkingPlaceholder`
+                        ("Creating task…" for new tasks, "Thinking…"
+                        for replies). Once flushStreamingMessage runs
+                        on the first SSE event, the new streaming row
+                        has no label and falls back to "Thinking…". */}
+                    <span>{streamingMsg._placeholderLabel || 'Thinking…'}</span>
                   </div>
                 )}
                 {streamingMsg.content && (
@@ -1593,6 +1609,7 @@ export default function ChatView({
             hideMeta
             streaming={isStreaming}
             onStop={onStop}
+            prefill={composerPrefill}
           />
         </div>
       </div>
@@ -1669,21 +1686,6 @@ export default function ChatView({
             {Ico.panelCollapseRight(15)}
           </button>
         </div>
-        {/* Data-vault form panel — mounts when the conversation has
-            an active data-vault-form spec; the form's submit/skip/
-            cancel actions become a synthetic chat continuation that
-            re-enters the stream so anton can iterate on the form.
-            Wrapped in an error boundary so a malformed form spec
-            (or render glitch) can't blank the chat surface. */}
-        <FormErrorBoundary>
-          <DataVaultFormPanel
-            conversationId={task.id || ''}
-            onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
-            onSubmit={onSubmitDataVaultForm}
-            onNavigateToConnectors={onNavigateToConnectors}
-            highlighted={formHighlight}
-          />
-        </FormErrorBoundary>
         <ProgressBox
           steps={railSteps}
           streamStatus={streamingMsg?.streamStatus}
@@ -1692,19 +1694,15 @@ export default function ChatView({
             ? setOpenScratchpadStepId(prefixId(railMsgKey, step.id))
             : null}
         />
-        {!formActive && (
-          <WorkingFolderBox
-            project={project}
-            isStreaming={isStreaming}
-          />
-        )}
-        {!formActive && (
-          <ContextBox
-            project={project}
-            conversationId={task?.id}
-            refreshKey={task?.messages?.length ?? 0}
-          />
-        )}
+        <WorkingFolderBox
+          project={project}
+          isStreaming={isStreaming}
+        />
+        <ContextBox
+          project={project}
+          conversationId={task?.id}
+          refreshKey={task?.messages?.length ?? 0}
+        />
       </aside>
 
       {/* keyframes for the streaming cursor */}
@@ -1730,6 +1728,45 @@ export default function ChatView({
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => setPreviewArt(updated)}
       />
+
+      {/* Data-vault connection form — rendered as a centered modal
+          overlay so it's front-and-center when a connector is picked. */}
+      {formActive && createPortal(
+        <div
+          onClick={() => clearDataVaultForm(task?.id || '')}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 200,
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(3px)',
+            WebkitBackdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(90vw, 460px)',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              borderRadius: 12,
+            }}
+          >
+            <FormErrorBoundary>
+              <DataVaultFormPanel
+                conversationId={task?.id || ''}
+                onContinue={(payload) => onSend?.(payload?.text || '[form action]')}
+                onSubmit={onSubmitDataVaultForm}
+                onNavigateToConnectors={onNavigateToConnectors}
+              />
+            </FormErrorBoundary>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { host } from '../platform/host';
 
 interface Step {
   id: string;
@@ -37,33 +38,33 @@ export default function Setup({
   // through the same `handleInstall` so an `error → retry` flow
   // re-runs the same code path.
   useEffect(() => {
-    void window.antontron.startInstall();
+    void host.startInstall();
   }, []);
 
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
     unsubs.push(
-      window.antontron.onInstallProgress((newSteps) => {
+      host.onInstallProgress((newSteps) => {
         setSteps(newSteps);
       })
     );
 
     unsubs.push(
-      window.antontron.onInstallLog((msg) => {
+      host.onInstallLog((msg) => {
         setLogs((prev) => prev + msg);
       })
     );
 
     unsubs.push(
-      window.antontron.onInstallDone(() => {
+      host.onInstallDone(() => {
         setIsCancelling(false);
         setPhase('done');
       })
     );
 
     unsubs.push(
-      window.antontron.onInstallError((err) => {
+      host.onInstallError((err) => {
         setIsCancelling(false);
         setPhase('error');
         setErrorMsg(err);
@@ -71,7 +72,7 @@ export default function Setup({
     );
 
     unsubs.push(
-      window.antontron.onInstallCancelled(() => {
+      host.onInstallCancelled(() => {
         setIsCancelling(false);
         // No "ready" phase to fall back to — surface the cancel as
         // an error state with a Retry button so the user can try
@@ -95,12 +96,12 @@ export default function Setup({
     setPhase('installing');
     setLogs('');
     setErrorMsg('');
-    await window.antontron.startInstall();
+    await host.startInstall();
   };
 
   const handleCancel = async () => {
     setIsCancelling(true);
-    await window.antontron.cancelInstall();
+    await host.cancelInstall();
     setLogs((prev) => `${prev}\nCancelling installation...\n`);
   };
 

@@ -329,7 +329,7 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
           background: 'var(--surface)',
           flexShrink: 0,
         }}>
-          <label style={{
+          <label className="focus-within-ring" style={{
             flex: 1,
             display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '8px 11px', borderRadius: 8,
@@ -344,6 +344,7 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search connectors — gmail, postgres, slack…"
+              aria-label="Search connectors"
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"

@@ -11,10 +11,7 @@ export const SERVER_PYTHON_DEPS: Array<{ spec: string; importName: string }> = [
   // python-multipart is the package name, the import is `multipart`.
   { spec: 'python-multipart>=0.0.12', importName: 'multipart' },
   { spec: 'pydantic>=2.0.0', importName: 'pydantic' },
-  // httpx powers the per-provider auth check in /v1/settings/test-providers.
-  // anton-core typically pulls it in transitively, but pin it explicitly so
-  // a stripped install doesn't quietly break the Test button.
-  { spec: 'httpx>=0.24', importName: 'httpx' },
+  { spec: 'httpx[http2]>=0.27.0', importName: 'h2' },
 ];
 
 export function getUvDataHome(): string {

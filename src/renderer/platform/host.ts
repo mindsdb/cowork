@@ -52,6 +52,26 @@ export function getApiOrigin(): string {
     : window.location.origin;
 }
 
+// True when the FastAPI backend the SPA talks to lives on THIS machine
+// (loopback). The deciding factor for "can I open a server-side file
+// path locally?" — a server-returned filesystem path is only openable
+// via the OS shell when the server is the local one. When the desktop
+// app is pointed at a REMOTE Anton server, those paths live on that box,
+// so callers must fetch the file over HTTP (the artifact `serveUrl`)
+// instead of `openPath`. (Web's window.location.origin can itself be
+// localhost in dev — callers still gate on `isElectron` since the web
+// shell has no `openPath` regardless.)
+export function isLocalApiOrigin(): boolean {
+  try {
+    const origin = getApiOrigin();
+    if (!origin) return false;
+    const host = new URL(origin).hostname.replace(/^\[|\]$/g, '');
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
 // In Electron, OAuth runs through a loopback server spawned by main —
 // there is no fixed redirect URI to register, so this returns null and
 // callers should use oauthConnect() for the IPC PKCE flow instead.
@@ -192,6 +212,167 @@ export async function getUIVersion(): Promise<string> {
   return 'web';
 }
 
+// ---- Onboarding -------------------------------------------------------
+//
+// The cowork SPA mounts the same onboarding pages (TermsConsent → Setup
+// → Onboarding) under both shells. Electron handlers live in main and
+// touch ~/.anton/.env directly. Web handlers are FastAPI endpoints in
+// `server/routes/settings.py` that mirror the IPC shapes 1:1, so the
+// React pages are shell-agnostic once they go through `host.*`.
+
+async function fetchJson(path: string, init?: RequestInit): Promise<any> {
+  const res = await fetch(`${getApiOrigin()}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try { detail = (await res.json()).detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function readSettings(): Promise<Record<string, string>> {
+  if (isElectron && typeof bridge.readSettings === 'function') {
+    return bridge.readSettings();
+  }
+  return fetchJson('/v1/settings/raw');
+}
+
+export async function saveSettings(content: string): Promise<boolean> {
+  if (isElectron && typeof bridge.saveSettings === 'function') {
+    return bridge.saveSettings(content);
+  }
+  await fetchJson('/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
+  return true;
+}
+
+export interface InstallStatus {
+  antonInstalled: boolean;
+  serverDepsReady: boolean;
+}
+
+export async function checkInstall(): Promise<InstallStatus> {
+  if (isElectron && typeof bridge.checkInstall === 'function') {
+    return bridge.checkInstall();
+  }
+  return fetchJson('/v1/settings/install-status');
+}
+
+export async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
+  if (isElectron && typeof bridge.checkConfigured === 'function') {
+    return bridge.checkConfigured();
+  }
+  return fetchJson('/v1/settings/configured');
+}
+
+export async function validateProvider(
+  provider: string,
+  apiKey: string,
+  baseUrl?: string,
+  model?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (isElectron && typeof bridge.validateProvider === 'function') {
+    return bridge.validateProvider(provider, apiKey, baseUrl, model);
+  }
+  return fetchJson('/v1/settings/validate-provider', {
+    method: 'POST',
+    body: JSON.stringify({ provider, apiKey, baseUrl, model }),
+  });
+}
+
+// ---- Setup-screen install lifecycle (Electron-only) -------------------
+//
+// The Setup page subscribes to a streaming install of the anton CLI +
+// python deps. On web there is no install — the FastAPI host running
+// this code IS the install — so each subscriber fires synthetic
+// "done" events synchronously and start/cancel are no-ops.
+
+export interface InstallStep {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'error' | 'skipped' | 'warning';
+}
+
+export async function startInstall(): Promise<void> {
+  if (isElectron && typeof bridge.startInstall === 'function') {
+    await bridge.startInstall();
+  }
+}
+
+export async function cancelInstall(): Promise<void> {
+  if (isElectron && typeof bridge.cancelInstall === 'function') {
+    await bridge.cancelInstall();
+  }
+}
+
+export function onInstallProgress(cb: (steps: InstallStep[]) => void): () => void {
+  if (isElectron && typeof bridge.onInstallProgress === 'function') {
+    return bridge.onInstallProgress(cb);
+  }
+  // Web: synthesise a single completed step so the steps panel renders
+  // something meaningful instead of staying empty during the brief
+  // pass-through.
+  queueMicrotask(() => cb([{ id: 'server', label: 'Server is running', status: 'done' }]));
+  return () => {};
+}
+
+export function onInstallLog(cb: (msg: string) => void): () => void {
+  if (isElectron && typeof bridge.onInstallLog === 'function') {
+    return bridge.onInstallLog(cb);
+  }
+  queueMicrotask(() => cb('Server is running.\n'));
+  return () => {};
+}
+
+export function onInstallDone(cb: () => void): () => void {
+  if (isElectron && typeof bridge.onInstallDone === 'function') {
+    return bridge.onInstallDone(cb);
+  }
+  // Brief delay so the "installing" frame has a chance to render — the
+  // user sees a beat of motion instead of the page snapping past Setup.
+  const id = setTimeout(cb, 600);
+  return () => clearTimeout(id);
+}
+
+export function onInstallError(cb: (err: string) => void): () => void {
+  if (isElectron && typeof bridge.onInstallError === 'function') {
+    return bridge.onInstallError(cb);
+  }
+  return () => {};
+}
+
+export function onInstallCancelled(cb: () => void): () => void {
+  if (isElectron && typeof bridge.onInstallCancelled === 'function') {
+    return bridge.onInstallCancelled(cb);
+  }
+  return () => {};
+}
+
+// ---- OTA updates (Electron-only) ---------------------------------------
+
+export interface UpdateStatus {
+  phase: string;
+  version?: string;
+}
+
+// Subscribes to update-status pushes from the main process. Returns
+// an unsubscribe function. Web returns a no-op unsubscriber.
+export function onUpdateStatus(cb: (status: UpdateStatus) => void): () => void {
+  if (isElectron && typeof bridge.onUpdateStatus === 'function') {
+    return bridge.onUpdateStatus(cb);
+  }
+  return () => {};
+}
+
+export async function applyUpdate(): Promise<boolean> {
+  if (isElectron && typeof bridge.applyUpdate === 'function') {
+    return bridge.applyUpdate();
+  }
+  return false;
+}
+
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
 
 export interface OAuthConnectOpts {
@@ -231,6 +412,7 @@ export const host = {
   getPlatform,
   isMac,
   getApiOrigin,
+  isLocalApiOrigin,
   getOAuthRedirectUri,
   serverInfo,
   serverStart,
@@ -242,6 +424,20 @@ export const host = {
   trashItem,
   getPathForFile,
   getUIVersion,
+  readSettings,
+  saveSettings,
+  checkInstall,
+  checkConfigured,
+  validateProvider,
+  startInstall,
+  cancelInstall,
+  onInstallProgress,
+  onInstallLog,
+  onInstallDone,
+  onInstallError,
+  onInstallCancelled,
+  onUpdateStatus,
+  applyUpdate,
   oauthConnect,
 };
 

@@ -33,10 +33,18 @@
     "logo_color": "#4285F4",
     "methods": [
       {
+        "id": "browser_oauth_builtin",
+        "label": "In-Browser Connect",
+        "description": "Opens Google sign-in in your browser. No credentials required — just click Connect.",
+        "recommended": true,
+        "fields": [],
+        "hidden": true
+      },
+      {
         "id": "oauth-byok",
         "label": "OAuth 2.0 + Developer Token",
         "description": "Bring your own Google Cloud OAuth client and a Google Ads developer token. Anton opens a browser consent screen, then uses both credentials to make authorized API calls against your ad accounts.",
-        "recommended": true,
+        "recommended": false,
         "submit_action": "oauth_launch",
         "oauth": {
           "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",

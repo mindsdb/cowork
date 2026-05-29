@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { host } from '../platform/host';
 import OrbitMorph from '../cowork/components/ui/OrbitMorph';
 
 type Provider = 'minds' | 'byok';
@@ -25,7 +26,7 @@ const GEMINI_MODELS = [
 ];
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const MINDS_REGISTER_URL = 'https://mdb.ai/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fmdb.ai';
+const MINDS_REGISTER_URL = 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/registrations?client_id=public-client&response_type=code&scope=openid&redirect_uri=https%3A%2F%2Fconsole.mindshub.ai';
 
 const CUSTOM_MODEL = '__custom__';
 
@@ -62,7 +63,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [customModel, setCustomModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [llmApiKey, setLlmApiKey] = useState('');
-  const [mindsUrl, setMindsUrl] = useState('https://mdb.ai');
+  const [mindsUrl, setMindsUrl] = useState('https://api.mindshub.ai');
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');
@@ -115,7 +116,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
   const saveFinal = async (lines: string[]) => {
     lines.push('ANTON_MEMORY_MODE=autopilot');
     lines.push('ANTON_EPISODIC_MEMORY=true');
-    await window.antontron.saveSettings(lines.join('\n'));
+    await host.saveSettings(lines.join('\n'));
     setPhase('success');
     setTimeout(onComplete, 800);
   };
@@ -127,7 +128,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
     if (provider === 'minds') {
       // Step 1: Validate the Minds API key
       const mindsBase = mindsUrl.trim().replace(/\/+$/, '');
-      const result = await window.antontron.validateProvider('minds', apiKey.trim(), mindsBase);
+      const result = await host.validateProvider('minds', apiKey.trim(), mindsBase);
       if (!result.ok) {
         setPhase('error');
         setErrorMsg(result.error || 'Invalid API key');
@@ -143,10 +144,10 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
       ];
 
       // Step 3: Test if LLM credits are available
-      const llmResult = await window.antontron.validateProvider(
+      const llmResult = await host.validateProvider(
         'openai-compatible',
         apiKey.trim(),
-        `${mindsBase}/api/v1`,
+        `${mindsBase}/v1`,
         '_code_'
       );
 
@@ -155,7 +156,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
         const lines = [
           ...mindsLines,
           `ANTON_OPENAI_API_KEY=${apiKey.trim()}`,
-          `ANTON_OPENAI_BASE_URL=${mindsBase}/api/v1`,
+          `ANTON_OPENAI_BASE_URL=${mindsBase}/v1`,
           'ANTON_PLANNING_PROVIDER=openai-compatible',
           'ANTON_CODING_PROVIDER=openai-compatible',
           'ANTON_PLANNING_MODEL=_reason_',
@@ -164,7 +165,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
         await saveFinal(lines);
       } else {
         // Minds key valid but no LLM — save Minds vars, ask for LLM provider
-        await window.antontron.saveSettings(mindsLines.join('\n'));
+        await host.saveSettings(mindsLines.join('\n'));
         setPhase('minds-no-llm');
       }
     } else {
@@ -179,7 +180,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
               ? customBaseUrl.trim()
               : undefined;
 
-      const result = await window.antontron.validateProvider(
+      const result = await host.validateProvider(
         validationProvider,
         apiKey.trim(),
         validationBaseUrl || undefined,
@@ -234,7 +235,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
             : undefined;
     const key = llmApiKey.trim() || (byokProvider === 'openai-compatible' ? 'not-needed' : '');
 
-    const result = await window.antontron.validateProvider(
+    const result = await host.validateProvider(
       validationProvider,
       key,
       validationBaseUrl || undefined,
@@ -248,7 +249,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
     }
 
     // Read existing settings (has Minds vars) and add LLM vars
-    const existing = await window.antontron.readSettings();
+    const existing = await host.readSettings();
     const merged = { ...existing };
 
     if (byokProvider === 'anthropic') {
@@ -277,7 +278,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
     merged.ANTON_EPISODIC_MEMORY = merged.ANTON_EPISODIC_MEMORY || 'true';
 
     const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
-    await window.antontron.saveSettings(lines.join('\n'));
+    await host.saveSettings(lines.join('\n'));
     setPhase('success');
     setTimeout(onComplete, 800);
   };
@@ -464,9 +465,9 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
           </ul>
           <span
             className="provider-card-link"
-            onClick={(e) => { e.stopPropagation(); window.antontron.openExternal(MINDS_REGISTER_URL); }}
+            onClick={(e) => { e.stopPropagation(); host.openExternal(MINDS_REGISTER_URL); }}
           >
-            Get your first month free &rarr;
+            Get your first week free &rarr;
           </span>
         </div>
       </div>
@@ -579,9 +580,9 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
               Don't have a key?{' '}
               <span
                 className="onboard-link"
-                onClick={() => window.antontron.openExternal(MINDS_REGISTER_URL)}
+                onClick={() => host.openExternal(MINDS_REGISTER_URL)}
               >
-                Sign up at mdb.ai for a free month
+                Sign up at mindshub.ai for a free week
               </span>
             </div>
           )}

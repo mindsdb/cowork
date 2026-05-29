@@ -90,55 +90,24 @@ def _resolve_memory_path(scope: str, relative_path: str, project_path: Optional[
     root = _memory_root(scope, project_path)
     rel = _normalise_relative_md(relative_path)
     target = (root / rel).resolve()
-    # Path-traversal guard — `is_relative_to` is the canonical sanitizer
-    # form recognised by static analysers (Snyk Code CWE-23, CodeQL
-    # py/path-injection). Even though `_normalise_relative_md` already
-    # rejects `..` and absolute paths, this is the authoritative gate
-    # that the resolved target is inside the memory root.
-    if not target.is_relative_to(root.resolve()):
-        raise HTTPException(status_code=400, detail="Memory file must stay inside the memory folder.")
-    return root, target
-
-
-def _allowed_backup_roots() -> list[Path]:
-    """All directories from which `_backup_target` will accept paths.
-
-    Currently the only caller surface is the memory subsystem (Global +
-    every registered Project's `.anton/memory/`). Centralising the list
-    here keeps the defense-in-depth guard in `_backup_target` aligned
-    with `_memory_roots()` without re-deriving from the request scope.
-    """
-    roots: list[Path] = [(Path.home() / ".anton" / "memory").resolve()]
     try:
-        from anton_api import projects_store
-        for project in projects_store.list_projects():
-            roots.append((Path(project["path"]).expanduser().resolve() / ".anton" / "memory").resolve())
-    except Exception:
-        # Project enumeration shouldn't crash the backup path; the
-        # global root above is enough to cover the most common case.
-        logger.warning("Could not enumerate projects for backup root allowlist", exc_info=True)
-    return roots
+        target.relative_to(root.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Memory file must stay inside the memory folder.") from exc
+    return root, target
 
 
 def _backup_target(path: Path, namespace: str) -> None:
     if not path.exists():
         return
-    # Defense in depth — callers (`save_memory`, `delete_memory`) already
-    # route through `_resolve_memory_path`, but re-verify here so the
-    # `shutil.copy2` sink can be statically proven to receive only
-    # paths inside an allowed memory root. Reject anything else.
-    resolved = path.resolve()
-    if not any(resolved.is_relative_to(r) for r in _allowed_backup_roots()):
-        logger.warning("Refusing backup of %s — outside allowed memory roots", resolved)
-        return
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_root = backups_dir() / namespace
     backup_root.mkdir(parents=True, exist_ok=True)
-    name = f"{resolved.name}.{stamp}.bak"
+    name = f"{path.name}.{stamp}.bak"
     try:
-        shutil.copy2(resolved, backup_root / name)
+        shutil.copy2(path, backup_root / name)
     except OSError:
-        logger.warning("Could not backup %s before mutation", resolved)
+        logger.warning("Could not backup %s before mutation", path)
 
 
 def _memory_file_payload(
@@ -436,25 +405,41 @@ def _resolve_modify_merge(
     )
 
 
-def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
-    """Build the modify-flow read response.
+_VAULT_KEEP_FALLBACK = "__anton_vault_keep__"
+_SECRET_NAME_RE = re.compile(
+    r"(password|secret|token|api[_\-]?key|access[_\-]?key|private[_\-]?key|credential|auth)",
+    re.IGNORECASE,
+)
 
-    Substitutes `ANTON_VAULT_KEEP` into every secret-shaped slot so
-    the renderer can pre-fill the form without ever seeing the
-    underlying credential. Identity + timestamps + the secure-keys
-    list pass through verbatim.
+
+def _is_secret_key_fallback(key: str, *, secure_keys=None) -> bool:
+    if secure_keys is not None:
+        return key in secure_keys
+    return bool(_SECRET_NAME_RE.search(key))
+
+
+def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
+    """Build the connection-detail response.
+
+    Substitutes a sentinel into every secret-shaped slot so plaintext
+    credentials are never sent to the renderer. Falls back to a
+    name-based heuristic when the installed Anton version doesn't
+    export `ANTON_VAULT_KEEP` / `is_secret_key`.
     """
     try:
         from anton.core.datasources.data_vault import ANTON_VAULT_KEEP, is_secret_key
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
+        vault_keep = ANTON_VAULT_KEEP
+        _is_secret = is_secret_key
+    except ImportError:
+        vault_keep = _VAULT_KEEP_FALLBACK
+        _is_secret = _is_secret_key_fallback
 
     raw_fields = record.get("fields") or {}
     secure_keys = record.get("secure_keys")  # may be None on legacy records
     fields_out: dict[str, str] = {}
     for key, value in raw_fields.items():
-        if is_secret_key(key, secure_keys=secure_keys):
-            fields_out[key] = ANTON_VAULT_KEEP
+        if _is_secret(key, secure_keys=secure_keys):
+            fields_out[key] = vault_keep
         else:
             fields_out[key] = value
     return {
@@ -462,13 +447,12 @@ def _datasource_record_payload(record: dict[str, Any]) -> dict[str, Any]:
         "name": record.get("name", ""),
         "createdAt": record.get("created_at"),
         "updatedAt": record.get("updated_at"),
-        # Echo the secure-key set the renderer should treat as "saved · keep".
-        # On legacy records (no stored list), recompute from the heuristic
-        # so the renderer's UX is identical regardless of schema age.
+        # Echo the secure-key set the renderer should treat as masked.
+        # On legacy records (no stored list), recompute from the heuristic.
         "secureKeys": (
             secure_keys
             if secure_keys is not None
-            else sorted(k for k in raw_fields.keys() if is_secret_key(k))
+            else sorted(k for k in raw_fields.keys() if _is_secret(k))
         ),
         "fields": fields_out,
     }
@@ -537,18 +521,21 @@ async def read_datasource(engine: str, name: str):
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Anton data vault is unavailable") from exc
     vault = LocalDataVault()
-    # Older anton installs don't have `read_record` — fall back to
-    # synthesizing a minimal record from `load()`. The renderer's
-    # modify form still works (heuristic fills in for the missing
-    # secure-keys list); only created_at / updated_at are missing.
+    # Older anton installs don't have `read_record`. Fall back to
+    # reading the raw vault JSON file directly so we preserve
+    # timestamps and the stored secure_keys list (vault.load() strips
+    # those away, returning only the fields dict).
     if hasattr(vault, "read_record"):
         record = vault.read_record(engine.strip(), name.strip())
     else:
-        fields = vault.load(engine.strip(), name.strip())
-        record = (
-            None if fields is None
-            else {"engine": engine.strip(), "name": name.strip(), "fields": fields}
-        )
+        vault_path = vault._path_for(engine.strip(), name.strip())
+        if vault_path.is_file():
+            try:
+                record = json.loads(vault_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                record = None
+        else:
+            record = None
     if record is None:
         raise HTTPException(status_code=404, detail="Datasource connection not found")
     return _datasource_record_payload(record)

@@ -45,7 +45,7 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
   );
 }
 
-function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true }) {
+function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false }) {
   const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
@@ -110,10 +110,25 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
             fontFamily: 'var(--font-mono)', fontSize: 10,
             color: 'var(--ink-4)', letterSpacing: '0.02em',
-            opacity: (showKebab || !showTimestamp) ? 0 : 1,
+            opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
             transition: 'opacity 120ms ease',
+            gap: 6,
           }}>
-            {showTimestamp ? timeAgo(task.updatedAt || task.subtitle) : ''}
+            {isActive ? (
+              <span
+                className="pulse-dot"
+                title="Anton is working on this task"
+                aria-label="Active"
+                style={{
+                  display: 'inline-block',
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: 'var(--accent, #5d9287)',
+                  boxShadow: '0 0 0 2px rgba(93,146,135,0.18)',
+                }}
+              />
+            ) : (
+              showTimestamp ? timeAgo(task.updatedAt || task.subtitle) : ''
+            )}
           </span>
           <span
             ref={triggerRef}
@@ -211,6 +226,18 @@ export default function Sidebar({
     pinnedIds.has(t.id) ? { ...t, pinned: true } : t
   );
 
+  // A task is "currently active" if any of its messages carries a
+  // live `_streaming` placeholder — the same signal the chat view
+  // uses to know a turn is in flight. Derived directly from messages
+  // so the dot lights up the moment the stream starts and clears the
+  // moment onDone/onError strips the placeholder. No new wire from
+  // App.jsx needed; `tasks` already carries the messages array.
+  const activeTaskIds = new Set(
+    tasks
+      .filter((t) => (t.messages || []).some((m) => m && m.role === '_streaming'))
+      .map((t) => t.id)
+  );
+
   // Recents excludes pinned items so a task isn't surfaced twice.
   // The full pool — sliced down to whatever fits the viewport + a
   // "Show more" affordance below.
@@ -273,6 +300,17 @@ export default function Sidebar({
       if (!g._scheduleGroup) continue;
       g.title = g._scheduleGroup.baseTitle;
     }
+    // Sort by `updatedAt` descending so reviving a task (replying in
+    // an open task — App.jsx's handleSendInTask bumps updatedAt at
+    // send-time) or creating a new one immediately floats it to the
+    // top of recents. Without this, the panel mirrors whatever order
+    // `tasks` happens to be in: the server sorts on each fetch, but
+    // in-session edits use `prev.map(...)` which keeps the array
+    // order frozen until the next fetchSessions. Falling back to
+    // `subtitle` (a parseable timestamp on schedule-run rows) keeps
+    // legacy rows without an explicit updatedAt in roughly the right
+    // place rather than dumping them at the bottom.
+    out.sort((a, b) => _ts(b.updatedAt || b.subtitle) - _ts(a.updatedAt || a.subtitle));
     return out;
   })();
 
@@ -533,6 +571,7 @@ export default function Sidebar({
                 onDelete={onDeleteTask}
                 onMoveToProject={onMoveTaskToProject}
                 showTimestamp={showCounters}
+                isActive={activeTaskIds.has(task.id)}
               />
             ))}
           </div>
@@ -564,7 +603,7 @@ export default function Sidebar({
           onMouseEnter={() => setRecentsHeadingHover(true)}
           onMouseLeave={() => setRecentsHeadingHover(false)}
         >
-          <span style={{ flex: 1 }}>Recents</span>
+          <span style={{ flex: 1 }}>RECENT TASKS</span>
           <button
             type="button"
             className="recents-viewall"
@@ -610,6 +649,7 @@ export default function Sidebar({
                 onDelete={isGroup ? undefined : onDeleteTask}
                 onMoveToProject={isGroup ? undefined : onMoveTaskToProject}
                 showTimestamp={showCounters}
+                isActive={!isGroup && activeTaskIds.has(t.id)}
               />
             );
           })}

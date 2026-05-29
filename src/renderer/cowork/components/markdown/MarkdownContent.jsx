@@ -5,7 +5,7 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { useMemo } from 'react';
+import { cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -19,6 +19,35 @@ import {
   TableHeader,
   TableBody,
 } from './MarkdownTable';
+import { host } from '../../../platform/host';
+
+// Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
+// do NOT include javascript:, file:, data:, or anything that could
+// navigate the Electron renderer to a privileged location. mailto: is
+// allowed because `host.openExternal` routes it through the OS handler.
+const _SAFE_HREF_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+
+function isSafeExternalHref(href) {
+  if (!href || typeof href !== 'string') return false;
+  let url;
+  try {
+    url = new URL(href, 'http://_local');
+  } catch {
+    return false;
+  }
+  return _SAFE_HREF_SCHEMES.has(url.protocol);
+}
+
+function openMarkdownHref(href) {
+  if (!isSafeExternalHref(href)) return;
+  // Prefer the host bridge (Electron routes through shell.openExternal;
+  // web falls back to window.open with noopener,noreferrer).
+  if (host && typeof host.openExternal === 'function') {
+    Promise.resolve(host.openExternal(href)).catch(() => {});
+    return;
+  }
+  try { window.open(href, '_blank', 'noopener,noreferrer'); } catch {}
+}
 
 // Allow the extra attributes our chart blocks need on <code>, and
 // permit the `engram:` URL scheme on links so the engram-comment
@@ -36,6 +65,50 @@ const sanitizeSchema = {
     href: [...(defaultSchema.protocols?.href || []), 'engram'],
   },
 };
+
+function _mergeInlineCodeLines(text) {
+  if (!text || typeof text !== 'string') return text;
+  // Trailing-whitespace tolerant: a line that's just `code` followed by
+  // any combination of spaces/tabs/CR (Windows line endings) still
+  // counts as an "inline only" line. Without the \s*$ the regex
+  // silently misses any message that crossed a CRLF transport.
+  const INLINE_ONLY = /^`([^`\n\r]+)`\s*$/;
+  // Split on either LF or CRLF so lines don't carry a trailing \r that
+  // breaks the $ anchor on the regex above.
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const m = INLINE_ONLY.exec(lines[i]);
+    if (!m) {
+      out.push(lines[i]);
+      i += 1;
+      continue;
+    }
+    // Found a candidate line — scan forward for more.
+    const run = [m[1]];
+    let j = i + 1;
+    while (j < lines.length) {
+      const mj = INLINE_ONLY.exec(lines[j]);
+      if (!mj) break;
+      run.push(mj[1]);
+      j += 1;
+    }
+    // Two consecutive inline-code lines is a plausible user pattern; require
+    // at least three before auto-promoting to a fenced block.
+    if (run.length >= 3) {
+      out.push('```');
+      out.push(...run);
+      out.push('```');
+      i = j;
+    } else {
+      // One or two inline-code lines — leave them as inline.
+      out.push(lines[i]);
+      i += 1;
+    }
+  }
+  return out.join('\n');
+}
 
 // Make sure ```data-vault-form fences always start on their own line.
 // LLMs frequently glue the opening fence to the end of a sentence
@@ -156,14 +229,111 @@ const _SIZES = {
   },
 };
 
-export function MarkdownContent({ text, id, complete = true, conversationId = null, dense = false }) {
+export function MarkdownContent({
+  text,
+  id,
+  complete = true,
+  conversationId = null,
+  dense = false,
+  // Variant + capability flags — assistant turns default to the full
+  // feature set (forms, charts, engram chips). User turns pass
+  // `variant="user"` with forms/charts off so a user typing
+  // ```data-vault-form or ```chart in their composer doesn't
+  // accidentally pop the form panel / a chart in the chat column.
+  variant = 'assistant',
+  enableForms = true,
+  enableCharts = true,
+  // Gate the "consecutive inline-code lines → fenced block" rewrite to
+  // assistant output only. Authored content (user turns, memory files,
+  // artifact previews) defaults to off so author-intentional inline
+  // code runs are preserved verbatim.
+  isAssistant = false,
+}) {
+  const rootRef = useRef(null);
+  // Only run the form-fence normalization pass when forms are enabled.
+  // User messages bypass it so a typed ```data-vault-form block stays
+  // a normal fenced code block instead of getting auto-tidied for the
+  // form renderer. The inline-code-run merge is similarly gated by
+  // `isAssistant` so only LLM output gets that fix-up.
   const normalized = useMemo(
-    () => _renderEngramComments(_normalizeFormFences(text)),
-    [text],
+    () => {
+      const merged = isAssistant ? _mergeInlineCodeLines(text) : text;
+      const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
+      return _renderEngramComments(formNormalized);
+    },
+    [text, enableForms, isAssistant],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
+
+  // Delegated click listener — every anton-code-block ships a [data-copy-code]
+  // button rendered by MarkdownCode. A single listener at this root survives
+  // streaming re-renders (blocks come and go as chunks arrive) without
+  // attaching/detaching per-block handlers.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const onClick = (event) => {
+      const btn = event.target?.closest?.('[data-copy-code]');
+      if (!btn || !root.contains(btn)) return;
+      const block = btn.closest('.anton-code-block');
+      const codeEl = block?.querySelector('pre > code');
+      if (!codeEl) return;
+      // `data-source` carries the raw source captured at render time —
+      // safer than reading the highlighted DOM's textContent.
+      const source = codeEl.getAttribute('data-source') ?? codeEl.textContent ?? '';
+      const finish = () => {
+        const label = btn.querySelector('.anton-code-block-copy-label');
+        btn.classList.add('is-copied');
+        if (label) label.textContent = 'Copied';
+        clearTimeout(btn._copyTimer);
+        btn._copyTimer = setTimeout(() => {
+          if (label) label.textContent = 'Copy';
+          btn.classList.remove('is-copied');
+        }, 1200);
+      };
+      // navigator.clipboard requires a secure context + clipboard-write
+      // permission; Electron renderers can run in contexts where it's
+      // unavailable OR rejects silently, which is why the original
+      // `.catch(() => {})` made copies look broken. Fall back to a
+      // hidden-textarea + execCommand('copy') path which works anywhere
+      // the document has focus.
+      const fallbackCopy = (text) => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch {}
+        document.body.removeChild(ta);
+        return ok;
+      };
+      const clip = navigator.clipboard;
+      if (clip && typeof clip.writeText === 'function') {
+        clip.writeText(source).then(finish, () => {
+          if (fallbackCopy(source)) finish();
+        });
+      } else if (fallbackCopy(source)) {
+        finish();
+      }
+    };
+    root.addEventListener('click', onClick);
+    return () => root.removeEventListener('click', onClick);
+  }, []);
+
   const components = useMemo(() => ({
-    code: (props) => <MarkdownCode id={id} complete={complete} conversationId={conversationId} {...props} />,
+    code: (props) => (
+      <MarkdownCode
+        id={id}
+        complete={complete}
+        conversationId={conversationId}
+        variant={variant}
+        enableForms={enableForms}
+        enableCharts={enableCharts}
+        {...props}
+      />
+    ),
     table: (props) => <MarkdownTable {...props} />,
     thead: TableHeader,
     tbody: TableBody,
@@ -197,25 +367,79 @@ export function MarkdownContent({ text, id, complete = true, conversationId = nu
           </span>
         );
       }
+      // Unsafe / unsupported schemes (file:, data:, javascript:, etc.)
+      // render as plain text so a stray malicious link can't navigate
+      // the renderer to a privileged location. We add `title` so users
+      // who hover get a hint about why the link is inert instead of
+      // wondering why nothing happens — WCAG 3.3.1 (Error
+      // Identification) in spirit.
+      if (!isSafeExternalHref(href)) {
+        return (
+          <span title="Link blocked: unsupported URL scheme">
+            {props.children}
+          </span>
+        );
+      }
+      // Safe external link — keep it focusable and announce-able by
+      // screen readers, but intercept the click and route through the
+      // host bridge so Electron opens it via the OS shell instead of
+      // navigating the renderer.
+      //
+      // WCAG notes:
+      //   - 2.4.7 Focus Visible: `focus-visible:` adds a visible
+      //     ring + underline when reached via keyboard.
+      //   - 2.4.4 Link Purpose / 4.1.2 Name, Role, Value: the
+      //     visually-hidden span announces "(opens in new window)" so
+      //     SR users know the link navigates externally.
+      //   - 2.1.1 Keyboard: native <a> handles Enter (browsers fire
+      //     click on Enter for focused anchors).
       return (
         <a
-          className="text-accent underline-offset-2 hover:underline"
+          className="text-accent underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent rounded-sm"
+          href={href}
           target="_blank"
-          rel="noreferrer"
-          {...props}
-        />
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            e.preventDefault();
+            openMarkdownHref(href);
+          }}
+        >
+          {props.children}
+          <span className="sr-only"> (opens in new window)</span>
+        </a>
       );
     },
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
     hr: () => <hr className="my-3 border-t border-line" />,
-    pre: (props) => <pre className="my-2 overflow-x-auto" {...props} />,
+    pre: (props) => {
+      // Fenced code blocks with a language are handled by MarkdownCode,
+      // which renders its own anton-code-block wrapper. We drop the outer
+      // <pre> in that case so block-level markup is not nested inside <pre>.
+      //
+      // Fenced code blocks without a language still arrive as <pre><code>
+      // but the code child has no language-* class. Mark that child as a
+      // block so MarkdownCode renders the full code-block card instead of
+      // falling through to inline-code styling.
+      const child = Array.isArray(props.children) ? props.children[0] : props.children;
+      const childClass = child?.props?.className || '';
+
+      if (typeof childClass === 'string' && childClass.startsWith('language-')) {
+        return props.children;
+      }
+
+      if (isValidElement(child)) {
+        return cloneElement(child, { block: true });
+      }
+
+      return <pre className="my-2 overflow-x-auto" {...props} />;
+    },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [id, complete, conversationId, dense]);
+  }), [id, complete, conversationId, dense, variant, enableForms, enableCharts]);
 
   return (
-    <div className={sz.root}>
+    <div ref={rootRef} className={sz.root}>
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}

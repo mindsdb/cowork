@@ -148,7 +148,7 @@ FROM registry.access.redhat.com/ubi9-minimal@sha256:b9b10f42d7eba7ad4a6d5ef26b7d
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
-LABEL org.opencontainers.image.description="Anton CoWork — FastAPI + SPA (UBI 9 minimal)"
+LABEL org.opencontainers.image.description="Anton Cowork — FastAPI + SPA (UBI 9 minimal)"
 LABEL org.opencontainers.image.base.name="registry.access.redhat.com/ubi9-minimal"
 
 # Apply Red Hat security errata published since the base digest was

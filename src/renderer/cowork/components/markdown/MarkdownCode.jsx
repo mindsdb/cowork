@@ -10,6 +10,7 @@ import { useEffect, useMemo } from 'react';
 import { ChartLoadingState, ChartErrorState } from './ChartStates';
 import { MessageChart } from './MessageChart';
 import { parseChartIntent } from './utils';
+import { highlightCode } from './hljs';
 import Ico from '../Icons';
 import { patchForm, setForm } from '../datavault/formStore';
 import { parseFormSpec } from '../datavault/parseFormSpec';
@@ -17,9 +18,17 @@ import { parseFormSpec } from '../datavault/parseFormSpec';
 export function MarkdownCode(props) {
   const lang = props?.className?.replace('language-', '') || '';
   const text = String(props?.children ?? '');
+  const isBlock = props?.block === true;
   const id = props?.id;
   const complete = props?.complete !== false; // assume complete unless told otherwise
   const conversationId = props?.conversationId || null;
+  // Capability flags. Assistant turns leave these defaulted to true so
+  // existing behavior (forms, charts, parse-error pointers) is
+  // unchanged. User turns pass `false` so a typed ```data-vault-form
+  // / ```chart / ```chartjs fence falls through to the ordinary code
+  // block branch and never triggers a side-effect renderer.
+  const enableForms = props?.enableForms !== false;
+  const enableCharts = props?.enableCharts !== false;
 
   // ── ALL HOOKS FIRST ───────────────────────────────────────────────
   // Critical: every useMemo/useEffect must run on every render of
@@ -36,7 +45,7 @@ export function MarkdownCode(props) {
   // (partial update) parse the same way — just a JSON object. The
   // difference is in how the form store consumes them: setForm
   // replaces, patchForm merges.
-  const isFormLang = lang === 'data-vault-form' || lang === 'data-vault-form-patch';
+  const isFormLang = enableForms && (lang === 'data-vault-form' || lang === 'data-vault-form-patch');
   const parseAttempt = useMemo(() => {
     if (!isFormLang) return { spec: null, error: null };
     if (!complete) return { spec: null, error: null };
@@ -46,9 +55,34 @@ export function MarkdownCode(props) {
   const parseError = parseAttempt.error;
 
   const chartIntent = useMemo(() => {
-    if (lang === 'chart' && text) return parseChartIntent(text);
+    if (enableCharts && lang === 'chart' && text) return parseChartIntent(text);
     return null;
-  }, [lang, text]);
+  }, [enableCharts, lang, text]);
+
+  // Highlighted output for ordinary fenced blocks. We skip the special
+  // langs (chartjs/chart/data-vault-form*) so we don't pay the hljs
+  // cost on blocks that have their own renderer. Computed unconditionally
+  // (i.e. always returning `null` for the special branches) keeps the
+  // hook count stable across renders, in line with the comment above
+  // about rules-of-hooks discipline. When charts/forms are disabled the
+  // special langs flow through here so they render as plain highlighted
+  // code blocks (and `lang` is preserved as a header label).
+  const highlighted = useMemo(() => {
+    const isChartLang = lang === 'chart' || lang === 'chartjs';
+    const isSpecial = isFormLang || (enableCharts && isChartLang);
+
+    if (isSpecial) return null;
+
+    // Inline code has no language and is not inside a <pre>, so it should
+    // remain inline. Fenced/indented code without a language is marked by
+    // MarkdownContent's pre override as `block: true` and should render as
+    // a full plaintext code block.
+    if (!lang && !isBlock) return null;
+
+    // Strip a single trailing newline left by remark — keeps Copy output
+    // clean and avoids a phantom blank line at the bottom of the block.
+    return highlightCode(text.replace(/\n$/, ''), lang || 'plaintext');
+  }, [lang, isBlock, isFormLang, enableCharts, text]);
 
   useEffect(() => {
     if (!isFormLang || !conversationId || !complete) return;
@@ -162,7 +196,9 @@ export function MarkdownCode(props) {
 
   // Intent format — needs a server endpoint to compile JSON into a real
   // Chart.js config. We don't have that yet, so surface a clear message.
-  if (lang === 'chart') {
+  // Gated on `enableCharts`; when disabled (user turns), fall through to
+  // the ordinary highlighted code block below.
+  if (enableCharts && lang === 'chart') {
     if (!complete) return <ChartLoadingState />;
     if (!chartIntent || chartIntent.error) {
       return <ChartErrorState error={chartIntent?.error || 'Invalid chart specification'} />;
@@ -173,22 +209,61 @@ export function MarkdownCode(props) {
   }
 
   // Legacy / direct chartjs format — full Chart.js config in the block.
-  if (lang === 'chartjs') {
+  if (enableCharts && lang === 'chartjs') {
     return complete ? <MessageChart id={id || 'chart'} text={text} /> : <ChartLoadingState />;
   }
 
-  // Default — fall through to a styled <code>. react-markdown distinguishes
-  // inline code (no className) from fenced code (className="language-xxx").
-  // We render both with the same monospace token styling; the surrounding
-  // <pre> from remark-gfm handles block-level wrapping for fenced blocks.
+  // Ordinary fenced block — Claude-style card with a language header,
+  // a Copy button (handled by a delegated listener in MarkdownContent),
+  // and a syntax-highlighted body. MarkdownContent strips the outer
+  // <pre> for fenced children so the <div> wrapper stays valid HTML.
+  if ((lang || isBlock) && highlighted) {
+    const raw = text.replace(/\n$/, '');
+    // No-language fences render via the plaintext fallback; suppress the
+    // label so the header reads as a bare Copy affordance instead of a
+    // noisy "plaintext" tag. The accessible Copy label is generalised
+    // for the same reason.
+    const isPlaintext = highlighted.language === 'plaintext';
+    return (
+      <div className="anton-code-block" data-language={highlighted.language}>
+        <div className="anton-code-block-header">
+          <span className="anton-code-block-lang">{isPlaintext ? '' : highlighted.language}</span>
+          <button
+            type="button"
+            className="anton-code-block-copy"
+            data-copy-code=""
+            aria-label={isPlaintext ? 'Copy code' : `Copy ${highlighted.language} code`}
+          >
+            <span className="anton-code-block-copy-icon anton-code-block-copy-icon--idle" aria-hidden="true">
+              {Ico.copy(12)}
+            </span>
+            <span className="anton-code-block-copy-icon anton-code-block-copy-icon--done" aria-hidden="true">
+              {Ico.check(12)}
+            </span>
+            {/* aria-live="polite" so screen readers announce the Copy →
+                Copied → Copy transition without interrupting whatever
+                they were reading. The delegated click listener in
+                MarkdownContent mutates this span's textContent, which
+                is what the live region picks up. */}
+            <span className="anton-code-block-copy-label" aria-live="polite">Copy</span>
+          </button>
+        </div>
+        <pre className="anton-code-block-pre">
+          <code
+            className={`hljs language-${highlighted.language}`}
+            data-source={raw}
+            dangerouslySetInnerHTML={{ __html: highlighted.html }}
+          />
+        </pre>
+      </div>
+    );
+  }
+
+  // Inline code (single backticks) — kept visually distinct from fenced
+  // blocks: no header, lighter accent-tinted background, in-flow. Styled
+  // in globals.css so the tint can use color-mix(...) against the theme
+  // tokens (Tailwind alone can't reach the cyberpunk-accent wash we want).
   return (
-    <code
-      className={
-        'font-mono text-[12.5px] text-ink ' +
-        (lang ? 'block whitespace-pre overflow-x-auto rounded-md border border-line bg-surface-2 p-3 my-2' : 'rounded bg-surface-2 px-1 py-0.5')
-      }
-    >
-      {props.children}
-    </code>
+    <code className="anton-inline-code">{props.children}</code>
   );
 }

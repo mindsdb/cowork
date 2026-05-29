@@ -15,6 +15,7 @@ import Ico from '../components/Icons';
 import {
   openArtifact, revealArtifact,
   publishArtifact, unpublishArtifact,
+  artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { ArtifactViewer } from '../components/artifact';
@@ -99,6 +100,20 @@ function projectOf(artifact, projects = []) {
 function isHtmlArtifact(a) {
   return (a.ext || '').toLowerCase() === '.html'
     || (a.path || '').toLowerCase().endsWith('.html');
+}
+
+// Extensions we can preview inline in the in-app ArtifactViewer (text
+// branch). Keep in sync with the viewer's own TEXT_PREVIEW_EXTS so the
+// click handlers and the body renderer agree on what's previewable.
+const _INLINE_TEXT_EXTS = new Set(['.md', '.txt', '.csv']);
+function isInlinePreviewable(a) {
+  if (!a) return false;
+  if (isHtmlArtifact(a)) return true;
+  const declared = (a.ext || '').toLowerCase();
+  if (_INLINE_TEXT_EXTS.has(declared)) return true;
+  const p = (a.path || '').toLowerCase();
+  for (const ext of _INLINE_TEXT_EXTS) if (p.endsWith(ext)) return true;
+  return false;
 }
 
 // "Updated" is already pre-formatted by the server (e.g. "3h ago",
@@ -317,7 +332,12 @@ function LocalPathRow({ path }) {
 
 function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, busy, onOpenProject }) {
   const isHtml = isHtmlArtifact(artifact);
+  const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
+  // In the browser the artifact's address is its HTTP serve URL, not a
+  // local OS path the user can't reach. Surface that "private" URL in
+  // place of the path. Desktop keeps showing the local path.
+  const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
 
   const [hover, setHover] = useState(false);
   const kebabRef = useRef(null);
@@ -330,6 +350,16 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     if (!published) return;
     try { await host.openExternal(artifact.publishedUrl); } catch {
       window.open(artifact.publishedUrl, '_blank', 'noreferrer');
+    }
+  };
+  const onCopyPrivate = async () => {
+    if (!privateUrl) return false;
+    return copyText(privateUrl);
+  };
+  const onOpenPrivate = async () => {
+    if (!privateUrl) return;
+    try { await host.openExternal(privateUrl); } catch {
+      window.open(privateUrl, '_blank', 'noreferrer');
     }
   };
 
@@ -358,8 +388,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       tabIndex={0}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => isHtml ? onOpenViewer(artifact) : openArtifact(artifact.path)}
-      onKeyDown={(e) => { if (e.key === 'Enter') (isHtml ? onOpenViewer(artifact) : openArtifact(artifact.path)); }}
+      onClick={() => canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)}
+      onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
       style={{
         position: 'relative',
         cursor: 'pointer',
@@ -573,14 +603,22 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         </span>
       </div>
 
-      {/* Surface the public URL when published; fall back to the
-          local path (ellipsis-truncated) when not — every card now
-          shows where the artifact actually lives. */}
+      {/* Surface the public URL when published; otherwise the HTTP
+          serve ("private") URL in the browser, where the artifact lives
+          on the server rather than on this machine; falling back to the
+          local OS path on desktop. Every card shows where the artifact
+          actually lives. */}
       {published ? (
         <PublishedUrlRow
           url={artifact.publishedUrl}
           onOpen={onOpenPublished}
           onCopy={onCopyUrl}
+        />
+      ) : privateUrl ? (
+        <PublishedUrlRow
+          url={privateUrl}
+          onOpen={onOpenPrivate}
+          onCopy={onCopyPrivate}
         />
       ) : (
         <LocalPathRow path={artifact.path} />
@@ -762,6 +800,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const triggerRef = useRef(null);
 
   const isHtml = isHtmlArtifact(artifact);
+  const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
   const project = projectNameOf(artifact, projects);
   const projectMatch = projectOf(artifact, projects);
@@ -772,8 +811,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     return copyText(artifact.publishedUrl);
   };
   const onRowOpen = () => {
-    if (isHtml) onOpenViewer?.(artifact);
-    else openArtifact(artifact.path);
+    if (canPreview) onOpenViewer?.(artifact);
+    else openArtifactFile(artifact);
   };
 
   return (
@@ -1084,7 +1123,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // Centralized publish — single source of truth for state updates,
   // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
   // command flow: POST → server zips, scrubs credentials, uploads to
-  // mdb.ai, persists report_id in `.published.json`. We then reflect
+  // MindsHub, persists report_id in `.published.json`. We then reflect
   // the returned URL into the local list so the UI flips to "Published"
   // without a refetch.
   const handlePublish = async (artifact) => {
@@ -1120,7 +1159,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     try {
       await unpublishArtifact(artifact.path);
       updateOne({ ...artifact, publishedUrl: '' });
-      setToast({ kind: 'ok', message: 'Unpublished from mdb.ai.' });
+      setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
     } finally {
@@ -1345,7 +1384,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
                   try { host.openExternal(a.publishedUrl); }
                   catch { window.open(a.publishedUrl, '_blank', 'noreferrer'); }
                 } else {
-                  openArtifact(a.path);
+                  openArtifactFile(a);
                 }
               },
             });

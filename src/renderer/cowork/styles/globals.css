@@ -408,6 +408,25 @@ a[href],
 
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 .typing-dot { animation: typing 1.2s ease-in-out infinite; }
+
+/* WCAG 2.3.3 Animation from Interactions — users with vestibular
+   sensitivity get every infinite/looping animation halted (state still
+   reaches its end value so the UI stays informative). One-shot
+   transitions/entrance animations are left untouched so the UI doesn't
+   feel broken. */
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot,
+  .typing-dot,
+  .proj-shimmer,
+  .composer-icon.listening,
+  .spinner,
+  .status-dot.busy,
+  .status-pill.is-busy .status-text__live,
+  .btn-busy-pulse,
+  [class*="set-badge-pulse"] {
+    animation: none !important;
+  }
+}
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .typing-dot:nth-child(3) { animation-delay: 0.30s; }
 
@@ -497,16 +516,172 @@ a[href],
   border-color: var(--primary-300);
   box-shadow: 0 0 0 3px rgba(31,156,176,0.15), 0 6px 18px -8px rgba(0,0,0,0.12);
 }
+/* In-fence indicator — caret sits inside a fenced code block. Subtle
+   accent-tinted inner stripe on the left edge plus a soft body wash, so
+   it layers under the focus ring rather than competing with it. Toggled
+   from React based on `fenceCtxAt(value, caretPos) !== null`. */
+.composer-wrap.in-fence {
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-0));
+  box-shadow:
+    inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 6px 18px -8px rgba(0, 0, 0, 0.10);
+}
+.composer-wrap.focused.in-fence {
+  box-shadow:
+    inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 0 3px rgba(31, 156, 176, 0.15),
+    0 6px 18px -8px rgba(0, 0, 0, 0.12);
+}
+/* Font, line-height, and padding MUST match the textarea exactly — both
+   consume the same custom properties from .composer-input-shell so any
+   change propagates to both automatically. */
 .composer-textarea {
   width: 100%; border: 0; outline: 0; resize: none;
   background: transparent;
   font-family: var(--font-sans);
-  font-size: 15px; line-height: 1.5;
-  color: var(--text-strong); padding: 16px 18px 4px;
+  font-size: var(--composer-font-size);
+  line-height: var(--composer-line-height);
+  color: var(--text-strong);
+  padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
 }
 .composer-textarea::placeholder { color: var(--frost-500); }
+
+/* Source-mode highlight overlay.
+   The textarea is the real input — the overlay sits behind it and
+   mirrors its content with the same font, padding, line-height and
+   wrapping rules so each char lines up pixel-for-pixel. The textarea
+   is z-stacked above with a transparent background so the overlay
+   shows through. We DO NOT change font-weight/style or add per-span
+   padding/margin — any of that would change wrapping and the overlay
+   would drift out of alignment. */
+.composer-input-shell {
+  position: relative;
+  width: 100%;
+  /* Single source of truth for the metrics the textarea and overlay
+     must share. Surface variants (chat-floating-composer, etc.) override
+     these vars on their own .composer-input-shell scope so both children
+     stay coupled — never set font-size/line-height/padding directly on
+     the textarea or overlay. */
+  --composer-font-size: 15px;
+  --composer-line-height: 1.5;
+  --composer-padding: 16px 18px 4px;
+}
+/* Font, line-height, and padding MUST match the textarea exactly — both
+   consume the same custom properties from .composer-input-shell so any
+   change propagates to both automatically. */
+.composer-textarea-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--font-sans);
+  font-size: var(--composer-font-size);
+  line-height: var(--composer-line-height);
+  padding: var(--composer-padding);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  /* `auto` (not hidden) so programmatic scrollTop sync works — user
+     interaction is already blocked by pointer-events:none. Hide the
+     scrollbar visually so the overlay doesn't show one alongside the
+     textarea's. */
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  color: transparent;
+  background: transparent;
+  border: 0;
+  user-select: none;
+  z-index: 0;
+  /* Cap text rendering twiddles — we want the overlay and textarea
+     to lay text out identically. */
+  -webkit-font-smoothing: inherit;
+  text-rendering: inherit;
+  tab-size: inherit;
+}
+.composer-input-shell .composer-textarea {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+/* Fence-marker line — full-width tint of the ``` line itself,
+   accent-coloured text so the marker reads as syntax-significant
+   even while the textarea text sits on top. */
+.overlay-fence-marker {
+  color: color-mix(in srgb, var(--accent) 75%, var(--ink));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+/* Fence body — subtle wash that runs from end of opener to start of
+   closer, no border (would shift wrapping). */
+.overlay-fence-body {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+/* Inline `code` — narrow tinted run on a single line. No padding,
+   no border — they'd shift char position. The text below stays
+   readable through the wash because the textarea sits above. */
+.overlay-inline-code {
+  background: color-mix(in srgb, rgb(232, 132, 110) 16%, transparent);
+  color: color-mix(in srgb, rgb(232, 132, 110) 70%, var(--ink));
+  border-radius: 3px;
+}
+.composer-textarea-overlay::-webkit-scrollbar { display: none; }
+
+/* WCAG 2.3.3 Animation from Interactions — users who prefer reduced
+   motion shouldn't see the Copy button hover/focus colour ease or the
+   composer focus-ring transition. Static state changes still apply;
+   only the transition timing is removed. */
+@media (prefers-reduced-motion: reduce) {
+  .anton-code-block-copy,
+  .composer-wrap,
+  .composer-textarea-overlay {
+    transition: none !important;
+  }
+}
+
+body[data-theme="light"] .overlay-fence-marker {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+body[data-theme="light"] .overlay-fence-body {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+body[data-theme="light"] .overlay-inline-code {
+  background: color-mix(in srgb, rgb(168, 76, 60) 16%, transparent);
+  color: color-mix(in srgb, rgb(168, 76, 60) 70%, var(--ink));
+}
+
+/* WCAG 1.4.6 / Windows High Contrast — when the user opts into a
+   stronger contrast preference, bump the overlay washes so the
+   fence markers, fenced bodies, and inline-code regions remain
+   distinguishable behind the (transparent-color) textarea text.
+   Light theme uses a darker accent / coral wash; dark theme leans
+   on a brighter accent / coral tint. The textarea text itself is
+   unchanged — it always inherits the regular --ink tokens which
+   already meet 4.5:1 against the composer background. */
+@media (prefers-contrast: more) {
+  .overlay-fence-marker {
+    color: color-mix(in srgb, var(--accent) 90%, var(--ink));
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  .overlay-fence-body {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .overlay-inline-code {
+    background: color-mix(in srgb, rgb(232, 132, 110) 32%, transparent);
+    color: color-mix(in srgb, rgb(232, 132, 110) 90%, var(--ink));
+  }
+  body[data-theme="light"] .overlay-fence-marker {
+    background: color-mix(in srgb, var(--accent) 32%, transparent);
+  }
+  body[data-theme="light"] .overlay-fence-body {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  body[data-theme="light"] .overlay-inline-code {
+    background: color-mix(in srgb, rgb(168, 76, 60) 30%, transparent);
+    color: color-mix(in srgb, rgb(168, 76, 60) 90%, var(--ink));
+  }
+}
 .composer-toolbar {
   display: flex; align-items: center; gap: 6px;
   padding: 8px 10px 10px;
@@ -1185,6 +1360,14 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .customize-search-input input:focus {
   border-color: #cfcac0;
   box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.08);
+}
+/* WCAG 2.4.7 / 2.4.11 — the 8% alpha glow above is too faint for a
+   focus indicator. Keyboard users get a solid ring; mouse focus keeps
+   the subtle glow. */
+.customize-input:focus-visible,
+.customize-search-input input:focus-visible {
+  outline: 2px solid var(--accent, #2f6fed);
+  outline-offset: 2px;
 }
 
 .customize-field small {
@@ -2157,6 +2340,14 @@ body:not([data-theme="dark"]) .btn-primary {
   border-color: var(--accent);
   box-shadow: var(--ring);
 }
+/* WCAG 2.4.7 / 2.4.11 — the soft alpha ring above can fall under 3:1
+   non-text contrast against the surface. focus-visible promotes a
+   solid outline so keyboard focus is always unambiguous. */
+.field-input:focus-visible,
+.field-textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .field-input:disabled,
 .field-textarea:disabled {
   opacity: 0.55; cursor: not-allowed;
@@ -3052,6 +3243,16 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   border-color: var(--primary-300);
   box-shadow: 0 0 0 3px rgba(31,156,176,0.12);
 }
+/* WCAG 2.4.7 / 2.4.11 — the 12% alpha glow above is too faint for a
+   keyboard focus indicator. focus-visible adds a solid ring. */
+.dialog-input:focus-visible,
+.dialog-textarea:focus-visible,
+.schedule-form input:focus-visible,
+.schedule-form textarea:focus-visible,
+.schedule-form select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .dialog-textarea {
   min-height: 140px; resize: vertical; margin-top: 8px;
   font-family: var(--font-mono); font-size: 12px;
@@ -3157,6 +3358,24 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .search-head input {
   flex: 1; border: 0; outline: 0; font-size: 15px;
   color: var(--text-strong); background: transparent;
+}
+/* WCAG 2.4.7 — borderless inputs still need a visible keyboard-focus
+   cue. The parent `.search-head` already has a divider; the focus-
+   within rule promotes that divider's colour so keyboard users can see
+   the active field without the search modal getting noisy for mouse
+   users. */
+.search-head:focus-within {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+/* Generic focus-within ring — apply to any parent that hosts a
+   borderless input whose `outline:0` is enforced by inline styles
+   (e.g. labels wrapping a search field). The ring lands on the
+   wrapper, not the input, so the rounded surface stays intact.
+   WCAG 2.4.7 / 2.4.11. */
+.focus-within-ring:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .search-results {
   max-height: 560px; overflow: auto; padding: 8px;
@@ -3602,15 +3821,24 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
     0 1px 2px rgba(15, 16, 17, 0.04),
     0 4px 14px rgba(15, 16, 17, 0.06);
 }
+/* Override the shared metrics on the shell so the textarea and overlay
+   stay coupled. Font-family still ships on each child because it's not
+   in the shared var set (textarea uses --font-sans by default; the
+   floating composer flips it to --font-body via two thin overrides). */
+.chat-floating-composer .composer-input-shell {
+  /* 10px (wrap) + 8px = 18px body inset — matches home .composer-textarea.
+     Tighter bottom than default textarea: toolbar supplies top spacing so we
+     don't stack 12px + 10px and leave a tall band under the input line. */
+  --composer-font-size: 14px;
+  --composer-line-height: 1.45;
+  --composer-padding: 2px 8px 6px;
+}
 .chat-floating-composer .composer-textarea {
   font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 1.45;
-  /* 10px (wrap) + 8px = 18px body inset — matches home .composer-textarea */
-  /* Tighter bottom than default textarea: toolbar supplies top spacing so we
-     don't stack 12px + 10px and leave a tall band under the input line. */
-  padding: 2px 8px 6px;
   min-height: 22px;
+}
+.chat-floating-composer .composer-textarea-overlay {
+  font-family: var(--font-body);
 }
 .chat-floating-composer .composer-toolbar {
   /* Horizontal inset comes from .composer-wrap; no bottom padding — wrap's
@@ -4316,6 +4544,373 @@ body[data-theme="dark"] .mshell__drawer-title {
     grid-template-columns: 1fr !important;
     column-gap: 0 !important;
     row-gap: 4px !important;
+  }
+}
+
+/* ─── Chat fenced code blocks (Claude-style) ─────────────────────────────
+   Rendered by MarkdownCode for any fenced block whose language isn't
+   one of our special kinds (chartjs / chart / data-vault-form*).
+   Header carries the language tag + a Copy button driven by a delegated
+   click listener mounted on the MarkdownContent root. */
+/* Text selection inside chat-rendered markdown — scoped so it can't leak
+   into other surfaces (composer, side panels, etc.). Replaces the OS-
+   default blue with an on-palette accent wash; `color: inherit` keeps
+   the underlying ink colour readable through the highlight. */
+.markdown-content ::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit;
+}
+
+/* Force unbreakable strings (URLs, file paths, hashes) to wrap inside
+   chat-rendered markdown. Tailwind's `break-words` (overflow-wrap:
+   break-word) only breaks once the word has already pushed the box,
+   which lets long URLs blow past the user-bubble's 78% width cap.
+   `anywhere` allows breaks before that overflow can happen. */
+.markdown-content {
+  overflow-wrap: anywhere;
+}
+
+/* ─── User message turn ────────────────────────────────────────────────
+   Refactored out of inline-style sprawl in ChatView.UserTurn. Layout
+   wrapper + bubble + hover-revealed action toolbar + attachment chip +
+   timestamp. Hover affordances are pure CSS (`:hover`) so the component
+   doesn't need useState flags any more. */
+.user-turn {
+  display: flex;
+  justify-content: flex-end;
+  position: relative;
+}
+.user-turn-inner {
+  max-width: 78%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  position: relative;
+}
+.user-turn-bubble {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px 18px;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
+  user-select: text;
+}
+/* Action toolbar — always present, subtle at rest, brightens on bubble-
+   or self-hover. The previous opacity:0 + pointer-events:none default
+   broke clickability: buttons sit at right:-32px, outside `.user-turn`'s
+   bounding box, so the cursor couldn't reach them without losing the
+   parent's :hover. Keeping them always interactive (with a low-opacity
+   resting state) sidesteps that entirely. `has-meta` lifts the button
+   above the "you · time" line; `is-stacked` adds another row when both
+   Edit and Trash are visible. */
+.user-turn-action {
+  position: absolute;
+  right: -32px;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-4);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+.user-turn:hover .user-turn-action,
+.user-turn-action:hover,
+.user-turn-action:focus-visible {
+  opacity: 1;
+}
+.user-turn-action:hover { color: var(--accent); }
+.user-turn-action--danger:hover { color: var(--danger); }
+.user-turn-action.has-meta { bottom: 18px; }
+.user-turn-action.is-stacked { bottom: 48px; }
+
+.user-turn-attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.user-turn-attachment-icon {
+  color: var(--ink-3);
+  display: inline-flex;
+}
+.user-turn-attachment-name { color: var(--ink); }
+.user-turn-attachment-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+.user-turn-meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+}
+
+/* Heading scale inside user-message bubbles — MarkdownContent's defaults
+   (h1: 20px, h2: 17px) overpower the 14.5px bubble body when someone
+   sends `# Title`. Clamp them to body-adjacent sizes so the bubble keeps
+   a chat-message feel rather than a document banner. h3 is already
+   uppercase/small in MarkdownContent, no adjustment needed. */
+.user-turn .markdown-content h1 {
+  font-size: 16px;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+.user-turn .markdown-content h2 {
+  font-size: 15px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+/* Inline `code` chip — Claude-style coral. Light coral foreground on a
+   gentle warm wash, thin warm outline. Hard-coded coral values (rather
+   than going through the cyan --accent ramp) because Claude's identity
+   for code-as-text is intentionally divergent from the cyan accent. */
+.anton-inline-code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: inherit;
+  color: rgb(232, 132, 110);
+  background: rgba(232, 132, 110, 0.10);
+  border: 1px solid rgba(232, 132, 110, 0.20);
+  border-radius: 4px;
+  padding: 1px 5px;
+  word-break: break-word;
+}
+body[data-theme="light"] .anton-inline-code {
+  /* Darker coral on light mode keeps AA contrast against the pale
+     bubble surface. */
+  color: rgb(168, 76, 60);
+  background: rgba(232, 132, 110, 0.14);
+  border-color: rgba(168, 76, 60, 0.25);
+}
+
+.anton-code-block {
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+/* When the code block is the first or last child of a chat bubble, its
+   own 12px outer margin stacks with the bubble's padding (14px 18px) and
+   we end up with a fat empty band. Reset the edge margins so the block
+   sits flush against the bubble's inner padding. */
+.markdown-content > .anton-code-block:first-child { margin-top: 0; }
+.markdown-content > .anton-code-block:last-child { margin-bottom: 0; }
+/* Header sits flush on the block body — no divider line, no tinted
+   background. Claude's pattern: language label in muted ink on the
+   left, single Copy icon on the right, both the same surface as the
+   code beneath. */
+.anton-code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px 4px;
+  background: transparent;
+  border-bottom: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: var(--ink-3);
+}
+.anton-code-block-lang {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.anton-code-block-copy {
+  display: inline-flex;
+  align-items: center;
+  /* No text label visible — Claude shows the icon only. We keep the
+     label in the DOM for the aria-live announcement; CSS just hides it
+     visually (see .anton-code-block-copy-label below). */
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.anton-code-block-copy:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+}
+/* WCAG 2.4.7 Focus Visible / 1.4.11 Non-text Contrast — keyboard users
+   need a visible focus indicator on the icon-only Copy button.
+   color-mix on --accent stays theme-adaptive (cyan on dark, deeper on
+   light) and clears the 3:1 non-text contrast threshold against the
+   neighbouring surface tokens. */
+.anton-code-block-copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--ink);
+}
+.anton-code-block-copy.is-copied {
+  color: rgb(232, 132, 110);
+}
+/* Hide the visible "Copy" / "Copied" label; the icon carries the
+   affordance. The element stays in the DOM with aria-live="polite" so
+   screen readers still get the success announcement. */
+.anton-code-block-copy-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+.anton-code-block-copy-icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+/* Two icons sit in the DOM at once (copy + check); CSS picks which is
+   visible based on the `.is-copied` class the delegated click handler
+   toggles. Keeping both mounted means no layout shift on the swap. */
+.anton-code-block-copy-icon--done { display: none; }
+.anton-code-block-copy.is-copied .anton-code-block-copy-icon--idle { display: none; }
+.anton-code-block-copy.is-copied .anton-code-block-copy-icon--done { display: inline-flex; }
+.anton-code-block-pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: transparent;
+  white-space: pre;
+}
+.anton-code-block-pre code.hljs {
+  display: inline;
+  padding: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* Scoped highlight.js theme — dark (default). Only matches tokens
+   inside our wrapper so the page can't accidentally inherit hljs
+   styling elsewhere. The palette pulls from the cyberpunk accent set:
+   cyan for names/titles, mint for strings, purple for keywords,
+   sand for numbers/built-ins, low-contrast ink-4 for comments. */
+.anton-code-block .hljs-keyword,
+.anton-code-block .hljs-selector-tag,
+.anton-code-block .hljs-literal,
+.anton-code-block .hljs-doctag { color: rgb(196, 144, 255); }
+.anton-code-block .hljs-string,
+.anton-code-block .hljs-regexp,
+.anton-code-block .hljs-attr,
+.anton-code-block .hljs-symbol,
+.anton-code-block .hljs-template-tag,
+.anton-code-block .hljs-template-variable { color: rgb(125, 226, 184); }
+.anton-code-block .hljs-number,
+.anton-code-block .hljs-built_in,
+.anton-code-block .hljs-builtin-name { color: rgb(246, 199, 121); }
+.anton-code-block .hljs-comment,
+.anton-code-block .hljs-quote { color: var(--ink-4); }
+.anton-code-block .hljs-title,
+.anton-code-block .hljs-title.class_,
+.anton-code-block .hljs-title.function_,
+.anton-code-block .hljs-section { color: var(--ink); }
+.anton-code-block .hljs-name,
+.anton-code-block .hljs-tag,
+.anton-code-block .hljs-meta,
+.anton-code-block .hljs-variable,
+.anton-code-block .hljs-bullet { color: rgb(123, 178, 255); }
+.anton-code-block .hljs-property,
+.anton-code-block .hljs-params { color: var(--ink-2); }
+.anton-code-block .hljs-deletion { color: rgb(255, 122, 145); background: color-mix(in srgb, rgb(255, 122, 145) 12%, transparent); }
+.anton-code-block .hljs-addition { color: rgb(125, 226, 184); background: color-mix(in srgb, rgb(125, 226, 184) 12%, transparent); }
+.anton-code-block .hljs-emphasis { font-style: italic; }
+.anton-code-block .hljs-strong { font-weight: 600; }
+
+/* Light-mode palette — same hue families, lower brightness so they
+   stay readable against the pale surface tokens. */
+body[data-theme="light"] .anton-code-block .hljs-keyword,
+body[data-theme="light"] .anton-code-block .hljs-selector-tag,
+body[data-theme="light"] .anton-code-block .hljs-literal,
+body[data-theme="light"] .anton-code-block .hljs-doctag { color: rgb(124, 58, 175); }
+body[data-theme="light"] .anton-code-block .hljs-string,
+body[data-theme="light"] .anton-code-block .hljs-regexp,
+body[data-theme="light"] .anton-code-block .hljs-attr,
+body[data-theme="light"] .anton-code-block .hljs-symbol,
+body[data-theme="light"] .anton-code-block .hljs-template-tag,
+body[data-theme="light"] .anton-code-block .hljs-template-variable { color: rgb(20, 121, 79); }
+body[data-theme="light"] .anton-code-block .hljs-number,
+body[data-theme="light"] .anton-code-block .hljs-built_in,
+body[data-theme="light"] .anton-code-block .hljs-builtin-name { color: rgb(170, 100, 0); }
+body[data-theme="light"] .anton-code-block .hljs-title,
+body[data-theme="light"] .anton-code-block .hljs-title.class_,
+body[data-theme="light"] .anton-code-block .hljs-title.function_,
+body[data-theme="light"] .anton-code-block .hljs-section { color: rgb(17, 85, 98); }
+body[data-theme="light"] .anton-code-block .hljs-name,
+body[data-theme="light"] .anton-code-block .hljs-tag,
+body[data-theme="light"] .anton-code-block .hljs-meta,
+body[data-theme="light"] .anton-code-block .hljs-variable,
+body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169); }
+
+/* ─── iOS auto-zoom suppression (mobile only) ─────────────────────────
+   iOS Safari (and a few Android browsers) auto-zoom the page when a
+   text input with computed font-size < 16px receives focus. The
+   viewport-meta toggle in App.jsx (focusin → maximum-scale=1) catches
+   most cases but races with the zoom commit on programmatic focus
+   (menu opens, then focuses input via rAF) and on the FIRST input
+   tapped after a route change — exactly the cases the user hit on
+   the "+ New project" menu input and the chat reply composer.
+   Bumping computed font-size to ≥16px on the mobile breakpoint stops
+   the zoom from firing in the first place, which is the robust fix.
+
+   `!important` is required because several inputs ship inline
+   `style={{ fontSize: 13 }}` (menu inputs, modal inputs) and inline
+   styles outrank normal CSS rules. Scoped to the mobile breakpoint so
+   desktop visual metrics stay exactly as designed. The composer uses
+   `--composer-font-size` (set in .composer-input-shell) so the
+   textarea + highlight overlay both pick this up via the var. */
+@media (max-width: 640px) {
+  /* Main composer + chat-floating composer — both consume
+     --composer-font-size from .composer-input-shell. Bumping the var
+     keeps the textarea and its source-mode overlay in lockstep. */
+  .composer-input-shell { --composer-font-size: 16px !important; }
+
+  /* Ad-hoc text inputs scattered across modals + menus (new project
+     row in the project picker, NewProjectModal name/instructions,
+     settings inputs, search). `:where()` keeps specificity at 0 so
+     existing styles still cascade, but the `!important` on the
+     declaration overrides inline font-size:13/13.5/14. */
+  input:where(
+    [type="text"], [type="search"], [type="email"], [type="url"],
+    [type="tel"], [type="password"], [type="number"], :not([type])
+  ),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: max(16px, 1em) !important;
   }
 }
 

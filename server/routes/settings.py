@@ -7,13 +7,18 @@ the translation layer and the single place that handles legacy env fallbacks.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import time
+import httpx
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .cowork_state import update_state, load_state
@@ -60,14 +65,26 @@ PROVIDER_TYPE_LABELS = {
 
 # Server-owned so the UI doesn't drift from what each backend actually
 # accepts. Empty list = user must supply (openai-compatible).
+#
+# minds-cloud is MindsHub's `latest:*` alias namespace. The router
+# dispatches each alias to the actual upstream provider (Anthropic,
+# OpenAI, Google, Fireworks) — the cowork app never needs to know which
+# provider serves a given alias. Direct-provider buckets below stay on
+# concrete model IDs because they hit the providers' own APIs.
 RECOMMENDED_MODELS: dict[str, list[str]] = {
-    # mdb.ai's router currently only accepts the `_reason_` / `_code_`
-    # sentinel pair — every other model name returns
-    # "Mind 'X' not found" (HTTP 500). The earlier expansion
-    # (latest:sonnet, latest:gpt, gpt-low, …) was rolled back after
-    # an end-to-end test against the live router.
-    "minds-cloud":       ["_reason_", "_code_"],
-    "anthropic":         ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
+    # Fallback list for minds-cloud. The live set is fetched from the
+    # agent's OpenAI-compatible `/v1/models` endpoint (see
+    # `_fetch_minds_models`); this static list is only used when that
+    # fetch fails (offline, missing key, route unavailable).
+    "minds-cloud": [
+        "latest:sonnet", "latest:opus", "latest:haiku",
+        "latest:gpt", "latest:gpt-low", "latest:gpt-medium",
+        "latest:gpt-high", "latest:gpt-codex",
+        "latest:gpt-mini", "latest:gpt-nano",
+        "latest:gemini", "latest:gemini-flash",
+        "latest:kimi", "latest:deepseek", "latest:qwen",
+    ],
+    "anthropic":         ["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
     "openai":            ["gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini"],
     "gemini":            ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
     "openai-compatible": [],
@@ -75,7 +92,7 @@ RECOMMENDED_MODELS: dict[str, list[str]] = {
 
 # Default planning + coding model per type. Used when modelMode == 'default'.
 RECOMMENDED_PAIR = {
-    "minds-cloud":       ("_reason_", "_code_"),
+    "minds-cloud":       ("latest:sonnet", "latest:haiku"),
     "anthropic":         ("claude-sonnet-4-6", "claude-haiku-4-5-20251001"),
     "openai":            ("gpt-5.4", "gpt-5.4-mini"),
     "gemini":            ("gemini-2.5-pro", "gemini-2.5-flash"),
@@ -84,9 +101,74 @@ RECOMMENDED_PAIR = {
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 OPENAI_BASE_URL = "https://api.openai.com/v1"
-MINDS_API_PATH_SUFFIX = "/api/v1"
+MINDS_API_PATH_SUFFIX = "/v1"
 
 OPENAI_FAMILY = ("openai", "gemini", "openai-compatible", "minds-cloud")
+
+
+# The agent exposes an OpenAI-compatible `/v1/models` route. We surface
+# that list in the Settings model picker so cowork tracks whatever the
+# router currently supports instead of a hand-maintained constant
+# (RECOMMENDED_MODELS["minds-cloud"] is now only the offline fallback).
+#
+# Cached so a rapid sequence of Settings opens doesn't re-hit the
+# network. Failures are cached too — with a shorter TTL — so a route
+# that isn't deployed yet (prod 404s today; only the alpha host serves
+# it) doesn't add a round-trip to every settings load.
+_MINDS_MODELS_TTL = 300.0       # successful fetch
+_MINDS_MODELS_FAIL_TTL = 30.0   # negative result (down / not deployed)
+_minds_models_cache: dict[str, tuple[float, Optional[list[str]]]] = {}
+
+
+async def _fetch_minds_models(base_url: str, api_key: str) -> Optional[list[str]]:
+    """Fetch supported model ids from the agent's OpenAI-compatible
+    `/v1/models` endpoint. `base_url` already carries the `/v1` suffix
+    (see `_base_url_for`). Returns the model-id list, or None on any
+    failure so the caller falls back to the static list."""
+    base = (base_url or "").rstrip("/")
+    if not base or not api_key:
+        return None
+
+    now = time.monotonic()
+    cached = _minds_models_cache.get(base)
+    if cached:
+        ts, val = cached
+        ttl = _MINDS_MODELS_TTL if val else _MINDS_MODELS_FAIL_TTL
+        if (now - ts) < ttl:
+            return val
+
+    def _remember(val: Optional[list[str]]) -> Optional[list[str]]:
+        _minds_models_cache[base] = (time.monotonic(), val)
+        return val
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(6.0), follow_redirects=True
+        ) as client:
+            r = await client.get(
+                f"{base}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if r.status_code >= 400:
+            logger.debug("minds /models fetch returned HTTP %s", r.status_code)
+            return _remember(None)
+        data = r.json()
+    except Exception as exc:
+        logger.debug("minds /models fetch failed: %s", exc)
+        return _remember(None)
+
+    # OpenAI shape: {"object": "list", "data": [{"id": "...", ...}]}.
+    # Accept a bare list too, defensively.
+    rows = data.get("data") if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        return _remember(None)
+    ids = [
+        str(row.get("id")).strip()
+        for row in rows
+        if isinstance(row, dict) and row.get("id")
+    ]
+    ids = [i for i in ids if i]
+    return _remember(ids or None)
 
 
 def _read_dotenv(path: Path) -> dict[str, str]:
@@ -219,16 +301,6 @@ def get_config_status() -> dict[str, Any]:
     }
 
 
-# Minds Cloud uses sentinel model names (`_reason_`, `_code_`) that
-# only its OpenAI-compatible router resolves. If the user onboards via
-# Minds and later switches `ANTON_PLANNING_PROVIDER` to anthropic /
-# openai / gemini, these sentinels linger in cowork preferences and
-# the UI sends them on every request — every request then 404s
-# because the new provider doesn't know what `_reason_` is.
-def _is_minds_sentinel(model_id: str | None) -> bool:
-    return bool(model_id) and model_id.startswith("_") and model_id.endswith("_")
-
-
 def _ui_settings() -> dict[str, Any]:
     prefs = load_state().get("preferences", {})
     if not isinstance(prefs, dict):
@@ -280,7 +352,7 @@ def _empty_provider(ptype: str) -> dict[str, Any]:
         base["name"] = ""
     if ptype == "minds-cloud":
         base.update({
-            "mindsUrl": "https://mdb.ai",
+            "mindsUrl": "https://api.mindshub.ai",
             "mindsMindName": "",
             "mindsDatasource": "",
             "mindsDatasourceEngine": "",
@@ -462,7 +534,31 @@ def _load_providers() -> list[dict[str, Any]]:
     migrated = _providers_from_env()
     if migrated:
         try:
-            update_state(lambda s: s.setdefault("preferences", {}).update({"providers": migrated}))
+            pref_update: dict[str, Any] = {"providers": migrated}
+            # When onboarding writes env vars for a non-MindsHub provider
+            # (OpenAI, Anthropic, Gemini, custom), the Settings UI would
+            # show MindsHub as the "active" provider in default modelMode,
+            # making the correct provider's dot grey and its key look unset.
+            # Persist custom modelMode + overrides so the right row is marked
+            # active on first Settings open, without requiring a manual Save.
+            default_p = next((p for p in migrated if p.get("isDefault")), migrated[0])
+            if default_p and default_p["type"] != "minds-cloud":
+                ptype = default_p["type"]
+                env_planning = _get_env("ANTON_PLANNING_MODEL", "")
+                env_coding = _get_env("ANTON_CODING_MODEL", env_planning)
+                pref_update["modelMode"] = "custom"
+                pref_update["modelOverrides"] = {
+                    "planning": {"providerType": ptype, "model": env_planning},
+                    "coding":   {"providerType": ptype, "model": env_coding},
+                }
+            # Onboarding validates keys before saving them, so seed
+            # providerStatus as "ok" for every migrated provider that has a
+            # key. This avoids a grey "untested" dot on the first Settings
+            # open — the user just validated the key a moment ago.
+            seeded_status = {p["type"]: "ok" for p in migrated if p.get("apiKey")}
+            if seeded_status:
+                pref_update["providerStatus"] = seeded_status
+            update_state(lambda s: s.setdefault("preferences", {}).update(pref_update))
         except Exception as e:
             logger.debug("Could not persist migrated providers: %s", e)
     return migrated
@@ -499,7 +595,7 @@ def _base_url_for(provider: dict[str, Any]) -> str:
     if provider["type"] == "gemini":
         return GEMINI_BASE_URL
     if provider["type"] == "minds-cloud":
-        url = (provider.get("mindsUrl") or "https://mdb.ai").rstrip("/")
+        url = (provider.get("mindsUrl") or "https://api.mindshub.ai").rstrip("/")
         return f"{url}{MINDS_API_PATH_SUFFIX}"
     if provider["type"] == "openai-compatible":
         return provider.get("baseUrl", "") or ""
@@ -556,7 +652,7 @@ def _env_from_providers(
             writes["ANTON_MINDS_API_KEY"] = m["apiKey"]
         else:
             deletes.append("ANTON_MINDS_API_KEY")
-        writes["ANTON_MINDS_URL"] = (m.get("mindsUrl") or "https://mdb.ai").rstrip("/")
+        writes["ANTON_MINDS_URL"] = (m.get("mindsUrl") or "https://api.mindshub.ai").rstrip("/")
         for key, env in (
             ("mindsMindName", "ANTON_MINDS_MIND_NAME"),
             ("mindsDatasource", "ANTON_MINDS_DATASOURCE"),
@@ -661,6 +757,18 @@ async def get_settings():
     ui = _ui_settings()
     providers = _load_providers()
     model_cfg = _load_model_config()
+
+    # Overlay the agent's live `/v1/models` list onto the minds-cloud
+    # bucket. Falls back to the static list when the key/url are absent
+    # or the endpoint can't be reached.
+    recommended_models = {k: list(v) for k, v in RECOMMENDED_MODELS.items()}
+    minds_key = _get_env("ANTON_MINDS_API_KEY", "")
+    minds_url = (_get_env("ANTON_MINDS_URL", "https://api.mindshub.ai") or "").rstrip("/")
+    if minds_key and minds_url:
+        live = await _fetch_minds_models(f"{minds_url}{MINDS_API_PATH_SUFFIX}", minds_key)
+        if live:
+            recommended_models["minds-cloud"] = live
+
     return {
         "planningProvider": _get_env("ANTON_PLANNING_PROVIDER", "anthropic"),
         "planningModel":    _get_env("ANTON_PLANNING_MODEL", "claude-sonnet-4-6"),
@@ -670,7 +778,7 @@ async def get_settings():
         "anthropicApiKey":  _masked("ANTON_ANTHROPIC_API_KEY"),
         "openaiApiKey":     _masked("ANTON_OPENAI_API_KEY"),
         "mindsApiKey":      _masked("ANTON_MINDS_API_KEY"),
-        "mindsUrl":         _get_env("ANTON_MINDS_URL", "https://mdb.ai"),
+        "mindsUrl":         _get_env("ANTON_MINDS_URL", "https://api.mindshub.ai"),
         "mindsMindName":    _get_env("ANTON_MINDS_MIND_NAME", ""),
         "mindsDatasource":  _get_env("ANTON_MINDS_DATASOURCE", ""),
         "mindsDatasourceEngine": _get_env("ANTON_MINDS_DATASOURCE_ENGINE", ""),
@@ -697,7 +805,7 @@ async def get_settings():
         "modelOverrides": model_cfg["modelOverrides"],
         "providerTypes":  list(PROVIDER_TYPES),
         "providerTypeLabels": PROVIDER_TYPE_LABELS,
-        "recommendedModels": RECOMMENDED_MODELS,
+        "recommendedModels": recommended_models,
         "recommendedPair":   {k: list(v) for k, v in RECOMMENDED_PAIR.items()},
         "providerStatus": (load_state().get("preferences", {}) or {}).get("providerStatus") or {},
     }
@@ -871,7 +979,7 @@ async def update_settings(patch: SettingsPatch):
     # the new endpoint. Catch the two unambiguous cases:
     #
     #   1. Active state = Minds Cloud, but ANTON_OPENAI_API_KEY holds a
-    #      non-Minds value → router auth will 401 against mdb.ai.
+    #      non-Minds value → router auth will 401 against MindsHub.
     #   2. Active state = OpenAI / non-Minds compatible, but
     #      ANTON_OPENAI_API_KEY holds an `mdb_…` Minds key → will 401
     #      against api.openai.com (or any non-Minds host).
@@ -988,13 +1096,13 @@ async def _ping_provider(p: dict[str, Any]) -> tuple[str, str]:
         if ptype == "minds-cloud":
             if not key:
                 return "fail", "missing API key"
-            base = (p.get("mindsUrl") or "https://mdb.ai").rstrip("/")
-            # mdb.ai exposes `/api/v1/minds/` as the auth-checked list
+            base = (p.get("mindsUrl") or "https://api.mindshub.ai").rstrip("/")
+            # MindsHub exposes `/v1/minds/` as the auth-checked list
             # endpoint (the OpenAI-compatible `/models` route 401s even
             # for valid keys). This matches the URL used by the Electron
             # main process's validateMinds helper.
             return await _check(
-                f"{base}/api/v1/minds/",
+                f"{base}/v1/minds/",
                 {"Authorization": f"Bearer {key}"},
             )
     except httpx.HTTPError as e:
@@ -1061,3 +1169,182 @@ async def validate_settings():
         "provider": status["provider"],
         "model": status["model"],
     }
+
+
+# ─── Onboarding-only surface (web SPA parity with Electron) ─────────
+# These endpoints back the host abstraction's readSettings/saveSettings/
+# checkInstall/checkConfigured/validateProvider methods on the web. The
+# Electron renderer goes through window.antontron instead — see
+# src/renderer/platform/host.ts. The contract here matches the IPC
+# shapes so the same React onboarding pages work in both shells.
+
+
+@router.get("/raw")
+async def read_raw_settings():
+    """Return ~/.anton/.env as a flat dict — same shape as the
+    Electron `readSettings` IPC. Onboarding uses this to load existing
+    values when the user revisits the LLM-provider screen.
+
+    Values are returned in the clear because the user is configuring
+    their own backend; there is no cross-tenant exposure on a single-
+    user FastAPI instance. If we ever multi-tenant the web host this
+    must move to a per-user store."""
+    return _read_dotenv(GLOBAL_ENV_PATH)
+
+
+class RawSettingsBody(BaseModel):
+    content: str
+
+
+@router.post("/raw")
+async def write_raw_settings(body: RawSettingsBody):
+    """Replace ~/.anton/.env with the supplied dotenv content. Mirrors
+    the Electron `saveSettings` IPC. Onboarding builds the lines
+    locally (provider, model, keys) and posts the joined string."""
+    try:
+        GLOBAL_ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            GLOBAL_ENV_PATH.parent.chmod(0o700)
+        except OSError:
+            pass
+        GLOBAL_ENV_PATH.write_text(body.content + "\n", encoding="utf-8")
+        try:
+            GLOBAL_ENV_PATH.chmod(0o600)
+        except OSError:
+            pass
+        # Reflect the writes in the running process so subsequent
+        # health checks pick them up without a server restart.
+        for line in body.content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            os.environ[key.strip()] = val.strip().strip('"').strip("'")
+    except Exception as e:
+        logger.warning("Failed to write raw settings: %s", e)
+        raise HTTPException(status_code=500, detail="Settings could not be saved.") from e
+    return {"ok": True}
+
+
+@router.get("/install-status")
+async def install_status():
+    """The hosted FastAPI server is its own install — if this endpoint
+    answers, anton + python deps are by definition ready. Returned for
+    parity with the Electron `checkInstall` IPC so App.tsx's setup gate
+    can short-circuit on web."""
+    return {"antonInstalled": True, "serverDepsReady": True}
+
+
+@router.get("/configured")
+async def check_configured():
+    """Cheap predicate used by App.tsx's onboarding gate. Mirrors the
+    Electron `checkConfigured` IPC: a key being present is enough — we
+    don't ping the provider here (validate-provider does that)."""
+    env = _read_dotenv(GLOBAL_ENV_PATH)
+    if env.get("ANTON_ANTHROPIC_API_KEY") or os.environ.get("ANTON_ANTHROPIC_API_KEY"):
+        return {"configured": True, "provider": "anthropic"}
+    if (env.get("ANTON_OPENAI_API_KEY") or os.environ.get("ANTON_OPENAI_API_KEY")) and (
+        env.get("ANTON_OPENAI_BASE_URL") or os.environ.get("ANTON_OPENAI_BASE_URL")
+    ):
+        return {"configured": True, "provider": "minds"}
+    return {"configured": False, "provider": ""}
+
+
+class ValidateProviderBody(BaseModel):
+    provider: str
+    apiKey: str
+    baseUrl: Optional[str] = None
+    model: Optional[str] = None
+
+
+def _http_json(url: str, method: str, headers: dict[str, str], body: Optional[bytes] = None) -> tuple[int, str]:
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", errors="replace") if e.fp else ""
+    except urllib.error.URLError as e:
+        raise RuntimeError(str(e.reason)) from e
+
+
+def _validate_anthropic(api_key: str, model: str) -> dict[str, Any]:
+    try:
+        body = json.dumps({"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "ping"}]}).encode()
+        status, text = _http_json(
+            "https://api.anthropic.com/v1/messages",
+            "POST",
+            {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            body,
+        )
+        if status in (200, 201):
+            return {"ok": True}
+        try:
+            msg = json.loads(text).get("error", {}).get("message") or f"HTTP {status}"
+        except Exception:
+            msg = f"HTTP {status}"
+        return {"ok": False, "error": msg}
+    except Exception:
+        logger.warning("Anthropic provider validation failed", exc_info=True)
+        return {"ok": False, "error": "Cannot connect"}
+
+
+def _validate_minds(api_key: str, base_url: str) -> dict[str, Any]:
+    # mdb.ai requires HTTP/2; urllib only speaks HTTP/1.1 and gets a 401.
+    # httpx (already a transitive dep via anton) handles HTTP/2 via ALPN.
+    try:
+        base = base_url.rstrip("/")
+        with httpx.Client(http2=True, timeout=15) as client:
+            resp = client.get(
+                f"{base}/v1/minds/",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if resp.status_code in (401, 403):
+            return {"ok": False, "error": "Invalid API key"}
+        if 200 <= resp.status_code < 300:
+            return {"ok": True}
+        return {"ok": False, "error": f"Server returned HTTP {resp.status_code}"}
+    except Exception:
+        logger.warning("Minds provider validation failed", exc_info=True)
+        return {"ok": False, "error": "Cannot connect"}
+
+
+def _validate_openai_compatible(api_key: str, base_url: str, model: Optional[str]) -> dict[str, Any]:
+    try:
+        normalized = base_url.rstrip("/")
+        # Bases that already include a versioned path (e.g. Gemini's
+        # /v1beta/openai) skip the implicit /v1 prefix.
+        import re
+        chat_url = f"{normalized}/chat/completions" if re.search(r"/v\d", normalized) else f"{normalized}/v1/chat/completions"
+        body = json.dumps({"model": model or "gpt-4o", "messages": [{"role": "user", "content": "ping"}]}).encode()
+        status, text = _http_json(
+            chat_url,
+            "POST",
+            {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            body,
+        )
+        if status in (200, 201):
+            return {"ok": True}
+        if status in (401, 403):
+            return {"ok": False, "error": "Invalid API key"}
+        try:
+            msg = json.loads(text).get("error", {}).get("message") or f"HTTP {status}"
+        except Exception:
+            msg = f"HTTP {status}"
+        return {"ok": False, "error": msg}
+    except Exception:
+        logger.warning("OpenAI-compatible provider validation failed", exc_info=True)
+        return {"ok": False, "error": "Cannot connect"}
+
+
+@router.post("/validate-provider")
+async def validate_provider(body: ValidateProviderBody):
+    """Server-side provider key check. Mirrors the Electron
+    `validateProvider` IPC; same shape, same provider names."""
+    if body.provider == "anthropic":
+        return _validate_anthropic(body.apiKey, body.model or "claude-sonnet-4-6")
+    if body.provider == "minds":
+        return _validate_minds(body.apiKey, body.baseUrl or "https://mdb.ai")
+    if body.provider == "openai-compatible":
+        return _validate_openai_compatible(body.apiKey, body.baseUrl or "https://api.openai.com/v1", body.model)
+    return {"ok": False, "error": "Unknown provider"}

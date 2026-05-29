@@ -5,6 +5,7 @@ import Onboarding from './pages/Onboarding';
 import IntroSequence from './pages/IntroSequence';
 import CoworkApp from './CoworkApp';
 import ThemeToggle from './components/ThemeToggle';
+import { host } from './platform/host';
 import './styles.css';
 
 type Page = 'loading' | 'intro' | 'terms' | 'setup' | 'onboarding' | 'launching' | 'terminal';
@@ -20,7 +21,7 @@ export default function App() {
   useEffect(() => {
     async function init() {
       try {
-        const settings = await window.antontron.readSettings();
+        const settings = await host.readSettings();
         if (settings.ANTON_TERMS_CONSENT !== 'true') {
           // Terms gate the rest of the app — every launch up until the
           // user accepts shows the intro, then the terms screen. Once
@@ -36,12 +37,14 @@ export default function App() {
         // python-multipart, pydantic) actually importable from the
         // tool venv. Either being false means setup needs to run —
         // setup re-installs anton with the `--with` extras included.
-        const status = await window.antontron.checkInstall();
+        // On web both flags are reported true by the FastAPI host
+        // (it IS the install), so this branch short-circuits there.
+        const status = await host.checkInstall();
         if (!status.antonInstalled || !status.serverDepsReady) {
           setPage('setup');
           return;
         }
-        const { configured } = await window.antontron.checkConfigured();
+        const { configured } = await host.checkConfigured();
         if (!configured) {
           setPage('onboarding');
           return;
@@ -55,12 +58,12 @@ export default function App() {
   }, []);
 
   const advanceFromTerms = async () => {
-    const status = await window.antontron.checkInstall();
+    const status = await host.checkInstall();
     if (!status.antonInstalled || !status.serverDepsReady) {
       setPage('setup');
       return;
     }
-    const { configured } = await window.antontron.checkConfigured();
+    const { configured } = await host.checkConfigured();
     if (!configured) {
       setPage('onboarding');
       return;
@@ -79,7 +82,7 @@ export default function App() {
   // `checkConfigured()` gate the boot path uses determines this.
   const handleInstallComplete = async () => {
     try {
-      const { configured } = await window.antontron.checkConfigured();
+      const { configured } = await host.checkConfigured();
       if (configured) {
         setPage('launching');
         setTimeout(() => setPage('terminal'), 1200);
@@ -100,7 +103,7 @@ export default function App() {
     setPage('terminal');
   };
 
-  const isMac = window.antontron.getPlatform() === 'darwin';
+  const isMac = host.isMac();
   const showLogo = LOGO_PAGES.has(page);
   const isTopPinned = page === 'onboarding';
 

@@ -545,7 +545,7 @@ function ConnectorsPage({
       );
     }
   } else if (selectedConnector?.status !== 'included') {
-    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into Anton CoWork yet.`);
+    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into Anton Cowork yet.`);
   }
 
   return (
@@ -660,6 +660,12 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
   // open shows the full list in its hand-curated order.
   const [filterCategory, setFilterCategory] = useState('all');
   const [sortBy, setSortBy] = useState('popular');
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const connectorCards = useMemo(() => {
     const lower = query.trim().toLowerCase();

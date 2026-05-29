@@ -1,5 +1,5 @@
 """
-Anton CoWork — FastAPI backend server.
+Anton Cowork — FastAPI backend server.
 
 Runs on http://127.0.0.1:8765
 Wraps Anton's Python API and exposes /v1/* REST + SSE endpoints.
@@ -220,22 +220,72 @@ async def _google_token_refresh_loop() -> None:
         await asyncio.sleep(30 * 60)  # every 30 minutes
 
 
+async def _turn_buffer_gc_loop():
+    """Phase 5 — periodic sweep of old turn buffer files.
+
+    Stream buffers are a UI replay log, not the canonical history,
+    so an aggressive age-out policy is safe. Default of 30 days keeps
+    "I closed my laptop for a week" reconnect cases working while
+    not letting the streams tree grow without bound.
+    """
+    from anton_api.turn_buffer import gc_old_buffers as _gc_buffers
+    sweep_every_sec = 6 * 3600  # every 6 hours
+    max_age_days = int(os.environ.get("ANTON_STREAM_GC_MAX_AGE_DAYS", "30"))
+    # First sweep happens after the initial delay so startup stays
+    # fast; the boot-sweep below already handled crash-recovery.
+    while True:
+        await asyncio.sleep(sweep_every_sec)
+        try:
+            for proj in projects_store.list_projects():
+                streams_root = Path(proj["path"]) / ".anton" / "streams"
+                _gc_buffers(streams_root, max_age_days=max_age_days)
+        except Exception:
+            logger.debug("Stream-buffer GC sweep failed", exc_info=True)
+
+
+def _seal_orphan_buffers_on_boot():
+    """Phase 4 — sweep buffer files left open by the previous run.
+
+    A producer crash (SIGKILL, app force-quit, OS reboot) leaves
+    JSONL files without a terminal record. On reconnect, a tail
+    reader would block forever waiting for events that will never
+    come. We append a synthetic ``Interrupted`` record to each
+    orphan so readers see a clean end-of-stream and the renderer
+    can decide whether to surface "the task was interrupted" or
+    silently move on.
+    """
+    from anton_api.turn_buffer import seal_orphan_buffers
+    try:
+        for proj in projects_store.list_projects():
+            streams_root = Path(proj["path"]) / ".anton" / "streams"
+            seal_orphan_buffers(streams_root)
+    except Exception:
+        logger.warning("Boot-time orphan-buffer sweep failed", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     projects_store.ensure_general_project()
+    # Phase 4: heal any turn buffers left open by a previous crash
+    # BEFORE we start accepting requests, so a returning client never
+    # tails an already-dead producer's file expecting more events.
+    _seal_orphan_buffers_on_boot()
     start_scheduler()
     refresh_task = asyncio.create_task(_google_token_refresh_loop())
+    # Phase 5: periodic GC of old turn buffers.
+    gc_task = asyncio.create_task(_turn_buffer_gc_loop())
     yield
-    refresh_task.cancel()
-    try:
-        await refresh_task
-    except asyncio.CancelledError:
-        pass
+    for t in (refresh_task, gc_task):
+        t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
     await conversation_manager.close_all()
     await scratchpad_runtime.close_all()
 
 
-app = FastAPI(title="Anton CoWork API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Anton Cowork API", version="1.0.0", lifespan=lifespan)
 
 _renderer_url = os.environ.get("VITE_RENDERER_URL", "").rstrip("/")
 _allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "app://-", "null"]
@@ -295,7 +345,7 @@ async def root():
     if ANTON_SERVE_SPA and SPA_DIR is not None:
         return FileResponse(str(SPA_DIR / "index-web.html"))
     return {
-        "message": "Anton CoWork API",
+        "message": "Anton Cowork API",
         "anton_available": conversation_manager.is_anton_available(),
     }
 
@@ -309,7 +359,7 @@ if ANTON_SERVE_SPA and SPA_DIR is not None:
     # they get correct MIME-types and range-request handling for free.
     # Any future top-level subdir of SPA_DIR that should be served must
     # be added to this tuple (or as its own dedicated mount).
-    for _sub in ("assets", "fonts", "gravity-field"):
+    for _sub in ("assets", "fonts", "gravity-field", "logos"):
         _sub_path = SPA_DIR / _sub
         if _sub_path.exists():
             app.mount(f"/{_sub}", StaticFiles(directory=str(_sub_path)), name=f"spa-{_sub}")
@@ -329,11 +379,6 @@ if ANTON_SERVE_SPA and SPA_DIR is not None:
     }
     _spa_shell: Path = SPA_DIR / "index-web.html"
 
-    # Pre-resolve the SPA root once at module load. The fallback handler
-    # uses this to validate that every served path stays inside SPA_DIR
-    # — defense in depth on top of the `_spa_files` allowlist below.
-    _SPA_DIR_RESOLVED: Path = SPA_DIR.resolve()
-
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         # Wrong /v1/* paths must 404 cleanly — never serve the SPA shell
@@ -347,16 +392,7 @@ if ANTON_SERVE_SPA and SPA_DIR is not None:
         # can take over (or render its own 404 view) on the client.
         served = _spa_files.get(full_path)
         if served is not None:
-            # _spa_files is a pre-built allowlist of files inside
-            # SPA_DIR (computed at startup), so traversal sequences in
-            # `full_path` simply miss the dict. The explicit
-            # is_relative_to check below is redundant defense in depth
-            # and makes the safety obvious to static analysis (Snyk
-            # Code, CodeQL py/path-injection).
-            resolved = served.resolve()
-            if not resolved.is_relative_to(_SPA_DIR_RESOLVED):
-                raise HTTPException(status_code=403)
-            return FileResponse(str(resolved))
+            return FileResponse(str(served))
         return FileResponse(str(_spa_shell))
 
 
@@ -371,7 +407,7 @@ if __name__ == "__main__":
     host = os.environ.get("ANTON_SERVER_HOST", "127.0.0.1")
 
     logger.info("─" * 50)
-    logger.info("Anton CoWork server starting on %s:%d", host, port)
+    logger.info("Anton Cowork server starting on %s:%d", host, port)
     logger.info("Anton available: %s", conversation_manager.is_anton_available())
     if not conversation_manager.is_anton_available():
         logger.info("Anton is not installed; chat endpoints will return 503")

@@ -1,12 +1,10 @@
-// Web entrypoint — mounts the cowork SPA directly.
+// Web entrypoint — mounts the same gated <App /> as Electron.
 //
-// Differences from main.tsx (the Electron entrypoint):
-//   - No <App> wrapper. App.tsx runs the Electron-only gates
-//     (TermsConsent → Setup → Onboarding) which depend on
-//     window.antontron and don't apply in the hosted web deployment.
-//     Web users land directly in cowork; install/onboarding state is
-//     managed server-side by the FastAPI host.
-//   - No window.antontron preconditions; host.ts handles bridge absence.
+// App.tsx runs the onboarding gates (Intro → Terms → Setup →
+// Onboarding → cowork). Each gate's bridge call now goes through
+// `host.*`, which routes to ~/.anton/.env via FastAPI in web and via
+// window.antontron in Electron. Setup auto-completes on web (the
+// FastAPI host running this code IS the install).
 //
 // Same as main.tsx:
 //   - First-paint theme bootstrap (avoids palette flash).
@@ -17,7 +15,7 @@ import { createRoot } from 'react-dom/client';
 import './cowork/styles/tailwind.css';
 import './cowork/styles/globals.css';
 import './styles.css';
-import CoworkRoot from './cowork/App';
+import App from './App';
 
 (() => {
   let theme: 'light' | 'dark' = 'dark';
@@ -31,6 +29,6 @@ import CoworkRoot from './cowork/App';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <CoworkRoot />
+    <App />
   </StrictMode>
 );

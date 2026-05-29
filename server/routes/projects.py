@@ -17,12 +17,15 @@ Project file CRUD (files live at the project root;
 """
 from __future__ import annotations
 
+import hashlib
 import logging
+import mimetypes
 import os
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from anton_api import conversation_manager, projects_store
@@ -365,3 +368,84 @@ async def delete_project_file(name: str, path: str):
         raise HTTPException(status_code=400, detail="Path is a directory")
     target.unlink()
     return {"status": "deleted", "path": path}
+
+
+# ─── Preview / download (parity with /v1/artifacts) ─────────────────────────
+#
+# Project files that aren't anton.md need their own viewing affordances —
+# an HTML report living in the working folder should render in an iframe
+# the same way an artifact does, and a binary / oversized file needs a
+# graceful escape hatch (reveal in Finder on desktop, download in the
+# browser). These endpoints mirror the artifact equivalents but resolve
+# paths against the project's root rather than the artifact registry.
+
+_PROJECT_PREVIEW_MOUNTS: dict[str, Path] = {}
+
+
+class ProjectFilePreviewMountRequest(BaseModel):
+    name: str
+    path: str
+
+
+@router.post("/preview-mount-file")
+async def project_file_preview_mount(req: ProjectFilePreviewMountRequest):
+    """Register the parent dir of a project file under a token and
+    return a URL the iframe should load. Restricted to HTML files —
+    other formats use the raw-download endpoint."""
+    base = _project_dir(req.name)
+    target = _safe_relpath(req.path, base)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    if target.suffix.lower() != ".html":
+        raise HTTPException(
+            status_code=415,
+            detail="Preview mount is only available for HTML files",
+        )
+    parent = target.parent.resolve()
+    token = hashlib.sha256(str(parent).encode("utf-8")).hexdigest()[:16]
+    _PROJECT_PREVIEW_MOUNTS[token] = parent
+    return {
+        "token": token,
+        "entry": target.name,
+        "relUrl": f"/v1/projects/preview-asset/{token}/{target.name}",
+    }
+
+
+@router.get("/preview-asset/{token}/{rel_path:path}")
+async def project_file_preview_asset(token: str, rel_path: str):
+    parent = _PROJECT_PREVIEW_MOUNTS.get(token)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Preview mount has expired or is unknown")
+    try:
+        target = (parent / rel_path).resolve()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid asset path") from exc
+    try:
+        target.relative_to(parent)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Asset is outside the mounted directory")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    media_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    return FileResponse(target, media_type=media_type, headers={
+        "Cache-Control": "private, max-age=300",
+    })
+
+
+@router.get("/{name}/files-raw/{path:path}")
+async def download_project_file(name: str, path: str):
+    """Return the file's raw bytes with `Content-Disposition: attachment`
+    so a browser triggers a download. The text-only `/files/{path}`
+    endpoint is for inline read; this one handles binary + oversized
+    cases that the modal can't render directly."""
+    base = _project_dir(name)
+    target = _safe_relpath(path, base)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    media_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    return FileResponse(
+        target,
+        media_type=media_type,
+        filename=target.name,
+        headers={"Content-Disposition": f'attachment; filename="{target.name}"'},
+    )

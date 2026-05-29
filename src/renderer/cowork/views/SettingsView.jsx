@@ -7,7 +7,7 @@ import { validateSettings, revealSettingKey, testProviders } from '../api';
 // Minds Cloud are presets that translate to openai-compatible + a known
 // base URL on save, and are recognized back from those values on load.
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const MINDS_API_PATH_SUFFIX = '/api/v1';
+const MINDS_API_PATH_SUFFIX = '/v1';
 
 const PROVIDER_PRESETS = [
   { value: 'anthropic',         label: 'Anthropic' },
@@ -26,23 +26,23 @@ const PROVIDER_DEFAULTS = {
   openai:              { planning: 'gpt-5.4',           coding: 'gpt-5.4-mini' },
   gemini:              { planning: 'gemini-2.5-pro',    coding: 'gemini-2.5-flash' },
   'openai-compatible': { planning: '',                  coding: '' },
-  // Minds Cloud uses sentinel model names that its OpenAI-compatible
-  // router resolves to the right backing model. `_reasoning_` for
-  // planning, `_code_` for scratchpad coding — these are the only pair
-  // the mdb.ai router currently accepts. (Earlier codebase comments
-  // referenced `_reason_`; that name 4xx's against the live router.)
-  'minds-cloud':       { planning: '_reasoning_',       coding: '_code_' },
+  // Minds Cloud is MindsHub's `latest:*` alias namespace. The router
+  // dispatches each alias to the actual upstream provider; the
+  // (planning, coding) pair here mirrors `RECOMMENDED_PAIR['minds-cloud']`
+  // on the server so switching to this preset auto-fills the same defaults
+  // the backend would recommend.
+  'minds-cloud':       { planning: 'latest:sonnet',     coding: 'latest:haiku' },
 };
 
 // Known model lists per provider — surfaced as quick-pick chips below
 // the text input so users can swap models without typing.
 const PROVIDER_MODELS = {
-  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
+  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
   openai:        ['gpt-5.4', 'gpt-5.4-mini', 'o3', 'o4-mini'],
   gemini:        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
-  // Minds Cloud intentionally has no quick-picks: the planning/coding
-  // pair is fixed (`_reasoning_` / `_code_`) and gets auto-filled by
-  // applyProviderPreset, so a chip row would just be noise.
+  // Minds Cloud quick-picks come from the server's `recommendedModels`
+  // bucket (the full `latest:*` alias list) — rendered by the dedicated
+  // minds-cloud panel further down rather than this generic chip row.
 };
 
 // Per-provider credential relevance map. Drives the Required / Optional /
@@ -112,7 +112,7 @@ function inferProviderPreset(s) {
   if (provider === 'openai') return 'openai';
   if (provider === 'openai-compatible') {
     if (baseUrl.startsWith('https://generativelanguage.googleapis.com/')) return 'gemini';
-    if (baseUrl.includes('mdb.ai') || baseUrl.endsWith(MINDS_API_PATH_SUFFIX) && (s.mindsApiKey || s.mindsUrl)) {
+    if (baseUrl.includes('mdb.ai') || baseUrl.includes('mindshub.ai') || baseUrl.endsWith(MINDS_API_PATH_SUFFIX) && (s.mindsApiKey || s.mindsUrl)) {
       return 'minds-cloud';
     }
     return 'openai-compatible';
@@ -154,7 +154,7 @@ function applyProviderPreset(preset, settings, setSetting) {
   } else if (preset === 'minds-cloud') {
     setSetting('planningProvider', 'openai-compatible');
     setSetting('codingProvider', 'openai-compatible');
-    const mindsUrl = (settings.mindsUrl || 'https://mdb.ai').replace(/\/+$/, '');
+    const mindsUrl = (settings.mindsUrl || 'https://api.mindshub.ai').replace(/\/+$/, '');
     setSetting('mindsUrl', mindsUrl);
     setSetting('openaiBaseUrl', `${mindsUrl}${MINDS_API_PATH_SUFFIX}`);
     if (settings.mindsApiKey && !settings.openaiApiKey) {
@@ -180,11 +180,11 @@ function Section({ title, subtitle, children }) {
       alignItems: 'flex-start',
     }}>
       <div>
-        <h4 style={{
+        <h3 style={{
           margin: 0, padding: 0,
           fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
           fontFamily: 'inherit', lineHeight: 1.3,
-        }}>{title}</h4>
+        }}>{title}</h3>
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
       </div>
       <div>{children}</div>
@@ -211,7 +211,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
       {/* W3C "Accordion" pattern: heading wraps the toggle button so the
           group surfaces in SR heading navigation, while the button still
           owns interaction. h3 margin reset to keep the visual layout. */}
-      <h3 id={headingId} style={{ margin: 0, padding: 0, fontWeight: 'inherit', fontSize: 'inherit' }}>
+      <h2 id={headingId} style={{ margin: 0, padding: 0, fontWeight: 'inherit', fontSize: 'inherit' }}>
         <button
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
@@ -232,7 +232,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
           }}>{Ico.chevronRight ? Ico.chevronRight(12) : '›'}</span>
           <span style={{ flex: 1 }}>{title}</span>
         </button>
-      </h3>
+      </h2>
       {open && (
         <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: '0 18px 8px' }}>{children}</div>
       )}
@@ -591,7 +591,7 @@ function SetBadge({ hasValue, active }) {
 const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
 
 const PROVIDER_TYPE_DESC = {
-  'minds-cloud': 'Routes via mdb.ai with smart model selection.',
+  'minds-cloud': 'Routes via MindsHub with smart model selection.',
   anthropic: 'Use Claude models with your Anthropic API key.',
   openai: 'Use GPT models with your OpenAI API key.',
   gemini: 'Use Gemini models through Google\'s OpenAI-compatible endpoint.',
@@ -599,7 +599,7 @@ const PROVIDER_TYPE_DESC = {
 };
 
 const GET_KEY_URL = {
-  'minds-cloud': 'https://mdb.ai/apiKeys',
+  'minds-cloud': 'https://console.mindshub.ai/api-key',
   anthropic: 'https://console.anthropic.com/settings/keys',
   openai: 'https://platform.openai.com/api-keys',
   gemini: 'https://aistudio.google.com/apikey',
@@ -612,7 +612,7 @@ function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
   if (type === 'openai-compatible') base.baseUrl = '';
   if (type === 'minds-cloud') {
-    base.mindsUrl = 'https://mdb.ai';
+    base.mindsUrl = 'https://api.mindshub.ai';
     base.mindsMindName = '';
     base.mindsDatasource = '';
     base.mindsDatasourceEngine = '';
@@ -931,7 +931,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
           padding: '28px 28px 96px',
         }}>
           <div style={{ maxWidth: 820 }}>
-            <h2 className="page-title" style={{ marginTop: 0, marginBottom: 6 }}>Settings</h2>
+            <h1 className="page-title" style={{ marginTop: 0, marginBottom: 6 }}>Settings</h1>
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 22 }}>
               Anton configuration and local desktop preferences.
             </div>
@@ -1097,10 +1097,10 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   />
                 );
                 // Each provider row is a sub-section in the Providers group,
-                // so every row gets an <h4> for SR heading navigation. Known
+                // so every row gets an <h3> for SR heading navigation. Known
                 // types render the label visibly; the openai-compatible row
                 // already shows an editable name input as its title, so the
-                // <h4> uses the `.sr-only` utility (its text is the current
+                // <h3> uses the `.sr-only` utility (its text is the current
                 // name or a sensible fallback) — keeps the visual unchanged
                 // while making the row reachable by H/4 navigation.
                 const headingBaseStyle = {
@@ -1118,7 +1118,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       const errorId = `provider-name-error-${p.type}`;
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          <h4 className="sr-only">{customHeadingText}</h4>
+                          <h3 className="sr-only">{customHeadingText}</h3>
                           <input
                             className="field-input"
                             value={p.name ?? ''}
@@ -1140,7 +1140,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                         </div>
                       );
                     })() : (
-                      <h4 style={headingBaseStyle}>{label}</h4>
+                      <h3 style={headingBaseStyle}>{label}</h3>
                     )}
                   </span>
                 );
@@ -1629,9 +1629,9 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       hasValue={has('mindsUrl')}
                     >
                       <ClearableTextInput
-                        value={settings.mindsUrl ?? 'https://mdb.ai'}
+                        value={settings.mindsUrl ?? 'https://api.mindshub.ai'}
                         onChange={(v) => setSetting('mindsUrl', v)}
-                        placeholder="https://mdb.ai"
+                        placeholder="https://api.mindshub.ai"
                       />
                     </CredentialRow>
                     <CredentialRow

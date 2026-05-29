@@ -1,4 +1,4 @@
-"""Anton-only local search for CoWork data."""
+"""Anton-only local search for Cowork data."""
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ async def search_cowork(q: str = "", limit: int = 25):
                 }
             )
 
-    for artifact in await list_artifacts():
+    for artifact in await list_artifacts(project_path=None):
         # New artifact-card shape uses `title` for the display name
         # and adds `description`. Search across title + description +
         # path + kind so a match on any of those surfaces the card.

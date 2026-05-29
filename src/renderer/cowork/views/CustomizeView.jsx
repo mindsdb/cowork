@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { deleteDatasource, fetchDatasources } from '../api';
+import { deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import ConnectWorkflowView from './ConnectWorkflowView';
 import {
   PageHeader,
@@ -222,18 +222,292 @@ function EmptyState({ onConnectNew }) {
   );
 }
 
+// ─── Connection detail panel ──────────────────────────────────────────────
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+  } catch { return iso; }
+}
+
+function humanLabel(name) {
+  return String(name || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function MetaRow({ label, value }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <span style={{
+        width: 100, flexShrink: 0,
+        fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
+      }}>{label}</span>
+      <span style={{
+        fontFamily: FONT_MONO, fontSize: 12, color: 'var(--ink)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{value || '—'}</span>
+    </div>
+  );
+}
+
+const VAULT_KEEP = '__anton_vault_keep__';
+
+function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+  const [spec, setSpec] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!connection) return;
+    setLoading(true);
+    setSpec(null);
+    setSaved(null);
+    Promise.all([
+      fetchConnector(connection.engine).catch(() => null),
+      fetchSavedConnection(connection.engine, connection.name).catch(() => null),
+    ]).then(([connSpec, savedData]) => {
+      setSpec(connSpec);
+      setSaved(savedData);
+      setLoading(false);
+    });
+  }, [connection?.engine, connection?.name]);
+
+  if (!connection) return null;
+
+  const secureKeys = new Set(saved?.secureKeys || []);
+  const vaultFields = saved?.fields || {};
+  const vaultKeys = new Set(Object.keys(vaultFields));
+
+  // Find the form method whose field names best overlap with the stored
+  // vault keys so we can supplement display with any expected-but-empty
+  // params (e.g. a 'username' field that was left blank when saving).
+  const methods = spec?.form?.methods || [];
+  let bestMethod = null, bestScore = -1;
+  for (const m of methods) {
+    const score = (m.fields || []).filter((f) => vaultKeys.has(f.name)).length;
+    if (score > bestScore) { bestScore = score; bestMethod = m; }
+  }
+  const specFields = bestMethod?.fields || spec?.form?.fields || [];
+  const specKeys = new Set(specFields.map((f) => f.name));
+
+  // Display list: spec fields in order (vault value where available),
+  // followed by any vault fields not covered by the spec.
+  const displayFields = [
+    ...specFields.map((f) => ({
+      key: f.name,
+      label: f.label || humanLabel(f.name),
+      value: vaultFields[f.name] ?? null,
+      isSecret: f.secret === true || f.type === 'password'
+        || secureKeys.has(f.name) || vaultFields[f.name] === VAULT_KEEP,
+    })),
+    ...Object.entries(vaultFields)
+      .filter(([k]) => !specKeys.has(k))
+      .map(([key, value]) => ({
+        key,
+        label: humanLabel(key),
+        value,
+        isSecret: secureKeys.has(key) || value === VAULT_KEEP,
+      })),
+  ];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 70,
+          background: 'rgba(0,0,0,0.18)',
+        }}
+      />
+
+      {/* Slide-in panel */}
+      <div
+        role="dialog"
+        aria-label={`${spec?.label || connection.engine} connection details`}
+        style={{
+          position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 71,
+          width: 'min(400px, 92vw)',
+          background: 'var(--surface)',
+          borderLeft: '1px solid var(--line)',
+          boxShadow: '-12px 0 40px rgba(0,0,0,0.12)',
+          display: 'flex', flexDirection: 'column',
+          fontFamily: FONT_BODY,
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '18px 20px 16px',
+          borderBottom: '1px solid var(--line)',
+          flexShrink: 0,
+        }}>
+          <span style={{
+            display: 'inline-grid', placeItems: 'center',
+            width: 36, height: 36, borderRadius: 8,
+            background: 'var(--surface-2)', flexShrink: 0,
+          }}>
+            {spec?.logo_url
+              ? <img src={spec.logo_url} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+              : <span style={{ color: 'var(--ink-3)', display: 'inline-flex' }}>{Ico.database(18)}</span>
+            }
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
+              color: 'var(--ink)', letterSpacing: '-0.005em',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {spec?.label || connection.engine}
+            </div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>
+              {connection.name}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: 'transparent', border: 0,
+              color: 'var(--ink-3)', cursor: 'pointer',
+              width: 28, height: 28, borderRadius: 6,
+              display: 'inline-grid', placeItems: 'center',
+              fontSize: 18, lineHeight: 1, flexShrink: 0,
+            }}
+          >×</button>
+        </div>
+
+        {/* Body */}
+        <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+          {loading ? (
+            <div style={{ fontSize: 13, color: 'var(--ink-4)' }}>Loading…</div>
+          ) : (
+            <>
+              {/* Meta */}
+              <div style={{
+                padding: '12px 14px', marginBottom: 20,
+                background: 'var(--surface-2)',
+                borderRadius: 8, border: '1px solid var(--line)',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <MetaRow label="Engine" value={connection.engine} />
+                {saved?.updatedAt && <MetaRow label="Last updated" value={fmtDate(saved.updatedAt)} />}
+                {saved?.createdAt && <MetaRow label="Connected" value={fmtDate(saved.createdAt)} />}
+              </div>
+
+              {/* Credentials */}
+              {displayFields.length > 0 && (
+                <>
+                  <div style={{
+                    fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
+                    letterSpacing: '0.05em', textTransform: 'uppercase',
+                    color: 'var(--ink-3)', marginBottom: 8,
+                  }}>
+                    Credentials
+                  </div>
+                  <div style={{
+                    border: '1px solid var(--line)', borderRadius: 8, overflow: 'hidden',
+                    marginBottom: 20,
+                  }}>
+                    {displayFields.map((f, i) => (
+                      <div
+                        key={f.key}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 14px',
+                          background: 'var(--surface)',
+                          borderBottom: i < displayFields.length - 1 ? '1px solid var(--line)' : 'none',
+                        }}
+                      >
+                        <span style={{
+                          width: 120, flexShrink: 0,
+                          fontFamily: FONT_BODY, fontSize: 12,
+                          color: 'var(--ink-3)', fontWeight: 500,
+                        }}>
+                          {f.label}
+                        </span>
+                        <span style={{
+                          flex: 1, fontFamily: FONT_MONO, fontSize: 12,
+                          color: f.isSecret ? 'var(--ink-4)' : (f.value ? 'var(--ink)' : 'var(--ink-4)'),
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          fontStyle: (!f.isSecret && !f.value) ? 'italic' : 'normal',
+                        }}>
+                          {f.isSecret ? '•••••••• saved' : (f.value || '—')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '14px 20px',
+          borderTop: '1px solid var(--line)',
+          display: 'flex', flexDirection: 'column', gap: 8,
+          flexShrink: 0,
+        }}>
+          {spec && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                if (!window.confirm(
+                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
+                )) return;
+                onReconnect?.(connection, spec);
+              }}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
+              Reconnect
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
+              onDisconnect?.(connection);
+              onClose();
+            }}
+            style={{
+              width: '100%',
+              background: 'transparent',
+              border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+              color: 'var(--danger)',
+              padding: '8px 12px', borderRadius: 7,
+              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Disconnect
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function CustomizeView({
   connectors: initialConnectors = [],
   onConnectNew,
   onModifyConnection,
+  onReconnect,
   /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
   onConnectionsSynced,
 }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
+  const [selectedConn, setSelectedConn] = useState(null);
   const searchRef = useRef(null);
   const onConnectionsSyncedRef = useRef(onConnectionsSynced);
   onConnectionsSyncedRef.current = onConnectionsSynced;
@@ -408,7 +682,7 @@ export default function CustomizeView({
               key={`${c.engine}-${c.name}`}
               connection={c}
               onDelete={handleDelete}
-              onModify={onModifyConnection}
+              onModify={setSelectedConn}
             />
           ))}
           {/* Trailing dashed "New connection" card — appears only
@@ -417,6 +691,22 @@ export default function CustomizeView({
               own larger CTA). Mirrors the Projects pattern. */}
           <NewConnectionCard onClick={handleConnectNew} />
         </div>
+      )}
+
+      {selectedConn && (
+        <ConnectionDetailPanel
+          connection={selectedConn}
+          onClose={() => setSelectedConn(null)}
+          onDisconnect={async (conn) => {
+            await handleDelete(conn);
+            setSelectedConn(null);
+          }}
+          onReconnect={async (conn, spec) => {
+            await handleDelete(conn);
+            setSelectedConn(null);
+            onReconnect?.(spec);
+          }}
+        />
       )}
     </div>
   );
