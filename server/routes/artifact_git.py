@@ -83,12 +83,13 @@ def _find_git_root(start: Path) -> Path | None:
     return None
 
 
-def _git(args: list[str], cwd: Path) -> tuple[int, str]:
+def _git(args: list[str], cwd: Path, input_text: str | None = None) -> tuple[int, str]:
     result = subprocess.run(
         ["git"] + args,
         cwd=str(cwd),
         capture_output=True,
         text=True,
+        input=input_text,
     )
     return result.returncode, (result.stdout + result.stderr).strip()
 
@@ -147,9 +148,7 @@ def commit(
             return False
 
         message = f"artifact({slug}): {action} — {description}"
-        # `-m` consumes the next argv as its value verbatim, so the
-        # message itself can't slip into git's option parser.
-        rc, out = _git(["commit", "-m", message], cwd=root)
+        rc, out = _git(["commit", "-F", "-"], cwd=root, input_text=message)
         if rc != 0:
             logger.warning("git commit failed: %s", out)
             return False
