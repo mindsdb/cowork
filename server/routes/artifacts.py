@@ -174,6 +174,37 @@ def _scan_artifact_dirs() -> list[Path]:
     return list(dirs.values())
 
 
+def _safe_artifact_dir(raw_path: str) -> Path:
+    """Sanitize a user-supplied artifact-folder path.
+
+    Routes that take an `artifact folder` path from the request body /
+    query string must run it through here before doing anything with it.
+    Resolves the path, then requires it to live under one of the
+    `_scan_artifact_dirs()` roots — i.e. inside an allowlisted project's
+    `.anton/artifacts/` tree. The CodeQL `py/path-injection` analyzer
+    recognises the `resolve()` + `relative_to(root)` pair as a sanitizer,
+    same as `_registered_project_dirs()` above.
+
+    Returns the resolved Path on success. Raises HTTPException(400) on
+    null bytes / malformed inputs and HTTPException(404) when the path
+    is outside the allowlisted artifact roots — both phrased neutrally
+    so we don't leak which roots exist.
+    """
+    if not isinstance(raw_path, str) or not raw_path or "\x00" in raw_path:
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+    try:
+        candidate = Path(raw_path).expanduser().resolve(strict=False)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid artifact path") from exc
+    for root in _scan_artifact_dirs():
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        return candidate
+    raise HTTPException(status_code=404, detail="Artifact folder not found")
+
+
 def _iter_artifact_folders(project_path: str | None = None) -> Iterator[Path]:
     """Yield every direct subfolder of every project's .anton/artifacts/ dir.
 
@@ -652,7 +683,7 @@ async def publish_app_artifact(req: AppPublishRequest):
     from pathlib import Path as _Path
     from .settings import _get_env
 
-    folder = _Path(req.path).expanduser().resolve()
+    folder = _safe_artifact_dir(req.path)
     if not folder.is_dir():
         raise HTTPException(status_code=404, detail="Artifact folder not found")
 
@@ -750,8 +781,7 @@ async def publish_app_artifact(req: AppPublishRequest):
 @router.post("/app/stop")
 async def stop_app_server(req: AppStopRequest):
     """Stop the local dev server for an app artifact."""
-    from pathlib import Path as _Path
-    folder = _Path(req.path).expanduser().resolve()
+    folder = _safe_artifact_dir(req.path)
     _stop_app_server(folder)
     return {"status": "stopped"}
 
@@ -759,8 +789,7 @@ async def stop_app_server(req: AppStopRequest):
 @router.get("/app/log")
 async def get_artifact_log(path: str = Query(..., description="Absolute path to artifact folder")):
     """Return git commit history for an artifact folder."""
-    from pathlib import Path as _Path
-    folder = _Path(path).expanduser().resolve()
+    folder = _safe_artifact_dir(path)
     entries = _git_log(folder)
     return {"entries": entries}
 
@@ -771,8 +800,7 @@ async def rollback_artifact(req: RollbackRequest):
     Restore an artifact folder to a specific git commit SHA.
     If redeploy=true, triggers a re-publish after rollback.
     """
-    from pathlib import Path as _Path
-    folder = _Path(req.path).expanduser().resolve()
+    folder = _safe_artifact_dir(req.path)
     slug   = folder.name
 
     ok = _git_rollback(folder, slug, req.commit_sha)
@@ -805,7 +833,7 @@ async def teardown_app_artifact(path: str = Query(..., description="Absolute pat
     from pathlib import Path as _Path
     from .settings import _get_env
 
-    folder = _Path(path).expanduser().resolve()
+    folder = _safe_artifact_dir(path)
     published_path = folder / ".published.json"
 
     if not published_path.is_file():

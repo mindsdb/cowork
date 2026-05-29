@@ -35,7 +35,7 @@ OUT_DIR = Path(__file__).resolve().parent
 PROTECTED = {"gmail", "google_drive", "google_calendar", "hubspot", "posthog", "salesforce"}
 
 # Defaults — overridable via env. Sonnet is plenty for structured JSON.
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 8192
 
 # Available icons in the renderer's Ico palette. The LLM MUST pick
