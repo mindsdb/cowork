@@ -71,7 +71,7 @@ RECOMMENDED_MODELS: dict[str, list[str]] = {
     # (latest:sonnet, latest:gpt, gpt-low, …) was rolled back after
     # an end-to-end test against the live router.
     "minds-cloud":       ["_reason_", "_code_"],
-    "anthropic":         ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
+    "anthropic":         ["claude-sonnet-4-6", "claude-opus-4-7", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
     "openai":            ["gpt-5.4", "gpt-5.4-mini", "o3", "o4-mini"],
     "gemini":            ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-3-flash-preview"],
     "openai-compatible": [],

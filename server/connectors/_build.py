@@ -6,7 +6,7 @@ keeps the docs honest with current vendor reality, and lets us add
 ~50 connectors in one batch without writing each by hand.
 
 Usage:
-    export ANTHROPIC_API_KEY=sk-ant-...    # or ANTON_ANTHROPIC_API_KEY
+    export ANTHROPIC_API_KEY=sk-ant-...            # or ANTON_ANTHROPIC_API_KEY
     python3 server/connectors/_build.py            # generate missing only
     python3 server/connectors/_build.py --force    # overwrite everything
     python3 server/connectors/_build.py --only slack,stripe   # subset
@@ -35,7 +35,7 @@ OUT_DIR = Path(__file__).resolve().parent
 PROTECTED = {"gmail", "google_drive", "google_calendar", "hubspot", "posthog", "salesforce"}
 
 # Defaults — overridable via env. Sonnet is plenty for structured JSON.
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 8192
 
 # Available icons in the renderer's Ico palette. The LLM MUST pick
