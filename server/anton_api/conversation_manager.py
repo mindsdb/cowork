@@ -1021,17 +1021,20 @@ async def _build_chat_session(
     settings = AntonSettings()
     settings.resolve_workspace(str(base))
     if model:
-        # Minds Cloud sentinels (`_reason_`, `_code_`) only resolve at
-        # the openai-compatible router. If the active provider is
-        # something else (e.g. anthropic, after the user switched off
-        # Minds), an old cowork preference can keep sending these on
-        # every request. Drop the override and stay with the env's
-        # `ANTON_PLANNING_MODEL` instead of forwarding `_reason_` to
-        # api.anthropic.com (which 404s).
-        is_minds_sentinel = model.startswith("_") and model.endswith("_")
-        if is_minds_sentinel and settings.planning_provider != "openai-compatible":
+        # Minds-Cloud-only model names — both legacy sentinels (`_reason_`,
+        # `_code_`) and the current `latest:*` alias namespace — only
+        # resolve at the openai-compatible router. If the user switched
+        # off Minds Cloud after picking one of these, an old saved cowork
+        # preference can keep sending it on every request. Drop the
+        # override and stay with the env's `ANTON_PLANNING_MODEL` instead
+        # of forwarding a Minds-only name to api.anthropic.com (which 404s).
+        is_minds_only_model = (
+            (model.startswith("_") and model.endswith("_"))
+            or model.startswith("latest:")
+        )
+        if is_minds_only_model and settings.planning_provider != "openai-compatible":
             logging.getLogger(__name__).warning(
-                "Ignoring Minds sentinel model %r — active planning_provider is %r. "
+                "Ignoring Minds-Cloud-only model %r — active planning_provider is %r. "
                 "Falling back to env ANTON_PLANNING_MODEL=%r.",
                 model, settings.planning_provider, settings.planning_model,
             )
@@ -1154,7 +1157,7 @@ async def _build_chat_session(
         system_prompt_context=SystemPromptContext(
             runtime_context=build_runtime_context(settings),
             suffix=(
-                "The Anton CoWork desktop UI displays progress, tool usage, and actions "
+                "The Anton Cowork desktop UI displays progress, tool usage, and actions "
                 "as separate structured activity rows. Keep assistant text focused on the "
                 "user-facing answer; do not narrate internal work with status phrases like "
                 "\"I'll check\", \"let me query\", or \"I have access\" unless that wording "
@@ -1170,6 +1173,10 @@ async def _build_chat_session(
         initial_history=initial_history,
         history_store=history_store,
         session_id=conversation_id,
+        # NOTE: `harness="cowork"` was removed here — the installed
+        # anton-core ChatSessionConfig (2.26.5.13.1) has no `harness`
+        # field, so passing it raised TypeError and every task send 500'd.
+        # Re-add once anton-core's ChatSessionConfig supports it.
         proactive_dashboards=settings.proactive_dashboards,
         tools=[
             CONNECT_DATASOURCE_TOOL,
@@ -1520,6 +1527,11 @@ async def _produce_turn(
     nonlocal_session: dict[str, Any] = {"s": session}
 
     async def _drain(prompt: str) -> None:
+        # NOTE: `turn_id=turn_index` was removed from this call — the
+        # installed anton-core ChatSession.turn_stream() (2.26.5.13.1)
+        # accepts only (user_input), so passing turn_id raised TypeError
+        # and the turn failed. Re-add once anton-core's turn_stream
+        # supports it (paired with the `harness` arg in _build_chat_session).
         async for event in nonlocal_session["s"].turn_stream(prompt):
             _write_event(event)
 

@@ -1,4 +1,4 @@
-"""Attachment and URL context APIs for Anton CoWork."""
+"""Attachment and URL context APIs for Anton Cowork."""
 
 from __future__ import annotations
 

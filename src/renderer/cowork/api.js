@@ -4,6 +4,7 @@
 // from file:// or app:// and must address the loopback server directly.
 
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { host } from '../platform/host';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -771,13 +772,24 @@ export async function mountArtifactPreview(path) {
     method: 'POST',
     body: JSON.stringify({ path }),
   });
+  // Prefer the stateless `serveUrl` (origin-relative `/v1/artifacts/
+  // serve/...`) over the token `relUrl`: it's stable, shareable, and
+  // resolves against whatever origin the browser is on — so it works
+  // in the web deployment without publishing to the external host.
+  // `serveUrl` already carries the `/v1` prefix, so combine with
+  // ROOT_BASE (origin), not BASE (origin + /v1). Fall back to the
+  // token URL when serveUrl couldn't be computed server-side.
+  const url = data?.serveUrl
+    ? `${ROOT_BASE}${data.serveUrl}`
+    : (data?.relUrl ? `${BASE}${data.relUrl}` : '');
   return {
     token: data?.token,
     entry: data?.entry,
-    // Absolute URL the iframe can load directly. The server returns a
-    // path without scheme; combine with BASE so the renderer doesn't
-    // need to know the API origin.
-    url: data?.relUrl ? `${BASE}${data.relUrl}` : '',
+    // Absolute URL the iframe can load directly.
+    url,
+    // Origin-relative serve URL on its own, for callers that want to
+    // open the artifact in a new tab (web "open" action).
+    serveUrl: data?.serveUrl ? `${ROOT_BASE}${data.serveUrl}` : '',
     // Server-side sidecar lookup of the artifact's published URL (if
     // any). Forwarded so the viewer shows the "Published" pill even
     // when opened from a chat bubble — those carry no publishedUrl on
@@ -788,6 +800,37 @@ export async function mountArtifactPreview(path) {
 
 export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// Absolute "private" URL for an artifact's primary file: the
+// origin-relative `/v1/artifacts/serve/...` endpoint made absolute
+// against the current API origin. In the web build this is the
+// canonical address of the artifact — the file lives on the server,
+// not the user's machine — and in production it sits behind the auth
+// proxy, hence "private" (as opposed to the public `publishedUrl`).
+// Returns '' when the artifact has no serveable primary file yet.
+export function artifactServeUrl(artifact) {
+  const rel = artifact?.serveUrl || '';
+  if (!rel) return '';
+  return rel.startsWith('http') ? rel : `${host.getApiOrigin()}${rel}`;
+}
+
+// Open an artifact's primary file the right way for the current host.
+// Only the desktop app pointed at the local loopback server can hand an
+// OS path to the shell; in the browser (or a desktop app pointed at a
+// remote server) the file isn't on this machine, so we open its HTTP
+// serve URL instead — falling back to the published URL when the
+// artifact has no serveUrl yet.
+export async function openArtifactFile(artifact) {
+  const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
+  if (!canOpenLocalFile) {
+    const url = artifactServeUrl(artifact) || artifact?.publishedUrl || '';
+    if (!url) return { ok: false, reason: 'no-serve-url' };
+    try { await host.openExternal(url); }
+    catch { window.open(url, '_blank', 'noreferrer'); }
+    return { ok: true };
+  }
+  return openArtifact(artifact?.path || '');
 }
 
 export async function revealArtifact(path) {
@@ -1397,8 +1440,8 @@ export const MOCK_DATA = {
       { role: 'user', content: 'Write website copy for agent platform' },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
-    { id: 't5', title: 'Create website copy for Anton CoWork', subtitle: '2 weeks ago', status: 'done', messages: [
-      { role: 'user', content: 'Create website copy for Anton CoWork' },
+    { id: 't5', title: 'Create website copy for Anton Cowork', subtitle: '2 weeks ago', status: 'done', messages: [
+      { role: 'user', content: 'Create website copy for Anton Cowork' },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
     { id: 't6', title: 'Create MindsDB website copy positioning', subtitle: '3 weeks ago', status: 'done', messages: [] },
@@ -1409,14 +1452,14 @@ export const MOCK_DATA = {
   projects: [
     { id: 'p1', name: 'AI Fab launch', description: 'Hardware, infra, and brand for the AI Fab', taskCount: 14, fileCount: 23, updated: '2h ago', tint: 'rgba(31,156,176,0.12)', color: 'var(--primary-700)' },
     { id: 'p2', name: 'MindsDB website', description: 'Marketing site copy + positioning', taskCount: 9, fileCount: 41, updated: 'Yesterday', tint: 'rgba(72,190,227,0.14)', color: 'var(--ocean-700)' },
-    { id: 'p3', name: 'CoWork brand', description: 'Brand and identity for the Anton CoWork app', taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
+    { id: 'p3', name: 'Cowork brand', description: 'Brand and identity for the Anton Cowork app', taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
     { id: 'p4', name: 'Operational ops', description: 'Internal ops, RIF, hiring plans', taskCount: 11, fileCount: 8, updated: '1w ago', tint: 'rgba(244,177,131,0.15)', color: '#B7522B' },
   ],
 
   artifacts: [
     { id: 'a1', title: 'RIF announcement — v3', kind: 'Document', updated: 'updated 4m ago', live: true, bg: 'linear-gradient(135deg, var(--stone-100), var(--surface-03))', snippet: "Team,\n\nAs we mentioned in last\nweek's all-hands, we are\nrestructuring our…" },
     { id: 'a2', title: 'Lightsail cost projection', kind: 'Spreadsheet', updated: 'updated 1h ago', live: true, bg: 'linear-gradient(135deg, var(--ocean-50), #fff)', snippet: 'instance | type   | $/mo\n--------+--------+-----\n  ai-01 | xlarge |  84\n  ai-02 | medium |  42' },
-    { id: 'a3', title: 'CoWork landing — copy v2', kind: 'Document', updated: 'updated yesterday', live: false, bg: 'linear-gradient(135deg, var(--sage-50), #fff)', snippet: "A teammate that knows your\ncompany. Anton works in your\nprojects, with your data, on\nyour cadence." },
+    { id: 'a3', title: 'Cowork landing — copy v2', kind: 'Document', updated: 'updated yesterday', live: false, bg: 'linear-gradient(135deg, var(--sage-50), #fff)', snippet: "A teammate that knows your\ncompany. Anton works in your\nprojects, with your data, on\nyour cadence." },
     { id: 'a4', title: 'AI Fab brand explorations', kind: 'Canvas', updated: 'updated 2d ago', live: false, bg: 'linear-gradient(135deg, #fff, var(--stone-150))', snippet: '◇ logomark draft 04\n◇ wordmark v2\n◇ palette — aqua x stone' },
   ],
 

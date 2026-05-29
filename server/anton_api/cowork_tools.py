@@ -776,7 +776,7 @@ async def _cowork_list_conversation_datasources(session: Any, _tc_input: dict) -
     if not cid:
         return json.dumps({
             "error": "no_conversation_id",
-            "message": "This session is not scoped to a CoWork conversation yet.",
+            "message": "This session is not scoped to a Cowork conversation yet.",
         })
     payload = cm.conversation_datasource_scope_for_id(cid)
     return json.dumps(payload, indent=2)

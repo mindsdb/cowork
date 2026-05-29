@@ -112,7 +112,7 @@ FROM python:3.11-slim AS runtime
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
-LABEL org.opencontainers.image.description="Anton CoWork — FastAPI + SPA"
+LABEL org.opencontainers.image.description="Anton Cowork — FastAPI + SPA"
 
 # ca-certificates is the only runtime apt dep. git and ssh-client live
 # only in py-builder; dropping them here removes ~50 MB and the entire

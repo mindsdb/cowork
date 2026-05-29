@@ -217,19 +217,31 @@ export function WorkingFolderLive({ project, isStreaming }) {
   const onOpen = async (path) => {
     try { await host.openPath(path); } catch {}
   };
-  // Used by the kebab menu's "Open" action. Naming + behaviour adapts
-  // to the shell:
-  //   - Electron → host.openPath routes to the OS default app.
-  //   - Web      → host.openPath returns `unsupported`. Fall back to
-  //                openExternal(publishedUrl) when available; otherwise
-  //                emit a row-error so the user knows nothing happened.
+  // Used by the kebab menu's "Open" action. The deciding factor is
+  // whether the artifact file is on THIS machine:
+  //   - Electron + local (loopback) server → host.openPath, the file
+  //     is on disk here so the OS default app can open it.
+  //   - Electron pointed at a REMOTE server, or web → the path is on
+  //     the server box, not here. Open the stateless `serveUrl` over
+  //     HTTP (origin-relative → hits whatever server we're talking to).
+  //     Falls back to publishedUrl, then a clear error.
+  const canOpenLocalFile = host.isElectron && host.isLocalApiOrigin();
   const openArtifactExternal = async (a) => {
-    if (host.isWeb) {
-      if (a?.publishedUrl) {
-        try { await host.openExternal(a.publishedUrl); } catch {}
+    if (!canOpenLocalFile) {
+      // `serveUrl` is origin-relative (`/v1/...`). In a web tab a
+      // relative URL resolves against the page origin (the server) —
+      // fine. But an Electron renderer is loaded from file://app://,
+      // so a relative URL would resolve there, not at the remote
+      // server. Make it absolute via the configured API origin.
+      const rel = a?.serveUrl || '';
+      const url = rel
+        ? (rel.startsWith('http') ? rel : `${host.getApiOrigin()}${rel}`)
+        : (a?.publishedUrl || '');
+      if (url) {
+        try { await host.openExternal(url); } catch {}
         return;
       }
-      setRowError('This artifact has no local file or published URL to open from the browser. Publish it first.');
+      setRowError('This artifact has no servable file yet.');
       return;
     }
     try {
@@ -422,7 +434,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
           const a = rows.find((r) => r.path === openMenuPath);
           if (!a) return null;
           const isPublished = !!a.publishedUrl;
-          const openLabel = host.isWeb ? 'Open in new tab' : 'Open in OS';
+          const openLabel = canOpenLocalFile ? 'Open in OS' : 'Open in new tab';
           return (
             <div
               ref={menuRef}

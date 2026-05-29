@@ -545,7 +545,7 @@ function ConnectorsPage({
       );
     }
   } else if (selectedConnector?.status !== 'included') {
-    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into Anton CoWork yet.`);
+    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into Anton Cowork yet.`);
   }
 
   return (
