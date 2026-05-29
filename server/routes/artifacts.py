@@ -22,7 +22,6 @@ import hashlib
 import json
 import logging
 import mimetypes
-import os
 import subprocess
 import sys
 import time
@@ -181,28 +180,38 @@ def _safe_artifact_dir(raw_path: str) -> Path:
 
     Routes that take an `artifact folder` path from the request body /
     query string must run it through here before doing anything with it.
-    Resolves the path, then requires it to live under one of the
-    `_scan_artifact_dirs()` roots — i.e. inside an allowlisted project's
-    `.anton/artifacts/` tree.
+    Resolves the path and requires it to be one of the artifact folders
+    that actually exist under an allowlisted project's `.anton/artifacts/`
+    tree (each artifact lives one level down, as `<root>/<slug>/`). This
+    is the same trusted-set membership gate `_iter_artifact_folders` uses
+    for its `project_path` param — CodeQL `py/path-injection` recognises
+    `resolved in <trusted set>` as a sanitizer, so the resolved value is
+    safe for callers to touch on disk.
+
     Returns the resolved Path on success. Raises HTTPException(400) on
     null bytes / malformed inputs and HTTPException(404) when the path
-    is outside the allowlisted artifact roots — both phrased neutrally
-    so we don't leak which roots exist.
+    is not an allowlisted artifact folder — both phrased neutrally so we
+    don't leak which folders exist.
     """
     if not isinstance(raw_path, str) or not raw_path or "\x00" in raw_path:
         raise HTTPException(status_code=400, detail="Invalid artifact path")
+    try:
+        requested = Path(raw_path).expanduser().resolve(strict=False)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid artifact path") from exc
 
-    normalized = os.path.normpath(os.path.expanduser(raw_path))
+    allowed: set[Path] = set()
     for root in _scan_artifact_dirs():
-        root_str = os.path.normpath(str(root))
-        if normalized == root_str or normalized.startswith(root_str + os.sep):
-            try:
-                resolved = Path(normalized).resolve(strict=False)
-                resolved.relative_to(root.resolve())
-            except (OSError, ValueError, RuntimeError):
-                raise HTTPException(status_code=404, detail="Artifact folder not found")
-            return resolved
-    raise HTTPException(status_code=404, detail="Artifact folder not found")
+        try:
+            for child in root.iterdir():
+                if child.is_dir():
+                    allowed.add(child.resolve())
+        except OSError:
+            continue
+
+    if requested not in allowed:
+        raise HTTPException(status_code=404, detail="Artifact folder not found")
+    return requested
 
 
 def _iter_artifact_folders(project_path: str | None = None) -> Iterator[Path]:
