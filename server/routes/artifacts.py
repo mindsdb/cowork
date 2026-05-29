@@ -96,6 +96,11 @@ BG_CYCLE = [
     "linear-gradient(135deg, #fff, var(--stone-150))",
 ]
 
+# Upper bound on a raw artifact-path string. Generous (Linux PATH_MAX is
+# 4096); real artifact paths are far shorter. Rejects pathological input
+# before it ever reaches the filesystem.
+_MAX_ARTIFACT_PATH_LEN = 4096
+
 # Files under each artifact folder that are housekeeping rather than
 # user-content. They're listed in metadata for the renderer but not
 # considered when picking the "primary" file to open.
@@ -175,43 +180,68 @@ def _scan_artifact_dirs() -> list[Path]:
     return list(dirs.values())
 
 
-def _safe_artifact_dir(raw_path: str) -> Path:
-    """Sanitize a user-supplied artifact-folder path.
+def _allowed_artifact_dir_index() -> dict[str, Path]:
+    """Server-built allowlist of artifact folders.
 
-    Routes that take an `artifact folder` path from the request body /
-    query string must run it through here before doing anything with it.
-    Resolves the path and requires it to be one of the artifact folders
-    that actually exist under an allowlisted project's `.anton/artifacts/`
-    tree (each artifact lives one level down, as `<root>/<slug>/`). This
-    is the same trusted-set membership gate `_iter_artifact_folders` uses
-    for its `project_path` param — CodeQL `py/path-injection` recognises
-    `resolved in <trusted set>` as a sanitizer, so the resolved value is
-    safe for callers to touch on disk.
+    Keys are string forms the UI may send back to the API.
+    Values are canonical, resolved artifact folder paths.
 
-    Returns the resolved Path on success. Raises HTTPException(400) on
-    null bytes / malformed inputs and HTTPException(404) when the path
-    is not an allowlisted artifact folder — both phrased neutrally so we
-    don't leak which folders exist.
+    Important security property:
+    user input is never converted into a Path here. We only compare
+    user input as a plain string against paths discovered from trusted
+    registered project artifact roots.
     """
-    if not isinstance(raw_path, str) or not raw_path or "\x00" in raw_path:
-        raise HTTPException(status_code=400, detail="Invalid artifact path")
-    try:
-        requested = Path(raw_path).expanduser().resolve(strict=False)
-    except (OSError, ValueError, RuntimeError) as exc:
-        raise HTTPException(status_code=400, detail="Invalid artifact path") from exc
+    allowed: dict[str, Path] = {}
 
-    allowed: set[Path] = set()
     for root in _scan_artifact_dirs():
         try:
-            for child in root.iterdir():
-                if child.is_dir():
-                    allowed.add(child.resolve())
+            resolved_root = root.resolve(strict=True)
         except OSError:
             continue
 
-    if requested not in allowed:
+        try:
+            for child in resolved_root.iterdir():
+                try:
+                    if child.is_symlink() or not child.is_dir():
+                        continue
+
+                    resolved_child = child.resolve(strict=True)
+                    resolved_child.relative_to(resolved_root)
+                except (OSError, ValueError):
+                    continue
+
+                allowed[str(resolved_child)] = resolved_child
+                allowed[resolved_child.as_posix()] = resolved_child
+
+                allowed[str(child)] = resolved_child
+                allowed[child.as_posix()] = resolved_child
+
+        except OSError:
+            continue
+
+    return allowed
+
+
+def _safe_artifact_dir(raw_path: str) -> Path:
+    """Return a trusted artifact folder from a user-supplied path string.
+
+    The request value is treated only as an opaque string. It is never
+    expanded, resolved, joined, or opened. The only accepted values are
+    exact string matches for artifact folders discovered under registered
+    project `.anton/artifacts/` directories.
+    """
+    if not isinstance(raw_path, str) or not raw_path or "\x00" in raw_path:
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+
+    text = raw_path.strip()
+    if not text or text != raw_path:
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+
+    folder = _allowed_artifact_dir_index().get(text)
+    if folder is None:
         raise HTTPException(status_code=404, detail="Artifact folder not found")
-    return requested
+
+    return folder
 
 
 def _iter_artifact_folders(project_path: str | None = None) -> Iterator[Path]:
