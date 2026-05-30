@@ -12,31 +12,31 @@
 # then re-scan and remove any entry whose CVE is now patched in the
 # new base.
 #
-# Last reviewed: 2026-05-07 against
+# Last reviewed: 2026-05-29 against
 #   registry.access.redhat.com/ubi9-minimal@sha256:
-#     b9b10f42d7eba7ad4a6d5ef26b7d34fdc892b2ffe59b8d0372ec884008569eb6
-# (Red Hat Enterprise Linux 9.7 "Plow")
+#     5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362
+# (Red Hat Enterprise Linux 9.8)
+#
+# Note: the 9.8 base errata fixed the krb5-libs, libcap, and python3.11
+# HIGHs that the previous 9.7 digest carried. The four gnutls HIGHs that
+# still have no upstream fix (CVE-2026-33845/-33846/-42009/-42010) are no
+# longer suppressed here — the runtime stage REMOVES the entire unused
+# dnf/glib2/gnupg/gnutls package closure (see Dockerfile "Final
+# hardening" step), so those packages don't exist in the shipped image
+# and never reach a scan. The single residue below is the one HIGH that
+# cannot be removed (python hard-requires it) and has no upstream fix.
 #
 # Threat model summary: cowork is a FastAPI HTTP server that listens on
 # a single loopback port (default 26866). It does NOT terminate TLS, does
-# NOT speak DTLS / WebRTC, does NOT speak Kerberos, and does NOT load
-# arbitrary terminfo from network input. Every CVE below requires us to
-# actively use a protocol stack we don't link or invoke. Scanner
-# `objdump -T /opt/venv/bin/python | grep -iE 'gnutls|krb5'` returns
-# empty, confirming no symbols are imported.
+# NOT speak DTLS / WebRTC, does NOT speak Kerberos, does NOT parse
+# untrusted XML on its HTTP API (the API is JSON-only), and does NOT load
+# arbitrary terminfo from network input.
 
-# gnutls 3.8.3-10.el9_7 — TLS / DTLS implementation. Pulled in
-# transitively by ca-certificates / RPM tooling but never linked into
-# cowork's Python process. The three DoS-class CVEs below all require
-# the affected process to act as a DTLS server / RSA-PSK TLS server,
-# which cowork never does (it serves plain HTTP on a loopback port).
-# No upstream fix at scan time.
-CVE-2026-33845
-CVE-2026-33846
-CVE-2026-42010
-
-# krb5-libs 1.21.1-9.el9_7 — MIT Kerberos 5 client libraries. Present
-# in UBI base; never invoked by cowork. The integer-underflow DoS
-# requires the affected process to parse a malicious Kerberos ticket,
-# which cowork has no code path to do. No upstream fix at scan time.
-CVE-2026-40356
+# expat 2.5.0-6.el9 — Expat XML parser, linked by CPython's pyexpat and
+# therefore a hard dependency of python3.11-libs (cannot be removed
+# without removing the interpreter). CVE-2026-45186 is a DoS via crafted
+# XML input. cowork's HTTP API consumes JSON only and exposes no
+# untrusted-XML parsing path, so the crafted-input vector is unreachable
+# from the network surface. DoS-class (no RCE), no upstream fix at review
+# time. Re-check for a patched expat on every base bump.
+CVE-2026-45186

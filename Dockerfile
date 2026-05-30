@@ -80,14 +80,19 @@ FROM anton-source-${ANTON_SOURCE} AS anton-source
 # digest. UBI is freely redistributable (no RHEL subscription required)
 # and Red Hat aggressively backports security patches into their RPM
 # packages — concretely, the previous Debian trixie base shipped 7
-# HIGH OS CVEs without upstream fixes (libcap, libsystemd, ncurses);
-# UBI 9 minimal ships 4 HIGHs (gnutls, krb5-libs DoS-class) that are
-# unreachable in our threat model since cowork doesn't terminate TLS
-# or speak Kerberos. To bump after a CVE patch lands:
+# HIGH OS CVEs without upstream fixes (libcap, libsystemd, ncurses).
+# UBI 9.8 minimal lands the 9.7 base's krb5-libs/libcap/python3.11
+# HIGH errata. Of the 5 HIGHs that still had no upstream fix, the 4
+# gnutls ones (DTLS DoS + RSA-PSK auth-bypass) are removed outright by
+# the package-manager strip in the runtime stage (gnutls is only pulled
+# by the unused dnf/glib2/gnupg stack), leaving exactly 1 residual HIGH:
+# expat CVE-2026-45186 (XML DoS), which python hard-requires and which
+# is unreachable from cowork's JSON-only HTTP API. See .trivyignore.
+# To bump after a CVE patch lands:
 #   docker pull registry.access.redhat.com/ubi9-minimal
 #   docker buildx imagetools inspect registry.access.redhat.com/ubi9-minimal
 # Replace the digest below in BOTH FROM lines.
-FROM registry.access.redhat.com/ubi9-minimal@sha256:b9b10f42d7eba7ad4a6d5ef26b7d34fdc892b2ffe59b8d0372ec884008569eb6 AS py-builder
+FROM registry.access.redhat.com/ubi9-minimal@sha256:5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362 AS py-builder
 
 # microdnf is UBI minimal's slim package manager (replaces dnf). The
 # update step pulls Red Hat security errata published since the base
@@ -143,7 +148,7 @@ RUN --mount=type=ssh chmod +x /tmp/install-anton.sh && /tmp/install-anton.sh
 # stage is what the customer actually pulls, so this digest is the
 # one their Snyk Container scan resolves against. Keep both FROM
 # digests in sync when bumping the base.
-FROM registry.access.redhat.com/ubi9-minimal@sha256:b9b10f42d7eba7ad4a6d5ef26b7d34fdc892b2ffe59b8d0372ec884008569eb6 AS runtime
+FROM registry.access.redhat.com/ubi9-minimal@sha256:5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362 AS runtime
 
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"
@@ -194,6 +199,29 @@ COPY --chown=anton:anton cowork/server/ /app/server/
 # Persistent state lives under /home/anton/.anton — operators bind-mount
 # this to keep vault/settings across container restarts.
 RUN mkdir -p /home/anton/.anton && chown anton:anton /home/anton/.anton
+
+# ── Final hardening: strip the package manager + its TLS/XML stack ────────
+# UBI's microdnf transitively requires glib2, which requires gnutls; the
+# dnf machinery also pulls gpgme/gnupg2. None of these are used at runtime
+# — cowork runs only the /opt/venv Python interpreter (which links openssl,
+# not gnutls) and serves plain HTTP. The base ships gnutls + gnupg2 with
+# four HIGH CVEs that have NO upstream fix (DTLS DoS + RSA-PSK auth-bypass,
+# CVE-2026-33845/-33846/-42009/-42010); rather than suppress them in
+# .trivyignore, we remove the whole unused closure so they vanish from the
+# scan entirely. This also drops the dnf/microdnf attack surface, matching
+# the distroless philosophy for an immutable runtime image.
+#
+# `rpm` itself is intentionally kept so the package DB stays readable —
+# Trivy/Snyk still enumerate the remaining RPMs (e.g. expat, which python
+# hard-requires and which has no fix) honestly. The removal runs LAST, after
+# every microdnf install + useradd, since it destroys microdnf. The closure
+# below is the full set rpm reports as requiring libgnutls.so / glib2 /
+# gnupg2 on UBI 9.8; re-derive with `rpm -e --test` after a base bump.
+RUN rpm -e \
+        gnutls glib2 gnupg2 gpgme \
+        gobject-introspection json-glib libpeas libmodulemd \
+        librhsm librepo libdnf microdnf \
+    && rm -rf /var/cache/dnf /var/lib/dnf
 
 USER anton
 
