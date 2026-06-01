@@ -1346,8 +1346,11 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
   return { status: 'streamed', body: text };
 }
 
-export async function publishArtifact(path) {
-  return req('/publish', { method: 'POST', body: JSON.stringify({ path }) });
+// `password` (optional): when a non-empty string, the artifact is
+// published password-protected; omit / empty publishes it public.
+export async function publishArtifact(path, password) {
+  const body = password ? { path, password } : { path };
+  return req('/publish', { method: 'POST', body: JSON.stringify(body) });
 }
 
 export async function fetchBrowseStatus() {

@@ -37,15 +37,50 @@ def _missing_server_deps() -> list[str]:
     return missing
 
 
-def _reinstall_server_deps() -> bool:
-    """Install the bundled requirements.txt into the current interpreter.
+def _find_uv() -> str | None:
+    """Locate the `uv` binary. `shutil.which` first (PATH), then the
+    standard install locations — when antontron launches the python
+    server, PATH is whatever Electron inherited from launchctl, which
+    usually OMITS `~/.local/bin` where uv installs itself. So PATH
+    lookup commonly misses and we have to fall back to the known
+    locations."""
+    import shutil
+    found = shutil.which("uv")
+    if found:
+        return found
+    home = Path.home()
+    for cand in (
+        home / ".local" / "bin" / "uv",         # uv's default install location
+        Path("/opt/homebrew/bin/uv"),           # homebrew on Apple Silicon
+        Path("/usr/local/bin/uv"),              # homebrew on Intel / manual
+        home / ".cargo" / "bin" / "uv",         # cargo install
+    ):
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return None
 
-    Tries `uv pip install --python <sys.executable>` first because the
-    common install path is `uv tool install anton`, which produces a
-    pip-less venv at ~/.local/share/uv/tools/anton — `python -m pip`
-    raises ``No module named pip`` there. Falls back to `python -m pip`
-    for interpreters that do ship pip (system Python, manually-created
-    venvs, the packaged Electron binary). Returns True on success.
+
+def _reinstall_server_deps() -> bool:
+    """Install the bundled `server/requirements.txt` into the
+    interpreter that's actually running this process. Returns True on
+    success.
+
+    The anton interpreter is typically a `uv tool`-managed venv at
+    `~/.local/share/uv/tools/anton/bin/python` — which does NOT ship
+    with `pip` (uv manages packages directly). So `python -m pip
+    install` raises `No module named pip` and the heal flow fails on
+    exactly the case it was meant to handle.
+
+    Order of attempts:
+      1. `uv pip install --python <sys.executable>` — works for
+         uv-managed envs (no pip needed) AND any other interpreter,
+         provided we can find the `uv` binary somewhere.
+      2. `python -m pip install` — the original path, for envs that
+         actually do have pip (system pythons, regular venvs, conda).
+      3. `python -m ensurepip` then `python -m pip install` — last-
+         ditch for an env that's missing pip but allows bootstrap
+         (uv tool envs typically don't, so this rarely helps, but it
+         costs us nothing to try when 1 + 2 have already failed).
     """
     req = Path(__file__).parent / "requirements.txt"
     if not req.is_file():

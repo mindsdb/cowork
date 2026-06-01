@@ -313,6 +313,31 @@ def _published_url_for(folder: Path, primary: Path | None) -> str:
     return ""
 
 
+def _published_access_for(folder: Path, primary: Path | None) -> dict:
+    """Owner-side access state for the primary file, from `.published.json`.
+
+    Returns {"accessProtected": bool, "accessPassword": str}. The plaintext
+    password is owner-only — `.published.json` never enters the published
+    bundle — and powers the in-app eye-reveal. Callers must only return
+    this to the artifact's owner (the local/authenticated session).
+    """
+    out = {"accessProtected": False, "accessPassword": ""}
+    if primary is None:
+        return out
+    published_index = folder / ".published.json"
+    if not published_index.is_file():
+        return out
+    try:
+        pmap = json.loads(published_index.read_text(encoding="utf-8"))
+        entry = pmap.get(primary.name)
+        if isinstance(entry, dict) and entry.get("requires_password"):
+            out["accessProtected"] = True
+            out["accessPassword"] = entry.get("access_password", "") or ""
+    except Exception:
+        pass
+    return out
+
+
 # ─── Stable HTTP serving ─────────────────────────────────────────────────
 #
 # Origin-relative URLs that serve an artifact's files straight off disk:
@@ -466,6 +491,9 @@ async def list_artifacts(project_path: str | None = Query(default=None)):
             # show a small "auto" hint in either direction if useful.
             "primary": meta.get("primary") or None,
             "publishedUrl": _published_url_for(folder, primary),
+            # Owner-side access state (lock badge + eye-reveal). accessPassword
+            # is the plaintext, returned only to the owner's own session.
+            **_published_access_for(folder, primary),
             # Origin-relative URL the web client can open / iframe
             # directly. "" when the artifact has no primary file yet.
             "serveUrl": _serve_url_for(primary_path),
@@ -616,6 +644,8 @@ async def preview_mount(req: PreviewMountRequest):
     _PREVIEW_MOUNTS[token] = parent
 
     published_url = ""
+    access_protected = False
+    access_password = ""
     published_path = parent / ".published.json"
     if published_path.is_file():
         try:
@@ -623,6 +653,9 @@ async def preview_mount(req: PreviewMountRequest):
             entry = pmap.get(artifact.name)
             if isinstance(entry, dict):
                 published_url = entry.get("url", "") or ""
+                if entry.get("requires_password"):
+                    access_protected = True
+                    access_password = entry.get("access_password", "") or ""
         except Exception:
             published_url = ""
 
@@ -636,6 +669,8 @@ async def preview_mount(req: PreviewMountRequest):
         # back-compat / as a fallback when serveUrl can't be computed.
         "serveUrl": _serve_url_for(artifact),
         "publishedUrl": published_url,
+        "accessProtected": access_protected,
+        "accessPassword": access_password,
     }
 
 

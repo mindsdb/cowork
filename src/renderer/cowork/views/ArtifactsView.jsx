@@ -18,6 +18,7 @@ import {
   artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import {
   PageHeader,
@@ -187,9 +188,12 @@ function ActionButton({ children, onClick, danger, primary, title }) {
 
 // ─── Published pill + URL row (shared between grid + list) ───────────────
 
-function PublishedPill() {
+// `protected` adds a lock glyph + tooltip so a password-protected
+// publish is distinguishable from a public one everywhere the pill shows.
+function PublishedPill({ protected: isProtected = false }) {
   return (
     <span
+      title={isProtected ? 'Published — password protected' : 'Published'}
       style={{
         background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
         border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
@@ -203,9 +207,110 @@ function PublishedPill() {
         fontFamily: FONT_BODY,
       }}
     >
-      <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />
+      {isProtected
+        ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
+        : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
       Published
     </span>
+  );
+}
+
+// Publish visibility chooser — Public vs Password-protected. On confirm
+// it hands back the password ('' for public). Re-publishing a protected
+// artifact pre-fills the existing password (revealable via the eye).
+function PublishDialog({ artifact, onCancel, onConfirm }) {
+  const [mode, setMode] = useState(artifact?.accessProtected ? 'password' : 'public');
+  const [password, setPassword] = useState(artifact?.accessPassword || '');
+  const [reveal, setReveal] = useState(false);
+  if (!artifact) return null;
+
+  const canConfirm = mode === 'public' || password.trim().length > 0;
+  const submit = () => {
+    if (!canConfirm) return;
+    onConfirm(mode === 'password' ? password.trim() : '');
+  };
+
+  const Option = ({ value, icon, title, desc }) => {
+    const active = mode === value;
+    return (
+      <button type="button" onClick={() => setMode(value)} style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left', width: '100%',
+        padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
+        background: active ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface-2)',
+        border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+        transition: 'background 120ms ease, border-color 120ms ease',
+      }}>
+        <span style={{ display: 'inline-flex', color: active ? 'var(--accent)' : 'var(--ink-3)', marginTop: 1 }}>{icon}</span>
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: 'block', fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{title}</span>
+          <span style={{ display: 'block', fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{desc}</span>
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" labelledBy="publish-dialog-title">
+      <ModalHeader
+        id="publish-dialog-title"
+        title="Publish artifact"
+        subtitle={artifact.title || artifact.path?.split('/').pop()}
+        onClose={onCancel}
+      />
+      <ModalBody>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Option value="public" icon={Ico.globe(16)} title="Public" desc="Anyone with the link can view it." />
+          <Option value="password" icon={Ico.lock(16)} title="Password protected" desc="Visitors must enter a password to view it." />
+        </div>
+        {mode === 'password' && (
+          <div style={{ marginTop: 12 }}>
+            <label style={{
+              display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)',
+              marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}>Password</label>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'var(--surface-2)', border: '1px solid var(--line)',
+              borderRadius: 8, padding: '0 8px 0 10px',
+            }}>
+              <input
+                type={reveal ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+                autoFocus
+                placeholder="Enter a password"
+                style={{
+                  flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none',
+                  color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 0',
+                }}
+              />
+              <button type="button" onClick={() => setReveal((v) => !v)} title={reveal ? 'Hide' : 'Show'}
+                style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
+                {reveal ? Ico.eyeOff(15) : Ico.eye(15)}
+              </button>
+            </div>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
+              You can view this password anytime from the artifact’s preview.
+            </div>
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" onClick={onCancel} style={{
+          cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)',
+          color: 'var(--ink-2)', padding: '8px 14px', borderRadius: 8, fontFamily: FONT_BODY, fontSize: 13,
+        }}>Cancel</button>
+        <button type="button" onClick={submit} disabled={!canConfirm} style={{
+          cursor: canConfirm ? 'pointer' : 'not-allowed',
+          background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff',
+          padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
+          opacity: canConfirm ? 1 : 0.5,
+        }}>
+          {mode === 'password' ? 'Publish protected' : 'Publish'}
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -429,7 +534,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       }}>
         {(published || artifact.live) && (
           <span style={{ pointerEvents: 'none' }}>
-            {published ? <PublishedPill /> : (
+            {published ? <PublishedPill protected={!!artifact.accessProtected} /> : (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 fontFamily: FONT_BODY, fontSize: 11,
@@ -850,7 +955,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             the column width fixed so rows align cleanly. */}
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {published ? (
-            <PublishedPill />
+            <PublishedPill protected={!!artifact.accessProtected} />
           ) : artifact.live ? (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -1063,6 +1168,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // Per-artifact-path "in flight" set so multiple cards can publish
   // independently without freezing the whole grid.
   const [busyPaths, setBusyPaths] = useState(() => new Set());
+  // Artifact awaiting the publish visibility choice (public vs password).
+  // Null when the chooser is closed.
+  const [publishTarget, setPublishTarget] = useState(null);
   // Page-level state for the shared HoverMenu — mounting the menu at
   // the parent (and not inside a card) is required because cards
   // apply `transform` on hover, which would re-anchor a position:fixed
@@ -1126,18 +1234,36 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // MindsHub, persists report_id in `.published.json`. We then reflect
   // the returned URL into the local list so the UI flips to "Published"
   // without a refetch.
-  const handlePublish = async (artifact) => {
+  // Publishing is two steps: choose visibility (public / password) in a
+  // small dialog, then confirmPublish does the actual POST. Re-publishing
+  // a protected artifact pre-fills its existing password.
+  const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     if (!isHtmlArtifact(artifact)) {
       setToast({ kind: 'error', message: 'Only HTML artifacts can be published.' });
       return;
     }
+    setPublishTarget(artifact);
+  };
+
+  const confirmPublish = async (password) => {
+    const artifact = publishTarget;
+    setPublishTarget(null);
+    if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
     try {
-      const r = await publishArtifact(artifact.path);
+      const r = await publishArtifact(artifact.path, password || undefined);
       if (r?.url) {
-        updateOne({ ...artifact, publishedUrl: r.url });
-        setToast({ kind: 'ok', message: `Published — ${r.url}` });
+        updateOne({
+          ...artifact,
+          publishedUrl: r.url,
+          accessProtected: !!password,
+          accessPassword: password || '',
+        });
+        setToast({
+          kind: 'ok',
+          message: password ? `Published (password protected) — ${r.url}` : `Published — ${r.url}`,
+        });
       } else {
         setToast({ kind: 'error', message: 'Publish returned no URL.' });
       }
@@ -1336,7 +1462,16 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         onClose={() => setViewer(null)}
         onChange={updateOne}
         onDelete={removeOne}
+        onPublish={handlePublish}
       />
+
+      {publishTarget && (
+        <PublishDialog
+          artifact={publishTarget}
+          onCancel={() => setPublishTarget(null)}
+          onConfirm={confirmPublish}
+        />
+      )}
 
       {/* Single shared menu for the whole grid — anchored to whichever
           card the user just clicked. Mounted here at the page level

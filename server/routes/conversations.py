@@ -14,6 +14,8 @@ Conversations are scoped to a project (folder under projects_store):
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, HTTPException
 
 from anton_api import conversation_manager, projects_store
@@ -118,11 +120,26 @@ def _annotate_with_schedule_id(conversations: list[dict]) -> list[dict]:
 
 _ATTACHMENT_MARKER = "\n\nAttached context supplied by the user:"
 
+# Matches lines like: ### image.jpg (image/jpeg)
+_ATTACHMENT_HEADER_RE = re.compile(r"^###\s+(.+?)\s+\(([^)]+)\)\s*$", re.MULTILINE)
 
-def _strip_attachment_context(content: str) -> str:
-    if _ATTACHMENT_MARKER in content:
-        return content.split(_ATTACHMENT_MARKER, 1)[0].rstrip()
-    return content
+
+def _strip_attachment_context(content: str) -> tuple[str, list[dict]]:
+    """Strip the appended attachment context and return (clean_text, attachments).
+
+    The attachment block is injected by ``_assembled_user_input`` when the
+    user sends files alongside their message.  We parse it into structured
+    attachment metadata so the frontend can render file chips on reload,
+    then remove the block from the display text.
+    """
+    if _ATTACHMENT_MARKER not in content:
+        return content, []
+    text, attachment_block = content.split(_ATTACHMENT_MARKER, 1)
+    attachments = [
+        {"id": f"recovered_{i}", "name": m.group(1), "mime": m.group(2)}
+        for i, m in enumerate(_ATTACHMENT_HEADER_RE.finditer(attachment_block))
+    ]
+    return text.rstrip(), attachments
 
 
 def _parse_for_display(
@@ -170,11 +187,14 @@ def _parse_for_display(
             )
         if not content:
             continue
-        text = (
-            _strip_attachment_context(str(content))
-            if role == "user"
-            else str(content)
-        )
+        attachments: list[dict] = []
+        if role == "user":
+            text, attachments = _strip_attachment_context(str(content))
+        else:
+            text = str(content)
+        # A user message is displayable if it has text OR attachments.
+        if role == "user" and not text and not attachments:
+            continue
         # Skip anton-core's auto-recovery prompts. When a tool call
         # fails mid-stream, anton appends a synthetic
         # `{role: "user", content: "SYSTEM: An error interrupted
@@ -192,6 +212,8 @@ def _parse_for_display(
         if role == "user" and text.lstrip().startswith("SYSTEM:"):
             continue
         if role == "assistant":
+            if not text:
+                continue
             # Merge with the previous bubble if it's also assistant —
             # this is the same user→answer cycle, just split into
             # multiple internal text emissions.
@@ -225,7 +247,10 @@ def _parse_for_display(
                     entry["startedAt"] = started_at
             out.append(entry)
         else:
-            out.append({"role": role, "content": text})
+            entry = {"role": role, "content": text}
+            if attachments:
+                entry["attachments"] = attachments
+            out.append(entry)
     return out
 
 

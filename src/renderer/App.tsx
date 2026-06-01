@@ -15,6 +15,31 @@ const LOGO = `  \u2584\u2580\u2588 \u2588\u2584 \u2588 \u2580\u2588\u2580 \u2588
 
 const LOGO_PAGES = new Set<Page>(['terms', 'setup', 'onboarding']);
 
+// Terms-consent persistence for the web build.
+//
+// The desktop app records consent in the server-side .env
+// (`ANTON_TERMS_CONSENT`), but that flag is only ever written by the
+// Onboarding screen. The web deployment ships with a provider already
+// configured, so onboarding is skipped — meaning the flag was never
+// written and the terms screen reappeared on every refresh. We persist
+// a per-browser flag in localStorage instead: it survives a reload, is
+// scoped to the individual user (unlike the shared server .env), and
+// matches how the app already persists the theme.
+const TERMS_CONSENT_KEY = 'anton.termsConsent';
+
+function hasLocalTermsConsent(): boolean {
+  try {
+    return typeof window !== 'undefined'
+      && window.localStorage.getItem(TERMS_CONSENT_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function rememberTermsConsent(): void {
+  try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
 
@@ -22,7 +47,10 @@ export default function App() {
     async function init() {
       try {
         const settings = await host.readSettings();
-        if (settings.ANTON_TERMS_CONSENT !== 'true') {
+        // Consent counts if either the server-side flag is set (desktop /
+        // onboarding path) or this browser already accepted (web path).
+        const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalTermsConsent();
+        if (!consented) {
           // Terms gate the rest of the app — every launch up until the
           // user accepts shows the intro, then the terms screen. Once
           // accepted, the intro never plays again because we never
@@ -72,7 +100,15 @@ export default function App() {
     setTimeout(() => setPage('terminal'), 1200);
   };
 
-  const handleTermsAccepted = () => { advanceFromTerms(); };
+  const handleTermsAccepted = () => {
+    // Persist consent before advancing. The web build skips onboarding
+    // (the provider is pre-configured), and onboarding is the only place
+    // the server-side ANTON_TERMS_CONSENT flag is written — so without
+    // this a browser refresh drops the user back onto the terms screen
+    // every single time.
+    rememberTermsConsent();
+    advanceFromTerms();
+  };
   // After install (or re-install), skip the Minds/LLM onboarding
   // step if `~/.anton/.env` already provides one of the supported
   // provider keys. This is the returning-user case — they already
