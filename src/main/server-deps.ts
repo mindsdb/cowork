@@ -18,19 +18,31 @@ export const SERVER_PYTHON_DEPS: Array<{ spec: string; importName: string }> = [
   { spec: 'slack-sdk>=3.27.0', importName: 'slack_sdk' },
 ];
 
-export function getUvDataHome(): string {
-  if (process.env.XDG_DATA_HOME) return process.env.XDG_DATA_HOME;
-  if (process.platform === 'win32') {
-    return process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+// Directory where `uv tool install` stores per-tool virtual environments.
+// This MUST match uv's own resolution or verification/startup will probe an
+// empty path and report "Tool venv missing" even on a healthy install.
+//
+//   - UV_TOOL_DIR overrides everything (uv reads it directly).
+//   - XDG_DATA_HOME, when set, places tools at "$XDG_DATA_HOME/uv/tools".
+//   - Windows persistent data dir is "%APPDATA%\uv\data" — note the extra
+//     `data` segment — so tools live at "%APPDATA%\uv\data\tools". Omitting
+//     `data` is the historical Windows bug that broke fresh-install setups.
+//   - Unix default is "~/.local/share/uv/tools".
+export function getUvToolsDir(): string {
+  if (process.env.UV_TOOL_DIR) return process.env.UV_TOOL_DIR;
+  if (process.env.XDG_DATA_HOME) {
+    return path.join(process.env.XDG_DATA_HOME, 'uv', 'tools');
   }
-  return path.join(os.homedir(), '.local', 'share');
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+    return path.join(appData, 'uv', 'data', 'tools');
+  }
+  return path.join(os.homedir(), '.local', 'share', 'uv', 'tools');
 }
 
 export function getAntonToolPython(): string {
   return path.join(
-    getUvDataHome(),
-    'uv',
-    'tools',
+    getUvToolsDir(),
     'anton',
     process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
   );
