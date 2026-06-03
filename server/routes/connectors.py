@@ -469,8 +469,8 @@ def _connector_oauth_callback_page(title: str, message: str, *, success: bool) -
     # data. The page title goes through escape() too because Safari/Chrome
     # still parse a handful of HTML entities inside <title>.
     accent = "#1F9CB0" if success else "#b42318"
-    safe_title = html.escape(title or "")
-    safe_message = html.escape(message or "")
+    safe_title = html.escape(title, quote=True)
+    safe_message = html.escape(message, quote=True)
     return HTMLResponse(content=f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{safe_title}</title>
 <style>
@@ -632,7 +632,7 @@ def connector_oauth_callback(
         return _fail("Could not reach the provider's token endpoint.")
     except Exception:  # noqa: BLE001
         logger.exception("connector oauth token exchange failed")
-        return _fail("Token exchange failed. Check the server log for details.")
+        return _fail("Token exchange failed due to an internal error.")
 
     access_token = str(token_data.get("access_token") or "").strip()
     refresh_token = str(token_data.get("refresh_token") or "").strip()
@@ -665,7 +665,7 @@ def connector_oauth_callback(
         return _fail(str(exc.detail))
     except Exception:  # noqa: BLE001
         logger.exception("connector oauth persist failed")
-        return _fail("Could not save the connection. Check the server log for details.")
+        return _fail("Could not save the connection due to an internal error.")
 
     pending["status"] = "success"
     pending["result_name"] = saved_name

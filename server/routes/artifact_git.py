@@ -54,6 +54,9 @@ GITIGNORE_ENTRIES = [
     ".DS_Store",
 ]
 
+# Allow short/full hexadecimal commit ids only (no refs/options/revspec operators)
+COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
 
 def ensure_gitignore(artifact_folder: Path) -> None:
     """Write/update the .gitignore inside the artifact folder."""
@@ -174,6 +177,9 @@ def rollback(
     Returns True on success.
     """
     try:
+        if not COMMIT_SHA_RE.fullmatch(commit_sha):
+            raise ValueError("Invalid commit SHA format")
+
         root = _find_git_root(project_dir or artifact_folder.parents[3])
         if not root:
             raise RuntimeError("No git repo found")
