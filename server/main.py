@@ -339,6 +339,12 @@ async def lifespan(app: FastAPI):
     # Phase 5: periodic GC of old turn buffers.
     gc_task = asyncio.create_task(_turn_buffer_gc_loop())
     yield
+    # Stop all running artifact local dev servers gracefully
+    try:
+        from routes.app_server_manager import stop_all as _stop_all_app_servers
+        _stop_all_app_servers()
+    except Exception:
+        pass
     for t in (refresh_task, gc_task):
         t.cancel()
         try:

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders } from '../api';
+import { getUIVersion, isElectron } from '../../platform/host';
 
 // Provider preset → underlying canonical fields. The backend only knows
 // three providers (anthropic / openai / openai-compatible). Gemini and
@@ -687,6 +688,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
+  const [uiVersion, setUiVersion] = useState('');
+  useEffect(() => { getUIVersion().then(setUiVersion).catch(() => {}); }, []);
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
@@ -1703,11 +1706,43 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Updates" defaultOpen={false}>
               <Section
+                title="Current version"
+                subtitle="The app and UI bundle versions currently running."
+              >
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', gap: '6px 16px',
+                  fontFamily: 'var(--font-mono)', fontSize: 12.5,
+                  color: 'var(--text-strong)',
+                }}>
+                  <span>
+                    <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>App</span>
+                    {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '—'}
+                  </span>
+                  {isElectron && uiVersion && uiVersion !== 'bundled' && uiVersion !== 'web' && (
+                    <span>
+                      <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
+                      {uiVersion}
+                      {uiVersion !== (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '') && (
+                        <span style={{ color: 'var(--text-warning, #c49000)', marginLeft: 6, fontSize: 11 }}>
+                          (differs from app)
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {isElectron && uiVersion === 'bundled' && (
+                    <span>
+                      <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
+                      bundled
+                    </span>
+                  )}
+                </div>
+              </Section>
+              <Section
                 title="UI updates"
                 subtitle="How over-the-air UI updates are applied when a new version is published."
               >
                 <Segmented
-                  value={settings.uiUpdateMode ?? 'manual'}
+                  value={settings.uiUpdateMode ?? 'auto'}
                   onChange={(v) => setSetting('uiUpdateMode', v)}
                   groupLabel="UI update mode"
                   options={[

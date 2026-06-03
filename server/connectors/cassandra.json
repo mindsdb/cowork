@@ -53,7 +53,7 @@
             "description": "The Cassandra keyspace (namespace) Anton should connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

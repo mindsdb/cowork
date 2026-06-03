@@ -33,7 +33,7 @@ export interface OAuthConnectOpts {
   clientId: string;
   /** Optional client secret — BYOK only; PKCE-only flows pass `undefined` */
   clientSecret?: string;
-  /** Scopes to request, e.g. ["https://www.googleapis.com/auth/gmail.modify"] */
+  /** Scopes to request, e.g. ["https://www.googleapis.com/auth/gmail.compose"] */
   scopes: string[];
   /**
    * Extra params merged into the auth URL. Provider-specific —

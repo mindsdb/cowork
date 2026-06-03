@@ -65,7 +65,7 @@
             "description": "The Oracle service name (not SID). Check tnsnames.ora or ask your DBA."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,
@@ -116,7 +116,7 @@
             "description": "The Oracle System Identifier for the target instance (e.g., ORCL, XE)."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,
@@ -150,7 +150,7 @@
             "description": "Full TNS descriptor or Easy Connect Plus string. Do not include username/password here."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

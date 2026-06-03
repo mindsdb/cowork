@@ -63,7 +63,7 @@
             "description": "The specific database schema Anton should connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

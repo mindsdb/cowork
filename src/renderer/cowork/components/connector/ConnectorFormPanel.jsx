@@ -107,7 +107,7 @@ export default function ConnectorFormPanel({
       setBusy(true);
       try {
         const startFn = BROWSER_OAUTH_START[connector.id] || startGoogleDriveAuth;
-        const result = await startFn();
+        const result = await startFn(action.values || {});
         if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
         oauthStartedAt.current = result.startedAt || '';
         window.open(result.authUrl, '_blank');
@@ -228,14 +228,31 @@ export default function ConnectorFormPanel({
             spec={spec}
             onAction={handleAction}
             busy={busy}
-            onMethodChange={() => {
-              // Switching method invalidates any error from the
-              // previous method's submit attempt — clear the
-              // banner so the user doesn't see "missing required
-              // fields: email, app_password" while standing on
-              // the OAuth method that has no fields at all.
+            onMethodChange={async (methodId) => {
               setErrorMsg('');
               setSavedSpec(null);
+              if (methodId !== 'browser_oauth_builtin') return;
+              // Methods with fields wait for Submit — handleAction takes over.
+              const method = connector?.form?.methods?.find((m) => m.id === methodId);
+              if (method?.fields?.length) return;
+              // No fields — auto-start immediately on method selection.
+              setBusy(true);
+              try {
+                const startFn = BROWSER_OAUTH_START[connector.id] || startGoogleDriveAuth;
+                const result = await startFn({});
+                if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
+                oauthStartedAt.current = result.startedAt || '';
+                window.open(result.authUrl, '_blank');
+                setOauthPending(true);
+                setSavedSpec({
+                  ...spec,
+                  form_warning: 'Google sign-in opened in your browser. Complete the flow there, then return here.',
+                });
+              } catch (err) {
+                setErrorMsg(err?.message || 'Could not start Google sign-in.');
+              } finally {
+                setBusy(false);
+              }
             }}
           />
         </div>

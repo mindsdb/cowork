@@ -62,7 +62,7 @@
             "description": "The name of your PlanetScale database (matches the database name in the Console)."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

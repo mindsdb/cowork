@@ -45,7 +45,7 @@
             "description": "Found in Snowflake UI → your name (bottom-left) → Account. Do not include .snowflakecomputing.com."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

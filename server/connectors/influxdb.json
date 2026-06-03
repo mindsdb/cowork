@@ -96,7 +96,7 @@
             "description": "Base URL of your InfluxDB 1.x instance."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": false,

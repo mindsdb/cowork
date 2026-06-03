@@ -798,7 +798,7 @@ async def get_settings():
         "showDots":      ui["showDots"],
         "showCounters":  ui["showCounters"],
         "accentVariant": ui["accentVariant"],
-        "uiUpdateMode":  _get_env("UI_UPDATE_MODE", "manual"),
+        "uiUpdateMode":  _get_env("UI_UPDATE_MODE", "auto"),
         # Multi-provider surface (canonical going forward)
         "providers":     _masked_providers(providers),
         "modelMode":     model_cfg["modelMode"],

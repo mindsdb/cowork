@@ -82,7 +82,7 @@
             "description": "The name of the database to connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "User",
             "type": "text",
             "required": true,

@@ -6,7 +6,7 @@ keeps the docs honest with current vendor reality, and lets us add
 ~50 connectors in one batch without writing each by hand.
 
 Usage:
-    export ANTHROPIC_API_KEY=sk-ant-...    # or ANTON_ANTHROPIC_API_KEY
+    export ANTHROPIC_API_KEY=sk-ant-...            # or ANTON_ANTHROPIC_API_KEY
     python3 server/connectors/_build.py            # generate missing only
     python3 server/connectors/_build.py --force    # overwrite everything
     python3 server/connectors/_build.py --only slack,stripe   # subset

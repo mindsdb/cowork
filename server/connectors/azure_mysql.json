@@ -63,7 +63,7 @@
             "description": "The name of the specific database to connect to on this server."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

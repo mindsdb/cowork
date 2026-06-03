@@ -65,7 +65,7 @@
             "description": "The specific database to connect to, as shown in Azure Portal → SQL databases."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,
@@ -132,7 +132,7 @@
             "description": "The specific database to connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Azure AD username",
             "type": "text",
             "required": true,

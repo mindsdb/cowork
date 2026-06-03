@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { readFileSync } from 'fs';
+
+const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
 // Two build targets share this config:
 //   - electron (default): outputs to dist/renderer/, entry index.html → main.tsx,
@@ -30,6 +33,9 @@ const webRootRewrite = {
 
 export default defineConfig({
   plugins: [react(), ...(IS_WEB ? [webRootRewrite] : [])],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   root: __dirname,
   base: './',
   build: {

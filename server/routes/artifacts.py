@@ -34,6 +34,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from anton_api import projects_store
+from .app_server_manager import start as _start_app_server, stop as _stop_app_server, get_port as _get_app_port
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -94,6 +95,11 @@ BG_CYCLE = [
     "linear-gradient(135deg, var(--sage-50), #fff)",
     "linear-gradient(135deg, #fff, var(--stone-150))",
 ]
+
+# Upper bound on a raw artifact-path string. Generous (Linux PATH_MAX is
+# 4096); real artifact paths are far shorter. Rejects pathological input
+# before it ever reaches the filesystem.
+_MAX_ARTIFACT_PATH_LEN = 4096
 
 # Files under each artifact folder that are housekeeping rather than
 # user-content. They're listed in metadata for the renderer but not
@@ -172,6 +178,70 @@ def _scan_artifact_dirs() -> list[Path]:
         if candidate.is_dir():
             dirs[str(candidate.resolve())] = candidate
     return list(dirs.values())
+
+
+def _allowed_artifact_dir_index() -> dict[str, Path]:
+    """Server-built allowlist of artifact folders.
+
+    Keys are string forms the UI may send back to the API.
+    Values are canonical, resolved artifact folder paths.
+
+    Important security property:
+    user input is never converted into a Path here. We only compare
+    user input as a plain string against paths discovered from trusted
+    registered project artifact roots.
+    """
+    allowed: dict[str, Path] = {}
+
+    for root in _scan_artifact_dirs():
+        try:
+            resolved_root = root.resolve(strict=True)
+        except OSError:
+            continue
+
+        try:
+            for child in resolved_root.iterdir():
+                try:
+                    if child.is_symlink() or not child.is_dir():
+                        continue
+
+                    resolved_child = child.resolve(strict=True)
+                    resolved_child.relative_to(resolved_root)
+                except (OSError, ValueError):
+                    continue
+
+                allowed[str(resolved_child)] = resolved_child
+                allowed[resolved_child.as_posix()] = resolved_child
+
+                allowed[str(child)] = resolved_child
+                allowed[child.as_posix()] = resolved_child
+
+        except OSError:
+            continue
+
+    return allowed
+
+
+def _safe_artifact_dir(raw_path: str) -> Path:
+    """Return a trusted artifact folder from a user-supplied path string.
+
+    The request value is treated only as an opaque string. It is never
+    expanded, resolved, joined, or opened. The only accepted values are
+    exact string matches for artifact folders discovered under registered
+    project `.anton/artifacts/` directories.
+    """
+    if not isinstance(raw_path, str) or not raw_path or "\x00" in raw_path:
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+
+    text = raw_path.strip()
+    if not text or text != raw_path:
+        raise HTTPException(status_code=400, detail="Invalid artifact path")
+
+    folder = _allowed_artifact_dir_index().get(text)
+    if folder is None:
+        raise HTTPException(status_code=404, detail="Artifact folder not found")
+
+    return folder
 
 
 def _iter_artifact_folders(project_path: str | None = None) -> Iterator[Path]:
@@ -659,6 +729,9 @@ async def preview_mount(req: PreviewMountRequest):
         except Exception:
             published_url = ""
 
+    # For app artifacts: start local backend server (no-op for static)
+    _app_port = _start_app_server(parent)
+
     return {
         "token": token,
         "entry": artifact.name,
@@ -669,6 +742,7 @@ async def preview_mount(req: PreviewMountRequest):
         # back-compat / as a fallback when serveUrl can't be computed.
         "serveUrl": _serve_url_for(artifact),
         "publishedUrl": published_url,
+        "appPort": _app_port,
         "accessProtected": access_protected,
         "accessPassword": access_password,
     }
@@ -717,3 +791,253 @@ async def reveal_artifact(req: ArtifactAction):
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Could not reveal artifact") from exc
     return {"status": "ok", "path": str(artifact)}
+
+
+# ─── App artifact routes ────────────────────────────────────────────────────
+#
+# These routes handle fullstack-stateful-app artifacts:
+#   POST /artifacts/app/publish  — bundle + deploy to Anton Services
+#   POST /artifacts/app/stop     — stop local dev server
+#   GET  /artifacts/app/log      — git history for an artifact
+#   POST /artifacts/rollback     — restore artifact to a past commit
+#   DELETE /artifacts/app        — teardown remote app (Lambda + DynamoDB + S3)
+
+import os as _os
+import sys as _sys
+import zipfile as _zipfile
+import io as _io
+import base64 as _base64
+
+from .app_server_manager import stop as _stop_app_server
+from .artifact_git import (
+    commit as _git_commit,
+    rollback as _git_rollback,
+    log as _git_log,
+    push as _git_push,
+)
+
+
+class AppPublishRequest(BaseModel):
+    path: str
+    """Absolute path to the artifact folder containing manifest.json"""
+    auth_mode: str = "none"
+    password: str = ""
+    allowed_emails: list[str] = []
+
+
+class AppStopRequest(BaseModel):
+    path: str
+
+
+class RollbackRequest(BaseModel):
+    path: str
+    commit_sha: str
+    redeploy: bool = False
+
+
+class AppTeardownRequest(BaseModel):
+    path: str
+
+
+@router.post("/app/publish")
+async def publish_app_artifact(req: AppPublishRequest):
+    """
+    Bundle an app artifact folder and send it to the artifact_app_deploy lambda.
+    Reads manifest.json, optionally patches auth fields, ZIPs everything,
+    POSTs to the deploy endpoint, writes .published.json on success,
+    and makes a git commit.
+    """
+    import json as _json
+    import hashlib as _hashlib
+    import uuid as _uuid
+    from datetime import datetime, timezone
+    from pathlib import Path as _Path
+    from .settings import _get_env
+
+    folder = _safe_artifact_dir(req.path)
+    if not folder.is_dir():
+        raise HTTPException(status_code=404, detail="Artifact folder not found")
+
+    manifest_path = folder / "manifest.json"
+    if not manifest_path.is_file():
+        raise HTTPException(status_code=400, detail="manifest.json not found in artifact folder")
+
+    manifest = _json.loads(manifest_path.read_text())
+
+    # Patch auth fields from request
+    if req.auth_mode != "none":
+        manifest.setdefault("auth", {})["mode"] = req.auth_mode
+    if req.password:
+        import bcrypt
+        pw_hash = bcrypt.hashpw(req.password.encode(), bcrypt.gensalt()).decode()
+        manifest.setdefault("auth", {})["password_hash"] = "bcrypt:" + pw_hash
+        manifest_path.write_text(_json.dumps(manifest, indent=2))
+    if req.allowed_emails:
+        manifest.setdefault("auth", {})["allowed_emails"] = req.allowed_emails
+        manifest_path.write_text(_json.dumps(manifest, indent=2))
+
+    # Build ZIP bundle
+    buf = _io.BytesIO()
+    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as z:
+        for p in folder.rglob("*"):
+            if p.is_file() and not any(
+                part.startswith(".") for part in p.relative_to(folder).parts
+            ):
+                z.write(p, str(p.relative_to(folder)))
+    zip_bytes = buf.getvalue()
+    payload_b64 = _base64.b64encode(zip_bytes).decode()
+
+    # Call deploy lambda via Anton Services API
+    deploy_url = _get_env("ANTON_DEPLOY_URL", "https://4nton.ai/app-deploy")
+    api_key    = _get_env("ANTON_MINDS_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="ANTON_MINDS_API_KEY not configured")
+
+    import urllib.request, urllib.error
+    body = _json.dumps({"file_payload": payload_b64}).encode()
+    req_obj = urllib.request.Request(
+        deploy_url,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "antontron/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req_obj, timeout=180) as resp:
+            result = _json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode() if e.fp else str(e)
+        raise HTTPException(status_code=502, detail=f"Deploy failed: {detail}")
+    except urllib.error.URLError as e:
+        raise HTTPException(status_code=502, detail=f"Deploy unreachable: {e.reason}")
+
+    # Persist published state
+    published_path = folder / ".published.json"
+    pmap: dict = {}
+    if published_path.is_file():
+        try:
+            pmap = _json.loads(published_path.read_text())
+        except Exception:
+            pmap = {}
+    pmap["manifest.json"] = {
+        "app_id":       result.get("app_id"),
+        "frontend_url": result.get("frontend_url"),
+        "api_url":      result.get("api_url"),
+        "url":          result.get("frontend_url"),
+        "md5":          result.get("md5"),
+        "deployed_at":  result.get("deployed_at"),
+    }
+    published_path.write_text(_json.dumps(pmap, indent=2))
+
+    # Git commit
+    slug = folder.name
+    title = manifest.get("title", slug)
+    _git_commit(folder, slug, "publish", f"deployed to 4nton.ai — {title}")
+
+    # GitHub push (best-effort)
+    _git_push(folder.parents[3])
+
+    return {
+        "status": "ok",
+        "app_id":       result.get("app_id"),
+        "frontend_url": result.get("frontend_url"),
+        "api_url":      result.get("api_url"),
+        "deployed_at":  result.get("deployed_at"),
+    }
+
+
+@router.post("/app/stop")
+async def stop_app_server(req: AppStopRequest):
+    """Stop the local dev server for an app artifact."""
+    folder = _safe_artifact_dir(req.path)
+    _stop_app_server(folder)
+    return {"status": "stopped"}
+
+
+@router.get("/app/log")
+async def get_artifact_log(path: str = Query(..., description="Absolute path to artifact folder")):
+    """Return git commit history for an artifact folder."""
+    folder = _safe_artifact_dir(path)
+    entries = _git_log(folder)
+    return {"entries": entries}
+
+
+@router.post("/rollback")
+async def rollback_artifact(req: RollbackRequest):
+    """
+    Restore an artifact folder to a specific git commit SHA.
+    If redeploy=true, triggers a re-publish after rollback.
+    """
+    folder = _safe_artifact_dir(req.path)
+    slug   = folder.name
+
+    ok = _git_rollback(folder, slug, req.commit_sha)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Rollback failed — check git history")
+
+    _git_commit(folder, slug, "rollback", f"restored to {req.commit_sha[:8]}")
+
+    result: dict = {"status": "rolled_back", "sha": req.commit_sha[:8]}
+
+    if req.redeploy:
+        from .settings import _get_env
+        deploy_url = _get_env("ANTON_DEPLOY_URL", "https://4nton.ai/app-deploy")
+        if deploy_url:
+            # Re-use the publish endpoint internally
+            pub_req = AppPublishRequest(path=req.path)
+            pub_result = await publish_app_artifact(pub_req)
+            result["redeployed"] = pub_result
+
+    return result
+
+
+@router.delete("/app")
+async def teardown_app_artifact(path: str = Query(..., description="Absolute path to artifact folder")):
+    """
+    Tear down the remote app: remove Lambda, DynamoDB table, S3 files, API GW route.
+    Writes a tombstone to .published.json. Local files are NOT deleted.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    from .settings import _get_env
+
+    folder = _safe_artifact_dir(path)
+    published_path = folder / ".published.json"
+
+    if not published_path.is_file():
+        raise HTTPException(status_code=404, detail="No published state found for this artifact")
+
+    pmap   = _json.loads(published_path.read_text())
+    app_id = pmap.get("manifest.json", {}).get("app_id")
+    if not app_id:
+        raise HTTPException(status_code=400, detail="app_id not found in published state")
+
+    teardown_url = _get_env("ANTON_DEPLOY_URL", "https://4nton.ai/app-deploy")
+    api_key      = _get_env("ANTON_MINDS_API_KEY", "")
+
+    import urllib.request, urllib.error
+    req_obj = urllib.request.Request(
+        f"{teardown_url}?app_id={app_id}",
+        headers={"Authorization": f"Bearer {api_key}", "User-Agent": "antontron/1.0"},
+        method="DELETE",
+    )
+    try:
+        with urllib.request.urlopen(req_obj, timeout=60) as resp:
+            pass
+    except urllib.error.HTTPError as e:
+        if e.code != 404:   # 404 = already gone, that's fine
+            detail = e.read().decode() if e.fp else str(e)
+            raise HTTPException(status_code=502, detail=f"Teardown failed: {detail}")
+
+    # Write tombstone
+    pmap["manifest.json"]["torn_down_at"] = __import__("datetime").datetime.utcnow().isoformat()
+    pmap["manifest.json"]["url"] = ""
+    published_path.write_text(_json.dumps(pmap, indent=2))
+
+    slug = folder.name
+    _git_commit(folder, slug, "teardown", f"removed from 4nton.ai  app_id={app_id}")
+
+    return {"status": "torn_down", "app_id": app_id}

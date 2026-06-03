@@ -63,7 +63,7 @@
             "description": "The ClickHouse database name to connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,
@@ -122,7 +122,7 @@
             "description": "The ClickHouse database name to connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

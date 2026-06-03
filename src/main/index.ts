@@ -62,10 +62,10 @@ function getDevMode(): string | null {
   return val; // 'live' or 'full'
 }
 
-/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'manual'. */
+/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'auto'. */
 function getUpdateMode(): 'auto' | 'manual' {
   const vars = readEnvFile();
-  return vars.UI_UPDATE_MODE === 'auto' ? 'auto' : 'manual';
+  return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
 function checkConfigured(): { configured: boolean; provider: string } {

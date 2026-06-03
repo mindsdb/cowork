@@ -82,7 +82,7 @@
             "description": "The SRV hostname for your Atlas cluster, without the mongodb+srv:// prefix or port."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Database Username",
             "type": "text",
             "required": true,

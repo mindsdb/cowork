@@ -74,7 +74,7 @@
             "description": "Base URL of your VictoriaMetrics instance protected by basic authentication."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

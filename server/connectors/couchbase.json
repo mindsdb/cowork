@@ -46,7 +46,7 @@
             "description": "Use couchbase:// for unencrypted or couchbases:// for TLS. For Capella, copy this from the Connect tab of your cluster."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,
