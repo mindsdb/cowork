@@ -105,6 +105,13 @@
 /* ─── Light mode (default) ────────────────────────────────────────────────
    Tokens follow the design guideline (type-and-buttons-light.html). */
 body, body[data-theme="light"] {
+  /* Tell Chromium which scheme native form controls should render in.
+     Without this, Windows draws <select> dropdown popups with light
+     system chrome regardless of theme — in dark mode the pale option
+     text lands on a white popup and every entry looks disabled.
+     (macOS uses a native NSMenu that ignores CSS, so it never shows.) */
+  color-scheme: light;
+
   /* Guideline names — primary token surface for new code */
   --bg:           #FAFAFA;
   --surface:      #FFFFFF;
@@ -190,6 +197,11 @@ body, body[data-theme="light"] {
    Tokens follow type-and-buttons-dark.html — deep-night surfaces, neon
    cyan accent (#22D3EE), readable cool whites, glow on emphasis only. */
 body[data-theme="dark"] {
+  /* Dark counterpart of the light block's color-scheme — keeps the
+     Windows-drawn <select> popup on dark system chrome so options stay
+     readable instead of looking greyed out. */
+  color-scheme: dark;
+
   --bg:           #080d18;
   --surface:      #0E1626;
   --surface-2:    #131D31;

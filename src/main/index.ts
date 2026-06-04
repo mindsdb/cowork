@@ -7,13 +7,19 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkAntonInstalled, checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics } from './server-process';
-import { oauthConnect } from './oauth-service';
+import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
+import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 
 function getAntonEnvPath(): string {
   return path.join(os.homedir(), '.anton', '.env');
+}
+
+function getCoworkStatePath(): string {
+  return path.join(os.homedir(), '.anton', 'cowork', 'state.json');
 }
 
 function readEnvFile(): Record<string, string> {
@@ -32,15 +38,23 @@ function readEnvFile(): Record<string, string> {
   return vars;
 }
 
-/** Load ~/.anton/.env into process.env so all main-process modules
- *  (installer, server-process, etc.) can read dev overrides like
- *  ANTON_DEV_PATH without needing their own file reads. Existing
- *  process.env values are NOT overwritten — system env takes priority.
- */
-function loadAntonEnvIntoProcess(): void {
-  const vars = readEnvFile();
-  for (const [k, v] of Object.entries(vars)) {
-    if (!(k in process.env)) process.env[k] = v;
+function clearStoredProviderState(): void {
+  const statePath = getCoworkStatePath();
+  if (!fs.existsSync(statePath)) return;
+  try {
+    const raw = fs.readFileSync(statePath, 'utf-8');
+    const parsed = JSON.parse(raw) as { preferences?: Record<string, unknown> };
+    if (!parsed || typeof parsed !== 'object') return;
+    const prefs = parsed.preferences;
+    if (!prefs || typeof prefs !== 'object') return;
+    delete prefs.providers;
+    delete prefs.modelMode;
+    delete prefs.modelOverrides;
+    delete prefs.providerStatus;
+    delete prefs.providerStatusDetails;
+    fs.writeFileSync(statePath, JSON.stringify(parsed, null, 2) + '\n', 'utf-8');
+  } catch (error) {
+    console.warn('[logout] failed to clear provider state', error);
   }
 }
 
@@ -70,12 +84,9 @@ function getUpdateMode(): 'auto' | 'manual' {
 
 function checkConfigured(): { configured: boolean; provider: string } {
   const vars = readEnvFile();
-  if (vars.ANTON_ANTHROPIC_API_KEY) {
-    return { configured: true, provider: 'anthropic' };
-  }
-  if (vars.ANTON_OPENAI_API_KEY && vars.ANTON_OPENAI_BASE_URL) {
-    return { configured: true, provider: 'minds' };
-  }
+  if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
+  if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
+  if (vars.ANTON_OPENAI_API_KEY && vars.ANTON_OPENAI_BASE_URL) return { configured: true, provider: 'minds' };
   return { configured: false, provider: '' };
 }
 
@@ -413,10 +424,161 @@ function setupIPC() {
   ipcMain.handle('server:get-diagnostics', () => getServerDiagnostics());
 
   // PKCE OAuth — opens a one-shot loopback server + the user's
-  // default browser. The renderer hands over either Anton's hosted
-  // client_id (Pattern A) or BYOK client_id + client_secret (Pattern B).
+  // default browser. Pure bridge: callers are responsible for any
+  // persistence (token storage, env writes). MindsHub onboarding
+  // goes through the dedicated `mindshub:*` handlers below so the
+  // env file only gets touched once the user picks an LLM path.
+  ipcMain.handle(IPC.OAUTH_CANCEL, () => {
+    cancelCurrentOAuth();
+    return true;
+  });
+
   ipcMain.handle('oauth:connect', async (_event, opts) => {
     return oauthConnect(opts || {});
+  });
+
+  // ── MindsHub onboarding ──────────────────────────────────────
+  // Logging in via Keycloak doesn't yet decide the user's LLM —
+  // free users hit a paywall and may bail to BYOK. So login only
+  // refreshes in-memory tokens + persists the refresh token to disk
+  // (for next-launch silent refresh); writing ~/.anton/.env is
+  // deferred to `mindshub:finalize` (or to host.saveSettings on the
+  // BYOK path).
+  ipcMain.handle(IPC.MINDSHUB_LOGIN, async () => {
+    // `anton-desktop` is the only Keycloak client in the dev realm
+    // that allows loopback (127.0.0.1) redirect URIs — `public-client`
+    // returns HTTP 400 for those. Pulling org context into the token
+    // is handled post-login by ensureActiveOrg() in minds-auth.ts.
+    const result = await oauthConnect({
+      clientId: 'anton-desktop',
+      authUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/auth',
+      tokenUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/token',
+      scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
+    });
+    if (result.ok && result.access_token) {
+      saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
+      scheduleRefresh(result.expires_in ?? 3600);
+    }
+    return result;
+  });
+
+  // Re-roll the access token using the stored refresh_token without
+  // touching the env file. Used after Stripe checkout so the renderer
+  // can re-decode roles and confirm the user is now paid.
+  ipcMain.handle(IPC.MINDSHUB_REFRESH, async () => {
+    const token = await refreshTokensOnly();
+    if (!token) return { ok: false, reason: 'No refresh token or refresh failed.' };
+    return { ok: true, access_token: token };
+  });
+
+  // Commit MindsHub as the LLM provider. The Keycloak JWT alone is
+  // NOT a valid LLM credential — the gateway only accepts an `mdb_*`
+  // API key minted through the auth-service. We exchange the JWT for
+  // a key here, write that key to env, and restart the python server
+  // so it talks to the gateway with a credential the gateway will
+  // actually accept (otherwise every chat call comes back 401).
+  // Renderer only calls this on the paid-user / Minds-as-LLM path.
+  ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
+    const token = getAccessToken();
+    if (!token) return { ok: false, reason: 'No cached MindsHub access token.' };
+    const result = await provisionAntonApiKey(token);
+    if (result.upgradeRequired) {
+      return { ok: false, upgradeRequired: true };
+    }
+    if (!result.key) {
+      return { ok: false, reason: result.error || 'Could not provision a MindsHub API key.' };
+    }
+    await writeMindsKeyToEnvAndRestart(result.key);
+    return { ok: true };
+  });
+
+  // Returns the in-memory access token if one is cached (e.g. boot-
+  // time silent refresh already succeeded). Lets the Onboarding page
+  // skip a redundant PKCE round-trip for returning users.
+  ipcMain.handle(IPC.MINDSHUB_GET_CACHED_TOKEN, () => {
+    return { access_token: getAccessToken() };
+  });
+
+  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, () => getAccessToken());
+  ipcMain.handle(IPC.AUTH_LOGOUT, async () => {
+    // Full sign-out: clear every credential + LLM-config key so the
+    // next launch's checkConfigured() returns false and the user is
+    // routed straight to onboarding. We deliberately keep
+    // ANTON_TERMS_CONSENT (the user already agreed) and non-credential
+    // preferences (memory mode, theme, etc.).
+    //
+    // SSO end-session is fire-and-forget — endKeycloakSession reads
+    // the refresh token before this returns, so it has what it needs
+    // even though we drop the local copy in the next line. We must
+    // NOT await it: when the dev Keycloak hangs (which has happened),
+    // a synchronous await freezes the whole logout, leaving the
+    // confirm modal stuck on "Signing out…" because the renderer is
+    // waiting on this IPC. The end-session call has its own 3s
+    // timeout regardless, so worst case it tidies up in background.
+    endKeycloakSession();
+    clearTokens();
+    const envPath = getAntonEnvPath();
+    if (fs.existsSync(envPath)) {
+      const LOGOUT_KEYS = [
+        'ANTON_MINDS_API_KEY',
+        'ANTON_MINDS_URL',
+        'ANTON_MINDS_ENABLED',
+        'ANTON_OPENAI_API_KEY',
+        'ANTON_OPENAI_BASE_URL',
+        'ANTON_ANTHROPIC_API_KEY',
+        'ANTON_PLANNING_PROVIDER',
+        'ANTON_CODING_PROVIDER',
+        'ANTON_PLANNING_MODEL',
+        'ANTON_CODING_MODEL',
+      ];
+      const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
+        .filter((l) => !LOGOUT_KEYS.some((k) => l.startsWith(k + '=')));
+      fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
+      for (const key of LOGOUT_KEYS) {
+        delete process.env[key];
+      }
+    }
+    clearStoredProviderState();
+    if (isServerRunning() || isServerStarting()) {
+      try {
+        // Cap the reset at 3s. httpRequest() has no timeout of its own,
+        // so a hung (vs. crashed) python server would otherwise block
+        // this await forever — the deferred reload below would never
+        // fire and the confirm modal would sit on "Signing out…". The
+        // runtime reset is best-effort cleanup; the reload re-routes to
+        // onboarding regardless of whether it succeeded.
+        await Promise.race([
+          httpRequest(`http://127.0.0.1:${getServerPort()}/v1/settings/runtime-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('runtime-reset timed out')), 3000),
+          ),
+        ]);
+      } catch (error) {
+        console.warn('[logout] failed to reset live runtimes', error);
+      }
+    }
+    // Force-reload the renderer from main. The renderer's own
+    // `window.location.reload()` was unreliable here (page stayed on
+    // the stuck confirm modal); driving the reload from the main
+    // process via webContents.reload() always navigates and reboots
+    // App.tsx's init() → checkConfigured() → onboarding redirect.
+    //
+    // Defer to the next tick so this handler's promise resolves and the
+    // IPC reply is delivered to the renderer BEFORE we tear the page
+    // down. Reloading synchronously here races the reply: sometimes the
+    // renderer got it and also reloaded (double reload → stuck modal),
+    // sometimes the page died before the reply landed. The single
+    // deferred reload makes it deterministic. The renderer no longer
+    // reloads on Electron (see SettingsView.handleLogout).
+    setImmediate(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.reload();
+      }
+    });
   });
 
   ipcMain.handle(IPC.INSTALL_CANCEL, async () => {
@@ -435,7 +597,18 @@ function setupIPC() {
       fs.mkdirSync(antonDir, { recursive: true });
     }
     const envPath = path.join(antonDir, '.env');
-    fs.writeFileSync(envPath, content + '\n', 'utf-8');
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+    const merged = new Map<string, string>();
+    for (const line of existing.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
+    }
+    for (const line of content.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
+    }
+    const out = [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
+    fs.writeFileSync(envPath, out, 'utf-8');
 
     // Analytics — fire-and-forget, never blocks
     if (content.includes('ANTON_TERMS_CONSENT=true')) {
@@ -633,6 +806,24 @@ app.whenReady().then(() => {
       console.warn('[server] skipped: server deps missing from tool venv. Run installer to repair.');
       return;
     }
+    // If MindsHub SSO tokens are stored, silently refresh before the Python
+    // server starts — it reads .env at boot and needs a valid JWT.
+    const existingRefresh = getRefreshToken();
+    if (existingRefresh) {
+      const ok = await silentRefresh();
+      if (!ok) {
+        // Refresh token expired — clear so checkConfigured() returns false
+        // and the renderer routes back to onboarding.
+        clearTokens();
+        const envPath = getAntonEnvPath();
+        if (fs.existsSync(envPath)) {
+          const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
+            .filter(l => !l.startsWith('ANTON_OPENAI_API_KEY=') && !l.startsWith('ANTON_MINDS_API_KEY='));
+          fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
+        }
+      }
+    }
+
     const result = await startServer();
     if (!result.ok) {
       console.error(`[server] start failed: ${result.reason}`);

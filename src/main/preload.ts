@@ -25,6 +25,14 @@ contextBridge.exposeInMainWorld('antontron', {
     scopes: string[];
     extraAuthParams?: Record<string, string>;
   }) => ipcRenderer.invoke('oauth:connect', opts),
+  oauthCancel: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL),
+
+  // MindsHub onboarding — see main/index.ts for the rationale on
+  // why these are split out from the generic oauth:connect bridge.
+  mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
+  mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
+  mindshubFinalize: () => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE),
+  mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
 
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
@@ -57,6 +65,10 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.INSTALL_CANCELLED, listener);
     return () => ipcRenderer.removeListener(IPC.INSTALL_CANCELLED, listener);
   },
+
+  // Auth (Electron-only)
+  getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
+  logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
 
   // Settings / Onboarding
   readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),

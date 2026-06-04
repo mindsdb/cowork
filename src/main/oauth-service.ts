@@ -55,6 +55,18 @@ export interface OAuthConnectResult {
 
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — give the user time to find the right browser tab
 
+// Tracks the in-flight OAuth attempt so cancelCurrentOAuth() can tear
+// the loopback server down without waiting for the 5-minute timeout.
+// The desktop SSO flow uses this so the renderer's "Cancel login"
+// button can abort an OAuth that's stalled (closed browser, blocked
+// popup, user changed their mind) instead of leaving a phantom
+// listener bound to a random loopback port for 5 minutes.
+let _activeAttempt: { cancel: () => void } | null = null;
+
+export function cancelCurrentOAuth(): void {
+  _activeAttempt?.cancel();
+}
+
 export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnectResult> {
   if (!opts?.authUrl || !opts?.tokenUrl || !opts?.clientId) {
     return { ok: false, reason: 'OAuth opts missing authUrl, tokenUrl, or clientId.' };
@@ -94,9 +106,12 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   const authUrl = `${opts.authUrl}?${authParams.toString()}`;
 
   // Wait for the redirect — server stays up until either the
-  // callback fires or the safety timeout elapses, whichever first.
+  // callback fires, the safety timeout elapses, or the renderer
+  // cancels the flow (via cancelCurrentOAuth()).
   let server: http.Server | null = null;
+  let rejectCode: ((err: Error) => void) | null = null;
   const codePromise = new Promise<string>((resolve, reject) => {
+    rejectCode = reject;
     server = http.createServer((req, res) => {
       try {
         const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
@@ -140,6 +155,16 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     setTimeout(() => reject(new Error('OAuth timed out — no callback received within 5 minutes.')), CALLBACK_TIMEOUT_MS);
   });
 
+  // Register cancellation handle so the renderer can tear the flow
+  // down. Bound here (not earlier) so we don't carry stale state
+  // across attempts. Cleared in the finally block below.
+  _activeAttempt = {
+    cancel: () => {
+      try { rejectCode?.(new Error('cancelled')); } catch {}
+      closeServer(server);
+    },
+  };
+
   // Open browser. Even on shell.openExternal failure we still wait —
   // the user may copy-paste the URL manually.
   try { await shell.openExternal(authUrl); } catch {}
@@ -149,11 +174,13 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     code = await Promise.race([codePromise, timeoutPromise]);
   } catch (e: any) {
     closeServer(server);
+    _activeAttempt = null;
     return { ok: false, reason: e?.message || 'OAuth flow failed.' };
   } finally {
     // Tiny delay so the success page actually paints in the user's
     // browser before we tear the server down.
     setTimeout(() => closeServer(server), 300);
+    _activeAttempt = null;
   }
 
   // Exchange the code for tokens.

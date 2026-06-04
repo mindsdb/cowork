@@ -50,9 +50,11 @@
     "appdmg": "^0.6.6"
   },
   "dependencies": {
+    "@react-keycloak/web": "^3.4.0",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
+    "keycloak-js": "^26.2.4",
     "marked": "^17.0.4",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.1",

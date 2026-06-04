@@ -184,7 +184,7 @@ body.gf-dots-off .gravity-field { display: none; }
   height: 100%;
   padding: 40px;
   padding-top: 60px;
-  gap: 32px;
+  gap: 22px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -210,7 +210,7 @@ body.gf-dots-off .gravity-field { display: none; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
+  gap: 22px;
   width: 100%;
   animation: fadeInUp 0.45s ease-out;
 }
@@ -219,7 +219,7 @@ body.gf-dots-off .gravity-field { display: none; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
+  gap: 22px;
   width: 100%;
   animation: fadeInUp 0.45s ease-out;
 }
@@ -1538,6 +1538,29 @@ body[data-theme="dark"] .legal-viewer-overlay {
   opacity: 1;
 }
 
+.onboard-link-button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.onboard-secondary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.onboard-secondary-divider {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .byok-icon-area {
   flex: 1;
   display: flex;
@@ -1565,7 +1588,7 @@ body[data-theme="dark"] .legal-viewer-overlay {
   max-width: 456px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   animation: fadeInUp 0.5s ease-out 0.2s both;
 }
 

@@ -21,6 +21,21 @@ export const IPC = {
   UI_UPDATE_APPLY: 'ui:update-apply',
   UI_UPDATE_STATUS: 'ui:update-status',
 
+  // Auth
+  AUTH_GET_ACCESS_TOKEN: 'auth:get-access-token',
+  AUTH_LOGOUT: 'auth:logout',
+
+  // OAuth — pure PKCE bridge (no MindsHub-specific side effects)
+  OAUTH_CANCEL: 'oauth:cancel',
+
+  // MindsHub — split from oauth:connect so env writes only happen
+  // after the user has chosen an LLM path (free users may never
+  // commit Minds as the LLM if they go BYOK).
+  MINDSHUB_LOGIN: 'mindshub:login',
+  MINDSHUB_REFRESH: 'mindshub:refresh',
+  MINDSHUB_FINALIZE: 'mindshub:finalize',
+  MINDSHUB_GET_CACHED_TOKEN: 'mindshub:get-cached-token',
+
   // App
   APP_READY: 'app:ready',
   APP_GET_PLATFORM: 'app:get-platform',

@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders } from '../api';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { host } from '../../platform/host';
+import { MINDS_API_KEY_URL } from '../../pages/onboarding/constants';
 import { getUIVersion, isElectron } from '../../platform/host';
 
 // Provider preset → underlying canonical fields. The backend only knows
@@ -600,7 +603,7 @@ const PROVIDER_TYPE_DESC = {
 };
 
 const GET_KEY_URL = {
-  'minds-cloud': 'https://console.mindshub.ai/api-key',
+  'minds-cloud': MINDS_API_KEY_URL,
   anthropic: 'https://console.anthropic.com/settings/keys',
   openai: 'https://platform.openai.com/api-keys',
   gemini: 'https://aistudio.google.com/apikey',
@@ -685,6 +688,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   const [tested, setTested] = useState(false);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [bannerVisible, setBannerVisible] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
@@ -732,20 +737,44 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     (t) => !providers.some((p) => p.type === t),
   );
 
+  // A provider is usable once it carries the credential it needs: an
+  // API key for the hosted providers, or a base URL for an
+  // OpenAI-compatible endpoint (key optional there). Mirrors the
+  // server's _provider_configured. Note keys arrive masked ('***'),
+  // which is still truthy — exactly what "has a key" should mean.
+  const providerConfigured = (p) => (
+    p.type === 'openai-compatible'
+      ? !!(p.baseUrl || '').trim()
+      : !!(p.apiKey || '').trim()
+  );
+
+  // The provider that drives roles in default mode. Mirrors the
+  // server's _default_provider: prefer MindsHub when it's actually
+  // keyed, otherwise fall back to the first configured provider so
+  // adding e.g. an Anthropic key "just works" without touching the
+  // custom-model controls. Falls back to MindsHub when nothing is
+  // configured so the unconfigured baseline still surfaces a row.
+  const defaultModeProviderType = (() => {
+    const minds = providers.find((p) => p.type === 'minds-cloud');
+    if (minds && providerConfigured(minds)) return 'minds-cloud';
+    const configured = providers.find(providerConfigured);
+    return configured ? configured.type : 'minds-cloud';
+  })();
+
   // Which provider types actually drive planning + coding right now.
   // Planning and coding can pick *different* providers, so the active
   // set is the union of both roles. A role with no explicit override
-  // implicitly falls back to MindsHub (matches the server's
-  // _resolve_role logic) — include that in the set so the test still
-  // pings it. Used by the per-row dot, runProviderTests, and the
-  // banner's effective-ready calculation.
+  // implicitly falls back to the default-mode provider (matches the
+  // server's _resolve_role logic) — include that in the set so the
+  // test still pings it. Used by the per-row dot, runProviderTests,
+  // and the banner's effective-ready calculation.
   const activeProviderTypes = (() => {
     const types = new Set();
     if (modelMode === 'custom') {
-      types.add(overrides.planning?.providerType || 'minds-cloud');
-      types.add(overrides.coding?.providerType   || 'minds-cloud');
+      types.add(overrides.planning?.providerType || defaultModeProviderType);
+      types.add(overrides.coding?.providerType   || defaultModeProviderType);
     } else {
-      types.add('minds-cloud');
+      types.add(defaultModeProviderType);
     }
     return types;
   })();
@@ -922,6 +951,29 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     : tested
       ? (<><span style={{ display: 'inline-flex', marginRight: 6, verticalAlign: 'middle' }}>{Ico.check(13)}</span>Tested</>)
       : 'Test';
+
+  // Sign out: clears the persisted refresh token + every credential
+  // in ~/.anton/.env (ANTON_TERMS_CONSENT and prefs stay), then
+  // reloads so App.tsx re-routes the user to the onboarding flow.
+  const handleLogout = async () => {
+    if (loggingOut) return; // Guard against double-fire (Enter / re-click).
+    setLoggingOut(true);
+    try {
+      await host.logout();
+    } catch {
+      // Swallow — partial logout is still worth recovering from on the
+      // boot path, and the reload below puts us back through it.
+    }
+    // Exactly ONE reload must happen, or the two compete and leave the
+    // page stuck on this confirm modal (flaky in packaged builds). On
+    // Electron the main process drives webContents.reload() itself
+    // after the IPC reply — that's the reliable path, so the renderer
+    // must NOT also reload. On web there's no main process, so we
+    // reload here.
+    if (host.isWeb) {
+      window.location.reload();
+    }
+  };
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1309,9 +1361,13 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Agent Models">
               {(() => {
-                // MindsHub is the implicit fallback for any role that
-                // hasn't been explicitly assigned an override.
-                const defaultProvider = providers.find((p) => p.type === 'minds-cloud') || providers[0];
+                // The default-mode provider is the implicit fallback for
+                // any role that hasn't been explicitly assigned an
+                // override (keyed MindsHub, else first configured).
+                const defaultProvider =
+                  providers.find((p) => p.type === defaultModeProviderType) ||
+                  providers.find((p) => p.type === 'minds-cloud') ||
+                  providers[0];
                 const multipleProviders = providers.length > 1;
 
                 // For each role: render provider selector (when N>1) +
@@ -1752,8 +1808,57 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 />
               </Section>
             </CollapsibleGroup>
+
+            {host.isElectron && (
+              <CollapsibleGroup title="Account" defaultOpen={false}>
+                <Section
+                  title="Sign out"
+                  subtitle="Disconnect from MindsHub and remove every stored credential on this device. Anton will return to the onboarding flow on the next launch."
+                >
+                  <button
+                    type="button"
+                    onClick={() => setLogoutConfirmOpen(true)}
+                    disabled={loggingOut}
+                    title="Sign out and clear stored credentials"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: '8px 14px', borderRadius: 8,
+                      fontSize: 13, fontWeight: 600,
+                      color: '#E07060',
+                      background: 'rgba(224,112,96,0.08)',
+                      border: '1px solid rgba(224,112,96,0.35)',
+                      cursor: loggingOut ? 'progress' : 'pointer',
+                      fontFamily: 'inherit',
+                      opacity: loggingOut ? 0.7 : 1,
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                    {loggingOut ? 'Signing out…' : 'Sign out'}
+                  </button>
+                </Section>
+              </CollapsibleGroup>
+            )}
           </div>
         </div>
+
+        <ConfirmModal
+          open={logoutConfirmOpen}
+          title="Sign out of Anton?"
+          message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Anton."
+          confirmLabel="Sign out"
+          cancelLabel="Cancel"
+          destructive
+          busy={loggingOut}
+          busyLabel="Signing out…"
+          onConfirm={handleLogout}
+          onClose={() => setLogoutConfirmOpen(false)}
+        />
 
         {/* Sticky save bar — sits at the bottom of the panel, glassy
             translucent backdrop so the gravity field hints through it.

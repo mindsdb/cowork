@@ -29,6 +29,7 @@ import { openPath } from '../lib/host';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { MINDS_BILLING_URL } from '../../pages/onboarding/constants';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -798,6 +799,7 @@ export default function ChatView({
   onMoveTaskToProject,
   onOpenProject,
   onOpenProjectsList,
+  onOpenSettings,
   onStop,
   projects = [],
   sidebarCollapsed = false,
@@ -880,7 +882,7 @@ export default function ChatView({
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
-  const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error'].includes(m.role)).length;
+  const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
@@ -1406,6 +1408,72 @@ export default function ChatView({
                       fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.5,
                       userSelect: 'text',
                     }}>{m.content}</div>
+                  </AnswerTurn>
+                );
+              }
+              if (m.role === 'provider_required') {
+                return (
+                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false}>
+                    <div style={{
+                      border: `1px solid ${T.line}`,
+                      background: T.surface,
+                      borderRadius: 12,
+                      padding: '16px 18px',
+                      maxWidth: 520,
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                    }}>
+                      <div style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontSize: 15,
+                        letterSpacing: '0.02em',
+                        color: T.ink,
+                      }}>Connect a provider to start chatting</div>
+                      <div style={{
+                        fontFamily: FONT_BODY,
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        color: T.ink2,
+                      }}>
+                        Anton needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings.
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                        <button
+                          type="button"
+                          onClick={() => host.openExternal(MINDS_BILLING_URL)}
+                          style={{
+                            // bg=ink / text=bg so the label keeps contrast in
+                            // BOTH themes: light → dark button / light text,
+                            // dark → light button / dark text. A hardcoded
+                            // #fff went invisible in dark mode (ink is near-
+                            // white there → white-on-white).
+                            border: 'none',
+                            background: T.ink,
+                            color: 'var(--bg)',
+                            borderRadius: 8,
+                            padding: '8px 14px',
+                            fontFamily: FONT_BODY,
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                          }}
+                        >Subscribe with MindsHub</button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenSettings?.()}
+                          style={{
+                            border: `1px solid ${T.line}`,
+                            background: 'transparent',
+                            color: T.ink,
+                            borderRadius: 8,
+                            padding: '8px 14px',
+                            fontFamily: FONT_BODY,
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                          }}
+                        >Open Settings</button>
+                      </div>
+                    </div>
                   </AnswerTurn>
                 );
               }

@@ -405,6 +405,76 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   return { ok: false, reason: 'OAuth IPC flow is Electron-only — use redirect-based OAuth in web.' };
 }
 
+// Tears down any in-flight loopback OAuth listener so the renderer's
+// "Cancel login" button can abort the flow without waiting for the
+// 5-minute server timeout.
+export async function oauthCancel(): Promise<void> {
+  if (isElectron && typeof bridge.oauthCancel === 'function') {
+    await bridge.oauthCancel();
+  }
+}
+
+// ── MindsHub onboarding bridge ──────────────────────────────────
+// See main/index.ts for the rationale on the login/refresh/finalize
+// split. Web shells return failure — MindsHub PKCE only runs in
+// Electron; the web shell uses Keycloak redirect auth instead.
+
+export interface MindsHubLoginResult {
+  ok: boolean;
+  reason?: string;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+}
+
+export async function mindshubLogin(): Promise<MindsHubLoginResult> {
+  if (isElectron && typeof bridge.mindshubLogin === 'function') {
+    return bridge.mindshubLogin();
+  }
+  return { ok: false, reason: 'MindsHub login bridge is Electron-only.' };
+}
+
+export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string; access_token?: string }> {
+  if (isElectron && typeof bridge.mindshubRefresh === 'function') {
+    return bridge.mindshubRefresh();
+  }
+  return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
+}
+
+export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean }> {
+  if (isElectron && typeof bridge.mindshubFinalize === 'function') {
+    return bridge.mindshubFinalize();
+  }
+  return { ok: false, reason: 'MindsHub finalize bridge is Electron-only.' };
+}
+
+export async function mindshubGetCachedToken(): Promise<string | null> {
+  if (isElectron && typeof bridge.mindshubGetCachedToken === 'function') {
+    const result = await bridge.mindshubGetCachedToken();
+    return result?.access_token ?? null;
+  }
+  return null;
+}
+
+export async function getAccessToken(): Promise<string | null> {
+  if (isElectron && typeof bridge.getAccessToken === 'function') {
+    return bridge.getAccessToken();
+  }
+  const { getAccessToken: kcGetToken } = await import('../lib/keycloak');
+  return kcGetToken();
+}
+
+// Signs the user out: clears the persisted refresh token and strips
+// provider/auth keys from ~/.anton/.env. Caller is responsible for
+// re-routing the UI — usually a full window.location.reload(), which
+// puts App.tsx back through its boot path and (with the env keys gone)
+// lands on onboarding.
+export async function logout(): Promise<void> {
+  if (isElectron && typeof bridge.logout === 'function') {
+    await bridge.logout();
+  }
+}
+
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
 export const host = {
   isWeb,
@@ -439,6 +509,13 @@ export const host = {
   onUpdateStatus,
   applyUpdate,
   oauthConnect,
+  oauthCancel,
+  mindshubLogin,
+  mindshubRefresh,
+  mindshubFinalize,
+  mindshubGetCachedToken,
+  getAccessToken,
+  logout,
 };
 
 export default host;
