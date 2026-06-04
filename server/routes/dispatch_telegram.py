@@ -35,7 +35,6 @@ Telegram API notes:
 from __future__ import annotations
 
 import asyncio
-import hmac
 import httpx
 import json
 import logging
@@ -43,11 +42,6 @@ import os
 import secrets as secrets_mod
 from datetime import datetime, timezone
 from typing import Any
-
-
-def hmac_compare(a: str, b: str) -> bool:
-    """Constant-time string equality for secret-token comparison."""
-    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -77,6 +71,7 @@ from channels import (
     SignatureMismatch,
     WebhookHandshake,
 )
+from channels.signatures import verify_shared_token
 from channels.vault_creds import load_credentials, save_credentials
 from .dispatch import clear_channel_credentials, register_credential_clearer
 
@@ -219,8 +214,7 @@ class TelegramBridge(ChatBridgeBase):
                 "webhook ingress refuses unauthenticated payloads"
             )
         provided = headers.get("x-telegram-bot-api-secret-token", "")
-        if not hmac_compare(expected, provided):
-            raise SignatureMismatch("telegram secret_token mismatch")
+        verify_shared_token(expected=expected, provided=provided)
 
     async def parse_inbound(
         self,
@@ -556,11 +550,17 @@ class TelegramBridge(ChatBridgeBase):
             logger.info("Telegram webhook registered at %s", webhook_url)
 
     async def _delete_webhook(self) -> None:
-        """Remove any previously registered webhook so long-polling works."""
+        """Remove any previously registered webhook so long-polling works.
+
+        Drops pending updates too: ``_offset`` starts at 0 on every bridge
+        (re)build and the in-memory dedup cache doesn't survive restarts,
+        so without the drop the first ``getUpdates`` replays Telegram's
+        entire un-acked backlog and the agent answers stale messages.
+        """
         bot_token = self.secrets.get("bot_token") or ""
         try:
             await self._call_api(
-                bot_token, "deleteWebhook", {"drop_pending_updates": False}
+                bot_token, "deleteWebhook", {"drop_pending_updates": True}
             )
         except Exception:
             logger.debug("deleteWebhook failed (non-fatal)", exc_info=True)

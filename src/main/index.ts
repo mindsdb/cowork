@@ -38,6 +38,19 @@ function readEnvFile(): Record<string, string> {
   return vars;
 }
 
+/** Load ~/.anton/.env vars into process.env (without overriding vars
+ * already set in the real environment). Lets settings like
+ * ANTON_DEV_PATH — documented in installer.ts — take effect for the
+ * main process and every child it spawns. */
+function loadAntonEnvIntoProcess(): void {
+  const vars = readEnvFile();
+  for (const [key, value] of Object.entries(vars)) {
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
 function clearStoredProviderState(): void {
   const statePath = getCoworkStatePath();
   if (!fs.existsSync(statePath)) return;

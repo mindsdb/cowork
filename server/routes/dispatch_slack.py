@@ -81,6 +81,10 @@ SLACK_OAUTH_SCOPES = (
 )
 SLACK_OAUTH_STATE_KEY = "slack_oauth"
 
+# Seconds to wait before retrying the Socket Mode connect after an
+# unexpected failure — mirrors telegram's POLL_ERROR_BACKOFF.
+SOCKET_MODE_RETRY_BACKOFF = 5.0
+
 
 # ---------------------------------------------------------------------------
 # SlackBridge
@@ -300,7 +304,10 @@ class SlackBridge(ChatBridgeBase):
         downstream router/orchestrator code is unchanged.
 
         Reconnects automatically — slack-sdk's SocketModeClient handles
-        the disconnect/reconnect dance internally.
+        the disconnect/reconnect dance internally once connected, and the
+        outer loop below retries the initial ``connect()`` with backoff so
+        a transient network blip at startup doesn't permanently kill the
+        listener.
         """
         try:
             from slack_sdk.socket_mode.aiohttp import SocketModeClient
@@ -386,19 +393,24 @@ class SlackBridge(ChatBridgeBase):
 
         self._socket_client.socket_mode_request_listeners.append(_listener)
 
-        try:
-            await self._socket_client.connect()
-            # Block forever — connection lifetime is tied to the asyncio
-            # task, which gets cancelled in shutdown().
-            await asyncio.Future()
-        except asyncio.CancelledError:
+        while True:
             try:
-                await self._socket_client.disconnect()
+                await self._socket_client.connect()
+                # Block forever — connection lifetime is tied to the asyncio
+                # task, which gets cancelled in shutdown().
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                try:
+                    await self._socket_client.disconnect()
+                except Exception:
+                    pass
+                raise
             except Exception:
-                pass
-            raise
-        except Exception:
-            logger.exception("Socket Mode connection error for account=%s", self.account)
+                logger.exception(
+                    "Socket Mode connection error for account=%s; retrying in %ss",
+                    self.account, SOCKET_MODE_RETRY_BACKOFF,
+                )
+                await asyncio.sleep(SOCKET_MODE_RETRY_BACKOFF)
 
     async def send_text(self, *, address: PlatformAddress, text: str) -> str:
         """Post a single chunk via Slack's ``chat.postMessage``.
@@ -534,7 +546,12 @@ async def _slack_adapter_factory() -> ChannelAdapter | None:
             fields["app_token"] = app_token
         if signing_secret and not fields.get("signing_secret"):
             fields["signing_secret"] = signing_secret
-        if fields.get("bot_token") and fields.get("signing_secret"):
+        # A bridge is viable with a bot token plus either ingress path:
+        # signing_secret (webhook verification) or app_token (Socket
+        # Mode, which doesn't need the signing secret at all).
+        if fields.get("bot_token") and (
+            fields.get("signing_secret") or fields.get("app_token")
+        ):
             logger.info(
                 "SlackBridge factory selected account=%s (socket=%s)",
                 name, bool(app_token),

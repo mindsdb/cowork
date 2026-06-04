@@ -109,21 +109,3 @@ def save_credentials(
         )
         return merged
     return merged
-
-
-def delete_credentials(channel_type: str, account: str) -> None:
-    """Remove one vault entry, swallowing errors.
-
-    Used by tear-down paths that need to delete a single row; the
-    channel-wide :func:`server.routes.dispatch.clear_channel_credentials`
-    deletes every entry for a given engine.
-    """
-    vault = _open_vault()
-    if vault is None:
-        return
-    try:
-        vault.delete(channel_type, account)
-    except Exception:
-        logger.debug(
-            "vault.delete(%s, %s) failed", channel_type, account, exc_info=True
-        )

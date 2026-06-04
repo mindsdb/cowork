@@ -244,8 +244,15 @@ class WhatsAppBridge(ChatBridgeBase):
         except (TypeError, ValueError):
             timestamp = datetime.now(timezone.utc)
 
-        # Refresh the customer-care window every time the user messages us.
+        # Refresh the customer-care window every time the user messages us,
+        # and drop senders whose window already lapsed so the map stays
+        # bounded by active conversations rather than growing one entry per
+        # phone number forever.
         self._last_inbound[sender] = timestamp
+        cutoff = datetime.now(timezone.utc) - CUSTOMER_CARE_WINDOW
+        self._last_inbound = {
+            phone: ts for phone, ts in self._last_inbound.items() if ts > cutoff
+        }
 
         return InboundEvent(
             address=PlatformAddress(

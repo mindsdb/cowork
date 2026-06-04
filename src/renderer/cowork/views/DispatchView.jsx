@@ -562,11 +562,9 @@ function ChannelCard({
   const ConfigPanel = CHANNEL_REGISTRY[entry.type]?.ConfigPanel || null;
   // Channels can't start the connect flow until their credentials are saved;
   // `install_ready` is the channel's own gate (OAuth creds for slack/discord,
-  // bot_token for telegram).
-  const needsInstall =
-    entry.type === 'slack' || entry.type === 'discord' || entry.type === 'telegram';
+  // bot_token for telegram). Every connectable channel reports it.
   const connectDisabled =
-    busy || (needsInstall && !(channelStatus?.install_ready ?? false));
+    busy || (info.connectable && !(channelStatus?.install_ready ?? false));
   // Channels flagged `comingSoon` are visually disabled — the config panel
   // and connect flow are suppressed and the card carries a "Coming soon" chip.
   const comingSoon = Boolean(info.comingSoon);
@@ -643,21 +641,32 @@ function ChannelCard({
 function WiringRow({ wiring, channelName, onSaved, onRemove }) {
   const [sessionMode, setSessionMode] = useState(wiring.session_mode);
   const [triggerRule, setTriggerRule] = useState(wiring.trigger_rule);
+  const [triggerPattern, setTriggerPattern] = useState(wiring.trigger_pattern || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const dirty =
     sessionMode !== wiring.session_mode ||
-    triggerRule !== wiring.trigger_rule;
+    triggerRule !== wiring.trigger_rule ||
+    (triggerRule === 'regex' && triggerPattern !== (wiring.trigger_pattern || ''));
 
   const save = async () => {
+    if (triggerRule === 'regex' && !triggerPattern.trim()) {
+      setError('Enter a regex pattern for the custom trigger.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
+      // Echo back priority and pattern — the server's INSERT OR REPLACE
+      // rebuilds the whole row, so omitting them would silently reset
+      // existing values to defaults.
       const updated = await createWiring({
         messaging_group_id: wiring.messaging_group_id,
         session_mode: sessionMode,
         trigger_rule: triggerRule,
+        trigger_pattern: triggerRule === 'regex' ? triggerPattern.trim() : null,
+        priority: wiring.priority,
       });
       onSaved(updated.wiring);
     } catch (err) {
@@ -687,6 +696,16 @@ function WiringRow({ wiring, channelName, onSaved, onRemove }) {
         >
           {TRIGGER_RULES.map((m) => (<option key={m.value} value={m.value}>{m.label}</option>))}
         </select>
+        {triggerRule === 'regex' ? (
+          <input
+            type="text"
+            className="dispatch-input dispatch-input-sm"
+            value={triggerPattern}
+            onChange={(e) => setTriggerPattern(e.target.value)}
+            placeholder="Regex pattern"
+            title="Messages matching this regex trigger Anton"
+          />
+        ) : null}
         {error ? <span className="dispatch-error">{error}</span> : null}
       </div>
       {dirty ? (
@@ -784,11 +803,9 @@ export default function DispatchView() {
   }, []);
 
   const handleConnect = async (channelType) => {
-    if (
-      channelType !== 'slack'
-      && channelType !== 'discord'
-      && channelType !== 'telegram'
-    ) return;
+    // Gate on the library flag rather than a hardcoded name list, so a
+    // channel flipped to connectable can't end up with a dead button.
+    if (!CHANNEL_LIBRARY[channelType]?.connectable) return;
     setConnectBusy((s) => ({ ...s, [channelType]: true }));
     setConnectError((s) => ({ ...s, [channelType]: null }));
     try {
@@ -816,9 +833,10 @@ export default function DispatchView() {
         const { install_url } = await startDiscordInstall(redirectUri);
         window.open(install_url, '_blank', 'noopener,noreferrer');
       } else {
-        // Telegram has no OAuth — saving the bot token is the install.
-        // "Connect" just (re)loads the adapter from current credentials so
-        // the long-poll loop starts; refetch picks up the new active state.
+        // Token-based channels (telegram, and any future ones) have no
+        // OAuth — saving the credentials is the install. "Connect" just
+        // (re)loads the adapter from current credentials so its ingress
+        // starts; refetch picks up the new active state.
         await reloadDispatch();
         refetch();
       }

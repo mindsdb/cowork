@@ -24,6 +24,18 @@ def _hex_eq(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode("ascii"), b.encode("ascii"))
 
 
+def verify_shared_token(*, expected: str, provided: str) -> None:
+    """Constant-time shared-token check (e.g. Telegram's secret_token header).
+
+    For platforms that authenticate webhooks by echoing back a pre-shared
+    token instead of HMAC-signing the payload.
+    """
+    if not expected:
+        raise SignatureMismatch("missing shared token")
+    if not hmac.compare_digest(expected.encode("utf-8"), provided.encode("utf-8")):
+        raise SignatureMismatch("shared token mismatch")
+
+
 def verify_hmac_sha256(
     body: bytes,
     *,

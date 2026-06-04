@@ -77,10 +77,6 @@ def _reinstall_server_deps() -> bool:
          provided we can find the `uv` binary somewhere.
       2. `python -m pip install` — the original path, for envs that
          actually do have pip (system pythons, regular venvs, conda).
-      3. `python -m ensurepip` then `python -m pip install` — last-
-         ditch for an env that's missing pip but allows bootstrap
-         (uv tool envs typically don't, so this rarely helps, but it
-         costs us nothing to try when 1 + 2 have already failed).
     """
     req = Path(__file__).parent / "requirements.txt"
     if not req.is_file():
@@ -104,8 +100,11 @@ def _reinstall_server_deps() -> bool:
             print(f"[server] dep reinstall attempt failed: {exc}", flush=True)
             continue
         except Exception as exc:
+            # Even an unexpected spawn failure (OSError, PermissionError)
+            # shouldn't stop us from trying the remaining strategies.
+            last_exc = exc
             print(f"[server] dep reinstall crashed: {exc}", flush=True)
-            return False
+            continue
     if last_exc is not None:
         print(f"[server] all dep reinstall attempts failed; last error: {last_exc}", flush=True)
     return False

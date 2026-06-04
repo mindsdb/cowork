@@ -407,14 +407,16 @@ class DiscordBridge(ChatBridgeBase):
             raise ConnectionError(
                 f"discord rate-limit: retry_after={result.get('retry_after')}"
             )
-        if result.get("code") or result.get("message"):
-            if result.get("code"):
+        msg_id = result.get("id")
+        if not msg_id:
+            # Discord encodes errors as {"code": int, "message": str}; code
+            # 0 ("general error", e.g. Invalid Form Body) is legitimate, so
+            # check presence rather than truthiness.
+            if result.get("code") is not None or result.get("message"):
                 raise RuntimeError(
                     f"discord send failed: {result.get('message', result)} "
                     f"(code={result.get('code')})"
                 )
-        msg_id = result.get("id")
-        if not msg_id:
             raise RuntimeError(f"discord send returned no id: {result}")
         return str(msg_id)
 

@@ -20,6 +20,7 @@ Out of scope here (added in later steps):
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import os
 from pathlib import Path
@@ -162,11 +163,16 @@ async def start_dispatch() -> None:
         logger.warning("dispatch lifecycle skipped — anton not importable: %s", exc)
         return
 
-    # Importing dispatch_slack triggers SlackBridge factory registration.
-    try:
-        from . import dispatch_slack  # noqa: F401
-    except Exception:
-        logger.exception("could not register slack adapter")
+    # Each dispatch_* module registers its channel adapter factory at
+    # import time. main.py imports all four routers, but import them
+    # here too so registration doesn't silently depend on that — a
+    # lazily-loaded or dropped router import would otherwise leave its
+    # channel unregistered with nothing signalling why.
+    for mod_name in ("dispatch_slack", "dispatch_telegram", "dispatch_discord", "dispatch_whatsapp"):
+        try:
+            importlib.import_module(f".{mod_name}", package=__package__)
+        except Exception:
+            logger.exception("could not register %s adapter", mod_name)
 
     repo = _get_repo()
     await _ensure_single_anton_group(repo)
