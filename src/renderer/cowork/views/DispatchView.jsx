@@ -203,8 +203,8 @@ function SlackConfigPanel({ initialStatus, onSaved }) {
       {error ? <p className="dispatch-error">{error}</p> : null}
       {savedAt ? (
         <p className="dispatch-config-hint">
-          Saved to ~/.anton/.env. Restart cowork-gateway so the bridge picks
-          up the new values
+          Saved to the local data vault. Restart cowork-gateway so the bridge
+          picks up the new values
           {status.socket_mode_ready
             ? ' — Socket Mode will reconnect automatically.'
             : '.'}
@@ -311,9 +311,9 @@ function TelegramConfigPanel({ initialStatus, onSaved }) {
       {error ? <p className="dispatch-error">{error}</p> : null}
       {savedAt ? (
         <p className="dispatch-config-hint">
-          Saved to ~/.anton/.env. Restart cowork-gateway so the bridge picks up
-          the new values — long-poll will start automatically once a token is
-          present.
+          Saved to the local data vault. Restart cowork-gateway so the bridge
+          picks up the new values — long-poll will start automatically once a
+          token is present.
         </p>
       ) : null}
     </form>

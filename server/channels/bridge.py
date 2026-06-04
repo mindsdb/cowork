@@ -216,6 +216,11 @@ class ChatBridgeBase(ABC):
                 mid = await self.send_with_retry(
                     lambda c=chunk: self.send_text(address=address, text=c),
                 )
+            except asyncio.CancelledError:
+                # Never wrap cancellation — the task being cancelled (e.g.
+                # during shutdown drain) must surface as CancelledError, not
+                # as a partial-send failure.
+                raise
             except BaseException as exc:
                 if ids:
                     raise PartialSendError(
@@ -268,7 +273,9 @@ class ChatBridgeBase(ABC):
         if message_id in self._seen_inbound_ids:
             return True
         self._seen_inbound_ids[message_id] = None
-        while len(self._seen_inbound_ids) > INBOUND_DEDUP_CAPACITY:
+        # One insert at a time, so the cache can only ever exceed capacity
+        # by a single entry.
+        if len(self._seen_inbound_ids) > INBOUND_DEDUP_CAPACITY:
             self._seen_inbound_ids.popitem(last=False)
         return False
 
@@ -360,6 +367,19 @@ class ChatBridgeBase(ABC):
             account=self.account,
         )
 
+    def redact(self, text: str) -> str:
+        """Strip channel secrets from ``text`` before it reaches a log.
+
+        Default masks every stored secret value verbatim. Needed because
+        transport errors embed the request URL — and some platforms
+        (Telegram: ``api.telegram.org/bot<TOKEN>/...``) put the bot token
+        in the URL path, so ``repr(exc)`` would leak it.
+        """
+        for value in self.secrets.values():
+            if value and len(value) >= 8:
+                text = text.replace(value, "***")
+        return text
+
     # -----------------------------------------------------------------
     # Send-with-retry helper
     # -----------------------------------------------------------------
@@ -394,7 +414,7 @@ class ChatBridgeBase(ABC):
                         "account": self.account,
                         "attempt": attempt + 1,
                         "delay_s": delay,
-                        "error": repr(exc),
+                        "error": self.redact(repr(exc)),
                     },
                 )
                 await asyncio.sleep(delay)

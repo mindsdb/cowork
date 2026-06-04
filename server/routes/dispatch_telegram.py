@@ -42,6 +42,7 @@ import os
 import secrets as secrets_mod
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -127,10 +128,13 @@ class TelegramBridge(ChatBridgeBase):
         webhook_url = (self.secrets.get("webhook_url") or "").strip()
         if webhook_url:
             await self._register_webhook(webhook_url)
+            # Log the host only — the full URL is operator-supplied and may
+            # embed secrets (e.g. a token path segment), and CodeQL taints
+            # everything sourced from the secrets map.
             logger.info(
-                "TelegramBridge ready for account=%s (webhook mode, url=%s)",
+                "TelegramBridge ready for account=%s (webhook mode, host=%s)",
                 self.account,
-                webhook_url,
+                urlparse(webhook_url).netloc,
             )
         else:
             # Delete any previously registered webhook so Telegram delivers
@@ -540,14 +544,18 @@ class TelegramBridge(ChatBridgeBase):
             "secret_token": self._ensure_secret_token(),
         }
         result = await self._call_api(bot_token, "setWebhook", payload)
+        # Host only — see the setup() log note about secret-bearing URLs.
         if not result.get("ok"):
             logger.error(
-                "Failed to register Telegram webhook at %s: %s",
-                webhook_url,
+                "Failed to register Telegram webhook at host=%s: %s",
+                urlparse(webhook_url).netloc,
                 result.get("description"),
             )
         else:
-            logger.info("Telegram webhook registered at %s", webhook_url)
+            logger.info(
+                "Telegram webhook registered at host=%s",
+                urlparse(webhook_url).netloc,
+            )
 
     async def _delete_webhook(self) -> None:
         """Remove any previously registered webhook so long-polling works.

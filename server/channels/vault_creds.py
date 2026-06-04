@@ -98,7 +98,19 @@ def save_credentials(
         try:
             vault.save(channel_type, account, merged, secure_keys=secure_keys)
         except TypeError:
-            # Older Anton-core without secure_keys kwarg — fall back.
+            if secure_keys:
+                # Older Anton-core without the secure_keys kwarg can only
+                # write plain text. Refuse rather than silently persisting
+                # secrets unencrypted; the operator must update anton.
+                logger.warning(
+                    "vault.save(%s, %s) skipped: installed anton cannot "
+                    "encrypt fields %s at rest — update anton to save "
+                    "these credentials",
+                    channel_type,
+                    account,
+                    secure_keys,
+                )
+                return merged
             vault.save(channel_type, account, merged)
     except Exception:
         logger.warning(
