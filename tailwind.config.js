@@ -60,7 +60,8 @@ export default {
 
         // Status
         danger:     'var(--danger)',
-        success:    '#1F8F5F',
+        'danger-bg':'var(--danger-bg)',
+        success:    'var(--success)',
 
         // Aliases for mdb-ai's class names so a verbatim port works.
         // mdb-ai uses text-text-primary, bg-surface-01, border-border-02.
@@ -79,14 +80,36 @@ export default {
         display: ['"Josefin Sans"', 'sans-serif'],
         mono:    ['"JetBrains Mono"', 'monospace'],
       },
+      borderRadius: {
+        'sm':  'var(--r-sm)',   // 4px
+        'md':  'var(--r)',      // 6px  (default)
+        'lg':  'var(--r-lg)',   // 10px
+        'xl':  'var(--r-xl)',   // 16px
+      },
+      boxShadow: {
+        '1':   'var(--sh-1)',
+        '2':   'var(--sh-2)',
+        '3':   'var(--sh-3)',
+        ring:  'var(--ring)',
+      },
       fontSize: {
-        // mdb-ai uses text-detail, text-body, text-small. Map to px sizes
-        // close to ours so the ports don't look out of place.
+        // Design system scale (see docs/DESIGN_SYSTEM.md)
+        '2xs':  ['10.5px', { lineHeight: '1.4' }],
+        'xs':   ['12px',   { lineHeight: '1.4' }],
+        'sm':   ['13px',   { lineHeight: '1.45' }],
+        'base': ['14.5px', { lineHeight: '1.55' }],
+        'lg':   ['16px',   { lineHeight: '1.5' }],
+        'xl':   ['18px',   { lineHeight: '1.4' }],
+        '2xl':  ['28px',   { lineHeight: '1.15' }],
+        '3xl':  ['44px',   { lineHeight: '1.05' }],
+        // Legacy mdb-ai aliases (map to nearest scale stop)
         detail: ['11px',   { lineHeight: '1.4' }],
         body:   ['14.5px', { lineHeight: '1.55' }],
         small:  ['12.5px', { lineHeight: '1.4' }],
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require('tailwindcss-animate'),
+  ],
 };
