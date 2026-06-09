@@ -1,0 +1,38 @@
+# Default values for deployment, this is necessary because we're using a unified helm subchart
+deployment:
+  # This is the name of the deployment, this is used in a _lot_ of places in the helm charts so lets just specify it
+  name: cowork
+
+  image:
+    repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/cowork
+
+  replicaCount: 2
+
+  service:
+    targetPort: 26866
+
+  # livenessProbes are used to determine when to restart a container
+  livenessProbe:
+    enabled: true
+    path: /api/v1/health/
+
+  # readinessProbes are used to determine when a container is ready to start accepting traffic
+  readinessProbe:
+    enabled: true
+    path: /api/v1/health/
+
+  # deployment container resource requests/limits
+  resources:
+    limits:
+      cpu: 400m
+      memory: 800Mi
+    requests:
+      cpu: 200m
+      memory: 400Mi
+
+  # Enable autoscaling
+  autoscaling:
+    enabled: false
+
+  ingress:
+    enabled: true

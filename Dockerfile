@@ -22,8 +22,14 @@
 
 ARG COWORK_SERVER_VERSION=0.1.4
 
+# Single build arg drives env selection; Vite loads .env.${APP_ENV} from
+# src/renderer/ automatically. Add new VITE_* values to the matching
+# .env.${APP_ENV} file — do NOT add them as --build-arg in workflows.
+ARG APP_ENV=production
+
 # ── Stage 1: build the cowork SPA ────────────────────────────────────────
 FROM node:22-slim AS spa-builder
+ARG APP_ENV
 WORKDIR /build
 # Lockfile-only install first → cached layer when only source changes.
 COPY cowork/package.json cowork/package-lock.json ./
@@ -31,7 +37,7 @@ COPY cowork/package.json cowork/package-lock.json ./
 # native modules) — the web SPA has no native dependencies.
 RUN npm ci --ignore-scripts
 COPY cowork/ ./
-RUN npm run build:web
+RUN BUILD_TARGET=web npx vite build src/renderer --mode "$APP_ENV"
 # Output lives at /build/dist/renderer-web/
 
 # ── Stage 2: install Python deps into an isolated venv ─────────────────

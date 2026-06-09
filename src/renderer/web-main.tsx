@@ -6,10 +6,11 @@
 // window.antontron in Electron. Setup auto-completes on web (the
 // FastAPI host running this code IS the install).
 //
-// Cloud-hosted instances (behind the Cloudflare Worker auth gate) skip
+// Cloud Lightsail instances (behind the Cloudflare Worker auth gate) skip
 // the Keycloak wrapper entirely — the user already authenticated via
 // the MindsHub dashboard, and the Worker's session cookie gates access.
-// Keycloak is only needed for standalone web dev (localhost).
+// Keycloak is used for both local dev (localhost) and the SaaS deployment
+// (cowork.*.mindshub.ai).
 //
 // Same as main.tsx:
 //   - First-paint theme bootstrap (avoids palette flash).
@@ -25,13 +26,19 @@ import App from './App';
 import { keycloak, scheduleWebTokenRefresh } from './lib/keycloak';
 import { host } from './platform/host';
 
-// Cloud-hosted instances are accessed via the Cloudflare Worker, which
-// already authenticates users via a session cookie minted from their
-// MindsHub Keycloak JWT. The SPA doesn't need its own Keycloak login.
-// Detect cloud hosting by checking if the hostname is NOT localhost/loopback.
+// Cloud Lightsail instances (cw-*.4nton.ai) are accessed via the Cloudflare
+// Worker, which already authenticates users via a session cookie minted from
+// their MindsHub Keycloak JWT. The SPA doesn't need its own Keycloak login.
+//
+// The SaaS deployment (cowork.*.mindshub.ai) is a shared multi-tenant K8s
+// deployment that uses Keycloak directly — it is NOT cloud-hosted in the
+// Worker sense.
 const isCloudHosted = (() => {
   const h = window.location.hostname;
-  return h !== 'localhost' && h !== '127.0.0.1' && h !== '::1';
+  if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return false;
+  // SaaS deployment uses Keycloak auth, not the Cloudflare Worker gate.
+  if (h.endsWith('.mindshub.ai') || h === 'mindshub.ai') return false;
+  return true; // cw-*.4nton.ai and other Worker-gated hosts
 })();
 
 (() => {
@@ -47,10 +54,11 @@ const isCloudHosted = (() => {
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
 const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', checkLoginIframe: false, redirectUri: cleanRedirectUri };
 
+const mindsApiUrl = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai/v1';
 const MINDS_ENV = (token: string) => [
   `ANTON_OPENAI_API_KEY=${token}`,
   `ANTON_MINDS_API_KEY=${token}`,
-  `ANTON_OPENAI_BASE_URL=https://api.mindshub.ai/v1`,
+  `ANTON_OPENAI_BASE_URL=${mindsApiUrl}`,
 ].join('\n');
 
 let stopRefresh: (() => void) | null = null;
@@ -84,7 +92,7 @@ if (isCloudHosted) {
     </StrictMode>
   );
 } else {
-  // Local dev: Keycloak handles auth + token refresh.
+  // Local dev + SaaS: Keycloak handles auth + token refresh.
   createRoot(root).render(
     <StrictMode>
       <ReactKeycloakProvider authClient={keycloak} initOptions={initOptions} onEvent={handleKeycloakEvent}>

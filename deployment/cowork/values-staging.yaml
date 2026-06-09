@@ -1,0 +1,17 @@
+deployment:
+  ingress:
+    pathType: Prefix
+    annotations:
+      nginx.ingress.kubernetes.io/server-snippet: |
+        location = /robots.txt {
+          add_header Content-Type text/plain;
+          return 200 'User-agent: *\nDisallow: /\n';
+        }
+      nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    hosts:
+      - host: cowork.staging.mindshub.ai
+        enableMultiPath: true
+        paths:
+          - path: /
+            serviceName: cowork
+            servicePort: 80

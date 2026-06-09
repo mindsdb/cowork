@@ -1,0 +1,86 @@
+# Build and deploy cowork SaaS to the kubernetes prod cluster
+
+name: SaaS Prod - Build and Deploy on release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: mdb-dev
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull MindsDB Github Actions
+        uses: actions/checkout@v4
+        with:
+          repository: mindsdb/github-actions
+          path: github-actions
+      - uses: ./github-actions/setup-env
+      - id: build
+        uses: ./github-actions/build-push-ecr
+        with:
+          module-name: cowork
+          build-for-environment: production
+          image-ref: ${{ env.CI_REF_NAME_SLUG }}
+          extra-build-args: '-f cowork/Dockerfile --build-arg APP_ENV=production'
+
+  scan:
+    runs-on: mdb-dev
+    needs: [build]
+    name: Scan Image
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mindsdb/github-actions/snyk-docker-scan@main
+        with:
+          image: ${{ needs.build.outputs.image }}
+          snyk-token: ${{ secrets.SNYK_TOKEN }}
+
+  deploy-prod:
+    runs-on: mdb-prod
+    needs: [build]
+    environment:
+      name: prod
+      url: ${{ vars.MDB_ENV_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull MindsDB Github Actions
+        uses: actions/checkout@v4
+        with:
+          repository: mindsdb/github-actions
+          path: github-actions
+      - uses: ./github-actions/setup-env
+      - name: Notify of deployment starting
+        id: slack
+        uses: ./github-actions/slack-deploy-msg
+        with:
+          channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
+          status: 'started'
+          color: '#0099CC'
+          env-name: 'prod'
+          env-url: ${{ vars.MDB_ENV_URL }}
+          slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
+      - uses: DevOps-Nirvana/aws-helm-multi-deploy-nodocker@v8
+        with:
+          environment-slug: prod
+          k8s-namespace: prod
+          image-tag: production-${{ env.CI_REF_NAME_SLUG }}
+          timeout: 600s
+      - name: Notify of deployment finish
+        uses: ./github-actions/slack-deploy-msg
+        if: always()
+        with:
+          channel-id: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
+          status: "${{ job.status == 'success' && 'finished' || 'failed' }}"
+          color: "${{ job.status == 'success' && '#00C851' || '#FF4444' }}"
+          env-name: 'prod'
+          env-url: ${{ vars.MDB_ENV_URL }}
+          slack-token: ${{ secrets.GH_ACTIONS_SLACK_BOT_TOKEN }}
+          update-message-id: ${{ steps.slack.outputs.ts }}
