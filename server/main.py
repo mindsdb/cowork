@@ -24,7 +24,25 @@ from pathlib import Path
 # culprit), the next `from fastapi import FastAPI` would crash the
 # whole server with a generic ModuleNotFoundError. Heal in place
 # instead — pip-install from our bundled requirements.txt and re-exec.
-_SERVER_DEP_IMPORTS: tuple[str, ...] = ("fastapi", "uvicorn", "multipart", "pydantic", "httpx")
+#
+# The channel-adapter libs (slack_sdk, discord/discord.py, nacl/PyNaCl)
+# are NOT imported at module top — each bridge lazy-imports its lib so
+# the server boots even when a channel's dep is absent. That graceful
+# degradation hides a missing dep: a channel just goes silently dead
+# (e.g. Discord's Gateway never opens) with only a buried log line. We
+# list them here anyway so the heal flow keeps them installed from
+# requirements.txt; otherwise an anton self-update that wipes the venv
+# leaves the channel broken with no signal until someone reads the logs.
+_SERVER_DEP_IMPORTS: tuple[str, ...] = (
+    "fastapi",
+    "uvicorn",
+    "multipart",
+    "pydantic",
+    "httpx",
+    "slack_sdk",
+    "discord",
+    "nacl",
+)
 
 
 def _missing_server_deps() -> list[str]:
