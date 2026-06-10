@@ -1,3 +1,5 @@
+import { trackArtifactBuilt as _trackArtifactBuilt } from './analytics';
+
 // Anton /v1/responses → ThinkingStep adapter.
 //
 // Anton's SSE stream emits one of three top-level event types:
@@ -546,6 +548,9 @@ export function reduceStream(state, event, now = Date.now) {
           _isScratchpad: false,
           _scratchpadTabId: null,
         };
+        // Fire analytics event for artifact creation (ENG-237).
+        try { _trackArtifactBuilt(payload.type || payload.kind || 'unknown'); }
+        catch { /* analytics must never break streaming */ }
         return {
           ...state,
           awaitingArtifactPayload: false,

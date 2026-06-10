@@ -17,6 +17,7 @@ import {
 import { copyText } from '../../lib/clipboard';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { isPublishableArtifact } from '../../lib/artifactKinds';
+import { trackArtifactPublished } from '../../lib/analytics';
 import { Modal } from '../ui/Modal';
 import { Menu } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
@@ -321,7 +322,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
   const isText = _isTextArtifact(artifact);
   const textExt = isText
     ? ((artifact?.ext || '').toLowerCase()
-        || _extOfPath(actionPath))
+      || _extOfPath(actionPath))
     : '';
 
   // Refresh state when the artifact changes (e.g. user opens a
@@ -457,6 +458,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
       const r = await publishArtifact(publishTargetPath(artifact));
       if (r?.url) {
         setPublishedUrl(r.url);
+        trackArtifactPublished(r.report_id || artifact?.id || '', 'public');
         onChange?.({ ...artifact, publishedUrl: r.url });
       }
     } catch (e) {
@@ -610,173 +612,89 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
       height="min(820px, 88vh)"
       labelledBy="artifact-viewer-title"
     >
-        {/* Header */}
-        <div style={{
-          flex: '0 0 auto',
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--line)',
-        }}>
-          <span style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>
-            {Ico.doc(18)}
-          </span>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-              <div id="artifact-viewer-title" style={{
-                fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15,
-                color: 'var(--ink)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                minWidth: 0, flex: '0 1 auto',
-              }}>
-                {artifact.title || artifact.path?.split('/').pop()}
-              </div>
-              {/* Type pill — small mono tag next to the title, drawn
+      {/* Header */}
+      <div style={{
+        flex: '0 0 auto',
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--line)',
+      }}>
+        <span style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>
+          {Ico.doc(18)}
+        </span>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+            <div id="artifact-viewer-title" style={{
+              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15,
+              color: 'var(--ink)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              minWidth: 0, flex: '0 1 auto',
+            }}>
+              {artifact.title || artifact.path?.split('/').pop()}
+            </div>
+            {/* Type pill — small mono tag next to the title, drawn
                   in the same style as the kind tags on collection
                   cards. Only shown when the artifact carries a
                   metadata-declared `type` (legacy artifacts skip). */}
-              {artifact.type && (
-                <span
-                  title={`Artifact type: ${artifact.type}`}
-                  style={{
-                    fontFamily: FONT_MONO, fontSize: 10,
-                    color: 'var(--ink-4)', letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    background: 'var(--surface-2)',
-                    border: '1px solid var(--line)',
-                    padding: '2px 7px', borderRadius: 999,
-                    flexShrink: 0,
-                  }}
-                >{artifact.type}</span>
-              )}
-              {typeof artifact.fileCount === 'number' && artifact.fileCount > 1 && (
-                <span style={{
-                  fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-                  flexShrink: 0,
-                }}>· {artifact.fileCount} files</span>
-              )}
-            </div>
-            {/* Description — agent-supplied at create_artifact, single
-                line truncated. Adds context the title alone can't. */}
-            {artifact.description && (
-              <div
-                title={artifact.description}
+            {artifact.type && (
+              <span
+                title={`Artifact type: ${artifact.type}`}
                 style={{
-                  fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  marginTop: 2, marginBottom: 2,
+                  fontFamily: FONT_MONO, fontSize: 10,
+                  color: 'var(--ink-4)', letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  padding: '2px 7px', borderRadius: 999,
+                  flexShrink: 0,
                 }}
-              >{artifact.description}</div>
+              >{artifact.type}</span>
             )}
-            {privateUrl ? (
-              <PathRow
-                label="private url"
-                value={privateUrl}
-                onActivate={onOpenOS}
-              />
-            ) : (
-              <PathRow
-                label="local"
-                value={isBackendArtifact ? folderDisplayPath : displayPath}
-                copyValue={isBackendArtifact ? artifactFolder : actionPath}
-                onActivate={hasActionPath ? onOpenLocal : undefined}
-              />
-            )}
-            {publishedUrl && (
-              <PathRow
-                label="public url"
-                value={publishedUrl}
-                accent
-                onActivate={onOpenPublished}
-              />
-            )}
-            {publishedUrl && artifact?.accessProtected && (
-              <AccessPasswordRow password={artifact?.accessPassword || ''} />
+            {typeof artifact.fileCount === 'number' && artifact.fileCount > 1 && (
+              <span style={{
+                fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+                flexShrink: 0,
+              }}>· {artifact.fileCount} files</span>
             )}
           </div>
+          {/* Description — agent-supplied at create_artifact, single
+                line truncated. Adds context the title alone can't. */}
+          {artifact.description && (
+            <div
+              title={artifact.description}
+              style={{
+                fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                marginTop: 2, marginBottom: 2,
+              }}
+            >{artifact.description}</div>
+          )}
+          {privateUrl ? (
+            <PathRow
+              label="private url"
+              value={privateUrl}
+              onActivate={onOpenOS}
+            />
+          ) : (
+            <PathRow
+              label="local"
+              value={isBackendArtifact ? folderDisplayPath : displayPath}
+              copyValue={isBackendArtifact ? artifactFolder : actionPath}
+              onActivate={hasActionPath ? onOpenLocal : undefined}
+            />
+          )}
           {publishedUrl && (
-            <button
-              type="button"
-              onClick={onOpenPublished}
-              title={`Open published URL in browser: ${publishedUrl}`}
-              style={{
-                cursor: 'pointer',
-                background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-                border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-                color: 'var(--accent)',
-                padding: '4px 10px', borderRadius: 999,
-                fontSize: 11.5, fontWeight: 600,
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                flexShrink: 0,
-              }}
-            >
-              {artifact?.accessProtected
-                ? <span style={{ display: 'inline-flex' }}>{Ico.lock(11)}</span>
-                : <span style={{ width: 6, height: 6, borderRadius: 99, background: 'var(--accent)' }} />}
-              <span>{artifact?.accessProtected ? 'Protected' : 'Published'}</span>
-              {/* External-link glyph signals "click → opens in browser",
-                  matching the URL pill convention on the artifact card. */}
-              <span style={{ display: 'inline-flex', marginLeft: 1 }}>
-                {Ico.externalLink(11)}
-              </span>
-            </button>
+            <PathRow
+              label="public url"
+              value={publishedUrl}
+              accent
+              onActivate={onOpenPublished}
+            />
           )}
-          {publishedUrl ? (
-            <button
-              type="button"
-              onClick={onUnpublish}
-              disabled={busy || !hasActionPath}
-              title={hasActionPath ? 'Unpublish' : disabledReason || 'No local artifact path'}
-              style={{
-                cursor: busy ? 'progress' : hasActionPath ? 'pointer' : 'not-allowed',
-                background: 'transparent',
-                border: '1px solid var(--line)',
-                color: 'var(--ink-2)',
-                padding: '6px 12px', borderRadius: 8,
-                fontSize: 12.5, fontWeight: 500,
-                opacity: busy || !hasActionPath ? 0.6 : 1,
-              }}
-            >
-              Unpublish
-            </button>
-          ) : isPublishableArtifact(artifact) ? (
-            // Only HTML + Markdown can be published (Markdown renders to a
-            // page server-side). Hide Publish entirely for other types so
-            // the viewer matches the list and the backend — rather than
-            // offering a button that only errors. Download stays available.
-            <button
-              type="button"
-              onClick={onPublish}
-              disabled={busy || !hasActionPath}
-              title={hasActionPath ? 'Publish' : disabledReason || 'No local artifact path'}
-              style={{
-                cursor: busy ? 'progress' : hasActionPath ? 'pointer' : 'not-allowed',
-                background: 'var(--accent)', border: '1px solid var(--accent)',
-                color: '#fff',
-                padding: '6px 12px', borderRadius: 8,
-                fontSize: 12.5, fontWeight: 600,
-                opacity: busy || !hasActionPath ? 0.7 : 1,
-              }}
-            >
-              {busy ? 'Publishing…' : 'Publish'}
-            </button>
-          ) : null}
-          {artifact?.serveUrl && (
-            <button
-              type="button"
-              onClick={onDownload}
-              title="Download artifact to your computer"
-              style={{
-                cursor: 'pointer',
-                background: 'transparent',
-                border: '1px solid var(--line)',
-                color: 'var(--ink-2)',
-                padding: '6px 12px', borderRadius: 8,
-                fontSize: 12.5, fontWeight: 500,
-              }}
-            >
-              Download
-            </button>
+          {publishedUrl && artifact?.accessProtected && (
+            <AccessPasswordRow password={artifact?.accessPassword || ''} />
           )}
+        </div>
           <Menu
             ariaLabel="Artifact actions"
             align="end"
@@ -802,10 +720,6 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
               </button>
             }
             items={[
-              // "Open in OS" drops out in the hosted web shell — it depends
-              // on the renderer sharing a filesystem with the server, which
-              // is only true in Electron. Delete stays available everywhere
-              // because it runs server-side via cowork-server.
               ...(host.isWeb ? [] : [{
                 label: 'Open in OS',
                 icon: Ico.externalLink(13),
@@ -813,9 +727,6 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
                 title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
                 onClick: onOpenOS,
               }]),
-              // Download mirrors the main action-row button and the
-              // list-view kebab — visible in any shell as long as the
-              // artifact has a serve URL the sidecar can stream.
               ...(artifact?.serveUrl ? [{
                 label: 'Download',
                 icon: Ico.download(13),
@@ -850,109 +761,109 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
               fontSize: 18, lineHeight: 1,
             }}
           >×</button>
-        </div>
+      </div>
 
         {/* Body — branches by artifact type:
             • text (.md/.txt/.csv) → inline render via MarkdownContent,
               a parsed CSV table, or a monospace block.
             • everything else      → sandboxed iframe served by the
               preview-mount endpoint. */}
-        <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-2)', overflow: isText ? 'auto' : 'hidden' }}>
-          {err ? (
-            <div style={{ padding: 28, color: 'var(--danger)', fontSize: 13 }}>{err}</div>
-          ) : loading ? (
-            <div style={{ padding: 28, color: 'var(--ink-3)', fontSize: 13 }}>Loading preview…</div>
-          ) : isText && textPreview ? (
-            <div style={{
-              maxWidth: 920, margin: '0 auto', padding: '24px 28px',
-              background: 'var(--surface)',
-              minHeight: '100%',
-            }}>
-              {textExt === '.md' ? (
-                <MarkdownContent text={textPreview.content} id={artifact.path} />
-              ) : textExt === '.csv' && csvPreview ? (
-                <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
-              ) : (
-                <pre style={{
-                  margin: 0,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  fontFamily: FONT_MONO, fontSize: 12.5,
-                  color: 'var(--ink-2)',
-                  lineHeight: 1.55,
-                }}>{textPreview.content}</pre>
-              )}
-              {(textPreview.truncated || (csvPreview && csvPreview.truncated)) && (
-                <div style={{
-                  marginTop: 18, padding: '10px 14px',
-                  borderRadius: 8,
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--line)',
-                  color: 'var(--ink-3)', fontSize: 12.5,
-                  fontFamily: FONT_BODY,
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  gap: 12, flexWrap: 'wrap',
-                }}>
-                  <span>
-                    {csvPreview && csvPreview.truncated
-                      ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
-                      : 'Preview is truncated.'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={host.isWeb ? onDownload : onOpenOS}
-                    style={{
-                      cursor: 'pointer',
-                      background: 'transparent',
-                      border: '1px solid var(--line)',
-                      color: 'var(--accent)',
-                      padding: '5px 11px', borderRadius: 6,
-                      fontSize: 12, fontWeight: 600,
-                      fontFamily: FONT_BODY,
-                    }}
-                  >
-                    {host.isWeb ? 'Download full file' : 'Open full file in OS'}
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            // src= (not srcdoc) so relative asset refs resolve against
-            // the served URL. `allow-same-origin` is required in the cloud:
-            // the artifact's backend lives behind the same auth-gated origin,
-            // and its fetch() calls must carry the `instance_session` cookie
-            // to pass the edge gate. Without same-origin the iframe gets an
-            // opaque origin, the cookie (SameSite=Lax) is dropped on those
-            // cross-site XHRs, and every backend call 401s.
-            //
-            // KNOWN TRADEOFF: in cloud the iframe then shares the SPA's
-            // origin, so a hostile artifact can reach the authenticated cowork
-            // API and the parent window. The proper fix is to serve
-            // previews from a dedicated origin (e.g. cw-<id>-preview.<env>) so
-            // the iframe is same-origin to itself but cross-origin to the SPA.
-            previewUrl ? (
-              <iframe
-                title={artifact.title || 'Artifact preview'}
-                src={previewUrl}
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
-                style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
-              />
-            ) : null
-          )}
-        </div>
+      <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-2)', overflow: isText ? 'auto' : 'hidden' }}>
+        {err ? (
+          <div style={{ padding: 28, color: 'var(--danger)', fontSize: 13 }}>{err}</div>
+        ) : loading ? (
+          <div style={{ padding: 28, color: 'var(--ink-3)', fontSize: 13 }}>Loading preview…</div>
+        ) : isText && textPreview ? (
+          <div style={{
+            maxWidth: 920, margin: '0 auto', padding: '24px 28px',
+            background: 'var(--surface)',
+            minHeight: '100%',
+          }}>
+            {textExt === '.md' ? (
+              <MarkdownContent text={textPreview.content} id={artifact.path} />
+            ) : textExt === '.csv' && csvPreview ? (
+              <MarkdownContent text={csvPreview.markdown} id={artifact.path} />
+            ) : (
+              <pre style={{
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontFamily: FONT_MONO, fontSize: 12.5,
+                color: 'var(--ink-2)',
+                lineHeight: 1.55,
+              }}>{textPreview.content}</pre>
+            )}
+            {(textPreview.truncated || (csvPreview && csvPreview.truncated)) && (
+              <div style={{
+                marginTop: 18, padding: '10px 14px',
+                borderRadius: 8,
+                background: 'var(--surface-2)',
+                border: '1px solid var(--line)',
+                color: 'var(--ink-3)', fontSize: 12.5,
+                fontFamily: FONT_BODY,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 12, flexWrap: 'wrap',
+              }}>
+                <span>
+                  {csvPreview && csvPreview.truncated
+                    ? `Showing first ${csvPreview.shownRows.toLocaleString()} of ${csvPreview.totalRows.toLocaleString()} rows.`
+                    : 'Preview is truncated.'}
+                </span>
+                <button
+                  type="button"
+                  onClick={host.isWeb ? onDownload : onOpenOS}
+                  style={{
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    border: '1px solid var(--line)',
+                    color: 'var(--accent)',
+                    padding: '5px 11px', borderRadius: 6,
+                    fontSize: 12, fontWeight: 600,
+                    fontFamily: FONT_BODY,
+                  }}
+                >
+                  {host.isWeb ? 'Download full file' : 'Open full file in OS'}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          // src= (not srcdoc) so relative asset refs resolve against
+          // the served URL. `allow-same-origin` is required in the cloud:
+          // the artifact's backend lives behind the same auth-gated origin,
+          // and its fetch() calls must carry the `instance_session` cookie
+          // to pass the edge gate. Without same-origin the iframe gets an
+          // opaque origin, the cookie (SameSite=Lax) is dropped on those
+          // cross-site XHRs, and every backend call 401s.
+          //
+          // KNOWN TRADEOFF: in cloud the iframe then shares the SPA's
+          // origin, so a hostile artifact can reach the authenticated cowork
+          // API and the parent window. The proper fix is to serve
+          // previews from a dedicated origin (e.g. cw-<id>-preview.<env>) so
+          // the iframe is same-origin to itself but cross-origin to the SPA.
+          previewUrl ? (
+            <iframe
+              title={artifact.title || 'Artifact preview'}
+              src={previewUrl}
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
+              style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
+            />
+          ) : null
+        )}
+      </div>
 
-        {/* Delete confirmation */}
-        <ConfirmModal
-          open={confirmDelete}
-          title="Delete artifact?"
-          message={`"${artifact.title || artifact.path?.split('/').pop()}" will be permanently deleted. This cannot be undone.`}
-          confirmLabel="Delete"
-          destructive
-          busy={deleteBusy}
-          busyLabel="Deleting…"
-          onConfirm={onConfirmDelete}
-          onClose={() => { if (!deleteBusy) setConfirmDelete(false); }}
-        />
+      {/* Delete confirmation */}
+      <ConfirmModal
+        open={confirmDelete}
+        title="Delete artifact?"
+        message={`"${artifact.title || artifact.path?.split('/').pop()}" will be permanently deleted. This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        busy={deleteBusy}
+        busyLabel="Deleting…"
+        onConfirm={onConfirmDelete}
+        onClose={() => { if (!deleteBusy) setConfirmDelete(false); }}
+      />
 
     </Modal>
   );

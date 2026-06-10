@@ -21,6 +21,7 @@ import {
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { isHtmlArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import {
@@ -36,20 +37,20 @@ import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
-const FONT_BODY    = "var(--font-body)";
+const FONT_BODY = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
-const FONT_MONO    = "var(--font-mono)";
+const FONT_MONO = "var(--font-mono)";
 
 const EMPTY_ARTIFACTS = [];
 
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
 const SORT_OPTIONS = [
-  { id: 'published',   label: 'Published first' },
-  { id: 'recent',      label: 'Recent' },
-  { id: 'oldest',      label: 'Oldest' },
-  { id: 'title',       label: 'Title (A–Z)' },
-  { id: 'type',        label: 'Type' },
+  { id: 'published', label: 'Published first' },
+  { id: 'recent', label: 'Recent' },
+  { id: 'oldest', label: 'Oldest' },
+  { id: 'title', label: 'Title (A–Z)' },
+  { id: 'type', label: 'Type' },
 ];
 
 function ArtifactsCounts({ search, total, filtered, publishedCount }) {
@@ -1118,7 +1119,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         artifact={artifact}
         onClose={() => setMenuOpen(false)}
         onOpen={onRowOpen}
-        onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch {} }}
+        onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
         onDownload={() => downloadArtifactFile(artifact)}
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
@@ -1324,6 +1325,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
         });
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
+        trackArtifactPublished(
+          r.report_id || artifact.id || '',
+          password ? 'password' : 'public',
+        );
         setToast({
           kind: 'ok',
           message: label ? `Published (${label}) — ${r.url}` : `Published — ${r.url}`,
@@ -1390,10 +1395,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 
     out.sort((a, b) => {
       switch (sort) {
-        case 'recent':    return timestampOf(b) - timestampOf(a);
-        case 'oldest':    return timestampOf(a) - timestampOf(b);
-        case 'title':     return (a.title || '').localeCompare(b.title || '');
-        case 'type':      return kindOf(a).localeCompare(kindOf(b));
+        case 'recent': return timestampOf(b) - timestampOf(a);
+        case 'oldest': return timestampOf(a) - timestampOf(b);
+        case 'title': return (a.title || '').localeCompare(b.title || '');
+        case 'type': return kindOf(a).localeCompare(kindOf(b));
         case 'published':
         default: {
           const pa = a.publishedUrl ? 0 : 1;
@@ -1598,7 +1603,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               id: 'reveal',
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
               icon: Ico.folder(13),
-              onClick: () => { try { revealArtifact(a.path); } catch {} },
+              onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
           items.push({ separator: true });

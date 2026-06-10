@@ -24,6 +24,7 @@ import {
 
 import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { host } from '../../../platform/host';
+import { trackDataSourceConnected } from '../../lib/analytics';
 
 const ENGINE_TO_OAUTH_SERVICE = {
   google_drive: 'google-drive',
@@ -373,6 +374,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             title: `${outcome.label || connectorId} connected`,
             subtitle: 'Saved to the data vault. Cowork can use this connection in tasks.',
           });
+          trackDataSourceConnected(connectorId);
           onContinue?.({
             text: `Connected ${outcome.label || connectorId} — saved to the data vault.`,
           });
@@ -442,6 +444,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               title: `${saved.label || connectorId} connected`,
               subtitle: 'Saved to the data vault. The agent can use this connection in tasks.',
             });
+            trackDataSourceConnected(connectorId);
             // Surface a one-line confirmation in the chat too.
             onContinue?.({
               text: `Connected ${saved.label || connectorId} — saved to the data vault.`,
