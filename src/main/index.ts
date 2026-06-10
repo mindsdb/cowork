@@ -623,12 +623,12 @@ function setupIPC() {
 
     // Analytics — fire-and-forget, never blocks
     if (content.includes('ANTON_TERMS_CONSENT=true')) {
-      sendEvent('ANTONAPP_TERMS_ACCEPTED');
+      sendEvent('COWORKAPP_TERMS_ACCEPTED');
     }
     if (content.includes('ANTON_MINDS_ENABLED=true')) {
-      sendEvent('ANTONAPP_MINDSLLM');
+      sendEvent('COWORKAPP_MINDSLLM');
     } else if (content.includes('ANTON_ANTHROPIC_API_KEY') || content.includes('ANTON_OPENAI_API_KEY')) {
-      sendEvent('ANTONAPP_BYOK');
+      sendEvent('COWORKAPP_BYOK');
     }
 
     return true;

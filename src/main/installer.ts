@@ -535,7 +535,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
       setStep('server', 'warning');
     }
 
-    sendEvent('ANTONAPP_INSTALLATION_SUCCESS');
+    sendEvent('COWORKAPP_INSTALLATION_SUCCESS');
     if (canSend(win)) {
       win.webContents.send(IPC.INSTALL_DONE);
     }

@@ -7,19 +7,19 @@ import App from './App';
 import './cowork/styles/tailwind.css';
 // Load cowork's token system + button classes globally so the onboarding
 // screens (TermsConsent, Setup, Onboarding) share the same theme tokens
-// as the cowork app. Antontron's own styles.css aliases its legacy var
+// as the cowork app. The shell's own styles.css aliases its legacy var
 // names to the new tokens so existing onboarding classes keep working.
 import './cowork/styles/globals.css';
 import './styles.css';
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
-// runs, so a missing `window.antontron` means we're loaded in a real
-// browser hitting the dev server — most likely a developer who opened
+// runs, so a missing bridge means we're loaded in a real browser hitting
+// the dev server — most likely a developer who opened
 // http://localhost:5173/ during `npm run dev`. Bail with a friendly
 // pointer instead of silently falling through to the host-abstraction
 // web fallbacks (which would render the SPA against Electron's FastAPI
 // sidecar and look indistinguishable from the real web build).
-if (typeof window !== 'undefined' && !(window as any).antontron) {
+if (typeof window !== 'undefined' && !(window as any).cowork && !(window as any).antontron) {
   document.body.innerHTML = `
     <div style="
       font-family: 'Inter', system-ui, sans-serif;

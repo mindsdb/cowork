@@ -1,13 +1,16 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 
-contextBridge.exposeInMainWorld('antontron', {
+// Expose bridge under both names: `window.cowork` is the canonical name
+// going forward; `window.antontron` is kept as a backward-compat alias
+// so any stray direct references don't break during migration.
+const bridge = {
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
   cancelInstall: () => ipcRenderer.invoke(IPC.INSTALL_CANCEL),
 
-  // Anton python server lifecycle
+  // Cowork python server lifecycle
   serverInfo:   () => ipcRenderer.invoke('server:get-info'),
   serverStart:  () => ipcRenderer.invoke('server:start'),
   serverStop:   () => ipcRenderer.invoke('server:stop'),
@@ -94,4 +97,7 @@ contextBridge.exposeInMainWorld('antontron', {
   getUIVersion: () => ipcRenderer.invoke(IPC.APP_UI_VERSION),
   openExternal: (url: string) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
-});
+};
+
+contextBridge.exposeInMainWorld('cowork', bridge);
+contextBridge.exposeInMainWorld('antontron', bridge);

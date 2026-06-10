@@ -1,11 +1,11 @@
 // Host platform abstraction for the cowork SPA.
 //
 // The cowork renderer ships in two shells:
-//   - Electron (preload exposes window.antontron — full bridge)
+//   - Electron (preload exposes window.cowork — full bridge)
 //   - Web (vite SPA served by FastAPI — no bridge)
 //
 // Every cowork/* file MUST go through this module instead of touching
-// `window.antontron` directly. This is enforced by a lint guard
+// the bridge directly. This is enforced by a lint guard
 // (`pnpm check:cowork-purity`).
 //
 // Web fallbacks are intentionally narrow: methods that have a sensible
@@ -13,12 +13,14 @@
 // operations (openPath, trashItem) return { ok: false, reason: 'unsupported' }
 // so call sites can branch / hide affordances.
 
-const ANTON_SERVER_PORT = 26866;
+const SERVER_PORT = 26866;
 
-type Bridge = typeof window extends { antontron?: infer T } ? T : never;
+type Bridge = typeof window extends { cowork?: infer T } ? T : never;
 
 const bridge: any =
-  typeof window !== 'undefined' ? (window as any).antontron : undefined;
+  typeof window !== 'undefined'
+    ? (window as any).cowork ?? (window as any).antontron
+    : undefined;
 
 export const isElectron: boolean = typeof bridge === 'object' && bridge !== null;
 export const isWeb: boolean = !isElectron;
@@ -48,7 +50,7 @@ export function getApiOrigin(): string {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
   return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${ANTON_SERVER_PORT}`
+    ? `http://127.0.0.1:${SERVER_PORT}`
     : window.location.origin;
 }
 
@@ -56,7 +58,7 @@ export function getApiOrigin(): string {
 // (loopback). The deciding factor for "can I open a server-side file
 // path locally?" — a server-returned filesystem path is only openable
 // via the OS shell when the server is the local one. When the desktop
-// app is pointed at a REMOTE Anton server, those paths live on that box,
+// app is pointed at a REMOTE server, those paths live on that box,
 // so callers must fetch the file over HTTP (the artifact `serveUrl`)
 // instead of `openPath`. (Web's window.location.origin can itself be
 // localhost in dev — callers still gate on `isElectron` since the web
@@ -103,7 +105,7 @@ export async function serverInfo(): Promise<ServerInfo> {
       running: !!info?.running,
       starting: !!info?.starting,
       port: info?.port ?? null,
-      origin: info?.origin || `http://127.0.0.1:${info?.port ?? ANTON_SERVER_PORT}`,
+      origin: info?.origin || `http://127.0.0.1:${info?.port ?? SERVER_PORT}`,
     };
   }
   return {
@@ -292,7 +294,7 @@ export async function validateProvider(
 
 // ---- Setup-screen install lifecycle (Electron-only) -------------------
 //
-// The Setup page subscribes to a streaming install of the anton CLI +
+// The Setup page subscribes to a streaming install of the cowork CLI +
 // python deps. On web there is no install — the FastAPI host running
 // this code IS the install — so each subscriber fires synthetic
 // "done" events synchronously and start/cancel are no-ops.

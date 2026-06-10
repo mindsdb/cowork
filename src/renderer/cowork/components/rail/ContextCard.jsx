@@ -19,7 +19,7 @@ import {
   saveMemory,
   uploadAttachments,
   uploadProjectFiles,
-  ANTON_PROJECT_INSTRUCTIONS_PATH,
+  PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -205,7 +205,7 @@ function SessionAttachmentRow({
 }
 
 function ContextFileRow({ file, onOpen, onRequestDelete }) {
-  const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
+  const isAnton = file.path === PROJECT_INSTRUCTIONS_PATH;
   // The instructions file is foundational (Anton reads it on every
   // turn). Surfacing a delete on hover would tempt a misclick; the
   // ContextFileModal opened by clicking the row also hides the
@@ -357,15 +357,15 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         const visible = all.filter((f) => {
           if (!f || f.is_dir) return false;
           const p = String(f.path || '');
-          if (p === ANTON_PROJECT_INSTRUCTIONS_PATH) return true;
+          if (p === PROJECT_INSTRUCTIONS_PATH) return true;
           // Hide hidden segments.
           if (p.split('/').some((seg) => seg.startsWith('.'))) return false;
           return true;
         });
         // Instructions first, then everything else by mtime desc.
         visible.sort((a, b) => {
-          const ai = a.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
-          const bi = b.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
+          const ai = a.path === PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
+          const bi = b.path === PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
           if (ai !== bi) return ai - bi;
           return (b.modified || 0) - (a.modified || 0);
         });
@@ -809,7 +809,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         projectName={project?.name}
         projectPath={project?.path}
         filePath={openFile?.path}
-        isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
+        isAntonMd={openFile?.path === PROJECT_INSTRUCTIONS_PATH}
         onClose={() => setOpenFile(null)}
         onChanged={() => reloadFiles()}
       />

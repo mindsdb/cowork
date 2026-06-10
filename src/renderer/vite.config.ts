@@ -24,7 +24,7 @@ try {
 const IS_WEB = process.env.BUILD_TARGET === 'web';
 
 // In dev, vite's default html serving picks `index.html` for `/`, which
-// is the Electron entry (depends on window.antontron and crashes in a
+// is the Electron entry (depends on window.cowork bridge and crashes in a
 // regular browser). When BUILD_TARGET=web, rewrite bare `/` to the web
 // entry so `http://localhost:5173/` is the canonical URL.
 const webRootRewrite = {

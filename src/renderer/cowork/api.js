@@ -1,19 +1,19 @@
 // API client — talks to the FastAPI backend at /v1/*.
-// Port matches antontron's server-process default (26866 = ANTON on T9
-// keypad). Vite dev would proxy /v1 → backend; packaged Electron runs
-// from file:// or app:// and must address the loopback server directly.
+// Port matches the server-process default (26866). Vite dev would
+// proxy /v1 → backend; packaged Electron runs from file:// or app://
+// and must address the loopback server directly.
 
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
 
-const ANTON_SERVER_PORT = 26866;
+const SERVER_PORT = 26866;
 
 const API_ORIGIN = (() => {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
   return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${ANTON_SERVER_PORT}`
+    ? `http://127.0.0.1:${SERVER_PORT}`
     : '';
 })();
 
@@ -618,18 +618,20 @@ export async function deleteProject(projectOrName) {
 // ── Project files ────────────────────────────────────────────────
 //
 // Most paths are relative to the project root. Project instructions
-// live at ANTON_PROJECT_INSTRUCTIONS_PATH (on disk: `.anton/anton.md`).
+// live at PROJECT_INSTRUCTIONS_PATH (on disk: `.anton/anton.md`).
 // These helpers wrap routes/projects.py.
 
 const enc = encodeURIComponent;
 
 /** Relative path from project root for project instructions (projects file API). */
-export const ANTON_PROJECT_INSTRUCTIONS_PATH = '.anton/anton.md';
+export const PROJECT_INSTRUCTIONS_PATH = '.anton/anton.md';
+/** @deprecated Use PROJECT_INSTRUCTIONS_PATH */
+export const ANTON_PROJECT_INSTRUCTIONS_PATH = PROJECT_INSTRUCTIONS_PATH;
 
 /** True if `relPath` is the canonical instructions file (`.anton/anton.md`). */
 export function isProjectInstructionsPath(relPath) {
   const r = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  return r === ANTON_PROJECT_INSTRUCTIONS_PATH;
+  return r === PROJECT_INSTRUCTIONS_PATH;
 }
 
 /** Legacy installs: true if `relPath` is under `.context/` (pre-migration tree). */
@@ -1076,7 +1078,7 @@ export async function deleteDatasource(engine, name) {
 //     secureKeys: string[],                  // names of secret fields
 //     fields: { ... },                       // non-secret values verbatim,
 //                                            // secret slots replaced with
-//                                            // ANTON_VAULT_KEEP sentinel
+//                                            // VAULT_KEEP sentinel
 //   }
 // The renderer pre-fills the form with `fields`. On submit, any
 // field still carrying the sentinel resolves server-side against
@@ -1092,7 +1094,9 @@ export async function fetchSavedConnection(engine, name) {
 // hasn't touched this secret field" on submit; any field whose
 // value is still this exact string is sent back as-is and resolved
 // server-side against the prior record.
-export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
+export const VAULT_KEEP = '__anton_vault_keep__';
+/** @deprecated Use VAULT_KEEP */
+export const ANTON_VAULT_KEEP = VAULT_KEEP;
 
 // ─── Connector registry ─────────────────────────────────────────────
 //

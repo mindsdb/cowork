@@ -41,12 +41,12 @@ process is held back until `/health` returns 200, so the developer
 doesn't see a wall of `ECONNREFUSED`. Vite middleware rewrites bare `/`
 to `/index-web.html` so the canonical URL works.
 
-The cowork SPA is shell-agnostic. **Never import `window.antontron`
-directly inside `src/renderer/cowork/`** — every bridge call goes
-through `src/renderer/platform/host.ts`, which falls back to safe
-defaults when the bridge is absent (web). Electron-only affordances
-(server pill, OS shell buttons, OAuth IPC flow) are gated behind
-`host.isWeb`.
+The cowork SPA is shell-agnostic. **Never import `window.cowork`
+(or its legacy alias `window.antontron`) directly inside
+`src/renderer/cowork/`** — every bridge call goes through
+`src/renderer/platform/host.ts`, which falls back to safe defaults
+when the bridge is absent (web). Electron-only affordances (server
+pill, OS shell buttons, OAuth IPC flow) are gated behind `host.isWeb`.
 
 ## Sanity-check Python before building
 

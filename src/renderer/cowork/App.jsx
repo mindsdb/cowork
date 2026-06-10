@@ -114,7 +114,7 @@ function isAntonConfigError(message, event) {
   const text = String(message || '');
   return (
     event?.code === 'config_required' ||
-    /Configure ANTON_/i.test(text) ||
+    /Configure (?:ANTON|COWORK)_/i.test(text) ||
     /Could not resolve authentication method/i.test(text) ||
     /Expected one of api_key, auth_token, or credentials/i.test(text)
   );
@@ -1652,7 +1652,7 @@ function AppCore() {
   // handleConnectorPicked, but skips the picker (engine is known)
   // and pre-fills every field the renderer is allowed to see —
   // non-secrets verbatim from the vault, secrets as the
-  // `ANTON_VAULT_KEEP` sentinel. Saving via the existing submission
+  // `VAULT_KEEP` sentinel. Saving via the existing submission
   // path runs the server-side merge: any field still carrying the
   // sentinel resolves to its prior on-disk value, so the user only
   // re-types what they actually want to change.

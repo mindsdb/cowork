@@ -78,6 +78,8 @@ declare global {
   /** ISO 8601 timestamp of when the bundle was built. */
   const __BUILD_TIME__: string;
   interface Window {
+    cowork: AntonTronAPI;
+    /** @deprecated Use `window.cowork` — kept as a backward-compat alias. */
     antontron: AntonTronAPI;
   }
 

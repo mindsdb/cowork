@@ -3,7 +3,7 @@
 // App.tsx runs the onboarding gates (Intro → Terms → Setup →
 // Onboarding → cowork). Each gate's bridge call now goes through
 // `host.*`, which routes to ~/.anton/.env via FastAPI in web and via
-// window.antontron in Electron. Setup auto-completes on web (the
+// window.cowork in Electron. Setup auto-completes on web (the
 // FastAPI host running this code IS the install).
 //
 // Cloud-hosted instances (behind the Cloudflare Worker auth gate) skip
