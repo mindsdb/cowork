@@ -80,6 +80,24 @@ logger = logging.getLogger(__name__)
 MAX_CONVERSATIONS = int(os.environ.get("ANTON_SERVER_MAX_CONVERSATIONS", "3"))
 
 
+_RUNTIME_MANAGED_ENV_KEYS = {
+    "ANTON_ANTHROPIC_API_KEY",
+    "ANTON_OPENAI_API_KEY",
+    "ANTON_OPENAI_BASE_URL",
+    "ANTON_MINDS_API_KEY",
+    "ANTON_MINDS_URL",
+    "ANTON_MINDS_ENABLED",
+    "ANTON_MINDS_MIND_NAME",
+    "ANTON_MINDS_DATASOURCE",
+    "ANTON_MINDS_DATASOURCE_ENGINE",
+    "ANTON_MINDS_SSL_VERIFY",
+    "ANTON_PLANNING_PROVIDER",
+    "ANTON_PLANNING_MODEL",
+    "ANTON_CODING_PROVIDER",
+    "ANTON_CODING_MODEL",
+}
+
+
 ANTON_AVAILABLE = False
 
 try:  # pragma: no cover - import guard
@@ -101,6 +119,32 @@ class AntonRuntimeError(RuntimeError):
 
 def is_anton_available() -> bool:
     return ANTON_AVAILABLE
+
+
+def _reload_runtime_env_from_user_dotenv() -> None:
+    """Project the current ~/.anton/.env onto process env.
+
+    The desktop app can mutate ~/.anton/.env while the Python server
+    stays alive across logouts/logins. If we only ever overlay file
+    values onto os.environ, removed keys linger forever in-process and a
+    freshly logged-out free account can still chat with the prior paid
+    account's LLM credentials. Clear the managed auth/provider keys
+    first, then re-hydrate from the file.
+    """
+    for key in _RUNTIME_MANAGED_ENV_KEYS:
+        os.environ.pop(key, None)
+
+    user_env = Path.home() / ".anton" / ".env"
+    if not user_env.is_file():
+        return
+
+    for line in user_env.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if key:
+                os.environ[key] = value.strip().strip('"').strip("'")
 
 
 # ---------------------------------------------------------------------------
@@ -1008,16 +1052,7 @@ async def _build_chat_session(
     # ANTHROPIC_API_KEY is set. Loading the file here ensures settings
     # always reflect the current config, even after onboarding.
     # Skip server-operational vars that the Electron host controls.
-    _SERVER_MANAGED_KEYS = {"ANTON_SERVER_PORT", "ANTON_SERVER_HOST", "ANTON_PROJECTS_DIR"}
-    _user_env = Path.home() / ".anton" / ".env"
-    if _user_env.is_file():
-        for _line in _user_env.read_text(encoding="utf-8").splitlines():
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _k, _, _v = _line.partition("=")
-                _k = _k.strip()
-                if _k not in _SERVER_MANAGED_KEYS:
-                    os.environ[_k] = _v.strip().strip('"').strip("'")
+    _reload_runtime_env_from_user_dotenv()
     settings = AntonSettings()
     settings.resolve_workspace(str(base))
     if model:
@@ -1025,19 +1060,21 @@ async def _build_chat_session(
         # `_code_`) and the current `latest:*` alias namespace — only
         # resolve at the openai-compatible router. If the user switched
         # off Minds Cloud after picking one of these, an old saved cowork
-        # preference can keep sending it on every request. Drop the
-        # override and stay with the env's `ANTON_PLANNING_MODEL` instead
-        # of forwarding a Minds-only name to api.anthropic.com (which 404s).
+        # preference can keep sending it on every request. Use a sensible
+        # default for the active provider instead of forwarding a Minds-only
+        # name to api.anthropic.com (which 404s).
         is_minds_only_model = (
             (model.startswith("_") and model.endswith("_"))
             or model.startswith("latest:")
         )
         if is_minds_only_model and settings.planning_provider != "openai-compatible":
+            default_model = "claude-opus-4-7" if settings.planning_provider == "anthropic" else settings.planning_model
             logging.getLogger(__name__).warning(
                 "Ignoring Minds-Cloud-only model %r — active planning_provider is %r. "
-                "Falling back to env ANTON_PLANNING_MODEL=%r.",
-                model, settings.planning_provider, settings.planning_model,
+                "Using default model %r.",
+                model, settings.planning_provider, default_model,
             )
+            settings.planning_model = default_model
         else:
             settings.planning_model = model
 

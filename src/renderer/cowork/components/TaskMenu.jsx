@@ -75,6 +75,7 @@ export function TaskMenu({
   showHeaderActions = false,
   hideMoveToProject = true,
   hideRename = true,
+  agentLabel,
 }) {
   const [moveOpen, setMoveOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -296,7 +297,7 @@ export function TaskMenu({
                     return (
                       <div style={{ padding: '10px 14px', fontSize: 12.5, color: 'var(--ink-4)', fontFamily: 'var(--font-body)' }}>
                         {projects.length === 0
-                          ? 'No projects available — Anton is still loading them.'
+                          ? `No projects available — ${agentLabel} is still loading them.`
                           : 'Create another project first to move this task.'}
                       </div>
                     );

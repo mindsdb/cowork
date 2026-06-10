@@ -75,7 +75,7 @@
             "description": "The full HTTP(S) endpoint of your Elasticsearch cluster, including port."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

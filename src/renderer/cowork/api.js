@@ -5,6 +5,7 @@
 
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
+import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -16,7 +17,7 @@ const API_ORIGIN = (() => {
     : '';
 })();
 
-export const BASE = `${API_ORIGIN}/v1`;
+export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
 async function req(path, options = {}) {
@@ -37,6 +38,7 @@ async function req(path, options = {}) {
     }
     throw new Error(detail || `API ${path} returned ${res.status}`);
   }
+  if (res.status === 204) return { ok: true };
   return res.json();
 }
 
@@ -48,6 +50,7 @@ async function rootReq(path, options = {}) {
   if (!res.ok) {
     throw new Error(`API ${path} returned ${res.status}`);
   }
+  if (res.status === 204) return { ok: true };
   return res.json();
 }
 
@@ -97,7 +100,7 @@ async function responseError(res, fallback) {
 // ─── Health ──────────────────────────────────────────────────────────────────
 export async function fetchHealth() {
   try {
-    return await rootReq('/health');
+    return await rootReq('/api/v1/health');
   } catch {
     return { status: 'offline', anton_available: false };
   }
@@ -124,7 +127,7 @@ function _humanTime(iso) {
 // Replay the server-persisted SSE event log through the live stream
 // reducer to reconstruct `steps` + `startedAt` for each assistant
 // turn. The server saves raw events in a sidecar file and returns
-// them inline on `/conversations/{id}/messages`; doing the replay
+// them inline on `/conversations/{id}/items`; doing the replay
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
@@ -206,8 +209,8 @@ export async function fetchSessions() {
     const eager = conversations.slice(0, EAGER);
     const messageBundles = await Promise.all(
       eager.map((c) =>
-        req(`/conversations/${encodeURIComponent(c.id)}/messages`)
-          .then((r) => Array.isArray(r?.messages) ? r.messages : [])
+        req(`/conversations/${encodeURIComponent(c.id)}/items`)
+          .then((r) => Array.isArray(r) ? r : [])
           .catch(() => [])
       )
     );
@@ -222,10 +225,10 @@ export async function fetchSession(id) {
   try {
     const [meta, msgs] = await Promise.all([
       req(`/conversations/${encodeURIComponent(id)}`).catch(() => null),
-      req(`/conversations/${encodeURIComponent(id)}/messages`).catch(() => null),
+      req(`/conversations/${encodeURIComponent(id)}/items`).catch(() => null),
     ]);
     if (!meta) return null;
-    return _conversationToTask(meta, Array.isArray(msgs?.messages) ? msgs.messages : []);
+    return _conversationToTask(meta, Array.isArray(msgs) ? msgs : []);
   } catch {
     return null;
   }
@@ -330,7 +333,7 @@ function _streamResponse(text, { conversationId, projectName, projectPath, model
               onDone?.(cid);
               return;
             case 'response.failed':
-              onError?.(msg.error || msg.message || 'Anton failed', { ...msg, code: msg.code });
+              onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
               return;
             default:
               break;
@@ -451,7 +454,7 @@ export function tailInFlight(conversationId, {
               onDone?.(cid);
               return;
             case 'response.failed':
-              onError?.(msg.error || msg.message || 'Anton failed', { ...msg, code: msg.code });
+              onError?.(msg.error || msg.message || 'The agent failed', { ...msg, code: msg.code });
               return;
             default:
               break;
@@ -480,11 +483,12 @@ export function streamMessage(sessionId, text, opts = {}) {
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
-// Server returns { projects: [{ name, path }] }. Unwrap so call sites
-// keep their array contract.
+// Server returns a flat array of project objects (with id, name, path,
+// is_active). Older servers wrapped in { projects: [...] } — handle both.
 export async function fetchProjects() {
   try {
     const data = await req('/projects');
+    if (Array.isArray(data)) return data;
     return Array.isArray(data?.projects) ? data.projects : [];
   } catch {
     return [];
@@ -495,11 +499,23 @@ export async function createProject(name) {
   return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
-// Rename — backed by PATCH /v1/projects/{name}. Server moves the
+// Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
 // project directory and updates internal references; the response is
-// the renamed Project record.
-export async function renameProject(oldName, newName) {
-  return req(`/projects/${encodeURIComponent(oldName)}`, {
+// the renamed Project record. Accepts either a project object (with id)
+// or a plain name string for backwards compat.
+export async function renameProject(projectOrName, newName) {
+  const id = projectOrName?.id;
+  if (id) {
+    return req(`/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: newName }),
+    });
+  }
+  // Fallback: lookup by name from the projects list
+  const projects = await fetchProjects();
+  const match = projects.find((p) => p.name === projectOrName);
+  if (!match?.id) throw new Error(`Project "${projectOrName}" not found`);
+  return req(`/projects/${encodeURIComponent(match.id)}`, {
     method: 'PATCH',
     body: JSON.stringify({ name: newName }),
   });
@@ -574,13 +590,23 @@ export async function unpublishArtifact(path) {
   return res.json();
 }
 
-export async function deleteProject(name) {
+// Delete a project by object (with id) or name string.
+export async function deleteProject(projectOrName) {
+  let id = projectOrName?.id;
+  const name = typeof projectOrName === 'string' ? projectOrName : projectOrName?.name;
+  if (!id) {
+    const projects = await fetchProjects();
+    const match = projects.find((p) => p.name === name);
+    if (!match?.id) return { status: 'gone', name };
+    id = match.id;
+  }
   // Idempotent: 404 = "already gone" = success.
-  const res = await fetch(BASE + `/projects/${encodeURIComponent(name)}`, {
+  const res = await fetch(BASE + `/projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
   if (res.status === 404) return { status: 'gone', name };
+  if (res.status === 204) return { status: 'deleted', name };
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json())?.detail || ''; } catch {}
@@ -721,15 +747,33 @@ export async function deleteProjectFile(projectName, path) {
 
 export async function fetchActiveProject() {
   try {
-    const data = await req('/projects/active');
-    return data?.name || null;
+    const projects = await fetchProjects();
+    const active = projects.find((p) => p.is_active || p.isActive);
+    return active?.name || null;
   } catch {
     return null;
   }
 }
 
-export async function setActiveProject(name) {
-  return req('/projects/active', { method: 'PUT', body: JSON.stringify({ name }) });
+// Set the active project via PATCH /projects/{id} with { is_active: true }.
+// Accepts a project object (with id) or a name string.
+export async function setActiveProject(projectOrName) {
+  const id = projectOrName?.id;
+  if (id) {
+    return req(`/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: true }),
+    });
+  }
+  // Fallback: lookup by name
+  const name = typeof projectOrName === 'string' ? projectOrName : projectOrName?.name;
+  const projects = await fetchProjects();
+  const match = projects.find((p) => p.name === name);
+  if (!match?.id) throw new Error(`Project "${name}" not found`);
+  return req(`/projects/${encodeURIComponent(match.id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active: true }),
+  });
 }
 
 // ─── Artifacts ────────────────────────────────────────────────────────────────
@@ -838,16 +882,82 @@ export async function revealArtifact(path) {
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+// Key maps, row transforms, provider backfill, and write-diffing live in
+// settingsTransform.js (pure functions, no network calls).  The API calls
+// here are thin wrappers that fetch/push and delegate the translation.
+
+// Snapshot of the last-fetched settings — used by diffSettingsForWrite to
+// skip no-op writes and by the masked-sentinel ("***") skip logic.
+let _lastFetchedSettings = {};
+
+// Serialize settings reads/writes so a concurrent fetchSettings +
+// updateSettings can't race on _lastFetchedSettings.
+let _settingsLock = Promise.resolve();
+
 export async function fetchSettings() {
-  try {
-    return await req('/settings');
-  } catch {
-    return { ...MOCK_DATA.settings, configReady: false, configError: 'Anton backend is offline.' };
-  }
+  const op = _settingsLock.then(async () => {
+    try {
+      const rows = await req('/settings/');
+      const result = transformSettingsRows(rows);
+      try {
+        const v = await req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
+        result.configReady = v.configReady;
+        result.configError = v.configError;
+        result.providerLabel = v.provider;
+      } catch { /* leave defaults */ }
+      _lastFetchedSettings = result;
+      return result;
+    } catch {
+      return { ...MOCK_DATA.settings, configReady: false, configError: 'Backend is offline.' };
+    }
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
 }
 
 export async function updateSettings(patch) {
-  return req('/settings', { method: 'PUT', body: JSON.stringify(patch) });
+  const op = _settingsLock.then(async () => {
+    const writes = diffSettingsForWrite(patch, _lastFetchedSettings);
+
+    const updated = [];
+    const failed = [];
+    for (const [key, value] of Object.entries(writes)) {
+      try {
+        await req(`/settings/${encodeURIComponent(key)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ value }),
+        });
+        updated.push(key);
+      } catch (err) {
+        console.warn(`Failed to save setting ${key}:`, err);
+        failed.push({ key, message: err?.message || String(err) });
+      }
+    }
+
+    if (failed.length > 0) {
+      const summary = failed.map((f) => `${f.key}: ${f.message}`).join('; ');
+      const err = new Error(`Failed to save ${failed.length === 1 ? 'setting' : 'settings'}: ${summary}`);
+      err.failed = failed;
+      err.updated = updated;
+      throw err;
+    }
+
+    // Re-fetch after successful writes so _lastFetchedSettings reflects
+    // the server's canonical state (including any server-side defaults).
+    try {
+      const rows = await req('/settings/');
+      _lastFetchedSettings = transformSettingsRows(rows);
+    } catch { /* keep prior snapshot */ }
+
+    try {
+      const v = await req('/settings/validate', { method: 'POST', body: JSON.stringify({}) });
+      return { status: 'ok', updated, configReady: v.configReady, configError: v.configError };
+    } catch {
+      return { status: 'ok', updated };
+    }
+  });
+  _settingsLock = op.catch(() => {});
+  return op;
 }
 
 export async function validateSettings() {
@@ -863,10 +973,6 @@ export async function testProviders(providers) {
   }
 }
 
-// Fetch the real (unmasked) value of a stored API key — drives the eye
-// icon "reveal" in Settings. The GET /settings endpoint returns "***"
-// for stored keys; this endpoint returns the actual stored value so the
-// user can verify which key is configured.
 export async function revealSettingKey(name) {
   try {
     const res = await req(`/settings/reveal-key/${encodeURIComponent(name)}`);
@@ -896,8 +1002,8 @@ export async function startGmailAuth() {
   return req('/integrations/gmail/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
-export async function startGoogleAdsAuth() {
-  return req('/integrations/google-ads/oauth/start', { method: 'POST', body: JSON.stringify({}) });
+export async function startGoogleAdsAuth(params = {}) {
+  return req('/integrations/google-ads/oauth/start', { method: 'POST', body: JSON.stringify(params) });
 }
 
 export async function startGoogleAnalyticsAuth() {
@@ -940,19 +1046,28 @@ export async function deleteSkill(label) {
 }
 
 export async function fetchDatasources() {
-  return req('/datasources');
+  const data = await req('/connectors/connections');
+  return { connections: Array.isArray(data) ? data : [] };
 }
 
-export async function saveDatasource(payload) {
-  return req('/datasources', { method: 'POST', body: JSON.stringify(payload) });
+// DEPRECATED: Legacy manual-form save — the real save flow now goes through
+// streamDataVaultSubmission → POST /connectors/submissions. The old
+// POST /datasources and POST /datasources/validate endpoints no longer
+// exist on the server. These stubs exist only because UtilitiesView's
+// retired ConnectView still imports them; they are unreachable in the
+// current routing. Remove when ConnectView is fully deleted.
+export async function saveDatasource(_payload) {
+  console.warn('saveDatasource() is deprecated — use streamDataVaultSubmission instead');
+  return { ok: true };
 }
 
-export async function validateDatasource(payload) {
-  return req('/datasources/validate', { method: 'POST', body: JSON.stringify(payload) });
+export async function validateDatasource(_payload) {
+  console.warn('validateDatasource() is deprecated — use streamDataVaultSubmission instead');
+  return { valid: true };
 }
 
 export async function deleteDatasource(engine, name) {
-  return req(`/datasources/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
 // Modify-flow read: returns the saved connection as
@@ -968,7 +1083,7 @@ export async function deleteDatasource(engine, name) {
 // the prior record (the modify merge — see anton-core's
 // `resolve_modify_merge`). Empty string means "explicitly clear".
 export async function fetchSavedConnection(engine, name) {
-  return req(`/datasources/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`);
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`);
 }
 
 // Sentinel string used in the modify-flow round-trip. Mirrors the
@@ -991,19 +1106,19 @@ export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 
 export async function fetchConnectors() {
   try {
-    const data = await req('/connectors');
-    return Array.isArray(data?.connectors) ? data.connectors : [];
+    const data = await req('/connectors/specs');
+    return Array.isArray(data) ? data : [];
   } catch {
     return [];
   }
 }
 
 export async function fetchConnector(id) {
-  return req(`/connectors/${encodeURIComponent(id)}`);
+  return req(`/connectors/specs/${encodeURIComponent(id)}`);
 }
 
 export async function matchConnector(query, maxCandidates = 3) {
-  return req('/connectors/match', {
+  return req('/connectors/specs/match', {
     method: 'POST',
     body: JSON.stringify({ query, max_candidates: maxCandidates }),
   });
@@ -1014,10 +1129,37 @@ export async function matchConnector(query, maxCandidates = 3) {
 // OAuth + service-account flows where the legacy email/password
 // engine would reject the credential shape).
 export async function saveConnector(connectorId, payload) {
-  return req(`/connectors/${encodeURIComponent(connectorId)}/save`, {
+  return req('/connectors/submissions', {
     method: 'POST',
-    body: JSON.stringify(payload || {}),
+    body: JSON.stringify({ connector_id: connectorId, ...(payload || {}) }),
   });
+}
+
+// ─── Web (redirect-based) connector OAuth ──────────────────────────────────
+// The desktop app authenticates connectors through an Electron loopback
+// PKCE flow (host.oauthConnect). The web SPA can't open a loopback server,
+// so it drives the server-side redirect flow instead:
+//   1. startConnectorOAuth → server mints PKCE + state, returns authUrl.
+//   2. open authUrl (new tab); the user consents; the provider redirects
+//      to the server callback, which exchanges the code + saves the vault
+//      record itself.
+//   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
+// The SPA never handles the code or tokens directly.
+
+export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
+  return req(`/connectors/${encodeURIComponent(connectorId)}/oauth/start`, {
+    method: 'POST',
+    body: JSON.stringify({
+      method: method || null,
+      name: name || '',
+      client_id: clientId || '',
+      client_secret: clientSecret || '',
+    }),
+  });
+}
+
+export async function pollConnectorOAuth(state) {
+  return req(`/connectors/oauth/status?state=${encodeURIComponent(state)}`);
 }
 
 export async function fetchPublishable() {
@@ -1039,18 +1181,20 @@ export async function fetchPublishable() {
 //
 // Field VALUES never round-trip through the response.
 export function streamDataVaultSubmission({
-  formId, conversationId, formSpec, values, skipped,
+  formId, conversationId, formSpec, values, skipped, name, method,
   onChunk, onProgress, onToolResult, onDone, onError, onEvent,
 } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
-      const res = await fetch(`${BASE}/datavault/submissions`, {
+      const res = await fetch(`${BASE}/connectors/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           form_id: formId,
           conversation_id: conversationId || null,
+          name: name || formSpec?._existing_name || formSpec?.name || '',
+          method: method || null,
           values: values || {},
           skipped: skipped || [],
           form_spec: formSpec || null,
@@ -1128,15 +1272,17 @@ export function streamDataVaultSubmission({
 // Backwards-compatible non-streaming wrapper — kept so callers that
 // just need to stage values without streaming back can still do so.
 // (Currently unused by the form panel; might disappear in a cleanup.)
-export async function submitDataVaultForm({ formId, conversationId, values, skipped, formSpec }) {
+export async function submitDataVaultForm({ formId, conversationId, values, skipped, formSpec, name, method }) {
   // Fire the streaming endpoint but only consume the JSON body of
   // the response — useful for tests/probes that don't want SSE.
-  const res = await fetch(`${BASE}/datavault/submissions`, {
+  const res = await fetch(`${BASE}/connectors/submissions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       form_id: formId,
       conversation_id: conversationId || null,
+      name: name || formSpec?._existing_name || formSpec?.name || '',
+      method: method || null,
       values: values || {},
       skipped: skipped || [],
       form_spec: formSpec || null,
@@ -1148,8 +1294,11 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
   return { status: 'streamed', body: text };
 }
 
-export async function publishArtifact(path) {
-  return req('/publish', { method: 'POST', body: JSON.stringify({ path }) });
+// `password` (optional): when a non-empty string, the artifact is
+// published password-protected; omit / empty publishes it public.
+export async function publishArtifact(path, password) {
+  const body = password ? { path, password } : { path };
+  return req('/publish', { method: 'POST', body: JSON.stringify(body) });
 }
 
 export async function fetchBrowseStatus() {
@@ -1249,11 +1398,11 @@ export async function fetchPins() {
 }
 
 export async function pinTask(task) {
-  return req('/pins', { method: 'POST', body: JSON.stringify({ item_type: 'task', item_id: task.id, title: task.title }) });
+  return req('/pins/', { method: 'POST', body: JSON.stringify({ item_type: 'conversation', item_id: task.id, title: task.title }) });
 }
 
 export async function unpinTask(id) {
-  return req(`/pins/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return req(`/pins/${encodeURIComponent(id)}?item_type=conversation`, { method: 'DELETE' });
 }
 
 // Rename + delete + move are powered by the conversation patch/delete
@@ -1312,6 +1461,7 @@ export async function deleteConversation(id) {
     try { detail = (await res.json())?.detail || ''; } catch {}
     throw new Error(detail || `Delete failed (${res.status})`);
   }
+  if (res.status === 204) return { ok: true };
   return res.json();
 }
 

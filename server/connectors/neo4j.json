@@ -46,7 +46,7 @@
             "description": "The Bolt or Neo4j protocol URI for your database. Use bolt+s:// or neo4j+s:// for TLS-encrypted connections."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

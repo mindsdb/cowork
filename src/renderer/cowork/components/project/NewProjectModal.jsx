@@ -270,7 +270,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Tell Anton how to work in this project — codebase conventions, output preferences, things to avoid…"
+              placeholder="Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…"
               rows={5}
               disabled={busy}
               spellCheck={false}
@@ -327,7 +327,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 Drop files here or <span style={{ color: 'var(--accent)' }}>click to browse</span>
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 4 }}>
-                Reference docs, schemas, examples — anything Anton should know about.
+                Reference docs, schemas, examples — anything the agent should know about.
               </div>
             </div>
             <input

@@ -328,6 +328,7 @@ export default function ScheduleDetailView({
   onPause,                  // (id)
   onResume,                 // (id)
   onRunNow,                 // (id)
+  agentLabel,
 }) {
   const [runs, setRuns] = useState([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
@@ -608,6 +609,7 @@ export default function ScheduleDetailView({
         task={task}
         projects={projects}
         models={models}
+        agentLabel={agentLabel}
       />
     </div>
   );

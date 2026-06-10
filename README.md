@@ -1,21 +1,51 @@
 ```
-      ▄▀█ █▄ █ ▀█▀ █▀█ █▄ █
-      █▀█ █ ▀█  █  █▄█ █ ▀█
-         Desktop App
+   █▀▄▀█ █ █▄ █ █▀▄ █▀   █▀▀ █▀█ █ █ █ █▀█ █▀█ █▄▀
+   █ ▀ █ █ █ ▀█ █▄▀ ▄█   █▄▄ █▄█ ▀▄▀▄▀ █▄█ █▀▄ █ █
 ```
 
-# Anton Desktop
+# Minds Cowork
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mindsdb/cowork)
 
-The official Electron desktop app for **[Anton](https://github.com/mindsdb/anton)** — MindsDB's autonomous AI coworker. Cross-platform (macOS + Windows), auto-installs Anton on first run, and provides a chat-based cowork UI backed by a FastAPI sidecar, with Minds integration.
+The Electron desktop app and web SPA for **Minds Cowork** — MindsDB's AI coworker platform. Cross-platform (macOS + Windows), auto-installs the backend on first run, and provides a chat-based UI backed by a FastAPI server, with Minds integration.
+
+The project is split across two repos:
+
+| Repo | Purpose | Language |
+|------|---------|----------|
+| [`mindsdb/cowork`](https://github.com/mindsdb/cowork) (this repo) | Electron shell + React SPA | TypeScript / React |
+| [`mindsdb/cowork-server`](https://github.com/mindsdb/cowork-server) | FastAPI backend — projects, conversations, agent orchestration | Python |
+
+The frontend and backend are developed and released independently. At runtime, the Electron main process spawns `cowork-server` as a local sidecar and communicates with it over HTTP (`127.0.0.1:26866`). Both the UI and server support over-the-air updates — see [Over-the-Air Updates](#over-the-air-updates).
+
+---
+
+## Environments
+
+Minds Cowork runs in several contexts. The React SPA is identical across all of them — only the shell and server lifecycle differ.
+
+| Environment | Frontend | Backend | How to run |
+|-------------|----------|---------|------------|
+| **Local dev (Electron)** | Vite dev server on `:5173` | `uv run cowork-server` from sibling source dir | `npm run dev` |
+| **Local dev (web)** | Vite dev server on `:5173` | `uv run cowork-server` from sibling source dir | `npm run dev:web` |
+| **Packaged Electron** (macOS/Windows) | Bundled or OTA-cached React build | `cowork-server` binary via `uv tool install` from PyPI | Download from [downloads.mindsdb.com](https://downloads.mindsdb.com) |
+| **Docker** (web deployment) | Static files served by uvicorn | `cowork-server` installed in `/opt/venv` | `docker build` + `docker run` |
 
 ---
 
 ## Quick Start
 
+### Local development
+
+Both dev modes expect a sibling `cowork-server` directory (override with `COWORK_SERVER_DIR`):
+
+```
+parent/
+  cowork/              ← this repo
+  cowork-server/       ← github.com/mindsdb/cowork-server
+```
+
 ```bash
-# Install dependencies
 npm install
 
 # Build everything (main + renderer)
@@ -25,11 +55,17 @@ npm run build
 npm start
 ```
 
-### Dev Mode (hot reload for renderer)
+Or jump straight into dev mode:
 
 ```bash
+# Electron dev (hot reload for renderer)
 npm run dev
+
+# Web dev (no Electron, opens in browser)
+npm run dev:web
 ```
+
+In dev mode the server runs from source (`uv run cowork-server`), so local Python edits are picked up immediately.
 
 ### Dev Mode With Inspector
 
@@ -37,9 +73,7 @@ npm run dev
 npm run dev:debug
 ```
 
-This opens the Electron app against the Vite dev server and auto-opens Chromium DevTools in a detached window.
-
-This runs three processes concurrently:
+This opens the Electron app against the Vite dev server and auto-opens Chromium DevTools in a detached window. It runs three processes concurrently:
 
 1. `tsc --watch` for main process
 2. `vite dev` for renderer (port 5173)
@@ -75,7 +109,7 @@ npm run dev:web
 
 This boots both processes:
 
-1. The Anton FastAPI sidecar on `127.0.0.1:26866` (using your `uv tool install anton` interpreter — same as the Electron path).
+1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory).
 2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`.
 
 The dev server opens at `http://localhost:5173/` (a small Vite
@@ -83,13 +117,6 @@ middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
 `/v1` and `/health` proxies. Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
-
-If you haven't installed Anton yet, `dev:web` will print:
-
-```
-✗ Anton Python interpreter not found at ~/.local/share/uv/tools/anton/bin/python.
-  Run `uv tool install anton` first, then re-run `npm run dev:web`.
-```
 
 ### Build a production bundle
 
@@ -99,7 +126,7 @@ npm run build:web
 
 Outputs to `dist/renderer-web/` (separate from `dist/renderer/` which is
 the Electron build). Drop this directory behind any static-file server
-and point its `/v1` requests at a running Anton FastAPI process.
+and point its `/v1` requests at a running cowork-server process.
 
 ### Platform abstraction
 
@@ -145,8 +172,9 @@ unset (the Electron path), behavior is byte-identical to before.
 src/
   main/                  # Electron main process (Node.js)
     index.ts             # Window creation, IPC handlers, menu
-    installer.ts         # Auto-installer for Anton CLI (uv + git + Xcode CLT)
+    installer.ts         # First-run installer for cowork-server (uv + git + Xcode CLT)
     server-process.ts    # FastAPI sidecar lifecycle (start/stop/health)
+    server-updater.ts    # OTA server update (PyPI check, upgrade, rollback)
     ui-updater.ts        # OTA UI update system (fetch, verify, cache, rollback)
     preload.ts           # contextBridge — exposes antontron API to renderer
   renderer/              # React UI (bundled by Vite)
@@ -167,11 +195,11 @@ assets/
 
 ### Key Design Decisions
 
-- **FastAPI sidecar**: The Electron main process manages a bundled Python FastAPI server on `127.0.0.1:26866`. The renderer communicates with Anton exclusively through this HTTP API — there is no PTY or terminal emulator.
+- **FastAPI sidecar**: The Electron main process manages the [`cowork-server`](https://github.com/mindsdb/cowork-server) Python FastAPI backend on `127.0.0.1:26866`, installed from [PyPI](https://pypi.org/project/cowork-server/) via `uv tool install`. The renderer communicates exclusively through this HTTP API — there is no PTY or terminal emulator.
 
-- **Minds integration**: The GUI replicates Anton's `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes the same env vars to `~/.anton/.env`, and auto-restarts Anton to pick up new config.
+- **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), writes env vars to `~/.anton/.env`, and auto-restarts the server to pick up new config.
 
-- **OTA UI updates**: The Electron shell ships rarely, but the React UI updates frequently via GitHub Releases. On every boot, the main process checks a static `latest.json` on GitHub Pages (no API rate limits). In **auto** mode, new bundles are downloaded, SHA-256 verified, and applied silently — the app reloads with the new UI. In **manual** mode (the default), a green banner appears in the sidebar and the user clicks "Install" to apply. The update preference is persisted as `UI_UPDATE_MODE` in `~/.anton/.env` and configurable in Settings → Updates.
+- **OTA updates**: Both the React UI and the Python backend update over-the-air without requiring a new installer. See [Over-the-Air Updates](#over-the-air-updates).
 
 ---
 
@@ -181,18 +209,28 @@ All channels defined in `src/shared/ipc-channels.ts`:
 
 | Channel                                             | Direction | Purpose                                   |
 | --------------------------------------------------- | --------- | ----------------------------------------- |
-| `install:check`                                     | invoke    | Check if Anton CLI is installed           |
+| `install:check`                                     | invoke    | Check if cowork-server is installed       |
 | `install:start`                                     | invoke    | Run the installer                         |
 | `install:log/progress/done/error`                   | send      | Installer status events                   |
-| `server:get-info/start/stop/toggle`                 | invoke    | FastAPI sidecar lifecycle                  |
-| `server:get-diagnostics`                            | invoke    | Last error, exit code, recent log tail    |
-| `oauth:connect`                                     | invoke    | PKCE OAuth loopback flow                  |
+| `install:cancel`                                    | invoke    | Cancel an in-progress install             |
+| `install:cancelled`                                 | send      | Confirms install was cancelled            |
 | `settings:read/save/check-configured/validate`      | invoke    | Settings & API key management             |
+| `terms:accept`                                      | invoke    | Record terms acceptance                   |
 | `ui:update-check`                                   | invoke    | Check for OTA UI updates                  |
 | `ui:update-apply`                                   | invoke    | Download and apply a pending UI update    |
 | `ui:update-status`                                  | send      | Update status events (available/reloading)|
+| `server:restart`                                    | invoke    | Restart the FastAPI sidecar               |
+| `server:update-status`                              | send      | Server OTA update progress (PyPI check)   |
+| `auth:get-access-token`                             | invoke    | Retrieve current access token             |
+| `auth:logout`                                       | invoke    | Clear auth session                        |
+| `oauth:cancel`                                      | invoke    | Cancel an in-progress PKCE OAuth flow     |
+| `mindshub:login`                                    | invoke    | Start MindsHub OAuth login                |
+| `mindshub:refresh`                                  | invoke    | Refresh MindsHub token                    |
+| `mindshub:finalize`                                 | invoke    | Commit MindsHub credentials to env        |
+| `mindshub:get-cached-token`                         | invoke    | Read cached MindsHub token                |
+| `app:ready`                                         | send      | App finished initializing                 |
 | `app:get-platform/ui-version/open-external`         | invoke    | Platform info, open URLs                  |
-| `shell:open-path/show-item-in-folder/trash-item`    | invoke    | OS shell operations                       |
+| `shell:show-item-in-folder`                         | invoke    | OS shell operations                       |
 
 ---
 
@@ -212,285 +250,27 @@ The GUI provides a visual `/connect` flow:
    - `ANTON_MINDS_DATASOURCE_ENGINE`
    - `ANTON_MINDS_SSL_VERIFY`
 6. Writes mind's system prompt to project cortex
-7. Auto-restarts Anton to pick up new config
+7. Auto-restarts the server to pick up new config
 
 ---
 
-## Building for Distribution
+## Over-the-Air Updates
 
-### Prerequisites
+Minds Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself changes rarely and is updated via the traditional installer release flow.
 
-- Node.js 18+
-- npm
-- For macOS signing: Apple Developer account + certificates
-- For Windows signing: EV code signing certificate
+### Server updates (PyPI)
 
-### macOS
+After the server boots successfully, the main process checks [PyPI](https://pypi.org/project/cowork-server/) for a newer `cowork-server` version. If one exists, it stops the server, upgrades via `uv tool install --upgrade --reinstall cowork-server`, restarts, and probes `/health`. If the health check fails, the previous version is reinstalled automatically (rollback). Set `COWORK_SERVER_DISABLE_AUTOUPDATE=1` to opt out.
 
-```bash
-# Build unsigned DMG (universal: x64 + arm64)
-npm run dist:mac
-# Output: release/Anton-{version}-universal.dmg
-```
+See `src/main/server-updater.ts` for the implementation.
 
-### Windows
+### UI updates (GitHub Releases)
 
-```bash
-# Build NSIS installer (x64, recommended)
-npm run dist:win
-# Output: release/Anton-Setup-{version}.exe
-```
-
-```bash
-# Alias for local/manual Windows release
-npm run release:win:local
-
-# If you explicitly need x64 + arm64
-npm run dist:win:all
-```
-
-> **Note**: Production Windows installers are built by [`.github/workflows/prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which is fired automatically by the auto-release flow described in [Releasing](#releasing). Don't push `v*` tags manually — bump `"version"` in `package.json` and merge to `main` instead.
-
----
-
-## Code Signing
-
-### macOS Code Signing + Notarization
-
-#### 1. Get certificates from Apple Developer portal
-
-You need two certificates:
-
-- **Developer ID Application** — signs the app binary
-- **Developer ID Installer** — signs the DMG/pkg (optional but recommended)
-
-```bash
-# Verify your certificates are installed
-security find-identity -v -p codesigning
-# Should show: "Developer ID Application: Your Org (TEAMID)"
-```
-
-#### 2. Set environment variables
-
-```bash
-# Apple ID credentials for notarization
-export APPLE_ID="your@email.com"
-export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"  # Generate at appleid.apple.com
-export APPLE_TEAM_ID="YOUR_TEAM_ID"
-
-# OR use API key (recommended for CI)
-export APPLE_API_KEY_ID="XXXXXXXXXX"
-export APPLE_API_KEY_ISSUER="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-export APPLE_API_KEY="/path/to/AuthKey_XXXXXXXXXX.p8"
-```
-
-Where to export them:
-
-```bash
-# Option A: Current terminal session only (recommended for local/manual release)
-export APPLE_ID="your@email.com"
-export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-export APPLE_TEAM_ID="YOUR_TEAM_ID"
-npm run dist:mac:dmg-custom
-```
-
-```bash
-# Option B: Persist in zsh profile (loads in every new terminal)
-echo 'export APPLE_ID="your@email.com"' >> ~/.zshrc
-echo 'export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"' >> ~/.zshrc
-echo 'export APPLE_TEAM_ID="YOUR_TEAM_ID"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-```bash
-# Verify env vars are present
-env | rg '^APPLE_'
-```
-
-#### 3. electron-builder config (already included in this repo)
-
-```yaml
-mac:
-  hardenedRuntime: true
-  gatekeeperAssess: false
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
-
-afterSign: scripts/notarize.js
-```
-
-#### 4. Entitlements file (already included)
-
-`build/entitlements.mac.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
-</dict>
-</plist>
-```
-
-> These entitlements are required because Electron uses JIT and dynamic linking.
-
-#### 5. Notarization script (already included)
-
-`scripts/notarize.js`:
-
-```js
-const { notarize } = require("@electron/notarize");
-
-exports.default = async function notarizing(context) {
-  const { electronPlatformName, appOutDir } = context;
-  if (electronPlatformName !== "darwin") return;
-
-  const appName = context.packager.appInfo.productFilename;
-
-  console.log("Notarizing...");
-  await notarize({
-    // Use Apple ID auth:
-    tool: "notarytool",
-    appBundleId: "com.anton.app",
-    appPath: `${appOutDir}/${appName}.app`,
-    appleId: process.env.APPLE_ID,
-    appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
-    teamId: process.env.APPLE_TEAM_ID,
-
-    // OR use API key auth (uncomment):
-    // appleApiKey: process.env.APPLE_API_KEY,
-    // appleApiKeyId: process.env.APPLE_API_KEY_ID,
-    // appleApiIssuer: process.env.APPLE_API_KEY_ISSUER,
-  });
-  console.log("Notarization complete.");
-};
-```
-
-If `@electron/notarize` is missing in your local install:
-
-```bash
-npm install --save-dev @electron/notarize
-```
-
-#### 6. Build signed + notarized
-
-```bash
-npm run dist:mac
-# electron-builder will: sign -> notarize -> staple -> create DMG
-```
-
-#### Troubleshooting macOS signing
-
-```bash
-# Check if app is signed
-codesign -dv --verbose=4 "release/mac-universal/Anton.app"
-
-# Check notarization status
-xcrun stapler validate "release/Anton-0.1.0-universal.dmg"
-
-# If "Developer ID" identity not found, open Keychain Access
-# and verify the certificate is in "login" keychain, not expired
-```
-
----
-
-### Windows Code Signing
-
-#### Option A: EV Certificate (USB token)
-
-Most EV certificates come on a hardware USB token (SafeNet, YubiKey).
-
-```bash
-# Set env vars
-export CSC_LINK="/path/to/certificate.pfx"       # or .p12
-export CSC_KEY_PASSWORD="your-password"
-
-# For USB tokens (SafeNet eToken):
-export CSC_LINK=""  # empty — electron-builder finds it via signtool
-export WIN_CSC_LINK=""
-
-# Build
-npm run dist:win
-```
-
-#### Option B: Azure Trusted Signing (cloud-based, no USB)
-
-Microsoft's cloud signing service — recommended for CI/CD.
-
-1. Set up Azure Trusted Signing in Azure Portal
-2. Install the signing tool:
-
-```bash
-dotnet tool install --global AzureSignTool
-```
-
-3. Add to `electron-builder.yml`:
-
-```yaml
-win:
-  signingHashAlgorithms: [sha256]
-  sign: scripts/azure-sign.js
-```
-
-4. Create `scripts/azure-sign.js`:
-
-```js
-exports.default = async function sign(configuration) {
-  const { execSync } = require("child_process");
-  const filePath = configuration.path;
-
-  execSync(
-    `AzureSignTool sign \
-    -kvu "${process.env.AZURE_KEY_VAULT_URI}" \
-    -kvi "${process.env.AZURE_CLIENT_ID}" \
-    -kvs "${process.env.AZURE_CLIENT_SECRET}" \
-    -kvt "${process.env.AZURE_TENANT_ID}" \
-    -kvc "${process.env.AZURE_CERT_NAME}" \
-    -tr http://timestamp.digicert.com \
-    -td sha256 \
-    "${filePath}"`,
-    { stdio: "inherit" },
-  );
-};
-```
-
-#### Option C: Self-signed (dev/testing only)
-
-```powershell
-# PowerShell — create a self-signed cert
-$cert = New-SelfSignedCertificate -Subject "CN=Anton Dev" -Type CodeSigningCert -CertStoreLocation Cert:\CurrentUser\My
-Export-PfxCertificate -Cert $cert -FilePath anton-dev.pfx -Password (ConvertTo-SecureString -String "password" -Force -AsPlainText)
-```
-
-```bash
-export CSC_LINK="anton-dev.pfx"
-export CSC_KEY_PASSWORD="password"
-npm run dist:win
-```
-
-> Self-signed apps will still trigger SmartScreen warnings. Only EV certs or Azure Trusted Signing build SmartScreen reputation.
-
----
-
-## Over-the-Air UI Updates
-
-The desktop shell (Electron main process) handles IPC, the FastAPI sidecar, and native OS integration — it changes rarely. The renderer (React UI) is where most iteration happens. Anton Desktop ships with an **OTA update system** that lets you push UI updates to every installed app without shipping a new `.dmg` or `.exe`.
-
-### Two-Repo Architecture
-
-Because `mindsdb/antontron` is **private**, the app can't fetch releases from it without baked-in tokens. Instead, OTA assets are published to a **separate public repo**: [`mindsdb/antontron-releases`](https://github.com/mindsdb/antontron-releases).
+The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](https://github.com/mindsdb/antontron-releases). This avoids baking GitHub tokens into the app.
 
 ```
 ┌─────────────────────────────────────┐        ┌──────────────────────────────────┐
-│  mindsdb/antontron (PRIVATE)        │        │  mindsdb/antontron-releases      │
+│  mindsdb/cowork (PRIVATE)           │        │  mindsdb/antontron-releases      │
 │                                     │        │  (PUBLIC)                        │
 │  source code lives here             │        │                                  │
 │                                     │  push  │  GitHub Releases:                │
@@ -503,22 +283,21 @@ Because `mindsdb/antontron` is **private**, the app can't fetch releases from it
                                                               │ HTTPS (no auth)
                                                               │
                                                  ┌────────────┴─────────────┐
-                                                 │   Anton Desktop App      │
+                                                 │   Minds Cowork app       │
                                                  │   (every user's machine) │
                                                  └──────────────────────────┘
 ```
 
-### How It Works
+How it works:
 
 1. Code is merged to `main` (or a `ui-v*` tag is pushed)
-2. The `publish-ui` workflow in the **private** repo builds the renderer
-3. It creates a `.tar.gz` bundle, computes a SHA-256 checksum
-4. Using a `RELEASES_TOKEN`, it pushes the bundle as a **GitHub Release** and updates `latest.json` on **GitHub Pages** — both on the **public** `antontron-releases` repo
-5. Every Anton Desktop launch, the app fetches `https://mindsdb.github.io/antontron-releases/latest.json` (static file, no auth, no API rate limits)
-6. If a newer version exists, it downloads the bundle, **verifies the SHA-256 checksum**, and caches it
-7. **Next launch** loads the updated UI — zero user interaction required
+2. The `publish-ui` workflow builds the renderer and creates a `.tar.gz` bundle with a SHA-256 checksum
+3. Using a `RELEASES_TOKEN`, it pushes the bundle as a GitHub Release and updates `latest.json` on GitHub Pages — both on the public `antontron-releases` repo
+4. On every launch, the app fetches `latest.json` (static file, no auth, no API rate limits)
+5. If a newer version exists, the bundle is downloaded, SHA-256 verified, and cached
+6. In **auto** mode the UI reloads silently; in **manual** mode a sidebar banner lets the user choose when to apply. The preference is configurable in Settings → Updates.
 
-### Automatic Deployment
+#### Automatic deployment
 
 The workflow triggers automatically on three events:
 
@@ -526,76 +305,57 @@ The workflow triggers automatically on three events:
 | --- | --- | --- | --- |
 | **Push to `main`** | Any merge that changes `src/renderer/`, `src/shared/`, or `package.json` | `{pkg.version}-{sha}` | `1.0.1-a3b4c5d` |
 | **Tag push** | `git tag ui-v1.2.0 && git push origin ui-v1.2.0` | Clean version from tag | `1.2.0` |
-| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml) → Run workflow | Whatever you enter (or pkg.version + sha if empty) | `1.2.0` |
+| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml) → Run workflow | Whatever you enter (or pkg.version + sha if empty) | `1.2.0` |
 
-This means **every merge to `main` that touches UI files automatically deploys to all users**. No manual tagging required for day-to-day work. Use explicit tags (`ui-v*`) for milestone releases.
+Every merge to `main` that touches UI files automatically deploys to all users — no manual tagging required. Use explicit tags (`ui-v*`) for milestone releases. The workflow checks for duplicate versions and skips if already published.
 
-The workflow also checks if the version is already published and **skips duplicate releases** — safe to re-run.
-
-### Publishing Manually
-
-#### Option A: Command Line
+#### Publishing manually
 
 ```bash
-git tag ui-v1.2.0
-git push origin ui-v1.2.0
+# Option A: tag
+git tag ui-v1.2.0 && git push origin ui-v1.2.0
+
+# Option B: GitHub Actions UI → Publish UI Bundle → Run workflow
+
+# Option C: just merge to main (auto-publishes if renderer files changed)
 ```
 
-#### Option B: GitHub UI
+#### Verifying a deploy
 
-1. Go to [**Actions → Publish UI Bundle**](https://github.com/mindsdb/antontron/actions/workflows/publish-ui.yml)
-2. Click **"Run workflow"** (top right)
-3. Branch: `main`
-4. Version: `1.2.0` (leave empty to auto-generate from package.json)
-5. Click the green **"Run workflow"** button
-
-#### Option C: Just merge to `main`
-
-If your PR changes anything in `src/renderer/`, `src/shared/`, or `package.json`, merging it will automatically publish a new UI version.
-
-### Verifying a Deploy
-
-After the workflow completes:
-
-- **Manifest**: https://mindsdb.github.io/antontron-releases/latest.json — should show the new version, download URL, and SHA-256
-- **Release**: https://github.com/mindsdb/antontron-releases/releases — should show the new `ui-v*` release with `ui-bundle.tar.gz` attached
-- **In the app**: Launch Anton Desktop, then check **Anton → About Anton** — shows `1.0.1 (UI: 1.2.0)` when OTA is active
+- **Manifest**: https://mindsdb.github.io/antontron-releases/latest.json
+- **Release**: https://github.com/mindsdb/antontron-releases/releases
+- **In the app**: Settings → Updates shows App, UI, and Server versions
 
 ### Security
 
-- Every bundle is integrity-checked with **SHA-256** before extraction
-- Checksum mismatch → update is silently discarded, app loads last known good UI
-- Previous version is kept on disk for automatic **rollback** if the new UI fails to load
-- All downloads over HTTPS from GitHub's CDN
-- The `RELEASES_TOKEN` only has write access to the public `antontron-releases` repo — source code in the private repo is never exposed
+- Every UI bundle is integrity-checked with **SHA-256** before extraction
+- Checksum mismatch → update discarded, app loads last known good UI
+- Previous UI version kept on disk for automatic **rollback**
+- All downloads over HTTPS
+- `RELEASES_TOKEN` only has write access to the public releases repo — source code is never exposed
 
-### Boot Sequence
+### Boot sequence
 
 ```
 App starts
-  ├─ If DEV_MODE is set → load Vite dev server (live) or bundled renderer (full), skip OTA
+  ├─ If DEV_MODE is set → load Vite dev server or bundled renderer, skip OTA
   ├─ Load cached UI (instant, no network needed)
-  │   └─ Falls back to bundled renderer if no cache exists
-  └─ After renderer loads (did-finish-load + 1.5 s):
-      └─ Background: fetch latest.json from GitHub Pages
-          ├─ If offline or up to date → done
-          └─ If new version available:
-              ├─ Auto mode → download → verify SHA-256 → swap → reload
-              └─ Manual mode → send "update-available" to renderer → sidebar banner
-                  └─ User clicks "Install" → download → verify → swap → reload
+  │   └─ Falls back to bundled renderer if no cache
+  ├─ Start cowork-server (spawn process, wait for /health)
+  │   └─ After healthy: background PyPI check for server updates
+  └─ After renderer loads:
+      └─ Background: check GitHub Pages for UI updates
 ```
 
-The app **never blocks on a network request** — it always loads immediately from cache or bundled files. The OTA check waits for the renderer to finish loading before running to avoid IPC race conditions.
+The app **never blocks on a network request** — it always loads immediately from cache or bundled files.
 
-### File Layout
-
-On disk (Electron `userData` directory):
+### File layout (on disk)
 
 ```
 {userData}/ui-cache/
   version.json          # { "version": "1.2.0" }
-  current/              # Active renderer bundle (index.html + assets)
-  previous/             # Rollback copy of the prior version
+  current/              # Active renderer bundle
+  previous/             # Rollback copy
 ```
 
 On GitHub (`mindsdb/antontron-releases`):
@@ -611,54 +371,135 @@ GitHub Releases:
 
 ---
 
-## Releasing
+## Desktop Builds & Releasing
 
-Anton Desktop uses an automated release flow. The single source of truth for the package version is [`package.json`](package.json) (`"version"`). Every build workflow reads this field, and the prod upload job ([`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml)) asserts it matches the release tag before publishing to S3.
+> This section applies to the **packaged Electron app** (macOS `.pkg` / Windows `.exe`). Not relevant for local development or Docker deployments.
 
-### How to ship a new version
+### Releasing
 
-1. Open a PR that bumps `"version"` in [`package.json`](package.json) (e.g. `2.0.4` → `2.0.5`). Follow [SemVer](https://semver.org/).
-2. Get it reviewed and merge to `main`.
-3. That's it. On merge, [`.github/workflows/release.yml`](.github/workflows/release.yml) automatically:
-   - Creates the matching git tag (`v2.0.5`).
-   - Publishes a GitHub release with auto-generated notes.
-   - The `v*` tag push triggers [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which builds + signs + uploads the macOS `.pkg` and Windows `.exe` to `s3://anton-installer/anton/{mac,windows}/` and serves them at `https://downloads.mindsdb.com/anton/...`.
+The single source of truth for the app version is [`package.json`](package.json) (`"version"`).
 
-### What you should NOT do
+1. Open a PR that bumps `"version"` in `package.json` (e.g. `2.0.5` → `2.0.6`).
+2. Merge to `main`.
+3. [`.github/workflows/release.yml`](.github/workflows/release.yml) automatically creates the git tag and GitHub release. The `v*` tag triggers [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml), which builds, signs, and uploads installers to S3.
 
-- **Don't create GitHub releases manually.** The `v*` tag namespace is locked via a repo ruleset — only the release workflow can create them. Manual attempts will be rejected by GitHub.
-- **Don't push `v*` tags directly.** Same protection applies.
-- **Don't edit `"version"` in `package.json` outside a dedicated bump PR.** Keep version bumps small and reviewable so the auto-release diff is easy to audit.
+**Don't:**
+- Create GitHub releases manually — the `v*` tag namespace is locked via a repo ruleset.
+- Push `v*` tags directly — same protection applies.
+- Edit `"version"` in `package.json` outside a dedicated bump PR — keep version bumps small and reviewable.
 
-### Editing CI / workflows
+Anything under [`.github/`](.github/) is owned by `@mindsdb/devops` via [CODEOWNERS](.github/CODEOWNERS). PRs touching workflows require their review.
 
-Anything under [`.github/`](.github/) is owned by `@mindsdb/devops` via [CODEOWNERS](.github/CODEOWNERS). PRs touching workflows, actions, or release configuration require their review before merge.
+For hotfixes or out-of-band releases, coordinate with `@mindsdb/devops` to bypass the tag ruleset. The prod upload job still verifies `package.json` version matches the release tag.
 
-### Hotfixes / out-of-band releases
+### Building locally
 
-If you genuinely need to release outside the normal flow (e.g. an admin hotfix), coordinate with `@mindsdb/devops` to bypass the tag ruleset. The prod upload job's package.json-vs-tag guard at [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) will still verify the release tag matches `package.json` `"version"` and fail loudly on mismatch.
+```bash
+# macOS — unsigned DMG (universal: x64 + arm64)
+npm run dist:mac
+
+# Windows — NSIS installer (x64)
+npm run dist:win
+```
+
+Prerequisites: Node.js 18+, npm. For signed builds: Apple Developer certificates (macOS) or EV code signing certificate (Windows).
+
+### Code signing
+
+<details>
+<summary>macOS Code Signing + Notarization</summary>
+
+#### 1. Get certificates from Apple Developer portal
+
+You need two certificates:
+
+- **Developer ID Application** — signs the app binary
+- **Developer ID Installer** — signs the DMG/pkg (optional but recommended)
+
+```bash
+security find-identity -v -p codesigning
+# Should show: "Developer ID Application: Your Org (TEAMID)"
+```
+
+#### 2. Set environment variables
+
+```bash
+# Option A: Apple ID + app-specific password
+export APPLE_ID="your@email.com"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"  # Generate at appleid.apple.com
+export APPLE_TEAM_ID="YOUR_TEAM_ID"
+
+# Option B: API key (recommended for CI)
+export APPLE_API_KEY_ID="XXXXXXXXXX"
+export APPLE_API_KEY_ISSUER="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+export APPLE_API_KEY="/path/to/AuthKey_XXXXXXXXXX.p8"
+```
+
+#### 3. Build signed + notarized
+
+```bash
+npm run dist:mac
+# electron-builder will: sign -> notarize -> staple -> create DMG
+```
+
+The `electron-builder.yml` config and `scripts/notarize.js` hook are already included in this repo. The hardened-runtime entitlements (`build/entitlements.mac.plist`) are required because Electron uses JIT and dynamic linking.
+
+#### Troubleshooting
+
+```bash
+codesign -dv --verbose=4 "release/mac-universal/Minds Cowork.app"
+xcrun stapler validate "release/Minds Cowork-0.1.0-universal.dmg"
+```
+
+</details>
+
+<details>
+<summary>Windows Code Signing</summary>
+
+#### Option A: EV Certificate (USB token)
+
+```bash
+export CSC_LINK="/path/to/certificate.pfx"
+export CSC_KEY_PASSWORD="your-password"
+npm run dist:win
+```
+
+#### Option B: Azure Trusted Signing (cloud-based, recommended for CI)
+
+See `scripts/azure-sign.js` for the signing hook configuration.
+
+#### Option C: Self-signed (dev/testing only)
+
+```powershell
+$cert = New-SelfSignedCertificate -Subject "CN=Cowork Dev" -Type CodeSigningCert -CertStoreLocation Cert:\CurrentUser\My
+Export-PfxCertificate -Cert $cert -FilePath cowork-dev.pfx -Password (ConvertTo-SecureString -String "password" -Force -AsPlainText)
+```
+
+> Self-signed apps trigger SmartScreen warnings. Only EV certs or Azure Trusted Signing build SmartScreen reputation.
+
+</details>
 
 ---
 
 ## CI/CD
 
-### Installer release flow
+> Relevant for maintainers shipping desktop releases.
 
-The macOS (`.pkg`) and Windows (`.exe`) installers are built on GitHub-hosted runners (needed for Apple notarization / SSL.com signing) and then uploaded to S3 from the self-hosted `mdb-prod` pod. There are three flavors of build — **preview**, **stable**, and **prod** — distinguished only by when they run and the S3 path (and therefore the public `downloads.mindsdb.com` path) they land on.
+### Installer build flow
 
-| Flavor | Trigger | What builds | S3 destination |
-| --- | --- | --- | --- |
-| **preview** | PR with `signed-macos-pkg` label → macOS only. PR with `signed-windows-ev` label → Windows only. | `anton-{version}-preview-{sha}.pkg` / `.exe` | `s3://anton-installer/anton/{mac,windows}/previews/` |
-| **stable** | Push to `main` | Both platforms, `anton-{version}-stable-{sha}.pkg` / `.exe` | `s3://anton-installer/anton/{mac,windows}/snapshots/` |
-| **prod** | Push tag `v*` | Both platforms, `anton-{version}.pkg` / `.exe` | `s3://anton-installer/anton/{mac,windows}/anton-{version}.{pkg,exe}` and `anton-latest.{pkg,exe}` |
+Installers are built on GitHub-hosted runners (required for Apple notarization and SSL.com signing) and uploaded to S3 from the self-hosted `mdb-prod` pod.
 
-A PR without the matching `signed-*` label does nothing — no build, no upload.
+| Flavor | Trigger | S3 destination |
+| --- | --- | --- |
+| **preview** | PR with `signed-macos-pkg` or `signed-windows-ev` label | `s3://anton-installer/anton/{mac,windows}/previews/` |
+| **stable** | Push to `main` | `s3://anton-installer/anton/{mac,windows}/snapshots/` |
+| **prod** | Push tag `v*` | `s3://anton-installer/anton/{mac,windows}/anton-{version}.{pkg,exe}` + `anton-latest.{pkg,exe}` |
 
-Prod is gated by a version check: the first thing the upload job does when `build_kind == prod` is assert that `package.json` version equals the release tag (with the leading `v` stripped). Mismatch → workflow fails before anything reaches S3.
+Prod is gated: the upload job asserts `package.json` version matches the release tag.
 
 ### S3 layout
 
-The bucket is **`anton-installer`** in `us-east-1` (separate from the other `anton` bucket, which is in `us-east-2`). It is **private** — no public reads, no public ACLs, no presigned URLs for regular downloads. Everything is served through the CloudFront distribution described below. AWS credentials are **not** configured as GitHub secrets — they come from the `mdb-prod` pod's IAM role, the same way [`release-gui-to-production.yml`](release-gui-to-production.yml) works in the GUI repo. The role must have `s3:PutObject` on `arn:aws:s3:::anton-installer/anton/*`.
+The bucket is **`anton-installer`** in `us-east-1`. It is **private** — no public reads, no public ACLs. Everything is served through CloudFront. AWS credentials come from the `mdb-prod` pod's IAM role (not GitHub secrets). The role must have `s3:PutObject` on `arn:aws:s3:::anton-installer/anton/*`.
 
 ```
 s3://anton-installer/
@@ -681,22 +522,10 @@ No sidecar `.sha256` files are published — the `.pkg` is notarized by Apple an
 
 ### Public downloads at `downloads.mindsdb.com`
 
-End users never hit S3 directly. The `anton-installer` bucket is fronted by a CloudFront distribution aliased to **`https://downloads.mindsdb.com`**, which is how all installers are distributed publicly.
+End users never hit S3 directly. The `anton-installer` bucket is fronted by a CloudFront distribution aliased to **`https://downloads.mindsdb.com`**.
 
-Infrastructure:
-
-- **CloudFront + ACM + S3 OAC** live in [`terraform/newprod/us-east-1/anton/cloudfront.tf`](../terraform/newprod/us-east-1/anton/cloudfront.tf), which also defines the bucket policy / public-access-block that keep the bucket itself private and reachable only via CloudFront's Origin Access Control.
-- The bucket resource is in [`terraform/newprod/us-east-1/anton/s3.tf`](../terraform/newprod/us-east-1/anton/s3.tf).
-- The CloudFront domain name is published via [`terraform/newprod/us-east-1/anton/outputs.tf`](../terraform/newprod/us-east-1/anton/outputs.tf) (`cloudfront_downloads_domain_name`) and consumed by the Cloudflare stack.
-- DNS — the `downloads.mindsdb.com` CNAME and the ACM validation records — is managed in [`terraform/newprod/global/cloudflare/downloads.mindsdb.com-domain.tf`](../terraform/newprod/global/cloudflare/downloads.mindsdb.com-domain.tf).
-
-CloudFront behavior:
-
-- Path mapping is **1:1** — CloudFront does not rewrite the key, so the S3 key `anton/mac/anton-latest.pkg` is reachable at `https://downloads.mindsdb.com/anton/mac/anton-latest.pkg`.
-- Viewer-protocol policy is `redirect-to-https`.
-- `GET /` is rewritten to a 302 redirect to `https://mindsdb.com` by the `downloads-root-redirect` CloudFront Function (viewer-request).
-- `GET /<missing key>` (S3 403/404) is rewritten to a 302 redirect to `https://mindsdb.com` by the `downloads-error-redirect` CloudFront Function (viewer-response). In other words, the bucket never leaks its existence — unknown paths bounce to the marketing site instead of returning an XML error.
-- Default cache TTL is 1 hour, max 24 hours. Compression is enabled. No query strings or cookies are forwarded.
+- macOS: https://downloads.mindsdb.com/anton/mac/anton-latest.pkg
+- Windows: https://downloads.mindsdb.com/anton/windows/anton-latest.exe
 
 Public URL layout:
 
@@ -715,56 +544,45 @@ https://downloads.mindsdb.com/
       snapshots/anton-{version}-stable-{sha}.exe
 ```
 
-Stable download links to share externally:
+Infrastructure:
 
-- macOS latest: https://downloads.mindsdb.com/anton/mac/anton-latest.pkg
-- Windows latest: https://downloads.mindsdb.com/anton/windows/anton-latest.exe
+- **CloudFront + ACM + S3 OAC** live in [`terraform/newprod/us-east-1/anton/cloudfront.tf`](../terraform/newprod/us-east-1/anton/cloudfront.tf), which also defines the bucket policy / public-access-block that keep the bucket private and reachable only via CloudFront's Origin Access Control.
+- The bucket resource is in [`terraform/newprod/us-east-1/anton/s3.tf`](../terraform/newprod/us-east-1/anton/s3.tf).
+- The CloudFront domain name is published via [`terraform/newprod/us-east-1/anton/outputs.tf`](../terraform/newprod/us-east-1/anton/outputs.tf) (`cloudfront_downloads_domain_name`) and consumed by the Cloudflare stack.
+- DNS (`downloads.mindsdb.com` CNAME + ACM validation records) is managed in [`terraform/newprod/global/cloudflare/downloads.mindsdb.com-domain.tf`](../terraform/newprod/global/cloudflare/downloads.mindsdb.com-domain.tf).
+
+CloudFront behavior:
+
+- Path mapping is **1:1** — the S3 key `anton/mac/anton-latest.pkg` is reachable at `https://downloads.mindsdb.com/anton/mac/anton-latest.pkg`.
+- Viewer-protocol policy is `redirect-to-https`.
+- `GET /` → 302 redirect to `https://mindsdb.com` via the `downloads-root-redirect` CloudFront Function (viewer-request).
+- `GET /<missing key>` (S3 403/404) → 302 redirect to `https://mindsdb.com` via the `downloads-error-redirect` CloudFront Function (viewer-response). Unknown paths bounce to the marketing site instead of returning an XML error.
+- Default cache TTL is 1 hour, max 24 hours. Compression is enabled. No query strings or cookies are forwarded.
+
+> **Cache invalidations**: `anton-latest.{pkg,exe}` is overwritten on each prod release, so CloudFront may serve the stale copy for up to 1 hour. Create an invalidation for `/anton/mac/anton-latest.pkg` and/or `/anton/windows/anton-latest.exe` if a release needs to be visible immediately. Versioned URLs (`anton-{version}.pkg`) are immutable and never need invalidation.
 
 The [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) workflow prints both the `s3://` URI and the `https://downloads.mindsdb.com/...` URL for every object it uploads in its GitHub step summary, so PRs and releases have a clickable public URL in the Actions run.
 
-> **Cache invalidations**: because `anton-latest.{pkg,exe}` is overwritten on every prod release, CloudFront may serve the stale copy for up to the `default_ttl` (currently 1 hour). If a release needs to be visible immediately, create an invalidation for `/anton/mac/anton-latest.pkg` and/or `/anton/windows/anton-latest.exe`. Versioned URLs (`anton-{version}.pkg`) are immutable and never need invalidation.
-
 ### Workflow files
 
-The layout mirrors the MindsDB `dev-/staging-/prod-` pattern: one small top-level file per trigger, shared work in `workflow_call` files.
-
-| Workflow | Kind | Trigger | What it does |
-| --- | --- | --- | --- |
-| [`dev-build-installer.yml`](.github/workflows/dev-build-installer.yml) | Instance | `pull_request` | Label-gates per platform and wires to the build + upload called workflows with `build_kind: preview` |
-| [`staging-build-installer.yml`](.github/workflows/staging-build-installer.yml) | Instance | Push to `main` | Builds both platforms with `build_kind: stable` |
-| [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml) | Instance | Push tag `v*` | Builds both platforms with `build_kind: prod` (upload does the version vs tag check) |
-| [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called (`workflow_call`) | — | Builds + signs + notarizes the `.pkg` on `macos-latest`, renames to the final artifact name, uploads as GitHub artifact |
-| [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called (`workflow_call`) | — | Builds + SSL.com-signs + verifies the `.exe` on `windows-latest`, renames, uploads as GitHub artifact |
-| [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called (`workflow_call`) | — | Runs on `mdb-prod`, downloads the GitHub artifact, runs the prod version check, `aws s3 cp` to the correct path |
-| [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Standalone | Push to `main` (renderer changes), `ui-v*` tag, manual | Publishes the renderer bundle to `mindsdb/antontron-releases` (unrelated to installer flow) |
-
-The build workflows expose an `artifact_name` output; the instance workflows pass it through to the upload workflow so the artifact name is the single source of truth and no filename is computed twice.
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| [`release.yml`](.github/workflows/release.yml) | Version bump merged to `main` | Creates git tag + GitHub release |
+| [`dev-build-installer.yml`](.github/workflows/dev-build-installer.yml) | PR with label | Preview builds |
+| [`staging-build-installer.yml`](.github/workflows/staging-build-installer.yml) | Push to `main` | Stable builds |
+| [`prod-build-installer.yml`](.github/workflows/prod-build-installer.yml) | Push tag `v*` | Prod builds |
+| [`build-macos-pkg.yml`](.github/workflows/build-macos-pkg.yml) | Called | Build + sign + notarize `.pkg` |
+| [`build-windows-installer.yml`](.github/workflows/build-windows-installer.yml) | Called | Build + sign `.exe` |
+| [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) | Called | Upload to S3 |
+| [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
 
 ### Required GitHub Secrets
 
-Configured in [**antontron → Settings → Secrets → Repository secrets**](https://github.com/mindsdb/antontron/settings/secrets/actions).
+Apple signing: `APPLE_DEV_ID_APP_CERT_B64`, `APPLE_DEV_ID_APP_CERT_PASSWORD`, `APPLE_DEV_ID_INSTALLER_CERT_B64`, `APPLE_DEV_ID_INSTALLER_CERT_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `APPLE_INSTALLER_IDENTITY`
 
-Apple signing / notarization (used by `build-macos-pkg.yml`):
+Windows signing: `SSL_USERNAME`, `SSL_PASSWORD`, `SSL_CREDENTIAL_ID`, `SSL_TOTP_SECRET`
 
-- `APPLE_DEV_ID_APP_CERT_B64`
-- `APPLE_DEV_ID_APP_CERT_PASSWORD`
-- `APPLE_DEV_ID_INSTALLER_CERT_B64`
-- `APPLE_DEV_ID_INSTALLER_CERT_PASSWORD`
-- `APPLE_ID`
-- `APPLE_APP_SPECIFIC_PASSWORD`
-- `APPLE_TEAM_ID`
-- `APPLE_INSTALLER_IDENTITY` (example: `Developer ID Installer: Your Org (TEAMID)`)
-
-Windows signing via SSL.com eSigner (used by `build-windows-installer.yml`):
-
-- `SSL_USERNAME`
-- `SSL_PASSWORD`
-- `SSL_CREDENTIAL_ID`
-- `SSL_TOTP_SECRET`
-
-OTA UI publishing (used by `publish-ui.yml`):
-
-- `RELEASES_TOKEN` — fine-grained PAT scoped to `mindsdb/antontron-releases` with **Contents** (read/write) + **Metadata** (read)
+OTA UI publishing: `RELEASES_TOKEN` (fine-grained PAT scoped to `mindsdb/antontron-releases`)
 
 > **No AWS secrets.** The upload job runs on `mdb-prod` and picks up AWS credentials from the pod's IAM role. The role must have `s3:PutObject` on `arn:aws:s3:::anton-installer/anton/*`.
 
@@ -778,7 +596,7 @@ This section covers the one-time setup for [`publish-ui.yml`](.github/workflows/
    - Name: `antontron-releases-deploy`
    - Repository access: only `mindsdb/antontron-releases`
    - Permissions: Contents (read/write), Metadata (read)
-   - Save the token as `RELEASES_TOKEN` in [antontron → Settings → Secrets → Actions](https://github.com/mindsdb/antontron/settings/secrets/actions).
+   - Save the token as `RELEASES_TOKEN` in the source repo's Settings → Secrets → Actions.
 3. Enable GitHub Pages on `antontron-releases`: Settings → Pages → Source "Deploy from a branch" → Branch `gh-pages` / `/ (root)`. The `gh-pages` branch is created automatically by the first workflow run.
 4. Verify with:
 
@@ -790,40 +608,34 @@ curl https://mindsdb.github.io/antontron-releases/latest.json
 
 ## Updating the Icon
 
-The app icon is a gradient cyan-to-purple "A" on a dark background.
-
 ```bash
-# Generate icon.png and icon.icns from the SVG
 node scripts/generate-icon.js
 ```
 
-Source SVG is in `assets/icon.svg`. The script renders it to PNG then uses `sips` + `iconutil` to create the `.icns` for macOS.
-
-For Windows, electron-builder auto-converts `icon.png` to `.ico`.
+Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icns` (macOS) via `sips` + `iconutil`. Windows `.ico` is auto-generated by electron-builder.
 
 ---
 
-## Environment Variables (Anton)
+## Environment Variables
 
-These are written to `~/.anton/.env` by the app and read by Anton at startup:
-
-| Variable                        | Source      | Purpose                             |
-| ------------------------------- | ----------- | ----------------------------------- |
-| `ANTON_ANTHROPIC_API_KEY`       | Onboarding  | Anthropic API key                   |
-| `ANTON_OPENAI_API_KEY`          | Onboarding  | Minds/OpenAI-compatible API key     |
-| `ANTON_OPENAI_BASE_URL`         | Onboarding  | Minds server URL (as OpenAI base)   |
-| `ANTON_MINDS_API_KEY`           | Minds panel | Minds API key for datasources       |
-| `ANTON_MINDS_URL`               | Minds panel | Minds server URL                    |
-| `ANTON_MINDS_MIND_NAME`         | Minds panel | Selected mind name                  |
-| `ANTON_MINDS_DATASOURCE`        | Minds panel | Selected datasource                 |
-| `ANTON_MINDS_DATASOURCE_ENGINE` | Minds panel | Datasource engine type              |
-| `ANTON_MINDS_SSL_VERIFY`        | Minds panel | SSL cert verification (true/false)  |
-| `ANTON_PLANNING_MODEL`          | Settings    | Model for planning tasks            |
-| `ANTON_CODING_MODEL`            | Settings    | Model for coding tasks              |
-| `ANTON_MEMORY_MODE`             | Settings    | Memory mode (autopilot/copilot/off) |
-| `ANTON_LANGFUSE_HEADERS`        | Manual      | Set to `1` to emit Langfuse-* headers on openai-compatible LLM calls (auto-enabled for MindsHub) |
-| `DEV_MODE`                      | Manual      | Renderer source override for developers (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
-| `UI_UPDATE_MODE`                | Settings    | OTA update behavior (`auto` = apply silently, `manual` = show banner; default `manual`) |
+| Variable | Source | Purpose |
+| --- | --- | --- |
+| `ANTON_ANTHROPIC_API_KEY` | Onboarding | Anthropic API key |
+| `ANTON_OPENAI_API_KEY` | Onboarding | Minds/OpenAI-compatible API key |
+| `ANTON_OPENAI_BASE_URL` | Onboarding | Minds server URL (as OpenAI base) |
+| `ANTON_MINDS_API_KEY` | Minds panel | Minds API key for datasources |
+| `ANTON_MINDS_URL` | Minds panel | Minds server URL |
+| `ANTON_MINDS_MIND_NAME` | Minds panel | Selected mind name |
+| `ANTON_MINDS_DATASOURCE` | Minds panel | Selected datasource |
+| `ANTON_MINDS_DATASOURCE_ENGINE` | Minds panel | Datasource engine type |
+| `ANTON_MINDS_SSL_VERIFY` | Minds panel | SSL cert verification (true/false) |
+| `ANTON_PLANNING_MODEL` | Settings | Model for planning tasks |
+| `ANTON_CODING_MODEL` | Settings | Model for coding tasks |
+| `ANTON_MEMORY_MODE` | Settings | Memory mode (autopilot/copilot/off) |
+| `ANTON_LANGFUSE_HEADERS` | Manual | Set to `1` to emit Langfuse-* headers on LLM calls |
+| `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
+| `UI_UPDATE_MODE` | Settings | OTA UI update behavior (`auto` / `manual`; default `auto`) |
+| `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
 
 ---
 
@@ -832,22 +644,19 @@ These are written to `~/.anton/.env` by the app and read by Anton at startup:
 ### App shows blank white screen
 
 ```bash
-# Make sure both main and renderer are built
 npm run build
-
-# Check if Vite output exists
 ls dist/renderer/index.html
 ```
 
-### Anton shows "Disconnected" immediately after launch
+### Server shows "Disconnected" immediately after launch
 
-The packaged `.app` doesn't inherit shell PATH. The sidecar is spawned via the `uv tool install` interpreter, so ensure Anton is installed via `uv tool install anton`. If issues persist, check that the Python interpreter at `~/.local/share/uv/tools/anton/bin/python` exists.
+The packaged `.app` doesn't inherit shell PATH. Ensure cowork-server is installed: `uv tool install cowork-server`. Check that `~/.local/bin/cowork-server` exists.
 
 ### macOS Gatekeeper blocks unsigned app
 
 ```bash
-# Remove quarantine attribute (dev only)
-xattr -cr "/Applications/Anton.app"
+# Dev only
+xattr -cr "/Applications/Minds Cowork.app"
 ```
 
 ---
@@ -858,11 +667,11 @@ xattr -cr "/Applications/Anton.app"
 | --------- | -------------------------------------- |
 | Framework | Electron 34                            |
 | Renderer  | React 19 + TypeScript + Vite 6         |
-| Backend   | FastAPI (Python, bundled sidecar)       |
+| Backend   | FastAPI (Python, [`cowork-server`](https://pypi.org/project/cowork-server/) via PyPI) |
 | Markdown  | marked 17                              |
 | Packaging | electron-builder 25                    |
 | Styling   | Tailwind CSS + custom theme            |
 
 ---
 
-_Built by MindsDB. Anton is the autonomous AI coworker._
+_Built by MindsDB._

@@ -14,24 +14,31 @@ export function ConfirmModal({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   destructive = false,
+  // While truthy the modal is locked: both buttons disable, the
+  // confirm button shows a spinner + `busyLabel`, and Esc / Enter /
+  // backdrop dismissal are all suppressed. Stops repeat-fires of an
+  // in-flight async action (e.g. a second sign-out request).
+  busy = false,
+  busyLabel,
   onConfirm,
   onClose,
 }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
+      if (busy) return;
       if (e.key === 'Escape') onClose?.();
       if (e.key === 'Enter') onConfirm?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose, onConfirm]);
+  }, [open, busy, onClose, onConfirm]);
 
   if (!open) return null;
 
   return (
     <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onMouseDown={(e) => { if (!busy && e.target === e.currentTarget) onClose?.(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 80,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -77,32 +84,49 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={onClose}
+            disabled={busy}
             style={{
-              all: 'unset', cursor: 'pointer',
+              all: 'unset', cursor: busy ? 'default' : 'pointer',
               padding: '8px 14px', borderRadius: 8,
               border: '1px solid var(--line)',
               fontSize: 13, fontWeight: 500, color: 'var(--ink-2)',
               background: 'transparent',
+              opacity: busy ? 0.45 : 1,
             }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
+            onMouseOver={(e) => { if (busy) return; e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+            onMouseOut={(e) => { if (busy) return; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
           >
             {cancelLabel}
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            onClick={() => { if (!busy) onConfirm?.(); }}
+            disabled={busy}
             autoFocus
             style={{
-              all: 'unset', cursor: 'pointer',
+              all: 'unset', cursor: busy ? 'progress' : 'pointer',
               padding: '8px 14px', borderRadius: 8,
               fontSize: 13, fontWeight: 600,
               color: '#fff',
               background: destructive ? 'var(--danger)' : 'var(--accent)',
               border: `1px solid ${destructive ? 'var(--danger)' : 'var(--accent)'}`,
+              opacity: busy ? 0.8 : 1,
+              display: 'inline-flex', alignItems: 'center', gap: 7,
             }}
           >
-            {confirmLabel}
+            {busy && (
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 13, height: 13, borderRadius: '50%',
+                  border: '2px solid rgba(255,255,255,0.4)',
+                  borderTopColor: '#fff',
+                  display: 'inline-block',
+                  animation: 'spin 0.7s linear infinite',
+                }}
+              />
+            )}
+            {busy ? (busyLabel || confirmLabel) : confirmLabel}
           </button>
         </div>
       </div>

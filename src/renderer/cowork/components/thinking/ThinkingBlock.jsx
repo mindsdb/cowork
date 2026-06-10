@@ -47,21 +47,21 @@ export function ThinkingBlock({
   onActivateStep,
 }) {
   const hasSteps = steps.length > 0;
-  const hasScratchpadSteps = useMemo(
-    () => steps.some((s) => s._isScratchpad),
+  const hasInspectableSteps = useMemo(
+    () => steps.some((s) => s._isScratchpad || s._isToolCall),
     [steps]
   );
 
-  const [isExpanded, setIsExpanded] = useState(() => hasScratchpadSteps);
+  const [isExpanded, setIsExpanded] = useState(() => hasInspectableSteps);
   const hasAutoExpanded = useRef(false);
 
-  // Auto-expand the first time scratchpad steps appear.
+  // Auto-expand the first time scratchpad or tool-call steps appear.
   useEffect(() => {
-    if (hasScratchpadSteps && !hasAutoExpanded.current) {
+    if (hasInspectableSteps && !hasAutoExpanded.current) {
       setIsExpanded(true);
       hasAutoExpanded.current = true;
     }
-  }, [hasScratchpadSteps]);
+  }, [hasInspectableSteps]);
 
   const finalDuration = useMemo(() => {
     if (!isActive && startedAt && steps.length > 0) {

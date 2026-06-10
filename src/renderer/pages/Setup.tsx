@@ -175,7 +175,7 @@ function useTypewriter(text: string, speed: number = 40): string {
 }
 
 function DoneScreen({ onComplete }: { onComplete: () => void }) {
-  const typed = useTypewriter("Now let's teach Anton who to talk to...", 35);
+  const typed = useTypewriter("Now let's connect a provider...", 35);
   const [showContinue, setShowContinue] = useState(false);
 
   useEffect(() => {
@@ -194,7 +194,7 @@ function DoneScreen({ onComplete }: { onComplete: () => void }) {
     <>
       <div className="success-section">
         <div className="success-check">{'\u2713'}</div>
-        <div className="success-text">Anton is installed</div>
+        <div className="success-text">Setup complete</div>
         <div className="typewriter-line">
           {typed}
           <span className="typewriter-cursor">|</span>

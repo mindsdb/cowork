@@ -48,7 +48,7 @@ Expected output:
 Use `notarytool` manually (recommended for better retry control):
 
 ```bash
-xcrun notarytool submit "release/Anton-0.1.0-universal-custom.dmg" \
+xcrun notarytool submit "release/Minds Cowork-0.1.0-universal-custom.dmg" \
   --apple-id "user@mindsdb.com" \
   --team-id "498Y665994" \
   --password "<APP_SPECIFIC_PASSWORD>" \
@@ -69,17 +69,17 @@ xcrun notarytool info <SUBMISSION_ID> \
 When status is `Accepted`:
 
 ```bash
-xcrun stapler staple "release/Anton-0.1.0-universal-custom.dmg"
-xcrun stapler validate "release/Anton-0.1.0-universal-custom.dmg"
+xcrun stapler staple "release/Minds Cowork-0.1.0-universal-custom.dmg"
+xcrun stapler validate "release/Minds Cowork-0.1.0-universal-custom.dmg"
 ```
 
 Validate the app inside the mounted DMG:
 
 ```bash
-hdiutil attach "release/Anton-0.1.0-universal-custom.dmg"
-spctl -a -vvv -t execute "/Volumes/Anton Installer 0.1.0/Anton.app"
-codesign -dv --verbose=4 "/Volumes/Anton Installer 0.1.0/Anton.app"
-hdiutil detach "/Volumes/Anton Installer 0.1.0"
+hdiutil attach "release/Minds Cowork-0.1.0-universal-custom.dmg"
+spctl -a -vvv -t execute "/Volumes/Minds Cowork Installer 0.1.0/Minds Cowork.app"
+codesign -dv --verbose=4 "/Volumes/Minds Cowork Installer 0.1.0/Minds Cowork.app"
+hdiutil detach "/Volumes/Minds Cowork Installer 0.1.0"
 ```
 
 Expected result:
@@ -102,7 +102,7 @@ xcrun notarytool log <SUBMISSION_ID> \
 
 2. If it reports unsigned binaries / missing timestamp / missing hardened runtime:
    - Rebuild the `.app` via `npm run dist:mac:dmg-custom`
-   - Verify `Anton.app` signature before notarizing
+   - Verify `Minds Cowork.app` signature before notarizing
    - Resubmit
 
 ## `status: In Progress` for too long

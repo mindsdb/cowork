@@ -304,7 +304,7 @@ export default function ScheduleCard({
         />
         {task.enabled ? (
           <ActionButton
-            icon={Ico.stop ? Ico.stop(12) : '⏸'}
+            icon={Ico.pause ? Ico.pause(12) : '⏸'}
             label="Pause"
             onClick={() => onPause?.(task)}
             busy={busy}

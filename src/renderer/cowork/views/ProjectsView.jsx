@@ -808,7 +808,7 @@ function ProjectDetail({
   const kebabRef = useRef(null);
   const renameInputRef = useRef(null);
   const isReserved = project.name === 'general' || project.name === 'default';
-  const showKebab = titleHover || !!menuRect;
+  const showKebab = !isReserved && (titleHover || !!menuRect);
 
   // Focus + select-all the inline input on mount of the editing state.
   useEffect(() => {
@@ -929,28 +929,12 @@ function ProjectDetail({
                 />
               ) : (
                 <span
-                  role="button"
-                  tabIndex={0}
                   title={project.name}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (menuRect) { setMenuRect(null); return; }
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setMenuRect(rect);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setMenuRect((cur) => (cur ? null : rect));
-                    }
-                  }}
                   style={{
                     fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
                     letterSpacing: '0.04em', color: 'var(--ink)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     minWidth: 0, flex: '0 1 auto',
-                    cursor: 'pointer',
                   }}
                 >{project.name}</span>
               )}
@@ -1113,6 +1097,7 @@ export default function ProjectsView({
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
   // clicking a row routes to the schedule detail page.
   onOpenSchedule,
+  agentLabel = 'the agent',
 }) {
   const { pinned, togglePin } = usePinnedProjects();
   const { isMobile } = useBreakpoint();
@@ -1284,7 +1269,7 @@ export default function ProjectsView({
     }}>
       <PageHeader
         title="Projects"
-        subtitle="Workspaces Anton uses to group conversations, memory, and outputs."
+        subtitle={`Workspaces ${agentLabel} uses to group conversations, memory, and outputs.`}
         actions={<NewProjectButton onClick={handleNewProject} />}
         // Bake the breathing room into the header itself rather than a
         // sibling spacer. The previous 18px spacer div collapsed in

@@ -83,7 +83,7 @@ function PairingIllustration() {
   );
 }
 
-export default function DispatchView({ onSetUpLater }) {
+export default function DispatchView({ onSetUpLater, agentLabel = 'the agent' }) {
   return (
     <div className="dispatch-view">
       <header className="dispatch-top">Dispatch</header>
@@ -91,9 +91,9 @@ export default function DispatchView({ onSetUpLater }) {
         <section className="dispatch-pair" aria-labelledby="dispatch-title">
           <PairingIllustration />
 
-          <h1 id="dispatch-title">Pair with the Anton Mobile app</h1>
+          <h1 id="dispatch-title">Pair with the Minds Cowork Mobile app</h1>
           <p>
-            Use the mobile app to talk to Anton while it works from your desktop.
+            Use the mobile app to talk to {agentLabel} while it works from your desktop.
             Scan the code to download it on your phone.
           </p>
 

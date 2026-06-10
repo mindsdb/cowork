@@ -10,6 +10,7 @@ interface AntonTronAPI {
 
   readSettings: () => Promise<Record<string, string>>;
   saveSettings: (content: string) => Promise<boolean>;
+  restartServer: () => Promise<void>;
   checkConfigured: () => Promise<{ configured: boolean; provider: string }>;
   validateProvider: (provider: string, apiKey: string, baseUrl?: string, model?: string) =>
     Promise<{ ok: boolean; error?: string }>;
@@ -53,12 +54,38 @@ interface AntonTronAPI {
     scope?: string;
     token_type?: string;
   }>;
+  oauthCancel: () => Promise<boolean>;
+  mindshubLogin: () => Promise<{
+    ok: boolean;
+    reason?: string;
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  }>;
+  mindshubRefresh: () => Promise<{ ok: boolean; reason?: string; access_token?: string }>;
+  mindshubFinalize: () => Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }>;
+  mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
+  getAccessToken: () => Promise<string | null>;
+  logout: () => Promise<void>;
   getPathForFile: (file: File) => string;
 }
 
 declare global {
+  /** Injected by Vite at build time from package.json `version`. */
+  const __APP_VERSION__: string;
+  /** Short git commit hash at build time, or '' outside a repo. */
+  const __GIT_HASH__: string;
+  /** ISO 8601 timestamp of when the bundle was built. */
+  const __BUILD_TIME__: string;
   interface Window {
     antontron: AntonTronAPI;
+  }
+
+  namespace React {
+    interface CSSProperties {
+      WebkitAppRegion?: string;
+      WebkitBackdropFilter?: string;
+    }
   }
 }
 

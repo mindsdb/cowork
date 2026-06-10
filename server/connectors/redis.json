@@ -85,7 +85,7 @@
             "description": "Leave blank if your Redis instance has no authentication configured."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": false,

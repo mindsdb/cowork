@@ -89,7 +89,7 @@
             "description": "The database name Anton will connect to by default."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

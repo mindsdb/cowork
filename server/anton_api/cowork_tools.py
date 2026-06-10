@@ -197,6 +197,12 @@ async def _cowork_publish_or_preview(session: Any, tc_input: dict) -> str:
     file_key = file_path.name
     prev = published_map.get(file_key)
     report_id = prev.get("report_id") if isinstance(prev, dict) else None
+    # Preserve any existing password protection across an agent-initiated
+    # re-publish — otherwise updating a dashboard would silently make a
+    # password-protected artifact public. Setting/removing a password is
+    # an explicit user action via the /publish endpoint, not this tool.
+    prev_password = prev.get("access_password") if isinstance(prev, dict) else None
+    prev_version = prev.get("pwd_version", 0) if isinstance(prev, dict) else 0
 
     def _do_publish(rid: str | None):
         return publish(
@@ -205,6 +211,8 @@ async def _cowork_publish_or_preview(session: Any, tc_input: dict) -> str:
             report_id=rid,
             publish_url=publish_url,
             ssl_verify=ssl_verify,
+            password=prev_password,
+            pwd_version=prev_version or 1,
         )
 
     try:
@@ -227,11 +235,16 @@ async def _cowork_publish_or_preview(session: Any, tc_input: dict) -> str:
     returned_report_id = result.get("report_id", "") if isinstance(result, dict) else ""
 
     if returned_report_id:
-        published_map[file_key] = {
+        entry: dict[str, Any] = {
             "report_id": returned_report_id,
             "url": view_url,
             "last_md5": result.get("md5", "") if isinstance(result, dict) else "",
+            "requires_password": bool(prev_password),
         }
+        if prev_password:
+            entry["access_password"] = prev_password
+            entry["pwd_version"] = prev_version or 1
+        published_map[file_key] = entry
         try:
             published_json_path.write_text(
                 json.dumps(published_map, indent=2) + "\n",

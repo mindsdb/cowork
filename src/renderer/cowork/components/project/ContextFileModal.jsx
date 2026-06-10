@@ -216,7 +216,7 @@ export default function ContextFileModal({
   const headerTitle = title ?? (isAnton ? 'anton.md' : filePath);
   const headerSubtitle = subtitle ?? (isAnton ? 'Project instructions' : null);
   const editorPlaceholder = placeholder ?? (isAnton
-    ? "Tell Anton how to work in this project — codebase conventions, output preferences, things to avoid…"
+    ? "Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…"
     : 'File contents');
   const emptyText = emptyMessage ?? (isAnton
     ? '(no instructions yet — click Edit to add some)'
@@ -422,6 +422,7 @@ export default function ContextFileModal({
             {mode === 'text' && !editing && !loading && (
               <button
                 type="button"
+                className="hover-tint hover-tint-text"
                 onClick={() => setEditing(true)}
                 title="Edit"
                 style={{
@@ -446,6 +447,7 @@ export default function ContextFileModal({
             )}
             <button
               type="button"
+              className="hover-tint hover-tint-text"
               onClick={() => !busy && onClose?.()}
               title="Close"
               style={{
@@ -581,11 +583,12 @@ export default function ContextFileModal({
                 type="button"
                 onClick={handleDelete}
                 disabled={busy}
+                className="hover-tint"
                 style={{
                   cursor: busy ? 'not-allowed' : 'pointer',
                   background: 'transparent', border: 0,
                   color: 'var(--danger)',
-                  padding: '7px 0', borderRadius: 7,
+                  padding: '7px 14px', borderRadius: 7,
                   fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
                   opacity: busy ? 0.5 : 1,
                 }}
@@ -604,6 +607,7 @@ export default function ContextFileModal({
                   setEditing(false);
                 }}
                 disabled={busy}
+                className="hover-tint hover-tint-text"
                 style={{
                   cursor: busy ? 'not-allowed' : 'pointer',
                   background: 'transparent', border: 0,
@@ -627,6 +631,7 @@ export default function ContextFileModal({
               <button
                 type="button"
                 onClick={() => onClose?.()}
+                className="hover-tint hover-tint-text"
                 style={{
                   cursor: 'pointer',
                   background: 'transparent', border: 0,

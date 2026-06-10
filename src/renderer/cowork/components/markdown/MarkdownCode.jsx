@@ -6,7 +6,7 @@
 //                                        shows error placeholder.
 //   - everything else                  → plain <code> with our token style
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { ChartLoadingState, ChartErrorState } from './ChartStates';
 import { MessageChart } from './MessageChart';
 import { parseChartIntent } from './utils';
@@ -29,6 +29,13 @@ export function MarkdownCode(props) {
   // block branch and never triggers a side-effect renderer.
   const enableForms = props?.enableForms !== false;
   const enableCharts = props?.enableCharts !== false;
+  // Track whether this block was already complete when first mounted.
+  // Historical messages mount with complete=true immediately; live
+  // streams mount with complete=false and flip to true when the chunk
+  // finishes. We skip form-store side-effects for historical replays
+  // so navigating back to a chat doesn't re-trigger success modals.
+  const wasCompleteOnMount = useRef(complete);
+  const isHistorical = wasCompleteOnMount.current;
 
   // ── ALL HOOKS FIRST ───────────────────────────────────────────────
   // Critical: every useMemo/useEffect must run on every render of
@@ -86,6 +93,12 @@ export function MarkdownCode(props) {
 
   useEffect(() => {
     if (!isFormLang || !conversationId || !complete) return;
+    // Skip form-store side-effects for historical messages. When the
+    // user navigates back to a chat, every completed message re-mounts
+    // with complete=true from the start. Without this guard, all
+    // data-vault-form / data-vault-form-patch blocks replay into the
+    // store — causing dismissed success modals to reappear.
+    if (isHistorical) return;
     if (formSpec) {
       // Patch dialect merges into the existing form (preserves the
       // user's typed values + only changes the bits Anton specified);
@@ -105,13 +118,13 @@ export function MarkdownCode(props) {
       setForm(conversationId, {
         form_id: 'fm_parse_error',
         title: 'Form did not parse',
-        subtitle: 'Anton sent a form spec that wasn’t valid JSON.',
+        subtitle: "The agent sent a form spec that was not valid JSON.",
         logo: 'database',
         logo_color: 'var(--danger)',
         fields: [],
         form_error: parseError,
         actions: [
-          { id: 'retry', label: 'Ask Anton to retry', kind: 'primary' },
+          { id: 'retry', label: 'Ask the agent to retry', kind: 'primary' },
           { id: 'dismiss', label: 'Dismiss', kind: 'cancel' },
         ],
         // Carry the raw text so the panel can offer a "show raw" peek.
@@ -119,7 +132,7 @@ export function MarkdownCode(props) {
         _is_error: true,
       });
     }
-  }, [isFormLang, lang, complete, formSpec, parseError, conversationId, text]);
+  }, [isFormLang, lang, complete, formSpec, parseError, conversationId, text, isHistorical]);
 
   // ── BRANCHES (no more hooks past this point) ──────────────────────
 
@@ -169,7 +182,7 @@ export function MarkdownCode(props) {
             </span>
           )}
           <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
-            Use the side panel to ask Anton to retry.
+            Use the side panel to ask the agent to retry.
           </span>
         </div>
       );

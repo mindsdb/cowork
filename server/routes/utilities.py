@@ -711,6 +711,11 @@ async def list_publishable():
 
 class PublishRequest(BaseModel):
     path: str
+    # Optional access password. When set, the artifact is published
+    # password-protected — only a hash leaves this machine; the plaintext
+    # is kept in .published.json for the in-app reveal. Omit / empty to
+    # publish (or re-publish) as public.
+    password: str | None = None
 
 
 @router.post("/publish")
@@ -738,6 +743,15 @@ async def publish_artifact(req: PublishRequest):
     previous = published_map.get(artifact.name)
     report_id = previous.get("report_id") if isinstance(previous, dict) else None
 
+    # Resolve access state. A non-empty password publishes (or keeps) the
+    # artifact password-protected; empty/None publishes it public. Bump
+    # pwd_version whenever the password value changes so access cookies
+    # issued for the old password stop validating in the viewer.
+    password = (req.password or "").strip() or None
+    prev_password = previous.get("access_password") if isinstance(previous, dict) else None
+    prev_version = previous.get("pwd_version", 0) if isinstance(previous, dict) else 0
+    pwd_version = (prev_version + 1) if password and password != prev_password else (prev_version or 1)
+
     try:
         result = publish(
             artifact,
@@ -745,6 +759,8 @@ async def publish_artifact(req: PublishRequest):
             report_id=report_id,
             publish_url=_get_env("ANTON_PUBLISH_URL", "https://4nton.ai"),
             ssl_verify=_get_env("ANTON_MINDS_SSL_VERIFY", "true").lower() == "true",
+            password=password,
+            pwd_version=pwd_version,
         )
     except Exception as exc:
         logger.exception("Publishing failed")
@@ -760,11 +776,17 @@ async def publish_artifact(req: PublishRequest):
             "reportId": returned_report_id,
             "publishedAt": utc_now_iso(),
         }
-        published_map[artifact.name] = {
+        entry: dict[str, Any] = {
             "report_id": returned_report_id,
             "url": view_url,
             "last_md5": result.get("md5", ""),
+            "requires_password": bool(password),
         }
+        if password:
+            # Owner-side only — .published.json never enters the bundle.
+            entry["access_password"] = password
+            entry["pwd_version"] = pwd_version
+        published_map[artifact.name] = entry
         try:
             published_json.write_text(json.dumps(published_map, indent=2) + "\n", encoding="utf-8")
         except Exception:
@@ -773,7 +795,12 @@ async def publish_artifact(req: PublishRequest):
         state["publish_history"] = [history_item, *state.get("publish_history", [])][:100]
         save_state(state)
 
-    return {"status": "ok", "url": view_url, "result": {k: v for k, v in result.items() if k != "file_payload"}}
+    return {
+        "status": "ok",
+        "url": view_url,
+        "accessProtected": bool(password),
+        "result": {k: v for k, v in result.items() if k != "file_payload"},
+    }
 
 
 @router.delete("/publish")

@@ -62,6 +62,7 @@ export default function ScheduledView({
   // "project:" label is clicked. Wired by App.jsx to setSelected
   // Project + setRoute('projects'), the same path Live artifacts uses.
   onOpenProject,
+  agentLabel,
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -143,7 +144,7 @@ export default function ScheduledView({
     <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
       <PageHeader
         title="Scheduled Tasks"
-        subtitle="Local scheduled Anton tasks run while Anton Cowork is open. Runs that slip while the app is closed are skipped — Anton resumes from the next scheduled occurrence."
+        subtitle={`Local scheduled ${agentLabel} tasks run while Minds Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
         actions={
           <button className="btn-primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
@@ -194,7 +195,7 @@ export default function ScheduledView({
 
       {/* Body — empty state, grid, or list. */}
       {!scheduled.length ? (
-        <EmptyState onCreate={openCreate} />
+        <EmptyState onCreate={openCreate} agentLabel={agentLabel} />
       ) : viewMode === 'grid' ? (
         <div style={{
           padding: '8px 28px 28px',
@@ -247,6 +248,7 @@ export default function ScheduledView({
         models={models}
         defaultProjectPath={selectedProject?.path || ''}
         defaultModelId={selectedModel?.id || ''}
+        agentLabel={agentLabel}
       />
     </div>
   );
@@ -453,7 +455,7 @@ function ScheduleListRow({
       >
         <RowAction icon={Ico.send(12)} label="Run" onClick={onRunNow} busy={busy} />
         {task.enabled
-          ? <RowAction icon={Ico.stop(12)}  label="Pause"  onClick={onPause}  busy={busy} />
+          ? <RowAction icon={Ico.pause(12)} label="Pause"  onClick={onPause}  busy={busy} />
           : <RowAction icon={Ico.power(12)} label="Resume" onClick={onResume} busy={busy} />}
         <RowAction icon={Ico.edit(12)} label="Edit" onClick={onEdit} busy={busy} />
       </div>
@@ -505,7 +507,7 @@ function RowAction({ icon, label, onClick, busy }) {
 
 // ── Empty state ──
 
-function EmptyState({ onCreate }) {
+function EmptyState({ onCreate, agentLabel }) {
   return (
     <div style={{
       margin: '40px 28px',
@@ -532,9 +534,7 @@ function EmptyState({ onCreate }) {
         fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)',
         maxWidth: 360, lineHeight: 1.5,
       }}>
-        Create a recurring Anton task — a Monday digest, an hourly log
-        sweep, a daily KPI snapshot. Anton runs them while the desktop
-        app is open.
+        {`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
       </div>
       <button
         className="btn-primary"

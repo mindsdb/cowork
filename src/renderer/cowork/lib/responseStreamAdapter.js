@@ -41,6 +41,8 @@ export function initialStreamState() {
     /** Set when we've seen 'publish_or_preview' and expect the next
      *  progress content to be the artifact JSON payload. */
     awaitingArtifactPayload: false,
+    /** Harness/agent ID from `response.created` (e.g. 'anton', 'hermes'). */
+    harness: null,
     /** Surfaced for diagnostics if a failure event arrives. */
     error: null,
   };
@@ -81,9 +83,28 @@ function patchScratchpadStepById(steps, toolUseId, patch) {
   return next;
 }
 
-/** Same but only acts on an in-progress scratchpad — used by close
- *  signals (response.completed/failed) to flip a still-open trailing
- *  step to completed without overwriting output later. */
+/** Close any still-open inspectable step on terminal stream events.
+ *  Keep this scoped to step types whose lifetime is owned by this
+ *  adapter so future progress/artifact step types can define their
+ *  own terminal behavior. */
+function closeOpenInspectableSteps(steps, completedAt) {
+  let changed = false;
+  const next = steps.map((step) => {
+    if (
+      step?.status !== 'in_progress'
+      || (!step._isScratchpad && !step._isToolCall && !step._isReasoning)
+    ) {
+      return step;
+    }
+    changed = true;
+    return { ...step, status: 'completed', completedAt };
+  });
+  return changed ? next : steps;
+}
+
+/** Same but only acts on the trailing in-progress scratchpad — used
+ *  by scratchpad_done progress markers before the result event may
+ *  have arrived. */
 function closeOpenScratchpadStep(steps, completedAt) {
   if (steps.length === 0) return steps;
   const idx = steps.length - 1;
@@ -92,6 +113,39 @@ function closeOpenScratchpadStep(steps, completedAt) {
   const next = steps.slice();
   next[idx] = { ...last, status: 'completed', completedAt };
   return next;
+}
+
+/** Close an open reasoning step (if any). Called when the model
+ *  transitions from thinking to producing output. */
+function closeReasoningStep(steps, ts) {
+  const idx = steps.findIndex((s) => s._isReasoning && s.status === 'in_progress');
+  if (idx === -1) return steps;
+  const updated = steps.slice();
+  updated[idx] = { ...steps[idx], status: 'completed', completedAt: ts, label: 'Reasoning' };
+  return updated;
+}
+
+/** Build a descriptive label for a Hermes tool-call step from the
+ *  tool name and its arguments dict. Shows a preview of the actual
+ *  command/code so the user can see what's running at a glance. */
+function toolCallLabel(name, args) {
+  const preview =
+    args.command || args.code || args.path || args.pattern ||
+    args.query || args.url || args.content || '';
+  if (!preview) return name;
+  // First line only, truncated.
+  const first = String(preview).split('\n')[0];
+  const short = first.length > 70 ? first.slice(0, 67) + '…' : first;
+  return `${name}: ${short}`;
+}
+
+/** Truncate reasoning text to a short label for the step row. */
+function truncateLabel(text) {
+  if (!text) return 'Reasoning…';
+  // Take the last meaningful line (reasoning streams append).
+  const lines = text.trim().split('\n').filter(Boolean);
+  const last = lines[lines.length - 1] || '';
+  return last.length > 80 ? last.slice(0, 77) + '…' : last || 'Reasoning…';
 }
 
 function safeJsonParse(text) {
@@ -150,19 +204,20 @@ export function reduceStream(state, event, now = Date.now) {
       ...state,
       responseId: event.response?.id ?? state.responseId,
       conversationId: event.conversation_id ?? state.conversationId,
+      harness: event.harness ?? state.harness,
       startedAt: state.startedAt ?? now(),
       status: 'thinking',
     };
   }
 
   if (type === 'response.completed') {
-    return { ...state, steps: closeOpenScratchpadStep(state.steps, now()), status: 'done' };
+    return { ...state, steps: closeOpenInspectableSteps(state.steps, eventTs), status: 'done' };
   }
 
   if (type === 'response.failed') {
     return {
       ...state,
-      steps: closeOpenScratchpadStep(state.steps, now()),
+      steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'error',
       error: event.error || event.message || 'Response failed',
     };
@@ -171,7 +226,10 @@ export function reduceStream(state, event, now = Date.now) {
   if (type === 'response.output_text.delta') {
     const delta = typeof event.delta === 'string' ? event.delta : '';
     if (!delta) return state;
-    return { ...state, status: 'streaming', bodyText: state.bodyText + delta };
+    // Close any open reasoning step — the model has finished thinking
+    // and is now producing the visible response.
+    const steps = closeReasoningStep(state.steps, eventTs);
+    return { ...state, status: 'streaming', bodyText: state.bodyText + delta, steps };
   }
 
   // ── thought.* sub-events live under response.in_progress ──────────
@@ -272,6 +330,111 @@ export function reduceStream(state, event, now = Date.now) {
     };
     const byId = patchScratchpadStepById(state.steps, toolUseId, patch);
     return { ...state, steps: byId || patchLastScratchpadStep(state.steps, patch) };
+  }
+
+  // ── Hermes tool-call events ──────────────────────────────────────
+  // Generic tool-call start/end from harnesses that don't use
+  // anton's scratchpad model (e.g. Hermes). Creates steps so the
+  // ThinkingBlock shows tool activity.
+  if (role === 'thought.tool_call.start') {
+    const id = `step-${state.steps.length + 1}`;
+    const toolName = event.content || 'Tool call';
+    const args = event.args || {};
+    const label = toolCallLabel(toolName, args);
+    const step = {
+      id,
+      label,
+      badge: 'Tool',
+      icon: 'code',
+      status: 'in_progress',
+      startedAt: eventTs,
+      completedAt: null,
+      data: args,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: true,
+      _scratchpadTabId: null,
+      _toolUseId: event.tool_use_id || null,
+    };
+    // Close any open reasoning step — tool use means thinking is done.
+    const steps = closeReasoningStep(state.steps, eventTs);
+    return { ...state, steps: [...steps, step] };
+  }
+
+  if (role === 'thought.tool_call.end') {
+    const toolUseId = event.tool_use_id || null;
+    const patch = {
+      status: 'completed',
+      completedAt: eventTs,
+      output: typeof event.content === 'string' ? event.content.slice(0, 2048) : null,
+    };
+    if (toolUseId) {
+      const idx = state.steps.findIndex(
+        (s) => s._toolUseId === toolUseId,
+      );
+      if (idx !== -1) {
+        const updated = state.steps.slice();
+        updated[idx] = { ...state.steps[idx], ...patch };
+        return { ...state, steps: updated };
+      }
+    }
+    // Fallback: patch the last in-progress step.
+    const last = state.steps[state.steps.length - 1];
+    if (last && last.status === 'in_progress') {
+      const updated = state.steps.slice();
+      updated[updated.length - 1] = { ...last, ...patch };
+      return { ...state, steps: updated };
+    }
+    return state;
+  }
+
+  if (role === 'thought.tool_call.progress') {
+    // Informational — no state change needed, but we could update
+    // a label. For now, no-op.
+    return state;
+  }
+
+  // ── Hermes reasoning/thinking ────────────────────────────────────
+  // Streaming reasoning text from the model's extended thinking.
+  // Accumulate into a "Reasoning" step so the user can see what the
+  // model is considering.
+  if (role === 'thought.progress' && (event.subtype === 'reasoning' || event.subtype === 'thinking')) {
+    const text = event.content || '';
+    if (!text) return state;
+    // Find the active reasoning step to append to. Closed reasoning
+    // steps belong to a previous phase and should stay immutable.
+    const existingIdx = state.steps.findIndex((s) => s._isReasoning && s.status === 'in_progress');
+    if (existingIdx !== -1) {
+      const existing = state.steps[existingIdx];
+      const updated = state.steps.slice();
+      updated[existingIdx] = {
+        ...existing,
+        label: truncateLabel(existing._fullText + text),
+        _fullText: existing._fullText + text,
+      };
+      return { ...state, steps: updated };
+    }
+    // Create a new reasoning step.
+    const id = `step-${state.steps.length + 1}`;
+    const step = {
+      id,
+      label: truncateLabel(text),
+      badge: null,
+      icon: 'sparkle',
+      status: 'in_progress',
+      startedAt: eventTs,
+      completedAt: null,
+      data: null,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+      _toolUseId: null,
+      _isReasoning: true,
+      _fullText: text,
+    };
+    return { ...state, steps: [...state.steps, step] };
   }
 
   // Progress markers

@@ -64,7 +64,7 @@
             "description": "The name of the specific database (schema) to connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

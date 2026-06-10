@@ -28,6 +28,8 @@ import { revealArtifact } from '../api';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { harnessLabel } from '../lib/agentLabel';
+import { MINDS_BILLING_URL } from '../../pages/onboarding/constants';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
@@ -84,7 +86,6 @@ function MessageActions({ getText, onDelete }) {
   // Copy + delete for now — refresh / thumbs up / thumbs down hidden
   // until the underlying actions are wired.
   const [copied, setCopied] = useState(false);
-  const [deleteHover, setDeleteHover] = useState(false);
   const onCopy = async () => {
     const text = typeof getText === 'function' ? getText() : '';
     if (!text) return;
@@ -98,6 +99,7 @@ function MessageActions({ getText, onDelete }) {
     <div style={{ display: 'flex', gap: 4, marginTop: 4, color: T.ink4 }}>
       <button
         type="button"
+        className="hover-tint"
         title={copied ? 'Copied' : 'Copy response'}
         aria-label={copied ? 'Copied' : 'Copy response'}
         onClick={onCopy}
@@ -109,7 +111,6 @@ function MessageActions({ getText, onDelete }) {
           width: 26, height: 26, borderRadius: 6,
           display: 'grid', placeItems: 'center',
           color: copied ? 'var(--accent)' : 'inherit',
-          transition: 'color 140ms ease',
         }}
       >
         {copied ? Ico.check(13) : Ico.copy(13)}
@@ -117,11 +118,10 @@ function MessageActions({ getText, onDelete }) {
       {onDelete && (
         <button
           type="button"
+          className="hover-tint hover-tint-danger"
           title="Delete this question and response"
           aria-label="Delete this question and response"
           onClick={onDelete}
-          onMouseEnter={() => setDeleteHover(true)}
-          onMouseLeave={() => setDeleteHover(false)}
           style={{
             cursor: 'pointer',
             background: 'transparent',
@@ -129,8 +129,7 @@ function MessageActions({ getText, onDelete }) {
             padding: 0,
             width: 26, height: 26, borderRadius: 6,
             display: 'grid', placeItems: 'center',
-            color: deleteHover ? 'var(--danger)' : 'inherit',
-            transition: 'color 140ms ease',
+            color: 'inherit',
           }}
         >
           {Ico.trash(13)}
@@ -403,7 +402,7 @@ const CHAT_ORB_SIZE = 22;
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // `slotIdHeader` lets the parent register an orb anchor beside the label
 // (while the request is in flight with no step row / body caret yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel }) {
   // Stable id: never use Math.random() here (would churn register every render).
   const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
   return (
@@ -428,7 +427,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           <span style={{
             fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
             letterSpacing: '0.14em', textTransform: 'uppercase', color: T.ink,
-          }}>Anton</span>
+          }}>{agentLabel || 'Anton'}</span>
         </div>
         {time && (
           <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
@@ -797,6 +796,7 @@ export default function ChatView({
   onMoveTaskToProject,
   onOpenProject,
   onOpenProjectsList,
+  onOpenSettings,
   onStop,
   projects = [],
   sidebarCollapsed = false,
@@ -805,6 +805,7 @@ export default function ChatView({
   // the active turn finishes.
   queuedMessages = [],
   onRemoveFromQueue,
+  agentLabel,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -879,7 +880,7 @@ export default function ChatView({
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
-  const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error'].includes(m.role)).length;
+  const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
   const taskAttachments = task.attachments || visibleMessages.flatMap((m) => m.attachments || []);
@@ -1241,6 +1242,7 @@ export default function ChatView({
         <TaskMenu
           task={task}
           projects={projects}
+          agentLabel={agentLabel}
           open={settingsOpen}
           anchorRect={settingsAnchor}
           hideRename={false}
@@ -1345,7 +1347,7 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false}>
+                    <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
                       <div style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
                         fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
@@ -1395,7 +1397,7 @@ export default function ChatView({
               }
               if (m.role === 'error') {
                 return (
-                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false}>
+                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <div style={{
                       border: '1px solid #F0C2B5',
                       background: '#FFF7F4',
@@ -1405,6 +1407,72 @@ export default function ChatView({
                       fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.5,
                       userSelect: 'text',
                     }}>{m.content}</div>
+                  </AnswerTurn>
+                );
+              }
+              if (m.role === 'provider_required') {
+                return (
+                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false}>
+                    <div style={{
+                      border: `1px solid ${T.line}`,
+                      background: T.surface,
+                      borderRadius: 12,
+                      padding: '16px 18px',
+                      maxWidth: 520,
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                    }}>
+                      <div style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontSize: 15,
+                        letterSpacing: '0.02em',
+                        color: T.ink,
+                      }}>Connect a provider to start chatting</div>
+                      <div style={{
+                        fontFamily: FONT_BODY,
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        color: T.ink2,
+                      }}>
+                        Anton needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings.
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                        <button
+                          type="button"
+                          onClick={() => host.openExternal(MINDS_BILLING_URL)}
+                          style={{
+                            // bg=ink / text=bg so the label keeps contrast in
+                            // BOTH themes: light → dark button / light text,
+                            // dark → light button / dark text. A hardcoded
+                            // #fff went invisible in dark mode (ink is near-
+                            // white there → white-on-white).
+                            border: 'none',
+                            background: T.ink,
+                            color: 'var(--bg)',
+                            borderRadius: 8,
+                            padding: '8px 14px',
+                            fontFamily: FONT_BODY,
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                          }}
+                        >Subscribe with MindsHub</button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenSettings?.()}
+                          style={{
+                            border: `1px solid ${T.line}`,
+                            background: 'transparent',
+                            color: T.ink,
+                            borderRadius: 8,
+                            padding: '8px 14px',
+                            fontFamily: FONT_BODY,
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                          }}
+                        >Open Settings</button>
+                      </div>
+                    </div>
                   </AnswerTurn>
                 );
               }
@@ -1422,6 +1490,7 @@ export default function ChatView({
                   time={formatTime(m.createdAt)}
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
+                  agentLabel={harnessLabel(m.harness) || 'Agent'}
                 >
                   {m.steps?.length > 0 && (
                     <ThinkingBlock
@@ -1445,12 +1514,16 @@ export default function ChatView({
             })()}
 
             {streamingMsg ? (
-              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} slotIdHeader="header:streaming">
+              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} slotIdHeader="header:streaming" agentLabel={harnessLabel(streamingMsg.harness) || agentLabel}>
                 {streamingMsg.steps?.length > 0 && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
+                    currentLabel={(() => {
+                      const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
+                      return active?.label || null;
+                    })()}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
@@ -1486,7 +1559,7 @@ export default function ChatView({
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
               </AnswerTurn>
             ) : isStreaming && (
-              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false}>
+              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
@@ -1538,7 +1611,7 @@ export default function ChatView({
                   background: 'var(--accent)',
                   boxShadow: '0 0 6px var(--accent-glow)',
                 }} />
-                {queuedMessages.length} queued · waiting for Anton
+                {queuedMessages.length} queued · waiting for {agentLabel || 'Anton'}
               </div>
               <div style={{
                 display: 'flex', flexWrap: 'wrap', gap: 6,

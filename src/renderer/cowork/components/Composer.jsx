@@ -787,7 +787,7 @@ export default function Composer({
                   e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--danger) 35%, transparent)';
                 }}
               >
-                {Ico.stop(11)}
+                {Ico.stop(14)}
               </button>
             ) : (
               <button

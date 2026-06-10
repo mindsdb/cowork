@@ -104,7 +104,7 @@
             "description": "The database name from your Heroku Postgres credentials."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,

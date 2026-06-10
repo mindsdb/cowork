@@ -67,6 +67,7 @@ export default function ScheduleTaskModal({
   defaultProjectPath = '',
   defaultModelId = '',
   busy = false,
+  agentLabel,
 }) {
   const isEdit = !!task;
 
@@ -168,8 +169,8 @@ export default function ScheduleTaskModal({
         id="schedule-modal-title"
         title={isEdit ? 'Edit scheduled task' : 'Schedule a task'}
         subtitle={isEdit
-          ? 'Update the cadence or prompt. Anton picks up changes on the next run.'
-          : 'Anton runs this prompt on the cadence you set, while the desktop app is open.'}
+          ? `Update the cadence or prompt. ${agentLabel} picks up changes on the next run.`
+          : `${agentLabel} runs this prompt on the cadence you set, while the desktop app is open.`}
         onClose={onClose}
       />
       <ModalBody padding="18px 20px">
@@ -225,7 +226,7 @@ export default function ScheduleTaskModal({
             <textarea
               value={form.prompt}
               onChange={(e) => update('prompt', e.target.value)}
-              placeholder="Ask Anton to…"
+              placeholder={`Ask ${agentLabel} to…`}
               rows={6}
               style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.45 }}
             />

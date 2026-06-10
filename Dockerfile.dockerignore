@@ -61,9 +61,10 @@
 **/.coverage
 **/.coverage.*
 
-# Anton runtime state directory (vault, conversations, settings) — host
-# data that must not be baked in.
+# Anton / Cowork runtime state directories — host data that must not be
+# baked in.
 **/.anton/
+**/.cowork/
 
 # Logs.
 **/*.log

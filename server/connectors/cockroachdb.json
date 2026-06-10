@@ -82,7 +82,7 @@
             "description": "Name of the database to connect to. CockroachDB's default database is `defaultdb`."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "SQL Username",
             "type": "text",
             "required": true,

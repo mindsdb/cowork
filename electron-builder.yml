@@ -1,5 +1,5 @@
 appId: com.anton.app
-productName: Anton
+productName: Minds Cowork
 copyright: Copyright © 2024
 
 directories:
@@ -24,7 +24,7 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: Anton uses the microphone for voice dictation in the chat composer.
+    NSMicrophoneUsageDescription: Minds Cowork uses the microphone for voice dictation in the chat composer.
 
 dmg:
   format: UDZO
@@ -60,11 +60,5 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
-  - from: server/
-    to: server/
-    filter:
-      - "**/*"
-      - "!**/__pycache__/**"
-      - "!.venv/**"
 
 afterSign: scripts/notarize.js

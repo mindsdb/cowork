@@ -28,6 +28,7 @@ export default function ServerOfflineHelpModal({
   serverOnline = false,
   serverBusy = false,
   serverBusyKind = 'starting',
+  agentLabel,
 }) {
   const [diag, setDiag] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -93,32 +94,32 @@ export default function ServerOfflineHelpModal({
     : 'failed';
   const HEADER = {
     online:   {
-      title:    'Anton backend is running',
+      title:    `${agentLabel || 'Anton'} backend is running`,
       subtitle: `Live on port ${port ?? '—'}. The local Python server is responding to /health.`,
       iconColor:  'var(--success, #1F8F5F)',
       iconBgMix:  'var(--success, #1F8F5F)',
     },
     starting: {
-      title:    'Anton backend is starting…',
+      title:    `${agentLabel || 'Anton'} backend is starting…`,
       subtitle: 'Spawning the local Python server. This usually takes a few seconds — the modal will reflect the result automatically.',
       iconColor:  'var(--accent)',
       iconBgMix:  'var(--accent)',
     },
     stopping: {
-      title:    'Anton backend is stopping…',
+      title:    `${agentLabel || 'Anton'} backend is stopping…`,
       subtitle: 'Waiting for the local Python server to terminate.',
       iconColor:  'var(--ink-3)',
       iconBgMix:  'var(--ink-3)',
     },
     offline: offlineKind === 'stopped'
       ? {
-          title:    'Anton backend is stopped',
+          title:    `${agentLabel || 'Anton'} backend is stopped`,
           subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.',
           iconColor:  'var(--ink-3)',
           iconBgMix:  'var(--ink-3)',
         }
       : {
-          title:    "Anton backend isn't running",
+          title:    `${agentLabel || 'Anton'} backend isn't running`,
           subtitle: "The local Python server didn't start. Below is the most recent error and log tail captured from the process.",
           iconColor:  'var(--danger)',
           iconBgMix:  'var(--danger)',
@@ -331,6 +332,7 @@ export default function ServerOfflineHelpModal({
               overflow: 'auto',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
+              userSelect: 'text',
             }}>{log || '(no log captured yet)'}</pre>
           </div>
 

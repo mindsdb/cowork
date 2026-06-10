@@ -290,7 +290,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
         // silently failing.
         throw new Error('Delete is not available in the browser shell.');
       }
-      const result = await host.trashItem(a.path);
+      const trashTarget = a.folder || a.path;
+      const result = await host.trashItem(trashTarget);
       if (result && result.ok === false) {
         throw new Error(result.reason || 'Could not move to Trash.');
       }
@@ -334,7 +335,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       )}
       {rows.length === 0 ? (
         <p className="text-[12.5px] text-ink-4 px-1 pb-1">
-          No artifacts yet — Anton will save dashboards, reports, and
+          No artifacts yet — the agent will save dashboards, reports, and
           datasets here as it produces them.
         </p>
       ) : (

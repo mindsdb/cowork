@@ -22,7 +22,8 @@ function fmtMs(ms) {
   return `${m}m ${s}s`;
 }
 
-function detectLanguage(data) {
+function detectLanguage(data, isToolCall) {
+  if (isToolCall) return 'json';
   // Anton runs Python in the scratchpad sandbox by default. If the
   // future allows other languages, infer from data.action or similar.
   return 'python';
@@ -46,7 +47,9 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
   const tabs = useMemo(() => {
     const byTab = new Map();
     for (const s of steps) {
-      if (!s._isScratchpad) continue;
+      // Include scratchpad cells (Anton) and tool-call cells (Hermes).
+      // Skip reasoning-only steps — they have no inspectable payload.
+      if (!s._isScratchpad && !s._isToolCall) continue;
       const raw = s._scratchpadTabId;
       const tabId = typeof raw === 'string' && raw.trim() ? raw.trim() : null;
       const key = tabId || UNNAMED_TAB_KEY;
@@ -232,16 +235,16 @@ function CellView({ cell, index, total, focused = false }) {
     const t = setTimeout(() => setHighlight(false), 1600);
     return () => { cancelAnimationFrame(id); clearTimeout(t); };
   }, [focused]);
+  const isToolCall = !!cell._isToolCall;
   // The cell's input event (.end) and result event (.result) BOTH
   // carry the source code. Server clips long tool events at 64 KB —
   // for the rare cell that exceeds that, one of the two fields may
   // still hold a parseable copy. Try data.code first (canonical),
   // then result.code (sent with stdout/stderr), then result.input.code.
-  const code =
-       data.code
-    || cell.result?.code
-    || cell.result?.input?.code
-    || '';
+  // For tool-call cells (Hermes), show args as JSON.
+  const code = isToolCall
+    ? (data && Object.keys(data).length > 0 ? JSON.stringify(data, null, 2) : '')
+    : (data.code || cell.result?.code || cell.result?.input?.code || '');
   const stdout = cell.output || cell.result?.stdout || '';
   const stderr = cell.stderr || cell.result?.stderr || '';
   const reasoningMs =
@@ -260,7 +263,7 @@ function CellView({ cell, index, total, focused = false }) {
     : (cell.executionCompletedAt && cell.executionStartedAt
         ? cell.executionCompletedAt - cell.executionStartedAt
         : null);
-  const language = detectLanguage(data);
+  const language = detectLanguage(data, isToolCall);
   const hasErr = !!stderr;
   // Auto-reveal code for the cell that has an error (likely what the
   // user wants to inspect right away).
@@ -311,26 +314,33 @@ function CellView({ cell, index, total, focused = false }) {
               {data.one_line_description || cell.label || 'Untitled'}
             </span>
             {code && (
-              <CodeToggle checked={showCode} onChange={setShowCode} />
+              <CodeToggle checked={showCode} onChange={setShowCode} label={isToolCall ? 'Args' : 'Code'} />
             )}
           </div>
 
           {/* Always render reason + exec, even when timing data is
               missing — a "—" placeholder reads as "no data" without
               the meta strip going missing entirely. */}
-          <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
-            <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
-            <span>exec: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
-          </div>
+          {!isToolCall && (
+            <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
+              <span>reason: <span className="text-ink-3">{fmtMs(reasoningMs) ?? '—'}</span></span>
+              <span>exec: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
+            </div>
+          )}
+          {isToolCall && executionMs != null && (
+            <div className="flex items-center gap-3 font-mono text-[10.5px] text-ink-4">
+              <span>duration: <span className="text-ink-3">{fmtMs(executionMs) ?? '—'}</span></span>
+            </div>
+          )}
 
-          {/* Code first when expanded — the user toggled Code ON to
+          {/* Code/args first when expanded — the user toggled it ON to
               see the source, so it should lead. Output and stderr
               follow. When the toggle is off, we render output bare
               without a label as the lone artefact of the cell run. */}
           {showCode && code && (
             <Section
-              label="Code"
-              right={Array.isArray(data.packages) && data.packages.length > 0 ? (
+              label={isToolCall ? 'Arguments' : 'Code'}
+              right={!isToolCall && Array.isArray(data.packages) && data.packages.length > 0 ? (
                 <span
                   className="font-mono text-[10.5px] text-ink-4 truncate max-w-[60%]"
                   title={data.packages.join(', ')}
@@ -347,19 +357,26 @@ function CellView({ cell, index, total, focused = false }) {
 
           {/* Output — bare pre when code is hidden (clean focus on
               the result), or labelled Section when sitting next to
-              code so the two read evenly. */}
+              code so the two read evenly. For tool-call cells, try
+              to pretty-print JSON output with syntax highlighting. */}
           {stdout && (
-            showCode ? (
-              <Section label="Output">
-                <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">
-{stdout}
-                </pre>
-              </Section>
-            ) : (
-              <pre className="mt-4 overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">
-{stdout}
-              </pre>
-            )
+            (() => {
+              let formattedOutput = stdout;
+              let outputLang = null;
+              if (isToolCall) {
+                try {
+                  const parsed = JSON.parse(stdout);
+                  formattedOutput = JSON.stringify(parsed, null, 2);
+                  outputLang = 'json';
+                } catch { /* not JSON — render as plain text */ }
+              }
+              const outputBlock = outputLang
+                ? <div className="overflow-hidden rounded-md border border-line"><CodeBlock code={formattedOutput} language={outputLang} /></div>
+                : <pre className="overflow-x-auto rounded-md border border-line bg-surface-2 p-3 font-mono text-[12px] leading-snug text-ink">{formattedOutput}</pre>;
+              return showCode
+                ? <Section label="Output">{outputBlock}</Section>
+                : <div className="mt-4">{outputBlock}</div>;
+            })()
           )}
 
           {/* Stderr — only visible alongside the rest of the
@@ -383,13 +400,13 @@ function CellView({ cell, index, total, focused = false }) {
 // a labelled toggle: the word "Code" with a 32×18 track + 14px
 // thumb to its right. On = accent fill, off = surface-2. Both
 // states inherit theme via CSS variables so dark/light Just Work.
-function CodeToggle({ checked, onChange }) {
+function CodeToggle({ checked, onChange, label = 'Code' }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={!!checked}
-      aria-label={checked ? 'Hide code' : 'Show code'}
+      aria-label={checked ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
       onClick={() => onChange?.(!checked)}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -408,7 +425,7 @@ function CodeToggle({ checked, onChange }) {
       onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; }}
       onMouseOut={(e)  => { e.currentTarget.style.color = 'var(--ink-3)'; }}
     >
-      <span>Code</span>
+      <span>{label}</span>
       <span aria-hidden style={{
         position: 'relative',
         display: 'inline-block',

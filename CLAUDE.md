@@ -8,8 +8,8 @@ Electron + Vite + React + Tailwind desktop app with a FastAPI Python sidecar.
 PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run pack
 ```
 
-- Output: `release/mac-arm64/Anton.app`
-- Confirm with: `stat -f "%Sm" -t "%H:%M:%S" release/mac-arm64/Anton.app`
+- Output: `release/mac-arm64/Minds Cowork.app`
+- Confirm with: `stat -f "%Sm" -t "%H:%M:%S" "release/mac-arm64/Minds Cowork.app"`
 - Code-sign warnings ("0 valid identities found") are expected in dev — ignore.
 - Build is the only way to verify Python server changes; the renderer is bundled into the same artifact.
 

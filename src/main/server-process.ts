@@ -1,15 +1,18 @@
-// Spawns the bundled Python FastAPI server (server/main.py) and waits for
-// /health to come up. Uses the python interpreter that the antontron
-// installer puts at ~/.local/share/uv/tools/anton/bin/python — same env
-// `uv tool install --with fastapi --with uvicorn` populated.
+// Spawns the cowork-server FastAPI backend and waits for /health to come up.
+//
+// In dev: `uv run cowork-server` from the sibling cowork-server directory
+// so local source edits are picked up immediately.
+//
+// In production (packaged Electron or web): runs the `cowork-server`
+// binary installed via `uv tool install cowork-server`. No bundled source
+// directory needed — the installer handles package installation.
 
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execFile, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
-import { checkPythonImports, getAntonToolPython, getPythonUtf8Env } from './server-deps';
 
 const DEFAULT_PORT = 26866; // ANTON on T9 keypad
 const SERVER_HOST = '127.0.0.1';
@@ -50,6 +53,39 @@ function appendStderr(chunk: string) {
   recentStderr = (recentStderr + chunk).slice(-STDERR_BUFFER_BYTES);
 }
 
+// Kill a child process and its entire process group (POSIX). When we
+// spawn with detached:true the child leads its own group, so
+// process.kill(-pid) reaches grandchildren (e.g. python spawned by uv).
+// Falls back to child.kill() on Windows or if the group kill fails.
+function killTree(proc: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform !== 'win32' && proc.pid) {
+    try { process.kill(-proc.pid, signal); return; } catch {}
+  }
+  try { proc.kill(signal); } catch {}
+}
+
+// Find and kill the process listening on a port. Used to reap orphaned
+// servers that we adopted but don't have a ChildProcess handle for.
+// Best-effort — failures are silently ignored.
+async function killProcessOnPort(port: number): Promise<void> {
+  if (process.platform === 'win32') {
+    console.warn(`[server] cannot reap orphaned process on port ${port}: lsof not available on Windows`);
+    return;
+  }
+  return new Promise<void>((resolve) => {
+    execFile('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { timeout: 3000 }, (err, stdout) => {
+      if (err || !stdout.trim()) { resolve(); return; }
+      for (const pidStr of stdout.trim().split('\n')) {
+        const pid = Number(pidStr);
+        if (pid > 0) {
+          try { process.kill(pid, 'SIGTERM'); } catch {}
+        }
+      }
+      resolve();
+    });
+  });
+}
+
 export function getServerPort(): number {
   return serverPort;
 }
@@ -58,24 +94,20 @@ export function getServerOrigin(): string {
   return `http://${SERVER_HOST}:${serverPort}`;
 }
 
-function getAntonPython(): string | null {
-  const candidate = getAntonToolPython();
-  return fs.existsSync(candidate) ? candidate : null;
+function getUvPath(): string | null {
+  const localBin = path.join(os.homedir(), '.local', 'bin', 'uv');
+  if (fs.existsSync(localBin)) return localBin;
+  // Check common install paths
+  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', 'uv');
+  if (fs.existsSync(cargoBin)) return cargoBin;
+  return null;
 }
 
 // Build a PATH with ~/.local/bin and ~/.cargo/bin prepended. Critical
-// for macOS (and to a lesser extent Linux) GUI launches: when Anton.app
+// for macOS (and to a lesser extent Linux) GUI launches: when Minds Cowork.app
 // starts from Finder/Dock, process.env.PATH is the minimal launchd PATH
 // (`/usr/bin:/bin:/usr/sbin:/sbin`) — shell init files aren't read,
 // so `~/.local/bin` (where the installer puts `uv`) is missing.
-//
-// The Python server we spawn inherits this PATH; anton's scratchpad
-// runtime uses `shutil.which("uv")` to pick the fast venv path. Without
-// uv on PATH it falls back to stdlib `venv.create(... with_pip=False)`,
-// which is the failure mode users see as "Python venv creation is failing"
-// — the venv has no pip, so subsequent `pip install` calls inside the
-// scratchpad fail. With uv on PATH the runtime gets a proper, seeded
-// venv and everything works.
 function getEnvPath(): string {
   const localBin = path.join(os.homedir(), '.local', 'bin');
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
@@ -84,13 +116,29 @@ function getEnvPath(): string {
   return parts.join(path.delimiter);
 }
 
-function getServerDir(): string {
-  // Packaged: server/ shipped via electron-builder extraResources at
-  // process.resourcesPath/server. Dev: server/ at repo root.
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'server');
+// In dev mode, return the sibling cowork-server source directory so we
+// can run `uv run cowork-server` against local source. Returns null when
+// packaged (the installed binary is used instead).
+function getDevServerDir(): string | null {
+  if (app.isPackaged) return null;
+  if (process.env.COWORK_SERVER_DIR) {
+    return path.resolve(process.env.COWORK_SERVER_DIR);
   }
-  return path.join(__dirname, '..', '..', '..', 'server');
+  return path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
+}
+
+// Locate the installed `cowork-server` binary (installed via
+// `uv tool install cowork-server`). Lives in ~/.local/bin on
+// POSIX, %LOCALAPPDATA%/bin on Windows.
+function getCoworkServerBin(): string | null {
+  const localBin = path.join(os.homedir(), '.local', 'bin');
+  const localCandidate = path.join(localBin, process.platform === 'win32' ? 'cowork-server.exe' : 'cowork-server');
+  if (fs.existsSync(localCandidate)) return localCandidate;
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+    const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'cowork-server.exe');
+    if (fs.existsSync(winCandidate)) return winCandidate;
+  }
+  return null;
 }
 
 async function probeHealth(timeoutMs: number): Promise<boolean> {
@@ -98,7 +146,7 @@ async function probeHealth(timeoutMs: number): Promise<boolean> {
   while (Date.now() - startedAt < timeoutMs) {
     const ok = await new Promise<boolean>((resolve) => {
       const req = http.get(
-        { hostname: SERVER_HOST, port: serverPort, path: '/health', timeout: 1000 },
+        { hostname: SERVER_HOST, port: serverPort, path: '/api/v1/health/', timeout: 1000 },
         (res) => {
           res.resume();
           resolve(res.statusCode === 200);
@@ -110,6 +158,7 @@ async function probeHealth(timeoutMs: number): Promise<boolean> {
     if (ok) return true;
     await new Promise((r) => setTimeout(r, 250));
   }
+  console.warn(`[server] health check failed after ${timeoutMs}ms on port ${serverPort}`);
   return false;
 }
 
@@ -125,7 +174,8 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   // instead of spawning a second python that would clash on the port.
   if (pendingStart) return pendingStart;
 
-  serverPort = opts.port ?? (Number(process.env.ANTON_SERVER_PORT) || DEFAULT_PORT);
+  // TODO: Remove ANTON_SERVER_PORT fallback once migration period is over
+  serverPort = opts.port ?? (Number(process.env.COWORK_SERVER_PORT) || Number(process.env.ANTON_SERVER_PORT) || DEFAULT_PORT);
 
   // Pre-flight: somebody might already be on our port. The most
   // common cause is an orphan python from a prior antontron session
@@ -137,16 +187,16 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   const alreadyHealthy = await probeHealth(500);
   if (alreadyHealthy) {
     serverStarted = true;
+    _adoptedExternal = true;
     lastStartError = null;
     console.log(`[server] adopted existing instance on port ${serverPort}`);
     return { ok: true, port: serverPort };
   }
 
-  // 45s ceiling so the python's in-process `_maybe_self_update_and_reexec`
-  // has room to download + install + execv when a new release lands.
-  // Steady-state boots respond in <2s; only the update-on-launch path
-  // pushes us past 15s. Lower would risk timing out a valid update.
-  const readyTimeoutMs = opts.readyTimeoutMs ?? 45000;
+  // 15s is plenty for a normal boot (typically <2s). Updates are now
+  // handled by the Electron-side server-updater after the server is
+  // already serving, so no need for a long timeout here.
+  const readyTimeoutMs = opts.readyTimeoutMs ?? 15000;
 
   lastStartAt = Date.now();
   // A new start attempt invalidates the prior stop attribution —
@@ -155,66 +205,56 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   // transition to "not running" reflects this start cycle's reason.
   lastStopIntentional = null;
   _stopRequested = false;
-  const pythonCmd = getAntonPython();
-  if (!pythonCmd) {
-    lastStartError = 'Anton Python interpreter not found. Run the installer first.';
-    return {
-      ok: false,
-      reason: lastStartError,
-    };
-  }
+  _adoptedExternal = false;
 
-  const baseEnv = {
-    ...process.env,
-    PATH: getEnvPath(),
-    ...getPythonUtf8Env(),
-  };
-  const depsReady = await checkPythonImports(pythonCmd, baseEnv);
-  if (!depsReady) {
-    lastStartError = 'Anton server dependencies are missing from the uv tool environment. Run the installer to repair the Anton tool venv.';
-    return {
-      ok: false,
-      reason: lastStartError,
-    };
-  }
+  // Determine how to spawn the server:
+  //   Dev mode:  `uv run cowork-server` from the sibling source dir
+  //   Packaged:  run the installed `cowork-server` binary directly
+  const devDir = getDevServerDir();
+  let spawnCmd: string;
+  let spawnArgs: string[];
+  let spawnCwd: string | undefined;
 
-  const serverDir = getServerDir();
-  if (!fs.existsSync(path.join(serverDir, 'main.py'))) {
-    lastStartError = `Server source not found at ${serverDir}/main.py`;
-    return {
-      ok: false,
-      reason: lastStartError,
-    };
+  if (devDir && fs.existsSync(path.join(devDir, 'pyproject.toml'))) {
+    // Dev: use uv to run from source so local edits are picked up
+    const uvCmd = getUvPath();
+    if (!uvCmd) {
+      lastStartError = 'uv not found. Install uv first: https://docs.astral.sh/uv/getting-started/installation/';
+      return { ok: false, reason: lastStartError };
+    }
+    spawnCmd = uvCmd;
+    spawnArgs = ['run', 'cowork-server'];
+    spawnCwd = devDir;
+  } else {
+    // Packaged: use the installed cowork-server binary
+    const bin = getCoworkServerBin();
+    if (!bin) {
+      lastStartError = 'cowork-server not installed. Run the installer to set up the backend.';
+      return { ok: false, reason: lastStartError };
+    }
+    spawnCmd = bin;
+    spawnArgs = [];
+    spawnCwd = undefined;
   }
 
   pendingStart = (async (): Promise<StartServerResult> => {
     const env = {
-      ...baseEnv,
+      ...process.env,
+      PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
-      ANTON_SERVER_PORT: String(serverPort),
-      ANTON_SERVER_HOST: SERVER_HOST,
-      ANTON_PROJECTS_DIR: path.join(app.getPath('userData'), 'projects'),
+      COWORK_SERVER_PORT: String(serverPort),
+      COWORK_SERVER_HOST: SERVER_HOST,
     };
 
-    // Spawn the python with a STABLE cwd (`~`) and pass `main.py` as
-    // an absolute path. Earlier we used `cwd: serverDir`, which sat
-    // inside the .app bundle — fine until the bundle was replaced
-    // under a running server (`npm run pack` in dev wipes
-    // `release/mac-arm64/`; in-place app updates do the same in
-    // production). Once the cwd directory is gone, anton-core's
-    // `anton/config/settings.py:_build_env_files` calls `Path.cwd()`
-    // at import time, which calls `os.getcwd()`, which raises
-    // FileNotFoundError. That surfaces in the chat as the cryptic
-    // "[Errno 2] No such file or directory" with no recoverable
-    // context. Pinning cwd to home avoids the problem entirely —
-    // the server uses absolute paths everywhere internally, cwd is
-    // only load-bearing for anton-core's optional `cwd/.env` lookup
-    // which we deliberately skip here (the server's `.env` chain
-    // resolves through `~/.anton/.env`).
-    const child = spawn(pythonCmd, [path.join(serverDir, 'main.py')], {
-      cwd: os.homedir(),
+    // detached: true on POSIX puts the child in its own process group so
+    // we can kill the entire tree (uv + grandchild python) with a single
+    // process.kill(-pid). Without this, SIGTERM only reaches `uv` and
+    // the grandchild python survives, holding the port.
+    const child = spawn(spawnCmd, spawnArgs, {
+      cwd: spawnCwd,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
     });
 
     child.stdout.on('data', (d) => {
@@ -224,12 +264,12 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       // through logging.error often land on stdout too. Buffer both
       // so the help modal has the complete picture.
       appendStderr(text);
-      process.stdout.write(`[anton-server] ${text}`);
+      process.stdout.write(`[cowork-server] ${text}`);
     });
     child.stderr.on('data', (d) => {
       const text = d.toString();
       appendStderr(text);
-      process.stderr.write(`[anton-server] ${text}`);
+      process.stderr.write(`[cowork-server] ${text}`);
     });
     child.on('exit', (code) => {
       serverStarted = false;
@@ -243,7 +283,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       lastStopIntentional = _stopRequested;
       _stopRequested = false;
       if (code !== 0 && code !== null) {
-        console.error(`[anton-server] exited with code ${code}`);
+        console.error(`[cowork-server] exited with code ${code}`);
       }
     });
 
@@ -258,13 +298,13 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       // bind-collide and fail the same way — making the "stop +
       // start" cycle look broken from the user's side. SIGTERM with
       // a SIGKILL fallback so a hung uvicorn boot can't outlive us.
-      try { child.kill('SIGTERM'); } catch {}
+      killTree(child, 'SIGTERM');
       const exited = new Promise<void>((resolve) => {
         child.once('exit', () => resolve());
       });
       await Promise.race([exited, new Promise<void>((r) => setTimeout(r, 2_000))]);
       if (child.exitCode === null && !child.killed) {
-        try { child.kill('SIGKILL'); } catch {}
+        killTree(child, 'SIGKILL');
         await Promise.race([exited, new Promise<void>((r) => setTimeout(r, 1_000))]);
       }
       if (serverProcess === child) serverProcess = null;
@@ -303,12 +343,15 @@ export async function stopServer(): Promise<void> {
   const proc = serverProcess;
   if (!proc) {
     serverStarted = false;
-    // Even with no live child, mark this as an intentional stop —
-    // a stopServer() call signals user/app intent, the absence of a
-    // child is just "already stopped." Keeps the modal from showing
-    // a stale "crashed" panel after the user re-clicked Stop on an
-    // already-stopped backend.
     lastStopIntentional = true;
+    // If we adopted an external server (no child handle), try to kill
+    // whatever is listening on the port so the next launch gets a clean
+    // slate. Without this, the orphan survives app quit and blocks the
+    // port indefinitely.
+    if (_adoptedExternal) {
+      _adoptedExternal = false;
+      await killProcessOnPort(serverPort);
+    }
     return;
   }
 
@@ -329,7 +372,7 @@ export async function stopServer(): Promise<void> {
     // race-with-timeout below covers us.
   });
 
-  try { proc.kill('SIGTERM'); } catch {}
+  killTree(proc, 'SIGTERM');
 
   await Promise.race([
     exited,
@@ -339,7 +382,7 @@ export async function stopServer(): Promise<void> {
   // Still alive? Force-kill. `proc.exitCode === null` means the child
   // hasn't reported an exit code yet → still running.
   if (proc.exitCode === null && !proc.killed) {
-    try { proc.kill('SIGKILL'); } catch {}
+    killTree(proc, 'SIGKILL');
     await Promise.race([
       exited,
       new Promise<void>((resolve) => setTimeout(resolve, 1_500)),
@@ -355,9 +398,20 @@ export async function stopServer(): Promise<void> {
   }
 }
 
+// Track whether we adopted an external server (no child process to manage)
+// vs spawned our own. When adopted, serverProcess is expected to be null.
+let _adoptedExternal = false;
+
 // True once /health has confirmed the python is responsive.
+// When we spawned the child ourselves, also checks that the process
+// handle is still alive — prevents returning true after an unexpected
+// crash that nulled serverProcess via the exit handler.
+// When we adopted an externally-started server (no child to track),
+// trusts the serverStarted flag since we don't own the process.
 export function isServerRunning(): boolean {
-  return serverStarted && serverProcess !== null;
+  if (!serverStarted) return false;
+  if (_adoptedExternal) return true;
+  return serverProcess !== null;
 }
 
 // True between spawn() and the first successful /health probe — i.e.

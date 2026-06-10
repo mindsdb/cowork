@@ -36,26 +36,110 @@ def _missing_server_deps() -> list[str]:
     return missing
 
 
+def _find_uv() -> str | None:
+    """Locate the `uv` binary. `shutil.which` first (PATH), then the
+    standard install locations — when antontron launches the python
+    server, PATH is whatever Electron inherited from launchctl, which
+    usually OMITS `~/.local/bin` where uv installs itself. So PATH
+    lookup commonly misses and we have to fall back to the known
+    locations."""
+    import shutil
+    found = shutil.which("uv")
+    if found:
+        return found
+    home = Path.home()
+    for cand in (
+        home / ".local" / "bin" / "uv",         # uv's default install location
+        Path("/opt/homebrew/bin/uv"),           # homebrew on Apple Silicon
+        Path("/usr/local/bin/uv"),              # homebrew on Intel / manual
+        home / ".cargo" / "bin" / "uv",         # cargo install
+    ):
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return None
+
+
 def _reinstall_server_deps() -> bool:
-    """pip-install the bundled requirements.txt into the current
-    interpreter. Returns True on success."""
+    """Install the bundled `server/requirements.txt` into the
+    interpreter that's actually running this process. Returns True on
+    success.
+
+    The anton interpreter is typically a `uv tool`-managed venv at
+    `~/.local/share/uv/tools/anton/bin/python` — which does NOT ship
+    with `pip` (uv manages packages directly). So `python -m pip
+    install` raises `No module named pip` and the heal flow fails on
+    exactly the case it was meant to handle.
+
+    Order of attempts:
+      1. `uv pip install --python <sys.executable>` — works for
+         uv-managed envs (no pip needed) AND any other interpreter,
+         provided we can find the `uv` binary somewhere.
+      2. `python -m pip install` — the original path, for envs that
+         actually do have pip (system pythons, regular venvs, conda).
+      3. `python -m ensurepip` then `python -m pip install` — last-
+         ditch for an env that's missing pip but allows bootstrap
+         (uv tool envs typically don't, so this rarely helps, but it
+         costs us nothing to try when 1 + 2 have already failed).
+    """
     req = Path(__file__).parent / "requirements.txt"
     if not req.is_file():
         print(f"[server] cannot heal venv — requirements.txt not at {req}", flush=True)
         return False
-    print(f"[server] healing venv via {sys.executable} -m pip install -r {req}", flush=True)
-    try:
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-q", "-r", str(req)],
-            check=True,
-        )
-        return True
-    except subprocess.CalledProcessError as exc:
-        print(f"[server] dep reinstall failed: {exc}", flush=True)
-        return False
-    except Exception as exc:
-        print(f"[server] dep reinstall crashed: {exc}", flush=True)
-        return False
+
+    uv = _find_uv()
+    attempts: list[tuple[str, list[str]]] = []
+    if uv is not None:
+        attempts.append(("uv pip install", [
+            uv, "pip", "install", "--python", sys.executable, "-q", "-r", str(req),
+        ]))
+    attempts.append(("python -m pip install", [
+        sys.executable, "-m", "pip", "install", "-q", "-r", str(req),
+    ]))
+    attempts.append(("ensurepip + pip install", None))  # special-cased below
+
+    for label, cmd in attempts:
+        if cmd is None:
+            # ensurepip fallback: bootstrap pip, then run pip install.
+            print(f"[server] healing venv via {label}", flush=True)
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "ensurepip", "--upgrade"],
+                    check=True,
+                )
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-q", "-r", str(req)],
+                    check=True,
+                )
+                return True
+            except FileNotFoundError as exc:
+                print(f"[server] {label} unavailable: {exc}", flush=True)
+                continue
+            except subprocess.CalledProcessError as exc:
+                print(f"[server] {label} failed: {exc}", flush=True)
+                continue
+            except Exception as exc:
+                print(f"[server] {label} crashed: {exc}", flush=True)
+                continue
+        print(f"[server] healing venv via: {' '.join(cmd)}", flush=True)
+        try:
+            subprocess.run(cmd, check=True)
+            return True
+        except FileNotFoundError as exc:
+            # `uv` not on PATH and not in the fallback dirs (or pip
+            # not installed) — try the next strategy.
+            print(f"[server] {label} unavailable: {exc}", flush=True)
+            continue
+        except subprocess.CalledProcessError as exc:
+            print(f"[server] {label} failed: {exc}", flush=True)
+            continue
+        except Exception as exc:
+            print(f"[server] {label} crashed: {exc}", flush=True)
+            continue
+    print("[server] all heal strategies exhausted — manual recovery: "
+          f"`uv pip install --python {sys.executable} -r {req}` "
+          f"(or `uv tool install anton --reinstall --with-requirements {req}`)",
+          flush=True)
+    return False
 
 
 def _heal_and_reexec_if_deps_missing() -> None:
@@ -275,6 +359,12 @@ async def lifespan(app: FastAPI):
     # Phase 5: periodic GC of old turn buffers.
     gc_task = asyncio.create_task(_turn_buffer_gc_loop())
     yield
+    # Stop all running artifact local dev servers gracefully
+    try:
+        from routes.app_server_manager import stop_all as _stop_all_app_servers
+        _stop_all_app_servers()
+    except Exception:
+        pass
     for t in (refresh_task, gc_task):
         t.cancel()
         try:

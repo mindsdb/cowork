@@ -22,8 +22,9 @@ import UtilitiesView from './views/UtilitiesView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
-import { setForm as setDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
 import { host } from '../platform/host';
+import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -54,6 +55,27 @@ const CONNECT_FOLLOWUPS = [
   "If you'd like more context on a field, just ask.",
   "Any questions about the setup? I'm here to help.",
 ];
+
+// Print a version/build banner to the browser console on startup so
+// developers and QA can quickly confirm which releases are running.
+// UI line prints immediately (build-time). Server versions are fetched
+// eagerly from /health so they appear even if AppCore hasn't mounted.
+{
+  const ui = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '?';
+  const hash = typeof __GIT_HASH__ !== 'undefined' && __GIT_HASH__ ? __GIT_HASH__ : '';
+  const built = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
+  console.log(
+    '%c Anton %c Build Info ',
+    'background:#7CC4B6;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px 0 0 3px',
+    'background:#334;color:#eee;padding:2px 6px;border-radius:0 3px 3px 0',
+  );
+  console.log(`  UI (cowork):  ${ui}${hash ? ` (${hash})` : ''}${built ? `  built ${built}` : ''}`);
+  fetchHealth().then((h) => {
+    if (!h || h.status === 'offline') return;
+    console.log(`  Server (cowork-server):  ${h.server_version || '?'}`);
+    console.log(`  Agent (anton-agent):     ${h.anton_version || '?'}`);
+  }).catch(() => {});
+}
 
 // Build a short context block describing the user's current
 // connect-form state. Sent appended to chat messages so the agent
@@ -86,6 +108,24 @@ function describeConnectFormState(state) {
 
 function isPendingFileAttachment(a) {
   return !!(a && a.pendingFile instanceof File);
+}
+
+function isAntonConfigError(message, event) {
+  const text = String(message || '');
+  return (
+    event?.code === 'config_required' ||
+    /Configure ANTON_/i.test(text) ||
+    /Could not resolve authentication method/i.test(text) ||
+    /Expected one of api_key, auth_token, or credentials/i.test(text)
+  );
+}
+
+function normalizeAntonError(message, event) {
+  if (isAntonConfigError(message, event)) {
+    return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
+  }
+  const text = String(message || '');
+  return text || 'Anton could not complete this task.';
 }
 
 async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
@@ -194,7 +234,16 @@ function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
   // Step-cleanup (RUNNING_STEP_STATUSES → completed) is also skipped
   // here: those steps may still be progressing under the live tail
   // and we don't want to prematurely flag them done.
-  if (isServerInFlight) return messages;
+  if (isServerInFlight) {
+    // If the conversation is in-flight but has no visible content yet
+    // (e.g. a scheduled task that just started), show a thinking
+    // placeholder so the user sees activity instead of a blank chat.
+    const hasContent = messages.length > 0 && messages.some(
+      (m) => m && (m.role === 'assistant' || m.role === '_streaming'),
+    );
+    if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
+    return messages;
+  }
   const hadStreaming = messages.some((m) => m && m.role === '_streaming');
   // Pass 1 — strip _streaming + activity placeholders, mark
   // running steps as completed. Each rewritten message gets a flag
@@ -327,7 +376,7 @@ function humanizeToken(value) {
     .trim();
 }
 
-function describeActivity(event) {
+function describeActivity(event, agentName = 'Anton') {
   if (event?.type === 'tool_result') {
     const action = humanizeToken(event.action || 'used');
     const name = humanizeToken(event.name || 'tool');
@@ -343,7 +392,7 @@ function describeActivity(event) {
   if (normalizedPhase === 'reasoning done') return 'Finished reasoning';
   if (normalizedPhase === 'context') return 'Updated context';
 
-  return phase ? `Anton is ${phase}` : 'Anton is working';
+  return phase ? `${agentName} is ${phase}` : `${agentName} is working`;
 }
 
 // ─── Per-turn step persistence ───────────────────────────────────────────
@@ -469,6 +518,7 @@ function persistTurnState(cid, turnIndex, steps, startedAt) {
     result: s.result || null,
     stderr: s.stderr || null,
     _isScratchpad: !!s._isScratchpad,
+    _isToolCall: !!s._isToolCall,
     _scratchpadTabId: s._scratchpadTabId || null,
   }));
   map[turnIndex] = { steps: sanitized, startedAt: startedAt ?? null };
@@ -600,6 +650,8 @@ function AppCore() {
     showCounters: true,
     accentVariant: 'aqua',
   });
+
+  const agentLabel = getAgentLabel(settings);
 
   const [tasks, setTasks] = useState([]);
   // IDs of tasks deleted this session. Used to filter them out of
@@ -1085,8 +1137,8 @@ function AppCore() {
         const m = MOCK_DATA.models.find((x) => x.id === modelId);
         setSelectedModel(m || {
           id: modelId,
-          name: modelId || 'Anton model',
-          desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured Anton planning model',
+          name: modelId || 'Planning model',
+          desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
         });
       }
     });
@@ -1333,7 +1385,7 @@ function AppCore() {
       setSettings((prev) => ({ ...prev, ...latest }));
       const modelId = latest.defaultModel || latest.planningModel;
       const m = MOCK_DATA.models.find((x) => x.id === modelId);
-      setSelectedModel(m || { id: modelId, name: modelId || 'Anton model', desc: 'Configured Anton planning model' });
+      setSelectedModel(m || { id: modelId, name: modelId || 'Planning model', desc: 'Configured planning model' });
     }
     return result;
   }, [settings]);
@@ -1361,7 +1413,7 @@ function AppCore() {
     return selectedProject;
   })();
   const currentTaskModel = currentTask?.model
-    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured Anton model' })
+    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
     : selectedModel;
 
   useEffect(() => {
@@ -1427,6 +1479,7 @@ function AppCore() {
           steps: streamState.steps,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
+          harness: streamState.harness,
         }] };
       }));
     };
@@ -1452,26 +1505,34 @@ function AppCore() {
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalHarness = streamState.harness;
+        const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
+          if (configErrorInBody) {
+            return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
+          }
           return finalContent
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                harness: finalHarness,
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
-        if (finalContent) {
+        if (finalContent && !configErrorInBody) {
           persistTurnState(taskId, assistantTurnIndex, finalSteps, finalStartedAt);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
+        const configError = isAntonConfigError(message, event);
+        const displayError = normalizeAntonError(message, event);
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -1479,7 +1540,10 @@ function AppCore() {
         setTasks((prev) => prev.map((t) => {
           if (t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          return { ...t, status: 'error', messages: [...msgs, { role: 'error', content: message || 'Anton could not complete this task.', code: event?.code }] };
+          const trailer = configError
+            ? { role: 'provider_required' }
+            : { role: 'error', content: displayError, code: event?.code };
+          return { ...t, status: configError ? 'idle' : 'error', messages: [...msgs, trailer] };
         }));
       },
     });
@@ -1520,7 +1584,11 @@ function AppCore() {
       // view doesn't render empty.
       if (!task.messages || task.messages.length === 0) {
         fetchSession(id).then((fresh) => {
-          if (!fresh || !Array.isArray(fresh.messages) || fresh.messages.length === 0) return;
+          if (!fresh || !Array.isArray(fresh.messages)) return;
+          // Server-in-flight conversations may have no messages yet
+          // (e.g. a scheduled task that just started). Don't bail —
+          // reconcile will inject a thinking placeholder.
+          if (fresh.messages.length === 0 && !isServerInFlight) return;
           // Two layers of restoration, in order of trust:
           //   1. Server sidecar (`{cid}_turns.json`) — events for each
           //      assistant turn, replayed through the same reducer the
@@ -2015,8 +2083,63 @@ function AppCore() {
     }
   };
 
+  // Authoritative provider-readiness check, run right before a send.
+  // We can't trust the in-memory `health` here: it's fetched at boot
+  // and on focus, so right after a fresh sign-in (especially a free
+  // account that lands without a key) it can still read stale —
+  // config_ready=true from the previous user, or undefined before the
+  // first fetch lands. Either way the old gate (`config_ready !== false`)
+  // would pass and we'd start a turn against a missing/foreign key,
+  // which is exactly the "it does operations then shows the upgrade
+  // card" bug. Re-fetch /health synchronously so the provider-required
+  // card shows immediately, before any operation runs. Falls back to
+  // the cached value only if the live fetch fails.
+  const ensureProviderReady = useCallback(async () => {
+    try {
+      const fresh = await fetchHealth();
+      if (fresh && typeof fresh === 'object') {
+        setHealth(fresh);
+        setServerOnline(fresh.status === 'ok');
+        return fresh.config_ready !== false;
+      }
+    } catch {
+      // Network blip — fall through to the cached value.
+    }
+    return health?.config_ready !== false;
+  }, [health]);
+
   // Send from the home screen — creates a new session
   const handleSendFromHome = async (text) => {
+    // Preflight: no provider configured → render an action card task
+    // instead of routing through anton's LLM path.
+    if (!(await ensureProviderReady())) {
+      const taskId = `tmp-${Date.now()}`;
+      const effectiveProjectName = selectedProject?.name || 'general';
+      const effectiveProjectPath = selectedProject?.path
+        || projects.find((p) => p.name === 'general')?.path
+        || null;
+      setTasks((prev) => [{
+        id: taskId,
+        title: text.length > 60 ? text.slice(0, 57) + '…' : text,
+        subtitle: 'just now',
+        status: 'idle',
+        messages: [
+          { role: 'user', content: text, attachments: [] },
+          { role: 'provider_required' },
+        ],
+        projectPath: effectiveProjectPath,
+        projectName: effectiveProjectName,
+        model: selectedModel?.id ?? null,
+        attachments: [],
+        disabledConnections: [],
+        updatedAt: new Date().toISOString(),
+      }, ...prev]);
+      setActiveTaskId(taskId);
+      setRoute('task');
+      setComposerAttachments([]);
+      return;
+    }
+
     // Orphan fallback: if the user hasn't picked a project, route the
     // task into "general" (server provisions it on startup). If for
     // any reason it isn't in the projects list yet (e.g. an upgrade
@@ -2098,6 +2221,7 @@ function AppCore() {
           steps: streamState.steps,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
+          harness: streamState.harness,
         }] };
       }));
     };
@@ -2196,6 +2320,12 @@ function AppCore() {
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalHarness = streamState.harness;
+        // Anton sometimes wraps auth failures into a 200 stream that
+        // emits the error as plain assistant text. Detect that case
+        // and replace the assistant turn with the provider_required
+        // card instead of rendering the raw SDK message.
+        const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== finalId && t.id !== resolvedId && t.id !== taskId) return t;
@@ -2205,12 +2335,16 @@ function AppCore() {
           // expects on reload (the merge walks assistant messages in
           // the same order and looks up by index).
           assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
+          if (configErrorInBody) {
+            return { ...t, id: finalId, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
+          }
           return finalContent
             ? { ...t, id: finalId, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                harness: finalHarness,
               }] }
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
@@ -2220,19 +2354,24 @@ function AppCore() {
         // inline artifact cards, and scratchpad tabs. Anton's own
         // history file doesn't carry step metadata, so this is a
         // sidecar in localStorage.
-        if (finalContent) {
+        if (finalContent && !configErrorInBody) {
           persistTurnState(finalId, assistantTurnIndex, finalSteps, finalStartedAt);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
+        const configError = isAntonConfigError(message, event);
+        const displayError = normalizeAntonError(message, event);
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== resolvedId && t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          return { ...t, status: 'error', messages: [...msgs, { role: 'error', content: message || 'Anton could not complete this task.', code: event?.code }] };
+          const trailer = configError
+            ? { role: 'provider_required' }
+            : { role: 'error', content: displayError, code: event?.code };
+          return { ...t, status: configError ? 'idle' : 'error', messages: [...msgs, trailer] };
         }));
         fetchHealth().then((h) => setHealth(h));
       },
@@ -2251,6 +2390,27 @@ function AppCore() {
   const handleSendInTask = async (text) => {
     if (!currentTask) return;
     const id = currentTask.id;
+
+    // Preflight: same gate as handleSendFromHome. Append the user's
+    // turn + the action card and stop before any in-flight reservation.
+    if (!(await ensureProviderReady())) {
+      setTasks((prev) => prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status: 'idle',
+              updatedAt: new Date().toISOString(),
+              messages: [
+                ...t.messages,
+                { role: 'user', content: text, attachments: [] },
+                { role: 'provider_required' },
+              ],
+            }
+          : t,
+      ));
+      setComposerAttachments([]);
+      return;
+    }
 
     // Anton-core can't run two turns in parallel against the same
     // conversation, so if a stream is in flight (or one is about to
@@ -2361,6 +2521,7 @@ function AppCore() {
           steps: streamState.steps,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
+          harness: streamState.harness,
         }] };
       }));
     };
@@ -2409,21 +2570,27 @@ function AppCore() {
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalHarness = streamState.harness;
+        const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
           assistantTurnIndex = msgs.filter((m) => m.role === 'assistant').length;
+          if (configErrorInBody) {
+            return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
+          }
           return finalContent
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                harness: finalHarness,
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
-        if (finalContent) {
+        if (finalContent && !configErrorInBody) {
           // Sidecar — see persistTurnState comment for the full schema.
           persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
         }
@@ -2438,6 +2605,8 @@ function AppCore() {
         }
       },
       onError(message, event) {
+        const configError = isAntonConfigError(message, event);
+        const displayError = normalizeAntonError(message, event);
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -2446,7 +2615,10 @@ function AppCore() {
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          return { ...t, status: 'error', messages: [...msgs, { role: 'error', content: message || 'Anton could not complete this task.', code: event?.code }] };
+          const trailer = configError
+            ? { role: 'provider_required' }
+            : { role: 'error', content: displayError, code: event?.code };
+          return { ...t, status: configError ? 'idle' : 'error', messages: [...msgs, trailer] };
         }));
         fetchHealth().then((h) => setHealth(h));
         // Same drain on error so a failed turn doesn't strand the
@@ -2464,7 +2636,7 @@ function AppCore() {
   // same React state machine. The user sees a normal Anton bubble
   // appear after they submit; under the hood the LLM never read the
   // values. Mirrors handleSendInTask but wired to streamDataVaultSubmission.
-  const handleSubmitDataVaultForm = ({ formId, formSpec, values, skipped }) => {
+  const handleSubmitDataVaultForm = ({ formId, formSpec, values, skipped, name, method }) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -2494,6 +2666,16 @@ function AppCore() {
         activeStreamingTaskIdRef.current = sid;
       }
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      // Migrate the formStore entry so the DataVaultFormPanel
+      // (which re-subscribes under the new id) and incoming
+      // data-vault-form-patch blocks (keyed to the new id) both
+      // find the form. Without this the panel loses its spec and
+      // the success patch falls through to a bare setForm.
+      const existingForm = getDataVaultForm(previousId);
+      if (existingForm) {
+        setDataVaultForm(sid, existingForm);
+        clearDataVaultForm(previousId);
+      }
     };
 
     const flushStreaming = () => {
@@ -2506,6 +2688,7 @@ function AppCore() {
           steps: streamState.steps,
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
+          harness: streamState.harness,
         }] };
       }));
     };
@@ -2521,10 +2704,42 @@ function AppCore() {
       formSpec,
       values,
       skipped,
+      name,
+      method,
       onEvent(ev) {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
+        // The probe's `data-vault-form-patch` success signal travels
+        // inside the SSE body text, but MarkdownCode can't process it
+        // (the streaming message has complete=false, and the final
+        // assistant message mounts as historical). Detect the terminal
+        // `response.completed` event with status "success" and flip
+        // the form store directly so the DataVaultFormPanel shows the
+        // success state and the user can dismiss the modal.
+        if (ev?.type === 'response.completed') {
+          const cid = resolvedId || id;
+          const currentForm = getDataVaultForm(cid);
+          if (currentForm) {
+            const respStatus = ev?.response?.status;
+            if (respStatus === 'success') {
+              patchDataVaultForm(cid, {
+                form_id: currentForm.form_id,
+                _is_probing: false,
+                _is_success: true,
+                status_text: null,
+                form_error: null,
+              });
+            } else if (respStatus === 'retry' || respStatus === 'failed') {
+              patchDataVaultForm(cid, {
+                form_id: currentForm.form_id,
+                _is_probing: false,
+                _is_success: false,
+                status_text: null,
+              });
+            }
+          }
+        }
         flushSync(() => flushStreaming());
       },
       onChunk(chunk, sid) {
@@ -2538,6 +2753,7 @@ function AppCore() {
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
+        const finalHarness = streamState.harness;
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
@@ -2549,6 +2765,7 @@ function AppCore() {
                 content: finalContent,
                 steps: finalSteps,
                 startedAt: finalStartedAt,
+                harness: finalHarness,
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -2647,7 +2864,7 @@ function AppCore() {
     deletedTaskIdsRef.current.add(taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // Optimistically remove from pins so the sidebar clears immediately.
-    setPins((prev) => prev.filter((p) => p.id !== taskId));
+    setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {
       setActiveTaskId(null);
       // Only fall back to home when we're *viewing* the task that
@@ -2762,7 +2979,7 @@ function AppCore() {
       t.projectName !== project.name && t.projectPath !== project.path
     ));
     if (selectedProject?.name === project.name) setSelectedProject(null);
-    try { await deleteProject(project.name); } catch (e) {
+    try { await deleteProject(project); } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteProject] failed', e);
     }
@@ -2828,7 +3045,13 @@ function AppCore() {
   };
 
   const handleRunScheduleNow = async (id) => {
-    await runScheduleNow(id);
+    const result = await runScheduleNow(id);
+    // The server creates the conversation eagerly and returns its id.
+    // Mark it in-flight locally so reconcileTaskMessages doesn't inject
+    // a spurious "got interrupted" prompt before the 5s poll catches up.
+    if (result?.conversation_id) {
+      markInFlight(result.conversation_id);
+    }
     await refreshSchedules();
     refreshData();
   };
@@ -2953,6 +3176,7 @@ function AppCore() {
           activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
           activeTaskId={activeTaskId}
           serverOnline={serverOnline}
+          agentLabel={agentLabel}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
@@ -3050,6 +3274,7 @@ function AppCore() {
             configError={health.config_error ?? settings.configError}
             onOpenSettings={() => setRoute('settings')}
             serverOnline={serverOnline}
+            agentLabel={agentLabel}
             onShowServerHelp={() => setServerHelpOpen(true)}
             skipIntro={bootIntroDone}
           />
@@ -3059,6 +3284,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
+            onOpenSettings={() => setRoute('settings')}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -3099,6 +3325,7 @@ function AppCore() {
             }}
             projects={projects}
             sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
+            agentLabel={agentLabel}
           />
         )}
 
@@ -3133,6 +3360,7 @@ function AppCore() {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
             }}
+            agentLabel={agentLabel}
           />
         )}
 
@@ -3157,6 +3385,7 @@ function AppCore() {
               if (p) setSelectedProject(p);
               setRoute('projects');
             }}
+            agentLabel={agentLabel}
           />
         )}
 
@@ -3165,6 +3394,7 @@ function AppCore() {
             task={scheduled.find((s) => s.id === selectedScheduleId) || null}
             projects={projects}
             models={modelOptions}
+            agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
             onUpdate={handleUpdateSchedule}
             onDelete={async (id) => {
@@ -3202,6 +3432,7 @@ function AppCore() {
           <ArtifactsView
             artifacts={artifacts}
             projects={projects}
+            agentLabel={agentLabel}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local
@@ -3232,7 +3463,7 @@ function AppCore() {
         )}
 
         {route === 'dispatch' && (
-          <DispatchView onSetUpLater={() => setRoute('home')} />
+          <DispatchView onSetUpLater={() => setRoute('home')} agentLabel={agentLabel} />
         )}
 
         {route === 'customize' && (
@@ -3243,11 +3474,12 @@ function AppCore() {
             onOpenSettings={() => setRoute('settings')}
             onConnectNew={handleStartConnectChat}
             onReconnect={(spec) => handleConnectorPicked(spec)}
+            agentLabel={agentLabel}
           />
         )}
 
         {route === 'settings' && (
-          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} />
+          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} agentLabel={agentLabel} />
         )}
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now
@@ -3259,6 +3491,7 @@ function AppCore() {
             kind={route}
             project={selectedProject}
             onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
+            agentLabel={agentLabel}
           />
         )}
       </main>
@@ -3336,6 +3569,7 @@ function AppCore() {
         serverOnline={serverOnline}
         serverBusy={serverBusy}
         serverBusyKind={serverBusyKind}
+        agentLabel={agentLabel}
         onStart={async () => {
           // Atomic start — used by both the offline "Start" button
           // and the composed "Restart" path inside the modal.
@@ -3397,7 +3631,7 @@ function AppCore() {
       <ConfirmModal
         open={pendingDeleteTurn != null}
         title="Delete this exchange?"
-        message="This removes both your question and Anton's response from the conversation. Any scratchpad cells, artifacts, or memory writes anton produced as part of this turn stay on disk. This can't be undone."
+        message={`This removes both your question and ${agentLabel}'s response from the conversation. Any scratchpad cells, artifacts, or memory writes produced as part of this turn stay on disk. This can't be undone.`}
         confirmLabel="Delete"
         cancelLabel="Keep"
         destructive

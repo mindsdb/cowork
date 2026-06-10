@@ -13,7 +13,7 @@
 //   Stage 4 (1 s)     Cross-fade back: idle in, thinking out.
 //   Stage 5 (~0.8 s)  Idle orb collapses to a dot at centre.
 //   Stage 6 (~0.4 s)  Dot stretches into a typing caret.
-//   Stage 7 (~3.4 s)  Caret types "Meet Anton" + subtitle.
+//   Stage 7 (~3.4 s)  Caret types "Welcome to Minds Cowork".
 //   Stage 8 (~0.7 s)  Fade out, hand off to onComplete.
 //
 // No visible skip affordance — the page plays through. Esc remains
@@ -22,8 +22,8 @@
 import { useEffect, useRef, useState } from 'react';
 import OrbitMorph from '../cowork/components/ui/OrbitMorph';
 
-const TITLE = "Hi, I'm ANTON!";
-const SUBTITLE = 'your autonomous coworker';
+const TITLE = 'Welcome to Minds Cowork';
+const SUBTITLE = '';
 
 // Cinematic deep navy. Any "blue" reads here; this one sits a hair
 // darker than the dark theme's body bg so the fade-out doesn't pop

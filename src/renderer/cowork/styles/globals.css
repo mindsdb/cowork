@@ -105,6 +105,13 @@
 /* ─── Light mode (default) ────────────────────────────────────────────────
    Tokens follow the design guideline (type-and-buttons-light.html). */
 body, body[data-theme="light"] {
+  /* Tell Chromium which scheme native form controls should render in.
+     Without this, Windows draws <select> dropdown popups with light
+     system chrome regardless of theme — in dark mode the pale option
+     text lands on a white popup and every entry looks disabled.
+     (macOS uses a native NSMenu that ignores CSS, so it never shows.) */
+  color-scheme: light;
+
   /* Guideline names — primary token surface for new code */
   --bg:           #FAFAFA;
   --surface:      #FFFFFF;
@@ -190,6 +197,11 @@ body, body[data-theme="light"] {
    Tokens follow type-and-buttons-dark.html — deep-night surfaces, neon
    cyan accent (#22D3EE), readable cool whites, glow on emphasis only. */
 body[data-theme="dark"] {
+  /* Dark counterpart of the light block's color-scheme — keeps the
+     Windows-drawn <select> popup on dark system chrome so options stay
+     readable instead of looking greyed out. */
+  color-scheme: dark;
+
   --bg:           #080d18;
   --surface:      #0E1626;
   --surface-2:    #131D31;
@@ -300,6 +312,10 @@ body {
   /* No background here — kit's gf-theme-{light,dark} on body controls
      window-level bg so the gravity-field canvas remains visible. */
   user-select: none;
+}
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: inherit;
 }
 button { font-family: inherit; cursor: pointer; }
 input, textarea { font-family: inherit; }
@@ -495,6 +511,13 @@ a[href],
 .icon-btn > svg { pointer-events: none; }
 .icon-btn:hover { background: var(--stone-150); color: var(--text-strong); }
 .icon-btn.active { background: var(--stone-200); color: var(--text-strong); }
+
+/* Lightweight hover utilities for inline-styled buttons that only need
+   a tinted background on hover without a full component class. */
+.hover-tint { transition: background .12s, color .12s; }
+.hover-tint:hover { background: color-mix(in srgb, var(--ink) 5%, transparent) !important; }
+.hover-tint-text:hover { color: var(--ink) !important; }
+.hover-tint-danger:hover { color: var(--danger) !important; }
 
 .kbd {
   display: inline-flex; align-items: center; justify-content: center;
@@ -2937,9 +2960,10 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .segmented button {
   height: 28px; padding: 0 12px;
   border: 0; border-radius: 6px;
-  font-size: 12.5px; font-weight: 500;
+  font-size: 12.5px; font-weight: 500; line-height: 1;
   background: transparent; color: var(--frost-700);
   transition: background .1s, color .1s, box-shadow .1s;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .segmented button.active {
   background: var(--surface-0); color: var(--text-strong);
@@ -4346,6 +4370,15 @@ body[data-theme="dark"] .mshell__drawer-title {
 .mshell__fab-menu-secondary {
   font-size: 11.5px;
   color: var(--text-muted);
+}
+
+/* Separator between adjacent settings rows — border sits between siblings,
+   never below the last item in a collapsible card. */
+.settings-section + .settings-section,
+.settings-section + .settings-hide-mobile,
+.settings-hide-mobile .settings-section + .settings-section,
+.settings-provider-row + .settings-provider-row {
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* When mobile shell is active, hide the desktop floating theme toggle —

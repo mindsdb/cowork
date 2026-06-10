@@ -489,7 +489,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   if (blockGlobalEmpty) {
     return (
       <p className="text-[12.5px] text-ink-4 px-1 pt-2 pb-1">
-        Anton learns as you work — memories will appear here.
+        The agent learns as you work — memories will appear here.
       </p>
     );
   }
@@ -567,7 +567,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
               )}
             >
               <span className="text-ink-4 inline-flex flex-none">{Ico.upload(13)}</span>
-              <span>Add files to give Anton context.</span>
+              <span>Add files to give the agent context.</span>
             </button>
           )}
           {hasProjectFiles && (
@@ -792,7 +792,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
           });
         }}
         emptyMessage="(empty memory file)"
-        placeholder="Memory contents — what should Anton remember?"
+        placeholder="Memory contents — what should the agent remember?"
         dense
         onClose={() => setOpenEntry(null)}
         onChanged={() => {

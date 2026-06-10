@@ -553,7 +553,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                   border: '1px dashed var(--line-2)',
                   color: 'var(--ink-4)', fontSize: 12,
                   fontFamily: FONT_BODY, fontStyle: 'italic',
-                }}>Skipped — Anton will figure this one out.</div>
+                }}>Skipped — the agent will figure this one out.</div>
               )}
               {f.error && !isSkipped && (
                 <div style={{

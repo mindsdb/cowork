@@ -27,7 +27,7 @@ const CONNECTOR_LIBRARY = {
     id: 'google_drive',
     name: 'Google Drive',
     directory: true,
-    description: 'Connect your Google Drive account with Google sign-in so Anton can work with Drive files, Docs, and Sheets.',
+    description: 'Connect your Google Drive account with Google sign-in so the agent can work with Drive files, Docs, and Sheets.',
     style: 'google-drive',
     status: 'planned',
     action: 'Connect',
@@ -43,8 +43,8 @@ const CONNECTOR_LIBRARY = {
   },
   anton_chrome: {
     id: 'anton_chrome',
-    name: 'Anton in Chrome',
-    description: 'Anton ships desktop browser control directly in the app runtime.',
+    name: 'Browser Control',
+    description: 'Desktop browser control ships directly in the app runtime.',
     style: 'anton',
     status: 'included',
     chip: 'Included',
@@ -135,7 +135,7 @@ const CONNECTOR_LIBRARY = {
   posthog: {
     id: 'posthog',
     name: 'PostHog',
-    description: 'Use product analytics and warehouse data with Anton.',
+    description: 'Use product analytics and warehouse data with the agent.',
     style: 'posthog',
     status: 'planned',
     action: 'Connect',
@@ -202,16 +202,16 @@ const DIRECTORY_CATEGORIES = [
 ];
 
 const PLUGIN_DIRECTORY_CARDS = [
-  { name: 'Box', vendor: 'Box', desc: 'Work with your Box content directly from Anton Code - search files, organize folders, collaborate with your team.' },
-  { name: 'Pdf viewer', vendor: 'Anton', desc: 'View, annotate, and sign PDFs in a live interactive viewer. Mark up contracts, fill forms, and review documents visually.' },
+  { name: 'Box', vendor: 'Box', desc: 'Work with your Box content directly from Minds Cowork - search files, organize folders, collaborate with your team.' },
+  { name: 'Pdf viewer', vendor: 'Minds', desc: 'View, annotate, and sign PDFs in a live interactive viewer. Mark up contracts, fill forms, and review documents visually.' },
   { name: 'Adobe for creativity', vendor: 'Adobe', desc: 'Bring together Creative Cloud tools for images, vectors, design, and video in one workflow.' },
-  { name: 'Figma', vendor: 'Figma', desc: 'Access design files, extract component information, read design tokens, and carry product context into Anton.' },
+  { name: 'Figma', vendor: 'Figma', desc: 'Access design files, extract component information, read design tokens, and carry product context into the agent.' },
   { name: 'Product tracking skills', vendor: 'Accoil', desc: 'Make SaaS products data-ready for analytics work, from codebase scan to tracking plan.' },
   { name: 'Searchfit seo', vendor: 'SearchFit.ai', desc: 'Audit websites, plan content strategy, optimize pages, and generate schema with an SEO toolkit.' },
   { name: 'Atlan', vendor: 'Atlan', desc: 'Search, explore, govern, and manage your data assets through natural language workflows.' },
   { name: 'Brightdata plugin', vendor: 'Bright Data', desc: 'Web scraping, search, and structured data extraction powered by Bright Data.' },
   { name: 'Nimble', vendor: 'Nimble', desc: 'Search, extract, map, and crawl the web with structured-data agents.' },
-  { name: 'Cloudinary', vendor: 'Cloudinary', desc: 'Manage assets, apply transformations, optimize media, and work with Cloudinary from Anton.' },
+  { name: 'Cloudinary', vendor: 'Cloudinary', desc: 'Manage assets, apply transformations, optimize media, and work with Cloudinary from the agent.' },
 ];
 
 function ConnectorLogo({ id, large = false }) {
@@ -457,7 +457,7 @@ function Subnav({ page, onPageChange, onOpenPlugins }) {
         </div>
 
         <div className="customize-subnav-empty">
-          <p>Give Anton role-level expertise with plugins</p>
+          <p>Give the agent role-level expertise with plugins</p>
           <button className="customize-browse-btn" onClick={onOpenPlugins}>Browse plugins</button>
         </div>
       </div>
@@ -478,15 +478,15 @@ function HomePage({ onOpenDirectory }) {
           </svg>
         </div>
 
-        <h1 className="customize-serif">Customize Anton</h1>
-        <p className="customize-home-subtitle">Connectors and plugins shape how Anton works with you.</p>
+        <h1 className="customize-serif">Customize your agent</h1>
+        <p className="customize-home-subtitle">Connectors and plugins shape how the agent works with you.</p>
 
         <div className="customize-home-cards">
           <button className="customize-home-card active" onClick={() => onOpenDirectory(DIRECTORY_MODE_CONNECTORS)}>
             <span className="customize-home-card-icon">{Ico.slider(18)}</span>
             <span className="customize-home-card-copy">
               <strong>Connect your apps</strong>
-              <span>Let Anton read and write to the tools you already use.</span>
+              <span>Let the agent read and write to the tools you already use.</span>
             </span>
           </button>
 
@@ -522,7 +522,7 @@ function ConnectorsPage({
   const googleOauth = integration?.oauth || {};
   const connectMessage = driveSelected
     ? (driveConnections.length
-        ? 'Anton is ready to use Google Drive.'
+        ? 'Ready to use Google Drive.'
         : 'You are not connected to Google Drive yet.')
     : `You are not connected to ${selectedConnector?.name} yet.`;
   const connectLabel = driveConnections.length ? 'Connect another Google Drive' : 'Connect Google Drive';
@@ -545,7 +545,7 @@ function ConnectorsPage({
       );
     }
   } else if (selectedConnector?.status !== 'included') {
-    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into Anton Cowork yet.`);
+    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into Minds Cowork yet.`);
   }
 
   return (
@@ -616,7 +616,7 @@ function ConnectorsPage({
           <ConnectorLogo id={selectedConnector?.id || 'asana'} large />
           <div className="customize-empty-title">
             {selectedConnector?.status === 'included'
-              ? `${selectedConnector.name} is already available in Anton Desktop.`
+              ? `${selectedConnector.name} is already available in Minds Cowork.`
               : connectMessage}
           </div>
           <button
@@ -806,10 +806,10 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
             {mode === DIRECTORY_MODE_PLUGINS ? (
               <div className="customize-tabset">
                 <button className="customize-tab">Your organization</button>
-                <button className="customize-tab active">Anton &amp; Partners</button>
+                <button className="customize-tab active">Minds &amp; Partners</button>
               </div>
             ) : (
-              <button className="customize-chip-filter">Anton &amp; Partners</button>
+              <button className="customize-chip-filter">Minds &amp; Partners</button>
             )}
           </div>
 

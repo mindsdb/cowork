@@ -18,13 +18,13 @@ import {
 } from '../api';
 
 const TITLES = {
-  memory: ['Memory', 'Rules, lessons, identity notes, and saved episodes Anton can reuse.'],
-  skills: ['Skill Library', 'Saved Anton skills and recall guidance.'],
+  memory: ['Memory', 'Rules, lessons, identity notes, and saved episodes the agent can reuse.'],
+  skills: ['Skill Library', 'Saved agent skills and recall guidance.'],
   // 'connect' (legacy datasources page) is gone — Connect Apps and
   // Data is the canonical surface. Kept the import paths for
   // fetchDatasources / validateDatasource because they're still
   // used by other call sites (the agent etc.).
-  publish: ['Publish', 'HTML artifacts Anton can publish with Minds credentials.'],
+  publish: ['Publish', 'HTML artifacts the agent can publish with Minds credentials.'],
 };
 
 function PageHeader({ title, subtitle }) {
@@ -87,7 +87,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
     if (kind === 'publish') fetchPublishable().then(setData).catch((err) => setStatus(err.message));
   }, [kind, project?.path]);
 
-  const [title, subtitle] = TITLES[kind] || ['Anton utility', ''];
+  const [title, subtitle] = TITLES[kind] || ['Utility', ''];
 
   // Memory kind owns its own scrolling: the sidebar list and the
   // viewer pane each scroll independently so flipping through a long
@@ -365,7 +365,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
     <>
       <CollectionPageHeader
         title="Memory"
-        subtitle="Rules, lessons, identity notes, and saved episodes Anton can reuse."
+        subtitle="Rules, lessons, identity notes, and saved episodes the agent can reuse."
         actions={
           <button type="button" className="btn-primary" onClick={startNew}>
             {Ico.plus(14)} New memory
@@ -400,9 +400,9 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               onSelect={onSelect}
             />
           )}
-          {projectSections.map((section) => (
+          {projectSections.map((section, idx) => (
             <MemorySectionList
-              key={section.projectName}
+              key={`${section.projectName}-${idx}`}
               heading={`Project · ${section.projectName}`}
               files={section.files}
               selected={selected}
@@ -410,7 +410,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               isActive={section.projectName === project?.name}
             />
           ))}
-          {totalFiles === 0 && <EmptyState>No Anton memory files found.</EmptyState>}
+          {totalFiles === 0 && <EmptyState>No memory files found.</EmptyState>}
         </div>
         <div className="scroll-clean" style={{
           overflowY: 'auto', minHeight: 0,
@@ -643,7 +643,7 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
             <span style={{ flex: 1, whiteSpace: 'normal' }}>{skill.name}</span>
           </button>
         ))}
-        {!skills.length && <EmptyState>No saved Anton skills found.</EmptyState>}
+        {!skills.length && <EmptyState>No saved skills found.</EmptyState>}
       </div>
       <div style={{ padding: 24 }}>
         {editing ? (
@@ -653,7 +653,7 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
               <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
             </div>
             <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" style={inputStyle} />
-            <input aria-label="When Anton should use this skill" value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When Anton should use this skill" style={inputStyle} />
+            <input aria-label="When the agent should use this skill" value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When the agent should use this skill" style={inputStyle} />
             <textarea aria-label="Skill instructions" value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
             <div className="dialog-actions">
               <button className="secondary-btn" onClick={() => setEditing(null)}>Cancel</button>
@@ -734,7 +734,7 @@ function ConnectView({ data, setData, setStatus }) {
       if (result.missingFields?.length) {
         setStatus(`Missing required fields: ${result.missingFields.join(', ')}`);
       } else {
-        setStatus('Required fields are present. Save this connection to make it available to Anton tasks.');
+        setStatus('Required fields are present. Save this connection to make it available to agent tasks.');
       }
     } catch (err) {
       setValidation('');
@@ -756,7 +756,7 @@ function ConnectView({ data, setData, setStatus }) {
       const saved = await saveDatasource({ engine, name, authMethod: authMethod || null, credentials });
       const latest = await fetchDatasources();
       setData(latest);
-      setStatus(`Saved ${saved.slug || `${engine}-${saved.name || name}`} to Anton's data vault.`);
+      setStatus(`Saved ${saved.slug || `${engine}-${saved.name || name}`} to the data vault.`);
       if (!name.trim() && saved.name) setName(saved.name);
     } catch (err) {
       setStatus(err.message || 'Could not save datasource connection.');
@@ -786,7 +786,7 @@ function ConnectView({ data, setData, setStatus }) {
           <div key={`${conn.engine}-${conn.name}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border-0)', fontSize: 13 }}>
             <div style={{ flex: 1 }}>
               <strong style={{ color: 'var(--text-strong)' }}>{conn.displayName || conn.engine}</strong> / {conn.name}
-              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{conn.testAvailable ? 'Ready for Anton datasource tools' : 'Saved in Anton data vault'}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
             </div>
             <button className="btn-secondary" onClick={() => remove(conn)}>Remove</button>
           </div>
@@ -834,7 +834,7 @@ function ConnectView({ data, setData, setStatus }) {
           </label>
         )) : (
           <div style={{ padding: 12, border: '1px solid var(--border-01)', borderRadius: 8, color: 'var(--frost-600)', fontSize: 12.5 }}>
-            This engine does not expose editable credential fields in the installed Anton registry.
+            This engine does not expose editable credential fields in the installed registry.
           </div>
         )}
         {validation && <div style={{ fontSize: 12, color: 'var(--frost-700)' }}>{validation}</div>}
@@ -882,7 +882,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
           {artifact.publishedUrl && <button className="btn-secondary" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</button>}
           <button className="btn-secondary" disabled={!data.publishReady} onClick={() => publish(artifact)}>Publish</button>
         </div>
-      )) : <EmptyState>No HTML artifacts found in Anton output folders.</EmptyState>}
+      )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
       {(data.history || []).length > 0 && (
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 8 }}>Publish history</div>

@@ -82,7 +82,7 @@
             "description": "The name of the specific database (schema container) to connect to."
           },
           {
-            "name": "username",
+            "name": "user",
             "label": "Username",
             "type": "text",
             "required": true,
