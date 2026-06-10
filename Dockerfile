@@ -48,10 +48,11 @@ RUN npm run build:web
 # krb5-libs/libcap/python HIGH errata. Of the HIGHs that still had no
 # upstream fix, the gnutls ones (DTLS DoS + RSA-PSK auth-bypass) are
 # removed outright by the package-manager strip in the runtime stage
-# (gnutls is only pulled by the unused dnf/glib2/gnupg stack), leaving
-# exactly one residual HIGH: expat CVE-2026-45186 (XML DoS), which python
-# hard-requires and which is unreachable from cowork's JSON-only HTTP
-# API. See .trivyignore.
+# (gnutls is only pulled by the unused dnf/glib2/gnupg stack). Net: a
+# true scan of the shipped image (OS layer + the cowork-server Python
+# closure) is 0 HIGH / 0 CRITICAL — confirmed by Trivy on both arches and
+# by ECR scan-on-push. .trivyignore retains a single defensive expat
+# suppression that no current scan reports; see that file for rationale.
 # To bump after a CVE patch lands:
 #   docker pull registry.access.redhat.com/ubi9-minimal
 #   docker buildx imagetools inspect registry.access.redhat.com/ubi9-minimal

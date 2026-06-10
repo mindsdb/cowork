@@ -5,21 +5,24 @@
 # entry MUST include a `reason:` and an `expires:` date so the policy
 # is re-reviewed periodically (default cadence: 12 months).
 #
-# Customer hand-off note: the cowork web Docker image (the artifact
-# the customer actually pulls) does NOT contain the Electron sources
-# in `src/main/`, so Electron-only Snyk Code findings against
-# `oauth-service.ts`, `index.ts`, `index.html` etc. do not appear in
-# the customer's Snyk Container scan. They are kept out of this file
-# intentionally — there is nothing to suppress for the image-only
-# threat model.
+# Customer hand-off note: the cowork web Docker image (the artifact the
+# customer actually pulls) ships only the compiled `cowork-server` PyPI
+# package (installed into /opt/venv) plus the SPA bundle. It does NOT
+# contain this repo's `src/main/` Electron sources NOR the local
+# `server/` source tree, so Snyk Code findings against either (e.g.
+# `oauth-service.ts`, the old `server/routes/*.py` guards) do not appear
+# in the customer's Snyk Container scan. There is nothing to suppress for
+# the image-only threat model.
 #
-# Workstream A of the Snyk remediation pass closed every visible High
-# in the Python server (server/main.py, server/routes/utilities.py,
-# server/routes/artifacts.py, server/routes/attachments.py,
-# server/routes/integrations.py) by hardening the existing guards
-# rather than suppressing — so the `ignore:` map below is currently
-# empty. Add entries here only when refactoring is impractical and
-# the construct is genuinely required.
+# The earlier Snyk remediation pass closed every visible High in the
+# local Python server (server/main.py, server/routes/*.py) by hardening
+# the existing guards rather than suppressing. That source is no longer
+# part of the shipped image — it now runs from the published
+# cowork-server package — so those fixes are historical from the image's
+# point of view. A true scan of the shipped image (OS + the cowork-server
+# dependency closure) is 0 HIGH / 0 CRITICAL (Trivy + ECR, 2026-06-09),
+# so the `ignore:` map below is empty. Add entries here only when
+# refactoring is impractical and the construct is genuinely required.
 
 version: v1.25.0
 

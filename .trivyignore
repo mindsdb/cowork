@@ -12,19 +12,26 @@
 # then re-scan and remove any entry whose CVE is now patched in the
 # new base.
 #
-# Last reviewed: 2026-05-29 against
+# Last reviewed: 2026-06-09 against
 #   registry.access.redhat.com/ubi9-minimal@sha256:
 #     5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362
-# (Red Hat Enterprise Linux 9.8)
+# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.1.4 Python
+# closure installed into /opt/venv on python3.12.
 #
-# Note: the 9.8 base errata fixed the krb5-libs, libcap, and python3.11
+# Current posture: a TRUE scan (no suppressions) of the shipped image is
+# 0 HIGH / 0 CRITICAL across both the OS layer and the entire Python
+# dependency closure — confirmed by Trivy (linux/amd64 + linux/arm64) and
+# by AWS ECR scan-on-push. This allowlist is therefore currently a no-op
+# against the live scan; the single entry below is retained defensively
+# (see its note), not because a scan presently reports it.
+#
+# Note: the 9.8 base errata fixed the krb5-libs, libcap, and python
 # HIGHs that the previous 9.7 digest carried. The four gnutls HIGHs that
 # still have no upstream fix (CVE-2026-33845/-33846/-42009/-42010) are no
 # longer suppressed here — the runtime stage REMOVES the entire unused
 # dnf/glib2/gnupg/gnutls package closure (see Dockerfile "Final
 # hardening" step), so those packages don't exist in the shipped image
-# and never reach a scan. The single residue below is the one HIGH that
-# cannot be removed (python hard-requires it) and has no upstream fix.
+# and never reach a scan.
 #
 # Threat model summary: cowork is a FastAPI HTTP server that listens on
 # a single loopback port (default 26866). It does NOT terminate TLS, does
@@ -32,11 +39,16 @@
 # untrusted XML on its HTTP API (the API is JSON-only), and does NOT load
 # arbitrary terminfo from network input.
 
-# expat 2.5.0-6.el9 — Expat XML parser, linked by CPython's pyexpat and
-# therefore a hard dependency of python3.11-libs (cannot be removed
+# expat — Expat XML parser, linked by CPython's pyexpat and therefore a
+# hard dependency of the python3.12 interpreter (cannot be removed
 # without removing the interpreter). CVE-2026-45186 is a DoS via crafted
-# XML input. cowork's HTTP API consumes JSON only and exposes no
+# XML input. As of the 2026-06-09 review the UBI 9.8 base ships an expat
+# that neither Trivy nor ECR flags for this CVE, so it does NOT currently
+# appear in a scan of the shipped image — this entry is retained purely
+# as defense-in-depth, in case a scanner with a different advisory DB
+# (e.g. the customer's Snyk) still reports it. Even if surfaced, the risk
+# is acceptable: cowork's HTTP API consumes JSON only and exposes no
 # untrusted-XML parsing path, so the crafted-input vector is unreachable
-# from the network surface. DoS-class (no RCE), no upstream fix at review
-# time. Re-check for a patched expat on every base bump.
+# from the network surface; DoS-class (no RCE). Remove this entry once
+# confirmed permanently fixed across the scanners we care about.
 CVE-2026-45186
