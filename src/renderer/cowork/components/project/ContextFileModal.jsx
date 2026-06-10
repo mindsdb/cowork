@@ -11,7 +11,7 @@
 //   1. Project file mode (legacy): pass `projectName` + `filePath`,
 //      the modal handles read/write/delete via the project files
 //      API. `isAntonMd` (or the path matching
-//      PROJECT_INSTRUCTIONS_PATH) flips on the special anton.md
+//      COWORK_PROJECT_INSTRUCTIONS_PATH) flips on the special anton.md
 //      affordances (label, empty-state placeholder, undeletable).
 //
 //   2. Generic mode: pass `title` + `loader` (or `initialContent`)
@@ -35,7 +35,7 @@ import {
   deleteProjectFile,
   mountProjectFilePreview,
   projectFileDownloadUrl,
-  PROJECT_INSTRUCTIONS_PATH,
+  COWORK_PROJECT_INSTRUCTIONS_PATH,
   BASE,
 } from '../../api';
 import { MarkdownContent } from '../markdown/MarkdownContent';
@@ -172,7 +172,7 @@ export default function ContextFileModal({
                    //   reveal-in-finder / open-in-default-app via the
                    //   Electron IPC. Falls back to the download URL on
                    //   the web.
-  filePath,        // project-relative path (instructions: PROJECT_INSTRUCTIONS_PATH)
+  filePath,        // project-relative path (instructions: COWORK_PROJECT_INSTRUCTIONS_PATH)
   isAntonMd,       // optional override; otherwise derived from filePath
   // ── Generic / shared ─────────────────────────────────────────
   title,           // overrides the header title (otherwise filePath / 'anton.md')
@@ -207,7 +207,7 @@ export default function ContextFileModal({
   const [binaryDetail, setBinaryDetail] = useState('');
   const textareaRef = useRef(null);
 
-  const isAnton = !!(isAntonMd ?? (filePath === PROJECT_INSTRUCTIONS_PATH));
+  const isAnton = !!(isAntonMd ?? (filePath === COWORK_PROJECT_INSTRUCTIONS_PATH));
   // Generic mode = caller wired up its own loader/saver and didn't
   // pass a project file context. Used to gate the anton-specific
   // empty-state default and the project-file fallback IO.

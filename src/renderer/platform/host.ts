@@ -13,7 +13,7 @@
 // operations (openPath, trashItem) return { ok: false, reason: 'unsupported' }
 // so call sites can branch / hide affordances.
 
-const SERVER_PORT = 26866;
+const COWORK_SERVER_PORT = 26866;
 
 type Bridge = typeof window extends { cowork?: infer T } ? T : never;
 
@@ -50,7 +50,7 @@ export function getApiOrigin(): string {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
   return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${SERVER_PORT}`
+    ? `http://127.0.0.1:${COWORK_SERVER_PORT}`
     : window.location.origin;
 }
 
@@ -105,7 +105,7 @@ export async function serverInfo(): Promise<ServerInfo> {
       running: !!info?.running,
       starting: !!info?.starting,
       port: info?.port ?? null,
-      origin: info?.origin || `http://127.0.0.1:${info?.port ?? SERVER_PORT}`,
+      origin: info?.origin || `http://127.0.0.1:${info?.port ?? COWORK_SERVER_PORT}`,
     };
   }
   return {

@@ -39,7 +39,7 @@ import {
 } from './formStore';
 import HowToModal from './HowToModal';
 import { host } from '../../../platform/host';
-import { VAULT_KEEP } from '../../api';
+import { COWORK_VAULT_KEEP } from '../../api';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -84,7 +84,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   };
 
   // Sentinel rendering — when the underlying state still equals
-  // `VAULT_KEEP`, the field hasn't been touched since the
+  // `COWORK_VAULT_KEEP`, the field hasn't been touched since the
   // modify-flow pre-fill. Show the input visually empty with a
   // placeholder that explains the "saved" semantics. The state
   // stays as the sentinel until the user types; the first keystroke
@@ -93,7 +93,7 @@ function FieldInput({ field, value, onChange, disabled }) {
   // because the displayed value is empty). On submit, fields whose
   // state is still the sentinel pass through and resolve server-
   // side against the prior record.
-  const isSentinel = value === VAULT_KEEP;
+  const isSentinel = value === COWORK_VAULT_KEEP;
   const displayValue = isSentinel ? '' : (value ?? field.default ?? '');
   // For sentinel-bearing fields the placeholder doubles as the
   // "saved" indicator. Eight asterisks is the convention users

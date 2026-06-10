@@ -7,13 +7,13 @@ import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
 
-const SERVER_PORT = 26866;
+const COWORK_SERVER_PORT = 26866;
 
 const API_ORIGIN = (() => {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
   return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${SERVER_PORT}`
+    ? `http://127.0.0.1:${COWORK_SERVER_PORT}`
     : '';
 })();
 
@@ -618,20 +618,20 @@ export async function deleteProject(projectOrName) {
 // ── Project files ────────────────────────────────────────────────
 //
 // Most paths are relative to the project root. Project instructions
-// live at PROJECT_INSTRUCTIONS_PATH (on disk: `.anton/anton.md`).
+// live at COWORK_PROJECT_INSTRUCTIONS_PATH (on disk: `.anton/anton.md`).
 // These helpers wrap routes/projects.py.
 
 const enc = encodeURIComponent;
 
 /** Relative path from project root for project instructions (projects file API). */
-export const PROJECT_INSTRUCTIONS_PATH = '.anton/anton.md';
-/** @deprecated Use PROJECT_INSTRUCTIONS_PATH */
-export const ANTON_PROJECT_INSTRUCTIONS_PATH = PROJECT_INSTRUCTIONS_PATH;
+export const COWORK_PROJECT_INSTRUCTIONS_PATH = '.anton/anton.md';
+/** @deprecated Use COWORK_PROJECT_INSTRUCTIONS_PATH */
+export const ANTON_PROJECT_INSTRUCTIONS_PATH = COWORK_PROJECT_INSTRUCTIONS_PATH;
 
 /** True if `relPath` is the canonical instructions file (`.anton/anton.md`). */
 export function isProjectInstructionsPath(relPath) {
   const r = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  return r === PROJECT_INSTRUCTIONS_PATH;
+  return r === COWORK_PROJECT_INSTRUCTIONS_PATH;
 }
 
 /** Legacy installs: true if `relPath` is under `.context/` (pre-migration tree). */
@@ -1078,7 +1078,7 @@ export async function deleteDatasource(engine, name) {
 //     secureKeys: string[],                  // names of secret fields
 //     fields: { ... },                       // non-secret values verbatim,
 //                                            // secret slots replaced with
-//                                            // VAULT_KEEP sentinel
+//                                            // COWORK_VAULT_KEEP sentinel
 //   }
 // The renderer pre-fills the form with `fields`. On submit, any
 // field still carrying the sentinel resolves server-side against
@@ -1094,9 +1094,9 @@ export async function fetchSavedConnection(engine, name) {
 // hasn't touched this secret field" on submit; any field whose
 // value is still this exact string is sent back as-is and resolved
 // server-side against the prior record.
-export const VAULT_KEEP = '__anton_vault_keep__';
-/** @deprecated Use VAULT_KEEP */
-export const ANTON_VAULT_KEEP = VAULT_KEEP;
+export const COWORK_VAULT_KEEP = '__anton_vault_keep__';
+/** @deprecated Use COWORK_VAULT_KEEP */
+export const ANTON_VAULT_KEEP = COWORK_VAULT_KEEP;
 
 // ─── Connector registry ─────────────────────────────────────────────
 //

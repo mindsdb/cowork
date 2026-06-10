@@ -6,7 +6,7 @@
 //      empty / whitespace).
 //   2. POST /v1/projects to create the folder.
 //   3. If the user supplied instructions text, PUT it at
-//      PROJECT_INSTRUCTIONS_PATH (`.anton/anton.md`).
+//      COWORK_PROJECT_INSTRUCTIONS_PATH (`.anton/anton.md`).
 //   4. If files are queued, upload them in one multipart request.
 //
 // Failure handling: each step that touches the server is independent
@@ -19,7 +19,7 @@ import {
   createProject,
   uploadProjectFiles,
   writeProjectFile,
-  PROJECT_INSTRUCTIONS_PATH,
+  COWORK_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
@@ -146,7 +146,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       const trimmedInstr = (instructions || '').trim();
       if (trimmedInstr) {
         try {
-          await writeProjectFile(finalName, PROJECT_INSTRUCTIONS_PATH, trimmedInstr);
+          await writeProjectFile(finalName, COWORK_PROJECT_INSTRUCTIONS_PATH, trimmedInstr);
         } catch (e) {
           // eslint-disable-next-line no-console
           console.warn('[new-project] writing anton.md failed', e);
