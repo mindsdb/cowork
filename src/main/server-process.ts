@@ -14,7 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
 
-const DEFAULT_PORT = 26866; // ANTON on T9 keypad
+const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
 
 let serverProcess: ChildProcess | null = null;

@@ -1,8 +1,8 @@
 # Generate, Sign, and Notarize the DMG (macOS)
 
-This document explains the workflow to generate Anton's custom macOS installer:
+This document explains the workflow to generate the custom macOS installer:
 
-- Custom DMG: `release/Anton-<version>-universal-custom.dmg`
+- Custom DMG: `release/Minds Cowork-<version>-universal-custom.dmg`
 - Signing identity: `Developer ID Application`
 - Notarization tool: `notarytool`
 
@@ -41,7 +41,7 @@ This script:
 
 Expected output:
 
-- `release/Anton-<version>-universal-custom.dmg`
+- `release/Minds Cowork-<version>-universal-custom.dmg`
 
 ## 3. Notarize the custom DMG (manual)
 
