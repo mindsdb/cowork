@@ -179,6 +179,11 @@ export default function App() {
     document.body.dataset.theme = preset.theme;
     document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
     document.body.classList.add(preset.theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
+    // Re-theme the REMAINING onboarding screens (POWER UP, NOW LOADING)
+    // to the chosen preset — arcade.css carries a palette block per
+    // preset id. ThemeSelect clears this on mount so back-nav returns
+    // to the neutral CRT chooser.
+    document.body.dataset.arcadePreset = preset.id;
     setPage('onboarding');
   };
 

@@ -146,6 +146,9 @@ export default function ThemeSelect({
   };
 
   useEffect(() => {
+    // The chooser itself always shows the neutral CRT look — drop any
+    // previously-applied preset (e.g. when navigating back from POWER UP).
+    delete document.body.dataset.arcadePreset;
     cardRefs.current[focusRef.current]?.focus({ preventScroll: true });
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); moveFocus((focusRef.current + 1) % SLOT_COUNT); }

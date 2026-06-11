@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from 'react';
 import { host } from '../../platform/host';
 import { BASE } from '../../cowork/api';
 import { PROVIDER_MODELS } from '../../cowork/lib/settingsTransform';
+import { MINDS_REGISTER_URL } from '../onboarding/constants';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
 
@@ -21,8 +22,6 @@ const OPENAI_MODELS = PROVIDER_MODELS.openai;
 const GEMINI_MODELS = PROVIDER_MODELS.gemini;
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'https://auth.mindshub.ai/auth';
-const KEYCLOAK_BASE = KEYCLOAK_URL.replace('/auth', '');
 const MINDS_API_URL = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai';
 
 const CUSTOM_MODEL = '__custom__';
@@ -148,7 +147,7 @@ function StageDots({ step }: { step: 1 | 2 }) {
     color: step === n ? 'var(--arc-bg)' : 'var(--arc-dim)',
     background: step === n ? 'var(--arc-cyan)' : 'transparent',
     border: `1px solid ${step === n ? 'var(--arc-cyan)' : 'var(--arc-edge-2)'}`,
-    boxShadow: step === n ? '0 0 14px rgba(61,214,245,0.4)' : 'none',
+    boxShadow: step === n ? '0 0 14px color-mix(in srgb, var(--arc-cyan) 40%, transparent)' : 'none',
   });
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }} aria-label={`Stage ${step} of 2`}>
@@ -573,7 +572,7 @@ export default function OnboardingScreen({
       <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(480px, 100%)' }}>
         <StageDots step={1} />
 
-        <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'left', borderColor: 'rgba(61,214,245,0.35)' }}>
+        <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'left', borderColor: 'color-mix(in srgb, var(--arc-cyan) 35%, transparent)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <PixelSprite name="bolt" size={26} title="MindsHub" />
@@ -612,7 +611,7 @@ export default function OnboardingScreen({
                 <button
                   type="button"
                   className="arc-link"
-                  onClick={() => host.openExternal(`${KEYCLOAK_BASE}/auth/realms/mindsdb/account`)}
+                  onClick={() => host.openExternal(MINDS_REGISTER_URL)}
                 >Insert coin — first week free →</button>
               </div>
             </>
@@ -645,7 +644,7 @@ export default function OnboardingScreen({
                 <button
                   type="button"
                   className="arc-link"
-                  onClick={() => host.openExternal(`${KEYCLOAK_BASE}/auth/realms/mindsdb/account`)}
+                  onClick={() => host.openExternal(MINDS_REGISTER_URL)}
                 >Insert coin — first week free →</button>
               </div>
             </>

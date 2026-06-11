@@ -39,7 +39,10 @@ export function ArcadeShell({
   return (
     <div className="arc-root">
       <div className="arc-hud">
-        <span className="arc-hud-p1">P1</span>
+        {/* Left slot was "P1", but it collided with the macOS traffic
+            lights. Now an invisible mirror of the right-side copyright —
+            it reserves matching width so the title centers truly. */}
+        <span className="arc-hud-copy" style={{ visibility: 'hidden' }} aria-hidden>{hudRight}</span>
         <div className="arc-hud-center">
           {title && <div className="arc-hud-title">{title}</div>}
           {subtitle && <div className="arc-hud-sub">&mdash; {subtitle} &mdash;</div>}
