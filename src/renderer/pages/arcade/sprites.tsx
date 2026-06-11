@@ -40,54 +40,68 @@ const ANTON: SpriteDef = {
   ],
 };
 
-// HERMES — the winged golden helmet.
+// HERMES — monochrome pixel portrait of the Nous "Hermes" mark, matching
+// the black-&-white brand logo: dark-grey bob, white hair-shine streaks,
+// white headband, light-grey face with one eye, and a white "N" collar
+// tab. Greyscale only (no colour). 18×18.
 const HERMES: SpriteDef = {
   palette: {
-    y: '#fbbf24', // helm gold
-    o: '#b87708', // helm shadow
-    w: '#eef2ff', // wing white
-    k: '#0a0a13', // eye slit
+    h: '#3c3f4d', // hair (dark grey — reads on the dark card)
+    w: '#f2f4fa', // white: shine streaks, headband, collar tab
+    s: '#cdd0da', // skin (light grey, separates from hair)
+    o: '#898d9b', // mid-grey shadow / lips / contour
+    e: '#14141c', // eye / lash / tab letter
   },
   rows: [
-    '......yyyy......',
-    '.....yyyyyy.....',
-    '....yyyyyyyy....',
-    'w...yyyyyyyy...w',
-    'ww.yyyyyyyyyy.ww',
-    'wwwyyyyyyyyyywww',
-    '.wwyyyyyyyyyyww.',
-    'wwwyyyyyyyyyywww',
-    'ww.yykkyykkyy.ww',
-    'w..yykkyykkyy..w',
-    '...yyyyyyyyyy...',
-    '...oyyyyyyyyo...',
-    '....oyyyyyyo....',
-    '.....oyyyyo.....',
-    '......oooo......',
+    '....hhhhhhhhhh....',
+    '..hhhhhhhhhhhhhh..',
+    '.hhhhhhhhhhhhhhhh.',
+    '.hhhwwwwwwwwhhhhh.',
+    '.hhhhhhhhhhhhhhhhh',
+    'hhwwwhhhwwwhhhhhhh',
+    'hhhhhhhhhhhhhhhhhh',
+    '.hssssshhhhhhhhhhh',
+    '.hssessshhhhhhhhhh',
+    '.hsseossshhhhhhhhh',
+    '.hsssssshhhhhhhhhh',
+    '.hossosshhhhhhhhhh',
+    '.hhssooshhhhhhhhhh',
+    '..hhssshhhhhhhhhhh',
+    '...hhsshhhhhhhhh..',
+    '..hhwwwwhhhhhhhh..',
+    '..hhwewhhhhhhhhh..',
+    '...hhhhhhhhhhhh...',
   ],
 };
 
-// OPENCLAW — the open red claw.
+// OPENCLAW — pixel lobster (transcribed from the supplied logo): red
+// body with a darker outline, lighter claws either side, and two eyes
+// with white glints. 16×16.
 const OPENCLAW: SpriteDef = {
   palette: {
-    r: '#f87168', // claw red
-    m: '#a3271f', // claw shadow
+    m: '#3a0a0d', // outline
+    r: '#ff4f40', // body
+    c: '#ff775f', // claws
+    e: '#081016', // eye
+    w: '#f5fbff', // eye glint
   },
   rows: [
-    '..rr........rr..',
-    '.rrrr......rrrr.',
-    'rrrrrr....rrrrrr',
-    'rrr.rrr..rrr.rrr',
-    'rr...rrrrrr...rr',
-    'rr....rrrr....rr',
-    '.r...rrrrrr...r.',
-    '.....rrrrrr.....',
-    '....rr.mm.rr....',
-    '....r.mmmm.r....',
+    '................',
+    '................',
+    '....mmmmmmmm....',
+    '...m.rrrrrr.m...',
+    '..m.rrwrrwrr.m..',
+    '.mcrrrerrerrrcm.',
+    '.ccrrrrrrrrrrcc.',
+    '.mcrrrrrrrrrrcm.',
+    '..m.rrrrrrrr.m..',
+    '...m.rrrrrr.m...',
+    '....m...........',
     '.....mmmmmm.....',
-    '....mmm..mmm....',
-    '...mmm....mmm...',
-    '..mmm......mmm..',
+    '....mrrrrrrm....',
+    '...m..rrrr..m...',
+    '.....mmmmmm.....',
+    '................',
   ],
 };
 
