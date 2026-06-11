@@ -320,6 +320,27 @@ function createWindow() {
     });
   }
 
+  // Right-click editing menu. Electron ships no default context menu, so
+  // without this, right-click → Cut/Copy/Paste does nothing anywhere
+  // (the app menu only provides the keyboard accelerators). Wire a
+  // minimal editing menu for any editable field or text selection so
+  // pasting an API key by right-click works — including the onboarding
+  // screens, which are the most paste-heavy surface in the app.
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const { isEditable, editFlags, selectionText } = params;
+    if (!isEditable && !selectionText) return;
+    const template: Electron.MenuItemConstructorOptions[] = isEditable
+      ? [
+          { role: 'cut', enabled: editFlags.canCut },
+          { role: 'copy', enabled: editFlags.canCopy },
+          { role: 'paste', enabled: editFlags.canPaste },
+          { type: 'separator' },
+          { role: 'selectAll' },
+        ]
+      : [{ role: 'copy', enabled: editFlags.canCopy }];
+    Menu.buildFromTemplate(template).popup({ window: mainWindow! });
+  });
+
   // Grant the renderer access to the microphone so the Web Speech API
   // (composer voice input) can capture audio. Other permissions stay
   // denied. Pair with NSMicrophoneUsageDescription in Info.plist and
