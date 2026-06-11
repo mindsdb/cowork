@@ -146,9 +146,6 @@ export default function ThemeSelect({
   };
 
   useEffect(() => {
-    // The chooser itself always shows the neutral CRT look — drop any
-    // previously-applied preset (e.g. when navigating back from POWER UP).
-    delete document.body.dataset.arcadePreset;
     cardRefs.current[focusRef.current]?.focus({ preventScroll: true });
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); moveFocus((focusRef.current + 1) % SLOT_COUNT); }
@@ -160,6 +157,17 @@ export default function ThemeSelect({
     return () => window.removeEventListener('keydown', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Live-preview the focused preset: the whole chooser re-skins as you
+  // browse (Game Boy card → Game Boy page, etc.). The CREATE YOUR OWN
+  // slot has no preset, so fall back to the neutral arcade default.
+  // ARCADE's id has no palette block — it IS the default — so setting
+  // it is equivalent to clearing.
+  useEffect(() => {
+    const id = THEME_PRESETS[focus]?.id;
+    if (id) document.body.dataset.arcadePreset = id;
+    else delete document.body.dataset.arcadePreset;
+  }, [focus]);
 
   return (
     <ArcadeShell title="CHOOSE YOUR DISPLAY" subtitle="pick your screen · change it anytime">
@@ -243,7 +251,17 @@ export default function ThemeSelect({
             disabled={!focused}
           />
           {onBack && (
-            <button type="button" className="arc-link" onClick={onBack} style={{ marginTop: 4 }}>
+            <button
+              type="button"
+              className="arc-link"
+              onClick={() => {
+                // Leaving without picking — drop the live preview so the
+                // coworker screen we return to shows the neutral CRT.
+                delete document.body.dataset.arcadePreset;
+                onBack();
+              }}
+              style={{ marginTop: 4 }}
+            >
               ← back
             </button>
           )}
