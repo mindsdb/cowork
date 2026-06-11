@@ -5,6 +5,7 @@ import { providerTypeToKeyField, providerValueToType } from '../lib/settingsTran
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
+import { WORLD_CUP_TEAMS } from '../../lib/worldcup';
 import { MINDS_API_KEY_URL } from '../../pages/onboarding/constants';
 import { getUIVersion, isElectron } from '../../platform/host';
 
@@ -686,7 +687,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
   );
 }
 
-export default function SettingsView({ settings, setSetting, onSave, theme, onThemeChange, skin, onSkinChange, customTheme, onCustomThemeChange, agentLabel }) {
+export default function SettingsView({ settings, setSetting, onSave, theme, onThemeChange, skin, onSkinChange, customTheme, onCustomThemeChange, worldcupTeam, onWorldcupTeamChange, agentLabel }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -1588,6 +1589,26 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   }))}
                 />
               </Section>
+              {/* SEASONAL — World Cup 2026 team picker (lib/worldcup.ts). */}
+              {normalizeSkin(skin) === 'worldcup' && (
+                <Section title="Team" subtitle="All 48 qualified nations. Your kit, until the final.">
+                  <select
+                    className="settings-select"
+                    value={worldcupTeam || WORLD_CUP_TEAMS[0].id}
+                    onChange={(e) => onWorldcupTeamChange?.(e.target.value)}
+                    aria-label="World Cup team"
+                    style={{ minWidth: 220 }}
+                  >
+                    {['UEFA', 'CONMEBOL', 'CONCACAF', 'AFC', 'CAF', 'OFC'].map((conf) => (
+                      <optgroup key={conf} label={conf}>
+                        {WORLD_CUP_TEAMS.filter((t) => t.conf === conf).map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </Section>
+              )}
               {normalizeSkin(skin) === 'custom' && customTheme && (
                 <>
                   <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">

@@ -9,6 +9,8 @@ import LaunchScreen from './pages/arcade/LaunchScreen';
 import CoworkApp from './CoworkApp';
 import { host } from './platform/host';
 import { persistSkin } from './lib/skins';
+import { persistWorldCupTeam, teamRecipe, type WorldCupTeam } from './lib/worldcup';
+import { applyCustomTheme } from './lib/customTheme';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -179,11 +181,34 @@ export default function App() {
     document.body.dataset.theme = preset.theme;
     document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
     document.body.classList.add(preset.theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
+    // Clear any inline team tokens from a prior World Cup pick so they
+    // can't bleed into a preset's screens.
+    applyCustomTheme(null);
     // Re-theme the REMAINING onboarding screens (POWER UP, NOW LOADING)
     // to the chosen preset — arcade.css carries a palette block per
     // preset id. ThemeSelect clears this on mount so back-nav returns
     // to the neutral CRT chooser.
     document.body.dataset.arcadePreset = preset.id;
+    setPage('onboarding');
+  };
+
+  // SEASONAL (World Cup 2026) — a team pick from the flag-wall overlay.
+  // light/dark follows the kit's mode so the rest of the app composes
+  // sensibly. The team recipe is applied inline NOW (so the remaining
+  // onboarding screens — POWER UP / NOW LOADING — wear the team colours
+  // via the data-arcade-preset="worldcup" block, which remaps --arc-*
+  // onto these tokens); the cowork app re-applies it on mount too.
+  const handleWorldCupSelected = (team: WorldCupTeam) => {
+    persistSkin('worldcup');
+    persistWorldCupTeam(team.id);
+    const theme = team.mode;
+    try { window.localStorage.setItem('anton.theme', theme); } catch {}
+    document.body.dataset.skin = 'worldcup';
+    document.body.dataset.theme = theme;
+    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
+    document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
+    applyCustomTheme(teamRecipe(team));
+    document.body.dataset.arcadePreset = 'worldcup';
     setPage('onboarding');
   };
 
@@ -219,6 +244,7 @@ export default function App() {
       {page === 'theme' && (
         <ThemeSelect
           onSelect={isDevFrozen ? () => {} : handleThemeSelected}
+          onWorldCup={isDevFrozen ? () => {} : handleWorldCupSelected}
           onBack={() => setPage('coworker')}
         />
       )}

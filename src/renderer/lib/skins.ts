@@ -15,6 +15,8 @@
 // unknown stored id normalizes back to the default, and an unknown
 // body[data-skin] value is harmless (no CSS matches it → normal look).
 
+import { WORLD_CUP_2026 } from './worldcup';
+
 export interface Skin {
   id: string;
   label: string;
@@ -22,14 +24,24 @@ export interface Skin {
   icon?: string;
   /** Tooltip for the Settings segmented option. */
   title: string;
+  /** Reachable via the floating quick-toggle (which cycles in place).
+      Skins that need extra config — Custom (a recipe) and World Cup (a
+      team) — are Settings-only, so they're left out of the cycle. */
+  cycleable?: boolean;
 }
 
 export const SKINS: Skin[] = [
-  { id: 'normal', label: 'Normal', title: 'Use the standard look.' },
-  { id: '8bit', label: '8-Bit', icon: 'gamepad', title: 'Use the retro 8-Bit look.' },
+  { id: 'normal', label: 'Normal', title: 'Use the standard look.', cycleable: true },
+  { id: '8bit', label: '8-Bit', icon: 'gamepad', title: 'Use the retro 8-Bit look.', cycleable: true },
   // "Design your own" — token recipe edited in Settings → Appearance,
   // applied as inline body properties (see lib/customTheme.ts).
   { id: 'custom', label: 'Custom', icon: 'palette', title: 'Design your own look.' },
+  // SEASONAL — gated by the World Cup 2026 flag (lib/worldcup.ts). When
+  // the flag flips off after the final, this entry disappears and
+  // normalizeSkin() coerces stranded users back to 'normal'.
+  ...(WORLD_CUP_2026
+    ? [{ id: 'worldcup', label: 'World Cup', icon: 'trophy', title: 'Your team’s colours, until the final.' }]
+    : []),
 ];
 
 export const DEFAULT_SKIN = SKINS[0].id;
@@ -54,10 +66,14 @@ export function persistSkin(id: string): void {
   try { window.localStorage.setItem(STORAGE_KEY, normalizeSkin(id)); } catch {}
 }
 
-/** The skin after `current` in registry order — the corner toggle cycles. */
+/** The next skin for the floating quick-toggle — cycles only the
+    cycleable skins (Normal ⇄ 8-Bit). From a Settings-only skin (Custom
+    or World Cup) it lands back on the first cycleable one. */
 export function nextSkin(current: string): string {
-  const idx = SKINS.findIndex((s) => s.id === current);
-  return SKINS[(idx + 1) % SKINS.length].id;
+  const cycle = SKINS.filter((s) => s.cycleable).map((s) => s.id);
+  if (cycle.length === 0) return DEFAULT_SKIN;
+  const idx = cycle.indexOf(current);
+  return idx < 0 ? cycle[0] : cycle[(idx + 1) % cycle.length];
 }
 
 export function skinLabel(id: string): string {

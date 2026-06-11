@@ -1,15 +1,17 @@
 // CHOOSE YOUR DISPLAY — theme picker, shown right after the coworker
 // cartridge is chosen and before POWER UP.
 //
-// Four preset "monitors", each a miniature render of the app in that
-// palette: ARCADE (8-bit dark), GAME BOY (8-bit light), MIDNIGHT
-// (normal dark), DAYLIGHT (normal light). One pick sets both axes
-// (skin + light/dark). A footer points at Settings → Appearance, where
-// the user can mix the axes freely or design their own Custom theme —
-// deliberately NOT on this screen, to keep onboarding one decision.
+// Four preset "monitors" (ARCADE / GAME BOY / MIDNIGHT / DAYLIGHT), each
+// a miniature render of the app in that palette — one pick sets both
+// axes (skin + light/dark). During World Cup 2026 a seasonal 🏆 card
+// sits at position 4 and opens the team-select overlay. The final card
+// advertises the in-app Custom designer (Settings → Appearance) —
+// focusable for its explainer, not pickable here.
 
 import { useEffect, useRef, useState } from 'react';
 import { ArcadeShell, PressPrompt } from './components';
+import { WORLD_CUP_2026, WORLD_CUP_TEAMS, type WorldCupTeam } from '../../lib/worldcup';
+import WorldCupOverlay from './WorldCupOverlay';
 
 export interface ThemePreset {
   id: string;
@@ -67,9 +69,17 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
 ];
 
-// The 5th card — not a preset: it advertises the in-app Custom designer
-// (Settings → Appearance → Style → Custom). Focusable so the detail
-// panel can explain it, but not pickable from this screen.
+// Non-preset cards. WORLD CUP is SEASONAL (gated by WORLD_CUP_2026 —
+// see lib/worldcup.ts for the removal plan); CUSTOM is the permanent
+// pointer at the in-app designer.
+const WORLDCUP_SLOT = {
+  id: 'worldcup-slot',
+  name: 'WORLD CUP',
+  sub: '2026 · 48 NATIONS',
+  desc: 'Wear your team’s colours — pick from all 48 qualified nations. A limited-time kit: here for the tournament, gone after the final.',
+  color: '#fbbf24',
+};
+
 const CUSTOM_SLOT = {
   id: 'custom-slot',
   name: 'CREATE YOUR OWN',
@@ -77,6 +87,25 @@ const CUSTOM_SLOT = {
   desc: 'Design your own theme inside the app — accent, background, corners, type and scanlines. Settings → Appearance → Style → Custom.',
   color: '#a78bfa',
 };
+
+type Slot =
+  | { kind: 'preset'; preset: ThemePreset }
+  | { kind: 'worldcup' }
+  | { kind: 'custom' };
+
+// Card order: three presets, the seasonal World Cup slot at position 4,
+// DAYLIGHT, then CREATE YOUR OWN.
+const SLOTS: Slot[] = [
+  ...THEME_PRESETS.slice(0, 3).map((preset) => ({ kind: 'preset' as const, preset })),
+  ...(WORLD_CUP_2026 ? [{ kind: 'worldcup' as const }] : []),
+  ...THEME_PRESETS.slice(3).map((preset) => ({ kind: 'preset' as const, preset })),
+  { kind: 'custom' as const },
+];
+
+function slotMeta(slot: Slot) {
+  if (slot.kind === 'preset') return slot.preset;
+  return slot.kind === 'worldcup' ? WORLDCUP_SLOT : CUSTOM_SLOT;
+}
 
 /** Mini "designer" visual for the CREATE YOUR OWN card: paint swatches. */
 function MiniDesigner({ height = 64 }: { height?: number }) {
@@ -95,6 +124,176 @@ function MiniDesigner({ height = 64 }: { height?: number }) {
         <span style={{ position: 'absolute', left: '26%', top: -3, width: 9, height: 10, background: 'var(--arc-muted)', borderRadius: 1 }} />
       </div>
     </div>
+  );
+}
+
+/** Mini terrace of team flags for the WORLD CUP card. */
+function MiniFlagWall({ height = 64 }: { height?: number }) {
+  const featured = ['england', 'brazil', 'france', 'mexico', 'japan', 'morocco']
+    .map((id) => WORLD_CUP_TEAMS.find((t) => t.id === id))
+    .filter((t): t is WorldCupTeam => Boolean(t));
+  return (
+    <div style={{ position: 'relative', height, borderRadius: 3, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, alignContent: 'center', background: 'var(--arc-bg-2)', border: '1px solid var(--arc-edge-2)', padding: '0 10%' }} aria-hidden>
+      {featured.map((t) => (
+        <span key={t.id} style={{ display: 'flex', flexDirection: t.flagDir === 'h' ? 'column' : 'row', height: 16, borderRadius: 1, overflow: 'hidden', border: '1px solid var(--arc-edge)' }}>
+          {t.flag.map((c, i) => (
+            <span key={i} style={{ flex: 1, background: c }} />
+          ))}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export default function ThemeSelect({
+  onSelect,
+  onWorldCup,
+  onBack,
+}: {
+  onSelect: (preset: ThemePreset) => void;
+  /** SEASONAL — picks a World Cup team theme (see lib/worldcup.ts). */
+  onWorldCup?: (team: WorldCupTeam) => void;
+  onBack?: () => void;
+}) {
+  const [focus, setFocus] = useState(0);
+  const [showWorldCup, setShowWorldCup] = useState(false);
+  const slot = SLOTS[focus];
+  const meta = slotMeta(slot);
+  const cardRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const focusRef = useRef(0);
+  focusRef.current = focus;
+  const overlayOpenRef = useRef(false);
+  overlayOpenRef.current = showWorldCup;
+
+  const moveFocus = (idx: number) => {
+    focusRef.current = idx;
+    setFocus(idx);
+    cardRefs.current[idx]?.focus({ preventScroll: true });
+  };
+
+  const confirm = (idx: number) => {
+    const s = SLOTS[idx];
+    if (s.kind === 'preset') onSelect(s.preset);
+    else if (s.kind === 'worldcup') setShowWorldCup(true);
+    // custom: explainer only — nothing to confirm here
+  };
+
+  useEffect(() => {
+    cardRefs.current[focusRef.current]?.focus({ preventScroll: true });
+    const handler = (e: KeyboardEvent) => {
+      if (overlayOpenRef.current) return; // the overlay owns the keyboard
+      const len = SLOTS.length;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); moveFocus((focusRef.current + 1) % len); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); moveFocus((focusRef.current - 1 + len) % len); }
+      else if (e.key === 'Home') { e.preventDefault(); moveFocus(0); }
+      else if (e.key === 'End') { e.preventDefault(); moveFocus(len - 1); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Live-preview the focused preset: the whole chooser re-skins as you
+  // browse (Game Boy card → Game Boy page, etc.). Non-preset slots
+  // (World Cup, Create Your Own) fall back to the neutral arcade look.
+  useEffect(() => {
+    const s = SLOTS[focus];
+    if (s?.kind === 'preset') document.body.dataset.arcadePreset = s.preset.id;
+    else delete document.body.dataset.arcadePreset;
+  }, [focus]);
+
+  const pressLabel =
+    slot.kind === 'preset' ? `PRESS ⏎ TO PICK ${meta.name}`
+    : slot.kind === 'worldcup' ? 'PRESS ⏎ TO PICK YOUR TEAM'
+    : 'DESIGN IT INSIDE THE APP — PICK A PRESET TO START';
+
+  return (
+    <ArcadeShell title="CHOOSE YOUR DISPLAY" subtitle="pick your screen · change it anytime">
+      <div className="arc-stack arc-fade-in" style={{ gap: 0, width: '100%' }}>
+        <div className="arc-cart-row" role="radiogroup" aria-label="Choose your display theme">
+          {SLOTS.map((s, idx) => {
+            const m = slotMeta(s);
+            const isFocused = idx === focus;
+            const ariaLabel =
+              s.kind === 'preset' ? `${m.name} — ${m.sub}`
+              : s.kind === 'worldcup' ? `${m.name} — pick a 2026 team theme`
+              : `${m.name} — design your own theme inside the app`;
+            return (
+              <div className="arc-cart-wrap" key={m.id}>
+                {isFocused && (
+                  <div className="arc-brackets" style={{ '--cart-color': m.color } as React.CSSProperties}>
+                    <span /><span /><span /><span />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={isFocused}
+                  aria-label={ariaLabel}
+                  tabIndex={isFocused ? 0 : -1}
+                  ref={(el) => { cardRefs.current[idx] = el; }}
+                  className={`arc-cart${isFocused ? ' focused' : ''}`}
+                  style={{ '--cart-color': m.color, width: 168, padding: '16px 12px 14px', gap: 12 } as React.CSSProperties}
+                  onClick={() => {
+                    if (idx !== focus) { moveFocus(idx); return; }
+                    confirm(idx);
+                  }}
+                  onDoubleClick={() => confirm(idx)}
+                >
+                  <div style={{ width: '100%' }}>
+                    {s.kind === 'preset' ? <MiniApp preset={s.preset} />
+                      : s.kind === 'worldcup' ? <MiniFlagWall />
+                      : <MiniDesigner />}
+                  </div>
+                  <span className="arc-cart-name" style={{ fontSize: 12 }}>{m.name}</span>
+                  <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--arc-muted)', marginTop: -14 }}>{m.sub}</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Focused slot description */}
+        <div
+          className="arc-panel"
+          key={meta.id}
+          style={{ width: '100%', maxWidth: 760, boxSizing: 'border-box', marginTop: 24, padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 16 }}
+        >
+          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '0.10em', color: meta.color, flex: 'none' }}>{meta.name}</span>
+          <span style={{ fontSize: 10.5, letterSpacing: '0.05em', lineHeight: 1.6, color: 'var(--arc-muted)', textAlign: 'left' }}>{meta.desc}</span>
+        </div>
+
+        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <PressPrompt
+            label={pressLabel}
+            onPress={() => confirm(focus)}
+            disabled={slot.kind === 'custom' || showWorldCup}
+          />
+          {onBack && (
+            <button
+              type="button"
+              className="arc-link"
+              onClick={() => {
+                // Leaving without picking — drop the live preview so the
+                // coworker screen we return to shows the neutral CRT.
+                delete document.body.dataset.arcadePreset;
+                onBack();
+              }}
+              style={{ marginTop: 4 }}
+            >
+              ← back
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showWorldCup && (
+        <WorldCupOverlay
+          onPick={(team) => { setShowWorldCup(false); onWorldCup?.(team); }}
+          onClose={() => setShowWorldCup(false)}
+        />
+      )}
+    </ArcadeShell>
   );
 }
 
@@ -118,155 +317,5 @@ function MiniApp({ preset, height = 64 }: { preset: ThemePreset; height?: number
         <div style={{ height: 14, marginTop: 8, border: `1px solid ${p.accent}`, borderRadius: r + 1 }} />
       </div>
     </div>
-  );
-}
-
-export default function ThemeSelect({
-  onSelect,
-  onBack,
-}: {
-  onSelect: (preset: ThemePreset) => void;
-  onBack?: () => void;
-}) {
-  // Slots 0..3 are the presets; the last slot is the CREATE YOUR OWN
-  // card (focusable for its explainer, not pickable here).
-  const SLOT_COUNT = THEME_PRESETS.length + 1;
-  const customIdx = THEME_PRESETS.length;
-  const [focus, setFocus] = useState(0);
-  const isCustomSlot = focus === customIdx;
-  const focused = isCustomSlot ? null : THEME_PRESETS[focus];
-  const cardRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const focusRef = useRef(0);
-  focusRef.current = focus;
-
-  const moveFocus = (idx: number) => {
-    focusRef.current = idx;
-    setFocus(idx);
-    cardRefs.current[idx]?.focus({ preventScroll: true });
-  };
-
-  useEffect(() => {
-    cardRefs.current[focusRef.current]?.focus({ preventScroll: true });
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); moveFocus((focusRef.current + 1) % SLOT_COUNT); }
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); moveFocus((focusRef.current - 1 + SLOT_COUNT) % SLOT_COUNT); }
-      else if (e.key === 'Home') { e.preventDefault(); moveFocus(0); }
-      else if (e.key === 'End') { e.preventDefault(); moveFocus(SLOT_COUNT - 1); }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Live-preview the focused preset: the whole chooser re-skins as you
-  // browse (Game Boy card → Game Boy page, etc.). The CREATE YOUR OWN
-  // slot has no preset, so fall back to the neutral arcade default.
-  // ARCADE's id has no palette block — it IS the default — so setting
-  // it is equivalent to clearing.
-  useEffect(() => {
-    const id = THEME_PRESETS[focus]?.id;
-    if (id) document.body.dataset.arcadePreset = id;
-    else delete document.body.dataset.arcadePreset;
-  }, [focus]);
-
-  return (
-    <ArcadeShell title="CHOOSE YOUR DISPLAY" subtitle="pick your screen · change it anytime">
-      <div className="arc-stack arc-fade-in" style={{ gap: 0, width: '100%' }}>
-        <div className="arc-cart-row" role="radiogroup" aria-label="Choose your display theme">
-          {THEME_PRESETS.map((tp, idx) => {
-            const isFocused = idx === focus;
-            return (
-              <div className="arc-cart-wrap" key={tp.id}>
-                {isFocused && (
-                  <div className="arc-brackets" style={{ '--cart-color': tp.color } as React.CSSProperties}>
-                    <span /><span /><span /><span />
-                  </div>
-                )}
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={isFocused}
-                  aria-label={`${tp.name} — ${tp.sub}`}
-                  tabIndex={isFocused ? 0 : -1}
-                  ref={(el) => { cardRefs.current[idx] = el; }}
-                  className={`arc-cart${isFocused ? ' focused' : ''}`}
-                  style={{ '--cart-color': tp.color, width: 168, padding: '16px 12px 14px', gap: 12 } as React.CSSProperties}
-                  onClick={() => {
-                    if (idx !== focus) { moveFocus(idx); return; }
-                    onSelect(tp);
-                  }}
-                  onDoubleClick={() => onSelect(tp)}
-                >
-                  <div style={{ width: '100%' }}>
-                    <MiniApp preset={tp} />
-                  </div>
-                  <span className="arc-cart-name" style={{ fontSize: 12 }}>{tp.name}</span>
-                  <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--arc-muted)', marginTop: -14 }}>{tp.sub}</span>
-                </button>
-              </div>
-            );
-          })}
-
-          {/* CREATE YOUR OWN — explainer card for the in-app designer */}
-          <div className="arc-cart-wrap" key={CUSTOM_SLOT.id}>
-            {isCustomSlot && (
-              <div className="arc-brackets" style={{ '--cart-color': CUSTOM_SLOT.color } as React.CSSProperties}>
-                <span /><span /><span /><span />
-              </div>
-            )}
-            <button
-              type="button"
-              role="radio"
-              aria-checked={isCustomSlot}
-              aria-label={`${CUSTOM_SLOT.name} — design your own theme inside the app`}
-              tabIndex={isCustomSlot ? 0 : -1}
-              ref={(el) => { cardRefs.current[customIdx] = el; }}
-              className={`arc-cart${isCustomSlot ? ' focused' : ''}`}
-              style={{ '--cart-color': CUSTOM_SLOT.color, width: 168, padding: '16px 12px 14px', gap: 12 } as React.CSSProperties}
-              onClick={() => { if (customIdx !== focus) moveFocus(customIdx); }}
-            >
-              <div style={{ width: '100%' }}>
-                <MiniDesigner />
-              </div>
-              <span className="arc-cart-name" style={{ fontSize: 12 }}>{CUSTOM_SLOT.name}</span>
-              <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--arc-muted)', marginTop: -14 }}>{CUSTOM_SLOT.sub}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Focused slot description */}
-        <div
-          className="arc-panel"
-          key={focused ? focused.id : CUSTOM_SLOT.id}
-          style={{ width: '100%', maxWidth: 760, boxSizing: 'border-box', marginTop: 24, padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 16 }}
-        >
-          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: '0.10em', color: (focused ?? CUSTOM_SLOT).color, flex: 'none' }}>{(focused ?? CUSTOM_SLOT).name}</span>
-          <span style={{ fontSize: 10.5, letterSpacing: '0.05em', lineHeight: 1.6, color: 'var(--arc-muted)', textAlign: 'left' }}>{(focused ?? CUSTOM_SLOT).desc}</span>
-        </div>
-
-        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-          <PressPrompt
-            label={focused ? `PRESS ⏎ TO PICK ${focused.name}` : 'DESIGN IT INSIDE THE APP — PICK A PRESET TO START'}
-            onPress={() => { if (focused) onSelect(focused); }}
-            disabled={!focused}
-          />
-          {onBack && (
-            <button
-              type="button"
-              className="arc-link"
-              onClick={() => {
-                // Leaving without picking — drop the live preview so the
-                // coworker screen we return to shows the neutral CRT.
-                delete document.body.dataset.arcadePreset;
-                onBack();
-              }}
-              style={{ marginTop: 4 }}
-            >
-              ← back
-            </button>
-          )}
-        </div>
-      </div>
-    </ArcadeShell>
   );
 }

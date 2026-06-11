@@ -50,6 +50,20 @@ export function persistCustomTheme(t: CustomTheme): void {
 }
 
 // ── Color helpers ────────────────────────────────────────────────────
+// (hexMix / hexLuminance are exported for the World Cup overlay's live
+// page tinting — same math as the token derivation below.)
+
+export function hexMix(a: string, b: string, t: number): string {
+  const ra = hexToRgb(a);
+  const rb = hexToRgb(b);
+  if (!ra || !rb) return a;
+  return rgbToHex(mix(ra, rb, t));
+}
+
+export function hexLuminance(hex: string): number {
+  const rgb = hexToRgb(hex);
+  return rgb ? luminance(rgb) : 0;
+}
 
 function hexToRgb(hex: string): [number, number, number] | null {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());

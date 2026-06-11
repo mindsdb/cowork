@@ -26,6 +26,7 @@ import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as 
 import { host } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
+import { WORLD_CUP_TEAMS, getWorldCupTeam, loadWorldCupTeam, persistWorldCupTeam, teamRecipe } from '../lib/worldcup';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -1009,6 +1010,9 @@ function AppCore() {
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
+  // SEASONAL (World Cup 2026): the picked team behind the `worldcup`
+  // skin — its kit recipe runs through the same engine as Custom.
+  const [worldcupTeam, setWorldcupTeam] = useState(() => loadWorldCupTeam()?.id ?? null);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1084,13 +1088,20 @@ function AppCore() {
     document.body.dataset.skin = skin;
   }, [skin]);
 
-  // Custom-skin recipe → inline body tokens. Applied only while the
-  // custom skin is active; cleared otherwise so the stylesheet-driven
-  // skins are untouched.
+  // Recipe-driven skins → inline body tokens. Custom applies the user's
+  // own recipe; the seasonal `worldcup` skin applies the picked team's
+  // kit through the same engine. Cleared otherwise so the
+  // stylesheet-driven skins are untouched.
   useEffect(() => {
     persistCustomTheme(customTheme);
-    applyCustomTheme(skin === 'custom' ? customTheme : null);
-  }, [skin, customTheme]);
+    const team = skin === 'worldcup' ? (getWorldCupTeam(worldcupTeam) ?? WORLD_CUP_TEAMS[0]) : null;
+    if (team) persistWorldCupTeam(team.id);
+    applyCustomTheme(
+      skin === 'custom' ? customTheme
+      : team ? teamRecipe(team)
+      : null,
+    );
+  }, [skin, customTheme, worldcupTeam]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -3502,7 +3513,7 @@ function AppCore() {
         )}
 
         {route === 'settings' && (
-          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} agentLabel={agentLabel} />
+          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} worldcupTeam={worldcupTeam} onWorldcupTeamChange={setWorldcupTeam} agentLabel={agentLabel} />
         )}
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now

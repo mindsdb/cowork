@@ -1007,3 +1007,40 @@ body[data-arcade-preset="gameboy"] .arc-btn:disabled,
 body[data-arcade-preset="daylight"] .arc-btn:disabled {
   box-shadow: 0 4px 0 0 rgba(15, 16, 17, 0.22);
 }
+
+/* SEASONAL — World Cup teams (lib/worldcup.ts). 48 teams can't each have
+   a palette block, so the picked team's recipe is applied as inline app
+   tokens (--bg/--surface/--ink/--accent…) by applyCustomTheme, and the
+   arcade screens (POWER UP, NOW LOADING) just remap their --arc-* tokens
+   onto those. One block themes all 48. */
+body[data-arcade-preset="worldcup"] .arc-root,
+body[data-arcade-preset="worldcup"] .arc-legal-overlay {
+  --arc-bg: var(--bg);
+  --arc-bg-2: var(--surface);
+  --arc-card: var(--surface);
+  --arc-card-2: var(--surface-2);
+  --arc-edge: var(--line);
+  --arc-edge-2: var(--line-2);
+  --arc-ink: var(--ink);
+  --arc-muted: var(--ink-3);
+  --arc-dim: var(--ink-4);
+  --arc-cyan: var(--accent);
+  --arc-green: var(--accent);
+  --arc-logo-a: var(--ink);
+  --arc-logo-b: var(--ink-3);
+}
+
+/* Flat team bg (no blue wash), no phosphor flicker, gentle scanlines
+   that read on both light and dark kits. */
+body[data-arcade-preset="worldcup"] .arc-root {
+  background: var(--arc-bg);
+}
+body[data-arcade-preset="worldcup"] .arc-root::before {
+  background: none;
+  animation: none;
+}
+body[data-arcade-preset="worldcup"] .arc-root::after {
+  background:
+    repeating-linear-gradient(to bottom, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 4px),
+    radial-gradient(115% 115% at 50% 50%, transparent 68%, rgba(0,0,0,0.14) 100%);
+}
