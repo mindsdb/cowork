@@ -63,7 +63,11 @@ body[data-skin="8bit"] ::selection {
   color: var(--bg);
 }
 
-body[data-skin="8bit"] :focus-visible {
+/* Retro dashed keyboard-focus ring — but only on controls that don't
+   already own a focus treatment. Text-entry fields (the composer
+   textarea, inputs, selects, contenteditable) keep their existing
+   focus border, so we don't double up with a clashing dashed box. */
+body[data-skin="8bit"] :focus-visible:not(input):not(textarea):not(select):not([contenteditable]):not([contenteditable] *) {
   outline: 2px dashed var(--accent);
   outline-offset: 2px;
 }
