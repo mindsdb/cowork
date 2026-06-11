@@ -24,6 +24,7 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
 import { host } from '../platform/host';
+import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -999,15 +1000,11 @@ function AppCore() {
       return saved === 'light' || saved === 'dark' ? saved : 'dark';
     } catch { return 'dark'; }
   });
-  // Skin (normal | 8bit) — a second styling axis, orthogonal to
-  // light/dark. "8bit" re-skins the app via the token overrides in
-  // styles/skin-8bit.css (body[data-skin="8bit"]); both color schemes
-  // have an 8-bit variant, so the two toggles compose freely.
-  const [skin, setSkin] = useState(() => {
-    try {
-      return window.localStorage.getItem('anton.skin') === '8bit' ? '8bit' : 'normal';
-    } catch { return 'normal'; }
-  });
+  // Skin — a second styling axis, orthogonal to light/dark. Each entry
+  // in the SKINS registry (lib/skins.ts) maps to a token-override
+  // stylesheet keyed on body[data-skin]; both color schemes have a
+  // variant per skin, so the two toggles compose freely.
+  const [skin, setSkin] = useState(loadSkin);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1079,7 +1076,7 @@ function AppCore() {
   }, [theme]);
 
   useEffect(() => {
-    try { window.localStorage.setItem('anton.skin', skin); } catch {}
+    persistSkin(skin);
     document.body.dataset.skin = skin;
   }, [skin]);
 
@@ -3684,14 +3681,13 @@ function AppCore() {
         {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
       </button>
 
-      {/* Floating skin toggle — stacked above the theme toggle. Swaps
-          between the normal look and the 8-Bit skin, same persistence
-          model as light/dark. */}
+      {/* Floating skin toggle — stacked above the theme toggle. Cycles
+          through the SKINS registry, same persistence model as
+          light/dark. */}
       <button
-        onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
-        title={skin === '8bit' ? 'Switch to normal style' : 'Switch to 8-Bit style'}
-        aria-label="Toggle 8-Bit style"
-        aria-pressed={skin === '8bit'}
+        onClick={() => setSkin(nextSkin(skin))}
+        title={`Style: ${skinLabel(skin)} — switch to ${skinLabel(nextSkin(skin))}`}
+        aria-label={`Switch style to ${skinLabel(nextSkin(skin))}`}
         className="floating-theme-toggle floating-skin-toggle"
         style={{ WebkitAppRegion: 'no-drag' }}
       >

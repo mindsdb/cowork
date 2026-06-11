@@ -12,6 +12,7 @@ import './cowork/styles/tailwind.css';
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
 import './styles.css';
+import { loadSkin } from './lib/skins';
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
 // runs, so a missing `window.antontron` means we're loaded in a real
@@ -50,14 +51,12 @@ if (typeof window !== 'undefined' && !(window as any).antontron) {
   // mounts) so onboarding doesn't flash the wrong palette.
   (() => {
     let theme: 'light' | 'dark' = 'dark';
-    let skin: 'normal' | '8bit' = 'normal';
     try {
       const saved = window.localStorage.getItem('anton.theme');
       if (saved === 'light' || saved === 'dark') theme = saved;
-      if (window.localStorage.getItem('anton.skin') === '8bit') skin = '8bit';
     } catch {}
     document.body.dataset.theme = theme;
-    document.body.dataset.skin = skin;
+    document.body.dataset.skin = loadSkin();
     document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
   })();
 

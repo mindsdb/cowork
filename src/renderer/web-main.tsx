@@ -24,6 +24,7 @@ import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import App from './App';
 import { keycloak, scheduleWebTokenRefresh } from './lib/keycloak';
+import { loadSkin } from './lib/skins';
 import { host } from './platform/host';
 
 // Cloud-hosted instances are accessed via the Cloudflare Worker, which
@@ -37,14 +38,12 @@ const isCloudHosted = (() => {
 
 (() => {
   let theme: 'light' | 'dark' = 'dark';
-  let skin: 'normal' | '8bit' = 'normal';
   try {
     const saved = window.localStorage.getItem('anton.theme');
     if (saved === 'light' || saved === 'dark') theme = saved;
-    if (window.localStorage.getItem('anton.skin') === '8bit') skin = '8bit';
   } catch {}
   document.body.dataset.theme = theme;
-  document.body.dataset.skin = skin;
+  document.body.dataset.skin = loadSkin();
   document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
 })();
 

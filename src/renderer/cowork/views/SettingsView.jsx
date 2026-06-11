@@ -4,6 +4,7 @@ import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '
 import { providerTypeToKeyField, providerValueToType } from '../lib/settingsTransform';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
+import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL } from '../../pages/onboarding/constants';
 import { getUIVersion, isElectron } from '../../platform/host';
 
@@ -1574,23 +1575,17 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               </Section>
               <Section title="Style" subtitle="Normal — or 8-Bit, for when work should feel like an arcade. Combines with light and dark.">
                 <Segmented
-                  value={skin || 'normal'}
+                  value={normalizeSkin(skin)}
                   onChange={(v) => onSkinChange?.(v)}
                   groupLabel="Style"
-                  options={[
-                    {
-                      value: 'normal',
-                      label: 'Normal',
-                      ariaLabel: 'Normal style',
-                      title: 'Use the standard look.',
-                    },
-                    {
-                      value: '8bit',
-                      label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.gamepad(13)} 8-Bit</span>),
-                      ariaLabel: '8-Bit style',
-                      title: 'Use the retro 8-Bit look.',
-                    },
-                  ]}
+                  options={SKINS.map((s) => ({
+                    value: s.id,
+                    label: s.icon && Ico[s.icon]
+                      ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
+                      : s.label,
+                    ariaLabel: `${s.label} style`,
+                    title: s.title,
+                  }))}
                 />
               </Section>
               <Section title="Greeting" subtitle="The line shown when you start a new task.">

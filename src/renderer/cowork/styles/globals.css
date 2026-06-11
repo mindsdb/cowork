@@ -2900,12 +2900,12 @@ body[data-theme="dark"] .floating-theme-toggle:hover {
   box-shadow: 0 0 18px rgba(34,211,238,0.3);
 }
 
-/* Skin (8-Bit) toggle — same chrome as the theme toggle, stacked above
-   it in the corner. Lit accent while the 8-Bit skin is active. */
+/* Skin (Style) toggle — same chrome as the theme toggle, stacked above
+   it in the corner. Lit accent while any non-default skin is active. */
 .floating-skin-toggle {
   bottom: 54px;
 }
-body[data-skin="8bit"] .floating-skin-toggle {
+body:not([data-skin="normal"]) .floating-skin-toggle {
   color: var(--accent);
   border-color: var(--accent);
 }
