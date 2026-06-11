@@ -23,6 +23,8 @@ const Ico = {
   moon:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>,
   // Retro gamepad — the 8-Bit skin toggle.
   gamepad:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 11h4M8 9v4"/><path d="M15.5 12.5h.01M18 10h.01"/><path d="M17.32 6H6.68a4 4 0 0 0-3.98 3.6l-.66 5.86A2.75 2.75 0 0 0 6.8 17.6L8.5 15.5h7l1.7 2.1a2.75 2.75 0 0 0 4.76-2.14l-.66-5.86A4 4 0 0 0 17.32 6Z"/></svg>,
+  // Painter's palette — the Custom (design-your-own) skin.
+  palette:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21a9 9 0 1 1 9-9c0 2.5-2 3.5-3.5 3.5H15a2 2 0 0 0-1.5 3.3c.3.4.5.8.5 1.2a1.5 1.5 0 0 1-2 1Z"/><circle cx="7.5" cy="11.5" r=".5"/><circle cx="10" cy="7.5" r=".5"/><circle cx="14.5" cy="7.5" r=".5"/><circle cx="17" cy="11.5" r=".5"/></svg>,
   power:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v9"/><path d="M7.5 6.5a7 7 0 1 0 9 0"/></svg>,
   // Disconnect / power-off — power glyph with a slash. Reads as
   // "click to turn off" (i.e. backend currently running).

@@ -58,6 +58,23 @@ body[data-skin="8bit"][data-theme="light"]:not(:has(.arc-root))::after {
   );
 }
 
+/* Custom skin's optional scanlines — same overlay, toggled by the
+   "design your own" recipe (lib/customTheme.ts adds this class). */
+body.custom-scanlines:not(:has(.arc-root))::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.06) 0px,
+    rgba(0, 0, 0, 0.06) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
 body[data-skin="8bit"] ::selection {
   background: var(--accent);
   color: var(--bg);

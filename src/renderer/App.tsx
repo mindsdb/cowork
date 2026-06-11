@@ -3,14 +3,16 @@ import TitleScreen from './pages/arcade/TitleScreen';
 import TermsScreen from './pages/arcade/TermsScreen';
 import SetupScreen from './pages/arcade/SetupScreen';
 import CoworkerSelect, { COWORKERS } from './pages/arcade/CoworkerSelect';
+import ThemeSelect, { type ThemePreset } from './pages/arcade/ThemeSelect';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import LaunchScreen from './pages/arcade/LaunchScreen';
 import CoworkApp from './CoworkApp';
 import { host } from './platform/host';
+import { persistSkin } from './lib/skins';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
-type Page = 'loading' | 'intro' | 'terms' | 'setup' | 'coworker' | 'onboarding' | 'launching' | 'terminal';
+type Page = 'loading' | 'intro' | 'terms' | 'setup' | 'coworker' | 'theme' | 'onboarding' | 'launching' | 'terminal';
 
 // Terms-consent persistence for the web build.
 //
@@ -62,7 +64,7 @@ function devForcedPage(): Page | null {
   if (!import.meta.env.DEV) return null;
   try {
     const p = new URLSearchParams(window.location.search).get('page');
-    const valid: Page[] = ['intro', 'terms', 'setup', 'coworker', 'onboarding', 'launching'];
+    const valid: Page[] = ['intro', 'terms', 'setup', 'coworker', 'theme', 'onboarding', 'launching'];
     return valid.includes(p as Page) ? (p as Page) : null;
   } catch {
     return null;
@@ -164,6 +166,19 @@ export default function App() {
     rememberCoworker(id);
     const cw = COWORKERS.find((c) => c.id === id);
     setCoworker({ id, label, sprite: (cw?.sprite ?? 'anton') as SpriteName });
+    setPage('theme');
+  };
+
+  // CHOOSE YOUR DISPLAY → persist both axes. CoworkApp seeds its
+  // theme/skin state from these keys when it mounts after onboarding;
+  // the body attributes are set too so the launch beat is consistent.
+  const handleThemeSelected = (preset: ThemePreset) => {
+    persistSkin(preset.skin);
+    try { window.localStorage.setItem('anton.theme', preset.theme); } catch {}
+    document.body.dataset.skin = preset.skin;
+    document.body.dataset.theme = preset.theme;
+    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
+    document.body.classList.add(preset.theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
     setPage('onboarding');
   };
 
@@ -196,11 +211,17 @@ export default function App() {
       {page === 'terms' && <TermsScreen onAccept={handleTermsAccepted} />}
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}
       {page === 'coworker' && <CoworkerSelect onSelect={handleCoworkerSelected} />}
+      {page === 'theme' && (
+        <ThemeSelect
+          onSelect={isDevFrozen ? () => {} : handleThemeSelected}
+          onBack={() => setPage('coworker')}
+        />
+      )}
       {page === 'onboarding' && (
         <OnboardingScreen
           coworker={coworker}
           onComplete={isDevFrozen ? () => {} : handleOnboardingComplete}
-          onBack={() => setPage('coworker')}
+          onBack={() => setPage('theme')}
         />
       )}
       {page === 'launching' && (

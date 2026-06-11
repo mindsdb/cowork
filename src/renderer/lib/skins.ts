@@ -27,6 +27,9 @@ export interface Skin {
 export const SKINS: Skin[] = [
   { id: 'normal', label: 'Normal', title: 'Use the standard look.' },
   { id: '8bit', label: '8-Bit', icon: 'gamepad', title: 'Use the retro 8-Bit look.' },
+  // "Design your own" — token recipe edited in Settings → Appearance,
+  // applied as inline body properties (see lib/customTheme.ts).
+  { id: 'custom', label: 'Custom', icon: 'palette', title: 'Design your own look.' },
 ];
 
 export const DEFAULT_SKIN = SKINS[0].id;

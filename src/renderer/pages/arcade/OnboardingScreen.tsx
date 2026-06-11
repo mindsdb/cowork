@@ -678,7 +678,7 @@ export default function OnboardingScreen({
 
         {onBack && phase !== 'validating' && (
           <button type="button" className="arc-link" onClick={onBack} style={{ marginTop: 2 }}>
-            ← change coworker
+            ← back
           </button>
         )}
       </div>

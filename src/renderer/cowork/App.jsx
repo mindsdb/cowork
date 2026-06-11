@@ -25,6 +25,7 @@ import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
 import { host } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
+import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -1005,6 +1006,9 @@ function AppCore() {
   // stylesheet keyed on body[data-skin]; both color schemes have a
   // variant per skin, so the two toggles compose freely.
   const [skin, setSkin] = useState(loadSkin);
+  // The "design your own" recipe behind the `custom` skin — edited in
+  // Settings → Appearance, applied as inline body token overrides.
+  const [customTheme, setCustomTheme] = useState(loadCustomTheme);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1079,6 +1083,14 @@ function AppCore() {
     persistSkin(skin);
     document.body.dataset.skin = skin;
   }, [skin]);
+
+  // Custom-skin recipe → inline body tokens. Applied only while the
+  // custom skin is active; cleared otherwise so the stylesheet-driven
+  // skins are untouched.
+  useEffect(() => {
+    persistCustomTheme(customTheme);
+    applyCustomTheme(skin === 'custom' ? customTheme : null);
+  }, [skin, customTheme]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -3490,7 +3502,7 @@ function AppCore() {
         )}
 
         {route === 'settings' && (
-          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} agentLabel={agentLabel} />
+          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} agentLabel={agentLabel} />
         )}
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now
