@@ -10,6 +10,7 @@ import './cowork/styles/tailwind.css';
 // page for its theme tokens. Antontron's own styles.css aliases its
 // legacy var names to the new tokens.
 import './cowork/styles/globals.css';
+import './cowork/styles/skin-8bit.css';
 import './styles.css';
 
 // Electron-only entry. The bridge is exposed by preload.ts before this
@@ -45,15 +46,18 @@ if (typeof window !== 'undefined' && !(window as any).antontron) {
       </ul>
     </div>`;
 } else {
-  // Apply the persisted theme on first paint (before React mounts) so
-  // onboarding doesn't flash the wrong palette.
+  // Apply the persisted theme + skin on first paint (before React
+  // mounts) so onboarding doesn't flash the wrong palette.
   (() => {
     let theme: 'light' | 'dark' = 'dark';
+    let skin: 'normal' | '8bit' = 'normal';
     try {
       const saved = window.localStorage.getItem('anton.theme');
       if (saved === 'light' || saved === 'dark') theme = saved;
+      if (window.localStorage.getItem('anton.skin') === '8bit') skin = '8bit';
     } catch {}
     document.body.dataset.theme = theme;
+    document.body.dataset.skin = skin;
     document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
   })();
 

@@ -999,6 +999,15 @@ function AppCore() {
       return saved === 'light' || saved === 'dark' ? saved : 'dark';
     } catch { return 'dark'; }
   });
+  // Skin (normal | 8bit) — a second styling axis, orthogonal to
+  // light/dark. "8bit" re-skins the app via the token overrides in
+  // styles/skin-8bit.css (body[data-skin="8bit"]); both color schemes
+  // have an 8-bit variant, so the two toggles compose freely.
+  const [skin, setSkin] = useState(() => {
+    try {
+      return window.localStorage.getItem('anton.skin') === '8bit' ? '8bit' : 'normal';
+    } catch { return 'normal'; }
+  });
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1068,6 +1077,11 @@ function AppCore() {
       window.gravityField.setTheme(theme);
     }
   }, [theme]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem('anton.skin', skin); } catch {}
+    document.body.dataset.skin = skin;
+  }, [skin]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -3479,7 +3493,7 @@ function AppCore() {
         )}
 
         {route === 'settings' && (
-          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} agentLabel={agentLabel} />
+          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} agentLabel={agentLabel} />
         )}
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now
@@ -3668,6 +3682,20 @@ function AppCore() {
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+      </button>
+
+      {/* Floating skin toggle — stacked above the theme toggle. Swaps
+          between the normal look and the 8-Bit skin, same persistence
+          model as light/dark. */}
+      <button
+        onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
+        title={skin === '8bit' ? 'Switch to normal style' : 'Switch to 8-Bit style'}
+        aria-label="Toggle 8-Bit style"
+        aria-pressed={skin === '8bit'}
+        className="floating-theme-toggle floating-skin-toggle"
+        style={{ WebkitAppRegion: 'no-drag' }}
+      >
+        {Ico.gamepad(15)}
       </button>
 
       {/* OTA update overlay — shown during auto-update download/reload */}

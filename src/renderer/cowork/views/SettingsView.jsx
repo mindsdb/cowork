@@ -685,7 +685,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
   );
 }
 
-export default function SettingsView({ settings, setSetting, onSave, theme, onThemeChange, agentLabel }) {
+export default function SettingsView({ settings, setSetting, onSave, theme, onThemeChange, skin, onSkinChange, agentLabel }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -1568,6 +1568,27 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                       label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
                       ariaLabel: 'Dark theme',
                       title: 'Use the dark theme.',
+                    },
+                  ]}
+                />
+              </Section>
+              <Section title="Style" subtitle="Normal — or 8-Bit, for when work should feel like an arcade. Combines with light and dark.">
+                <Segmented
+                  value={skin || 'normal'}
+                  onChange={(v) => onSkinChange?.(v)}
+                  groupLabel="Style"
+                  options={[
+                    {
+                      value: 'normal',
+                      label: 'Normal',
+                      ariaLabel: 'Normal style',
+                      title: 'Use the standard look.',
+                    },
+                    {
+                      value: '8bit',
+                      label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.gamepad(13)} 8-Bit</span>),
+                      ariaLabel: '8-Bit style',
+                      title: 'Use the retro 8-Bit look.',
                     },
                   ]}
                 />
