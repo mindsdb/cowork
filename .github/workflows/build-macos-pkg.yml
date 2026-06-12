@@ -107,9 +107,9 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           SHA="${GITHUB_SHA::7}"
           case "${{ inputs.build_kind }}" in
-            preview) NAME="anton-${VERSION}-preview-${SHA}.pkg" ;;
-            stable)  NAME="anton-${VERSION}-stable-${SHA}.pkg"  ;;
-            prod)    NAME="anton-${VERSION}.pkg" ;;
+            preview) NAME="mindshub-cowork-${VERSION}-preview-${SHA}.pkg" ;;
+            stable)  NAME="mindshub-cowork-${VERSION}-stable-${SHA}.pkg"  ;;
+            prod)    NAME="mindshub-cowork-${VERSION}.pkg" ;;
             *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
           esac
           echo "artifact_name=${NAME}" >> "$GITHUB_OUTPUT"
