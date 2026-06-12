@@ -1,12 +1,12 @@
 // CHOOSE YOUR DISPLAY — theme picker, shown right after the coworker
 // cartridge is chosen and before POWER UP.
 //
-// Four preset "monitors" (ARCADE / GAME BOY / MIDNIGHT / DAYLIGHT), each
+// Four preset "monitors" (MIDNIGHT / DAYLIGHT / GAME BOY / ARCADE), each
 // a miniature render of the app in that palette — one pick sets both
 // axes (skin + light/dark). During World Cup 2026 a seasonal 🏆 card
-// sits at position 4 and opens the team-select overlay. The final card
-// advertises the in-app Custom designer (Settings → Appearance) —
-// focusable for its explainer, not pickable here.
+// sits just before the final card, which advertises the in-app Custom
+// designer (Settings → Appearance) — focusable for its explainer, not
+// pickable here.
 
 import { useEffect, useRef, useState } from 'react';
 import { ArcadeShell, PressPrompt } from './components';
@@ -96,12 +96,11 @@ type Slot =
   | { kind: 'worldcup' }
   | { kind: 'custom' };
 
-// Card order: three presets, the seasonal World Cup slot at position 4,
-// DAYLIGHT, then CREATE YOUR OWN.
+// Card order: the four presets, the seasonal World Cup slot just
+// before CREATE YOUR OWN, which always sits last.
 const SLOTS: Slot[] = [
-  ...THEME_PRESETS.slice(0, 3).map((preset) => ({ kind: 'preset' as const, preset })),
+  ...THEME_PRESETS.map((preset) => ({ kind: 'preset' as const, preset })),
   ...(WORLD_CUP_2026 ? [{ kind: 'worldcup' as const }] : []),
-  ...THEME_PRESETS.slice(3).map((preset) => ({ kind: 'preset' as const, preset })),
   { kind: 'custom' as const },
 ];
 
