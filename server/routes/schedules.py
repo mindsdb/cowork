@@ -22,6 +22,9 @@ def _task_title(content: str) -> str:
 
 SERVER_STARTED_AT = datetime.now(timezone.utc)
 _scheduler_task: asyncio.Task | None = None
+# Strong references to in-flight manual "Run now" drains so the event
+# loop doesn't garbage-collect them mid-flight.
+_manual_run_tasks: set[asyncio.Task] = set()
 
 
 class ScheduleRequest(BaseModel):
@@ -201,19 +204,20 @@ def _append_run_record(state: dict, schedule_id: str, record: dict) -> None:
         del bucket[: len(bucket) - _MAX_RUNS_PER_SCHEDULE]
 
 
-async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | None = None) -> dict:
-    """Execute one run of a scheduled task.
+async def _begin_schedule_run(schedule: dict) -> dict:
+    """Open a schedule run's chat stream without draining it.
 
-    Side effects on the schedule itself: updates `lastRunAt`,
-    `lastResultSessionId`, `lastError`, `updatedAt`. For non-manual
-    runs the cadence advances `nextRunAt`.
+    Returns a context dict carrying everything `_finish_schedule_run`
+    needs. The conversation is created (and its first user message
+    persisted) by `chat_stream` here, so the `conversation_id` is known
+    — and the conversation is registered in-flight — before any tokens
+    are drained. This lets the manual "Run now" path hand the id back to
+    the client immediately and drain in the background.
 
-    Side effects on state: when `state` is provided, appends a run
-    record to `state["schedule_runs"][<schedule_id>]`. The caller is
-    responsible for save_state() afterward so writes happen once.
+    On a setup failure (chat_stream itself raises) the context still
+    carries a synthetic `conversation_id` and a pre-recorded error so
+    the caller can finalize it as a failed run.
     """
-    from anton.core.llm.provider import StreamTextDelta
-
     title = schedule.get("title") or _task_title(schedule.get("prompt", "Scheduled task"))
     started_at_iso = utc_now_iso()
     started_at_dt  = datetime.now(timezone.utc)
@@ -245,8 +249,14 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
         ],
     }
 
-    conversation_id: str | None = None
-    error_message: str | None = None
+    ctx: dict = {
+        "task": task,
+        "started_at_iso": started_at_iso,
+        "started_at_dt": started_at_dt,
+        "event_stream": None,
+        "conversation_id": None,
+        "error_message": None,
+    }
     try:
         event_stream, conversation_id = await conversation_manager.chat_stream(
             schedule.get("prompt", ""),
@@ -254,23 +264,60 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
             model=schedule.get("model"),
         )
         task["id"] = conversation_id
-        parts: list[str] = []
-        async for event in event_stream:
-            if isinstance(event, StreamTextDelta):
-                parts.append(event.text)
-        answer = "".join(parts).strip()
-        task["messages"].append({"role": "assistant", "content": answer, "createdAt": utc_now_iso()})
-        task["status"] = "idle"
-        task["updatedAt"] = utc_now_iso()
-        schedule["lastError"] = None
+        ctx["event_stream"] = event_stream
+        ctx["conversation_id"] = conversation_id
     except Exception as exc:
-        if conversation_id is None:
-            conversation_id = f"sched_{uuid.uuid4().hex[:12]}"
-            task["id"] = conversation_id
-        error_message = str(exc)
+        conversation_id = f"sched_{uuid.uuid4().hex[:12]}"
+        task["id"] = conversation_id
+        ctx["conversation_id"] = conversation_id
+        ctx["error_message"] = str(exc)
         task["status"] = "error"
-        task["error"] = error_message
+        task["error"] = str(exc)
         task["updatedAt"] = utc_now_iso()
+    return ctx
+
+
+async def _finish_schedule_run(
+    schedule: dict, ctx: dict, *, manual: bool = False, state: dict | None = None,
+) -> dict:
+    """Drain a run started by `_begin_schedule_run` and record its result.
+
+    Side effects on the schedule itself: updates `lastRunAt`,
+    `lastResultSessionId`, `lastError`, `updatedAt`. For non-manual
+    runs the cadence advances `nextRunAt`.
+
+    Side effects on state: when `state` is provided, appends a run
+    record to `state["schedule_runs"][<schedule_id>]`. The caller is
+    responsible for save_state() afterward so writes happen once.
+    """
+    from anton.core.llm.provider import StreamTextDelta
+
+    task = ctx["task"]
+    conversation_id = ctx["conversation_id"]
+    error_message = ctx["error_message"]
+    event_stream = ctx["event_stream"]
+    started_at_iso = ctx["started_at_iso"]
+    started_at_dt = ctx["started_at_dt"]
+
+    if event_stream is not None and error_message is None:
+        try:
+            parts: list[str] = []
+            async for event in event_stream:
+                if isinstance(event, StreamTextDelta):
+                    parts.append(event.text)
+            answer = "".join(parts).strip()
+            task["messages"].append({"role": "assistant", "content": answer, "createdAt": utc_now_iso()})
+            task["status"] = "idle"
+            task["updatedAt"] = utc_now_iso()
+            schedule["lastError"] = None
+        except Exception as exc:
+            error_message = str(exc)
+            task["status"] = "error"
+            task["error"] = error_message
+            task["updatedAt"] = utc_now_iso()
+            schedule["lastError"] = error_message
+    else:
+        # Setup failed in `_begin_schedule_run` — surface that error.
         schedule["lastError"] = error_message
 
     finished_at_iso = utc_now_iso()
@@ -303,6 +350,17 @@ async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | N
         })
 
     return {"schedule": schedule, "session": task}
+
+
+async def _run_schedule(schedule: dict, manual: bool = False, *, state: dict | None = None) -> dict:
+    """Execute one run of a scheduled task, start to finish.
+
+    Used by the scheduler loop (and as a synchronous fallback). The
+    manual "Run now" endpoint splits this into begin/finish so it can
+    return the conversation id eagerly and drain in the background.
+    """
+    ctx = await _begin_schedule_run(schedule)
+    return await _finish_schedule_run(schedule, ctx, manual=manual, state=state)
 
 
 async def _scheduler_loop() -> None:
@@ -436,9 +494,42 @@ async def run_schedule_now(schedule_id: str):
     schedule = next((item for item in state.get("schedules", []) if item.get("id") == schedule_id), None)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found.")
-    result = await _run_schedule(schedule, manual=True, state=state)
-    save_state(state)
-    return result
+
+    # Open the stream first so we can hand the conversation id back to
+    # the client right away — the run can take a while, and waiting for
+    # it to finish leaves the client guessing about which conversation
+    # to follow (it would only learn the id once the task was already
+    # done). With the id in hand the client marks the conversation
+    # in-flight and tails the live stream, so progress + the final
+    # answer appear without a page refresh.
+    ctx = await _begin_schedule_run(schedule)
+    conversation_id = ctx["conversation_id"]
+
+    if ctx["event_stream"] is None:
+        # The stream failed to even start — finalize synchronously as an
+        # error so the caller gets the failure inline.
+        result = await _finish_schedule_run(schedule, ctx, manual=True, state=state)
+        save_state(state)
+        return {"conversation_id": conversation_id, **result}
+
+    async def _drain_in_background() -> None:
+        # Re-load state inside the task so the deferred save doesn't
+        # clobber concurrent writes from other requests.
+        bg_state = load_state()
+        bg_schedule = next(
+            (s for s in bg_state.get("schedules", []) if s.get("id") == schedule_id),
+            schedule,
+        )
+        try:
+            await _finish_schedule_run(bg_schedule, ctx, manual=True, state=bg_state)
+        finally:
+            save_state(bg_state)
+
+    task = asyncio.ensure_future(_drain_in_background())
+    _manual_run_tasks.add(task)
+    task.add_done_callback(_manual_run_tasks.discard)
+
+    return {"conversation_id": conversation_id, "schedule": schedule, "session": ctx["task"]}
 
 
 @router.get("/{schedule_id}/runs")

@@ -3077,9 +3077,12 @@ function AppCore() {
 
   const handleRunScheduleNow = async (id) => {
     const result = await runScheduleNow(id);
-    // The server creates the conversation eagerly and returns its id.
-    // Mark it in-flight locally so reconcileTaskMessages doesn't inject
-    // a spurious "got interrupted" prompt before the 5s poll catches up.
+    // The server creates the conversation eagerly and returns its id
+    // while the run continues in the background. Mark it in-flight
+    // locally so reconcileTaskMessages shows a "Running task…"
+    // placeholder (instead of a spurious "got interrupted" prompt) and
+    // the 5s heartbeat starts polling for completion. Opening the task
+    // then attaches to the live stream via reconnectInFlight.
     if (result?.conversation_id) {
       markInFlight(result.conversation_id);
     }
