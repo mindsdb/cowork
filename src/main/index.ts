@@ -324,8 +324,8 @@ function createWindow() {
   // without this, right-click → Cut/Copy/Paste does nothing anywhere
   // (the app menu only provides the keyboard accelerators). Wire a
   // minimal editing menu for any editable field or text selection so
-  // pasting an API key by right-click works — including the onboarding
-  // screens, which are the most paste-heavy surface in the app.
+  // pasting an API key by right-click works — the onboarding/settings
+  // screens are the most paste-heavy surface in the app.
   mainWindow.webContents.on('context-menu', (_event, params) => {
     const { isEditable, editFlags, selectionText } = params;
     if (!isEditable && !selectionText) return;
