@@ -276,14 +276,6 @@
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
-.arc-panel-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.20em;
-  color: var(--arc-muted);
-  text-transform: uppercase;
-}
-
 /* ── Form elements ─────────────────────────────────────────────────── */
 
 .arc-label {
@@ -630,6 +622,11 @@
 .arc-title-logo {
   font-size: clamp(56px, 11vw, 96px);
   font-weight: 700;
+  /* The sibling rule below can be wider than the glyphs, stretching the
+     shared wrapper — without an explicit center the text hugs the left.
+     text-indent balances the trailing letter-space after the final K. */
+  text-align: center;
+  text-indent: 0.06em;
   letter-spacing: 0.06em;
   color: var(--arc-ink);
   text-shadow: 0 0 34px color-mix(in srgb, var(--arc-ink) 22%, transparent);
@@ -662,8 +659,6 @@
   color: var(--arc-cyan);
 }
 
-.arc-pill-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-
 /* CRT power-on: vertical collapse + flash, classic tube. */
 .arc-crt-on {
   animation: arc-crt-on 700ms cubic-bezier(0.23, 1, 0.32, 1) both;
@@ -685,8 +680,6 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-.arc-fade-in-slow { animation: arc-fade-in 900ms ease both; }
 
 /* ── Terminal/log panel (setup) ────────────────────────────────────── */
 
@@ -734,18 +727,6 @@
   text-align: center;
   font-weight: 700;
   flex: none;
-}
-
-/* spinner = rotating block cursor */
-.arc-spin {
-  display: inline-block;
-  animation: arc-spin-frames 0.8s steps(4) infinite;
-}
-
-@keyframes arc-spin-frames {
-  /* content swap illusion via rotation in 90° steps */
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* ── Typewriter caret ──────────────────────────────────────────────── */

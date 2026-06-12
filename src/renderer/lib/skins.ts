@@ -6,8 +6,7 @@
 //      body[data-skin="<id>"] — see styles/skin-8bit.css for the
 //      pattern (provide both [data-theme="dark"] and [data-theme="light"]
 //      blocks so the skin composes with the Theme toggle) — and import
-//      it next to skin-8bit.css in main.tsx / web-main.tsx /
-//      preview-arcade.tsx.
+//      it next to skin-8bit.css in main.tsx / web-main.tsx.
 //
 // Everything else reads this registry: the Settings → Appearance →
 // Style control, the floating corner toggle (cycles through entries),

@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'react';
 import { host } from '../../platform/host';
 import { BASE } from '../../cowork/api';
 import { PROVIDER_MODELS } from '../../cowork/lib/settingsTransform';
-import { MINDS_REGISTER_URL } from '../onboarding/constants';
+import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
 
@@ -22,7 +22,6 @@ const OPENAI_MODELS = PROVIDER_MODELS.openai;
 const GEMINI_MODELS = PROVIDER_MODELS.gemini;
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const MINDS_API_URL = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai';
 
 const CUSTOM_MODEL = '__custom__';
 
@@ -176,7 +175,7 @@ export default function OnboardingScreen({
   const [customModel, setCustomModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [llmApiKey, setLlmApiKey] = useState('');
-  const [mindsUrl] = useState(MINDS_API_URL);
+  const [mindsUrl] = useState(MINDS_API_BASE);
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');

@@ -29,7 +29,7 @@ import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { harnessLabel } from '../lib/agentLabel';
-import { MINDS_BILLING_URL } from '../../pages/onboarding/constants';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
 // inline-styled JSX picks up the active theme.
