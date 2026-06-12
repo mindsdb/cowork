@@ -28,7 +28,10 @@
   /* Wordmark stripe pair (light/dark presets flip these). */
   --arc-logo-a: #ffffff;
   --arc-logo-b: #b9bdd4;
-  --arc-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  /* The page font — arcade mono by default; the standard presets
+     (midnight/daylight) override this with the app's Inter stack so
+     the preview/onboarding genuinely looks like the chosen theme. */
+  --arc-font: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
 }
 
 .arc-root {
@@ -41,7 +44,7 @@
     radial-gradient(120% 90% at 50% 10%, rgba(61, 79, 134, 0.10), transparent 60%),
     var(--arc-bg);
   color: var(--arc-ink);
-  font-family: var(--arc-mono);
+  font-family: var(--arc-font);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
@@ -755,7 +758,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(5, 5, 11, 0.88);
-  font-family: var(--arc-mono);
+  font-family: var(--arc-font);
 }
 
 .arc-legal {
@@ -971,6 +974,47 @@ body[data-arcade-preset="midnight"] .arc-root::before,
 body[data-arcade-preset="daylight"] .arc-root::before {
   background: none;
   animation: none;
+}
+
+/* Standard presets: the full identity, not just colors. The chooser
+   (and POWER UP / NOW LOADING after it) should genuinely look like the
+   theme being picked — the app's Inter stack instead of arcade mono,
+   and soft rounded chrome instead of the chunky 3D cabinet buttons. */
+body[data-arcade-preset="midnight"] .arc-root,
+body[data-arcade-preset="midnight"] .arc-legal-overlay,
+body[data-arcade-preset="daylight"] .arc-root,
+body[data-arcade-preset="daylight"] .arc-legal-overlay {
+  --arc-font: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+body[data-arcade-preset="midnight"] .arc-btn,
+body[data-arcade-preset="daylight"] .arc-btn {
+  border-radius: 9px;
+  letter-spacing: 0.06em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+body[data-arcade-preset="midnight"] .arc-btn:active:not(:disabled),
+body[data-arcade-preset="daylight"] .arc-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+body[data-arcade-preset="midnight"] .arc-btn:disabled,
+body[data-arcade-preset="daylight"] .arc-btn:disabled {
+  box-shadow: none;
+}
+
+body[data-arcade-preset="midnight"] .arc-input,
+body[data-arcade-preset="midnight"] .arc-select,
+body[data-arcade-preset="daylight"] .arc-input,
+body[data-arcade-preset="daylight"] .arc-select {
+  border-radius: 9px;
+}
+
+body[data-arcade-preset="midnight"] .arc-cart,
+body[data-arcade-preset="daylight"] .arc-cart {
+  border-radius: 12px;
 }
 
 /* Light presets: flat page bg (no blue radial wash), softer chrome. */
