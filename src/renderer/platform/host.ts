@@ -214,8 +214,8 @@ export async function getUIVersion(): Promise<string> {
 
 // ---- Onboarding -------------------------------------------------------
 //
-// The cowork SPA mounts the same onboarding pages (TermsConsent → Setup
-// → Onboarding) under both shells. Electron handlers live in main and
+// The cowork SPA mounts the same arcade onboarding screens (TermsScreen
+// → SetupScreen → OnboardingScreen) under both shells. Electron handlers live in main and
 // touch ~/.anton/.env directly. Web handlers are FastAPI endpoints in
 // `server/routes/settings.py` that mirror the IPC shapes 1:1, so the
 // React pages are shell-agnostic once they go through `host.*`.

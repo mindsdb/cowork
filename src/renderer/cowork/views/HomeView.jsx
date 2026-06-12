@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { OrbitMorph } from '../components/ui';
 import { host } from '../../platform/host';
-import { MINDS_BILLING_URL } from '../../pages/onboarding/constants';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // ── Boot choreography ───────────────────────────────────────────────────
 //

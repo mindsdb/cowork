@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 interface AntonTronAPI {
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;

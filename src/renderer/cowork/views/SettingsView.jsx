@@ -5,7 +5,7 @@ import { providerTypeToKeyField, providerValueToType } from '../lib/settingsTran
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL } from '../../pages/onboarding/constants';
+import { MINDS_API_KEY_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron } from '../../platform/host';
 
 // Provider preset → underlying canonical fields. The Settings UI uses

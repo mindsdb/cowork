@@ -1,5 +1,5 @@
 // Title screen — the first thing a brand-new user sees (plays only
-// until terms are accepted, same gate as the old IntroSequence).
+// until terms are accepted, then never again).
 //
 //   1. CRT power-on flash (700ms)
 //   2. "MINDSDB PRESENTS" typewriter
@@ -14,6 +14,74 @@ import { ArcadeShell, PressPrompt, Typewriter } from './components';
 import { PixelSprite } from './sprites';
 
 type Stage = 'on' | 'presents' | 'title';
+
+// Rotating "hand it off" demos — one per category of work (inbox,
+// reports, calendar, CRM, automation) so consecutive examples never
+// repeat a theme. Format borrowed from the CLI: a YOU> ask, then a
+// terse past-tense receipt. Keep receipts to `✓ metric · dry aside`.
+const DEMOS: { ask: string; receipt: string }[] = [
+  { ask: 'clear my inbox',                  receipt: '✓ 1,000 emails triaged · noise unsubscribed' },
+  { ask: 'send the weekly sales report',    receipt: '✓ numbers pulled · sent · every Friday now' },
+  { ask: 'prep me for tomorrow’s meetings',  receipt: '✓ 3 briefs written · awkward question predicted' },
+  { ask: 'update the CRM from my emails',   receipt: '✓ 12 deals updated · 2 going cold — flagged' },
+  { ask: 'do this again every Monday at 9', receipt: '✓ scheduled · done before your coffee' },
+];
+
+const RECEIPT_HOLD_MS = 3400;
+
+/** Types the YOU> ask, pops the ✓ receipt, holds, then rotates.
+    (Typewriter itself honors prefers-reduced-motion — full text, no
+    crawl — so rotation still works for reduced-motion users.) */
+function DemoTicker() {
+  const [idx, setIdx] = useState(0);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const demo = DEMOS[idx % DEMOS.length];
+
+  useEffect(() => {
+    if (!showReceipt) return;
+    const t = setTimeout(() => {
+      setShowReceipt(false);
+      setIdx((i) => (i + 1) % DEMOS.length);
+    }, RECEIPT_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [showReceipt]);
+
+  // Each line is centered individually — like the tagline above — so every
+  // frame is balanced no matter how short the ask. A hidden sizer reserves
+  // the finished ask's width (caret included) up front, so the line types
+  // left-to-right inside an already-centered slot with zero wobble.
+  return (
+    <div
+      aria-label={`${demo.ask} — ${demo.receipt}`}
+      style={{ width: '100%', textAlign: 'center', fontSize: 13, letterSpacing: '0.04em' }}
+    >
+      <div style={{ whiteSpace: 'nowrap' }}>
+        <span style={{ display: 'inline-grid', textAlign: 'left' }}>
+          <span aria-hidden style={{ gridArea: '1 / 1', visibility: 'hidden' }}>
+            <span style={{ fontWeight: 700 }}>YOU&gt;&nbsp;</span>
+            {demo.ask}
+            <span className="arc-caret" />
+          </span>
+          <span style={{ gridArea: '1 / 1' }}>
+            <span style={{ color: 'var(--arc-cyan)', fontWeight: 700 }}>YOU&gt;&nbsp;</span>
+            <Typewriter
+              key={idx}
+              text={demo.ask}
+              speed={34}
+              onDone={() => setShowReceipt(true)}
+              style={{ color: 'var(--arc-ink)' }}
+            />
+          </span>
+        </span>
+      </div>
+      <div style={{ marginTop: 7, fontSize: 11.5, whiteSpace: 'nowrap', minHeight: 16 }}>
+        {showReceipt && (
+          <span className="arc-fade-in" style={{ color: 'var(--arc-green)' }}>{demo.receipt}</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function TitleScreen({ onComplete }: { onComplete: () => void }) {
   const [stage, setStage] = useState<Stage>('on');
@@ -66,12 +134,17 @@ export default function TitleScreen({ onComplete }: { onComplete: () => void }) 
               </div>
 
               <div className="arc-tagline arc-fade-in" style={{ marginTop: 30, animationDelay: '120ms' }}>
-                ONE APP. ANY AGENT.
+                PUT AI AGENTS TO WORK.
+              </div>
+
+              {/* Rotating "hand it off" work demos (CLI-style ask → receipt) */}
+              <div className="arc-fade-in" style={{ marginTop: 26, animationDelay: '200ms', display: 'flex', justifyContent: 'center' }}>
+                <DemoTicker />
               </div>
 
               <div
                 className="arc-fade-in"
-                style={{ display: 'flex', gap: 26, marginTop: 38, alignItems: 'flex-end', animationDelay: '240ms' }}
+                style={{ display: 'flex', gap: 26, marginTop: 26, alignItems: 'flex-end', animationDelay: '240ms' }}
               >
                 <PixelSprite name="anton" size={52} bob title="Anton" />
                 <PixelSprite name="hermes" size={52} bob title="Hermes" style={{ animationDelay: '0.4s' }} />
@@ -82,14 +155,14 @@ export default function TitleScreen({ onComplete }: { onComplete: () => void }) 
               <div
                 className="arc-fade-in"
                 style={{
-                  marginTop: 34,
+                  marginTop: 30,
                   fontSize: 11,
                   letterSpacing: '0.12em',
                   color: 'var(--arc-dim)',
                   animationDelay: '360ms',
                 }}
               >
-                ⌘ macOS &nbsp;&middot;&nbsp; ⊞ Windows &nbsp;&middot;&nbsp; open source &mdash; github.com/mindsdb/cowork
+                your tools &nbsp;&middot;&nbsp; your data &nbsp;&middot;&nbsp; your model &nbsp;&middot;&nbsp; open source
               </div>
 
               <div style={{ marginTop: 36 }}>
