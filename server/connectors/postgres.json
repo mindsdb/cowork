@@ -25,7 +25,7 @@
   "form": {
     "form_id": "postgres-connector",
     "title": "Connect PostgreSQL",
-    "subtitle": "Provide your connection details to let Anton query your PostgreSQL database.",
+    "subtitle": "Provide your connection details to let Cowork query your PostgreSQL database.",
     "logo": "database",
     "logo_color": "#336791",
     "methods": [
@@ -34,7 +34,7 @@
         "label": "Connection string",
         "description": "Paste a single PostgreSQL connection URI (postgres://user:password@host:port/database). Quickest option if you already have one handy.",
         "recommended": false,
-        "how_to": "## Connect via connection string\n\nA PostgreSQL connection URI bundles all your credentials into one string. Most cloud providers (Supabase, Render, Railway, Neon, etc.) show a ready-to-copy URI in their dashboard.\n\n### Where to find it\n\n1. **Supabase**: Project → Settings → Database → Connection string → URI tab.\n2. **Render**: Service dashboard → Info → Connection → Internal or External database URL.\n3. **Railway**: Project → your Postgres plugin → Connect → Postgres Connection URL.\n4. **Neon**: Project → Connection Details → pick the branch → copy the URI.\n5. For self-hosted instances, construct it manually:\n   `postgres://USER:PASSWORD@HOST:PORT/DATABASE`\n\n### Notes\n\n- The URI must use the `postgres://` or `postgresql://` scheme.\n- URL-encode special characters in the password (e.g. `@` → `%40`).\n- Append `?sslmode=require` to the URI to enforce SSL, or `?sslmode=disable` to turn it off.\n- Anton stores the URI encrypted at rest; the password is never shown again after saving.",
+        "how_to": "## Connect via connection string\n\nA PostgreSQL connection URI bundles all your credentials into one string. Most cloud providers (Supabase, Render, Railway, Neon, etc.) show a ready-to-copy URI in their dashboard.\n\n### Where to find it\n\n1. **Supabase**: Project → Settings → Database → Connection string → URI tab.\n2. **Render**: Service dashboard → Info → Connection → Internal or External database URL.\n3. **Railway**: Project → your Postgres plugin → Connect → Postgres Connection URL.\n4. **Neon**: Project → Connection Details → pick the branch → copy the URI.\n5. For self-hosted instances, construct it manually:\n   `postgres://USER:PASSWORD@HOST:PORT/DATABASE`\n\n### Notes\n\n- The URI must use the `postgres://` or `postgresql://` scheme.\n- URL-encode special characters in the password (e.g. `@` → `%40`).\n- Append `?sslmode=require` to the URI to enforce SSL, or `?sslmode=disable` to turn it off.\n- Cowork stores the URI encrypted at rest; the password is never shown again after saving.",
         "help_url": "https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING",
         "fields": [
           {
@@ -87,7 +87,7 @@
             "type": "text",
             "required": true,
             "placeholder": "postgres",
-            "description": "PostgreSQL role / user that Anton will authenticate as."
+            "description": "PostgreSQL role / user that Cowork will authenticate as."
           },
           {
             "name": "password",

@@ -25,7 +25,7 @@ function titleForRoute(route, { selectedProject, currentTask } = {}) {
   if (route === 'settings') return 'Settings';
   if (route === 'memory') return 'Memories';
   if (route === 'skills') return 'Skills';
-  return 'Minds Cowork';
+  return 'MindsHub Cowork';
 }
 
 function tasksForProject(tasks, project) {
@@ -277,7 +277,7 @@ export default function MobileShell({
         aria-hidden={!drawerOpen}
       >
         <div className="mshell__drawer-head">
-          <span className="mshell__drawer-title">Minds Cowork</span>
+          <span className="mshell__drawer-title">MindsHub Cowork</span>
           <button
             type="button"
             className="mshell__close"

@@ -14,7 +14,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
 
-const DEFAULT_PORT = 26866; // ANTON on T9 keypad
+const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
 
 let serverProcess: ChildProcess | null = null;
@@ -104,7 +104,7 @@ function getUvPath(): string | null {
 }
 
 // Build a PATH with ~/.local/bin and ~/.cargo/bin prepended. Critical
-// for macOS (and to a lesser extent Linux) GUI launches: when Minds Cowork.app
+// for macOS (and to a lesser extent Linux) GUI launches: when MindsHub Cowork.app
 // starts from Finder/Dock, process.env.PATH is the minimal launchd PATH
 // (`/usr/bin:/bin:/usr/sbin:/sbin`) — shell init files aren't read,
 // so `~/.local/bin` (where the installer puts `uv`) is missing.

@@ -22,7 +22,7 @@
   "form": {
     "form_id": "calendly-connector",
     "title": "Connect Calendly",
-    "subtitle": "Paste your Calendly Personal Access Token to let Anton read your events and scheduling data.",
+    "subtitle": "Paste your Calendly Personal Access Token to let Cowork read your events and scheduling data.",
     "logo": "schedule",
     "logo_color": "#006BFF",
     "methods": [
@@ -31,7 +31,7 @@
         "label": "Personal Access Token",
         "description": "Paste a token from Calendly's Integrations → API & Webhooks page. No OAuth setup required — takes about 30 seconds.",
         "recommended": true,
-        "how_to": "## Generate a Calendly Personal Access Token\n\n1. Log in to [Calendly](https://calendly.com) and click your avatar in the top-right corner.\n2. Go to **Integrations & Apps** (or **Integrations** depending on your plan).\n3. In the left sidebar, click **API & Webhooks**.\n4. Under **Personal Access Tokens**, click **Generate New Token**.\n5. Give it a descriptive name like `Anton` and click **Create Token**.\n6. Copy the token shown — it is only displayed once.\n7. Paste it into the **Personal Access Token** field below.\n\n## Notes\n\n- Tokens are scoped to your Calendly account and inherit your permissions.\n- If you lose the token, revoke it from the same page and generate a new one.\n- Admin/Team accounts: the token will reflect whichever Calendly user generated it, not the whole organization.",
+        "how_to": "## Generate a Calendly Personal Access Token\n\n1. Log in to [Calendly](https://calendly.com) and click your avatar in the top-right corner.\n2. Go to **Integrations & Apps** (or **Integrations** depending on your plan).\n3. In the left sidebar, click **API & Webhooks**.\n4. Under **Personal Access Tokens**, click **Generate New Token**.\n5. Give it a descriptive name like `Cowork` and click **Create Token**.\n6. Copy the token shown — it is only displayed once.\n7. Paste it into the **Personal Access Token** field below.\n\n## Notes\n\n- Tokens are scoped to your Calendly account and inherit your permissions.\n- If you lose the token, revoke it from the same page and generate a new one.\n- Admin/Team accounts: the token will reflect whichever Calendly user generated it, not the whole organization.",
         "help_url": "https://developer.calendly.com/api-docs/ZG9jOjIyMzMxMg-personal-access-tokens",
         "fields": [
           {
@@ -56,7 +56,7 @@
           "token_url": "https://auth.calendly.com/oauth/token",
           "scopes": []
         },
-        "how_to": "## Set up a Calendly OAuth Application\n\n1. Go to the [Calendly Developer Portal](https://developer.calendly.com) and sign in.\n2. Navigate to **My Apps** and click **Create New App**.\n3. Fill in your app name (e.g. `Anton`) and set the **Redirect URI** to `http://localhost` (Anton uses a local redirect).\n4. Once created, copy your **Client ID** and **Client Secret** from the app's detail page.\n5. Paste them into the fields below and click **Submit** — Anton will open a browser window for you to authorize.\n\n## Notes\n\n- Calendly OAuth does not use explicit scope strings in the authorization URL; permissions are determined by your app configuration in the developer portal.\n- Access tokens expire; Anton will use the refresh token to obtain new ones automatically.\n- You can revoke access from Calendly's **Integrations & Apps → Connected Apps** page.",
+        "how_to": "## Set up a Calendly OAuth Application\n\n1. Go to the [Calendly Developer Portal](https://developer.calendly.com) and sign in.\n2. Navigate to **My Apps** and click **Create New App**.\n3. Fill in your app name (e.g. `Cowork`) and set the **Redirect URI** to `http://localhost` (Cowork uses a local redirect).\n4. Once created, copy your **Client ID** and **Client Secret** from the app's detail page.\n5. Paste them into the fields below and click **Submit** — Cowork will open a browser window for you to authorize.\n\n## Notes\n\n- Calendly OAuth does not use explicit scope strings in the authorization URL; permissions are determined by your app configuration in the developer portal.\n- Access tokens expire; Cowork will use the refresh token to obtain new ones automatically.\n- You can revoke access from Calendly's **Integrations & Apps → Connected Apps** page.",
         "help_url": "https://developer.calendly.com/api-docs/ZG9jOjIyMzMxNQ-o-auth",
         "fields": [
           {

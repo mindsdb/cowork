@@ -575,7 +575,7 @@ def connector_oauth_callback(
     if not pending:
         return _connector_oauth_callback_page(
             "Sign-in expired",
-            "Anton couldn't find a pending connection for this sign-in. Start the connection again.",
+            "Cowork couldn't find a pending connection for this sign-in. Start the connection again.",
             success=False,
         )
 
@@ -671,7 +671,7 @@ def connector_oauth_callback(
     pending["result_name"] = saved_name
     return _connector_oauth_callback_page(
         f"{pending.get('label') or 'Connector'} connected",
-        "You can close this tab and return to Anton.",
+        "You can close this tab and return to Cowork.",
         success=True,
     )
 

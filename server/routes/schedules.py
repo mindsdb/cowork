@@ -1,4 +1,4 @@
-"""Local scheduled task APIs for Anton Cowork."""
+"""Local scheduled task APIs for MindsHub Cowork."""
 
 from __future__ import annotations
 

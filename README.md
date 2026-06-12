@@ -3,11 +3,11 @@
    █ ▀ █ █ █ ▀█ █▄▀ ▄█   █▄▄ █▄█ ▀▄▀▄▀ █▄█ █▀▄ █ █
 ```
 
-# Minds Cowork
+# MindsHub Cowork
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mindsdb/cowork)
 
-The Electron desktop app and web SPA for **Minds Cowork** — MindsDB's AI coworker platform. Cross-platform (macOS + Windows), auto-installs the backend on first run, and provides a chat-based UI backed by a FastAPI server, with Minds integration.
+The Electron desktop app and web SPA for **MindsHub Cowork** — MindsDB's AI coworker platform. Cross-platform (macOS + Windows), auto-installs the backend on first run, and provides a chat-based UI backed by a FastAPI server, with Minds integration.
 
 The project is split across two repos:
 
@@ -22,7 +22,7 @@ The frontend and backend are developed and released independently. At runtime, t
 
 ## Environments
 
-Minds Cowork runs in several contexts. The React SPA is identical across all of them — only the shell and server lifecycle differ.
+MindsHub Cowork runs in several contexts. The React SPA is identical across all of them — only the shell and server lifecycle differ.
 
 | Environment | Frontend | Backend | How to run |
 |-------------|----------|---------|------------|
@@ -256,7 +256,7 @@ The GUI provides a visual `/connect` flow:
 
 ## Over-the-Air Updates
 
-Minds Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself changes rarely and is updated via the traditional installer release flow.
+MindsHub Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself changes rarely and is updated via the traditional installer release flow.
 
 ### Server updates (PyPI)
 
@@ -283,7 +283,7 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
                                                               │ HTTPS (no auth)
                                                               │
                                                  ┌────────────┴─────────────┐
-                                                 │   Minds Cowork app       │
+                                                 │   MindsHub Cowork app       │
                                                  │   (every user's machine) │
                                                  └──────────────────────────┘
 ```
@@ -447,8 +447,8 @@ The `electron-builder.yml` config and `scripts/notarize.js` hook are already inc
 #### Troubleshooting
 
 ```bash
-codesign -dv --verbose=4 "release/mac-universal/Minds Cowork.app"
-xcrun stapler validate "release/Minds Cowork-0.1.0-universal.dmg"
+codesign -dv --verbose=4 "release/mac-universal/MindsHub Cowork.app"
+xcrun stapler validate "release/MindsHub Cowork-0.1.0-universal.dmg"
 ```
 
 </details>
@@ -656,7 +656,7 @@ The packaged `.app` doesn't inherit shell PATH. Ensure cowork-server is installe
 
 ```bash
 # Dev only
-xattr -cr "/Applications/Minds Cowork.app"
+xattr -cr "/Applications/MindsHub Cowork.app"
 ```
 
 ---

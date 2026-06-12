@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore Minds Cowork state after an onboarding reset.
+# Restore MindsHub Cowork state after an onboarding reset.
 # Reverses what reset-onboarding.sh did.
 set -euo pipefail
 
@@ -7,7 +7,7 @@ ANTON_DIR="$HOME/.anton"
 COWORK_DIR="$HOME/.cowork"
 ELECTRON_DIR="$HOME/Library/Application Support/anton"
 
-echo "=== Minds Cowork Onboarding Restore ==="
+echo "=== MindsHub Cowork Onboarding Restore ==="
 
 # Restore ~/.anton/.env
 if [ -f "$ANTON_DIR/.env.backup" ]; then
@@ -39,4 +39,4 @@ else
 fi
 
 echo ""
-echo "Done. Relaunch Minds Cowork to return to your previous state."
+echo "Done. Relaunch MindsHub Cowork to return to your previous state."

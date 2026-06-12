@@ -27,7 +27,7 @@
   "form": {
     "form_id": "elastic_apm-connector",
     "title": "Connect Elastic APM",
-    "subtitle": "Point Anton at your APM Server and supply a secret token or API key to start ingesting traces and performance data.",
+    "subtitle": "Point Cowork at your APM Server and supply a secret token or API key to start ingesting traces and performance data.",
     "logo": "search",
     "logo_color": "#00BFB3",
     "methods": [
@@ -71,7 +71,7 @@
         "label": "API Key",
         "description": "Use an Elastic API key instead of a secret token. Supports fine-grained permissions and is the recommended method when multiple services connect to the same APM Server.",
         "recommended": false,
-        "how_to": "## Connect with an Elastic API Key\n\nAPI keys let you grant scoped, revocable credentials without sharing the cluster's master secret token.\n\n### Steps\n\n1. Open **Kibana** and navigate to **Stack Management → Fleet → Agent Policies** and locate your APM integration to copy the **Server URL**.\n2. To create an API key, go to **Stack Management → Security → API Keys**.\n3. Click **Create API key**. Give it a descriptive name like `Anton APM`.\n4. Under **Privileges**, grant at minimum `apm` ingest permissions. For read access you may also need `monitor` on the APM indices.\n5. Click **Create API key**. Copy the generated key — it is shown **only once**.\n6. Paste the APM Server URL and API key into the fields below and click **Submit**.\n\n### Notes\n\n- The API key format is `id:api_key` (base64-encoded). Paste it exactly as shown after creation.\n- API keys can be individually revoked from **Stack Management → Security → API Keys** without affecting other integrations.\n- Elastic Cloud users can also generate API keys from the Elastic Cloud console under the deployment's **Security** tab.\n",
+        "how_to": "## Connect with an Elastic API Key\n\nAPI keys let you grant scoped, revocable credentials without sharing the cluster's master secret token.\n\n### Steps\n\n1. Open **Kibana** and navigate to **Stack Management → Fleet → Agent Policies** and locate your APM integration to copy the **Server URL**.\n2. To create an API key, go to **Stack Management → Security → API Keys**.\n3. Click **Create API key**. Give it a descriptive name like `Cowork APM`.\n4. Under **Privileges**, grant at minimum `apm` ingest permissions. For read access you may also need `monitor` on the APM indices.\n5. Click **Create API key**. Copy the generated key — it is shown **only once**.\n6. Paste the APM Server URL and API key into the fields below and click **Submit**.\n\n### Notes\n\n- The API key format is `id:api_key` (base64-encoded). Paste it exactly as shown after creation.\n- API keys can be individually revoked from **Stack Management → Security → API Keys** without affecting other integrations.\n- Elastic Cloud users can also generate API keys from the Elastic Cloud console under the deployment's **Security** tab.\n",
         "help_url": "https://www.elastic.co/guide/en/apm/guide/current/api-key.html",
         "fields": [
           {

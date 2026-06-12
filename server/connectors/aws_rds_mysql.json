@@ -26,7 +26,7 @@
   "form": {
     "form_id": "aws_rds_mysql-connector",
     "title": "Connect AWS RDS MySQL",
-    "subtitle": "Enter your RDS endpoint and credentials to connect Anton to your MySQL instance.",
+    "subtitle": "Enter your RDS endpoint and credentials to connect Cowork to your MySQL instance.",
     "logo": "database",
     "logo_color": "#FF9900",
     "methods": [
@@ -35,7 +35,7 @@
         "label": "Direct Connection",
         "description": "Paste your RDS endpoint, port, database name, and MySQL credentials. The simplest path — no extra tooling required.",
         "recommended": true,
-        "how_to": "## Connect via RDS Endpoint Credentials\n\nFind your RDS endpoint and connect with your MySQL username and password.\n\n### Steps\n\n1. Open the [AWS Console](https://console.aws.amazon.com/) and navigate to **RDS → Databases**.\n2. Click the DB instance you want to connect to.\n3. Under the **Connectivity & security** tab, locate the **Endpoint** (e.g. `mydb.abc123xyz.us-east-1.rds.amazonaws.com`) and **Port** (default: `3306`).\n4. Copy the endpoint and paste it into the **Host** field below.\n5. Enter the **Port** (leave as `3306` unless you changed it).\n6. Enter the **Database** name you want Anton to connect to.\n7. Enter the **Username** and **Password** for a MySQL user that has the required privileges.\n8. Toggle **Use SSL** on (recommended) — AWS RDS enforces SSL by default on most instance types.\n\n### Notes\n\n- Make sure your RDS security group allows inbound traffic on port 3306 from the machine running Anton. Go to **RDS → Databases → your instance → Connectivity & security → VPC security groups** and add an inbound rule if needed.\n- If your instance is in a private VPC, you may need a bastion host or VPN to reach it from your local machine.\n- The MySQL user should have at minimum `SELECT` privileges on the target database, or broader privileges if Anton needs to write data.\n- SSL certificates for RDS are available at the [AWS SSL/TLS documentation](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html).\n",
+        "how_to": "## Connect via RDS Endpoint Credentials\n\nFind your RDS endpoint and connect with your MySQL username and password.\n\n### Steps\n\n1. Open the [AWS Console](https://console.aws.amazon.com/) and navigate to **RDS → Databases**.\n2. Click the DB instance you want to connect to.\n3. Under the **Connectivity & security** tab, locate the **Endpoint** (e.g. `mydb.abc123xyz.us-east-1.rds.amazonaws.com`) and **Port** (default: `3306`).\n4. Copy the endpoint and paste it into the **Host** field below.\n5. Enter the **Port** (leave as `3306` unless you changed it).\n6. Enter the **Database** name you want Cowork to connect to.\n7. Enter the **Username** and **Password** for a MySQL user that has the required privileges.\n8. Toggle **Use SSL** on (recommended) — AWS RDS enforces SSL by default on most instance types.\n\n### Notes\n\n- Make sure your RDS security group allows inbound traffic on port 3306 from the machine running Cowork. Go to **RDS → Databases → your instance → Connectivity & security → VPC security groups** and add an inbound rule if needed.\n- If your instance is in a private VPC, you may need a bastion host or VPN to reach it from your local machine.\n- The MySQL user should have at minimum `SELECT` privileges on the target database, or broader privileges if Cowork needs to write data.\n- SSL certificates for RDS are available at the [AWS SSL/TLS documentation](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html).\n",
         "help_url": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ConnectToInstance.html",
         "fields": [
           {
@@ -61,7 +61,7 @@
             "type": "text",
             "required": true,
             "placeholder": "my_database",
-            "description": "The name of the specific MySQL database (schema) Anton should connect to."
+            "description": "The name of the specific MySQL database (schema) Cowork should connect to."
           },
           {
             "name": "user",
@@ -94,7 +94,7 @@
         "label": "IAM Database Authentication",
         "description": "Use AWS IAM credentials to generate short-lived authentication tokens instead of a static password. Requires IAM DB auth enabled on the RDS instance.",
         "recommended": false,
-        "how_to": "## IAM Database Authentication\n\nAWS RDS supports passwordless login using short-lived IAM tokens. This avoids storing a static MySQL password.\n\n### Prerequisites\n\n- IAM DB authentication must be enabled on your RDS instance.\n- Your IAM user or role must have the `rds-db:connect` permission.\n\n### Steps\n\n1. Open **AWS Console → RDS → Databases** and click your instance.\n2. Under **Configuration**, confirm **IAM database authentication** is set to **Enabled**. If not, click **Modify** to enable it.\n3. In **IAM → Policies**, create or attach a policy granting `rds-db:connect` on the target DB resource ARN (e.g. `arn:aws:rds-db:us-east-1:123456789012:dbuser:db-ABCDEFG/myuser`).\n4. In **IAM → Users (or Roles) → Security credentials**, generate an **Access key ID** and **Secret access key** for the IAM identity Anton will use.\n5. In your RDS MySQL instance, create a database user with the `AWSAuthenticationPlugin`:\n   - `CREATE USER 'myuser'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';`\n   - Grant appropriate privileges to this user.\n6. Paste the IAM **Access Key ID**, **Secret Access Key**, **AWS Region**, and the remaining connection details below.\n\n### Notes\n\n- IAM tokens expire after 15 minutes; Anton will automatically generate a new token for each connection attempt.\n- SSL is required for IAM auth — the toggle is forced on.\n- The IAM user needs network-level access to the RDS endpoint just like standard auth.\n",
+        "how_to": "## IAM Database Authentication\n\nAWS RDS supports passwordless login using short-lived IAM tokens. This avoids storing a static MySQL password.\n\n### Prerequisites\n\n- IAM DB authentication must be enabled on your RDS instance.\n- Your IAM user or role must have the `rds-db:connect` permission.\n\n### Steps\n\n1. Open **AWS Console → RDS → Databases** and click your instance.\n2. Under **Configuration**, confirm **IAM database authentication** is set to **Enabled**. If not, click **Modify** to enable it.\n3. In **IAM → Policies**, create or attach a policy granting `rds-db:connect` on the target DB resource ARN (e.g. `arn:aws:rds-db:us-east-1:123456789012:dbuser:db-ABCDEFG/myuser`).\n4. In **IAM → Users (or Roles) → Security credentials**, generate an **Access key ID** and **Secret access key** for the IAM identity Cowork will use.\n5. In your RDS MySQL instance, create a database user with the `AWSAuthenticationPlugin`:\n   - `CREATE USER 'myuser'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';`\n   - Grant appropriate privileges to this user.\n6. Paste the IAM **Access Key ID**, **Secret Access Key**, **AWS Region**, and the remaining connection details below.\n\n### Notes\n\n- IAM tokens expire after 15 minutes; Cowork will automatically generate a new token for each connection attempt.\n- SSL is required for IAM auth — the toggle is forced on.\n- The IAM user needs network-level access to the RDS endpoint just like standard auth.\n",
         "help_url": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html",
         "fields": [
           {
@@ -120,7 +120,7 @@
             "type": "text",
             "required": true,
             "placeholder": "my_database",
-            "description": "The name of the specific MySQL database (schema) Anton should connect to."
+            "description": "The name of the specific MySQL database (schema) Cowork should connect to."
           },
           {
             "name": "db_username",

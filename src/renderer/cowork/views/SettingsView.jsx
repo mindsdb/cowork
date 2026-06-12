@@ -1851,7 +1851,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     </CredentialRow>
                     <CredentialRow
                       title="Minds URL"
-                      subtitle="Base URL for Minds-backed Minds Cowork features."
+                      subtitle="Base URL for Minds-backed MindsHub Cowork features."
                       status={relevance.mindsUrl}
                       hasValue={has('mindsUrl')}
                     >
@@ -1987,7 +1987,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               <CollapsibleGroup title="Account" defaultOpen={false}>
                 <Section
                   title="Sign out"
-                  subtitle="Disconnect from MindsHub and remove every stored credential on this device. Anton will return to the onboarding flow on the next launch."
+                  subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch."
                 >
                   <button
                     type="button"
@@ -2023,8 +2023,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
         <ConfirmModal
           open={logoutConfirmOpen}
-          title="Sign out of Anton?"
-          message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Anton."
+          title="Sign out of Cowork?"
+          message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
           confirmLabel="Sign out"
           cancelLabel="Cancel"
           destructive

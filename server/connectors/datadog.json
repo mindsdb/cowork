@@ -27,7 +27,7 @@
   "form": {
     "form_id": "datadog-connector",
     "title": "Connect Datadog",
-    "subtitle": "Paste your Datadog API key and Application key to give Anton access to your observability data.",
+    "subtitle": "Paste your Datadog API key and Application key to give Cowork access to your observability data.",
     "logo": "sparkle",
     "logo_color": "#632CA6",
     "methods": [
@@ -36,7 +36,7 @@
         "label": "API Key + Application Key",
         "description": "Paste your Datadog API key and Application key. Quickest setup — no OAuth flow required. Scoped to the permissions of the user or service account that owns the Application key.",
         "recommended": true,
-        "how_to": "## Connect with API Key + Application Key\n\nDatadog uses two credentials together: an **API key** (identifies your org) and an **Application key** (identifies the actor and carries permissions).\n\n### Find your API key\n\n1. Log in to Datadog and go to **Organization Settings → API Keys** (or visit `https://app.datadoghq.com/organization-settings/api-keys`).\n2. Click **New Key** or copy an existing key you want Anton to use.\n3. Give it a descriptive name like `Anton`.\n\n### Find or create your Application key\n\n1. Go to **Organization Settings → Application Keys** (or `https://app.datadoghq.com/organization-settings/application-keys`).\n2. Click **New Key**, name it `Anton`, and copy the value immediately — it is shown only once.\n3. Scope the key to the minimum permissions Anton needs (e.g. `metrics_read`, `logs_read`).\n\n### Select your region\n\nChoose the Datadog site that matches your account sign-in URL:\n- **US1** → `app.datadoghq.com` (default)\n- **US3** → `us3.datadoghq.com`\n- **US5** → `us5.datadoghq.com`\n- **EU** → `app.datadoghq.eu`\n- **US1-FED** → `app.ddog-gov.com`\n\n### Notes\n\n- Application keys are shown only once at creation. If lost, delete the old key and create a new one.\n- API keys are org-level; Application keys carry per-user permissions — use a service account for production.\n- Rotate both keys in Organization Settings if you suspect exposure.\n",
+        "how_to": "## Connect with API Key + Application Key\n\nDatadog uses two credentials together: an **API key** (identifies your org) and an **Application key** (identifies the actor and carries permissions).\n\n### Find your API key\n\n1. Log in to Datadog and go to **Organization Settings → API Keys** (or visit `https://app.datadoghq.com/organization-settings/api-keys`).\n2. Click **New Key** or copy an existing key you want Cowork to use.\n3. Give it a descriptive name like `Cowork`.\n\n### Find or create your Application key\n\n1. Go to **Organization Settings → Application Keys** (or `https://app.datadoghq.com/organization-settings/application-keys`).\n2. Click **New Key**, name it `Cowork`, and copy the value immediately — it is shown only once.\n3. Scope the key to the minimum permissions Cowork needs (e.g. `metrics_read`, `logs_read`).\n\n### Select your region\n\nChoose the Datadog site that matches your account sign-in URL:\n- **US1** → `app.datadoghq.com` (default)\n- **US3** → `us3.datadoghq.com`\n- **US5** → `us5.datadoghq.com`\n- **EU** → `app.datadoghq.eu`\n- **US1-FED** → `app.ddog-gov.com`\n\n### Notes\n\n- Application keys are shown only once at creation. If lost, delete the old key and create a new one.\n- API keys are org-level; Application keys carry per-user permissions — use a service account for production.\n- Rotate both keys in Organization Settings if you suspect exposure.\n",
         "help_url": "https://docs.datadoghq.com/account_management/api-app-keys/",
         "fields": [
           {
@@ -55,7 +55,7 @@
             "required": true,
             "secret": true,
             "placeholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            "description": "Found under Organization Settings → Application Keys. Carries the permissions Anton will use. Shown only once at creation."
+            "description": "Found under Organization Settings → Application Keys. Carries the permissions Cowork will use. Shown only once at creation."
           },
           {
             "name": "region",

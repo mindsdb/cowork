@@ -23,7 +23,7 @@
   "form": {
     "form_id": "trello-connector",
     "title": "Connect Trello",
-    "subtitle": "Paste your Trello API key and token to give Anton access to your boards.",
+    "subtitle": "Paste your Trello API key and token to give Cowork access to your boards.",
     "logo": "grid",
     "logo_color": "#0052CC",
     "methods": [
@@ -69,10 +69,10 @@
           ],
           "extra_auth_params": {
             "expiration": "never",
-            "name": "Anton"
+            "name": "Cowork"
           }
         },
-        "how_to": "## OAuth 2.0 via Trello Power-Up\n\n### Steps\n\n1. Go to [https://trello.com/power-ups/admin](https://trello.com/power-ups/admin) and click **New**.\n2. Fill in a name (e.g. Anton) and associate it with a workspace.\n3. Once created, open your Power-Up and go to the **API Key** tab.\n4. Note the **OAuth Client ID** and generate an **OAuth Secret**.\n5. Add `http://localhost` as an allowed redirect URL under OAuth settings.\n6. Paste the Client ID and Client Secret into the fields below and click **Submit**.\n\n### Notes\n\n- This path is more complex than the API Key + Token method — use that instead unless you specifically need OAuth delegation.\n- The Trello OAuth flow uses OAuth 1.0a under the hood; scopes map to read/write access.",
+        "how_to": "## OAuth 2.0 via Trello Power-Up\n\n### Steps\n\n1. Go to [https://trello.com/power-ups/admin](https://trello.com/power-ups/admin) and click **New**.\n2. Fill in a name (e.g. Cowork) and associate it with a workspace.\n3. Once created, open your Power-Up and go to the **API Key** tab.\n4. Note the **OAuth Client ID** and generate an **OAuth Secret**.\n5. Add `http://localhost` as an allowed redirect URL under OAuth settings.\n6. Paste the Client ID and Client Secret into the fields below and click **Submit**.\n\n### Notes\n\n- This path is more complex than the API Key + Token method — use that instead unless you specifically need OAuth delegation.\n- The Trello OAuth flow uses OAuth 1.0a under the hood; scopes map to read/write access.",
         "help_url": "https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/",
         "fields": [
           {

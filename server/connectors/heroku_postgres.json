@@ -25,7 +25,7 @@
   "form": {
     "form_id": "heroku_postgres-connector",
     "title": "Connect Heroku Postgres",
-    "subtitle": "Paste your DATABASE_URL from the Heroku Dashboard to connect Anton to your Heroku Postgres add-on.",
+    "subtitle": "Paste your DATABASE_URL from the Heroku Dashboard to connect Cowork to your Heroku Postgres add-on.",
     "logo": "database",
     "logo_color": "#430098",
     "methods": [
@@ -34,7 +34,7 @@
         "label": "DATABASE_URL Connection String",
         "description": "Paste the full postgres:// connection string from your Heroku app's Postgres add-on credentials. The simplest and fastest way to connect — no manual host/port entry needed.",
         "recommended": true,
-        "how_to": "## Find your DATABASE_URL in Heroku Dashboard\n\n1. Open [Heroku Dashboard](https://dashboard.heroku.com) and select your app.\n2. Click the **Resources** tab.\n3. Under **Add-ons**, click **Heroku Postgres** to open the add-on page.\n4. Click the **Settings** tab on the Heroku Postgres page.\n5. Click **View Credentials**. Heroku will show the full connection string under **URI**.\n6. Copy the entire string — it starts with `postgres://` or `postgresql://`.\n7. Paste it into the **DATABASE_URL** field below.\n\n## Notes\n\n- SSL is required for all Heroku Postgres connections. Anton enforces `sslmode=require` automatically if not present in the URL.\n- Credentials can rotate after certain Heroku maintenance events. If the connection fails, revisit **View Credentials** to get a fresh URL.\n- The URI contains your username, password, host, port, and database name all in one — keep it secret.\n- Free-tier (Hobby) databases are deprecated on Heroku; ensure your plan is active.",
+        "how_to": "## Find your DATABASE_URL in Heroku Dashboard\n\n1. Open [Heroku Dashboard](https://dashboard.heroku.com) and select your app.\n2. Click the **Resources** tab.\n3. Under **Add-ons**, click **Heroku Postgres** to open the add-on page.\n4. Click the **Settings** tab on the Heroku Postgres page.\n5. Click **View Credentials**. Heroku will show the full connection string under **URI**.\n6. Copy the entire string — it starts with `postgres://` or `postgresql://`.\n7. Paste it into the **DATABASE_URL** field below.\n\n## Notes\n\n- SSL is required for all Heroku Postgres connections. Cowork enforces `sslmode=require` automatically if not present in the URL.\n- Credentials can rotate after certain Heroku maintenance events. If the connection fails, revisit **View Credentials** to get a fresh URL.\n- The URI contains your username, password, host, port, and database name all in one — keep it secret.\n- Free-tier (Hobby) databases are deprecated on Heroku; ensure your plan is active.",
         "help_url": "https://devcenter.heroku.com/articles/heroku-postgresql#connecting-in-python",
         "fields": [
           {
@@ -75,7 +75,7 @@
         "label": "Manual Credentials",
         "description": "Enter the host, port, database name, username, and password individually. Use this if you prefer not to share the full connection string or need to specify fields separately.",
         "recommended": false,
-        "how_to": "## Enter credentials manually\n\n1. Open [Heroku Dashboard](https://dashboard.heroku.com) and select your app.\n2. Click the **Resources** tab.\n3. Under **Add-ons**, click **Heroku Postgres** to open the add-on page.\n4. Click the **Settings** tab, then **View Credentials**.\n5. Copy the individual values — **Host**, **Database**, **User**, **Password**, and **Port** — into the fields below.\n\n## Notes\n\n- The default Heroku Postgres port is **5432**.\n- SSL is mandatory; Anton will set `sslmode=require` for all connections.\n- Credentials shown in the dashboard may change after Heroku maintenance or a manual credential rotation. Update these fields if the connection drops unexpectedly.",
+        "how_to": "## Enter credentials manually\n\n1. Open [Heroku Dashboard](https://dashboard.heroku.com) and select your app.\n2. Click the **Resources** tab.\n3. Under **Add-ons**, click **Heroku Postgres** to open the add-on page.\n4. Click the **Settings** tab, then **View Credentials**.\n5. Copy the individual values — **Host**, **Database**, **User**, **Password**, and **Port** — into the fields below.\n\n## Notes\n\n- The default Heroku Postgres port is **5432**.\n- SSL is mandatory; Cowork will set `sslmode=require` for all connections.\n- Credentials shown in the dashboard may change after Heroku maintenance or a manual credential rotation. Update these fields if the connection drops unexpectedly.",
         "help_url": "https://devcenter.heroku.com/articles/heroku-postgresql#credentials",
         "fields": [
           {

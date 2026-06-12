@@ -133,7 +133,7 @@ export default function TermsScreen({ onAccept }: { onAccept: () => void }) {
         </button>
 
         <div style={{ fontSize: 10.5, letterSpacing: '0.06em', color: 'var(--arc-dim)', textAlign: 'center', lineHeight: 1.6 }}>
-          Next we&rsquo;ll install the system dependencies Minds Cowork needs.
+          Next we&rsquo;ll install the system dependencies MindsHub Cowork needs.
           <br />Takes about a minute.
         </div>
       </div>

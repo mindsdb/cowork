@@ -26,7 +26,7 @@
   "form": {
     "form_id": "checkly-connector",
     "title": "Connect Checkly",
-    "subtitle": "Paste your Checkly API key and account ID to give Anton access to your monitors, checks, and results.",
+    "subtitle": "Paste your Checkly API key and account ID to give Cowork access to your monitors, checks, and results.",
     "logo": "link",
     "logo_color": "#3B82F6",
     "methods": [
@@ -35,7 +35,7 @@
         "label": "API Key",
         "description": "Paste a Checkly API key along with your account ID. Generated in seconds from Account Settings — no OAuth flow required.",
         "recommended": true,
-        "how_to": "## Connect via Checkly API Key\n\n### 1. Get your API key\n\n1. Log in to [app.checklyhq.com](https://app.checklyhq.com).\n2. Click your avatar or username in the bottom-left corner to open **Account Settings**.\n3. Navigate to **API Keys** (or directly visit `app.checklyhq.com/account/api-keys`).\n4. Click **Create API Key**, give it a descriptive name like `Anton`, and click **Create**.\n5. Copy the key immediately — it is shown only once.\n\n### 2. Find your Account ID\n\n1. While still in **Account Settings**, select the **General** tab.\n2. Your **Account ID** is listed near the top of the page (a short alphanumeric string).\n3. Copy it.\n\n### 3. Paste into Anton\n\nPaste both values into the fields below and click **Submit**.\n\n### Notes\n\n- API keys are tied to the account that created them. If you have multiple Checkly accounts (e.g. different orgs), make sure you copy from the right one.\n- Checkly does not currently support scoped API keys — the key grants full read/write access to the account.\n- If you suspect a key was exposed, delete it from the API Keys page and create a new one.\n",
+        "how_to": "## Connect via Checkly API Key\n\n### 1. Get your API key\n\n1. Log in to [app.checklyhq.com](https://app.checklyhq.com).\n2. Click your avatar or username in the bottom-left corner to open **Account Settings**.\n3. Navigate to **API Keys** (or directly visit `app.checklyhq.com/account/api-keys`).\n4. Click **Create API Key**, give it a descriptive name like `Cowork`, and click **Create**.\n5. Copy the key immediately — it is shown only once.\n\n### 2. Find your Account ID\n\n1. While still in **Account Settings**, select the **General** tab.\n2. Your **Account ID** is listed near the top of the page (a short alphanumeric string).\n3. Copy it.\n\n### 3. Paste into Cowork\n\nPaste both values into the fields below and click **Submit**.\n\n### Notes\n\n- API keys are tied to the account that created them. If you have multiple Checkly accounts (e.g. different orgs), make sure you copy from the right one.\n- Checkly does not currently support scoped API keys — the key grants full read/write access to the account.\n- If you suspect a key was exposed, delete it from the API Keys page and create a new one.\n",
         "help_url": "https://www.checklyhq.com/docs/accounts-and-users/accounts/",
         "fields": [
           {

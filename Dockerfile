@@ -60,7 +60,7 @@ FROM python:3.12-slim AS runtime
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
-LABEL org.opencontainers.image.description="Anton Cowork — FastAPI + SPA"
+LABEL org.opencontainers.image.description="MindsHub Cowork — FastAPI + SPA"
 
 # ca-certificates is the only runtime apt dep.
 RUN apt-get update && apt-get install -y --no-install-recommends \

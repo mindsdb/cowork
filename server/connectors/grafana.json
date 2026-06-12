@@ -26,7 +26,7 @@
   "form": {
     "form_id": "grafana-connector",
     "title": "Connect Grafana",
-    "subtitle": "Paste your Grafana URL and a service account token (or API key) to give Anton access to your dashboards and alerts.",
+    "subtitle": "Paste your Grafana URL and a service account token (or API key) to give Cowork access to your dashboards and alerts.",
     "logo": "sparkle",
     "logo_color": "#F46800",
     "methods": [
@@ -35,7 +35,7 @@
         "label": "Service Account Token",
         "description": "Recommended for Grafana 9+ and all Grafana Cloud stacks. Create a service account with the minimum role needed, generate a token, and paste it here. Revocable without changing any user credentials.",
         "recommended": true,
-        "how_to": "## Connect via Service Account Token\n\nService accounts are the modern, preferred auth method in Grafana 9 and later (including all Grafana Cloud stacks). Tokens are scoped to a role and can be revoked independently.\n\n### Steps\n\n1. Open your Grafana instance (`https://<stack>.grafana.net` for Cloud, or your self-hosted URL).\n2. In the left sidebar go to **Administration → Users and access → Service accounts**.\n3. Click **Add service account**. Give it a name like `anton` and set the **Role** to **Viewer** (or **Editor** if Anton needs to modify dashboards/alerts).\n4. Click **Create**. On the service account detail page, click **Add service account token**.\n5. Give the token a display name and optionally set an expiry. Click **Generate token**.\n6. **Copy the token immediately** — it is shown only once.\n7. Paste the token into **Service Account Token** below and enter your Grafana instance URL.\n\n### Notes\n\n- For Grafana Cloud the URL is `https://<your-stack-name>.grafana.net`.\n- For self-hosted instances use the root URL, e.g. `https://grafana.example.com`.\n- If you lose the token, delete it in the service account page and generate a new one.\n- Viewer role is sufficient for reading dashboards and alerts; no write access is granted.",
+        "how_to": "## Connect via Service Account Token\n\nService accounts are the modern, preferred auth method in Grafana 9 and later (including all Grafana Cloud stacks). Tokens are scoped to a role and can be revoked independently.\n\n### Steps\n\n1. Open your Grafana instance (`https://<stack>.grafana.net` for Cloud, or your self-hosted URL).\n2. In the left sidebar go to **Administration → Users and access → Service accounts**.\n3. Click **Add service account**. Give it a name like `anton` and set the **Role** to **Viewer** (or **Editor** if Cowork needs to modify dashboards/alerts).\n4. Click **Create**. On the service account detail page, click **Add service account token**.\n5. Give the token a display name and optionally set an expiry. Click **Generate token**.\n6. **Copy the token immediately** — it is shown only once.\n7. Paste the token into **Service Account Token** below and enter your Grafana instance URL.\n\n### Notes\n\n- For Grafana Cloud the URL is `https://<your-stack-name>.grafana.net`.\n- For self-hosted instances use the root URL, e.g. `https://grafana.example.com`.\n- If you lose the token, delete it in the service account page and generate a new one.\n- Viewer role is sufficient for reading dashboards and alerts; no write access is granted.",
         "help_url": "https://grafana.com/docs/grafana/latest/administration/service-accounts/",
         "fields": [
           {

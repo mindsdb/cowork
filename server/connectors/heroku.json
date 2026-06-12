@@ -25,7 +25,7 @@
   "form": {
     "form_id": "heroku-connector",
     "title": "Connect Heroku",
-    "subtitle": "Paste your Heroku API key to let Anton manage your apps and infrastructure.",
+    "subtitle": "Paste your Heroku API key to let Cowork manage your apps and infrastructure.",
     "logo": "cube",
     "logo_color": "#430098",
     "methods": [
@@ -70,7 +70,7 @@
           ],
           "extra_auth_params": {}
         },
-        "how_to": "## Connect with Heroku OAuth\n\nHeroku supports OAuth 2.0 for delegated access without sharing your personal API key.\n\n### Steps\n\n1. Install the [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli) if you haven't already.\n2. Run `heroku clients:create Anton http://localhost` to register a new OAuth client. Heroku returns a **Client ID** and **Client Secret**.\n3. Copy those values into the fields below.\n4. Choose a scope — `global` gives full access; use a narrower scope if your Heroku plan supports it.\n5. Click **Submit** to open a browser window where you authorize the OAuth client.\n\n### Notes\n\n- OAuth clients are managed via `heroku clients` CLI commands or the Platform API.\n- The `global` scope mirrors full API key access. Check [Heroku OAuth scopes](https://devcenter.heroku.com/articles/oauth#scopes) for narrower options.\n- Tokens can be revoked from **Account settings → Authorized applications** or via the API.\n",
+        "how_to": "## Connect with Heroku OAuth\n\nHeroku supports OAuth 2.0 for delegated access without sharing your personal API key.\n\n### Steps\n\n1. Install the [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli) if you haven't already.\n2. Run `heroku clients:create Cowork http://localhost` to register a new OAuth client. Heroku returns a **Client ID** and **Client Secret**.\n3. Copy those values into the fields below.\n4. Choose a scope — `global` gives full access; use a narrower scope if your Heroku plan supports it.\n5. Click **Submit** to open a browser window where you authorize the OAuth client.\n\n### Notes\n\n- OAuth clients are managed via `heroku clients` CLI commands or the Platform API.\n- The `global` scope mirrors full API key access. Check [Heroku OAuth scopes](https://devcenter.heroku.com/articles/oauth#scopes) for narrower options.\n- Tokens can be revoked from **Account settings → Authorized applications** or via the API.\n",
         "help_url": "https://devcenter.heroku.com/articles/oauth",
         "fields": [
           {

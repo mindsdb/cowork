@@ -1,6 +1,6 @@
-"""Browse capability gate for Anton Cowork.
+"""Browse capability gate for MindsHub Cowork.
 
-Anton Cowork supports specific URL context through the attachment system. Broad
+MindsHub Cowork supports specific URL context through the attachment system. Broad
 web browsing is only enabled when the installed Anton package exposes a real
 browse/search tool surface that can be called from sessions.
 """

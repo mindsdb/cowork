@@ -1,11 +1,11 @@
 ---
 name: ota
-description: manage the Anton UI update system. use when asked to check UI publish status, switch dev mode (live/bundled/production), or trigger a UI publish.
+description: manage the Cowork UI update system. use when asked to check UI publish status, switch dev mode (live/bundled/production), or trigger a UI publish.
 ---
 
-# Anton UI Updates
+# Cowork UI Updates
 
-Anton's renderer UI can be updated independently from the Electron app itself. When code under `src/renderer/**` is pushed to `main`, a CI workflow automatically builds the renderer and publishes it as a downloadable bundle. Users' apps pick up new bundles on launch.
+Cowork's renderer UI can be updated independently from the Electron app itself. When code under `src/renderer/**` is pushed to `main`, a CI workflow automatically builds the renderer and publishes it as a downloadable bundle. Users' apps pick up new bundles on launch.
 
 This skill helps you answer: **"Are users seeing what's in our code?"** and manage how your local app loads the renderer.
 

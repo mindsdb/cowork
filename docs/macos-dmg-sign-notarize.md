@@ -1,8 +1,8 @@
 # Generate, Sign, and Notarize the DMG (macOS)
 
-This document explains the workflow to generate Anton's custom macOS installer:
+This document explains the workflow to generate the custom macOS installer:
 
-- Custom DMG: `release/Anton-<version>-universal-custom.dmg`
+- Custom DMG: `release/MindsHub Cowork-<version>-universal-custom.dmg`
 - Signing identity: `Developer ID Application`
 - Notarization tool: `notarytool`
 
@@ -41,14 +41,14 @@ This script:
 
 Expected output:
 
-- `release/Anton-<version>-universal-custom.dmg`
+- `release/MindsHub Cowork-<version>-universal-custom.dmg`
 
 ## 3. Notarize the custom DMG (manual)
 
 Use `notarytool` manually (recommended for better retry control):
 
 ```bash
-xcrun notarytool submit "release/Minds Cowork-0.1.0-universal-custom.dmg" \
+xcrun notarytool submit "release/MindsHub Cowork-0.1.0-universal-custom.dmg" \
   --apple-id "user@mindsdb.com" \
   --team-id "498Y665994" \
   --password "<APP_SPECIFIC_PASSWORD>" \
@@ -69,17 +69,17 @@ xcrun notarytool info <SUBMISSION_ID> \
 When status is `Accepted`:
 
 ```bash
-xcrun stapler staple "release/Minds Cowork-0.1.0-universal-custom.dmg"
-xcrun stapler validate "release/Minds Cowork-0.1.0-universal-custom.dmg"
+xcrun stapler staple "release/MindsHub Cowork-0.1.0-universal-custom.dmg"
+xcrun stapler validate "release/MindsHub Cowork-0.1.0-universal-custom.dmg"
 ```
 
 Validate the app inside the mounted DMG:
 
 ```bash
-hdiutil attach "release/Minds Cowork-0.1.0-universal-custom.dmg"
-spctl -a -vvv -t execute "/Volumes/Minds Cowork Installer 0.1.0/Minds Cowork.app"
-codesign -dv --verbose=4 "/Volumes/Minds Cowork Installer 0.1.0/Minds Cowork.app"
-hdiutil detach "/Volumes/Minds Cowork Installer 0.1.0"
+hdiutil attach "release/MindsHub Cowork-0.1.0-universal-custom.dmg"
+spctl -a -vvv -t execute "/Volumes/MindsHub Cowork Installer 0.1.0/MindsHub Cowork.app"
+codesign -dv --verbose=4 "/Volumes/MindsHub Cowork Installer 0.1.0/MindsHub Cowork.app"
+hdiutil detach "/Volumes/MindsHub Cowork Installer 0.1.0"
 ```
 
 Expected result:
@@ -102,7 +102,7 @@ xcrun notarytool log <SUBMISSION_ID> \
 
 2. If it reports unsigned binaries / missing timestamp / missing hardened runtime:
    - Rebuild the `.app` via `npm run dist:mac:dmg-custom`
-   - Verify `Minds Cowork.app` signature before notarizing
+   - Verify `MindsHub Cowork.app` signature before notarizing
    - Resubmit
 
 ## `status: In Progress` for too long

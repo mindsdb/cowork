@@ -22,7 +22,7 @@
   "form": {
     "form_id": "census-connector",
     "title": "Connect Census",
-    "subtitle": "Paste your Census API key to let Anton read syncs, segments, and destination statuses.",
+    "subtitle": "Paste your Census API key to let Cowork read syncs, segments, and destination statuses.",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -30,7 +30,7 @@
         "label": "API Key",
         "description": "Paste a Census API key generated from Settings → API. Fastest setup — no OAuth client required.",
         "recommended": true,
-        "how_to": "## Generate a Census API Key\n\n1. Log in to [Census](https://app.getcensus.com).\n2. Click your workspace name in the top-left, then go to **Settings**.\n3. In the left sidebar, select **API**.\n4. Click **Create API Key**, give it a descriptive name like `Anton`, and confirm.\n5. Copy the key shown — it is only displayed once.\n6. Paste it into the **API Key** field below.\n\n## Notes\n\n- API keys are scoped to your Census workspace. If you belong to multiple workspaces, generate a separate key per workspace.\n- Keys do not expire by default, but you can revoke them at any time from the same **Settings → API** page.\n- Store the key securely — anyone with it has API-level access to your Census workspace.",
+        "how_to": "## Generate a Census API Key\n\n1. Log in to [Census](https://app.getcensus.com).\n2. Click your workspace name in the top-left, then go to **Settings**.\n3. In the left sidebar, select **API**.\n4. Click **Create API Key**, give it a descriptive name like `Cowork`, and confirm.\n5. Copy the key shown — it is only displayed once.\n6. Paste it into the **API Key** field below.\n\n## Notes\n\n- API keys are scoped to your Census workspace. If you belong to multiple workspaces, generate a separate key per workspace.\n- Keys do not expire by default, but you can revoke them at any time from the same **Settings → API** page.\n- Store the key securely — anyone with it has API-level access to your Census workspace.",
         "help_url": "https://docs.getcensus.com/basics/api",
         "fields": [
           {

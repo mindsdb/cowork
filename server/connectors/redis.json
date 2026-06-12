@@ -27,7 +27,7 @@
   "form": {
     "form_id": "redis-connector",
     "title": "Connect Redis",
-    "subtitle": "Paste a connection string or enter host and port details to link Anton to your Redis instance.",
+    "subtitle": "Paste a connection string or enter host and port details to link Cowork to your Redis instance.",
     "logo": "database",
     "logo_color": "#DC382D",
     "methods": [

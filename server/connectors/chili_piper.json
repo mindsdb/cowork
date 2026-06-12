@@ -24,7 +24,7 @@
   "form": {
     "form_id": "chili_piper-connector",
     "title": "Connect Chili Piper",
-    "subtitle": "Paste your Chili Piper API key to give Anton access to your meeting routing and booking data.",
+    "subtitle": "Paste your Chili Piper API key to give Cowork access to your meeting routing and booking data.",
     "logo_color": "#3B82F6",
     "methods": [
       {
@@ -68,7 +68,7 @@
             "write"
           ]
         },
-        "how_to": "## Connect with OAuth 2.0 (Bring Your Own Client)\n\nThis method uses OAuth 2.0 to authenticate. You must create an OAuth application in Chili Piper's developer settings first.\n\n### Steps\n\n1. Log in to [app.chilipiper.com](https://app.chilipiper.com) as an admin.\n2. Go to **Admin → Integrations → Developer / OAuth Apps**.\n3. Click **Create OAuth App** and fill in a name (e.g. `Anton`) and a redirect URI of `http://127.0.0.1` (or the redirect Anton instructs you to use).\n4. After saving, copy the **Client ID** and **Client Secret** shown on the app detail page.\n5. Paste both values into the fields below and click **Submit**.\n6. A browser window will open to Chili Piper's consent screen — approve the requested permissions.\n\n### Notes\n\n- The client secret is shown only once. Store it securely before closing the page.\n- If you need to rotate credentials, create a new OAuth app and update both fields in Anton.\n- Consult [Chili Piper's developer docs](https://developer.chilipiper.com) for scope details.\n",
+        "how_to": "## Connect with OAuth 2.0 (Bring Your Own Client)\n\nThis method uses OAuth 2.0 to authenticate. You must create an OAuth application in Chili Piper's developer settings first.\n\n### Steps\n\n1. Log in to [app.chilipiper.com](https://app.chilipiper.com) as an admin.\n2. Go to **Admin → Integrations → Developer / OAuth Apps**.\n3. Click **Create OAuth App** and fill in a name (e.g. `Cowork`) and a redirect URI of `http://127.0.0.1` (or the redirect Cowork instructs you to use).\n4. After saving, copy the **Client ID** and **Client Secret** shown on the app detail page.\n5. Paste both values into the fields below and click **Submit**.\n6. A browser window will open to Chili Piper's consent screen — approve the requested permissions.\n\n### Notes\n\n- The client secret is shown only once. Store it securely before closing the page.\n- If you need to rotate credentials, create a new OAuth app and update both fields in Cowork.\n- Consult [Chili Piper's developer docs](https://developer.chilipiper.com) for scope details.\n",
         "help_url": "https://developer.chilipiper.com",
         "fields": [
           {

@@ -25,16 +25,16 @@
   "form": {
     "form_id": "stripe-connector",
     "title": "Connect Stripe",
-    "subtitle": "Paste a Stripe Restricted API key to give Anton scoped, least-privilege access to your account.",
+    "subtitle": "Paste a Stripe Restricted API key to give Cowork scoped, least-privilege access to your account.",
     "logo": "key",
     "logo_color": "#635BFF",
     "methods": [
       {
         "id": "restricted-key",
         "label": "Restricted API key",
-        "description": "Paste a Stripe Restricted key (rk_live_… or rk_test_…) scoped to only the resources Anton needs. Safer than a Secret key — permissions are granular and the key can be rolled independently.",
+        "description": "Paste a Stripe Restricted key (rk_live_… or rk_test_…) scoped to only the resources Cowork needs. Safer than a Secret key — permissions are granular and the key can be rolled independently.",
         "recommended": true,
-        "how_to": "## Create a Stripe Restricted API key\n\nRestricted keys let you grant Anton read access to exactly the resources it needs — nothing more. Never paste your full Secret key (sk_live_…).\n\n### Steps\n\n1. Log in to the [Stripe Dashboard](https://dashboard.stripe.com/).\n2. Go to **Developers → API keys**.\n3. Click **Create restricted key**.\n4. Give it a name like `Anton`.\n5. Under **Permissions**, enable **Read** for the resources you want Anton to access. Common choices:\n   - Customers\n   - Charges\n   - Payment Intents\n   - Subscriptions\n   - Invoices\n   - Products & Prices\n6. Click **Create key**. Stripe shows the key once — copy it immediately.\n7. Paste the key (starts with `rk_live_` for production or `rk_test_` for test mode) into the field below.\n\n### Notes\n\n- The key is shown **only once**. If you lose it, delete it in the Dashboard and create a new one.\n- Use `rk_test_…` keys during setup so no live data is touched.\n- You can roll or revoke the key from **Developers → API keys** at any time without affecting other integrations.\n- If Anton reports permission errors, return to the key settings and add Read access for the missing resource.\n",
+        "how_to": "## Create a Stripe Restricted API key\n\nRestricted keys let you grant Cowork read access to exactly the resources it needs — nothing more. Never paste your full Secret key (sk_live_…).\n\n### Steps\n\n1. Log in to the [Stripe Dashboard](https://dashboard.stripe.com/).\n2. Go to **Developers → API keys**.\n3. Click **Create restricted key**.\n4. Give it a name like `Cowork`.\n5. Under **Permissions**, enable **Read** for the resources you want Cowork to access. Common choices:\n   - Customers\n   - Charges\n   - Payment Intents\n   - Subscriptions\n   - Invoices\n   - Products & Prices\n6. Click **Create key**. Stripe shows the key once — copy it immediately.\n7. Paste the key (starts with `rk_live_` for production or `rk_test_` for test mode) into the field below.\n\n### Notes\n\n- The key is shown **only once**. If you lose it, delete it in the Dashboard and create a new one.\n- Use `rk_test_…` keys during setup so no live data is touched.\n- You can roll or revoke the key from **Developers → API keys** at any time without affecting other integrations.\n- If Cowork reports permission errors, return to the key settings and add Read access for the missing resource.\n",
         "help_url": "https://stripe.com/docs/keys#limit-access",
         "fields": [
           {
@@ -52,7 +52,7 @@
             "type": "text",
             "required": false,
             "placeholder": "My Stripe account",
-            "description": "Optional label to identify this Stripe connection in Anton."
+            "description": "Optional label to identify this Stripe connection in Cowork."
           },
           {
             "name": "mode",
@@ -97,7 +97,7 @@
             "type": "text",
             "required": false,
             "placeholder": "My Stripe account",
-            "description": "Optional label to identify this Stripe connection in Anton."
+            "description": "Optional label to identify this Stripe connection in Cowork."
           },
           {
             "name": "mode",

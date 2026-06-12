@@ -25,7 +25,7 @@
   "form": {
     "form_id": "dynamodb-connector",
     "title": "Connect DynamoDB",
-    "subtitle": "Provide AWS credentials so Anton can read and write DynamoDB tables on your behalf.",
+    "subtitle": "Provide AWS credentials so Cowork can read and write DynamoDB tables on your behalf.",
     "logo": "database",
     "logo_color": "#4A90D9",
     "methods": [
@@ -155,7 +155,7 @@
         "label": "IAM Role via Assumed Role Keys",
         "description": "Use temporary STS credentials from an assumed IAM Role — Access Key ID, Secret Access Key, and a Session Token. Suitable for environments using role-based access or short-lived credentials.",
         "recommended": false,
-        "how_to": "## Assumed IAM Role (temporary STS credentials)\n\nIf your organization uses IAM Roles rather than long-lived IAM user keys, you can generate temporary credentials via AWS STS and paste them here.\n\n### Steps\n\n1. Identify the IAM Role ARN you want to assume (e.g. `arn:aws:iam::123456789012:role/DynamoDBAccessRole`).\n2. Run the following with the AWS CLI or SDK to obtain temporary credentials:\n   - `aws sts assume-role --role-arn <ARN> --role-session-name anton-session`\n3. The response includes `AccessKeyId`, `SecretAccessKey`, and `SessionToken`. Copy all three.\n4. Paste each into the corresponding fields below.\n5. Set the **Region** to match your DynamoDB tables.\n\n### Notes\n\n- Temporary STS credentials expire (default 1 hour, max 12 hours). You will need to repeat this process and update Anton when they expire.\n- For a longer-lived setup without credential rotation headaches, use the **AWS Access Key** method with a dedicated IAM user instead.\n- See [AWS STS AssumeRole docs](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html) for full details.\n",
+        "how_to": "## Assumed IAM Role (temporary STS credentials)\n\nIf your organization uses IAM Roles rather than long-lived IAM user keys, you can generate temporary credentials via AWS STS and paste them here.\n\n### Steps\n\n1. Identify the IAM Role ARN you want to assume (e.g. `arn:aws:iam::123456789012:role/DynamoDBAccessRole`).\n2. Run the following with the AWS CLI or SDK to obtain temporary credentials:\n   - `aws sts assume-role --role-arn <ARN> --role-session-name anton-session`\n3. The response includes `AccessKeyId`, `SecretAccessKey`, and `SessionToken`. Copy all three.\n4. Paste each into the corresponding fields below.\n5. Set the **Region** to match your DynamoDB tables.\n\n### Notes\n\n- Temporary STS credentials expire (default 1 hour, max 12 hours). You will need to repeat this process and update Cowork when they expire.\n- For a longer-lived setup without credential rotation headaches, use the **AWS Access Key** method with a dedicated IAM user instead.\n- See [AWS STS AssumeRole docs](https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html) for full details.\n",
         "help_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_switch-role-api.html",
         "fields": [
           {

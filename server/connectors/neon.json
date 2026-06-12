@@ -25,7 +25,7 @@
   "form": {
     "form_id": "neon-connector",
     "title": "Connect Neon",
-    "subtitle": "Link Anton to your Neon serverless Postgres database.",
+    "subtitle": "Link Cowork to your Neon serverless Postgres database.",
     "logo": "database",
     "logo_color": "#00E599",
     "methods": [
@@ -34,7 +34,7 @@
         "label": "Connection String",
         "description": "Paste the full Postgres connection string from the Neon Console. The fastest way to connect — no separate fields needed.",
         "recommended": true,
-        "how_to": "## Get your Neon connection string\n\n1. Open the [Neon Console](https://console.neon.tech/) and select your **Project**.\n2. Click **Connection Details** in the left sidebar (or the dashboard overview card).\n3. In the **Connection string** panel, select the **branch**, **role**, and **database** you want Anton to use.\n4. Click the **copy** icon to copy the full connection string. It looks like:\n   `postgresql://username:password@ep-xxxx.us-east-2.aws.neon.tech/dbname?sslmode=require`\n5. Paste it into the **Connection String** field below.\n\n## Notes\n\n- The string includes your password in plain text — keep it secret and do not commit it to source control.\n- Neon generates a unique hostname per **branch**. If you create a new branch, you'll need a new connection string for it.\n- `sslmode=require` is set by default in Neon's strings — do not remove it.\n- If your password contains special characters, they will be URL-encoded in the string automatically by the Neon Console.",
+        "how_to": "## Get your Neon connection string\n\n1. Open the [Neon Console](https://console.neon.tech/) and select your **Project**.\n2. Click **Connection Details** in the left sidebar (or the dashboard overview card).\n3. In the **Connection string** panel, select the **branch**, **role**, and **database** you want Cowork to use.\n4. Click the **copy** icon to copy the full connection string. It looks like:\n   `postgresql://username:password@ep-xxxx.us-east-2.aws.neon.tech/dbname?sslmode=require`\n5. Paste it into the **Connection String** field below.\n\n## Notes\n\n- The string includes your password in plain text — keep it secret and do not commit it to source control.\n- Neon generates a unique hostname per **branch**. If you create a new branch, you'll need a new connection string for it.\n- `sslmode=require` is set by default in Neon's strings — do not remove it.\n- If your password contains special characters, they will be URL-encoded in the string automatically by the Neon Console.",
         "help_url": "https://neon.tech/docs/connect/connect-from-any-app",
         "fields": [
           {

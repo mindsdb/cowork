@@ -1433,7 +1433,7 @@ export default function ChatView({
                         lineHeight: 1.55,
                         color: T.ink2,
                       }}>
-                        Anton needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings.
+                        Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings.
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                         <button

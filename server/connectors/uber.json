@@ -23,7 +23,7 @@
   "form": {
     "form_id": "uber-connector",
     "title": "Connect Uber",
-    "subtitle": "Authorize Anton to read your Uber rides, Eats, and Business data via OAuth 2.0.",
+    "subtitle": "Authorize Cowork to read your Uber rides, Eats, and Business data via OAuth 2.0.",
     "logo": "send",
     "logo_color": "#000000",
     "methods": [
@@ -44,7 +44,7 @@
             "eats.deliveries"
           ]
         },
-        "how_to": "## Sign in with Uber (OAuth 2.0)\n\nYou'll need a free Uber developer app to get OAuth credentials. This takes about 5 minutes.\n\n### Create an Uber developer app\n\n1. Go to [developer.uber.com](https://developer.uber.com) and sign in with your Uber account.\n2. Click **My Apps → Create App**.\n3. Give the app a name like `Anton` and fill in any required description fields.\n4. Under **Redirect URIs**, add `http://127.0.0.1` (Anton uses a local redirect for the OAuth callback).\n5. Under **Scopes**, enable the ones you need:\n   - `profile` — your name and email\n   - `history` — past trip history\n   - `rides.request` / `rides.read` — request and read ride data\n   - `eats.deliveries` — Uber Eats delivery data\n6. Save the app. Copy the **Client ID** and **Client Secret** from the app dashboard.\n\n### Connect in Anton\n\n7. Paste the **Client ID** and **Client Secret** into the fields below.\n8. Choose which **scopes** you want Anton to request (leave the default for full access).\n9. Click **Submit**. A browser window opens to Uber's consent screen.\n10. Sign in and click **Allow**. Anton stores the resulting tokens locally.\n\n### Notes\n\n- `rides.request` lets Anton request rides on your behalf — remove it if you only need read access.\n- Uber tokens expire; Anton will refresh them automatically using the refresh token.\n- To revoke access, visit [privacy.uber.com](https://privacy.uber.com) → **Account → Apps with Access** and remove Anton.\n",
+        "how_to": "## Sign in with Uber (OAuth 2.0)\n\nYou'll need a free Uber developer app to get OAuth credentials. This takes about 5 minutes.\n\n### Create an Uber developer app\n\n1. Go to [developer.uber.com](https://developer.uber.com) and sign in with your Uber account.\n2. Click **My Apps → Create App**.\n3. Give the app a name like `Cowork` and fill in any required description fields.\n4. Under **Redirect URIs**, add `http://127.0.0.1` (Cowork uses a local redirect for the OAuth callback).\n5. Under **Scopes**, enable the ones you need:\n   - `profile` — your name and email\n   - `history` — past trip history\n   - `rides.request` / `rides.read` — request and read ride data\n   - `eats.deliveries` — Uber Eats delivery data\n6. Save the app. Copy the **Client ID** and **Client Secret** from the app dashboard.\n\n### Connect in Cowork\n\n7. Paste the **Client ID** and **Client Secret** into the fields below.\n8. Choose which **scopes** you want Cowork to request (leave the default for full access).\n9. Click **Submit**. A browser window opens to Uber's consent screen.\n10. Sign in and click **Allow**. Cowork stores the resulting tokens locally.\n\n### Notes\n\n- `rides.request` lets Cowork request rides on your behalf — remove it if you only need read access.\n- Uber tokens expire; Cowork will refresh them automatically using the refresh token.\n- To revoke access, visit [privacy.uber.com](https://privacy.uber.com) → **Account → Apps with Access** and remove Cowork.\n",
         "help_url": "https://developer.uber.com/docs/riders/guides/authentication/introduction",
         "fields": [
           {
@@ -69,7 +69,7 @@
             "type": "select",
             "required": true,
             "default": "profile history rides.read eats.deliveries",
-            "description": "Choose the permission set Anton should request. Match these to the scopes enabled in your Uber app.",
+            "description": "Choose the permission set Cowork should request. Match these to the scopes enabled in your Uber app.",
             "options": [
               {
                 "value": "profile history rides.read eats.deliveries",

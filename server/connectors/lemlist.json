@@ -22,7 +22,7 @@
   "form": {
     "form_id": "lemlist-connector",
     "title": "Connect Lemlist",
-    "subtitle": "Paste your Lemlist API key to give Anton access to your campaigns and leads.",
+    "subtitle": "Paste your Lemlist API key to give Cowork access to your campaigns and leads.",
     "logo_color": "#3B82F6",
     "methods": [
       {

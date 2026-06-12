@@ -25,7 +25,7 @@
   "form": {
     "form_id": "monday-connector",
     "title": "Connect Monday.com",
-    "subtitle": "Paste your Monday.com API v2 token to give Anton access to your boards and items.",
+    "subtitle": "Paste your Monday.com API v2 token to give Cowork access to your boards and items.",
     "logo": "grid",
     "logo_color": "#FF3D57",
     "methods": [
@@ -73,7 +73,7 @@
             "me:read"
           ]
         },
-        "how_to": "## Monday.com OAuth 2.0 Setup\n\nUse this method when you want scoped access or are building a shared integration. You'll need to create an app in the Monday Developer Center.\n\n### Steps\n\n1. Go to [Monday Developer Center](https://monday.com/developers/apps) and sign in.\n2. Click **Create app** and give it a name like `Anton`.\n3. In your app's settings, open the **OAuth** tab.\n4. Under **Redirect URIs**, add `http://localhost` (Anton uses a local redirect).\n5. Select the **Scopes** your integration needs. Recommended minimum:\n   - `boards:read`, `boards:write`\n   - `workspaces:read`\n   - `updates:write`\n   - `me:read`\n6. Save the app, then copy the **Client ID** and **Client Secret** from the **Credentials** section.\n7. Paste them into the fields below and click **Submit**. Anton will open Monday.com's consent screen in your browser.\n\n### Notes\n\n- After authorization, Monday.com issues a refresh token so Anton can stay connected without re-authorizing.\n- If you change scopes in the Developer Center, users must re-authorize.\n",
+        "how_to": "## Monday.com OAuth 2.0 Setup\n\nUse this method when you want scoped access or are building a shared integration. You'll need to create an app in the Monday Developer Center.\n\n### Steps\n\n1. Go to [Monday Developer Center](https://monday.com/developers/apps) and sign in.\n2. Click **Create app** and give it a name like `Cowork`.\n3. In your app's settings, open the **OAuth** tab.\n4. Under **Redirect URIs**, add `http://localhost` (Cowork uses a local redirect).\n5. Select the **Scopes** your integration needs. Recommended minimum:\n   - `boards:read`, `boards:write`\n   - `workspaces:read`\n   - `updates:write`\n   - `me:read`\n6. Save the app, then copy the **Client ID** and **Client Secret** from the **Credentials** section.\n7. Paste them into the fields below and click **Submit**. Cowork will open Monday.com's consent screen in your browser.\n\n### Notes\n\n- After authorization, Monday.com issues a refresh token so Cowork can stay connected without re-authorizing.\n- If you change scopes in the Developer Center, users must re-authorize.\n",
         "help_url": "https://developer.monday.com/apps/docs/oauth",
         "fields": [
           {

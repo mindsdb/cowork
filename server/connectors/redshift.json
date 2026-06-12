@@ -25,7 +25,7 @@
   "form": {
     "form_id": "redshift-connector",
     "title": "Connect Redshift",
-    "subtitle": "Enter your Redshift cluster endpoint and credentials to connect Anton to your data warehouse.",
+    "subtitle": "Enter your Redshift cluster endpoint and credentials to connect Cowork to your data warehouse.",
     "logo": "database",
     "logo_color": "#8C4FFF",
     "methods": [
@@ -34,7 +34,7 @@
         "label": "Cluster credentials",
         "description": "Connect directly using your Redshift cluster endpoint, port, database name, and a database user and password. The simplest and most common path.",
         "recommended": true,
-        "how_to": "## Connect with cluster credentials\n\nYou need your cluster endpoint, the database name, and a database-level user/password.\n\n### Finding your cluster endpoint\n\n1. Open the [Amazon Redshift console](https://console.aws.amazon.com/redshiftv2/).\n2. Click **Clusters** in the left nav, then click your cluster name.\n3. On the **General information** tab, find **Endpoint**. It looks like:\n   `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5439/mydb`\n4. Copy the host part (everything before the colon), the port (default **5439**), and the database name (the segment after the last slash).\n\n### Finding or creating a database user\n\n1. Connect to Redshift with a superuser (e.g. via the Query Editor v2 in the console).\n2. Run `CREATE USER anton PASSWORD 'StrongPassword123';` and grant the required schema/table permissions.\n3. Use those credentials in the fields below.\n\n### Network access\n\n- Your Redshift cluster must be **publicly accessible**, or Anton must run inside the same VPC.\n- Ensure the cluster's **security group inbound rules** allow TCP on port 5439 from Anton's IP.\n- If your cluster is in a private subnet, configure a VPC endpoint or bastion tunnel before connecting.\n\n### Notes\n\n- Credentials are stored locally and never sent to Anton's servers.\n- IAM authentication is not yet supported — use a native database user.\n",
+        "how_to": "## Connect with cluster credentials\n\nYou need your cluster endpoint, the database name, and a database-level user/password.\n\n### Finding your cluster endpoint\n\n1. Open the [Amazon Redshift console](https://console.aws.amazon.com/redshiftv2/).\n2. Click **Clusters** in the left nav, then click your cluster name.\n3. On the **General information** tab, find **Endpoint**. It looks like:\n   `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5439/mydb`\n4. Copy the host part (everything before the colon), the port (default **5439**), and the database name (the segment after the last slash).\n\n### Finding or creating a database user\n\n1. Connect to Redshift with a superuser (e.g. via the Query Editor v2 in the console).\n2. Run `CREATE USER anton PASSWORD 'StrongPassword123';` and grant the required schema/table permissions.\n3. Use those credentials in the fields below.\n\n### Network access\n\n- Your Redshift cluster must be **publicly accessible**, or Cowork must run inside the same VPC.\n- Ensure the cluster's **security group inbound rules** allow TCP on port 5439 from Cowork's IP.\n- If your cluster is in a private subnet, configure a VPC endpoint or bastion tunnel before connecting.\n\n### Notes\n\n- Credentials are stored locally and never sent to Cowork's servers.\n- IAM authentication is not yet supported — use a native database user.\n",
         "help_url": "https://docs.aws.amazon.com/redshift/latest/mgmt/connecting-to-cluster.html",
         "fields": [
           {
@@ -76,7 +76,7 @@
             "type": "password",
             "required": true,
             "secret": true,
-            "description": "Password for the database user above. Stored locally and never transmitted to Anton's servers."
+            "description": "Password for the database user above. Stored locally and never transmitted to Cowork's servers."
           },
           {
             "name": "ssl",

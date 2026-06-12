@@ -17,7 +17,7 @@
     "quota",
     "commit"
   ],
-  "description": "Connect Clari to pull pipeline forecasts, deal signals, and revenue intelligence into Anton.",
+  "description": "Connect Clari to pull pipeline forecasts, deal signals, and revenue intelligence into Cowork.",
   "category": "revenue-intel",
   "logo": "sparkle",
   "logo_color": "#4F46E5",

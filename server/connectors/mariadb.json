@@ -34,7 +34,7 @@
         "label": "Host & Password",
         "description": "Provide your MariaDB host, port, database name, username, and password. Optionally enable SSL for encrypted connections.",
         "recommended": true,
-        "how_to": "## Connect with Host & Password\n\nThe standard way to connect Anton to a MariaDB server. You'll need connection details from your database host or admin.\n\n### Steps\n\n1. Identify your MariaDB **host** — this is the hostname or IP address of the server (e.g. `db.example.com` or `127.0.0.1`).\n2. Confirm the **port** — MariaDB defaults to `3306`. Change it only if your server is configured differently.\n3. Enter the **database name** you want Anton to connect to.\n4. Provide a **username** and **password** with the appropriate privileges for that database.\n5. If your server requires encrypted connections, toggle **Use SSL** on.\n6. Click **Submit** to test and save the connection.\n\n### Notes\n\n- For cloud-hosted MariaDB (e.g. AWS RDS, PlanetScale, DigitalOcean), find connection details in the provider's database dashboard.\n- If connecting from outside the server's network, ensure your IP is whitelisted in the firewall or security group rules.\n- Use a dedicated read-only or limited-privilege user for Anton rather than the root account.\n- SSL is strongly recommended for connections over the public internet.\n",
+        "how_to": "## Connect with Host & Password\n\nThe standard way to connect Cowork to a MariaDB server. You'll need connection details from your database host or admin.\n\n### Steps\n\n1. Identify your MariaDB **host** — this is the hostname or IP address of the server (e.g. `db.example.com` or `127.0.0.1`).\n2. Confirm the **port** — MariaDB defaults to `3306`. Change it only if your server is configured differently.\n3. Enter the **database name** you want Cowork to connect to.\n4. Provide a **username** and **password** with the appropriate privileges for that database.\n5. If your server requires encrypted connections, toggle **Use SSL** on.\n6. Click **Submit** to test and save the connection.\n\n### Notes\n\n- For cloud-hosted MariaDB (e.g. AWS RDS, PlanetScale, DigitalOcean), find connection details in the provider's database dashboard.\n- If connecting from outside the server's network, ensure your IP is whitelisted in the firewall or security group rules.\n- Use a dedicated read-only or limited-privilege user for Cowork rather than the root account.\n- SSL is strongly recommended for connections over the public internet.\n",
         "help_url": "https://mariadb.com/kb/en/connecting-to-mariadb/",
         "fields": [
           {
@@ -60,7 +60,7 @@
             "type": "text",
             "required": true,
             "placeholder": "my_database",
-            "description": "The specific database schema Anton should connect to."
+            "description": "The specific database schema Cowork should connect to."
           },
           {
             "name": "user",
@@ -94,7 +94,7 @@
         "label": "Connection String",
         "description": "Paste a full MariaDB connection URI. Useful when your host or tooling already provides one.",
         "recommended": false,
-        "how_to": "## Connect with a Connection String\n\nSome hosting providers (e.g. PlanetScale, AWS RDS, Railway) give you a ready-made connection URI. Paste it here instead of filling in individual fields.\n\n### Format\n\nA MariaDB connection string looks like:\n\n`mysql://username:password@host:3306/database_name`\n\nWith SSL:\n\n`mysql://username:password@host:3306/database_name?ssl=true`\n\n### Steps\n\n1. Log in to your database provider's dashboard.\n2. Find the **Connection string** or **Connection URI** section for your database.\n3. Copy the full URI and paste it into the **Connection String** field below.\n4. Click **Submit** to test and save the connection.\n\n### Notes\n\n- Make sure the URI includes the username and password — some providers show them separately.\n- If the URI contains special characters in the password, they should be percent-encoded (e.g. `@` becomes `%40`).\n- The connection string is stored securely and never transmitted to Anton's servers.\n",
+        "how_to": "## Connect with a Connection String\n\nSome hosting providers (e.g. PlanetScale, AWS RDS, Railway) give you a ready-made connection URI. Paste it here instead of filling in individual fields.\n\n### Format\n\nA MariaDB connection string looks like:\n\n`mysql://username:password@host:3306/database_name`\n\nWith SSL:\n\n`mysql://username:password@host:3306/database_name?ssl=true`\n\n### Steps\n\n1. Log in to your database provider's dashboard.\n2. Find the **Connection string** or **Connection URI** section for your database.\n3. Copy the full URI and paste it into the **Connection String** field below.\n4. Click **Submit** to test and save the connection.\n\n### Notes\n\n- Make sure the URI includes the username and password — some providers show them separately.\n- If the URI contains special characters in the password, they should be percent-encoded (e.g. `@` becomes `%40`).\n- The connection string is stored securely and never transmitted to Cowork's servers.\n",
         "help_url": "https://mariadb.com/kb/en/connecting-to-mariadb/",
         "fields": [
           {
