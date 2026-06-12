@@ -25,7 +25,7 @@
   "form": {
     "form_id": "asana-connector",
     "title": "Connect Asana",
-    "subtitle": "Authorize Anton to read and manage your Asana projects and tasks.",
+    "subtitle": "Authorize Cowork to read and manage your Asana projects and tasks.",
     "logo": "list",
     "logo_color": "#F06A6A",
     "methods": [
@@ -34,7 +34,7 @@
         "label": "Personal Access Token",
         "description": "Paste a Personal Access Token (PAT) generated from your Asana developer settings. No OAuth setup required — the fastest way to connect.",
         "recommended": true,
-        "how_to": "## Generate an Asana Personal Access Token\n\nPersonal Access Tokens give Anton full API access scoped to your Asana account. They're the simplest way to connect without any OAuth client setup.\n\n### Steps\n\n1. Log in to [Asana](https://app.asana.com) and click your **profile photo** in the top-right corner.\n2. Select **My Settings** from the dropdown.\n3. Switch to the **Apps** tab.\n4. Click **Manage Developer Apps** — this opens the developer console.\n5. Under **Personal access tokens**, click **New access token**.\n6. Give the token a name like `Anton` and click **Create token**.\n7. Copy the token shown — **it is only displayed once**.\n8. Paste the token into the **Personal Access Token** field below.\n\n### Notes\n\n- The token inherits the permissions of your Asana account — it can read and write any workspace, project, or task you have access to.\n- If you lose the token, revoke it in the same panel and generate a new one.\n- Tokens do not expire by default, but a Workspace admin can enforce expiry policies.\n- Read [Asana's PAT guide](https://developers.asana.com/docs/personal-access-token) for full details.\n",
+        "how_to": "## Generate an Asana Personal Access Token\n\nPersonal Access Tokens give Cowork full API access scoped to your Asana account. They're the simplest way to connect without any OAuth client setup.\n\n### Steps\n\n1. Log in to [Asana](https://app.asana.com) and click your **profile photo** in the top-right corner.\n2. Select **My Settings** from the dropdown.\n3. Switch to the **Apps** tab.\n4. Click **Manage Developer Apps** — this opens the developer console.\n5. Under **Personal access tokens**, click **New access token**.\n6. Give the token a name like `Cowork` and click **Create token**.\n7. Copy the token shown — **it is only displayed once**.\n8. Paste the token into the **Personal Access Token** field below.\n\n### Notes\n\n- The token inherits the permissions of your Asana account — it can read and write any workspace, project, or task you have access to.\n- If you lose the token, revoke it in the same panel and generate a new one.\n- Tokens do not expire by default, but a Workspace admin can enforce expiry policies.\n- Read [Asana's PAT guide](https://developers.asana.com/docs/personal-access-token) for full details.\n",
         "help_url": "https://developers.asana.com/docs/personal-access-token",
         "fields": [
           {
@@ -52,7 +52,7 @@
             "type": "text",
             "required": false,
             "placeholder": "123456789012345",
-            "description": "Optional. If your account belongs to multiple workspaces, provide the numeric GID of the one you want Anton to default to. Leave blank to use your primary workspace."
+            "description": "Optional. If your account belongs to multiple workspaces, provide the numeric GID of the one you want Cowork to default to. Leave blank to use your primary workspace."
           }
         ]
       },
@@ -70,7 +70,7 @@
           ],
           "extra_auth_params": {}
         },
-        "how_to": "## Connect via Asana OAuth 2.0\n\nThis method requires you to register an app in Asana's developer console and supply a Client ID and Client Secret. Anton then opens Asana's consent screen in your browser.\n\n### Steps\n\n1. Go to [Asana Developer Console](https://app.asana.com/0/my-apps) and click **+ Create new app**.\n2. Fill in an app name (e.g. `Anton`) and select your default workspace.\n3. Under **OAuth**, set the **Redirect URI** to `http://127.0.0.1` (Anton uses a local redirect for the desktop flow).\n4. Copy the **Client ID** and **Client secret** from the app's details page.\n5. Paste them into the fields below and click **Submit**.\n6. A browser window opens to Asana's authorization screen. Log in and click **Allow**.\n7. Anton completes the token exchange and stores the refresh token locally.\n\n### Notes\n\n- The `default` scope grants access to all Asana data your account can reach.\n- You can revoke access at any time from **My Settings → Apps → Authorized apps** in Asana.\n- Read [Asana's OAuth guide](https://developers.asana.com/docs/oauth) for full details.\n",
+        "how_to": "## Connect via Asana OAuth 2.0\n\nThis method requires you to register an app in Asana's developer console and supply a Client ID and Client Secret. Cowork then opens Asana's consent screen in your browser.\n\n### Steps\n\n1. Go to [Asana Developer Console](https://app.asana.com/0/my-apps) and click **+ Create new app**.\n2. Fill in an app name (e.g. `Cowork`) and select your default workspace.\n3. Under **OAuth**, set the **Redirect URI** to `http://127.0.0.1` (Cowork uses a local redirect for the desktop flow).\n4. Copy the **Client ID** and **Client secret** from the app's details page.\n5. Paste them into the fields below and click **Submit**.\n6. A browser window opens to Asana's authorization screen. Log in and click **Allow**.\n7. Cowork completes the token exchange and stores the refresh token locally.\n\n### Notes\n\n- The `default` scope grants access to all Asana data your account can reach.\n- You can revoke access at any time from **My Settings → Apps → Authorized apps** in Asana.\n- Read [Asana's OAuth guide](https://developers.asana.com/docs/oauth) for full details.\n",
         "help_url": "https://developers.asana.com/docs/oauth",
         "fields": [
           {

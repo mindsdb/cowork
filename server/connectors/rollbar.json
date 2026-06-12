@@ -23,7 +23,7 @@
   "form": {
     "form_id": "rollbar-connector",
     "title": "Connect Rollbar",
-    "subtitle": "Paste your Rollbar project access token to give Anton access to your error data.",
+    "subtitle": "Paste your Rollbar project access token to give Cowork access to your error data.",
     "logo": "brain",
     "logo_color": "#3CB358",
     "methods": [
@@ -32,7 +32,7 @@
         "label": "Project Access Token",
         "description": "Paste a read-scoped project access token from Rollbar's Project Settings. Quickest setup — no OAuth flow required.",
         "recommended": true,
-        "how_to": "## Find your Rollbar Project Access Token\n\n1. Log in to [Rollbar](https://rollbar.com) and select the project you want to connect.\n2. In the left sidebar, go to **Settings → Project Access Tokens**.\n3. Find an existing token with the `read` scope, or click **Create a new access token** and select `read` as the scope.\n4. Copy the token string.\n5. Paste it into the **Project Access Token** field below.\n6. Optionally enter your **Account Slug** and **Project Slug** (visible in your Rollbar URL: `rollbar.com/<account>/<project>`) to scope requests precisely.\n\n## Notes\n\n- Use a `read`-scoped token for safety; Anton does not need write access.\n- Tokens are shown in full on the Project Access Tokens page — you can return any time to copy them again.\n- If you need to revoke access, return to **Settings → Project Access Tokens** and delete or regenerate the token.",
+        "how_to": "## Find your Rollbar Project Access Token\n\n1. Log in to [Rollbar](https://rollbar.com) and select the project you want to connect.\n2. In the left sidebar, go to **Settings → Project Access Tokens**.\n3. Find an existing token with the `read` scope, or click **Create a new access token** and select `read` as the scope.\n4. Copy the token string.\n5. Paste it into the **Project Access Token** field below.\n6. Optionally enter your **Account Slug** and **Project Slug** (visible in your Rollbar URL: `rollbar.com/<account>/<project>`) to scope requests precisely.\n\n## Notes\n\n- Use a `read`-scoped token for safety; Cowork does not need write access.\n- Tokens are shown in full on the Project Access Tokens page — you can return any time to copy them again.\n- If you need to revoke access, return to **Settings → Project Access Tokens** and delete or regenerate the token.",
         "help_url": "https://docs.rollbar.com/docs/access-tokens",
         "fields": [
           {
@@ -58,7 +58,7 @@
             "type": "text",
             "required": false,
             "placeholder": "my-project",
-            "description": "The project name portion of your Rollbar URL. Helps Anton scope API requests to the correct project."
+            "description": "The project name portion of your Rollbar URL. Helps Cowork scope API requests to the correct project."
           }
         ]
       },

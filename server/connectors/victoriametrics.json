@@ -26,7 +26,7 @@
   "form": {
     "form_id": "victoriametrics-connector",
     "title": "Connect VictoriaMetrics",
-    "subtitle": "Point Anton at your VictoriaMetrics endpoint and provide credentials if access is restricted.",
+    "subtitle": "Point Cowork at your VictoriaMetrics endpoint and provide credentials if access is restricted.",
     "logo": "sparkle",
     "logo_color": "#621DEA",
     "methods": [
@@ -35,7 +35,7 @@
         "label": "URL + Bearer Token",
         "description": "Paste your VictoriaMetrics base URL and an optional bearer token for authentication. The simplest path for most self-hosted and managed deployments.",
         "recommended": true,
-        "how_to": "## Connect with URL and Bearer Token\n\nMost VictoriaMetrics deployments expose a plain HTTP(S) endpoint. If your instance has authentication enabled via a reverse proxy or VictoriaMetrics Enterprise's built-in auth, you'll also need a bearer token.\n\n### Steps\n\n1. Find your VictoriaMetrics base URL. For a self-hosted instance it is typically `http://<host>:8428` (single-node) or `http://<vmselect-host>:8481/select/<accountID>/prometheus` (cluster).\n2. Verify the endpoint is reachable: open `<base-url>/health` in a browser — it should return `OK`.\n3. If authentication is required (e.g. you fronted VictoriaMetrics with a proxy like vmauth or nginx), obtain or generate a bearer token from that proxy's configuration.\n4. Paste the base URL into **Instance URL** below.\n5. Paste the token (if any) into **Bearer Token** below.\n6. If no auth is required, leave **Bearer Token** blank.\n\n### Notes\n\n- For VictoriaMetrics Cloud (managed), copy the **Endpoint URL** from the Cloud console and use the API token shown there as the bearer token.\n- Cluster deployments: use the vmselect URL with your account ID embedded, not the raw vmstorage address.\n- The token is stored locally in Anton's encrypted vault and is never sent to Anton's servers.",
+        "how_to": "## Connect with URL and Bearer Token\n\nMost VictoriaMetrics deployments expose a plain HTTP(S) endpoint. If your instance has authentication enabled via a reverse proxy or VictoriaMetrics Enterprise's built-in auth, you'll also need a bearer token.\n\n### Steps\n\n1. Find your VictoriaMetrics base URL. For a self-hosted instance it is typically `http://<host>:8428` (single-node) or `http://<vmselect-host>:8481/select/<accountID>/prometheus` (cluster).\n2. Verify the endpoint is reachable: open `<base-url>/health` in a browser — it should return `OK`.\n3. If authentication is required (e.g. you fronted VictoriaMetrics with a proxy like vmauth or nginx), obtain or generate a bearer token from that proxy's configuration.\n4. Paste the base URL into **Instance URL** below.\n5. Paste the token (if any) into **Bearer Token** below.\n6. If no auth is required, leave **Bearer Token** blank.\n\n### Notes\n\n- For VictoriaMetrics Cloud (managed), copy the **Endpoint URL** from the Cloud console and use the API token shown there as the bearer token.\n- Cluster deployments: use the vmselect URL with your account ID embedded, not the raw vmstorage address.\n- The token is stored locally in Cowork's encrypted vault and is never sent to Cowork's servers.",
         "help_url": "https://docs.victoriametrics.com/#how-to-scrape-prometheus-exporters",
         "fields": [
           {
@@ -62,7 +62,7 @@
         "label": "URL + Basic Auth",
         "description": "Connect using a username and password — useful when VictoriaMetrics is protected by HTTP basic authentication via a reverse proxy such as nginx or vmauth.",
         "recommended": false,
-        "how_to": "## Connect with URL and Basic Auth\n\nIf your VictoriaMetrics endpoint is protected by HTTP basic authentication (commonly configured in nginx, Caddy, or VictoriaMetrics Enterprise's vmauth), supply the credentials here.\n\n### Steps\n\n1. Find your VictoriaMetrics base URL (e.g. `https://metrics.example.com`).\n2. Confirm basic auth is enabled by running:\n   `curl -u user:pass https://metrics.example.com/health`\n   It should return `OK`.\n3. Enter the base URL in **Instance URL** below.\n4. Enter the **Username** and **Password** that your reverse proxy or vmauth config requires.\n\n### Notes\n\n- vmauth configuration: credentials are defined in the `users` section of `vmauth.yml`. Check with your infrastructure team if you don't know the credentials.\n- Do not use this method for VictoriaMetrics Cloud — use **URL + Bearer Token** with the Cloud-issued API token instead.\n- Credentials are stored locally in Anton's encrypted vault.",
+        "how_to": "## Connect with URL and Basic Auth\n\nIf your VictoriaMetrics endpoint is protected by HTTP basic authentication (commonly configured in nginx, Caddy, or VictoriaMetrics Enterprise's vmauth), supply the credentials here.\n\n### Steps\n\n1. Find your VictoriaMetrics base URL (e.g. `https://metrics.example.com`).\n2. Confirm basic auth is enabled by running:\n   `curl -u user:pass https://metrics.example.com/health`\n   It should return `OK`.\n3. Enter the base URL in **Instance URL** below.\n4. Enter the **Username** and **Password** that your reverse proxy or vmauth config requires.\n\n### Notes\n\n- vmauth configuration: credentials are defined in the `users` section of `vmauth.yml`. Check with your infrastructure team if you don't know the credentials.\n- Do not use this method for VictoriaMetrics Cloud — use **URL + Bearer Token** with the Cloud-issued API token instead.\n- Credentials are stored locally in Cowork's encrypted vault.",
         "help_url": "https://docs.victoriametrics.com/vmauth/",
         "fields": [
           {
@@ -87,7 +87,7 @@
             "type": "password",
             "required": true,
             "secret": true,
-            "description": "HTTP basic auth password. Stored encrypted in Anton's local vault."
+            "description": "HTTP basic auth password. Stored encrypted in Cowork's local vault."
           }
         ]
       },

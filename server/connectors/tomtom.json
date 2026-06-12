@@ -35,7 +35,7 @@
         "label": "API Key",
         "description": "Paste an API key from your TomTom Developer Portal. No OAuth setup required — copy the key and you're ready to query maps, geocoding, traffic, and routing endpoints.",
         "recommended": true,
-        "how_to": "## Get your TomTom API Key\n\n### Steps\n\n1. Log in to the [TomTom Developer Portal](https://developer.tomtom.com/) (create a free account if you don't have one).\n2. Click your avatar or account name in the top-right corner and select **My Dashboard**.\n3. Navigate to **Keys & Usage** in the left-hand sidebar.\n4. Click **+ Add a new app** (or select an existing one).\n5. Give the app a name (e.g. `Anton`) and check the APIs you want to enable (Maps, Geocoding, Traffic, Routing, etc.).\n6. Click **Create API Key**. Your new key appears in the list.\n7. Copy the key and paste it into the **API Key** field below.\n\n### Notes\n\n- Each API key can have per-product permissions scoped at creation time. Enable all products you intend to use.\n- Free-tier keys have request limits; upgrade your plan in the portal if you hit quota errors.\n- To revoke access, return to **Keys & Usage**, find the key, and click **Delete**.\n- Keys are shown in full at any time from your dashboard — no one-time reveal.",
+        "how_to": "## Get your TomTom API Key\n\n### Steps\n\n1. Log in to the [TomTom Developer Portal](https://developer.tomtom.com/) (create a free account if you don't have one).\n2. Click your avatar or account name in the top-right corner and select **My Dashboard**.\n3. Navigate to **Keys & Usage** in the left-hand sidebar.\n4. Click **+ Add a new app** (or select an existing one).\n5. Give the app a name (e.g. `Cowork`) and check the APIs you want to enable (Maps, Geocoding, Traffic, Routing, etc.).\n6. Click **Create API Key**. Your new key appears in the list.\n7. Copy the key and paste it into the **API Key** field below.\n\n### Notes\n\n- Each API key can have per-product permissions scoped at creation time. Enable all products you intend to use.\n- Free-tier keys have request limits; upgrade your plan in the portal if you hit quota errors.\n- To revoke access, return to **Keys & Usage**, find the key, and click **Delete**.\n- Keys are shown in full at any time from your dashboard — no one-time reveal.",
         "help_url": "https://developer.tomtom.com/knowledgebase/platform-data-dictionary/how-to-get-tomtom-api-key/",
         "fields": [
           {
@@ -62,7 +62,7 @@
             "type": "select",
             "required": false,
             "default": "maps",
-            "description": "Which TomTom product Anton should default to when making requests.",
+            "description": "Which TomTom product Cowork should default to when making requests.",
             "options": [
               {
                 "value": "maps",

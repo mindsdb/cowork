@@ -45,6 +45,33 @@ export function parseFormSpec(rawText) {
   }
 }
 
+// Pull the FULL `data-vault-form` block out of a streamed assistant
+// markdown body and parse it. Used by the stream-completion handler
+// to open the side panel deterministically — the in-markdown
+// MarkdownCode path can't, because the just-completed message mounts
+// already-`complete` and its "historical replay" guard suppresses the
+// form-store dispatch (see App.jsx onDone). Matches the LAST
+// `data-vault-form` fence (initial form appearance); deliberately
+// ignores the `data-vault-form-patch` dialect (those merge into an
+// already-open form and don't need to trigger the panel).
+//
+// Returns { spec, error, found }: found=false when no full-form fence
+// is present (the common case — most turns carry no form at all).
+export function extractFormSpec(markdown) {
+  if (typeof markdown !== 'string' || !markdown) {
+    return { spec: null, error: null, found: false };
+  }
+  // `[ \t]*\r?\n` after the info string means `data-vault-form-patch`
+  // won't match (its `-patch` suffix isn't whitespace/newline).
+  const re = /```data-vault-form[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```/g;
+  let m;
+  let lastBody = null;
+  while ((m = re.exec(markdown)) !== null) lastBody = m[1];
+  if (lastBody == null) return { spec: null, error: null, found: false };
+  const { spec, error } = parseFormSpec(lastBody);
+  return { spec, error, found: true };
+}
+
 // Apply a series of cheap, deterministic fixups for common LLM
 // mistakes. Order matters — stripping comments before fixing
 // trailing commas, etc.

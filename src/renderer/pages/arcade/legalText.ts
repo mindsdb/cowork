@@ -9,7 +9,7 @@ Welcome, and thank you for your interest in MindsDB, Inc. (“MindsDB,” “we,
 
 (a) our websites at https://mindshub.ai, https://mindsdb.com, https://mdb.ai, and related websites and subdomains (collectively, the “Sites”); and
 
-(b) our applications, products, and services — including MindsHub, Minds Platform, CoWork, and Anton — together with our related software, desktop and web applications, APIs, and features (collectively, the “Apps”).
+(b) our applications, products, and services — including MindsHub, Minds Platform, Cowork, and Anton — together with our related software, desktop and web applications, APIs, and features (collectively, the “Apps”).
 
 The Sites and the Apps are referred to together as the “Services.” Please read these Terms carefully before using the Services.
 

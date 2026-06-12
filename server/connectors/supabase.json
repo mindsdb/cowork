@@ -24,7 +24,7 @@
   "form": {
     "form_id": "supabase-connector",
     "title": "Connect Supabase",
-    "subtitle": "Link Anton to your Supabase project's Postgres database.",
+    "subtitle": "Link Cowork to your Supabase project's Postgres database.",
     "logo": "database",
     "logo_color": "#3ECF8E",
     "methods": [
@@ -52,7 +52,7 @@
         "label": "Host / Port / Database / User / Password",
         "description": "Enter your Supabase database credentials field by field. Useful if you need fine-grained control or a connection manager that doesn't accept raw URI strings.",
         "recommended": false,
-        "how_to": "## Get individual Supabase database credentials\n\n1. Open [Supabase Dashboard](https://supabase.com/dashboard) and select your project.\n2. Go to **Project Settings** → **Database**.\n3. Scroll to the **Connection info** section — all individual fields are listed there.\n4. Copy the values one by one:\n   - **Host**: `db.<project-ref>.supabase.co`\n   - **Port**: `5432` (direct) or `6543` (transaction pooler)\n   - **Database name**: `postgres`\n   - **User**: `postgres`\n   - **Password**: your project database password\n5. Fill in the fields below and click **Submit**.\n\n### Notes\n\n- If you've never set a database password, go to **Project Settings → Database → Database Password** and reset it.\n- For SSL, Supabase requires `sslmode=require` — Anton enables this by default when connecting to Supabase hosts.\n",
+        "how_to": "## Get individual Supabase database credentials\n\n1. Open [Supabase Dashboard](https://supabase.com/dashboard) and select your project.\n2. Go to **Project Settings** → **Database**.\n3. Scroll to the **Connection info** section — all individual fields are listed there.\n4. Copy the values one by one:\n   - **Host**: `db.<project-ref>.supabase.co`\n   - **Port**: `5432` (direct) or `6543` (transaction pooler)\n   - **Database name**: `postgres`\n   - **User**: `postgres`\n   - **Password**: your project database password\n5. Fill in the fields below and click **Submit**.\n\n### Notes\n\n- If you've never set a database password, go to **Project Settings → Database → Database Password** and reset it.\n- For SSL, Supabase requires `sslmode=require` — Cowork enables this by default when connecting to Supabase hosts.\n",
         "help_url": "https://supabase.com/docs/guides/database/connecting-to-postgres",
         "fields": [
           {
@@ -132,7 +132,7 @@
         "label": "REST API (Service Role Key)",
         "description": "Use Supabase's auto-generated REST API with your service role key. Suitable for querying data via PostgREST without a direct Postgres connection.",
         "recommended": false,
-        "how_to": "## Get your Supabase service role key\n\n1. Open [Supabase Dashboard](https://supabase.com/dashboard) and select your project.\n2. Go to **Project Settings** → **API**.\n3. Under **Project API keys**, copy the **service_role** key (labeled \"secret\").\n4. Also copy the **Project URL** from the top of the same page — it looks like `https://<project-ref>.supabase.co`.\n5. Paste both values into the fields below.\n\n### Notes\n\n- The **service_role** key bypasses Row Level Security (RLS). Keep it secret and never expose it in client-side code.\n- The **anon** key is restricted by RLS and is NOT suitable for Anton — use the service_role key.\n- This method queries data through PostgREST (Supabase's auto-generated REST layer) rather than a direct Postgres connection. Some complex SQL queries may not be expressible via the REST API; use the Connection String method for those.\n",
+        "how_to": "## Get your Supabase service role key\n\n1. Open [Supabase Dashboard](https://supabase.com/dashboard) and select your project.\n2. Go to **Project Settings** → **API**.\n3. Under **Project API keys**, copy the **service_role** key (labeled \"secret\").\n4. Also copy the **Project URL** from the top of the same page — it looks like `https://<project-ref>.supabase.co`.\n5. Paste both values into the fields below.\n\n### Notes\n\n- The **service_role** key bypasses Row Level Security (RLS). Keep it secret and never expose it in client-side code.\n- The **anon** key is restricted by RLS and is NOT suitable for Cowork — use the service_role key.\n- This method queries data through PostgREST (Supabase's auto-generated REST layer) rather than a direct Postgres connection. Some complex SQL queries may not be expressible via the REST API; use the Connection String method for those.\n",
         "help_url": "https://supabase.com/docs/guides/api",
         "fields": [
           {

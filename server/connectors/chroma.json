@@ -24,7 +24,7 @@
   "form": {
     "form_id": "chroma-connector",
     "title": "Connect Chroma",
-    "subtitle": "Point Anton at your Chroma server or Chroma Cloud tenant to read and write vector collections.",
+    "subtitle": "Point Cowork at your Chroma server or Chroma Cloud tenant to read and write vector collections.",
     "logo": "cube",
     "logo_color": "#E15C2E",
     "methods": [
@@ -33,7 +33,7 @@
         "label": "Self-hosted Chroma server",
         "description": "Paste the URL of your locally or privately hosted Chroma instance. No API token required for unauthenticated servers; add a static token if you enabled token auth.",
         "recommended": true,
-        "how_to": "## Connect to a self-hosted Chroma server\n\n### Prerequisites\n\n- A running Chroma server (`chroma run` or Docker). Default port is `8000`.\n- If you enabled token authentication (`CHROMA_SERVER_AUTH_PROVIDER`), have your static token ready.\n\n### Steps\n\n1. Find the address of your Chroma server, e.g. `http://localhost:8000` or `http://192.168.1.50:8000`.\n2. Paste it into **Server URL** below (include the scheme and port).\n3. If your server was started with `CHROMA_SERVER_AUTH_CREDENTIALS=<token>`, paste that value into **API Token**. Leave it blank for unauthenticated servers.\n4. Optionally set a **Tenant** and **Database** name if your deployment uses multi-tenancy (defaults are `default_tenant` / `default_database`).\n5. Click **Submit** \u2014 Anton will issue a `/api/v1/heartbeat` check to verify connectivity.\n\n### Notes\n\n- If Chroma runs inside Docker and Anton runs on the host, use `http://host.docker.internal:8000` instead of `localhost`.\n- TLS-terminated servers should use `https://`.\n- Token auth is set server-side via environment variables; see the [Chroma auth docs](https://docs.trychroma.com/usage-guide#authentication) for details.\n",
+        "how_to": "## Connect to a self-hosted Chroma server\n\n### Prerequisites\n\n- A running Chroma server (`chroma run` or Docker). Default port is `8000`.\n- If you enabled token authentication (`CHROMA_SERVER_AUTH_PROVIDER`), have your static token ready.\n\n### Steps\n\n1. Find the address of your Chroma server, e.g. `http://localhost:8000` or `http://192.168.1.50:8000`.\n2. Paste it into **Server URL** below (include the scheme and port).\n3. If your server was started with `CHROMA_SERVER_AUTH_CREDENTIALS=<token>`, paste that value into **API Token**. Leave it blank for unauthenticated servers.\n4. Optionally set a **Tenant** and **Database** name if your deployment uses multi-tenancy (defaults are `default_tenant` / `default_database`).\n5. Click **Submit** \u2014 Cowork will issue a `/api/v1/heartbeat` check to verify connectivity.\n\n### Notes\n\n- If Chroma runs inside Docker and Cowork runs on the host, use `http://host.docker.internal:8000` instead of `localhost`.\n- TLS-terminated servers should use `https://`.\n- Token auth is set server-side via environment variables; see the [Chroma auth docs](https://docs.trychroma.com/usage-guide#authentication) for details.\n",
         "help_url": "https://docs.trychroma.com/usage-guide",
         "fields": [
           {
@@ -78,7 +78,7 @@
         "label": "Chroma Cloud",
         "description": "Connect to a managed Chroma Cloud tenant using your Cloud API key, tenant ID, and database name from the Chroma Cloud dashboard.",
         "recommended": false,
-        "how_to": "## Connect to Chroma Cloud\n\n### Prerequisites\n\n- A Chroma Cloud account at [trychroma.com](https://trychroma.com).\n- A database created in the Chroma Cloud dashboard.\n\n### Steps\n\n1. Log in to [Chroma Cloud](https://cloud.trychroma.com).\n2. Navigate to **Settings \u2192 API Keys** and click **Create API Key**. Copy the key \u2014 it is shown only once.\n3. From the dashboard home, copy your **Tenant ID** (shown under your account name or in the URL).\n4. Open the database you want Anton to use and copy its **Database Name**.\n5. Paste all three values into the fields below.\n6. The **Server URL** defaults to `https://api.trychroma.com` \u2014 only change it if Chroma Cloud directs you to a regional endpoint.\n7. Click **Submit** to verify the connection.\n\n### Notes\n\n- API keys are scoped to your tenant. Rotate them in **Settings \u2192 API Keys** if compromised.\n- Each database within a tenant is isolated; Anton will only access the database you specify.\n",
+        "how_to": "## Connect to Chroma Cloud\n\n### Prerequisites\n\n- A Chroma Cloud account at [trychroma.com](https://trychroma.com).\n- A database created in the Chroma Cloud dashboard.\n\n### Steps\n\n1. Log in to [Chroma Cloud](https://cloud.trychroma.com).\n2. Navigate to **Settings \u2192 API Keys** and click **Create API Key**. Copy the key \u2014 it is shown only once.\n3. From the dashboard home, copy your **Tenant ID** (shown under your account name or in the URL).\n4. Open the database you want Cowork to use and copy its **Database Name**.\n5. Paste all three values into the fields below.\n6. The **Server URL** defaults to `https://api.trychroma.com` \u2014 only change it if Chroma Cloud directs you to a regional endpoint.\n7. Click **Submit** to verify the connection.\n\n### Notes\n\n- API keys are scoped to your tenant. Rotate them in **Settings \u2192 API Keys** if compromised.\n- Each database within a tenant is isolated; Cowork will only access the database you specify.\n",
         "help_url": "https://docs.trychroma.com/chroma-cloud",
         "fields": [
           {
@@ -113,7 +113,7 @@
             "type": "text",
             "required": true,
             "placeholder": "my-database",
-            "description": "The name of the Chroma Cloud database Anton should connect to."
+            "description": "The name of the Chroma Cloud database Cowork should connect to."
           }
         ]
       }

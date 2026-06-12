@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reset Minds Cowork to a fresh-install state for onboarding testing.
+# Reset MindsHub Cowork to a fresh-install state for onboarding testing.
 # Backs up existing state so it can be restored with restore-onboarding.sh.
 set -euo pipefail
 
@@ -7,7 +7,7 @@ ANTON_DIR="$HOME/.anton"
 COWORK_DIR="$HOME/.cowork"
 ELECTRON_DIR="$HOME/Library/Application Support/anton"
 
-echo "=== Minds Cowork Onboarding Reset ==="
+echo "=== MindsHub Cowork Onboarding Reset ==="
 
 # Back up ~/.anton/.env
 if [ -f "$ANTON_DIR/.env" ]; then
@@ -45,5 +45,5 @@ else
 fi
 
 echo ""
-echo "Done. Relaunch Minds Cowork to see the full onboarding flow."
+echo "Done. Relaunch MindsHub Cowork to see the full onboarding flow."
 echo "Run restore-onboarding.sh to put everything back."

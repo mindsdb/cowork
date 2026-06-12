@@ -12,7 +12,7 @@ import { MessageChart } from './MessageChart';
 import { parseChartIntent } from './utils';
 import { highlightCode } from './hljs';
 import Ico from '../Icons';
-import { patchForm, setForm } from '../datavault/formStore';
+import { patchForm, setForm, getForm } from '../datavault/formStore';
 import { parseFormSpec } from '../datavault/parseFormSpec';
 
 export function MarkdownCode(props) {
@@ -187,17 +187,36 @@ export function MarkdownCode(props) {
         </div>
       );
     }
+    // The card is clickable: clicking re-opens the side panel when it's
+    // been closed (mirrors ConnectIntroBubble for the picker path). No-op
+    // when a form is already active for this conversation — the panel is
+    // showing, and re-publishing the original spec would clobber any
+    // in-progress input. Gated at click time via getForm() so we don't
+    // need to subscribe to the store from inside the markdown renderer.
+    const reopenPanel = () => {
+      if (!conversationId || !formSpec) return;
+      if (getForm(conversationId)) return; // already open
+      setForm(conversationId, formSpec);
+    };
     return (
-      <div style={{
-        margin: '8px 0',
-        padding: '10px 12px',
-        borderRadius: 8,
-        background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
-        border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-        color: 'var(--ink-2)',
-        fontFamily: 'var(--font-body)', fontSize: 12.5,
-        display: 'inline-flex', alignItems: 'center', gap: 8,
-      }}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={reopenPanel}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reopenPanel(); } }}
+        title="Open in the side panel"
+        style={{
+          margin: '8px 0',
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
+          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+          color: 'var(--ink-2)',
+          fontFamily: 'var(--font-body)', fontSize: 12.5,
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          cursor: 'pointer',
+        }}
+      >
         <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.database(13)}</span>
         <span>
           <strong style={{ color: 'var(--ink)' }}>{formSpec.title || 'Form'}</strong>

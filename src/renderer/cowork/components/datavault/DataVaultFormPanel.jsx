@@ -218,7 +218,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 form_id: spec.form_id,
                 _is_success: true,
                 title: successTitle,
-                subtitle: "Saved to Anton's data vault. Anton can now use this connection in tasks.",
+                subtitle: "Saved to the data vault. Cowork can now use this connection in tasks.",
               });
             }
           } catch { /* keep polling */ }
@@ -350,7 +350,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             form_id: spec.form_id,
             _is_success: true,
             title: `${outcome.label || connectorId} connected`,
-            subtitle: 'Saved to Anton\'s data vault. Anton can use this connection in tasks.',
+            subtitle: 'Saved to the data vault. Cowork can use this connection in tasks.',
           });
           onContinue?.({
             text: `Connected ${outcome.label || connectorId} — saved to the data vault.`,

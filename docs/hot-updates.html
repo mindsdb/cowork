@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Anton Hot Updates (OTA) — Manual Testing</title>
+<title>Cowork Hot Updates (OTA) — Manual Testing</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -358,7 +358,7 @@
 
 <header class="topbar">
   <div class="topbar-inner">
-    <span class="brand"><strong>Anton</strong>Docs</span>
+    <span class="brand"><strong>Cowork</strong>Docs</span>
     <span class="grow"></span>
     <a class="toplink" href="index.html">Home</a>
     <a class="toplink" href="server-api.html">API</a>
@@ -464,13 +464,13 @@
       (<code>npm run dev</code>) skips them entirely.
     </p>
     <pre><code>PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run pack</code></pre>
-    <p>Output: <code>release/mac-arm64/Minds Cowork.app</code></p>
+    <p>Output: <code>release/mac-arm64/MindsHub Cowork.app</code></p>
 
     <p class="tip">
       <strong>Tip.</strong> To see Electron's console logs, always launch the packaged app from
       Terminal:
     </p>
-    <pre><code>./release/mac-arm64/Minds Cowork.app/Contents/MacOS/Minds Cowork</code></pre>
+    <pre><code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></pre>
     <p>
       That lets you watch <code>[ui-updater]</code> and <code>[main]</code> log lines in real
       time.
@@ -527,7 +527,7 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
       <p class="step-label">Steps</p>
       <ol>
         <li>Build the app: <code>PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run pack</code></li>
-        <li>Launch from Terminal: <code>./release/mac-arm64/Minds Cowork.app/Contents/MacOS/Minds Cowork</code></li>
+        <li>Launch from Terminal: <code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></li>
         <li>Watch the Terminal output.</li>
       </ol>
 
@@ -564,7 +564,7 @@ cat ~/Library/Application\ Support/Anton/ui-cache/version.json
 
       <p class="step-label">Steps</p>
       <ol>
-        <li>Quit and relaunch: <code>./release/mac-arm64/Minds Cowork.app/Contents/MacOS/Minds Cowork</code></li>
+        <li>Quit and relaunch: <code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></li>
       </ol>
 
       <p class="step-label">What to verify</p>
@@ -592,7 +592,7 @@ echo 'UI_UPDATE_MODE=auto' >> ~/.anton/.env</code></pre>
 
       <p class="step-label">Steps</p>
       <ol>
-        <li>Launch: <code>./release/mac-arm64/Minds Cowork.app/Contents/MacOS/Minds Cowork</code></li>
+        <li>Launch: <code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></li>
       </ol>
 
       <p class="step-label">What to verify</p>
@@ -625,7 +625,7 @@ rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
       <p class="step-label">Steps</p>
       <ol>
         <li>Disconnect from the internet (turn off Wi-Fi, or use an airplane-mode equivalent)</li>
-        <li>Launch: <code>./release/mac-arm64/Minds Cowork.app/Contents/MacOS/Minds Cowork</code></li>
+        <li>Launch: <code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></li>
       </ol>
 
       <p class="step-label">What to verify</p>
@@ -667,7 +667,7 @@ rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
         </li>
         <li>
           In another terminal, launch the packaged app:
-          <pre><code>./release/mac-arm64/Minds Cowork.app/Contents/MacOS/Minds Cowork</code></pre>
+          <pre><code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></pre>
         </li>
       </ol>
 
@@ -715,7 +715,7 @@ echo 'DEV_MODE=full' >> ~/.anton/.env</code></pre>
 
       <p class="step-label">Steps</p>
       <ol>
-        <li>Launch: <code>./release/mac-arm64/Minds Cowork.app/Contents/MacOS/Minds Cowork</code></li>
+        <li>Launch: <code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></li>
       </ol>
 
       <p class="step-label">What to verify</p>
@@ -785,7 +785,7 @@ echo 'DEV_MODE=full' >> ~/.anton/.env</code></pre>
 
       <p class="step-label">What to verify</p>
       <ul class="verify">
-        <li>The app loads the bundled renderer (the version shipped inside <code>Minds Cowork.app</code>)</li>
+        <li>The app loads the bundled renderer (the version shipped inside <code>MindsHub Cowork.app</code>)</li>
         <li>On next launch with internet, OTA check runs and re-downloads the latest bundle</li>
       </ul>
     </section>
@@ -801,7 +801,7 @@ echo 'DEV_MODE=full' >> ~/.anton/.env</code></pre>
       <p class="step-label">Steps</p>
       <ol>
         <li>Launch the packaged app</li>
-        <li>Click <strong>Anton</strong> in the menu bar &gt; <strong>About Anton</strong></li>
+        <li>Click <strong>Cowork</strong> in the menu bar &gt; <strong>About Anton</strong></li>
       </ol>
 
       <p class="step-label">What to verify</p>

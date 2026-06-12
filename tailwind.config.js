@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 //
-// Anton — Tailwind config.
+// Cowork — Tailwind config.
 //
 // We don't use Tailwind for the existing app surfaces (those rely on
 // inline styles + globals.css). Tailwind is wired in here so that

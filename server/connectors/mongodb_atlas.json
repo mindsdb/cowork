@@ -26,7 +26,7 @@
   "form": {
     "form_id": "mongodb_atlas-connector",
     "title": "Connect MongoDB Atlas",
-    "subtitle": "Paste your Atlas connection string to let Anton query your MongoDB cloud cluster.",
+    "subtitle": "Paste your Atlas connection string to let Cowork query your MongoDB cloud cluster.",
     "logo": "database",
     "logo_color": "#00ED64",
     "methods": [
@@ -53,7 +53,7 @@
             "type": "text",
             "required": false,
             "placeholder": "myDatabase",
-            "description": "Optional. The database Anton will use by default. If not set, the database specified in the connection string (or 'admin') is used."
+            "description": "Optional. The database Cowork will use by default. If not set, the database specified in the connection string (or 'admin') is used."
           },
           {
             "name": "tls_enabled",

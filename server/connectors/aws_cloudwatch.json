@@ -28,7 +28,7 @@
   "form": {
     "form_id": "aws_cloudwatch-connector",
     "title": "Connect AWS CloudWatch",
-    "subtitle": "Authorize Anton to read metrics, logs, and alarms from AWS CloudWatch.",
+    "subtitle": "Authorize Cowork to read metrics, logs, and alarms from AWS CloudWatch.",
     "logo": "sparkle",
     "logo_color": "#FF9900",
     "methods": [
@@ -37,7 +37,7 @@
         "label": "Access Key ID + Secret Access Key",
         "description": "Paste an IAM user's Access Key ID and Secret Access Key. Quickest path — no OAuth setup required. Recommended for most users.",
         "recommended": true,
-        "how_to": "## Create an IAM user with CloudWatch read access\n\n1. Sign in to the [AWS Console](https://console.aws.amazon.com/) and open **IAM**.\n2. Go to **Users → Create user**. Give it a name like `anton-cloudwatch`.\n3. On the **Set permissions** step, choose **Attach policies directly** and attach `CloudWatchReadOnlyAccess` (or `CloudWatchFullAccess` if you also want Anton to manage alarms).\n4. Complete the wizard. Open the new user, go to the **Security credentials** tab.\n5. Under **Access keys**, click **Create access key** → choose **Application running outside AWS** → click through to **Create access key**.\n6. Copy the **Access key ID** and **Secret access key** — the secret is shown only once. Store it securely.\n7. Paste both values and your target AWS region into the fields below.\n\n## Notes\n\n- Use the **principle of least privilege**: `CloudWatchReadOnlyAccess` covers metrics, logs, and alarms reads without write permissions.\n- If your account uses SCPs or permission boundaries, make sure `cloudwatch:*` and `logs:*` reads are not blocked.\n- To rotate keys, generate a new pair in IAM, update Anton, then deactivate the old key.",
+        "how_to": "## Create an IAM user with CloudWatch read access\n\n1. Sign in to the [AWS Console](https://console.aws.amazon.com/) and open **IAM**.\n2. Go to **Users → Create user**. Give it a name like `anton-cloudwatch`.\n3. On the **Set permissions** step, choose **Attach policies directly** and attach `CloudWatchReadOnlyAccess` (or `CloudWatchFullAccess` if you also want Cowork to manage alarms).\n4. Complete the wizard. Open the new user, go to the **Security credentials** tab.\n5. Under **Access keys**, click **Create access key** → choose **Application running outside AWS** → click through to **Create access key**.\n6. Copy the **Access key ID** and **Secret access key** — the secret is shown only once. Store it securely.\n7. Paste both values and your target AWS region into the fields below.\n\n## Notes\n\n- Use the **principle of least privilege**: `CloudWatchReadOnlyAccess` covers metrics, logs, and alarms reads without write permissions.\n- If your account uses SCPs or permission boundaries, make sure `cloudwatch:*` and `logs:*` reads are not blocked.\n- To rotate keys, generate a new pair in IAM, update Cowork, then deactivate the old key.",
         "help_url": "https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/auth-and-access-control-cw.html",
         "fields": [
           {
@@ -149,16 +149,16 @@
             "type": "text",
             "required": false,
             "placeholder": "/aws/lambda/my-function",
-            "description": "Optional. Pre-fill a CloudWatch Logs log group name Anton should query by default. You can override this per query."
+            "description": "Optional. Pre-fill a CloudWatch Logs log group name Cowork should query by default. You can override this per query."
           }
         ]
       },
       {
         "id": "iam-role-arn",
         "label": "IAM Role (assume-role via keys)",
-        "description": "Provide a base IAM Access Key pair plus a Role ARN. Anton will call STS AssumeRole before each CloudWatch request — useful when your security policy enforces role-based access rather than long-lived user keys.",
+        "description": "Provide a base IAM Access Key pair plus a Role ARN. Cowork will call STS AssumeRole before each CloudWatch request — useful when your security policy enforces role-based access rather than long-lived user keys.",
         "recommended": false,
-        "how_to": "## Set up IAM Role assumption\n\nUse this method when your organization's security policy requires all access to go through assumed roles rather than long-lived IAM user credentials.\n\n1. Create (or identify) an **IAM user** that has `sts:AssumeRole` permission. Generate an Access Key pair for it (see the Access Key method above for steps).\n2. Create (or identify) the **IAM role** Anton should assume. In the role's **Trust policy**, add the IAM user ARN as a trusted principal:\n   ```json\n   { \"Effect\": \"Allow\", \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:user/anton-cloudwatch\" }, \"Action\": \"sts:AssumeRole\" }\n   ```\n3. Attach `CloudWatchReadOnlyAccess` (or a custom policy) to the role's **Permissions**.\n4. Copy the role's **ARN** from the role's Summary page (format: `arn:aws:iam::ACCOUNT:role/ROLE-NAME`).\n5. Paste the user's Access Key ID, Secret Access Key, the Role ARN, and your region below.\n\n## Notes\n\n- Anton will call `sts:AssumeRole` and cache temporary credentials for up to 1 hour before refreshing.\n- If the role has an **External ID** configured on the trust policy, fill that field too.",
+        "how_to": "## Set up IAM Role assumption\n\nUse this method when your organization's security policy requires all access to go through assumed roles rather than long-lived IAM user credentials.\n\n1. Create (or identify) an **IAM user** that has `sts:AssumeRole` permission. Generate an Access Key pair for it (see the Access Key method above for steps).\n2. Create (or identify) the **IAM role** Cowork should assume. In the role's **Trust policy**, add the IAM user ARN as a trusted principal:\n   ```json\n   { \"Effect\": \"Allow\", \"Principal\": { \"AWS\": \"arn:aws:iam::123456789012:user/anton-cloudwatch\" }, \"Action\": \"sts:AssumeRole\" }\n   ```\n3. Attach `CloudWatchReadOnlyAccess` (or a custom policy) to the role's **Permissions**.\n4. Copy the role's **ARN** from the role's Summary page (format: `arn:aws:iam::ACCOUNT:role/ROLE-NAME`).\n5. Paste the user's Access Key ID, Secret Access Key, the Role ARN, and your region below.\n\n## Notes\n\n- Cowork will call `sts:AssumeRole` and cache temporary credentials for up to 1 hour before refreshing.\n- If the role has an **External ID** configured on the trust policy, fill that field too.",
         "help_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_switch-role-api.html",
         "fields": [
           {
@@ -184,7 +184,7 @@
             "type": "text",
             "required": true,
             "placeholder": "arn:aws:iam::123456789012:role/anton-cloudwatch-role",
-            "description": "The full ARN of the IAM role Anton will assume before querying CloudWatch."
+            "description": "The full ARN of the IAM role Cowork will assume before querying CloudWatch."
           },
           {
             "name": "external_id",

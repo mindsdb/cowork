@@ -27,14 +27,14 @@
   "form": {
     "form_id": "outlook-connector",
     "title": "Connect Outlook",
-    "subtitle": "Authorize Anton to read and send Outlook mail on your behalf via Microsoft Graph.",
+    "subtitle": "Authorize Cowork to read and send Outlook mail on your behalf via Microsoft Graph.",
     "logo": "mail",
     "logo_color": "#0078D4",
     "methods": [
       {
         "id": "oauth-azure-ad",
         "label": "Sign in with Microsoft (OAuth 2.0)",
-        "description": "OAuth 2.0 via Microsoft Graph — a browser opens for you to grant Anton scoped access to your Outlook mailbox. Requires registering an Azure AD app and supplying your Client ID and Client Secret (steps below).",
+        "description": "OAuth 2.0 via Microsoft Graph — a browser opens for you to grant Cowork scoped access to your Outlook mailbox. Requires registering an Azure AD app and supplying your Client ID and Client Secret (steps below).",
         "recommended": true,
         "submit_action": "oauth_launch",
         "oauth": {
@@ -51,7 +51,7 @@
             "prompt": "select_account"
           }
         },
-        "how_to": "## Sign in with Microsoft (OAuth 2.0)\n\nAnton uses your own Azure AD app registration (BYOK) to authenticate. You'll need a free Azure account to complete these steps.\n\n## 1. Register an Azure AD app\n\n1. Go to [Azure Portal → Azure Active Directory → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) and click **New registration**.\n2. Give it a name like `Anton Outlook`.\n3. Under **Supported account types**, choose **Accounts in any organizational directory and personal Microsoft accounts** (the `common` endpoint).\n4. Under **Redirect URI**, select **Public client/native (mobile & desktop)** and enter `http://localhost` as the URI. Click **Register**.\n\n## 2. Copy credentials\n\n5. On the app **Overview** page, copy the **Application (client) ID** — paste it into **Client ID** below.\n6. Go to **Certificates & secrets → Client secrets → New client secret**. Set an expiry, click **Add**, and immediately copy the **Value** — paste it into **Client secret** below. (It won't be shown again.)\n\n## 3. Add API permissions\n\n7. Go to **API permissions → Add a permission → Microsoft Graph → Delegated permissions**.\n8. Add: `Mail.ReadWrite`, `Mail.Send`, `User.Read`, `offline_access`.\n9. Click **Grant admin consent** if your tenant requires it (optional for personal accounts).\n\n## 4. Connect\n\n10. Fill in the **Client ID** and **Client secret** fields below, then click **Submit**. A browser window will open for you to sign in with your Microsoft account and grant the requested permissions.\n\n### Notes\n\n- Client secrets expire. When yours does, generate a new one in Azure Portal and update it in Anton.\n- To revoke access, visit [My Apps](https://myapps.microsoft.com/) → find the app → **Revoke permissions**.\n- For single-tenant deployments, replace `common` in the auth/token URLs with your **Directory (tenant) ID**.",
+        "how_to": "## Sign in with Microsoft (OAuth 2.0)\n\nCowork uses your own Azure AD app registration (BYOK) to authenticate. You'll need a free Azure account to complete these steps.\n\n## 1. Register an Azure AD app\n\n1. Go to [Azure Portal → Azure Active Directory → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) and click **New registration**.\n2. Give it a name like `Cowork Outlook`.\n3. Under **Supported account types**, choose **Accounts in any organizational directory and personal Microsoft accounts** (the `common` endpoint).\n4. Under **Redirect URI**, select **Public client/native (mobile & desktop)** and enter `http://localhost` as the URI. Click **Register**.\n\n## 2. Copy credentials\n\n5. On the app **Overview** page, copy the **Application (client) ID** — paste it into **Client ID** below.\n6. Go to **Certificates & secrets → Client secrets → New client secret**. Set an expiry, click **Add**, and immediately copy the **Value** — paste it into **Client secret** below. (It won't be shown again.)\n\n## 3. Add API permissions\n\n7. Go to **API permissions → Add a permission → Microsoft Graph → Delegated permissions**.\n8. Add: `Mail.ReadWrite`, `Mail.Send`, `User.Read`, `offline_access`.\n9. Click **Grant admin consent** if your tenant requires it (optional for personal accounts).\n\n## 4. Connect\n\n10. Fill in the **Client ID** and **Client secret** fields below, then click **Submit**. A browser window will open for you to sign in with your Microsoft account and grant the requested permissions.\n\n### Notes\n\n- Client secrets expire. When yours does, generate a new one in Azure Portal and update it in Cowork.\n- To revoke access, visit [My Apps](https://myapps.microsoft.com/) → find the app → **Revoke permissions**.\n- For single-tenant deployments, replace `common` in the auth/token URLs with your **Directory (tenant) ID**.",
         "help_url": "https://learn.microsoft.com/en-us/graph/auth-register-app-v2",
         "fields": [
           {

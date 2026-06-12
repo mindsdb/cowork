@@ -202,7 +202,7 @@ const DIRECTORY_CATEGORIES = [
 ];
 
 const PLUGIN_DIRECTORY_CARDS = [
-  { name: 'Box', vendor: 'Box', desc: 'Work with your Box content directly from Minds Cowork - search files, organize folders, collaborate with your team.' },
+  { name: 'Box', vendor: 'Box', desc: 'Work with your Box content directly from MindsHub Cowork - search files, organize folders, collaborate with your team.' },
   { name: 'Pdf viewer', vendor: 'Minds', desc: 'View, annotate, and sign PDFs in a live interactive viewer. Mark up contracts, fill forms, and review documents visually.' },
   { name: 'Adobe for creativity', vendor: 'Adobe', desc: 'Bring together Creative Cloud tools for images, vectors, design, and video in one workflow.' },
   { name: 'Figma', vendor: 'Figma', desc: 'Access design files, extract component information, read design tokens, and carry product context into the agent.' },
@@ -545,7 +545,7 @@ function ConnectorsPage({
       );
     }
   } else if (selectedConnector?.status !== 'included') {
-    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into Minds Cowork yet.`);
+    detailNotes.push(`Setup for ${selectedConnector?.name} is not wired into MindsHub Cowork yet.`);
   }
 
   return (
@@ -616,7 +616,7 @@ function ConnectorsPage({
           <ConnectorLogo id={selectedConnector?.id || 'asana'} large />
           <div className="customize-empty-title">
             {selectedConnector?.status === 'included'
-              ? `${selectedConnector.name} is already available in Minds Cowork.`
+              ? `${selectedConnector.name} is already available in MindsHub Cowork.`
               : connectMessage}
           </div>
           <button

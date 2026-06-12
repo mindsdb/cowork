@@ -91,7 +91,7 @@ export default function DispatchView({ onSetUpLater, agentLabel = 'the agent' })
         <section className="dispatch-pair" aria-labelledby="dispatch-title">
           <PairingIllustration />
 
-          <h1 id="dispatch-title">Pair with the Minds Cowork Mobile app</h1>
+          <h1 id="dispatch-title">Pair with the MindsHub Cowork Mobile app</h1>
           <p>
             Use the mobile app to talk to {agentLabel} while it works from your desktop.
             Scan the code to download it on your phone.

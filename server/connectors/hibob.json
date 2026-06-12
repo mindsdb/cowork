@@ -25,7 +25,7 @@
   "form": {
     "form_id": "hibob-connector",
     "title": "Connect HiBob",
-    "subtitle": "Paste a HiBob service user token to give Anton read access to your people data.",
+    "subtitle": "Paste a HiBob service user token to give Cowork read access to your people data.",
     "logo": "check",
     "logo_color": "#00C2C7",
     "methods": [
@@ -34,7 +34,7 @@
         "label": "Service user token",
         "description": "Generate a dedicated service user in HiBob and paste its token here. No OAuth flow required — just copy and paste from Settings → Integrations → Service users.",
         "recommended": true,
-        "how_to": "## Generate a HiBob service user token\n\nHiBob uses service users — bot-like accounts with their own API tokens — for integrations.\n\n### Steps\n\n1. Log in to HiBob as an admin.\n2. Go to **Settings** (gear icon, top-right) → **Integrations** → **Service users**.\n3. Click **+ New service user**.\n4. Give it a name like `Anton` and assign the appropriate read permissions for the data you want Anton to access (e.g. People, Payroll, Time off).\n5. Click **Generate token**. HiBob shows the token **once** — copy it immediately.\n6. Paste the token into the **Service user token** field below.\n7. Enter your HiBob company ID (visible in your HiBob URL: `app.hibob.com/company/<company-id>`).\n\n### Notes\n\n- The token is shown only once. If you lose it, delete the service user and create a new one.\n- Scope permissions narrowly — grant only the modules Anton needs to access.\n- Tokens do not expire by default but can be revoked at any time from the Service users page.",
+        "how_to": "## Generate a HiBob service user token\n\nHiBob uses service users — bot-like accounts with their own API tokens — for integrations.\n\n### Steps\n\n1. Log in to HiBob as an admin.\n2. Go to **Settings** (gear icon, top-right) → **Integrations** → **Service users**.\n3. Click **+ New service user**.\n4. Give it a name like `Cowork` and assign the appropriate read permissions for the data you want Cowork to access (e.g. People, Payroll, Time off).\n5. Click **Generate token**. HiBob shows the token **once** — copy it immediately.\n6. Paste the token into the **Service user token** field below.\n7. Enter your HiBob company ID (visible in your HiBob URL: `app.hibob.com/company/<company-id>`).\n\n### Notes\n\n- The token is shown only once. If you lose it, delete the service user and create a new one.\n- Scope permissions narrowly — grant only the modules Cowork needs to access.\n- Tokens do not expire by default but can be revoked at any time from the Service users page.",
         "help_url": "https://apidocs.hibob.com/docs/api-service-users",
         "fields": [
           {

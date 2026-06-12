@@ -25,7 +25,7 @@
   "form": {
     "form_id": "sentry-connector",
     "title": "Connect Sentry",
-    "subtitle": "Paste your Sentry auth token to give Anton access to your projects and error data.",
+    "subtitle": "Paste your Sentry auth token to give Cowork access to your projects and error data.",
     "logo": "brain",
     "logo_color": "#362D59",
     "methods": [
@@ -34,7 +34,7 @@
         "label": "Auth Token",
         "description": "Paste a Sentry user auth token (sntrys_…) from Settings → Auth Tokens. Works for both Sentry.io and self-hosted instances. Simplest and fastest setup.",
         "recommended": true,
-        "how_to": "## Generate a Sentry Auth Token\n\n### Steps\n\n1. Log in to [Sentry.io](https://sentry.io) (or your self-hosted Sentry instance).\n2. Click your avatar in the top-right corner, then go to **Settings → Auth Tokens** (direct URL: `https://sentry.io/settings/account/api/auth-tokens/`).\n3. Click **Create New Token**.\n4. Give the token a name like `Anton`.\n5. Select the scopes Anton needs — at minimum: `project:read`, `org:read`, `event:read`, `issue:read`. Add `event:write` or `issue:write` if you want Anton to resolve or assign issues.\n6. Click **Create Token**.\n7. Copy the token (it starts with `sntrys_`). **It is shown only once** — store it somewhere safe before closing.\n8. Paste it into the **Auth Token** field below.\n\n### Self-hosted Sentry\n\nIf you run your own Sentry instance, fill in the **Base URL** field with your instance's root URL (e.g. `https://sentry.mycompany.com`). Leave it blank to use Sentry.io.\n\n### Notes\n\n- Tokens are scoped — they only grant the permissions you selected.\n- Revoke tokens any time from **Settings → Auth Tokens** in Sentry.\n- Organization-level tokens (for CI/automation) are separate from user tokens; either works with the same field.",
+        "how_to": "## Generate a Sentry Auth Token\n\n### Steps\n\n1. Log in to [Sentry.io](https://sentry.io) (or your self-hosted Sentry instance).\n2. Click your avatar in the top-right corner, then go to **Settings → Auth Tokens** (direct URL: `https://sentry.io/settings/account/api/auth-tokens/`).\n3. Click **Create New Token**.\n4. Give the token a name like `Cowork`.\n5. Select the scopes Cowork needs — at minimum: `project:read`, `org:read`, `event:read`, `issue:read`. Add `event:write` or `issue:write` if you want Cowork to resolve or assign issues.\n6. Click **Create Token**.\n7. Copy the token (it starts with `sntrys_`). **It is shown only once** — store it somewhere safe before closing.\n8. Paste it into the **Auth Token** field below.\n\n### Self-hosted Sentry\n\nIf you run your own Sentry instance, fill in the **Base URL** field with your instance's root URL (e.g. `https://sentry.mycompany.com`). Leave it blank to use Sentry.io.\n\n### Notes\n\n- Tokens are scoped — they only grant the permissions you selected.\n- Revoke tokens any time from **Settings → Auth Tokens** in Sentry.\n- Organization-level tokens (for CI/automation) are separate from user tokens; either works with the same field.",
         "help_url": "https://docs.sentry.io/api/auth/",
         "fields": [
           {
@@ -61,7 +61,7 @@
             "type": "text",
             "required": false,
             "placeholder": "my-org",
-            "description": "Your Sentry organization slug — visible in the URL after sentry.io/organizations/. Required for some API calls; Anton can often infer it automatically."
+            "description": "Your Sentry organization slug — visible in the URL after sentry.io/organizations/. Required for some API calls; Cowork can often infer it automatically."
           }
         ]
       },
@@ -81,7 +81,7 @@
             "issue:read"
           ]
         },
-        "how_to": "## OAuth 2.0 via Sentry App\n\nThis method requires creating a custom Sentry App in your organization. Use Auth Token instead unless you have a specific reason to use OAuth.\n\n### Steps\n\n1. Log in to Sentry and go to **Settings → Developer Settings → New Internal Integration** (or **New Sentry App** for public apps).\n2. Fill in the app name (e.g. `Anton`) and set the **Redirect URI** to `http://127.0.0.1` (Anton handles the local redirect).\n3. Under **Permissions**, grant at minimum: `Project: Read`, `Organization: Read`, `Event: Read`, `Issue & Event: Read`.\n4. Enable **OAuth** and save the app.\n5. From the app's detail page, copy the **Client ID** and **Client Secret**.\n6. Paste them into the fields below and click **Submit**.\n7. Anton opens a browser window to Sentry's consent screen — approve access.\n\n### Notes\n\n- OAuth tokens expire and require refresh; Anton handles this automatically.\n- Self-hosted Sentry may have a different OAuth base URL — check your instance docs.",
+        "how_to": "## OAuth 2.0 via Sentry App\n\nThis method requires creating a custom Sentry App in your organization. Use Auth Token instead unless you have a specific reason to use OAuth.\n\n### Steps\n\n1. Log in to Sentry and go to **Settings → Developer Settings → New Internal Integration** (or **New Sentry App** for public apps).\n2. Fill in the app name (e.g. `Cowork`) and set the **Redirect URI** to `http://127.0.0.1` (Cowork handles the local redirect).\n3. Under **Permissions**, grant at minimum: `Project: Read`, `Organization: Read`, `Event: Read`, `Issue & Event: Read`.\n4. Enable **OAuth** and save the app.\n5. From the app's detail page, copy the **Client ID** and **Client Secret**.\n6. Paste them into the fields below and click **Submit**.\n7. Cowork opens a browser window to Sentry's consent screen — approve access.\n\n### Notes\n\n- OAuth tokens expire and require refresh; Cowork handles this automatically.\n- Self-hosted Sentry may have a different OAuth base URL — check your instance docs.",
         "help_url": "https://docs.sentry.io/api/auth/#oauth2",
         "fields": [
           {
