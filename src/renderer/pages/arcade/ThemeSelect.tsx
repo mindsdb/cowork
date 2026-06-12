@@ -2,8 +2,8 @@
 // cartridge is chosen and before POWER UP.
 //
 // Four preset "monitors", each a miniature render of the app in that
-// palette: ARCADE (8-bit dark), GAME BOY (8-bit light), MIDNIGHT
-// (normal dark), DAYLIGHT (normal light). One pick sets both axes
+// palette: MIDNIGHT (normal dark), DAYLIGHT (normal light), GAME BOY
+// (8-bit light), ARCADE (8-bit dark). One pick sets both axes
 // (skin + light/dark). A footer points at Settings → Appearance, where
 // the user can mix the axes freely or design their own Custom theme —
 // deliberately NOT on this screen, to keep onboarding one decision.
