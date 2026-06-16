@@ -11,6 +11,7 @@
 import { useRef, useState } from 'react';
 import Ico from '../Icons';
 import { TaskMenu } from '../TaskMenu';
+import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
@@ -45,15 +46,14 @@ export function TaskCard({
   onUnpin,
   onDelete,
 }) {
-  const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
+  const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
   const subtitle = task.subtitle || task.preview || '';
   const updated = relativeAge(task.updatedAt || task.updated_at || task.created_at);
   const turns = turnsCount(task);
-  const showKebab = hover || menuOpen;
   // App.jsx flips task.status to 'active' while a turn is streaming
   // and back to 'idle' on completion. Use it as the live indicator —
   // a subtle pulsing accent dot beside the title reads as "this one
@@ -75,8 +75,7 @@ export function TaskCard({
   return (
     <div
       style={{ position: 'relative' }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
     >
       <button
         type="button"

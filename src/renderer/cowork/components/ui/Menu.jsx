@@ -179,12 +179,26 @@ export function Menu({
   useEffect(() => { _ensureMenuCss(); }, []);
 
   const controlled = open !== undefined;
+
+  // Anchored mode = controlled open against a trigger we don't own (the
+  // legacy TaskMenu / HoverMenu pattern). Base UI's Menu only wires
+  // dismiss when it owns a <Menu.Trigger>; with none it opens/positions
+  // fine but never closes itself, so we supply dismiss here — and ONLY
+  // here (overlay + Escape + item activation). Trigger mode is left to
+  // Base UI (the ArtifactViewer kebab).
+  const anchoredMode = controlled && !trigger;
+
   const rootProps = controlled
     ? {
         open,
         onOpenChange: (next, details) => {
           onOpenChange?.(next, details);
-          if (!next) onClose?.();
+          // Critical: do NOT close an anchored menu on Base UI's own
+          // signal. With no trigger, Base UI's focus/hover-out heuristics
+          // misfire and emit onOpenChange(false) when the pointer merely
+          // leaves the popup — which would slam the menu shut on hover.
+          // Our explicit handlers are the only closers in anchored mode.
+          if (!next && !anchoredMode) onClose?.();
         },
       }
     : {};
@@ -197,13 +211,6 @@ export function Menu({
     if (typeof anchor.getBoundingClientRect === 'function') return anchor;
     return { getBoundingClientRect: () => anchor };
   }, [anchor]);
-
-  // Anchored mode = controlled open against a trigger we don't own (the
-  // legacy TaskMenu / HoverMenu pattern). Base UI's Menu only wires
-  // dismiss when it owns a <Menu.Trigger>; with none it opens/positions
-  // fine but never closes itself, so we supply dismiss here — and ONLY
-  // here. Trigger mode is left to Base UI (the ArtifactViewer kebab).
-  const anchoredMode = controlled && !trigger;
 
   // Escape closes. Keyboard events fire regardless of drag regions, so a
   // listener is fine here (unlike mouse events — see the overlay below).
