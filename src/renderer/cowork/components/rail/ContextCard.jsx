@@ -321,13 +321,42 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const [attachmentsTick, setAttachmentsTick] = useState(0);
   const bumpAttachments = useCallback(() => setAttachmentsTick((n) => n + 1), []);
 
+  const applyMemorySections = useCallback((data) => {
+    if (!data?.sections) return;
+    setSections(data.sections);
+    setOpenEntry((prev) => (
+      prev?.path ? findMemoryEntry(data.sections, prev.path) || prev : prev
+    ));
+  }, []);
+
+  const reloadMemory = useCallback(() => (
+    fetchMemory(project)
+      .then((data) => {
+        applyMemorySections(data);
+        return data;
+      })
+      .catch(() => null)
+  ), [project?.id, project?.path, applyMemorySections]);
+
+  const openMemoryEntry = useCallback((entry) => {
+    reloadMemory().then((data) => {
+      const fresh = data?.sections
+        ? findMemoryEntry(data.sections, entry.path) || entry
+        : entry;
+      setOpenEntry(fresh);
+    });
+  }, [reloadMemory]);
+
   useEffect(() => {
     let cancelled = false;
     fetchMemory(project)
-      .then((data) => { if (!cancelled && data?.sections) setSections(data.sections); })
+      .then((data) => {
+        if (cancelled) return;
+        applyMemorySections(data);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [project?.id, project?.path]);
+  }, [project?.id, project?.path, refreshKey, applyMemorySections]);
 
   // Ticket pattern: every instructions fetch (mount + reload-on-
   // edit) bumps `loadVersion`. The async response only applies its
@@ -753,7 +782,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
               <MemoryRow
                 key={entry.path || entry.category}
                 entry={entry}
-                onOpen={() => setOpenEntry(entry)}
+                onOpen={() => openMemoryEntry(entry)}
               />
             ))}
             {remaining > 0 && (
@@ -799,17 +828,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         placeholder="Memory contents — what should the agent remember?"
         dense
         onClose={() => setOpenEntry(null)}
-        onChanged={() => {
-          fetchMemory(project)
-            .then((data) => {
-              if (!data?.sections) return;
-              setSections(data.sections);
-              setOpenEntry((prev) => (
-                prev?.path ? findMemoryEntry(data.sections, prev.path) || prev : prev
-              ));
-            })
-            .catch(() => {});
-        }}
+        onChanged={() => { reloadMemory(); }}
       />
       <ContextFileModal
         open={!!openFile}
