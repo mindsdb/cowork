@@ -6,6 +6,12 @@
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
+import {
+  buildMemoryDeletePayload,
+  buildMemoryWritePayload,
+  groupMemoryItems,
+  resolveProjectId,
+} from './lib/memoryTransform';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -1072,23 +1078,33 @@ export async function startGcpAuth() {
   return req('/integrations/gcp/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export { labelCategory, countNonEmptyMemory } from './lib/memoryTransform';
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
-export async function fetchMemory(projectPath) {
-  const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
+export async function fetchMemory(projectRef) {
+  const projectId = await resolveProjectId(projectRef, fetchProjects);
+  const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
   // view's row-stats hook can all ask for the same project's memory
   // listing at the same moment; this collapses the duplicates.
-  return dedupe(`memory${suffix}`, () => req(`/memory${suffix}`));
+  return dedupe(`memory${suffix}`, async () => {
+    const [items, projects] = await Promise.all([
+      req(`/memory${suffix}`),
+      fetchProjects(),
+    ]);
+    const list = Array.isArray(items) ? items : [];
+    return groupMemoryItems(list, projects);
+  });
 }
 
 export async function saveMemory(payload) {
-  return req('/memory', { method: 'POST', body: JSON.stringify(payload) });
+  const body = buildMemoryWritePayload(payload);
+  return req('/memory', { method: 'PUT', body: JSON.stringify(body) });
 }
 
-export async function deleteMemory({ scope, relativePath, projectPath }) {
-  const params = new URLSearchParams({ scope, relative_path: relativePath });
-  if (projectPath) params.set('project_path', projectPath);
-  return req(`/memory?${params.toString()}`, { method: 'DELETE' });
+export async function deleteMemory(payload) {
+  const body = buildMemoryDeletePayload(payload);
+  return req('/memory', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
 export async function fetchSkills() {
