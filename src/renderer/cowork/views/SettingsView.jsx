@@ -1832,7 +1832,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     </CredentialRow>
                     <CredentialRow
                       title="Minds URL"
-                      subtitle="Base URL for Minds-backed MindsHub Cowork features."
+                      subtitle="Base URL for Minds-backed features."
                       status={relevance.mindsUrl}
                       hasValue={has('mindsUrl')}
                     >

@@ -764,14 +764,14 @@ app.whenReady().then(() => {
           label: app.name,
           submenu: [
             {
-              label: 'About MindsHub Cowork',
+              label: 'About Minds',
               click: () => {
                 const uiVersion = getCachedVersion();
                 const versionStr = uiVersion
                   ? `${app.getVersion()} (UI: ${uiVersion})`
                   : app.getVersion();
                 app.setAboutPanelOptions({
-                  applicationName: 'MindsHub Cowork',
+                  applicationName: 'Minds',
                   applicationVersion: versionStr,
                   copyright: 'By MindsDB',
                   credits: 'Autonomous AI Coworker\nhttps://mindsdb.com',

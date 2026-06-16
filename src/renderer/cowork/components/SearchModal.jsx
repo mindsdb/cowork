@@ -61,8 +61,8 @@ export default function SearchModal({ open, onClose, onSearch, onSelect }) {
             ref={inputRef}
             value={query}
             type="search"
-            placeholder="Search MindsHub Cowork"
-            aria-label="Search MindsHub Cowork"
+            placeholder="Search Minds"
+            aria-label="Search Minds"
             onChange={(event) => setQuery(event.target.value)}
           />
           <button className="mini-icon-btn" title="Close" onClick={onClose}>x</button>
@@ -84,7 +84,7 @@ export default function SearchModal({ open, onClose, onSearch, onSelect }) {
           ))}
           {busy && <div className="search-empty">Searching...</div>}
           {error && <div className="dialog-error">{error}</div>}
-          {!busy && query.trim() && results.length === 0 && !error && <div className="search-empty">No MindsHub Cowork results found.</div>}
+          {!busy && query.trim() && results.length === 0 && !error && <div className="search-empty">No Minds results found.</div>}
           {!query.trim() && <div className="search-empty">Tasks, projects, artifacts, attachments, schedules, and pins are searchable.</div>}
         </div>
       </div>

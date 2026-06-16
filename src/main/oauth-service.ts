@@ -144,7 +144,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         }
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html');
-        res.end(callbackPage("You're authorized!", 'You can close this tab and return to MindsHub Cowork.'));
+        res.end(callbackPage("You're authorized!", 'You can close this tab and return to Minds.'));
         resolve(code);
       } catch (e: any) {
         try { res.statusCode = 500; res.end('Internal callback error'); } catch {}

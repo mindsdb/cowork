@@ -1745,8 +1745,8 @@ export const MOCK_DATA = {
       { role: 'user', content: 'Write website copy for agent platform' },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
-    { id: 't5', title: 'Create website copy for MindsHub Cowork', subtitle: '2 weeks ago', status: 'done', messages: [
-      { role: 'user', content: 'Create website copy for MindsHub Cowork' },
+    { id: 't5', title: 'Create website copy for Minds', subtitle: '2 weeks ago', status: 'done', messages: [
+      { role: 'user', content: 'Create website copy for Minds' },
       { role: 'assistant', content: 'Done — copy is in your Artifacts.' },
     ]},
     { id: 't6', title: 'Create MindsDB website copy positioning', subtitle: '3 weeks ago', status: 'done', messages: [] },
@@ -1757,7 +1757,7 @@ export const MOCK_DATA = {
   projects: [
     { id: 'p1', name: 'AI Fab launch', description: 'Hardware, infra, and brand for the AI Fab', taskCount: 14, fileCount: 23, updated: '2h ago', tint: 'rgba(31,156,176,0.12)', color: 'var(--primary-700)' },
     { id: 'p2', name: 'MindsDB website', description: 'Marketing site copy + positioning', taskCount: 9, fileCount: 41, updated: 'Yesterday', tint: 'rgba(72,190,227,0.14)', color: 'var(--ocean-700)' },
-    { id: 'p3', name: 'Cowork brand', description: 'Brand and identity for the MindsHub Cowork app', taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
+    { id: 'p3', name: 'Cowork brand', description: 'Brand and identity for the Minds app', taskCount: 6, fileCount: 12, updated: '3d ago', tint: 'rgba(120,186,172,0.18)', color: 'var(--sage-700)' },
     { id: 'p4', name: 'Operational ops', description: 'Internal ops, RIF, hiring plans', taskCount: 11, fileCount: 8, updated: '1w ago', tint: 'rgba(244,177,131,0.15)', color: '#B7522B' },
   ],
 
