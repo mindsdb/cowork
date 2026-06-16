@@ -14,6 +14,7 @@ import {
   deleteProjectFile,
   fetchAttachments,
   fetchMemory,
+  findMemoryEntry,
   labelCategory,
   listProjectFiles,
   moveAttachmentToProject,
@@ -800,7 +801,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         onClose={() => setOpenEntry(null)}
         onChanged={() => {
           fetchMemory(project)
-            .then((data) => { if (data?.sections) setSections(data.sections); })
+            .then((data) => {
+              if (!data?.sections) return;
+              setSections(data.sections);
+              setOpenEntry((prev) => (
+                prev?.path ? findMemoryEntry(data.sections, prev.path) || prev : prev
+              ));
+            })
             .catch(() => {});
         }}
       />

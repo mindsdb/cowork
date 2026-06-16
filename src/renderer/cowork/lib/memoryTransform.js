@@ -72,6 +72,16 @@ export function countNonEmptyMemory(data) {
     .length;
 }
 
+/** Look up a normalised memory entry by its stable `path` key. */
+export function findMemoryEntry(sections, path) {
+  if (!path) return null;
+  for (const section of sections || []) {
+    const match = (section.files || []).find((f) => f.path === path);
+    if (match) return match;
+  }
+  return null;
+}
+
 export async function resolveProjectId(projectRef, fetchProjectsFn) {
   if (!projectRef) return null;
   if (typeof projectRef === 'object' && projectRef.id) return projectRef.id;

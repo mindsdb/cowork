@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -10,6 +10,7 @@ import {
   fetchMemory,
   fetchPublishable,
   fetchSkills,
+  findMemoryEntry,
   labelCategory,
   publishArtifact,
   saveDatasource,
@@ -140,6 +141,14 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   const globalSection = sections.find((s) => s.scope === 'Global');
   const totalFiles = sections.reduce((acc, s) => acc + (s.files?.length || 0), 0);
 
+  // `selected` holds the sidebar selection; after save `data.sections`
+  // refreshes but `selected` can still point at stale content. Always
+  // read the live entry from the latest sections when rendering.
+  const displayed = useMemo(
+    () => (selected?.path ? findMemoryEntry(sections, selected.path) : selected) || selected,
+    [sections, selected],
+  );
+
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({
     scope: 'Global', category: '', content: '', projectName: null, projectId: null,
@@ -148,6 +157,11 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   const refresh = async () => {
     const latest = await fetchMemory();
     setData(latest);
+    if (selected?.path) {
+      const updated = findMemoryEntry(latest?.sections, selected.path);
+      if (updated) onSelect(updated);
+    }
+    return latest;
   };
 
   const startEdit = (file) => {
@@ -267,26 +281,26 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                 style={memoryEditorStyle}
               />
             </>
-          ) : selected ? (
+          ) : displayed ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>
-                    {labelCategory(selected.category)}
+                    {labelCategory(displayed.category)}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>
-                    {selected.scope === 'Project' && selected.projectName
-                      ? `Project · ${selected.projectName}`
-                      : selected.scope}
+                    {displayed.scope === 'Project' && displayed.projectName
+                      ? `Project · ${displayed.projectName}`
+                      : displayed.scope}
                   </div>
                 </div>
-                <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
-                <button className="btn-secondary" onClick={() => remove(selected)}>Delete</button>
+                <button className="btn-secondary" onClick={() => startEdit(displayed)}>Edit</button>
+                <button className="btn-secondary" onClick={() => remove(displayed)}>Delete</button>
               </div>
               <div style={memoryViewerStyle}>
                 <MarkdownContent
-                  text={selected.content || selected.preview || ''}
-                  id={`mem-${selected.path || selected.category || 'doc'}`}
+                  text={displayed.content || displayed.preview || ''}
+                  id={`mem-${displayed.path || displayed.category || 'doc'}`}
                   complete
                   dense
                 />

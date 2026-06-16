@@ -1078,7 +1078,7 @@ export async function startGcpAuth() {
   return req('/integrations/gcp/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
-export { labelCategory, countNonEmptyMemory } from './lib/memoryTransform';
+export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
 
 // ─── Anton Utilities ────────────────────────────────────────────────────────
 export async function fetchMemory(projectRef) {
