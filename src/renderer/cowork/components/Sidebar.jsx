@@ -54,6 +54,10 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   const openMenu = (e) => {
     e.stopPropagation();
     e.preventDefault();
+    // Toggle: a second click on the kebab closes the menu (the menu's
+    // own outside-press dismiss ignores clicks on the trigger, so the
+    // close has to come from here).
+    if (menuOpen) { setMenuOpen(false); return; }
     if (!triggerRef.current) return;
     setAnchorRect(triggerRef.current.getBoundingClientRect());
     setMenuOpen(true);

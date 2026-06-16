@@ -4,7 +4,7 @@
 // when the artifact has a live URL, plus Publish / Unpublish / Open
 // in OS actions.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ico from '../Icons';
 import {
   mountArtifactPreview,
@@ -17,6 +17,7 @@ import {
 import { copyText } from '../../lib/clipboard';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { Modal } from '../ui/Modal';
+import { Menu } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
@@ -287,88 +288,6 @@ function AccessPasswordRow({ password }) {
   );
 }
 
-// Small popover anchored to the kebab. Lives inside the modal so its
-// fixed-positioned chrome stacks correctly against the modal backdrop.
-function ActionsPopover({ open, anchorRect, onClose, items }) {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e) => {
-      if (!ref.current?.contains(e.target)) onClose?.();
-    };
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose?.(); } };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, [open, onClose]);
-
-  if (!open || !anchorRect) return null;
-
-  const MENU_W = 200;
-  const VW = typeof window !== 'undefined' ? window.innerWidth : 1200;
-  const left = Math.min(VW - MENU_W - 8, Math.max(8, anchorRect.right - MENU_W));
-  const top = anchorRect.bottom + 6;
-
-  return (
-    <div
-      ref={ref}
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: 'fixed', top, left, zIndex: 90, width: MENU_W,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 10,
-        boxShadow: '0 12px 32px rgba(15,16,17,0.28)',
-        padding: '4px 0',
-      }}
-    >
-      {items.map((it, i) =>
-        it.divider ? (
-          <div key={`d-${i}`} style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
-        ) : (
-          <button
-            key={it.label}
-            type="button"
-            disabled={it.disabled}
-            title={it.title}
-            onClick={(e) => { e.stopPropagation(); it.onClick?.(); onClose?.(); }}
-            style={{
-              width: 'calc(100% - 8px)', margin: '0 4px',
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 10px', borderRadius: 5,
-              background: 'transparent', border: 0,
-              fontFamily: FONT_BODY, fontSize: 13,
-              color: it.danger ? 'var(--danger)' : 'var(--ink-2)',
-              textAlign: 'left',
-              cursor: it.disabled ? 'not-allowed' : 'pointer',
-              opacity: it.disabled ? 0.55 : 1,
-            }}
-            onMouseOver={(e) => {
-              if (it.disabled) return;
-              e.currentTarget.style.background = it.danger
-                ? 'color-mix(in srgb, var(--danger) 12%, transparent)'
-                : 'var(--surface-2)';
-            }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-          >
-            {it.icon && (
-              <span style={{
-                display: 'inline-flex', flexShrink: 0,
-                color: it.danger ? 'var(--danger)' : 'var(--ink-3)',
-              }}>{it.icon}</span>
-            )}
-            <span style={{ flex: 1 }}>{it.label}</span>
-          </button>
-        ),
-      )}
-    </div>
-  );
-}
-
 const BACKEND_ARTIFACT_TYPES = new Set(['fullstack-stateless-app', 'fullstack-stateful-app']);
 
 export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, onPublish: onRequestPublish }) {
@@ -395,10 +314,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
   const [backendPort, setBackendPort] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [menuRect, setMenuRect] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const kebabRef = useRef(null);
 
   const isText = _isTextArtifact(artifact);
   const textExt = isText
@@ -855,29 +772,66 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
               Download
             </button>
           )}
-          <button
-            ref={kebabRef}
-            type="button"
-            aria-label="More actions"
-            title="More actions"
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuRect(menuRect ? null : kebabRef.current?.getBoundingClientRect() || null);
-            }}
-            style={{
-              cursor: 'pointer',
-              background: menuRect ? 'var(--surface-2)' : 'transparent',
-              border: '1px solid var(--line)',
-              color: 'var(--ink-2)',
-              width: 32, height: 30, borderRadius: 8,
-              display: 'inline-grid', placeItems: 'center',
-              transition: 'background .12s ease, color .12s ease',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = menuRect ? 'var(--surface-2)' : 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
-          >
-            {Ico.moreVert(15)}
-          </button>
+          <Menu
+            ariaLabel="Artifact actions"
+            align="end"
+            width={200}
+            trigger={
+              <button
+                type="button"
+                aria-label="More actions"
+                title="More actions"
+                style={{
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  border: '1px solid var(--line)',
+                  color: 'var(--ink-2)',
+                  width: 32, height: 30, borderRadius: 8,
+                  display: 'inline-grid', placeItems: 'center',
+                  transition: 'background .12s ease, color .12s ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
+              >
+                {Ico.moreVert(15)}
+              </button>
+            }
+            items={[
+              // "Open in OS" drops out in the hosted web shell — it depends
+              // on the renderer sharing a filesystem with the server, which
+              // is only true in Electron. Delete stays available everywhere
+              // because it runs server-side via cowork-server.
+              ...(host.isWeb ? [] : [{
+                label: 'Open in OS',
+                icon: Ico.externalLink(13),
+                disabled: !hasActionPath || (isBackendArtifact && !backendPort),
+                title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
+                onClick: onOpenOS,
+              }]),
+              // Download mirrors the main action-row button and the
+              // list-view kebab — visible in any shell as long as the
+              // artifact has a serve URL the sidecar can stream.
+              ...(artifact?.serveUrl ? [{
+                label: 'Download',
+                icon: Ico.download(13),
+                onClick: onDownload,
+              }] : []),
+              {
+                label: publishedUrl ? 'Unpublish' : 'Publish',
+                icon: Ico.upload(13),
+                disabled: busy || !hasActionPath,
+                onClick: publishedUrl ? onUnpublish : onPublish,
+              },
+              { divider: true },
+              {
+                label: 'Delete',
+                icon: Ico.trash(13),
+                danger: true,
+                disabled: busy || !hasActionPath,
+                onClick: onTrash,
+              },
+            ]}
+          />
           <button
             type="button"
             onClick={onClose}
@@ -892,47 +846,6 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             }}
           >×</button>
         </div>
-
-        <ActionsPopover
-          open={!!menuRect}
-          anchorRect={menuRect}
-          onClose={() => setMenuRect(null)}
-          items={[
-            // "Open in OS" drops out in the hosted web shell — it depends
-            // on the renderer sharing a filesystem with the server, which
-            // is only true in Electron. Delete stays available everywhere
-            // because it runs server-side via cowork-server.
-            ...(host.isWeb ? [] : [{
-              label: 'Open in OS',
-              icon: Ico.externalLink(13),
-              disabled: !hasActionPath || (isBackendArtifact && !backendPort),
-              title: isBackendArtifact && !backendPort ? 'Waiting for backend port…' : undefined,
-              onClick: onOpenOS,
-            }]),
-            // Download mirrors the main action-row button and the
-            // list-view kebab — visible in any shell as long as the
-            // artifact has a serve URL the sidecar can stream.
-            ...(artifact?.serveUrl ? [{
-              label: 'Download',
-              icon: Ico.download(13),
-              onClick: onDownload,
-            }] : []),
-            {
-              label: publishedUrl ? 'Unpublish' : 'Publish',
-              icon: Ico.upload(13),
-              disabled: busy || !hasActionPath,
-              onClick: publishedUrl ? onUnpublish : onPublish,
-            },
-            { divider: true },
-            {
-              label: 'Delete',
-              icon: Ico.trash(13),
-              danger: true,
-              disabled: busy || !hasActionPath,
-              onClick: onTrash,
-            },
-          ]}
-        />
 
         {/* Body — branches by artifact type:
             • text (.md/.txt/.csv) → inline render via MarkdownContent,

@@ -1451,7 +1451,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               artifact={a}
               projects={projects}
               onOpenViewer={setViewer}
-              onMenuOpen={(art, rect) => setMenuFor({ artifact: art, rect })}
+              onMenuOpen={(art, rect) => setMenuFor((prev) =>
+                prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+              )}
               isMenuOpen={menuFor?.artifact?.path === a.path}
               busy={busyPaths.has(a.path)}
               onOpenProject={onOpenProject}

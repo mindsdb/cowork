@@ -273,16 +273,28 @@ export default function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
 
+  // Close the open meta-pill menu on any press that isn't on the menu
+  // popup itself or a trigger pill. The previous version only closed on
+  // presses OUTSIDE the whole composer (`!wrapRef.contains`), which
+  // wrongly treated the chat input (also inside the composer) as "inside
+  // the menu" — so clicking the textarea left the menu open. Scoping to
+  // `.menu` (any popup) + the trigger pills closes it for everything
+  // else, the textarea included.
   useEffect(() => {
+    if (!openMenu) return undefined;
     const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
-        setOpenMenu(null);
-        setConnectorsOpen(false);
-      }
+      const t = e.target;
+      // Inside the open popup → keep open (items close themselves onClick).
+      if (t?.closest?.('.menu')) return;
+      // On a trigger pill → let its own onClick toggle it (closing here
+      // would race it straight back open).
+      if (t?.closest?.('.meta-pill, .composer-icon')) return;
+      setOpenMenu(null);
+      setConnectorsOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [openMenu]);
 
   // Reset the project menu's transient state every time it closes, and
   // autofocus the search input on open so the user can start filtering
@@ -301,40 +313,13 @@ export default function Composer({
     return () => cancelAnimationFrame(id);
   }, [openMenu]);
 
-  // Close the project menu when the user clicks anywhere outside it.
-  // Two changes vs the previous attempt:
-  //   1. Listen for `click` (not `mousedown`) — same pattern that
-  //      works for the artifact kebab in WorkingFolderLive. Some
-  //      hosts (Electron with certain webview configs) treat
-  //      `mousedown` quirkily on document; `click` is universally
-  //      reliable. Bonus: React's stopPropagation on the menu's
-  //      onClick now suppresses bubbling to our document listener,
-  //      so clicks INSIDE the menu won't even reach the close path
-  //      (the ref-contains check is belt + suspenders).
-  //   2. Defer attachment one tick with `setTimeout(0)` so the click
-  //      that OPENED the menu doesn't immediately propagate up and
-  //      close it.
-  // Two refs to ignore:
-  //   - `projectMenuRef`  → clicks inside the menu itself MUST not
-  //                          close before the menu item's onClick.
-  //   - `projectPillRef`  → clicks on the pill toggle via its own
-  //                          onClick; if this handler fired first
-  //                          and closed the menu, the toggle would
-  //                          flip it right back open.
-  useEffect(() => {
-    if (openMenu !== 'project') return undefined;
-    const onClick = (e) => {
-      const t = e.target;
-      if (projectMenuRef.current && projectMenuRef.current.contains(t)) return;
-      if (projectPillRef.current && projectPillRef.current.contains(t)) return;
-      setOpenMenu(null);
-    };
-    const id = setTimeout(() => document.addEventListener('click', onClick), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', onClick);
-    };
-  }, [openMenu]);
+  // Outside-click dismissal for every meta-pill menu (project / attach /
+  // model) is handled in one place: the wrapRef `mousedown` listener
+  // above. It closes whichever menu is open (they share `openMenu`) on a
+  // press outside the composer. This works on desktop because the
+  // content column (`<main>` in App.jsx) opts out of the window drag
+  // region — otherwise Electron would swallow mouse events over the
+  // canvas and the press would never reach the listener.
 
   // Filter + create logic shared by Enter-on-search-input and the
   // explicit create footer. Defined inside the component body so the

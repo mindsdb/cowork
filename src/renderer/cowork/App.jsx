@@ -3302,6 +3302,14 @@ function AppCore() {
         flex: 1, minWidth: 0, minHeight: 0,
         display: 'flex', flexDirection: 'column',
         background: mainBg,
+        // Opt the whole content column out of the window drag region.
+        // Without this, the empty canvas inherits the root's
+        // `-webkit-app-region: drag` (App container), and Electron then
+        // swallows mouse events over it — so clicking the canvas never
+        // reaches any outside-click handler and dropdowns can't dismiss
+        // (desktop only; the web build has no drag regions). The window
+        // still drags via the sidebar header and the window's top strip.
+        WebkitAppRegion: 'no-drag',
       }}>
         {route === 'home' && (
           <HomeView
