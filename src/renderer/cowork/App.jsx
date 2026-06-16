@@ -726,7 +726,7 @@ function AppCore() {
   // trying to start a parallel turn (anton-core can't handle that
   // gracefully). After the active turn's onDone/onError fires we
   // drain one item from the queue.
-  const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text}] }
+  const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
 
@@ -820,8 +820,11 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, refreshInFlightSet]);
 
-  const enqueueMessage = (taskId, text) => {
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text };
+  const enqueueMessage = (taskId, text, attachments = []) => {
+    // `attachments` rides with the queued item so a message sent while a
+    // turn is in flight keeps its files — the drain re-resolves/uploads
+    // them. Without this the queue stored text only and files were lost.
+    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments };
     setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
@@ -2439,7 +2442,7 @@ function AppCore() {
   };
 
   // Send inside an existing task
-  const handleSendInTask = async (text) => {
+  const handleSendInTask = async (text, queuedAttachments = null) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -2478,7 +2481,12 @@ function AppCore() {
     //      rapid clicks both pass the guard and we'd end up with
     //      two parallel streams, the first one's controller leaked.
     if (activeStreamingTaskIdRef.current === id || activeStreamCtrlRef.current) {
-      enqueueMessage(id, text);
+      // Queue with the files attached so a mid-stream send doesn't drop
+      // them. A fresh send takes the composer's attachments and clears
+      // them (the queued item now owns them); a re-enqueued queued item
+      // reuses its own and leaves the live composer untouched.
+      enqueueMessage(id, text, queuedAttachments ?? composerAttachments);
+      if (queuedAttachments == null) setComposerAttachments([]);
       return;
     }
     // Synchronous reservation so a second invocation that fires
@@ -2505,7 +2513,9 @@ function AppCore() {
       ({ merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
-        composerAttachments,
+        // A drained queued item carries its own attachments; only a
+        // fresh send pulls from the live composer.
+        queuedAttachments ?? composerAttachments,
       ));
     } catch (err) {
       // Attachment resolution failed before we ever started the
@@ -2534,7 +2544,10 @@ function AppCore() {
           }
         : t,
     ));
-    setComposerAttachments([]);
+    // A fresh send just consumed the live composer's attachments; a
+    // drained queued item brought its own, so don't wipe whatever the
+    // user may have started composing since.
+    if (queuedAttachments == null) setComposerAttachments([]);
 
     let assistantContent = '';
     let streamState = initialStreamState();
@@ -2654,7 +2667,7 @@ function AppCore() {
         // what enqueueMessage used while the adoption was pending.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text));
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
         }
       },
       onError(message, event) {
@@ -2678,7 +2691,7 @@ function AppCore() {
         // queue. The next item gets its own shot at the LLM.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text));
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
         }
       },
     });

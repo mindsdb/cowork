@@ -438,11 +438,15 @@ export default function Composer({
 
   const handleSend = async () => {
     if (disabled || !value.trim()) return;
-    setError('');
     setBusy(true);
     try {
       await Promise.resolve(onSend(value.trim()));
       setValue('');
+      // Clear the error only AFTER a successful send. Clearing it up
+      // front meant a user hammering Send/Enter on a failing send wiped
+      // the error before they could read it — the failure looked like a
+      // silent no-op.
+      setError('');
       if (taRef.current) taRef.current.style.height = 'auto';
     } catch (err) {
       setError(err?.message || 'Could not send.');
