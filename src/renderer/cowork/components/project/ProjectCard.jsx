@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { fetchMemory, fetchArtifacts } from '../../api';
+import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -64,18 +64,14 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
   const [artCount, setArtCount] = useState(null);
 
   useEffect(() => {
-    if (!project?.path) return;
+    if (!project?.id && !project?.path) return;
     let cancelled = false;
-    fetchMemory(project.path).then((data) => {
+    fetchMemory(project).then((data) => {
       if (cancelled) return;
-      const total = (data?.sections || []).reduce(
-        (n, s) => n + (s.files?.length || 0),
-        0,
-      );
-      setMemCount(total);
+      setMemCount(countNonEmptyMemory(data));
     }).catch(() => setMemCount(0));
     return () => { cancelled = true; };
-  }, [project?.path]);
+  }, [project?.id, project?.path]);
 
   useEffect(() => {
     if (!project?.path) return;
