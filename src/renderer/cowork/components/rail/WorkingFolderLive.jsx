@@ -21,6 +21,7 @@ import {
   fetchProjects,
   publishArtifact,
   unpublishArtifact,
+  publishTargetPath,
   deleteArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
@@ -261,10 +262,10 @@ export function WorkingFolderLive({ project, isStreaming }) {
     setRowError('');
     try {
       if (a.publishedUrl) {
-        await unpublishArtifact(a.path);
+        await unpublishArtifact(publishTargetPath(a));
         setRows((prev) => prev.map((r) => r.path === a.path ? { ...r, publishedUrl: '' } : r));
       } else {
-        const r = await publishArtifact(a.path);
+        const r = await publishArtifact(publishTargetPath(a));
         const url = r?.url || r?.publishedUrl || '';
         setRows((prev) => prev.map((row) => row.path === a.path ? { ...row, publishedUrl: url } : row));
       }

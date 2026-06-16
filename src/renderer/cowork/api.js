@@ -831,38 +831,49 @@ export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
 
-// Mount an HTML artifact's parent directory for iframe preview. Returns
-// `{ token, entry, relUrl }` — `entry` is the filename, `relUrl` is the
-// path the iframe should load (relative to BASE). Use this so relative
-// `<script>` / `<link>` refs in the HTML resolve against a real URL.
+// Mount an artifact for iframe preview. Two response shapes:
+//   - kind="static" (HTML artifacts): server returns `relUrl` under
+//     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
+//   - kind="proxy"  (backend+frontend artifacts): server returns the
+//     artifact dir; the renderer then asks the Electron main process to
+//     point the local preview proxy at that dir and gets back the URL.
+// `kind` is the discriminator; legacy callers can keep using `url`.
 export async function mountArtifactPreview(path) {
   const data = await req('/artifacts/preview-mount', {
     method: 'POST',
     body: JSON.stringify({ path }),
   });
-  // Prefer the stateless `serveUrl` (origin-relative `/v1/artifacts/
-  // serve/...`) over the token `relUrl`: it's stable, shareable, and
-  // resolves against whatever origin the browser is on — so it works
-  // in the web deployment without publishing to the external host.
-  // `serveUrl` already carries the `/v1` prefix, so combine with
-  // ROOT_BASE (origin), not BASE (origin + /v1). Fall back to the
-  // token URL when serveUrl couldn't be computed server-side.
+  const kind = data?.kind || (data?.relUrl ? 'static' : '');
+  // Prefer the stateless `serveUrl` over the token `relUrl`: it's stable,
+  // shareable, and resolves against any origin — works in web deployment.
+  // `serveUrl` already carries `/v1`, so combine with ROOT_BASE, not BASE.
   const url = data?.serveUrl
     ? `${ROOT_BASE}${data.serveUrl}`
     : (data?.relUrl ? `${BASE}${data.relUrl}` : '');
   return {
+    kind,
     token: data?.token,
     entry: data?.entry,
-    // Absolute URL the iframe can load directly.
+    artifactDir: data?.artifactDir || '',
+    // Backend port for proxy previews — so the viewer can build a direct
+    // `http://127.0.0.1:<port>` URL for "Open in OS" without the proxy.
+    port: typeof data?.port === 'number' ? data.port : null,
+    // Absolute URL the iframe loads directly (static) or empty (proxy).
     url,
-    // Origin-relative serve URL on its own, for callers that want to
-    // open the artifact in a new tab (web "open" action).
+    // Loopback URL of the cowork-process preview proxy. Web shell only.
+    proxyUrl: data?.proxyUrl || '',
+    // Origin-relative serve URL for callers that open the artifact in a
+    // new tab (web "open" action).
     serveUrl: data?.serveUrl ? `${ROOT_BASE}${data.serveUrl}` : '',
     // Server-side sidecar lookup of the artifact's published URL (if
     // any). Forwarded so the viewer shows the "Published" pill even
     // when opened from a chat bubble — those carry no publishedUrl on
     // the artifact object since they're built from streamed payloads.
     publishedUrl: data?.publishedUrl || '',
+    // Backend launch status for proxy previews. When false, launchError
+    // carries the reason — the viewer surfaces it instead of an empty iframe.
+    backendRunning: data?.backendRunning !== false,
+    launchError: data?.launchError || '',
   };
 }
 
@@ -1357,6 +1368,17 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 export async function publishArtifact(path, password) {
   const body = password ? { path, password } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// The path to send to publish/unpublish for an artifact. Prefer the
+// artifact *folder* so folder-based artifacts publish as a unit — the
+// server resolves the primary file for static artifacts and treats
+// fullstack apps as a directory. Legacy loose-HTML and chat-bubble
+// artifacts carry no `folder`, so fall back to the primary file path
+// (the server then climbs to the artifact root itself).
+export function publishTargetPath(artifact) {
+  return artifact?.folder
+    || artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
 }
 
 export async function fetchBrowseStatus() {
