@@ -17,6 +17,19 @@ import { app } from 'electron';
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
 
+function loadBundledServerCredentials(): Record<string, string> {
+  try {
+    const credPath = path.join(process.resourcesPath || '', 'server-credentials.json');
+    if (fs.existsSync(credPath)) {
+      const raw = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+      if (raw && typeof raw === 'object') return raw as Record<string, string>;
+    }
+  } catch {
+    // no credentials file bundled (dev mode) — fine
+  }
+  return {};
+}
+
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
 let serverStarted = false;
@@ -277,6 +290,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   pendingStart = (async (): Promise<StartServerResult> => {
     const env = {
       ...process.env,
+      ...loadBundledServerCredentials(),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),

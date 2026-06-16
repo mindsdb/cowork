@@ -60,5 +60,7 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
+  - from: server-credentials.json
+    to: server-credentials.json
 
 afterSign: scripts/notarize.js

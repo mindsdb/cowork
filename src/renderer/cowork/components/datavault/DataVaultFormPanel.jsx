@@ -22,16 +22,15 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, startGoogleAdsAuth, startGoogleAnalyticsAuth, startGcpAuth, fetchIntegrations, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { host } from '../../../platform/host';
 
-const BROWSER_OAUTH_START = {
-  google_drive: startGoogleDriveAuth,
-  google_calendar: startGoogleCalendarAuth,
-  gmail: startGmailAuth,
-  google_ads: startGoogleAdsAuth,
-  google_analytics_4: startGoogleAnalyticsAuth,
-  gcp: startGcpAuth,
+const ENGINE_TO_OAUTH_SERVICE = {
+  google_drive: 'google-drive',
+  google_calendar: 'google-calendar',
+  gmail: 'gmail',
+  google_ads: 'google-ads',
+  google_analytics_4: 'google-analytics',
 };
 const BROWSER_OAUTH_TITLE = {
   google_drive: 'Google Drive connected',
@@ -39,7 +38,6 @@ const BROWSER_OAUTH_TITLE = {
   gmail: 'Gmail connected',
   google_ads: 'Google Ads connected',
   google_analytics_4: 'Google Analytics connected',
-  gcp: 'Google Cloud connected',
 };
 import { submitDataVaultForm } from '../../api';
 
@@ -188,16 +186,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
-      const startFn = BROWSER_OAUTH_START[engine];
-      if (!startFn) { setError(`No OAuth start handler for engine "${engine}".`); return; }
+      const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+      if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); return; }
       const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
       setBusy(true);
       setError('');
       try {
-        const result = await startFn(values || {});
-        if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
+        const result = await startConnectorOAuth(serviceId);
+        if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
         window.open(result.authUrl, '_blank');
-        const startedAt = result.startedAt || '';
+        const state = result.state;
         const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
         const poll = setInterval(async () => {
           try {
@@ -207,10 +205,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               setError('Sign-in timed out. Please try again.');
               return;
             }
-            const data = await fetchIntegrations();
-            const item = (data?.items || []).find((i) => i.id === engine);
-            const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
-            if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
+            const outcome = await pollConnectorOAuth(state);
+            if (outcome?.status === 'success') {
               clearInterval(poll);
               setBusy(false);
               try { await fetchDatasources(); } catch { /* best effort */ }
@@ -220,6 +216,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 title: successTitle,
                 subtitle: "Saved to the data vault. Cowork can now use this connection in tasks.",
               });
+            } else if (outcome?.status === 'error') {
+              clearInterval(poll);
+              setBusy(false);
+              setError(outcome.error || 'Google sign-in failed. Please try again.');
             }
           } catch { /* keep polling */ }
         }, BROWSER_OAUTH_POLL_MS);
@@ -719,16 +719,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             if (method?.fields?.length) return;
             // No fields — auto-start immediately on method selection.
             const engine = spec.engine || spec._connector_id || 'google_drive';
-            const startFn = BROWSER_OAUTH_START[engine];
-            if (!startFn) { setError(`No OAuth start handler for engine "${engine}".`); return; }
+            const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+            if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); return; }
             const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
             setBusy(true);
             setError('');
             try {
-              const result = await startFn({});
-              if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
+              const result = await startConnectorOAuth(serviceId);
+              if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
               window.open(result.authUrl, '_blank');
-              const startedAt = result.startedAt || '';
+              const state = result.state;
               const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
               const poll = setInterval(async () => {
                 try {
@@ -738,10 +738,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     setError('Sign-in timed out. Please try again.');
                     return;
                   }
-                  const data = await fetchIntegrations();
-                  const item = (data?.items || []).find((i) => i.id === engine);
-                  const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
-                  if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
+                  const outcome = await pollConnectorOAuth(state);
+                  if (outcome?.status === 'success') {
                     clearInterval(poll);
                     setBusy(false);
                     try { await fetchDatasources(); } catch { /* best effort */ }
@@ -751,6 +749,10 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                       title: successTitle,
                       subtitle: "Saved to the data vault. The agent can now use this connection in tasks.",
                     });
+                  } else if (outcome?.status === 'error') {
+                    clearInterval(poll);
+                    setBusy(false);
+                    setError(outcome.error || 'Google sign-in failed. Please try again.');
                   }
                 } catch { /* keep polling */ }
               }, BROWSER_OAUTH_POLL_MS);
