@@ -1,7 +1,11 @@
 name: Auto-release on version bump
 
+# `contents: write` is required by the auto-release job's `gh release create`
+# call (creates the version tag + GitHub release). Read-only here causes
+# `403: Resource not accessible by integration` and the downstream prod
+# build never runs.
 permissions:
-  contents: read
+  contents: write
 
 on:
   push:

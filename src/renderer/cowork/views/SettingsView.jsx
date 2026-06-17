@@ -1546,8 +1546,8 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 };
                 return (
                   <>
-                    <RoleRow role="planning" label="Planning model" />
-                    <RoleRow role="coding"   label="Coding model" />
+                    {RoleRow({ role: 'planning', label: 'Planning model' })}
+                    {RoleRow({ role: 'coding',   label: 'Coding model' })}
                   </>
                 );
               })()}
