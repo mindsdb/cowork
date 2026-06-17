@@ -2798,6 +2798,17 @@ function AppCore() {
       onChunk(chunk, sid) {
         if (sid) adoptServerId(sid);
         assistantContent += chunk;
+        // data-vault-form-patch blocks are delivered as complete deltas —
+        // parse and apply them immediately so the panel can show the
+        // spinner (_is_probing), status updates, and the error card
+        // (form_error) in real-time without waiting for MarkdownCode.
+        const patchMatch = /```data-vault-form-patch\n([\s\S]*?)\n```/.exec(chunk);
+        if (patchMatch) {
+          try {
+            const patch = JSON.parse(patchMatch[1]);
+            patchDataVaultForm(resolvedId || id, patch);
+          } catch {}
+        }
       },
       onDone(sid) {
         if (sid) adoptServerId(sid);

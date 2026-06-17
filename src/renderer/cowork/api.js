@@ -1042,7 +1042,7 @@ export async function revealSettingKey(name) {
 
 export async function fetchIntegrations() {
   try {
-    return await req('/integrations');
+    return await req('/connectors/oauth/catalogue');
   } catch {
     return { items: MOCK_DATA.integrations };
   }
@@ -1216,7 +1216,7 @@ export async function saveConnector(connectorId, payload) {
 // The SPA never handles the code or tokens directly.
 
 export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
-  return req(`/connectors/${encodeURIComponent(connectorId)}/oauth/start`, {
+  return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
     method: 'POST',
     body: JSON.stringify({
       method: method || null,
