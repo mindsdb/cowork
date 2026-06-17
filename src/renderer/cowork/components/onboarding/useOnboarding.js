@@ -14,7 +14,6 @@ export function useOnboarding() {
     isComplete: (id) => completed.has(id),
     completedCount: doneCount,
     total: ONBOARDING_STEPS.length,
-    started: doneCount > 0,
     allDone: doneCount === ONBOARDING_STEPS.length,
     dismissed,
     complete: completeStep,

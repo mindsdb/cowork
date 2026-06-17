@@ -1,5 +1,3 @@
-import { ONBOARDING_STEPS } from './steps';
-
 // Single source of truth for onboarding progress, shared across every
 // mounted checklist (the prominent home card AND the sidebar tracker).
 // A plain React hook would give each instance its own state, so a step
@@ -65,7 +63,3 @@ export function reset() {
   writeJSON(DISMISSED_KEY, false);
   emit();
 }
-
-// Count only ids that still map to a real step, so stale storage from a
-// changed step list can never report a false "all done".
-export const doneCount = () => ONBOARDING_STEPS.filter((s) => state.completed.has(s.id)).length;

@@ -2,22 +2,18 @@ import { useOnboarding } from './useOnboarding';
 import OnboardingItem from './OnboardingItem';
 import OnboardingComplete from './OnboardingComplete';
 
-// "Get to know Cowork" checklist. Two surfaces, one shared state:
-//   • variant="home"    — prominent welcome card on the home screen, shown
-//                         to a brand-new user BEFORE they start a step.
+// "Get to know Cowork" checklist. Two surfaces, one shared state — which
+// one shows is decided by the HOST based on the current screen, never by
+// progress, so the checklist is always reachable:
+//   • variant="home"    — prominent welcome card on the home screen.
 //   • variant="sidebar" — compact tracker docked above the backend pill,
-//                         shown ONCE the user has started, as a persistent
-//                         nudge to finish (and the reward state at the end).
+//                         shown on every OTHER screen.
 // Each row seeds a new chat; `onStartChat` is the home composer's send
 // handler. Card chrome lives in `.onboarding-card` (theme-aware).
 export default function OnboardingChecklist({ onStartChat, variant = 'sidebar' }) {
-  const { steps, isComplete, completedCount, total, allDone, started, dismissed, complete, dismiss } = useOnboarding();
+  const { steps, isComplete, completedCount, total, allDone, dismissed, complete, dismiss } = useOnboarding();
 
   if (dismissed) return null;
-  // The home card hands off to the sidebar the moment work begins, so the
-  // two never show at the same time.
-  if (variant === 'home' && started) return null;
-  if (variant === 'sidebar' && !started) return null;
 
   const isHome = variant === 'home';
 

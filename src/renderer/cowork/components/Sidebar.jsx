@@ -747,10 +747,11 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Onboarding tracker — docked above the backend pill once the user
-            has started (before that, the prominent home card carries it).
-            Gated on serverOnline so it doesn't appear mid-boot. */}
-        {serverOnline && onStartOnboardingChat && (
+        {/* Onboarding tracker — docked above the backend pill on every
+            screen EXCEPT home (where the prominent card carries it), so
+            it's always reachable. Gated on serverOnline so it doesn't
+            appear mid-boot. */}
+        {serverOnline && onStartOnboardingChat && activeRoute !== 'home' && (
           <OnboardingChecklist variant="sidebar" onStartChat={onStartOnboardingChat} />
         )}
 
