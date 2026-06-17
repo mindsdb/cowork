@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
+import { OnboardingChecklist } from '../components/onboarding';
 import { OrbitMorph } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -549,6 +550,9 @@ export default function HomeView({
             />
           )}
           <ActiveList tasks={activeTasks} onSelect={onSelectTask} onClear={onClearActive} />
+          {/* Prominent first-run checklist — shown to a brand-new user until
+              they start a step, after which it lives in the sidebar. */}
+          <OnboardingChecklist variant="home" onStartChat={onSend} />
         </div>
       )}
     </div>

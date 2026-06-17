@@ -747,11 +747,11 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Onboarding checklist — docked at the foot of the rail, just
-            above the backend status pill. Shows only once the backend is
-            up so it doesn't appear mid-boot. */}
+        {/* Onboarding tracker — docked above the backend pill once the user
+            has started (before that, the prominent home card carries it).
+            Gated on serverOnline so it doesn't appear mid-boot. */}
         {serverOnline && onStartOnboardingChat && (
-          <OnboardingChecklist onStartChat={onStartOnboardingChat} />
+          <OnboardingChecklist variant="sidebar" onStartChat={onStartOnboardingChat} />
         )}
 
         {/* Footer status — Electron-only. In the hosted web shell the
