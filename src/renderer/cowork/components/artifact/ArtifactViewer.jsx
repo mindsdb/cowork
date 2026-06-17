@@ -16,6 +16,7 @@ import {
 } from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
+import { isPublishableArtifact } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
@@ -463,13 +464,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             throw new Error(launchError || 'Backend failed to start');
           }
           if (!proxyUrl) throw new Error('Preview proxy unavailable');
-          // Realign hostname onto the SPA's own host so the parent page
-          // and iframe stay same-site — the server hardcodes
-          // `127.0.0.1`, but the SPA may be on `localhost`, and Chrome
-          // treats those as distinct sites under tracking protection.
           let iframeUrl = proxyUrl;
           try {
             const u = new URL(proxyUrl);
+            if (window.location?.protocol) u.protocol = window.location.protocol;
             if (window.location?.hostname) u.hostname = window.location.hostname;
             iframeUrl = u.toString();
           } catch { /* fall through with the raw URL */ }
@@ -823,7 +821,11 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             >
               Unpublish
             </button>
-          ) : (
+          ) : isPublishableArtifact(artifact) ? (
+            // Only HTML + Markdown can be published (Markdown renders to a
+            // page server-side). Hide Publish entirely for other types so
+            // the viewer matches the list and the backend — rather than
+            // offering a button that only errors. Download stays available.
             <button
               type="button"
               onClick={onPublish}
@@ -840,7 +842,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             >
               {busy ? 'Publishing…' : 'Publish'}
             </button>
-          )}
+          ) : null}
           {artifact?.serveUrl && (
             <button
               type="button"
@@ -1003,17 +1005,23 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             </div>
           ) : (
             // src= (not srcdoc) so relative asset refs resolve against
-            // the served URL. We deliberately drop `allow-same-origin`
-            // — the iframe shares the FastAPI origin otherwise, which
-            // would let a hostile artifact's JS hit /v1/sessions etc.
-            // Without same-origin, the iframe can still load its own
-            // assets (script/link/img tags work), but fetch() back to
-            // the API is CORS-blocked. Good tradeoff.
+            // the served URL. `allow-same-origin` is required in the cloud:
+            // the artifact's backend lives behind the same auth-gated origin,
+            // and its fetch() calls must carry the `instance_session` cookie
+            // to pass the edge gate. Without same-origin the iframe gets an
+            // opaque origin, the cookie (SameSite=Lax) is dropped on those
+            // cross-site XHRs, and every backend call 401s.
+            //
+            // KNOWN TRADEOFF: in cloud the iframe then shares the SPA's
+            // origin, so a hostile artifact can reach the authenticated cowork
+            // API and the parent window. The proper fix is to serve
+            // previews from a dedicated origin (e.g. cw-<id>-preview.<env>) so
+            // the iframe is same-origin to itself but cross-origin to the SPA.
             previewUrl ? (
               <iframe
                 title={artifact.title || 'Artifact preview'}
                 src={previewUrl}
-                sandbox="allow-scripts allow-popups allow-forms allow-modals"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
                 style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
               />
             ) : null
