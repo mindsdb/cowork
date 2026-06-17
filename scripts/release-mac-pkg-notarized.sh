@@ -167,6 +167,9 @@ else
   xcrun stapler validate "$PKG_PATH"
 fi
 
+# Clean up intermediate files so `release/*.pkg` glob matches only the final artifact.
+rm -f "$COMPONENT_PKG" "$COMPONENT_PLIST" "$DIST_XML"
+
 echo "==> Final artifact hash"
 shasum -a 256 "$PKG_PATH"
 
