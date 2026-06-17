@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import TitleScreen from './pages/arcade/TitleScreen';
 import TermsScreen from './pages/arcade/TermsScreen';
 import SetupScreen from './pages/arcade/SetupScreen';
-import CoworkerSelect, { COWORKERS } from './pages/arcade/CoworkerSelect';
-import ThemeSelect, { type ThemePreset } from './pages/arcade/ThemeSelect';
+import { COWORKERS } from './pages/arcade/CoworkerSelect';
+import { THEME_PRESETS } from './pages/arcade/ThemeSelect';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import LaunchScreen from './pages/arcade/LaunchScreen';
 import CoworkApp from './CoworkApp';
@@ -12,7 +12,7 @@ import { persistSkin } from './lib/skins';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
-type Page = 'loading' | 'intro' | 'terms' | 'setup' | 'coworker' | 'theme' | 'onboarding' | 'launching' | 'terminal';
+type Page = 'loading' | 'intro' | 'terms' | 'setup' | 'onboarding' | 'launching' | 'terminal';
 
 // Terms-consent persistence for the web build.
 //
@@ -26,9 +26,9 @@ type Page = 'loading' | 'intro' | 'terms' | 'setup' | 'coworker' | 'theme' | 'on
 // matches how the app already persists the theme.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
 
-// The cartridge picked on the SELECT YOUR COWORKER screen. Mirrors the
-// backend `harness` setting; kept in localStorage so the launch screen
-// can show "now playing: <coworker>" on later boots too.
+// The active coworker cartridge (mirrors the backend `harness` setting).
+// The picker was removed from onboarding — new users default to ANTON —
+// but the key is still read here in case an earlier build persisted one.
 const COWORKER_KEY = 'anton.coworker';
 
 function hasLocalTermsConsent(): boolean {
@@ -44,10 +44,6 @@ function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
 }
 
-function rememberCoworker(id: string): void {
-  try { window.localStorage.setItem(COWORKER_KEY, id); } catch {}
-}
-
 function recallCoworker(): { id: string; label: string; sprite: SpriteName } {
   let id = 'anton';
   try { id = window.localStorage.getItem(COWORKER_KEY) || 'anton'; } catch {}
@@ -57,6 +53,25 @@ function recallCoworker(): { id: string; label: string; sprite: SpriteName } {
     : { id: 'anton', label: 'ANTON', sprite: 'anton' };
 }
 
+// First-run appearance default. Agent + style selection were dropped from
+// onboarding, so a new user silently gets ANTON on the MIDNIGHT look
+// (standard dark). Guarded so it never overrides a returning user's
+// Settings → Appearance choice.
+function applyDefaultAppearanceOnce(): void {
+  try {
+    if (window.localStorage.getItem('anton.theme')) return;
+    const midnight = THEME_PRESETS.find((p) => p.id === 'midnight');
+    if (!midnight) return;
+    persistSkin(midnight.skin);
+    window.localStorage.setItem('anton.theme', midnight.theme);
+    document.body.dataset.skin = midnight.skin;
+    document.body.dataset.theme = midnight.theme;
+    document.body.dataset.arcadePreset = midnight.id;
+    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
+    document.body.classList.add(midnight.theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
+  } catch {}
+}
+
 // Dev-only deep link (`?page=onboarding` etc.) so onboarding screens can
 // be iterated on / screenshotted without replaying the whole gate
 // sequence. Compiled out of production bundles via import.meta.env.DEV.
@@ -64,7 +79,7 @@ function devForcedPage(): Page | null {
   if (!import.meta.env.DEV) return null;
   try {
     const p = new URLSearchParams(window.location.search).get('page');
-    const valid: Page[] = ['intro', 'terms', 'setup', 'coworker', 'theme', 'onboarding', 'launching'];
+    const valid: Page[] = ['intro', 'terms', 'setup', 'onboarding', 'launching'];
     return valid.includes(p as Page) ? (p as Page) : null;
   } catch {
     return null;
@@ -73,7 +88,7 @@ function devForcedPage(): Page | null {
 
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
-  const [coworker, setCoworker] = useState(recallCoworker);
+  const [coworker] = useState(recallCoworker);
   // When inspecting a single screen via `?page=`, freeze it: the
   // onboarding/launch screens auto-advance on completion, which would
   // navigate away from the very screen you're trying to look at.
@@ -110,7 +125,7 @@ export default function App() {
         }
         const { configured } = await host.checkConfigured();
         if (!configured) {
-          setPage('coworker');
+          applyDefaultAppearanceOnce(); setPage('onboarding');
           return;
         }
         setPage('terminal');
@@ -129,7 +144,7 @@ export default function App() {
     }
     const { configured } = await host.checkConfigured();
     if (!configured) {
-      setPage('coworker');
+      applyDefaultAppearanceOnce(); setPage('onboarding');
       return;
     }
     setPage('launching');
@@ -159,32 +174,7 @@ export default function App() {
       // Fail-open to onboarding — better to ask the user one
       // unnecessary time than to land in the terminal with no key.
     }
-    setPage('coworker');
-  };
-
-  const handleCoworkerSelected = (id: string, label: string) => {
-    rememberCoworker(id);
-    const cw = COWORKERS.find((c) => c.id === id);
-    setCoworker({ id, label, sprite: (cw?.sprite ?? 'anton') as SpriteName });
-    setPage('theme');
-  };
-
-  // CHOOSE YOUR DISPLAY → persist both axes. CoworkApp seeds its
-  // theme/skin state from these keys when it mounts after onboarding;
-  // the body attributes are set too so the launch beat is consistent.
-  const handleThemeSelected = (preset: ThemePreset) => {
-    persistSkin(preset.skin);
-    try { window.localStorage.setItem('anton.theme', preset.theme); } catch {}
-    document.body.dataset.skin = preset.skin;
-    document.body.dataset.theme = preset.theme;
-    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
-    document.body.classList.add(preset.theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
-    // Re-theme the REMAINING onboarding screens (POWER UP, NOW LOADING)
-    // to the chosen preset — arcade.css carries a palette block per
-    // preset id. ThemeSelect clears this on mount so back-nav returns
-    // to the neutral CRT chooser.
-    document.body.dataset.arcadePreset = preset.id;
-    setPage('onboarding');
+    applyDefaultAppearanceOnce(); setPage('onboarding');
   };
 
   const handleOnboardingComplete = async () => {
@@ -215,18 +205,10 @@ export default function App() {
       {page === 'intro' && <TitleScreen onComplete={() => setPage('terms')} />}
       {page === 'terms' && <TermsScreen onAccept={handleTermsAccepted} />}
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}
-      {page === 'coworker' && <CoworkerSelect onSelect={handleCoworkerSelected} />}
-      {page === 'theme' && (
-        <ThemeSelect
-          onSelect={isDevFrozen ? () => {} : handleThemeSelected}
-          onBack={() => setPage('coworker')}
-        />
-      )}
       {page === 'onboarding' && (
         <OnboardingScreen
           coworker={coworker}
           onComplete={isDevFrozen ? () => {} : handleOnboardingComplete}
-          onBack={() => setPage('theme')}
         />
       )}
       {page === 'launching' && (
