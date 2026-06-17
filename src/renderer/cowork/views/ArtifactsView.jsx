@@ -190,12 +190,17 @@ function ActionButton({ children, onClick, danger, primary, title }) {
 
 // ─── Published pill + URL row (shared between grid + list) ───────────────
 
-// `protected` adds a lock glyph + tooltip so a password-protected
-// publish is distinguishable from a public one everywhere the pill shows.
-function PublishedPill({ protected: isProtected = false }) {
+// `mode` adds a glyph + tooltip so a password-protected or restricted publish
+// is distinguishable from a public one everywhere the pill shows. Falls back to
+// the legacy `protected` boolean for artifacts without an explicit accessMode.
+function PublishedPill({ mode, protected: isProtected = false }) {
+  const effectiveMode = mode && mode !== 'public' ? mode : (isProtected ? 'password' : 'public');
+  const isRestricted = effectiveMode === 'restricted';
+  const isPwd = effectiveMode === 'password';
   return (
     <span
-      title={isProtected ? 'Published — password protected' : 'Published'}
+      title={isRestricted ? 'Published — restricted to selected people'
+        : isPwd ? 'Published — password protected' : 'Published'}
       style={{
         background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
         border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
@@ -209,27 +214,54 @@ function PublishedPill({ protected: isProtected = false }) {
         fontFamily: FONT_BODY,
       }}
     >
-      {isProtected
-        ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
-        : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
+      {isRestricted
+        ? <span style={{ display: 'inline-flex' }}>{Ico.people(9)}</span>
+        : isPwd
+          ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
+          : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
       Published
     </span>
   );
 }
 
-// Publish visibility chooser — Public vs Password-protected. On confirm
-// it hands back the password ('' for public). Re-publishing a protected
-// artifact pre-fills the existing password (revealable via the eye).
+// Loose-but-practical email shape check. Splits on whitespace, commas and
+// semicolons; trims, lowercases and de-dupes; partitions into valid/invalid.
+const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function parseEmailList(raw) {
+  const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const seen = new Set();
+  const valid = [];
+  const invalid = [];
+  for (const p of parts) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    (_EMAIL_RE.test(p) ? valid : invalid).push(p);
+  }
+  return { valid, invalid };
+}
+
+// Publish visibility chooser — Public / Password-protected / For selected
+// users (emails + org). On confirm it hands back an access object
+// ({ mode, ... }). Re-publishing pre-fills the existing selection (password is
+// revealable via the eye; emails/org come from the server's owner-side state).
 function PublishDialog({ artifact, onCancel, onConfirm }) {
-  const [mode, setMode] = useState(artifact?.accessProtected ? 'password' : 'public');
+  const [mode, setMode] = useState(artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public'));
   const [password, setPassword] = useState(artifact?.accessPassword || '');
   const [reveal, setReveal] = useState(false);
+  const [emailsText, setEmailsText] = useState((artifact?.accessEmails || []).join(', '));
+  const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
   if (!artifact) return null;
 
-  const canConfirm = mode === 'public' || password.trim().length > 0;
+  const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(emailsText);
+  const canConfirm =
+    mode === 'public'
+    || (mode === 'password' && password.trim().length > 0)
+    || (mode === 'restricted' && (parsedEmails.length > 0 || orgAllowed));
   const submit = () => {
     if (!canConfirm) return;
-    onConfirm(mode === 'password' ? password.trim() : '');
+    if (mode === 'restricted') onConfirm({ mode: 'restricted', emails: parsedEmails, org_allowed: orgAllowed });
+    else if (mode === 'password') onConfirm({ mode: 'password', password: password.trim() });
+    else onConfirm({ mode: 'public' });
   };
 
   const Option = ({ value, icon, title, desc }) => {
@@ -263,6 +295,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Option value="public" icon={Ico.globe(16)} title="Public" desc="Anyone with the link can view it." />
           <Option value="password" icon={Ico.lock(16)} title="Password protected" desc="Visitors must enter a password to view it." />
+          <Option value="restricted" icon={Ico.people(16)} title="For selected users" desc="Only people you list — or your whole org — can view it." />
         </div>
         {mode === 'password' && (
           <div style={{ marginTop: 12 }}>
@@ -297,6 +330,43 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
             </div>
           </div>
         )}
+        {mode === 'restricted' && (
+          <div style={{ marginTop: 12 }}>
+            <label style={{
+              display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)',
+              marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}>Allowed emails</label>
+            <textarea
+              value={emailsText}
+              onChange={(e) => setEmailsText(e.target.value)}
+              autoFocus
+              rows={3}
+              placeholder="alice@acme.com, bob@acme.com"
+              style={{
+                width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8,
+                color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
+              }}
+            />
+            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
+              {parsedEmails.length} recipient{parsedEmails.length === 1 ? '' : 's'}
+              {invalidEmails.length ? ` · ${invalidEmails.length} invalid ignored` : ''}
+              {' '}· comma- or newline-separated.
+            </div>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer',
+              fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink)',
+            }}>
+              <input
+                type="checkbox"
+                checked={orgAllowed}
+                onChange={(e) => setOrgAllowed(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Everyone in my organization
+            </label>
+          </div>
+        )}
       </ModalBody>
       <ModalFooter>
         <button type="button" onClick={onCancel} style={{
@@ -309,7 +379,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
           opacity: canConfirm ? 1 : 0.5,
         }}>
-          {mode === 'password' ? 'Publish protected' : 'Publish'}
+          {mode === 'password' ? 'Publish protected' : mode === 'restricted' ? 'Publish restricted' : 'Publish'}
         </button>
       </ModalFooter>
     </Modal>
@@ -536,7 +606,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       }}>
         {(published || artifact.live) && (
           <span style={{ pointerEvents: 'none' }}>
-            {published ? <PublishedPill protected={!!artifact.accessProtected} /> : (
+            {published ? <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} /> : (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 fontFamily: FONT_BODY, fontSize: 11,
@@ -960,7 +1030,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             the column width fixed so rows align cleanly. */}
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {published ? (
-            <PublishedPill protected={!!artifact.accessProtected} />
+            <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
           ) : artifact.live ? (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -1265,23 +1335,30 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
-  const confirmPublish = async (password) => {
+  const confirmPublish = async (access) => {
     const artifact = publishTarget;
     setPublishTarget(null);
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
     try {
-      const r = await publishArtifact(publishTargetPath(artifact), password || undefined);
+      const r = await publishArtifact(publishTargetPath(artifact), access);
       if (r?.url) {
+        // Server is authoritative (it degrades an empty restricted/password
+        // selection back to public); fall back to the requested access.
+        const m = r.accessMode || access?.mode || 'public';
         updateOne({
           ...artifact,
           publishedUrl: r.url,
-          accessProtected: !!password,
-          accessPassword: password || '',
+          accessMode: m,
+          accessProtected: m === 'password',
+          accessPassword: m === 'password' ? (access?.password || '') : '',
+          accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
+          orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
         });
+        const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
         setToast({
           kind: 'ok',
-          message: password ? `Published (password protected) — ${r.url}` : `Published — ${r.url}`,
+          message: label ? `Published (${label}) — ${r.url}` : `Published — ${r.url}`,
         });
       } else {
         setToast({ kind: 'error', message: 'Publish returned no URL.' });

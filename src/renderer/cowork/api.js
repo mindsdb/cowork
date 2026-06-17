@@ -1363,10 +1363,14 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
   return { status: 'streamed', body: text };
 }
 
-// `password` (optional): when a non-empty string, the artifact is
-// published password-protected; omit / empty publishes it public.
-export async function publishArtifact(path, password) {
-  const body = password ? { path, password } : { path };
+// `access` (optional): a publish-mode object, one of
+//   { mode: 'public' }
+//   { mode: 'password', password: '...' }
+//   { mode: 'restricted', emails: [...], org_allowed: bool }
+// Public (or a falsy access) sends just `{ path }`, which clears any prior
+// protection on re-publish.
+export async function publishArtifact(path, access) {
+  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
 }
 
