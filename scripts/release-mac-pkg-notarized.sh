@@ -93,10 +93,17 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
+echo "==> Generating component plist (disable relocation)"
+COMPONENT_PLIST="release/component.plist"
+pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
+# Disable relocation so macOS always installs to /Applications, even on reinstall.
+/usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
+
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned installer pkg"
   productbuild \
     --component "$APP_PATH" /Applications \
+    --component-plist "$COMPONENT_PLIST" \
     "$PKG_PATH"
 else
   echo "==> Verifying app signature"
@@ -123,6 +130,7 @@ else
   echo "==> Building signed installer pkg"
   productbuild \
     --component "$APP_PATH" /Applications \
+    --component-plist "$COMPONENT_PLIST" \
     --sign "$INSTALLER_IDENTITY" \
     "$PKG_PATH"
 
