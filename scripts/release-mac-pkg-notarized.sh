@@ -103,7 +103,7 @@ pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
 
 echo "==> Building component pkg (non-relocatable)"
 pkgbuild \
-  --component "$APP_PATH" \
+  --root "$(dirname "$APP_PATH")" \
   --install-location /Applications \
   --component-plist "$COMPONENT_PLIST" \
   "$COMPONENT_PKG"
