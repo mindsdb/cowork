@@ -20,6 +20,7 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
+import { isHtmlArtifact, isPublishableArtifact } from '../lib/artifactKinds';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import {
@@ -98,11 +99,6 @@ function projectOf(artifact, projects = []) {
     const pre = proj.path.replace(/\/+$/, '') + '/';
     return p.startsWith(pre);
   }) || null;
-}
-
-function isHtmlArtifact(a) {
-  return (a.ext || '').toLowerCase() === '.html'
-    || (a.path || '').toLowerCase().endsWith('.html');
 }
 
 // Extensions we can preview inline in the in-app ArtifactViewer (text
@@ -882,7 +878,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
         <Item label="Download" icon={Ico.download(13)} onClick={onDownload} />
       )}
       {published && <Item label="Copy URL" icon={Ico.copy(13)} onClick={onCopyUrl} />}
-      {isHtml && !published && (
+      {isPublishableArtifact(artifact) && !published && (
         <Item label="Publish" icon={Ico.upload(13)} onClick={onPublish} />
       )}
       {published && (
@@ -1254,8 +1250,8 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // a protected artifact pre-fills its existing password.
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
-    if (!isHtmlArtifact(artifact)) {
-      setToast({ kind: 'error', message: 'Only HTML artifacts can be published.' });
+    if (!isPublishableArtifact(artifact)) {
+      setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be published.' });
       return Promise.resolve();
     }
     // Settle any prior unresolved flow before starting a new one so a

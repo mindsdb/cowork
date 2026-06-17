@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
+import { getInstallSpec } from './server-source';
 
 interface InstallStep {
   id: string;
@@ -20,16 +21,16 @@ interface InstallerOptions {
 // cowork release that requires backend changes. The installer will
 // install at least this version (a minimum floor), picking up any
 // newer compatible releases automatically.
-const COWORK_SERVER_MIN_VERSION = '0.1.4';
+const COWORK_SERVER_MIN_VERSION = '0.1.5';
 
 // PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
 // Keep in sync with server-updater.ts PYTHON_RANGE and cowork-server requires-python.
 const PYTHON_RANGE = '>=3.12,<3.14';
 
-// Package source for cowork-server. Override with COWORK_SERVER_PACKAGE
-// env var (e.g. a local path or alternative git URL during development).
-const COWORK_SERVER_PACKAGE = process.env.COWORK_SERVER_PACKAGE
-  || `cowork-server>=${COWORK_SERVER_MIN_VERSION}`;
+// The cowork-server (+ anton) install source is centralized in
+// ./server-source so the installer and auto-updater never disagree.
+// Default: git, branch `main`; overridable via COWORK_SERVER_CHANNEL /
+// COWORK_SERVER_REF / ANTON_REF / COWORK_SERVER_PACKAGE.
 
 
 function getSteps(): InstallStep[] {
@@ -476,9 +477,12 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, `\n--- Installing cowork-server v${COWORK_SERVER_MIN_VERSION}+ ---\n`);
 
     const uvBin = fileExists(getUvBinary()) ? getUvBinary() : 'uv';
+    const spec = getInstallSpec();
+    sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.withArgs.length ? ` (${spec.withArgs.join(' ')})` : ''}\n`);
     const installArgs = [
       'tool', 'install',
-      COWORK_SERVER_PACKAGE,
+      spec.package,
+      ...spec.withArgs,
       '--force', '--reinstall',
       '--python', PYTHON_RANGE,
     ];
