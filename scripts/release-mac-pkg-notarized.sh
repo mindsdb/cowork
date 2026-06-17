@@ -95,15 +95,27 @@ fi
 
 echo "==> Generating component plist (disable relocation)"
 COMPONENT_PLIST="release/component.plist"
+COMPONENT_PKG="release/component.pkg"
+DIST_XML="release/distribution.xml"
 pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
 # Disable relocation so macOS always installs to /Applications, even on reinstall.
 /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
 
+echo "==> Building component pkg (non-relocatable)"
+pkgbuild \
+  --component "$APP_PATH" \
+  --install-location /Applications \
+  --component-plist "$COMPONENT_PLIST" \
+  "$COMPONENT_PKG"
+
+echo "==> Synthesizing distribution"
+productbuild --synthesize --package "$COMPONENT_PKG" "$DIST_XML"
+
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned installer pkg"
   productbuild \
-    --component "$APP_PATH" /Applications \
-    --component-plist "$COMPONENT_PLIST" \
+    --distribution "$DIST_XML" \
+    --package-path release \
     "$PKG_PATH"
 else
   echo "==> Verifying app signature"
@@ -129,8 +141,8 @@ else
 
   echo "==> Building signed installer pkg"
   productbuild \
-    --component "$APP_PATH" /Applications \
-    --component-plist "$COMPONENT_PLIST" \
+    --distribution "$DIST_XML" \
+    --package-path release \
     --sign "$INSTALLER_IDENTITY" \
     "$PKG_PATH"
 
