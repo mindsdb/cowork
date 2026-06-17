@@ -110,6 +110,8 @@ pkgbuild \
 
 echo "==> Synthesizing distribution"
 productbuild --synthesize --package "$COMPONENT_PKG" "$DIST_XML"
+# Set the installer title shown in the macOS Installer UI and "move to Trash" dialog.
+sed -i '' "s|<title>.*</title>|<title>${PRODUCT_NAME}</title>|" "$DIST_XML"
 
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned installer pkg"
