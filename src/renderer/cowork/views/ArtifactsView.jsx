@@ -284,7 +284,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
   };
 
   return (
-    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" labelledBy="publish-dialog-title">
+    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
         title="Publish artifact"
