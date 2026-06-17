@@ -16,6 +16,7 @@ import {
 } from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
+import { isPublishableArtifact } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
@@ -820,7 +821,11 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             >
               Unpublish
             </button>
-          ) : (
+          ) : isPublishableArtifact(artifact) ? (
+            // Only HTML + Markdown can be published (Markdown renders to a
+            // page server-side). Hide Publish entirely for other types so
+            // the viewer matches the list and the backend — rather than
+            // offering a button that only errors. Download stays available.
             <button
               type="button"
               onClick={onPublish}
@@ -837,7 +842,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             >
               {busy ? 'Publishing…' : 'Publish'}
             </button>
-          )}
+          ) : null}
           {artifact?.serveUrl && (
             <button
               type="button"

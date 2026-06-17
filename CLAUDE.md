@@ -59,6 +59,28 @@ uv run cowork-server
 
 FastAPI runs loopback-only at `127.0.0.1:26866`. CORS is locked to the renderer origin.
 
+#### Install source & channel
+
+Where cowork-server **and** its `anton-agent` dependency are installed from is centralized in [src/main/server-source.ts](src/main/server-source.ts) — shared by the installer and the auto-updater so they can't disagree (a PyPI updater must never clobber a git install, and vice-versa).
+
+Default: **git, branch `main`** for both. Override via env (the parent `minds` repo sets these while developing; a release pins a tag or flips to PyPI):
+
+| Env var | Default | Effect |
+|---|---|---|
+| `COWORK_SERVER_CHANNEL` | `git` | `git` = install from repo; `pypi` = published wheel (release) |
+| `COWORK_SERVER_REF` | `main` | cowork-server branch / tag / commit (git channel) |
+| `ANTON_REF` | `main` | anton branch / tag / commit — applied via `uv ... --with`, overriding cowork-server's `tool.uv.sources` pin |
+| `COWORK_SERVER_PACKAGE` | — | escape hatch: a literal `uv` spec (local path, custom URL); wins over all |
+
+```sh
+# develop against a feature branch of anton + cowork-server:
+export COWORK_SERVER_REF=feat/x ANTON_REF=feat/y
+# cut a release build (published wheel + PyPI auto-update):
+export COWORK_SERVER_CHANNEL=pypi
+```
+
+`anton` itself is also a uv git source inside cowork-server's `pyproject.toml` (`[tool.uv.sources] anton-agent = { git = …, branch = "main" }`), which governs `uv sync` / `make dev`. The `ANTON_REF` env override only affects the `uv tool install` (desktop) path.
+
 Sanity-check Python syntax before building (pack bundles files as-is without parsing):
 
 ```sh
@@ -108,8 +130,8 @@ The installer ([src/main/installer.ts](src/main/installer.ts)) handles first-run
 ### OTA updates
 
 - **UI**: CI publishes `dist/renderer/` as `ui-bundle.tar.gz` to `mindsdb/antontron-releases`. Main process fetches + caches in `~/Library/Application Support/anton/ui-cache/` (see [src/main/ui-updater.ts](src/main/ui-updater.ts)).
-- **Server**: Checked against PyPI, updated via `uv tool install` (see [src/main/server-updater.ts](src/main/server-updater.ts)).
-- Both have rollback on failure. Bypass with `DEV_MODE=full` in `~/.anton/.env`.
+- **Server**: source-aware (see [src/main/server-updater.ts](src/main/server-updater.ts)). A **git** install updates by re-pulling the configured branch/tag HEAD (trigger = changed remote commit SHA via `git ls-remote`) for cowork-server **and** anton; a **PyPI** install updates by version comparison + `uv tool install --upgrade`. It detects which from the tool venv's `direct_url.json`.
+- Both have rollback on failure. Disable server auto-update with `COWORK_SERVER_DISABLE_AUTOUPDATE=1`. Bypass UI updates with `DEV_MODE=full` in `~/.anton/.env`.
 
 ### User config
 
