@@ -16,7 +16,7 @@ import {
 } from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { isPublishableArtifact } from '../../lib/artifactKinds';
+import { isPublishableArtifact, publishBlockedReason } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
@@ -378,6 +378,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  // Non-empty when this artifact's type may never be published (e.g.
+  // fullstack-stateful-app). Drives the Publish button's disabled state.
+  const publishBlock = publishBlockedReason(artifact);
   // Backend artifacts treat the folder, not the entry html, as the
   // "thing" the user opens in their OS or browser.
   const artifactFolder = actionPath.replace(/[\\/][^\\/]*$/, '') || actionPath;
@@ -520,6 +523,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
 
   const onPublish = async () => {
     if (busy) return;
+    if (publishBlock) {
+      setErr(publishBlock);
+      return;
+    }
     if (!hasActionPath) {
       setErr(disabledReason || 'This artifact does not have a local file path.');
       return;
@@ -821,23 +828,24 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             >
               Unpublish
             </button>
-          ) : isPublishableArtifact(artifact) ? (
-            // Only HTML + Markdown can be published (Markdown renders to a
-            // page server-side). Hide Publish entirely for other types so
-            // the viewer matches the list and the backend — rather than
-            // offering a button that only errors. Download stays available.
+          ) : (isPublishableArtifact(artifact) || publishBlock) ? (
+            // HTML + Markdown publish to a page; other file kinds hide the
+            // button entirely. A type with `publishBlock` set (e.g.
+            // fullstack-stateful-app) still renders the button but DISABLED —
+            // server-side state can't be published, and a disabled control with
+            // a tooltip explains why rather than the button silently vanishing.
             <button
               type="button"
               onClick={onPublish}
-              disabled={busy || !hasActionPath}
-              title={hasActionPath ? 'Publish' : disabledReason || 'No local artifact path'}
+              disabled={busy || !hasActionPath || !!publishBlock}
+              title={publishBlock || (hasActionPath ? 'Publish' : disabledReason || 'No local artifact path')}
               style={{
-                cursor: busy ? 'progress' : hasActionPath ? 'pointer' : 'not-allowed',
+                cursor: busy ? 'progress' : (hasActionPath && !publishBlock) ? 'pointer' : 'not-allowed',
                 background: 'var(--accent)', border: '1px solid var(--accent)',
                 color: '#fff',
                 padding: '6px 12px', borderRadius: 8,
                 fontSize: 12.5, fontWeight: 600,
-                opacity: busy || !hasActionPath ? 0.7 : 1,
+                opacity: busy || !hasActionPath || publishBlock ? 0.7 : 1,
               }}
             >
               {busy ? 'Publishing…' : 'Publish'}

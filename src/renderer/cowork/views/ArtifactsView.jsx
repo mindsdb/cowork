@@ -20,7 +20,7 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, publishBlockedReason } from '../lib/artifactKinds';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import {
@@ -830,11 +830,14 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   const top = anchorRect.bottom + 4;
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
+  const publishBlock = publishBlockedReason(artifact);
 
-  const Item = ({ label, icon, onClick, danger }) => (
+  const Item = ({ label, icon, onClick, danger, disabled, title }) => (
     <button
       type="button"
-      onClick={(e) => { e.stopPropagation(); onClick?.(); onClose?.(); }}
+      disabled={disabled}
+      title={title}
+      onClick={(e) => { e.stopPropagation(); if (disabled) return; onClick?.(); onClose?.(); }}
       style={{
         width: 'calc(100% - 8px)', margin: '0 4px',
         display: 'flex', alignItems: 'center', gap: 10,
@@ -843,9 +846,11 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
         fontFamily: FONT_BODY, fontSize: 13,
         color: danger ? 'var(--danger)' : 'var(--ink-2)',
         textAlign: 'left',
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
       }}
       onMouseOver={(e) => {
+        if (disabled) return;
         e.currentTarget.style.background = danger
           ? 'color-mix(in srgb, var(--danger) 12%, transparent)'
           : 'var(--surface-2)';
@@ -878,8 +883,14 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
         <Item label="Download" icon={Ico.download(13)} onClick={onDownload} />
       )}
       {published && <Item label="Copy URL" icon={Ico.copy(13)} onClick={onCopyUrl} />}
-      {isPublishableArtifact(artifact) && !published && (
-        <Item label="Publish" icon={Ico.upload(13)} onClick={onPublish} />
+      {!published && (isPublishableArtifact(artifact) || publishBlock) && (
+        <Item
+          label="Publish"
+          icon={Ico.upload(13)}
+          onClick={onPublish}
+          disabled={!!publishBlock}
+          title={publishBlock || undefined}
+        />
       )}
       {published && (
         <Item label="Unpublish" icon={Ico.upload(13)} onClick={onUnpublish} />
@@ -1250,6 +1261,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // a protected artifact pre-fills its existing password.
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
+    const blocked = publishBlockedReason(artifact);
+    if (blocked) {
+      setToast({ kind: 'error', message: blocked });
+      return Promise.resolve();
+    }
     if (!isPublishableArtifact(artifact)) {
       setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be published.' });
       return Promise.resolve();
