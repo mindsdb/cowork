@@ -2508,6 +2508,28 @@ body[data-theme="dark"] .app-sidebar::before {
 .app-sidebar { position: relative; }
 .app-sidebar > * { position: relative; z-index: 1; }
 
+/* Onboarding "Get to know Cowork" card.
+   Light: the layered inset-highlight shadow from the design spec, on a
+   white surface that reads as a raised card against the grey sidebar.
+   Dark: the #FFF inset blows out, so swap to an elevated surface with a
+   crisp ring + soft drop shadow and only a whisper of top highlight. */
+.onboarding-card {
+  background: var(--surface-0);
+  border-radius: var(--r-lg);
+  box-shadow:
+    0 -1px 0 -0.5px rgba(0, 0, 0, 0.08) inset,
+    0 2px 2px -1px rgba(0, 0, 0, 0.06),
+    0 0 0 0.5px var(--Colors-Semantic-border-defualt, rgba(39, 39, 42, 0.10)) inset,
+    0 1px 1px 0.5px var(--Colors-Semantic-Background-input, #FFF) inset;
+}
+body[data-theme="dark"] .onboarding-card {
+  background: var(--surface-3);
+  box-shadow:
+    0 0 0 1px var(--line-2),
+    0 8px 22px rgba(0, 0, 0, 0.45),
+    0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
+}
+
 /* New task CTA — outlined neon in dark, accent-bordered in light */
 .anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
 .btn-new-task {

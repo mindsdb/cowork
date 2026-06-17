@@ -3234,6 +3234,7 @@ function AppCore() {
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
+          onStartOnboardingChat={handleSendFromHome}
           onOpenSearch={() => setSearchOpen(true)}
           collapsed={sidebarCollapsedEffective}
           onToggleCollapsed={

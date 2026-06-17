@@ -3,6 +3,7 @@ import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
+import { OnboardingChecklist } from './onboarding';
 import { host } from '../../platform/host';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
@@ -190,6 +191,7 @@ export default function Sidebar({
   onNavigate,
   onSelectTask,
   onNewTask,
+  onStartOnboardingChat,
   onOpenSearch,
   collapsed = false,
   onToggleCollapsed,
@@ -743,6 +745,13 @@ export default function Sidebar({
               Install
             </span>
           </button>
+        )}
+
+        {/* Onboarding checklist — docked at the foot of the rail, just
+            above the backend status pill. Shows only once the backend is
+            up so it doesn't appear mid-boot. */}
+        {serverOnline && onStartOnboardingChat && (
+          <OnboardingChecklist onStartChat={onStartOnboardingChat} />
         )}
 
         {/* Footer status — Electron-only. In the hosted web shell the
