@@ -40,18 +40,19 @@ export function TaskMenu({
     (p) => p.name !== task?.projectName && p.path !== task?.projectPath,
   );
 
-  const items = [];
+  // Declarative item list — each row is conditional, falsy entries are
+  // dropped by `.filter(Boolean)`. Dividers are sectioned the same way
+  // so they only render when the section they separate is present.
+  const items = [
+    // Header-only extras (chat header), then a divider off the rest.
+    showHeaderActions && { id: 'schedule', icon: Ico.schedule(14), label: 'Schedule', hint: 'WIP', onClick: onSchedule },
+    showHeaderActions && { id: 'skill', icon: Ico.brain(14), label: 'Turn into skill', onClick: onTurnIntoSkill },
+    showHeaderActions && { divider: true },
 
-  if (showHeaderActions) {
-    items.push(
-      { id: 'schedule', icon: Ico.schedule(14), label: 'Schedule', hint: 'WIP', onClick: onSchedule },
-      { id: 'skill', icon: Ico.brain(14), label: 'Turn into skill', onClick: onTurnIntoSkill },
-      { divider: true },
-    );
-  }
-
-  if (!hideMoveToProject) {
-    items.push(
+    // Move to project — a fly-out of destinations, or disabled with the
+    // reason in a tooltip when there's nowhere to move it (the legacy
+    // menu spelled it out in a sub-panel; a title keeps the row clean).
+    !hideMoveToProject && (
       moveCandidates.length
         ? {
             id: 'move',
@@ -64,9 +65,6 @@ export function TaskMenu({
             })),
           }
         : {
-            // No destinations — show the affordance disabled, with the
-            // reason in a tooltip (the legacy menu spelled it out in a
-            // sub-panel; a title keeps the row clean).
             id: 'move',
             icon: Ico.moveTo(14),
             label: 'Move to project',
@@ -74,29 +72,23 @@ export function TaskMenu({
             title: projects.length === 0
               ? `No projects available — ${agentLabel} is still loading them.`
               : 'Create another project first to move this task.',
-          },
-      { divider: true },
-    );
-  }
+          }
+    ),
+    !hideMoveToProject && { divider: true },
 
-  if (hasPinItem) {
-    items.push({
+    hasPinItem && {
       id: 'pin',
       icon: Ico.pin(14),
       label: task?.pinned ? 'Unpin' : 'Pin',
       onClick: () => (task?.pinned ? onUnpin : onPin)?.(),
-    });
-  }
+    },
+    !hideRename && { id: 'rename', icon: Ico.edit(14), label: 'Rename', onClick: onRename },
 
-  if (!hideRename) {
-    items.push({ id: 'rename', icon: Ico.edit(14), label: 'Rename', onClick: onRename });
-  }
+    // Divider off Delete only when something precedes it.
+    (!hideMoveToProject || !hideRename || hasPinItem) && { divider: true },
 
-  if (!hideMoveToProject || !hideRename || hasPinItem) {
-    items.push({ divider: true });
-  }
-
-  items.push({ id: 'delete', icon: Ico.trash(14), label: 'Delete', danger: true, onClick: onDelete });
+    { id: 'delete', icon: Ico.trash(14), label: 'Delete', danger: true, onClick: onDelete },
+  ].filter(Boolean);
 
   return (
     <Menu
