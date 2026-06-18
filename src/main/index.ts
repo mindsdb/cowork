@@ -61,19 +61,14 @@ function clearStoredProviderState(): void {
 
 /** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null.
  *
- * Defaults to 'full' when the user hasn't set anything — the OTA
- * hot-update path is parked while we stabilize. Bundled renderer is
- * the path of least surprise: every relaunch picks up whatever was
- * shipped in the .app, no async cache fetch in the boot path. Set
- * `DEV_MODE=live` for the Vite dev-server flow, `DEV_MODE=ota` to
- * opt back into the cached-bundle path. `false` / `none` also map
- * to the OTA path for callers that want the previous behaviour.
+ * Defaults to null (OTA enabled). Set `DEV_MODE=live` for the Vite
+ * dev-server flow, `DEV_MODE=full` to force the bundled renderer
+ * and skip OTA updates.
  */
 function getDevMode(): string | null {
   const vars = readEnvFile();
   const val = (vars.DEV_MODE || '').trim().toLowerCase();
-  if (val === 'ota' || val === 'false' || val === 'none') return null;
-  if (!val) return 'full';
+  if (val === 'ota' || val === 'false' || val === 'none' || !val) return null;
   return val; // 'live' or 'full'
 }
 
