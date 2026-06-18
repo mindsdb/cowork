@@ -494,6 +494,18 @@ function setupIPC() {
     if (result.ok && result.access_token) {
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
+      // Pull the desktop app back to the foreground. The SSO flow opens the
+      // OS default browser, which is frontmost after the redirect — without
+      // this the user is left on the "you can close this tab" page and may
+      // not realize the app has signed them in.
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          app.focus({ steal: true }); // macOS: steal focus from the browser
+        }
+      } catch {}
     }
     return result;
   });
