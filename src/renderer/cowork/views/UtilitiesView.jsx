@@ -626,6 +626,7 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
       await saveSkill(draft, editing === 'edit');
       setStatus(`Saved skill ${draft.name || draft.label}.`);
       setEditing(null);
+      onSelect(draft);
       await onSaved?.();
     } catch (err) {
       setStatus(err.message || 'Could not save skill.');
