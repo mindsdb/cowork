@@ -30,6 +30,17 @@ body[data-skin="8bit"] {
   --r-xl: 6px;
 }
 
+/* The window-level bg is hardcoded blue by .gf-theme-dark (styles.css);
+   override it so the 8-bit skin uses its own neutral dark-grey --bg. */
+body[data-skin="8bit"].gf-theme-dark  { background: var(--bg); }
+body[data-skin="8bit"].gf-theme-light { background: var(--bg); }
+
+/* Soften the cyan halo at the top of the sidebar (globals.css default is
+   rgba(34,211,238,0.10)) — fainter + tighter falloff for the 8-bit look. */
+body[data-skin="8bit"][data-theme="dark"] .app-sidebar::before {
+  background: radial-gradient(circle at 50% -10%, rgba(61,214,245,0.035), transparent 38%);
+}
+
 /* CRT scanlines over everything. Static (no flicker — this is a work
    tool), pointer-transparent, and suppressed while an arcade onboarding
    screen is mounted (those draw their own scanlines via .arc-root). */
@@ -105,19 +116,19 @@ body[data-skin="8bit"] .floating-theme-toggle { border-radius: var(--r); }
 /* ── 8-Bit DARK — CRT arcade (matches pages/arcade/arcade.css) ────────── */
 
 body[data-skin="8bit"][data-theme="dark"] {
-  --bg:           #0a0a13;
-  --surface:      #14141f;
-  --surface-2:    #181826;
-  --surface-3:    #1f1f30;
-  --line:         #232334;
-  --line-2:       #2e2e44;
-  --sidebar-bg:   #10101a;
+  --bg:           #0c0c0e;
+  --surface:      #161618;
+  --surface-2:    #1b1b1e;
+  --surface-3:    #232326;
+  --line:         #2a2a2e;
+  --line-2:       #34343a;
+  --sidebar-bg:   #111113;
 
-  --ink:          #ecedf6;
-  --ink-2:        #c6c9de;
-  --ink-3:        #8d8fa8;
-  --ink-4:        #6b6e8c;
-  --ink-5:        #44465e;
+  --ink:          #d4d5d9;
+  --ink-2:        #b3b4ba;
+  --ink-3:        #84858d;
+  --ink-4:        #66676f;
+  --ink-5:        #45464d;
 
   --accent:       #3dd6f5;
   --accent-2:     #22b8d6;
