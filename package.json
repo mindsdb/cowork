@@ -1,6 +1,7 @@
 {
   "name": "anton",
   "version": "2.0.7",
+  "minServerVersion": "0.1.5",
   "description": "MindsHub Cowork — autonomous AI coworker",
   "author": "MindsDB",
   "license": "AGPL-3.0-only",

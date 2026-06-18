@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import * as http from 'http';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,12 +12,14 @@ export interface UIManifest {
   version: string;
   url: string;       // GitHub Release asset download URL
   sha256: string;
+  min_server_version?: string;  // minimum cowork-server version this UI requires
 }
 
 export interface UpdateCheckResult {
   updateAvailable: boolean;
   applied: boolean;
   newVersion?: string;
+  skippedReason?: string;  // set when update was skipped (e.g. server too old)
 }
 
 function getCacheDir(): string {
@@ -105,6 +108,37 @@ export async function hasInternet(): Promise<boolean> {
   }
 }
 
+/** Compare simple X.Y.Z versions. >0 if a>b. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/** Fetch the running server's version from /health. Returns null if
+ *  the server is unreachable or the response lacks a version. */
+function fetchServerVersion(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: '127.0.0.1', port: 26866, path: '/api/v1/health/', timeout: 3000 },
+      (res) => {
+        if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)?.server_version ?? null); } catch { resolve(null); }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
 export async function fetchManifest(): Promise<UIManifest | null> {
   try {
     const res = await httpsGet(MANIFEST_URL);
@@ -182,6 +216,24 @@ function activateStaged(version: string): void {
   console.log(`[ui-updater] activated UI ${version}`);
 }
 
+/** Check whether the running server meets the UI bundle's minimum version.
+ *  Returns null if compatible (or if the check can't be performed),
+ *  or a human-readable reason string if the update should be skipped. */
+async function checkServerCompat(manifest: UIManifest): Promise<string | null> {
+  if (!manifest.min_server_version) return null; // no constraint
+  const serverVer = await fetchServerVersion();
+  if (!serverVer) {
+    console.log('[ui-updater] could not determine server version — skipping compat check');
+    return null; // can't check, allow the update
+  }
+  if (compareVersions(serverVer, manifest.min_server_version) < 0) {
+    const reason = `server ${serverVer} < required ${manifest.min_server_version}`;
+    console.log(`[ui-updater] skipping UI ${manifest.version}: ${reason}`);
+    return reason;
+  }
+  return null;
+}
+
 /**
  * Check for UI updates. If a new version is available, downloads and
  * stages it but does NOT activate (caller decides when to activate).
@@ -193,6 +245,11 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   const cached = getCachedVersion();
   if (cached === manifest.version) {
     return { updateAvailable: false, applied: false };
+  }
+
+  const skipReason = await checkServerCompat(manifest);
+  if (skipReason) {
+    return { updateAvailable: false, applied: false, skippedReason: skipReason };
   }
 
   return { updateAvailable: true, applied: false, newVersion: manifest.version };
@@ -208,6 +265,9 @@ export async function applyUIUpdate(): Promise<boolean> {
 
   const cached = getCachedVersion();
   if (cached === manifest.version) return false;
+
+  const skipReason = await checkServerCompat(manifest);
+  if (skipReason) return false;
 
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;

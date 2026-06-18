@@ -953,7 +953,11 @@ app.whenReady().then(() => {
 
         const result = await checkForUIUpdate();
         if (!result.updateAvailable) {
-          console.log('[ui-updater] up to date');
+          if (result.skippedReason) {
+            console.log(`[ui-updater] update skipped: ${result.skippedReason}`);
+          } else {
+            console.log('[ui-updater] up to date');
+          }
           mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
           return;
         }

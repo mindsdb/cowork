@@ -15,6 +15,9 @@ on:
       version:
         description: 'UI version (e.g. 1.2.0) — leave empty to use package.json'
         required: false
+      min_server_version:
+        description: 'Minimum cowork-server version this UI requires (e.g. 0.1.6) — leave empty for no constraint'
+        required: false
 
 permissions:
   contents: write
@@ -57,6 +60,17 @@ jobs:
           echo "tag=ui-v$VER" >> "$GITHUB_OUTPUT"
           echo "Publishing UI version: $VER"
 
+      - name: Determine min server version
+        id: min_server
+        run: |
+          if [ -n "${{ github.event.inputs.min_server_version }}" ]; then
+            MSV="${{ github.event.inputs.min_server_version }}"
+          else
+            MSV=$(node -p "require('./package.json').minServerVersion || ''")
+          fi
+          echo "min_server_version=$MSV" >> "$GITHUB_OUTPUT"
+          echo "Min server version: ${MSV:-'(none)'}"
+
       - name: Check if version already published
         id: check
         env:
@@ -89,10 +103,10 @@ jobs:
           # gh-pages git steps below use `|| fallback` idioms that are
           # fine with unset edge cases.)
           set -eo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
+          export VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag }}"
-          SHA256=$(cat ui-bundle.sha256)
-          DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
+          export SHA256=$(cat ui-bundle.sha256)
+          export DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
 
           # Fail loudly if the token secret is missing/empty. Without
           # this the public-repo clone below still succeeds (no auth
@@ -130,18 +144,17 @@ jobs:
           git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
 
           # Write manifest
-          cat > latest.json << MANIFEST
-          {
-            "version": "${VERSION}",
-            "url": "${DOWNLOAD_URL}",
-            "sha256": "${SHA256}"
-          }
-          MANIFEST
-
+          export MSV="${{ steps.min_server.outputs.min_server_version }}"
           python3 -c "
-          import json
-          with open('latest.json') as f:
-              data = json.load(f)
+          import json, os
+          data = {
+              'version': os.environ['VERSION'],
+              'url': os.environ['DOWNLOAD_URL'],
+              'sha256': os.environ['SHA256'],
+          }
+          msv = os.environ.get('MSV', '').strip()
+          if msv:
+              data['min_server_version'] = msv
           with open('latest.json', 'w') as f:
               json.dump(data, f, indent=2)
           print(json.dumps(data, indent=2))
