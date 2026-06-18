@@ -13,7 +13,7 @@
     "dev:electron": "sleep 3 && VITE_DEV=1 electron dist/main/main/index.js",
     "dev:electron:debug": "sleep 3 && VITE_DEV=1 ANTON_OPEN_DEVTOOLS=1 electron dist/main/main/index.js",
     "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc -p tsconfig.main.json",
+    "build:main": "node scripts/stamp-branch.js && tsc -p tsconfig.main.json",
     "build:renderer": "vite build src/renderer",
     "build:web": "BUILD_TARGET=web vite build src/renderer",
     "dev:web": "node scripts/dev-web.mjs",

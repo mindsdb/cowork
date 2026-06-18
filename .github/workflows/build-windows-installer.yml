@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       build_kind:
-        description: preview | stable | prod
+        description: preview | staging | stable | prod
         required: true
         type: string
     outputs:
@@ -269,6 +269,7 @@ jobs:
           SHA="${GITHUB_SHA::7}"
           case "${{ inputs.build_kind }}" in
             preview) NAME="mindshub-cowork-${VERSION}-preview-${SHA}.exe" ;;
+            staging) NAME="mindshub-cowork-${VERSION}-staging-${SHA}.exe" ;;
             stable)  NAME="mindshub-cowork-${VERSION}-stable-${SHA}.exe"  ;;
             prod)    NAME="mindshub-cowork-${VERSION}.exe" ;;
             *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;

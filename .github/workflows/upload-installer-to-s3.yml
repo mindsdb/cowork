@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       build_kind:
-        description: preview | stable | prod
+        description: preview | staging | stable | prod
         required: true
         type: string
       artifact_name:
@@ -104,6 +104,10 @@ jobs:
           case "$KIND" in
             preview)
               upload "$SRC" "${PREFIX}/previews/${NAME}"
+              ;;
+            staging)
+              upload "$SRC" "${PREFIX}/staging/${NAME}"
+              upload "$SRC" "${PREFIX}/staging/mindshub-cowork-staging-latest.${EXT}"
               ;;
             stable)
               upload "$SRC" "${PREFIX}/snapshots/${NAME}"

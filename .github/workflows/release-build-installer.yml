@@ -1,18 +1,26 @@
-name: Prod - Build installer on main
+name: Release - Build installer on release tag
 
 on:
-  push:
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag the caller just created (e.g. v2.0.5)"
+        required: true
+        type: string
 
-permissions:
-  contents: read
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow_ref }}
+  cancel-in-progress: true
 
 jobs:
   build-macos:
     uses: ./.github/workflows/build-macos-pkg.yml
     with:
-      build_kind: stable
+      build_kind: prod
     secrets: inherit
 
   upload-macos:
@@ -20,13 +28,13 @@ jobs:
     uses: ./.github/workflows/upload-installer-to-s3.yml
     with:
       platform: mac
-      build_kind: stable
+      build_kind: prod
       artifact_name: ${{ needs.build-macos.outputs.artifact_name }}
 
   build-windows:
     uses: ./.github/workflows/build-windows-installer.yml
     with:
-      build_kind: stable
+      build_kind: prod
     secrets: inherit
 
   upload-windows:
@@ -34,5 +42,5 @@ jobs:
     uses: ./.github/workflows/upload-installer-to-s3.yml
     with:
       platform: windows
-      build_kind: stable
+      build_kind: prod
       artifact_name: ${{ needs.build-windows.outputs.artifact_name }}

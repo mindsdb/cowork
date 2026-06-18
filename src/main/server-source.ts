@@ -4,18 +4,28 @@
 // source — the bug that previously let the PyPI updater clobber a
 // git-branch install.
 //
-// Default: install from git, branch `main`, for BOTH cowork-server and
-// anton. A developer (or the parent `minds` repo) can point either at a
-// feature branch / tag / commit via env vars while iterating; a release
-// flips the channel to the published PyPI wheel.
+// Default: install from git, using the branch cowork was built from (baked
+// at build time by scripts/stamp-branch.js). Building on `main` installs
+// from main; building on `staging` installs from staging — automatically.
+// Env vars still override for one-off testing; a release flips the channel
+// to the published PyPI wheel.
 //
 //   COWORK_SERVER_CHANNEL   git | pypi         (default: git)
-//   COWORK_SERVER_REF       branch|tag|sha     (default: main)  — git channel
-//   ANTON_REF               branch|tag|sha     (default: main)  — git channel
+//   COWORK_SERVER_REF       branch|tag|sha     (default: build branch)  — git channel
+//   ANTON_REF               branch|tag|sha     (default: build branch)  — git channel
 //   COWORK_SERVER_PACKAGE   literal uv spec    (escape hatch; wins over all)
 //
 // On the `pypi` channel anton comes from the published wheel's pinned
 // dependency, so ANTON_REF is ignored there.
+
+// The default git ref is baked at build time by scripts/stamp-branch.js so
+// that a packaged staging build automatically pulls cowork-server and anton
+// from the matching branch — no manual edits or env vars needed.
+let BUILD_BRANCH = 'main';
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  BUILD_BRANCH = require('./build-branch.json').branch;
+} catch { /* file absent pre-build → default to main */ }
 
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
@@ -32,11 +42,11 @@ export function getChannel(): Channel {
 }
 
 export function getCoworkRef(): string {
-  return (process.env.COWORK_SERVER_REF || 'main').trim() || 'main';
+  return (process.env.COWORK_SERVER_REF || BUILD_BRANCH).trim() || 'main';
 }
 
 export function getAntonRef(): string {
-  return (process.env.ANTON_REF || 'main').trim() || 'main';
+  return (process.env.ANTON_REF || BUILD_BRANCH).trim() || 'main';
 }
 
 export interface InstallSpec {
@@ -64,18 +74,16 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   const coworkRef = opts?.coworkRef || getCoworkRef();
   const antonRef = opts?.antonRef || getAntonRef();
 
-  // By default, let cowork-server's own `[tool.uv.sources]` pin decide which
-  // anton-agent to pull (currently branch `main`). That is the version
-  // cowork-server actually requires, which is what we want installed.
+  // Let cowork-server's own `[tool.uv.sources]` pin decide which anton-agent
+  // to pull when both repos are on the same branch — that pin already points
+  // at the right branch.
   //
-  // Do NOT pass `--with anton-agent @ git+...` on the default path: it is not
-  // an override. uv treats it as a *second* URL requirement for the same
-  // package and aborts with "Requirements contain conflicting URLs for package
-  // `anton-agent`" — even when the two URLs are textually identical — which
-  // broke every fresh git install. Only inject `--with` when a developer asks
-  // for a non-default ANTON_REF while iterating.
+  // Only inject `--with` when ANTON_REF explicitly diverges from the
+  // cowork-server ref (e.g. testing a one-off anton feature branch against
+  // a stable cowork-server). Passing `--with` when the URLs match causes
+  // uv to error with "conflicting URLs for package `anton-agent`".
   const withArgs =
-    antonRef === 'main'
+    antonRef === coworkRef
       ? []
       : ['--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`];
 

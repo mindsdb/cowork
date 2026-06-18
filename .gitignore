@@ -6,6 +6,9 @@ release/
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# Generated at build time by scripts/stamp-branch.js
+src/main/build-branch.json
 *.pyc
 *.pyo
 .vscode
