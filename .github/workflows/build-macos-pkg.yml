@@ -48,6 +48,8 @@ on:
         required: false
       GOOGLE_ANALYTICS_CLIENT_SECRET:
         required: false
+      VITE_POSTHOG_ANTON_PROJECT_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -134,6 +136,7 @@ jobs:
           GH_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           GH_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+          VITE_POSTHOG_ANTON_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_ANTON_PROJECT_TOKEN }}
         run: npm run release:mac:pkg:notarized
 
       - name: Compute artifact name

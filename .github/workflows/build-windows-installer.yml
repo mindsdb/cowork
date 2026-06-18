@@ -41,6 +41,9 @@ on:
       GOOGLE_ANALYTICS_CLIENT_SECRET:
         required: false
 
+      VITE_POSTHOG_ANTON_PROJECT_TOKEN:
+        required: false
+
 permissions:
   contents: read
 
@@ -93,6 +96,7 @@ jobs:
         run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          VITE_POSTHOG_ANTON_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_ANTON_PROJECT_TOKEN }}
 
       - name: Resolve installer path
         id: installer

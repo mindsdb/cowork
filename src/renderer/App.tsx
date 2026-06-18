@@ -123,6 +123,7 @@ export default function App() {
   };
 
   const handleInstallComplete = async () => {
+    // Restart the backend so it picks up the freshly-written ~/.anton/.env.
     try { await host.restartServer(); } catch {}
     setPage('terminal');
   };
@@ -132,6 +133,7 @@ export default function App() {
 
   return (
     <>
+      {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
 
       {page === 'loading' && (

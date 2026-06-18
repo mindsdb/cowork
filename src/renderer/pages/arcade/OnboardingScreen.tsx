@@ -656,6 +656,15 @@ export default function OnboardingScreen({
           </div>
         )}
 
+        {phase !== 'validating' && (
+          <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
+            By continuing, you agree to our{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
+            and{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
+          </div>
+        )}
+
         {onBack && phase !== 'validating' && (
           <button type="button" className="arc-link" onClick={onBack} style={{ marginTop: 2 }}>
             ← back

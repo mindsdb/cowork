@@ -304,9 +304,18 @@ function getInstalledVersion(): Promise<string | null> {
   const uvBin = findUv();
   if (!uvBin) return Promise.resolve(null);
   return new Promise((resolve) => {
-    execFile(uvBin, ['tool', 'list'], { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000 }, (err, stdout) => {
+    // Force plain output. In dev, the launcher (`concurrently`) sets
+    // FORCE_COLOR, which makes `uv tool list` emit ANSI codes — e.g.
+    // `\x1b[1mcowork-server v0.1.6\x1b[0m`. That breaks the start-anchored
+    // regex below, so the version reads as null and verification fails with
+    // a misleading "binary not found". NO_COLOR overrides FORCE_COLOR.
+    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
+    execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      for (const line of stdout.split('\n')) {
+      // Strip any residual ANSI escapes defensively before matching.
+      // eslint-disable-next-line no-control-regex
+      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      for (const line of clean.split('\n')) {
         const match = line.match(/^cowork-server\s+v?([\d.]+)/);
         if (match) { resolve(match[1]); return; }
       }

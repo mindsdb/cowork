@@ -42,6 +42,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -2311,6 +2312,7 @@ function AppCore() {
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
     };
+    trackAgentSessionStarted();
     const streamNewSessionFn = () => streamNewSession(text, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
@@ -2801,6 +2803,7 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
+              trackDataSourceConnected(currentForm._connector_id || currentForm.engine || 'unknown');
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,
