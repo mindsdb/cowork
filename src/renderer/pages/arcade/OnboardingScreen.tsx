@@ -13,6 +13,7 @@ import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
+import { LegalViewer } from './TermsScreen';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
@@ -157,6 +158,8 @@ export default function OnboardingScreen({
   // effect (which re-runs on `provider` toggles) can't double-save /
   // double-fire onComplete.
   const finalizedRef = useRef(false);
+  // Inline Terms/Privacy viewer for the "by continuing you agree" line.
+  const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
 
   const models = byokProvider === 'anthropic'
     ? ANTHROPIC_MODELS
@@ -285,14 +288,23 @@ export default function OnboardingScreen({
       resolveValidationTarget(byokProvider, customBaseUrl);
     const key = llmApiKey.trim() || (byokProvider === 'openai-compatible' ? 'not-needed' : '');
 
-    const result = await host.validateProvider(
-      validationProvider,
-      key,
-      validationBaseUrl || undefined,
-      resolvedModel
-    );
+    // Validate against the backend when it's reachable. In the login-first
+    // flow the cowork-server may not be installed yet (install runs after
+    // auth), so a network failure here isn't a rejection — defer validation
+    // and let the backend validate on first use.
+    let result: { ok: boolean; error?: string } | null = null;
+    try {
+      result = await host.validateProvider(
+        validationProvider,
+        key,
+        validationBaseUrl || undefined,
+        resolvedModel
+      );
+    } catch {
+      result = null; // server unreachable — proceed, validate later
+    }
 
-    if (!result.ok) {
+    if (result && !result.ok) {
       setPhase('minds-no-llm');
       setErrorMsg(result.error || 'Validation failed');
       return;
@@ -307,6 +319,9 @@ export default function OnboardingScreen({
     };
     merged.ANTON_MEMORY_MODE = merged.ANTON_MEMORY_MODE || 'autopilot';
     merged.ANTON_EPISODIC_MEMORY = merged.ANTON_EPISODIC_MEMORY || 'true';
+    // Continuing past the auth screen records terms consent (the standalone
+    // terms screen is gone — consent is implicit per the "by continuing" line).
+    merged.ANTON_TERMS_CONSENT = 'true';
 
     if (finalizedRef.current) return;
     finalizedRef.current = true;
@@ -385,6 +400,11 @@ export default function OnboardingScreen({
     });
     return () => { cancelled = true; };
   }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Full-screen Terms/Privacy reader (opened from the consent line).
+  if (legalDoc) {
+    return <LegalViewer doc={legalDoc} onClose={() => setLegalDoc(null)} />;
+  }
 
   // ── Victory ────────────────────────────────────────────────────────
   if (phase === 'success') {
@@ -656,6 +676,15 @@ export default function OnboardingScreen({
               setPhase('minds-no-llm');
             }}
           >GUEST MODE → bring my own LLM key</button>
+        )}
+
+        {phase !== 'validating' && (
+          <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
+            By continuing, you agree to our{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
+            and{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
+          </div>
         )}
 
         {onBack && phase !== 'validating' && (

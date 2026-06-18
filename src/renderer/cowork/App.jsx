@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
+import ThemeModal from './components/ThemeModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — antontron's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
@@ -1036,6 +1037,10 @@ function AppCore() {
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
+
+  // Display modal (theme + 8-bit style), opened from the bottom-right
+  // "gamepad" corner button.
+  const [themeModalOpen, setThemeModalOpen] = useState(false);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -3756,18 +3761,26 @@ function AppCore() {
         {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
       </button>
 
-      {/* Floating skin toggle — stacked above the theme toggle. Cycles
-          through the SKINS registry, same persistence model as
-          light/dark. */}
+      {/* Floating display button — stacked above the theme toggle. Opens
+          the Display modal to pick theme + style (8-bit or not). */}
       <button
-        onClick={() => setSkin(nextSkin(skin))}
-        title={`Style: ${skinLabel(skin)} — switch to ${skinLabel(nextSkin(skin))}`}
-        aria-label={`Switch style to ${skinLabel(nextSkin(skin))}`}
+        onClick={() => setThemeModalOpen(true)}
+        title="Display — theme & style"
+        aria-label="Open display settings (theme and style)"
         className="floating-theme-toggle floating-skin-toggle"
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {Ico.gamepad(15)}
       </button>
+
+      <ThemeModal
+        open={themeModalOpen}
+        onClose={() => setThemeModalOpen(false)}
+        theme={theme}
+        onThemeChange={setTheme}
+        skin={skin}
+        onSkinChange={setSkin}
+      />
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
