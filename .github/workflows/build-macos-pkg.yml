@@ -46,13 +46,8 @@ on:
         required: false
       GOOGLE_ANALYTICS_CLIENT_ID:
         required: false
-
       GOOGLE_ANALYTICS_CLIENT_SECRET:
         required: false
-      GOOGLE_CLIENT_ID:
-        required: true
-      GOOGLE_CLIENT_SECRET:
-        required: true
       VITE_POSTHOG_ANTON_PROJECT_TOKEN:
         required: false
 
