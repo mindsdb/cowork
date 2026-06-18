@@ -1528,10 +1528,16 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onClick: () => handleUnpublish(a),
             });
           } else if (isHtml) {
+            // Forbidden types (e.g. fullstack-stateful-app) keep the item
+            // visible but disabled so the user sees why; handlePublish guards
+            // it too. A native disabled button never fires onClick.
+            const blocked = publishBlockedReason(a);
             items.push({
               id: 'publish',
               label: busyA ? 'Publishing…' : 'Publish',
               icon: Ico.power(13),
+              disabled: !!blocked,
+              title: blocked || undefined,
               onClick: () => handlePublish(a),
             });
           }

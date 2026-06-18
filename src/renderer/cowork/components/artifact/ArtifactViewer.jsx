@@ -931,9 +931,14 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
               onClick: onDownload,
             }] : []),
             {
+              // Block only the Publish direction for forbidden types (e.g.
+              // fullstack-stateful-app); Unpublish stays usable. A native
+              // disabled button never fires onClick, so this fully prevents
+              // the action — matching the main Publish button and the rail.
               label: publishedUrl ? 'Unpublish' : 'Publish',
               icon: Ico.upload(13),
-              disabled: busy || !hasActionPath,
+              disabled: busy || !hasActionPath || (!publishedUrl && !!publishBlock),
+              title: (!publishedUrl && publishBlock) ? publishBlock : undefined,
               onClick: publishedUrl ? onUnpublish : onPublish,
             },
             { divider: true },
