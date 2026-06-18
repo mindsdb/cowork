@@ -472,6 +472,33 @@ function setupIPC() {
   // why the backend is offline.
   ipcMain.handle('server:get-diagnostics', () => getServerDiagnostics());
 
+  // Reset the cowork-server SQLite database. Last-resort recovery for
+  // migration mismatches or DB corruption — deletes ~/.cowork/cowork.db
+  // so the next server start creates a fresh database. Stops the server
+  // first if it's running.
+  ipcMain.handle('server:reset-db', async () => {
+    try {
+      if (isServerRunning() || isServerStarting()) {
+        await stopServer();
+      }
+      const dbPath = path.join(os.homedir(), '.cowork', 'cowork.db');
+      if (fs.existsSync(dbPath)) {
+        fs.unlinkSync(dbPath);
+        // Also remove the WAL/SHM files SQLite may have created
+        for (const suffix of ['-wal', '-shm']) {
+          const extra = dbPath + suffix;
+          if (fs.existsSync(extra)) fs.unlinkSync(extra);
+        }
+        console.log(`[server] deleted database: ${dbPath}`);
+        return { ok: true, deleted: true };
+      }
+      return { ok: true, deleted: false };
+    } catch (err: any) {
+      console.error('[server] failed to reset database:', err);
+      return { ok: false, reason: err.message };
+    }
+  });
+
   // PKCE OAuth — opens a one-shot loopback server + the user's
   // default browser. Pure bridge: callers are responsible for any
   // persistence (token storage, env writes). MindsHub onboarding

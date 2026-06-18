@@ -39,6 +39,7 @@ interface AntonTronAPI {
     lastStartAt: number | null;
     recentLog: string;
   }>;
+  serverResetDb: () => Promise<{ ok: boolean; deleted?: boolean; reason?: string }>;
   oauthConnect: (opts: {
     authUrl: string;
     tokenUrl: string;

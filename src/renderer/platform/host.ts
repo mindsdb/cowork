@@ -153,6 +153,13 @@ export async function serverDiagnostics(): Promise<ServerDiagnostics> {
   };
 }
 
+export async function serverResetDb(): Promise<{ ok: boolean; deleted?: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.serverResetDb === 'function') {
+    return bridge.serverResetDb();
+  }
+  return { ok: false, reason: 'unsupported' };
+}
+
 // ---- OS shell -----------------------------------------------------------
 
 export async function openExternal(url: string): Promise<void> {
@@ -489,6 +496,7 @@ export const host = {
   serverStart,
   serverStop,
   serverDiagnostics,
+  serverResetDb,
   openExternal,
   openPath,
   showItemInFolder,

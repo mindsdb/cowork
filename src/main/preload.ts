@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('antontron', {
   // Diagnostics — last start error + tail of stdout/stderr. Used
   // by the renderer's "why is the backend offline?" help modal.
   serverDiagnostics: () => ipcRenderer.invoke('server:get-diagnostics'),
+  // Delete the SQLite DB so the next start creates a fresh one.
+  // Last-resort recovery for migration mismatches or corruption.
+  serverResetDb: () => ipcRenderer.invoke('server:reset-db'),
   // PKCE OAuth — main spawns a loopback server + opens the
   // browser, returns the resulting tokens (or an error reason).
   oauthConnect: (opts: {

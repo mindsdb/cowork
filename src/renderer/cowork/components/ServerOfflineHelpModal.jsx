@@ -343,6 +343,50 @@ export default function ServerOfflineHelpModal({
               Common causes: a stale process holding port {port ?? 26866}, a missing Python interpreter (re-run the installer), or a crash in a route handler. Restart the backend below — if it keeps failing, copy the log and share it for support.
             </div>
           )}
+
+          {/* Database reset — shown when the log contains migration/DB errors.
+              Deletes the SQLite DB so the next start creates a fresh one. */}
+          {state === 'offline' && host.isElectron && log && /Can't locate revision|alembic|migration.*failed|corrupt/i.test(log) && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 8,
+              background: 'color-mix(in srgb, var(--warning, #D97706) 10%, var(--surface))',
+              border: '1px solid color-mix(in srgb, var(--warning, #D97706) 30%, transparent)',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{ flex: 1, fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+                This looks like a database migration error. Resetting the database will clear your conversation history but should fix the problem.
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const result = await host.serverResetDb();
+                    if (result?.ok && onStart) {
+                      await onStart();
+                    }
+                    await refreshDiag();
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                style={{
+                  cursor: busy ? 'progress' : 'pointer',
+                  flexShrink: 0,
+                  background: 'var(--warning, #D97706)',
+                  border: '1px solid var(--warning, #D97706)',
+                  color: '#fff',
+                  padding: '6px 12px', borderRadius: 6,
+                  fontFamily: FONT_BODY, fontSize: 12, fontWeight: 600,
+                  opacity: busy ? 0.7 : 1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {busy ? 'Resetting…' : 'Reset database'}
+              </button>
+            </div>
+          )}
         </div>
 
         <div style={{
