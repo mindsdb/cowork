@@ -1246,13 +1246,13 @@ export default function ChatView({
           open={settingsOpen}
           anchorRect={settingsAnchor}
           hideRename={false}
-          hideMoveToProject
+          hideMoveToProject={!onMoveTaskToProject}
           onClose={() => setSettingsOpen(false)}
           onPin={() => onPinTask?.(task)}
           onUnpin={() => onUnpinTask?.(task.id)}
           onRename={() => setTitleEditing(true)}
           onDelete={() => onDeleteTask?.(task.id)}
-          onMoveToProject={(p) => onMoveTaskToProject?.(task.id, p.name)}
+          onMoveToProject={() => onMoveTaskToProject?.(task)}
           onSchedule={() => {
             // Placeholder — schedule UX is WIP. Drop a hint into the
             // composer-friendly inbox by sending a message that asks

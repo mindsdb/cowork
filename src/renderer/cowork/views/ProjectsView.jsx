@@ -705,7 +705,7 @@ function CrumbSep() {
 
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
-  onDeleteTask, onShowAll,
+  onDeleteTask, onMoveTaskToProject, onShowAll,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -953,6 +953,7 @@ function ProjectDetail({
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
+              onMoveTaskToProject={onMoveTaskToProject}
             />
           </div>
         </div>
@@ -1019,6 +1020,7 @@ export default function ProjectsView({
   onSendInProject,
   onSelectTask,
   onDeleteTask,
+  onMoveTaskToProject,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -1166,6 +1168,7 @@ export default function ProjectsView({
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
+        onMoveTaskToProject={onMoveTaskToProject}
         attachments={attachments}
         connectors={connectors}
         onAttachFiles={onAttachFiles}

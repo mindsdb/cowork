@@ -1653,6 +1653,17 @@ export async function moveConversation(id, projectName) {
   });
 }
 
+// Move a task to another project and (when moveObjects) relocate the
+// artifacts the task created + re-tag its files. Backed by
+// POST /conversations/{id}/move. The destination project must exist —
+// the caller creates a new one first, then moves to it.
+export async function moveTaskToProject(id, projectName, moveObjects = true) {
+  return req(`/conversations/${encodeURIComponent(id)}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ project: projectName, moveObjects }),
+  });
+}
+
 export async function recordTaskVisit(task, autoPin = false) {
   const params = new URLSearchParams({ auto_pin: autoPin ? 'true' : 'false' });
   if (task?.title) params.set('title', task.title);

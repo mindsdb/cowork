@@ -45,6 +45,7 @@ export function TaskCard({
   onPin,
   onUnpin,
   onDelete,
+  onMoveToProject,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
@@ -223,9 +224,10 @@ export function TaskCard({
         onPin={onPin ? () => onPin(task) : undefined}
         onUnpin={onUnpin ? () => onUnpin(task.id) : undefined}
         onDelete={onDelete ? () => onDelete(task.id) : undefined}
-        // Move + Rename intentionally hidden for now — see TaskMenu
-        // props (hideMoveToProject, hideRename).
-        hideMoveToProject
+        // "Move to project…" opens the picker modal (parent handles it).
+        // Rename stays hidden on the card surface for now.
+        onMoveToProject={onMoveToProject ? () => onMoveToProject(task) : undefined}
+        hideMoveToProject={!onMoveToProject}
         hideRename
       />
     </div>

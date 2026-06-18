@@ -172,7 +172,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           if (next != null) onRename?.(task.id, next);
         }}
         onDelete={() => onDelete?.(task.id)}
-        onMoveToProject={(p) => onMoveToProject?.(task.id, p.name)}
+        hideMoveToProject={!onMoveToProject}
+        onMoveToProject={() => onMoveToProject?.(task)}
       />
     </div>
   );
