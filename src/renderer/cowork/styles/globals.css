@@ -2530,6 +2530,12 @@ body[data-theme="dark"] .onboarding-card {
     0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
 }
 
+/* Collapsible sidebar tracker header — hover affordance in CSS (not React
+   state) so it can't get stuck and costs no re-render. Base lives here too
+   so the button's inline styles don't out-specify the :hover rule. */
+.onboarding-collapse-toggle { background: transparent; transition: background 140ms ease; }
+.onboarding-collapse-toggle:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+
 /* New task CTA — outlined neon in dark, accent-bordered in light */
 .anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
 .btn-new-task {
