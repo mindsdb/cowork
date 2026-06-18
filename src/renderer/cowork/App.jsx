@@ -2581,6 +2581,14 @@ function AppCore() {
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      // Migrate the form store so a success-state panel (e.g. the
+      // OAuth success screen set just before onContinue was called)
+      // survives the ID change and stays visible under the new task id.
+      const existingForm = getDataVaultForm(previousId);
+      if (existingForm) {
+        setDataVaultForm(sid, existingForm);
+        clearDataVaultForm(previousId);
+      }
     };
 
     const flushStreaming = () => {

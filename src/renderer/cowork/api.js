@@ -1197,17 +1197,10 @@ export async function matchConnector(query, maxCandidates = 3) {
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
   try {
-    return await req('/connectors/submissions', { method: 'POST', body });
+    return await req('/connectors/connections/save', { method: 'POST', body });
   } catch (err) {
-    // TODO: remove this fallback once cowork-server is the only backend.
-    // The new cowork-server serves POST /connectors/submissions; the
-    // legacy local server/main.py only has POST /connectors/{id}/save
-    // with the SAME payload shape (method / name / values). Fall back
-    // ONLY on a 404 (route absent on this backend) — a 400/422/500
-    // means the endpoint exists and rejected us, so surface that as-is
-    // rather than masking it or risking a double-write.
     if (err?.status !== 404) throw err;
-    console.warn('saveConnector: /connectors/submissions 404 — falling back to legacy /connectors/{id}/save');
+    // Fallback for older server versions that don't have the direct-save endpoint.
     return req(`/connectors/${encodeURIComponent(connectorId)}/save`, { method: 'POST', body });
   }
 }
