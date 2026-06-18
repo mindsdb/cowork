@@ -1196,13 +1196,7 @@ export async function matchConnector(query, maxCandidates = 3) {
 // engine would reject the credential shape).
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
-  try {
-    return await req('/connectors/connections/save', { method: 'POST', body });
-  } catch (err) {
-    if (err?.status !== 404) throw err;
-    // Fallback for older server versions that don't have the direct-save endpoint.
-    return req(`/connectors/${encodeURIComponent(connectorId)}/save`, { method: 'POST', body });
-  }
+  return req('/connectors/connections/save', { method: 'POST', body });
 }
 
 // ─── Web (redirect-based) connector OAuth ──────────────────────────────────

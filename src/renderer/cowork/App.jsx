@@ -23,7 +23,7 @@ import UtilitiesView from './views/UtilitiesView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
@@ -2586,7 +2586,11 @@ function AppCore() {
       // survives the ID change and stays visible under the new task id.
       const existingForm = getDataVaultForm(previousId);
       if (existingForm) {
+        const existingFormState = getDataVaultFormState(previousId);
+        const existingMethod = getDataVaultSelectedMethod(previousId);
         setDataVaultForm(sid, existingForm);
+        if (existingFormState) setDataVaultFormState(sid, existingFormState);
+        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
         clearDataVaultForm(previousId);
       }
     };
@@ -2754,7 +2758,11 @@ function AppCore() {
       // the success patch falls through to a bare setForm.
       const existingForm = getDataVaultForm(previousId);
       if (existingForm) {
+        const existingFormState = getDataVaultFormState(previousId);
+        const existingMethod = getDataVaultSelectedMethod(previousId);
         setDataVaultForm(sid, existingForm);
+        if (existingFormState) setDataVaultFormState(sid, existingFormState);
+        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
         clearDataVaultForm(previousId);
       }
     };
