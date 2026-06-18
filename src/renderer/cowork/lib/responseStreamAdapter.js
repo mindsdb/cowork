@@ -175,6 +175,23 @@ function bestEffortField(text, field) {
   return extractJsonString(text, field);
 }
 
+/** Classify a finished cell as 'ok' | 'timeout' | 'error'. Prefer the
+ *  server-provided `cell_status` (cowork-server derives it from the cell's
+ *  structured error field); fall back to deriving from the parsed cell so
+ *  older servers still distinguish a killed cell from a clean one. */
+function deriveCellStatus(serverStatus, parsedCell) {
+  if (serverStatus === 'ok' || serverStatus === 'timeout' || serverStatus === 'error') {
+    return serverStatus;
+  }
+  const err = parsedCell && typeof parsedCell.error === 'string' ? parsedCell.error : '';
+  if (!err) return 'ok';
+  const low = err.toLowerCase();
+  if (low.includes('timed out') || low.includes('of inactivity') || low.includes('cell killed')) {
+    return 'timeout';
+  }
+  return 'error';
+}
+
 /**
  * Reduce one parsed SSE event onto the running state.
  *
@@ -324,6 +341,11 @@ export function reduceStream(state, event, now = Date.now) {
       output: typeof stdout === 'string' ? stdout : null,
       result: parsed || { stdout, stderr, _truncated: true },
       status: 'completed',
+      // Lifecycle stays 'completed' (so the timeline's aggregate-done logic
+      // isn't broken), but cellStatus carries whether the cell was killed /
+      // errored so the renderer can mark it distinctly instead of showing a
+      // dead cell as a clean finish.
+      cellStatus: deriveCellStatus(event.cell_status, parsed),
       completedAt: eventTs,
       executionCompletedAt,
       ...(typeof stderr === 'string' && stderr ? { stderr } : null),
