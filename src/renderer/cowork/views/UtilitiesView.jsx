@@ -649,7 +649,7 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 8 }}>
-              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill_label" style={inputStyle} disabled={editing === 'edit'} />
+              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill-label" style={inputStyle} disabled={editing === 'edit'} />
               <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
             </div>
             <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description: when the agent should use this skill" style={inputStyle} />
