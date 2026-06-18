@@ -5,7 +5,7 @@ import { providerTypeToKeyField, providerValueToType } from '../lib/settingsTran
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL } from '../../lib/mindsUrls';
+import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron } from '../../platform/host';
 
 // Provider preset → underlying canonical fields. The Settings UI uses
@@ -1310,7 +1310,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                         <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
                           Don't have an account?{' '}
                           <a
-                            href="https://mindshub.ai"
+                            href={MINDS_REGISTER_URL}
                             target="_blank"
                             rel="noreferrer noopener"
                             title="Open mindshub.ai sign-up in your browser."
