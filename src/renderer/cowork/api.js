@@ -935,17 +935,17 @@ let _lastFetchedSettings = {};
 // updateSettings can't race on _lastFetchedSettings.
 let _settingsLock = Promise.resolve();
 
-// Per-provider model picker options + recommended (planning, coding) pair,
-// owned by the backend (cowork-server). For minds-cloud the list is the live
-// MindsHub `/v1/models` set. Returns null on failure so callers fall back to
-// whatever static seed they already have. Model names are NOT maintained in
-// this repo — this is the single source.
+/* Live per-provider model picker options + effort capability. The server
+   overlays minds-cloud with MindsHub's `/v1/models` (live ids and, per model,
+   the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
+   static effort catalog for direct providers. Returns null on any failure so the
+   caller keeps the static lists baked into transformSettingsRows. */
 export async function fetchRecommendedModels() {
   try {
-    return await req('/settings/recommended-models');
-  } catch {
-    return null;
-  }
+    const data = await req('/settings/recommended-models');
+    if (data && typeof data === 'object') return data;
+  } catch { /* fall back to static lists */ }
+  return null;
 }
 
 export async function fetchSettings() {
@@ -959,15 +959,23 @@ export async function fetchSettings() {
         result.configError = v.configError;
         result.providerLabel = v.provider;
       } catch { /* leave defaults */ }
-      // Overlay the server's recommended-models (MindsHub's live `/v1/models`
-      // list for minds-cloud). Falls back to the static lists seeded by
-      // transformSettingsRows when the endpoint is absent or unreachable.
+      /* Overlay the live model list + effort capability. modelEfforts is the
+         single source of truth for the effort picker — a model accepts effort
+         iff it has an entry here. Only non-empty server lists override the static
+         fallback, so an unconfigured provider (e.g. minds-cloud with no key →
+         server returns []) doesn't wipe the baked-in picks. */
       const rec = await fetchRecommendedModels();
-      if (rec?.recommendedModels) {
-        result.recommendedModels = { ...result.recommendedModels, ...rec.recommendedModels };
-      }
-      if (rec?.recommendedPair) {
-        result.recommendedPair = { ...result.recommendedPair, ...rec.recommendedPair };
+      if (rec) {
+        const overlayLists = (base, live) => {
+          const merged = { ...base };
+          for (const [k, v] of Object.entries(live || {})) {
+            if (Array.isArray(v) && v.length) merged[k] = v;
+          }
+          return merged;
+        };
+        result.recommendedModels = overlayLists(result.recommendedModels, rec.recommendedModels);
+        result.recommendedPair = overlayLists(result.recommendedPair, rec.recommendedPair);
+        result.modelEfforts = rec.modelEfforts || {};
       }
       _lastFetchedSettings = result;
       return result;
@@ -1048,7 +1056,7 @@ export async function revealSettingKey(name) {
 
 export async function fetchIntegrations() {
   try {
-    return await req('/integrations');
+    return await req('/connectors/oauth/catalogue');
   } catch {
     return { items: MOCK_DATA.integrations };
   }
@@ -1232,7 +1240,7 @@ export async function saveConnector(connectorId, payload) {
 // The SPA never handles the code or tokens directly.
 
 export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
-  return req(`/connectors/${encodeURIComponent(connectorId)}/oauth/start`, {
+  return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
     method: 'POST',
     body: JSON.stringify({
       method: method || null,
@@ -1379,10 +1387,14 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
   return { status: 'streamed', body: text };
 }
 
-// `password` (optional): when a non-empty string, the artifact is
-// published password-protected; omit / empty publishes it public.
-export async function publishArtifact(path, password) {
-  const body = password ? { path, password } : { path };
+// `access` (optional): a publish-mode object, one of
+//   { mode: 'public' }
+//   { mode: 'password', password: '...' }
+//   { mode: 'restricted', emails: [...], org_allowed: bool }
+// Public (or a falsy access) sends just `{ path }`, which clears any prior
+// protection on re-publish.
+export async function publishArtifact(path, access) {
+  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
 }
 

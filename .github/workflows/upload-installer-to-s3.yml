@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           BUCKET="anton-installer"
-          PREFIX="anton/${PLATFORM}"
+          PREFIX="mindshub-cowork/${PLATFORM}"
           BASE="s3://${BUCKET}/${PREFIX}"
           EXT="${NAME##*.}"
           SRC="out/${NAME}"
@@ -107,11 +107,11 @@ jobs:
               ;;
             stable)
               upload "$SRC" "${PREFIX}/snapshots/${NAME}"
-              upload "$SRC" "${PREFIX}/anton-latest.${EXT}"
+              upload "$SRC" "${PREFIX}/mindshub-cowork-latest.${EXT}"
               ;;
             prod)
               upload "$SRC" "${PREFIX}/${NAME}"
-              upload "$SRC" "${PREFIX}/anton-latest.${EXT}"
+              upload "$SRC" "${PREFIX}/mindshub-cowork-latest.${EXT}"
               ;;
             *)
               echo "::error::Unknown build_kind: $KIND"

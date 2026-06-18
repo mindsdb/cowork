@@ -3,6 +3,7 @@ import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
+import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
@@ -46,14 +47,18 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
 }
 
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, agentLabel }) {
-  const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
+  const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
   const openMenu = (e) => {
     e.stopPropagation();
     e.preventDefault();
+    // Toggle: a second click on the kebab closes the menu (the menu's
+    // own outside-press dismiss ignores clicks on the trigger, so the
+    // close has to come from here).
+    if (menuOpen) { setMenuOpen(false); return; }
     if (!triggerRef.current) return;
     setAnchorRect(triggerRef.current.getBoundingClientRect());
     setMenuOpen(true);
@@ -63,12 +68,10 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   // rendered (cross-fade on hover). Reserving the same width means
   // the row height/width stays constant whether the kebab is visible
   // or not — no jumping when moving between rows.
-  const showKebab = hover || menuOpen;
   return (
     <div
       style={{ position: 'relative', display: 'flex' }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
     >
       <button className="recent-item" onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
         <span className="recent-row__title" style={{

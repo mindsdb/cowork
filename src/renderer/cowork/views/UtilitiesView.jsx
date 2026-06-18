@@ -18,6 +18,7 @@ import {
   saveSkill,
   validateDatasource,
 } from '../api';
+import { trackArtifactPublished } from '../lib/analytics';
 
 const TITLES = {
   memory: ['Memory', 'Profile, rules, and lessons the agent can reuse across tasks.'],
@@ -612,6 +613,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
     try {
       setStatus('Publishing…');
       const result = await publishArtifact(artifact.path);
+      if (result.url) trackArtifactPublished(result.report_id || artifact.id || '', 'public');
       setStatus(result.url ? `Published: ${result.url}` : 'Published.');
       const latest = await fetchPublishable();
       setData(latest);

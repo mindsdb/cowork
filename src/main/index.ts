@@ -160,15 +160,26 @@ async function validateMinds(
   baseUrl: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    // First check the minds API is reachable
+    // Probe the real inference path (a 1-token chat completion) instead
+    // of a listing route. `/v1/minds/` and `/models` are not deployed on
+    // every MindsHub host and 404/401 even for valid keys, which blocked
+    // onboarding with a working key. Mirrors minds_chat_base_url in
+    // cowork-server: mdb.ai needs /api/v1, others need /v1.
     const base = baseUrl.replace(/\/+$/, '');
-    const mindsUrl = base + '/v1/minds/';
-    const res = await httpRequest(mindsUrl, {
-      method: 'GET',
+    const chatBase = base.endsWith('/v1')
+      ? base
+      : base.includes('mdb.ai') ? `${base}/api/v1` : `${base}/v1`;
+    const res = await httpRequest(`${chatBase}/chat/completions`, {
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        model: 'latest:haiku',
+        max_tokens: 20,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
     });
     if (res.status === 401 || res.status === 403) {
       return { ok: false, error: 'Invalid API key' };
@@ -176,7 +187,12 @@ async function validateMinds(
     if (res.status >= 200 && res.status < 300) {
       return { ok: true };
     }
-    return { ok: false, error: `Server returned HTTP ${res.status}` };
+    try {
+      const parsed = JSON.parse(res.body).error?.message || `HTTP ${res.status}`;
+      return { ok: false, error: parsed };
+    } catch {
+      return { ok: false, error: `Server returned HTTP ${res.status}` };
+    }
   } catch (err: any) {
     return { ok: false, error: `Cannot connect: ${err.message}` };
   }
@@ -478,6 +494,18 @@ function setupIPC() {
     if (result.ok && result.access_token) {
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
+      // Pull the desktop app back to the foreground. The SSO flow opens the
+      // OS default browser, which is frontmost after the redirect — without
+      // this the user is left on the "you can close this tab" page and may
+      // not realize the app has signed them in.
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          app.focus({ steal: true }); // macOS: steal focus from the browser
+        }
+      } catch {}
     }
     return result;
   });
