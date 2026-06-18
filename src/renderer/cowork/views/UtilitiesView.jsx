@@ -623,7 +623,7 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
 
   const save = async () => {
     try {
-      await saveSkill(draft);
+      await saveSkill(draft, editing === 'edit');
       setStatus(`Saved skill ${draft.name || draft.label}.`);
       setEditing(null);
       await onSaved?.();
