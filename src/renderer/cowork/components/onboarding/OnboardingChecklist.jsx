@@ -15,6 +15,7 @@ import Ico from '../Icons';
 // Each row seeds a new chat; `onStartChat` is the home composer's send
 // handler. Card chrome lives in `.onboarding-card` (theme-aware).
 const COLLAPSE_KEY = 'anton.onboarding.sidebarCollapsed';
+const STEPS_ID = 'onboarding-sidebar-steps';
 
 export default function OnboardingChecklist({ onStartChat, variant = 'sidebar' }) {
   const { steps, isComplete, completedCount, total, allDone, dismissed, complete, dismiss } = useOnboarding();
@@ -22,10 +23,11 @@ export default function OnboardingChecklist({ onStartChat, variant = 'sidebar' }
 
   // Sidebar-only: collapse the tracker to just its header. Default expanded;
   // the user's choice is remembered across reloads.
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === 'true');
-  const [headerHover, setHeaderHover] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(COLLAPSE_KEY) === 'true'; } catch { return false; }
+  });
   useEffect(() => {
-    localStorage.setItem(COLLAPSE_KEY, String(collapsed));
+    try { localStorage.setItem(COLLAPSE_KEY, String(collapsed)); } catch { /* storage unavailable */ }
   }, [collapsed]);
 
   if (dismissed) return null;
@@ -58,17 +60,15 @@ export default function OnboardingChecklist({ onStartChat, variant = 'sidebar' }
   ) : (
     <button
       type="button"
+      className="onboarding-collapse-toggle"
       onClick={() => setCollapsed((c) => !c)}
-      onMouseEnter={() => setHeaderHover(true)}
-      onMouseLeave={() => setHeaderHover(false)}
       aria-expanded={!collapsed}
+      aria-controls={STEPS_ID}
       style={{
         display: 'flex', alignItems: 'center', gap: 8, width: '100%',
         font: 'inherit', textAlign: 'left', border: 0, cursor: 'pointer',
         borderRadius: 'var(--r-sm)', padding: '4px 6px',
         marginBottom: collapsed ? 0 : 6,
-        background: headerHover ? 'color-mix(in srgb, var(--ink) 6%, transparent)' : 'transparent',
-        transition: 'background 140ms ease',
       }}
     >
       {title}
@@ -110,6 +110,7 @@ export default function OnboardingChecklist({ onStartChat, variant = 'sidebar' }
         // Collapsible body: a 0fr→1fr grid row animates height open/closed
         // without hard-coding a pixel value (same idiom as OnboardingItem).
         <div
+          id={STEPS_ID}
           style={{
             display: 'grid', minHeight: 0,
             gridTemplateRows: collapsed ? '0fr' : '1fr',
@@ -117,7 +118,9 @@ export default function OnboardingChecklist({ onStartChat, variant = 'sidebar' }
             transition: 'grid-template-rows 200ms ease, opacity 200ms ease',
           }}
         >
-          <div style={{ overflow: 'hidden', minHeight: 0 }}>{list}</div>
+          {/* `inert` when collapsed keeps the hidden steps out of tab order
+              and the accessibility tree — height/opacity alone don't. */}
+          <div style={{ overflow: 'hidden', minHeight: 0 }} inert={collapsed || undefined}>{list}</div>
         </div>
       )}
     </>
