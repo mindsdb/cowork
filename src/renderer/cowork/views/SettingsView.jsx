@@ -1939,6 +1939,14 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   ariaLabel="Proactive dashboards"
                 />
               </Section>
+              <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
+                <Toggle
+                  value={settings.actFirst ?? true}
+                  onChange={(v) => setSetting('actFirst', v)}
+                  title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
+                  ariaLabel="Act first, ask later"
+                />
+              </Section>
             </CollapsibleGroup>
 
             <CollapsibleGroup title="Updates" defaultOpen={false}>

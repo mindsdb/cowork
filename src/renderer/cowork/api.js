@@ -1795,6 +1795,7 @@ export const MOCK_DATA = {
     memoryMode: 'autopilot',
     episodicMemory: true,
     proactiveDashboards: false,
+    actFirst: true,
     anthropicApiKey: '',
     openaiApiKey: '',
     providers: [],

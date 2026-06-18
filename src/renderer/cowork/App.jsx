@@ -3768,29 +3768,35 @@ function AppCore() {
         }}
       />
 
-      {/* Floating theme toggle (bottom-right). Lives outside the sidebar so
-          it's always reachable, including when the sidebar is collapsed. */}
-      <button
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        aria-label="Toggle colour theme"
-        className="floating-theme-toggle"
-        style={{ WebkitAppRegion: 'no-drag' }}
-      >
-        {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-      </button>
+      {/* Floating theme + display toggles (bottom-right). Hidden on the
+          Settings page — it has its own theme/style controls, and the
+          floating buttons otherwise overlap the Save button there. */}
+      {route !== 'settings' && (
+        <>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label="Toggle colour theme"
+            className="floating-theme-toggle"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+          </button>
 
-      {/* Floating display button — stacked above the theme toggle. Opens
-          the Display modal to pick theme + style (8-bit or not). */}
-      <button
-        onClick={() => setThemeModalOpen(true)}
-        title="Display — theme & style"
-        aria-label="Open display settings (theme and style)"
-        className="floating-theme-toggle floating-skin-toggle"
-        style={{ WebkitAppRegion: 'no-drag' }}
-      >
-        {Ico.gamepad(15)}
-      </button>
+          {/* Style toggle — stacked above the theme toggle. Flips directly
+              between 8-bit arcade and smooth (like the sun/moon theme
+              toggle). The icon shows the destination style. */}
+          <button
+            onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
+            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
+            aria-label="Toggle 8-bit arcade style"
+            className="floating-theme-toggle floating-skin-toggle"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            {Ico.gamepad(15)}
+          </button>
+        </>
+      )}
 
       <ThemeModal
         open={themeModalOpen}

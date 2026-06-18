@@ -70,10 +70,34 @@ function GamepadIcon({ size = 15 }: { size?: number }) {
   );
 }
 
+function SunIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+    </svg>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
   const [coworker] = useState(recallCoworker);
   const [skin, setSkin] = useState(loadSkin);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = window.localStorage.getItem('anton.theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {}
+    return document.body.dataset.theme === 'light' ? 'light' : 'dark';
+  });
 
   // Keep body skin + onboarding shell preset + persistence in sync.
   useEffect(() => {
@@ -81,6 +105,18 @@ export default function App() {
     persistSkin(skin);
     applyArcadePreset(skin);
   }, [skin]);
+
+  // Apply + persist the light/dark theme (mirrors CoworkApp), then refresh
+  // the arcade preset since the preset depends on the active theme.
+  useEffect(() => {
+    try { window.localStorage.setItem('anton.theme', theme); } catch {}
+    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
+    document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
+    document.body.dataset.theme = theme;
+    const gf = (window as unknown as { gravityField?: { setTheme?: (t: string) => void } }).gravityField;
+    if (gf && typeof gf.setTheme === 'function') gf.setTheme(theme);
+    applyArcadePreset(skin);
+  }, [theme, skin]);
 
   useEffect(() => {
     async function init() {
@@ -159,18 +195,30 @@ export default function App() {
 
       {page === 'terminal' && <CoworkApp />}
 
-      {/* Arcade ↔ normal toggle on the onboarding corner — mirrors the
-          in-app gamepad button. Hidden in the app (CoworkApp has its own). */}
+      {/* Theme + style toggles on the onboarding corner — mirror the in-app
+          floating buttons (CoworkApp has its own; these only show here). The
+          CSS stacks the style toggle above the theme toggle. */}
       {isArcadePage && (
-        <button
-          onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
-          title={skin === '8bit' ? 'Switch to normal mode' : 'Switch to arcade mode'}
-          aria-label="Toggle arcade / normal mode"
-          className="floating-theme-toggle"
-          style={{ position: 'fixed', right: 18, bottom: 18, zIndex: 200 }}
-        >
-          <GamepadIcon size={15} />
-        </button>
+        <>
+          <button
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label="Toggle colour theme"
+            className="floating-theme-toggle"
+            style={{ zIndex: 200 }}
+          >
+            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+          </button>
+          <button
+            onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
+            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
+            aria-label="Toggle 8-bit arcade style"
+            className="floating-theme-toggle floating-skin-toggle"
+            style={{ zIndex: 200 }}
+          >
+            <GamepadIcon size={15} />
+          </button>
+        </>
       )}
     </>
   );

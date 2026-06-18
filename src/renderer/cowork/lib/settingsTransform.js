@@ -42,6 +42,7 @@ export const SETTINGS_KEY_MAP = {
   memory_mode: 'memoryMode',
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
+  act_first: 'actFirst',
   ui_update_mode: 'uiUpdateMode',
   publish_url: 'publishUrl',
   greeting: 'greeting',
