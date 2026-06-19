@@ -93,10 +93,32 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
+echo "==> Generating component plist (disable relocation)"
+COMPONENT_PLIST="release/component.plist"
+COMPONENT_PKG="release/component.pkg"
+DIST_XML="release/distribution.xml"
+pkgbuild --analyze --root "$(dirname "$APP_PATH")" "$COMPONENT_PLIST"
+# Disable relocation so macOS always installs to /Applications, even on reinstall.
+/usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$COMPONENT_PLIST"
+
+echo "==> Building component pkg (non-relocatable)"
+pkgbuild \
+  --root "$(dirname "$APP_PATH")" \
+  --install-location /Applications \
+  --component-plist "$COMPONENT_PLIST" \
+  "$COMPONENT_PKG"
+
+echo "==> Synthesizing distribution"
+productbuild --synthesize --package "$COMPONENT_PKG" "$DIST_XML"
+# Set the installer title shown in the macOS Installer UI and "move to Trash" dialog.
+# The synthesized XML has no <title> element, so insert one after the root tag.
+sed -i '' "s|<installer-gui-script[^>]*>|&\n    <title>${PRODUCT_NAME}</title>|" "$DIST_XML"
+
 if is_truthy "$MAC_PKG_UNSIGNED"; then
   echo "==> Building unsigned installer pkg"
   productbuild \
-    --component "$APP_PATH" /Applications \
+    --distribution "$DIST_XML" \
+    --package-path release \
     "$PKG_PATH"
 else
   echo "==> Verifying app signature"
@@ -122,7 +144,8 @@ else
 
   echo "==> Building signed installer pkg"
   productbuild \
-    --component "$APP_PATH" /Applications \
+    --distribution "$DIST_XML" \
+    --package-path release \
     --sign "$INSTALLER_IDENTITY" \
     "$PKG_PATH"
 
@@ -146,6 +169,9 @@ else
   xcrun stapler staple "$PKG_PATH"
   xcrun stapler validate "$PKG_PATH"
 fi
+
+# Clean up intermediate files so `release/*.pkg` glob matches only the final artifact.
+rm -f "$COMPONENT_PKG" "$COMPONENT_PLIST" "$DIST_XML"
 
 echo "==> Final artifact hash"
 shasum -a 256 "$PKG_PATH"

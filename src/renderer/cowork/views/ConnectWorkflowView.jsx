@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import {
   fetchIntegrations,
-  startGoogleDriveAuth,
+  startConnectorOAuth,
+  pollConnectorOAuth,
 } from '../api';
 
 const PAGE_HOME = 'home';
@@ -881,6 +882,7 @@ export default function ConnectWorkflowView({ onClose }) {
   const [driveStatus, setDriveStatus] = useState('');
   const [driveAuthPending, setDriveAuthPending] = useState(false);
   const [driveAuthStartedAt, setDriveAuthStartedAt] = useState('');
+  const [driveAuthState, setDriveAuthState] = useState('');
   const [busyAction, setBusyAction] = useState('');
 
   const refresh = async () => {
@@ -964,7 +966,9 @@ export default function ConnectWorkflowView({ onClose }) {
     try {
       setBusyAction('connect');
       setDriveStatus('');
-      const result = await startGoogleDriveAuth();
+      const result = await startConnectorOAuth('google-drive');
+      if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+      setDriveAuthState(result.state);
       setDriveAuthStartedAt(result.startedAt || new Date().toISOString());
       setDriveAuthPending(true);
       setDriveStatus('Google sign-in opened in your browser. Finish there, then return here.');
@@ -978,34 +982,31 @@ export default function ConnectWorkflowView({ onClose }) {
   };
 
   useEffect(() => {
-    if (!driveAuthPending) return undefined;
+    if (!driveAuthPending || !driveAuthState) return undefined;
     let cancelled = false;
     let timerId = null;
-    const startedAt = driveAuthStartedAt;
     const deadline = Date.now() + 2 * 60 * 1000;
 
     const poll = async () => {
       try {
-        const { nextCatalog } = await refresh();
-        const nextIntegration = nextCatalog?.items?.find((item) => item.id === 'google_drive');
-        const lastSuccessAt = nextIntegration?.oauth?.lastSuccessAt || '';
-        const lastErrorAt = nextIntegration?.oauth?.lastErrorAt || '';
-        if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
+        const result = await pollConnectorOAuth(driveAuthState);
+        if (result?.status === 'success') {
           if (!cancelled) {
             setDriveAuthPending(false);
             setDriveStatus('Google Drive connected.');
+            refresh().catch(() => {});
           }
           return;
         }
-        if (nextIntegration?.oauth?.lastError && lastErrorAt && (!startedAt || lastErrorAt >= startedAt)) {
+        if (result?.status === 'error') {
           if (!cancelled) {
             setDriveAuthPending(false);
-            setDriveStatus(nextIntegration.oauth.lastError);
+            setDriveStatus(result.error || 'Google Drive connection failed.');
           }
           return;
         }
       } catch {
-        // Ignore transient refresh errors while the user is in the browser flow.
+        // Ignore transient errors while the user is in the browser flow.
       }
       if (cancelled) return;
       if (Date.now() >= deadline) {
@@ -1021,7 +1022,7 @@ export default function ConnectWorkflowView({ onClose }) {
       cancelled = true;
       if (timerId) window.clearTimeout(timerId);
     };
-  }, [driveAuthPending, driveAuthStartedAt]);
+  }, [driveAuthPending, driveAuthState]);
 
   return (
     <div className="customize-view">

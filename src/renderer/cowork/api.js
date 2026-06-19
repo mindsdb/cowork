@@ -1050,7 +1050,7 @@ export async function revealSettingKey(name) {
 
 export async function fetchIntegrations() {
   try {
-    return await req('/integrations');
+    return await req('/connectors/oauth/catalogue');
   } catch {
     return { items: MOCK_DATA.integrations };
   }
@@ -1196,20 +1196,7 @@ export async function matchConnector(query, maxCandidates = 3) {
 // engine would reject the credential shape).
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
-  try {
-    return await req('/connectors/submissions', { method: 'POST', body });
-  } catch (err) {
-    // TODO: remove this fallback once cowork-server is the only backend.
-    // The new cowork-server serves POST /connectors/submissions; the
-    // legacy local server/main.py only has POST /connectors/{id}/save
-    // with the SAME payload shape (method / name / values). Fall back
-    // ONLY on a 404 (route absent on this backend) — a 400/422/500
-    // means the endpoint exists and rejected us, so surface that as-is
-    // rather than masking it or risking a double-write.
-    if (err?.status !== 404) throw err;
-    console.warn('saveConnector: /connectors/submissions 404 — falling back to legacy /connectors/{id}/save');
-    return req(`/connectors/${encodeURIComponent(connectorId)}/save`, { method: 'POST', body });
-  }
+  return req('/connectors/connections/save', { method: 'POST', body });
 }
 
 // ─── Web (redirect-based) connector OAuth ──────────────────────────────────
@@ -1224,7 +1211,7 @@ export async function saveConnector(connectorId, payload) {
 // The SPA never handles the code or tokens directly.
 
 export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
-  return req(`/connectors/${encodeURIComponent(connectorId)}/oauth/start`, {
+  return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
     method: 'POST',
     body: JSON.stringify({
       method: method || null,
@@ -1371,10 +1358,14 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
   return { status: 'streamed', body: text };
 }
 
-// `password` (optional): when a non-empty string, the artifact is
-// published password-protected; omit / empty publishes it public.
-export async function publishArtifact(path, password) {
-  const body = password ? { path, password } : { path };
+// `access` (optional): a publish-mode object, one of
+//   { mode: 'public' }
+//   { mode: 'password', password: '...' }
+//   { mode: 'restricted', emails: [...], org_allowed: bool }
+// Public (or a falsy access) sends just `{ path }`, which clears any prior
+// protection on re-publish.
+export async function publishArtifact(path, access) {
+  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
 }
 

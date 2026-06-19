@@ -14,7 +14,7 @@ export const MINDS_API_BASE = import.meta.env.VITE_MINDS_API_URL || 'https://api
 // https://console.mindshub.ai when the desktop app moves to prod.
 export const MINDS_CONSOLE_URL = MINDS_API_BASE.replace('://api.', '://console.');
 export const MINDS_BILLING_URL = `${MINDS_CONSOLE_URL}/settings/organization/billing`;
-export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/api-key`;
+export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // MindsHub sign-up: the Keycloak registration flow (not the account
 // page), which lands the new user back on the console. Built from the
