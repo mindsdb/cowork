@@ -177,6 +177,23 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
   return { ok: false, reason: 'unsupported' };
 }
 
+export interface PickDirectoryResult {
+  ok: boolean;
+  path: string | null;
+  reason?: string;
+}
+
+export function hasPickDirectory(): boolean {
+  return isElectron && typeof bridge.pickDirectory === 'function';
+}
+
+export async function pickDirectory(): Promise<PickDirectoryResult> {
+  if (hasPickDirectory()) {
+    return bridge.pickDirectory();
+  }
+  return { ok: false, path: null, reason: 'unsupported' };
+}
+
 // ---- File drop / clipboard ---------------------------------------------
 
 // In Electron, dropped files expose an OS path via webUtils. In web, the
@@ -492,6 +509,8 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  pickDirectory,
+  hasPickDirectory,
   getPathForFile,
   getUIVersion,
   readSettings,
