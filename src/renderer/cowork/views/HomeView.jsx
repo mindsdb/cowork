@@ -249,7 +249,7 @@ export default function HomeView({
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
-  onCreateProject,
+  onOpenNewProject,
   configReady, configError, onOpenSettings,
   serverOnline = false, onShowServerHelp,
   skipIntro = false,
@@ -543,7 +543,7 @@ export default function HomeView({
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
-              onCreateProject={onCreateProject}
+              onOpenNewProject={onOpenNewProject}
               hideModel
               onTypingChange={setIsTyping}
             />

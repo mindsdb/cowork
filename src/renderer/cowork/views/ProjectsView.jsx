@@ -14,7 +14,6 @@ import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox, InstructionsBox } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard } from '../components/project/ProjectCard';
-import NewProjectModal from '../components/project/NewProjectModal';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import {
   PageHeader,
@@ -25,7 +24,6 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import {
-  createProject as createProjectApi,
   renameProject,
   revealProjectInFinder,
   fetchMemory, fetchArtifacts,
@@ -1016,7 +1014,7 @@ export default function ProjectsView({
   models = [],
   loading = false,
   onSelectProject,
-  onCreateProject,
+  onOpenNewProject,
   onDeleteProject,
   onSendInProject,
   onSelectTask,
@@ -1063,28 +1061,9 @@ export default function ProjectsView({
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Create flow — the "+ New project" button opens NewProjectModal.
-  // The modal owns create + optional instructions + file uploads;
-  // this view only needs to know "did a project get created?" to refetch.
-  const [creating, setCreating] = useState(false);
+  // Create flow — the "+ New project" button opens the app-level modal.
   const handleNewProject = () => {
-    setCreating(true);
-  };
-
-  // External open trigger — fired by the mobile FAB menu's "New
-  // project" option. The modal lives inside ProjectsView, so the FAB
-  // navigates to this route and dispatches the event once we're
-  // mounted (App.jsx handles the timing).
-  useEffect(() => {
-    const onOpen = () => setCreating(true);
-    window.addEventListener('anton:open-new-project', onOpen);
-    return () => window.removeEventListener('anton:open-new-project', onOpen);
-  }, []);
-  const handleCreateProject = async (name) => {
-    if (onCreateProject) await onCreateProject({ name });
-    else await createProjectApi(name);
-    // App-level listener refetches projects on this event.
-    window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+    onOpenNewProject?.();
   };
 
   const handleOpen = (project) => {
@@ -1340,21 +1319,6 @@ export default function ProjectsView({
         onDelete={(proj) => onDeleteProject?.(proj)}
       />
 
-      {/* "Start a new project" modal — replaces the inline-edit
-          dashed card pattern. Owns name + instructions + file
-          uploads, then notifies the parent so the projects list
-          refetches and the new project appears in the grid. */}
-      <NewProjectModal
-        open={creating}
-        onClose={() => setCreating(false)}
-        onCreated={(result) => {
-          // Reuse the existing parent callback so the App-level
-          // listener refetches projects and updates the active
-          // project pointer. `result.name` is the canonical
-          // sanitised name returned by the server.
-          onCreateProject?.({ name: result?.name, _alreadyCreated: true });
-        }}
-      />
     </div>
   );
 }
