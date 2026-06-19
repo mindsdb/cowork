@@ -507,11 +507,20 @@ export async function fetchProjects() {
   }
 }
 
-export async function createProject(name, path) {
+export async function createProject(name, path, instructions) {
   const body = { name };
   const trimmedPath = typeof path === 'string' ? path.trim() : '';
   if (trimmedPath) body.path = trimmedPath;
+  const trimmedInstr = typeof instructions === 'string' ? instructions.trim() : '';
+  if (trimmedInstr) body.instructions = trimmedInstr;
   return req('/projects', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function updateProject(projectId, patch) {
+  return req(`/projects/${encodeURIComponent(projectId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
 }
 
 // Rename — backed by PATCH /api/v1/projects/{id}. Server moves the

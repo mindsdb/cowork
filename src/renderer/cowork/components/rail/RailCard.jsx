@@ -21,15 +21,30 @@ export function RailCard({
   defaultOpen = false,
   slim = false,
   maxBodyHeight = 320,
-  // When true, the header is a plain (non-clickable) label and the
-  // chevron disclosure widget is dropped. The body is always shown
-  // (defaultOpen is implicitly true). Used by the data-vault Connect
-  // panel where the only dismissal affordance should be the × in the
-  // outer wrapper, not a separate collapse control.
   noChevron = false,
+  headerActions = null,
+  open: openProp,
+  onOpenChange,
   children,
 }) {
-  const [open, setOpen] = useState(!!defaultOpen || noChevron);
+  const [openUncontrolled, setOpenUncontrolled] = useState(!!defaultOpen || noChevron);
+  const open = openProp ?? openUncontrolled;
+  const setOpen = onOpenChange ?? setOpenUncontrolled;
+
+  const toggleOpen = () => setOpen(!open);
+
+  const headerBtnStyle = {
+    cursor: 'pointer',
+    background: 'transparent',
+    border: 0,
+    padding: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--ink-4)',
+    flexShrink: 0,
+  };
+
   return (
     <div style={{
       background: 'var(--surface)',
@@ -55,10 +70,52 @@ export function RailCard({
             {title}
           </span>
         </div>
+      ) : headerActions ? (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '11px 14px', width: '100%',
+        }}>
+          <button
+            type="button"
+            onClick={toggleOpen}
+            style={{
+              cursor: 'pointer',
+              background: 'transparent',
+              border: 0,
+              padding: 0,
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              alignItems: 'center',
+              textAlign: 'left',
+              font: 'inherit',
+              color: 'inherit',
+            }}
+          >
+            <span style={{
+              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
+              color: 'var(--ink)', letterSpacing: '-0.005em',
+              minWidth: 0, flex: 1,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {title}
+            </span>
+          </button>
+          {headerActions}
+          <button
+            type="button"
+            onClick={toggleOpen}
+            aria-label={open ? 'Collapse' : 'Expand'}
+            title={open ? 'Collapse' : 'Expand'}
+            style={headerBtnStyle}
+          >
+            {open ? Ico.chevDown(12) : Ico.chevRight(12)}
+          </button>
+        </div>
       ) : (
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggleOpen}
           style={{
             cursor: 'pointer',
             background: 'transparent',
