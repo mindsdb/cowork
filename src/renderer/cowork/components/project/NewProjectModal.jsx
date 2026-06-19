@@ -210,7 +210,7 @@ function ModalHeader({ title, onBack, onClose, busy, showBack }) {
   );
 }
 
-export default function NewProjectModal({ open, onClose, onCreated }) {
+export default function NewProjectModal({ open, onClose, onCreated, suggestedName = '' }) {
   const [step, setStep] = useState(STEP_CHOOSE);
   const [name, setName] = useState('');
   const [projectPath, setProjectPath] = useState('');
@@ -230,8 +230,14 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (!open) return;
-    setStep(STEP_CHOOSE);
-    setName('');
+    const trimmedSuggest = (suggestedName || '').trim();
+    if (trimmedSuggest) {
+      setStep(STEP_SCRATCH);
+      setName(trimmedSuggest);
+    } else {
+      setStep(STEP_CHOOSE);
+      setName('');
+    }
     setProjectPath('');
     setChosenFolder('');
     setInstructions('');
@@ -239,7 +245,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setBusy(false);
     setError('');
     setDragActive(false);
-  }, [open]);
+  }, [open, suggestedName]);
 
   useEffect(() => {
     if (!open || !showForm) return;

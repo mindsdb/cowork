@@ -92,12 +92,13 @@ export default function Composer({
   // and-resend on prior user messages; bump-based so repeated edits
   // of the same text still re-fill the input.
   prefill = null,
-  // Optional — when supplied, the project menu shows a "+ New project"
-  // row that swaps into an inline input on click. Receives `{ name }`
-  // and is expected to resolve to the created project record; we then
-  // call `onProjectChange` with it so the new project is pre-selected
-  // for the task being composed. When omitted, the row is hidden.
+  // Optional — legacy inline create from the project search box. Prefer
+  // `onOpenNewProject` which opens the full new-project modal.
   onCreateProject = null,
+  // Opens the new-project modal (two-path flow). Receives optional
+  // `{ suggestedName }` from the search field when the user typed a
+  // name that doesn't match an existing project.
+  onOpenNewProject = null,
 }) {
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
@@ -448,19 +449,23 @@ export default function Composer({
     ? projects.find((p) => p.name.toLowerCase() === _projectSearchTrimmed.toLowerCase())
     : null;
   const _canCreateFromSearch = !!onCreateProject && !!_projectSearchTrimmed && !_projectExactMatch;
+  const _canOpenNewProject = !!onOpenNewProject;
+  const _showNewProjectRow = (_canOpenNewProject || !!onCreateProject) && !_projectExactMatch;
 
-  const createProjectFromSearch = async () => {
-    if (!_canCreateFromSearch || projectMenuBusy) return;
-    setProjectMenuBusy(true);
+  const openNewProjectFlow = () => {
+    if (projectMenuBusy) return;
     setProjectMenuError('');
-    try {
-      const created = await onCreateProject({ name: _projectSearchTrimmed });
-      if (created) onProjectChange?.(created);
-      setOpenMenu(null);
-    } catch (e) {
-      setProjectMenuError(e?.message || 'Could not create project.');
-    } finally {
-      setProjectMenuBusy(false);
+    setOpenMenu(null);
+    if (onOpenNewProject) {
+      onOpenNewProject({ suggestedName: _projectSearchTrimmed });
+      return;
+    }
+    if (_canCreateFromSearch) {
+      setProjectMenuBusy(true);
+      onCreateProject({ name: _projectSearchTrimmed })
+        .then((created) => { if (created) onProjectChange?.(created); })
+        .catch((e) => setProjectMenuError(e?.message || 'Could not create project.'))
+        .finally(() => setProjectMenuBusy(false));
     }
   };
 
@@ -475,10 +480,10 @@ export default function Composer({
       setOpenMenu(null);
       return;
     }
-    // Zero results with text → create. Empty search is a no-op
-    // (Enter on an empty filter shouldn't do anything surprising).
-    if (_canCreateFromSearch) {
-      createProjectFromSearch();
+    // Zero results with text → open the new-project modal (or legacy
+    // inline create). Empty search is a no-op.
+    if (_projectSearchTrimmed && (_canOpenNewProject || _canCreateFromSearch)) {
+      openNewProjectFlow();
     }
   };
 
@@ -1061,7 +1066,7 @@ export default function Composer({
                             setProjectSearch(e.target.value);
                             setProjectMenuError('');
                           }}
-                          placeholder={onCreateProject ? 'Search or create…' : 'Search projects…'}
+                          placeholder={_showNewProjectRow ? 'Search or create…' : 'Search projects…'}
                           disabled={projectMenuBusy}
                           spellCheck={false}
                           autoCapitalize="none"
@@ -1130,26 +1135,20 @@ export default function Composer({
                                                 (calls create).
                           - typed, exact     → hidden (no duplicates).
                     */}
-                    {onCreateProject && !_projectExactMatch && (
+                    {_showNewProjectRow && (
                       <>
                         <div style={{ height: 1, background: 'var(--border-0)', margin: '2px 0' }} />
                         <button
                           className="menu-item"
                           disabled={projectMenuBusy}
-                          onClick={() => {
-                            if (_canCreateFromSearch) {
-                              createProjectFromSearch();
-                            } else {
-                              projectSearchRef.current?.focus();
-                            }
-                          }}
+                          onClick={openNewProjectFlow}
                           style={{ color: 'var(--primary-700)' }}
                         >
                           <span style={{ display: 'inline-flex', color: 'var(--primary-700)' }}>{Ico.plus(14)}</span>
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {projectMenuBusy
                               ? 'Creating…'
-                              : (_canCreateFromSearch
+                              : (_projectSearchTrimmed
                                   ? <>Create <strong style={{ fontWeight: 600 }}>“{_projectSearchTrimmed}”</strong></>
                                   : 'New project')}
                           </span>
