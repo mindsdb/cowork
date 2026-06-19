@@ -1565,6 +1565,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const a = menuFor?.artifact;
           if (!a) return [];
           const isHtml = isHtmlArtifact(a);
+          const isBackend = isBackendArtifact(a);
           const published = !!a.publishedUrl;
           const busyA = busyPaths.has(a.path);
           const items = [];
@@ -1589,7 +1590,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             icon: (Ico.eye?.(13) || Ico.sparkle(13)),
             onClick: () => setViewer(a),
           });
-          if (isHtml) {
+          // Fullstack apps can't be opened from their static entry html
+          // (it needs the backend), so only offer "Open in browser" for
+          // them once published — then it opens the live public URL.
+          // Unpublished fullstack gets no open/reveal item.
+          if (isHtml && (!isBackend || published)) {
             items.push({
               id: 'open',
               label: 'Open in browser',
@@ -1603,7 +1608,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
                 }
               },
             });
-          } else if (!host.isWeb) {
+          } else if (!isBackend && !host.isWeb) {
             // Reveal hits the server's /artifacts/reveal endpoint which
             // shells out to the OS opener — meaningful only on the
             // desktop where the renderer and server share a filesystem.
