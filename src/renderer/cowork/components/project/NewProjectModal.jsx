@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { host } from '../../../platform/host';
 import {
   createProject,
   uploadProjectFiles,
@@ -25,6 +26,17 @@ import {
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
+
+function folderPathFromWebkitFiles(files) {
+  if (!files?.length) return null;
+  const first = files[0];
+  const full = host.getPathForFile(first);
+  if (!full) return null;
+  const rel = first.webkitRelativePath || '';
+  if (!rel) return full.replace(/[/\\][^/\\]+$/, '');
+  const root = rel.split(/[/\\]/)[0];
+  return full.slice(0, full.length - rel.length) + root;
+}
 
 function FileList({ files, onRemove }) {
   if (!files.length) return null;
@@ -72,6 +84,7 @@ function FileList({ files, onRemove }) {
 
 export default function NewProjectModal({ open, onClose, onCreated }) {
   const [name, setName] = useState('');
+  const [projectPath, setProjectPath] = useState('');
   const [instructions, setInstructions] = useState('');
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -79,12 +92,14 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   const [dragActive, setDragActive] = useState(false);
   const nameRef = useRef(null);
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
 
   // Reset everything when the modal opens — `open` flipping false→true
   // should always present a clean form.
   useEffect(() => {
     if (!open) return;
     setName('');
+    setProjectPath('');
     setInstructions('');
     setFiles([]);
     setBusy(false);
@@ -126,6 +141,35 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     addFiles(e.dataTransfer?.files);
   };
 
+  const browseForPath = async () => {
+    if (busy) return;
+    setError('');
+    if (host.hasPickDirectory()) {
+      try {
+        const result = await host.pickDirectory();
+        if (result?.ok && result.path) {
+          setProjectPath(result.path);
+          return;
+        }
+        if (result?.reason !== 'unsupported') {
+          // User cancelled, or the dialog failed with a message.
+          if (result?.reason) setError(result.reason);
+          return;
+        }
+      } catch {
+        // Stale Electron session without the IPC handler — fall through.
+      }
+    }
+    folderInputRef.current?.click();
+  };
+
+  const onFolderPicked = (e) => {
+    const picked = folderPathFromWebkitFiles(e.target.files);
+    e.target.value = '';
+    if (picked) setProjectPath(picked);
+    else setError('Could not read the folder path. If the folder is empty, type the path manually.');
+  };
+
   const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
@@ -133,12 +177,13 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
       nameRef.current?.focus();
       return;
     }
+    const trimmedPath = projectPath.trim();
     setBusy(true);
     setError('');
     try {
       // 1) Create the folder. Server sanitises + dedupes — `result.name`
       //    is the canonical name the rest of the steps must use.
-      const result = await createProject(trimmed);
+      const result = await createProject(trimmed, trimmedPath || undefined);
       const finalName = result?.name || trimmed;
 
       // 2) Write instructions if the user typed any. Use the final
@@ -260,6 +305,67 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 outline: 'none',
               }}
             />
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{
+              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
+              textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
+            }}>Location <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+              <input
+                type="text"
+                value={projectPath}
+                onChange={(e) => setProjectPath(e.target.value)}
+                placeholder="Default: ~/.cowork/projects/<name>"
+                spellCheck={false}
+                autoCapitalize="none"
+                autoCorrect="off"
+                disabled={busy}
+                style={{
+                  flex: 1, minWidth: 0,
+                  padding: '9px 11px', borderRadius: 7,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  color: 'var(--ink)',
+                  fontFamily: FONT_MONO, fontSize: 12,
+                  outline: 'none',
+                }}
+              />
+              {host.isElectron && (
+                <button
+                  type="button"
+                  onClick={browseForPath}
+                  disabled={busy}
+                  title="Choose folder"
+                  style={{
+                    flexShrink: 0,
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    padding: '0 12px', borderRadius: 7,
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
+                    color: 'var(--ink-2)',
+                    fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+                    opacity: busy ? 0.5 : 1,
+                  }}
+                >
+                  Browse…
+                </button>
+              )}
+            </div>
+            <input
+              ref={folderInputRef}
+              type="file"
+              webkitdirectory=""
+              directory=""
+              style={{ display: 'none' }}
+              onChange={onFolderPicked}
+            />
+            <span style={{
+              fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+            }}>
+              Leave blank to create under the default projects folder.
+            </span>
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

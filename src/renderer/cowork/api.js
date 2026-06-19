@@ -538,8 +538,11 @@ export async function fetchProjects() {
   }
 }
 
-export async function createProject(name) {
-  return req('/projects/', { method: 'POST', body: JSON.stringify({ name }) });
+export async function createProject(name, path) {
+  const body = { name };
+  const trimmedPath = typeof path === 'string' ? path.trim() : '';
+  if (trimmedPath) body.path = trimmedPath;
+  return req('/projects/', { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Rename — backed by PATCH /api/v1/projects/{id}. Server moves the

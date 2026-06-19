@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
+  pickDirectory: () => ipcRenderer.invoke(IPC.PICK_DIRECTORY),
   onInstallLog: (cb: (msg: string) => void) => {
     const listener = (_: any, msg: string) => cb(msg);
     ipcRenderer.on(IPC.INSTALL_LOG, listener);
