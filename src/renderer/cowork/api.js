@@ -1210,7 +1210,7 @@ export async function saveConnector(connectorId, payload) {
 //   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
 // The SPA never handles the code or tokens directly.
 
-export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
+export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret, extraFields } = {}) {
   return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
     method: 'POST',
     body: JSON.stringify({
@@ -1218,6 +1218,7 @@ export async function startConnectorOAuth(connectorId, { method, name, clientId,
       name: name || '',
       client_id: clientId || '',
       client_secret: clientSecret || '',
+      extra_fields: extraFields || {},
     }),
   });
 }

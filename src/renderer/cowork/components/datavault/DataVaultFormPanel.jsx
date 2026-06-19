@@ -193,7 +193,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       setBusy(true);
       setError('');
       try {
-        const result = await startConnectorOAuth(serviceId);
+        const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
         if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
         window.open(result.authUrl, '_blank');
         patchForm(conversationId, {
