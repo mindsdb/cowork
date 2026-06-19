@@ -28,6 +28,7 @@ import { ArtifactViewer } from '../artifact';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
 import { publishBlockedReason } from '../../lib/artifactKinds';
+import { trackArtifactPublished } from '../../lib/analytics';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -278,6 +279,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       } else {
         const r = await publishArtifact(publishTargetPath(a));
         const url = r?.url || r?.publishedUrl || '';
+        if (url) trackArtifactPublished(r?.report_id || a.id || '', 'public');
         setRows((prev) => prev.map((row) => row.path === a.path ? { ...row, publishedUrl: url } : row));
       }
     } catch (e) {

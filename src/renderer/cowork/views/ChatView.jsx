@@ -28,6 +28,7 @@ import { revealArtifact } from '../api';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
@@ -854,7 +855,7 @@ export default function ChatView({
   // Inline title rename — same affordance the project detail header
   // uses. Hover surfaces the kebab; Rename in the menu flips the
   // title span into an <input>; Enter commits, Esc cancels.
-  const [titleHover, setTitleHover] = useState(false);
+  const { revealed: titleControlsShown, hoverProps: titleHoverProps } = useRevealOnHover(settingsOpen);
   const [titleEditing, setTitleEditing] = useState(false);
   const titleInputRef = useRef(null);
 
@@ -1115,8 +1116,7 @@ export default function ChatView({
             })()}
             <CrumbSep />
             <div
-              onMouseEnter={() => setTitleHover(true)}
-              onMouseLeave={() => setTitleHover(false)}
+              {...titleHoverProps}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 minWidth: 0, flex: '1 1 0',
@@ -1210,8 +1210,8 @@ export default function ChatView({
                     color: 'var(--ink-3)',
                     display: 'inline-grid', placeItems: 'center',
                     flexShrink: 0,
-                    opacity: (titleHover || settingsOpen) ? 1 : 0,
-                    pointerEvents: (titleHover || settingsOpen) ? 'auto' : 'none',
+                    opacity: titleControlsShown ? 1 : 0,
+                    pointerEvents: titleControlsShown ? 'auto' : 'none',
                     cursor: 'pointer',
                     transition: 'opacity .15s ease, color .15s ease, background .15s ease',
                     WebkitAppRegion: 'no-drag',

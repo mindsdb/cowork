@@ -67,6 +67,10 @@ npm run dev:web
 
 In dev mode the server runs from source (`uv run cowork-server`), so local Python edits are picked up immediately.
 
+#### Environment variables
+
+Copy `.env.example` to `.env` and fill in any optional tokens (e.g. `VITE_POSTHOG_ANTON_PROJECT_TOKEN` for analytics). Vite auto-loads `.env` at build/dev time. The `.env` file is gitignored.
+
 ### Dev Mode With Inspector
 
 ```bash

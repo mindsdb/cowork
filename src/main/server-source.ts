@@ -18,6 +18,7 @@
 // dependency, so ANTON_REF is ignored there.
 
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
+export const COWORK_SERVER_BRANCH = 'staging'; // Update to 'main' before merging/releasing
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
 export const ANTON_PACKAGE = 'anton-agent';
 
@@ -32,7 +33,8 @@ export function getChannel(): Channel {
 }
 
 export function getCoworkRef(): string {
-  return (process.env.COWORK_SERVER_REF || 'main').trim() || 'main';
+  return COWORK_SERVER_BRANCH;
+  // return (process.env.COWORK_SERVER_REF || 'main').trim() || 'main';
 }
 
 export function getAntonRef(): string {
@@ -63,12 +65,25 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   // git channel (default)
   const coworkRef = opts?.coworkRef || getCoworkRef();
   const antonRef = opts?.antonRef || getAntonRef();
+
+  // By default, let cowork-server's own `[tool.uv.sources]` pin decide which
+  // anton-agent to pull (currently branch `main`). That is the version
+  // cowork-server actually requires, which is what we want installed.
+  //
+  // Do NOT pass `--with anton-agent @ git+...` on the default path: it is not
+  // an override. uv treats it as a *second* URL requirement for the same
+  // package and aborts with "Requirements contain conflicting URLs for package
+  // `anton-agent`" — even when the two URLs are textually identical — which
+  // broke every fresh git install. Only inject `--with` when a developer asks
+  // for a non-default ANTON_REF while iterating.
+  const withArgs =
+    antonRef === 'main'
+      ? []
+      : ['--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`];
+
   return {
     package: `git+${COWORK_SERVER_REPO}@${coworkRef}`,
-    // Force anton to the requested ref, overriding cowork-server's own
-    // tool.uv.sources pin. Verified `--with` takes precedence over the
-    // source declared in the installed project's pyproject.
-    withArgs: ['--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`],
+    withArgs,
     channel: 'git',
   };
 }

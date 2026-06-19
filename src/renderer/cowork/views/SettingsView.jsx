@@ -5,7 +5,7 @@ import { providerTypeToKeyField, providerValueToType } from '../lib/settingsTran
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL } from '../../lib/mindsUrls';
+import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron } from '../../platform/host';
 
 // Provider preset → underlying canonical fields. The Settings UI uses
@@ -1310,7 +1310,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                         <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
                           Don't have an account?{' '}
                           <a
-                            href="https://mindshub.ai"
+                            href={MINDS_REGISTER_URL}
                             target="_blank"
                             rel="noreferrer noopener"
                             title="Open mindshub.ai sign-up in your browser."
@@ -1450,6 +1450,21 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
 
+                  // Reasoning effort — a per-role setting shown beside the model
+                  // dropdown, only for models that advertise effort levels
+                  // (settings.modelEfforts, sourced from MindsHub /v1/models + the
+                  // static direct-provider catalog). Suppressed for the Hermes
+                  // harness, which has no effort knob.
+                  const effortKey = role === 'planning' ? 'planningReasoningEffort' : 'codingReasoningEffort';
+                  const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
+                  const effortEntry = (settings.modelEfforts || {})[curModel];
+                  const effortOptions = effortEntry?.efforts || [];
+                  const savedEffort = settings[effortKey];
+                  const effortValue = effortOptions.includes(savedEffort)
+                    ? savedEffort
+                    : (effortEntry?.default || effortOptions[0] || '');
+                  const showEffort = harnessSupportsEffort && effortOptions.length > 0;
+
                   const writeOverride = (next) => {
                     const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
                     const model = next.model || '';
@@ -1458,6 +1473,9 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     setRoleDriver(role, providerType, model);
                     setSetting('modelOverrides', { ...overrides, [role]: normalized });
                     setSetting('modelMode', 'custom');
+                    // Effort is model-specific — drop any stale level so we never
+                    // send an effort the newly-selected model doesn't accept.
+                    setSetting(effortKey, '');
                   };
 
                   return (
@@ -1536,6 +1554,20 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                             placeholder="model-id"
                             title="Model id sent verbatim to this provider."
                           />
+                        )}
+                        {showEffort && (
+                          <label style={{ display: 'grid', gap: 4 }}>
+                            <span style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>Reasoning effort</span>
+                            <select
+                              className="settings-select"
+                              value={effortValue}
+                              onChange={(e) => { setLlmDirty(true); setSetting(effortKey, e.target.value); }}
+                              title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
+                              style={{ width: '100%', textTransform: 'capitalize' }}
+                            >
+                              {effortOptions.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                            </select>
+                          </label>
                         )}
                         {!provider && curType && (
                           <div style={{ fontSize: 11.5, color: '#E07060' }}>This provider is not configured. Add it under Providers above.</div>
@@ -1905,6 +1937,14 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   onChange={(v) => setSetting('proactiveDashboards', v)}
                   title="Auto-generate HTML reports from scratchpad output."
                   ariaLabel="Proactive dashboards"
+                />
+              </Section>
+              <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
+                <Toggle
+                  value={settings.actFirst ?? true}
+                  onChange={(v) => setSetting('actFirst', v)}
+                  title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
+                  ariaLabel="Act first, ask later"
                 />
               </Section>
             </CollapsibleGroup>

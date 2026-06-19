@@ -204,9 +204,15 @@ function fetchLatestVersion(): Promise<string | null> {
 
 function getInstalledVersion(uv: string): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(uv, ['tool', 'list'], { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000 }, (err, stdout) => {
+    // Force plain output: a forced-color environment makes `uv tool list`
+    // emit ANSI codes that break the start-anchored regex below. NO_COLOR
+    // overrides FORCE_COLOR. (Mirror of installer.ts getInstalledVersion.)
+    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
+    execFile(uv, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      for (const line of stdout.split('\n')) {
+      // eslint-disable-next-line no-control-regex
+      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      for (const line of clean.split('\n')) {
         const match = line.match(/^cowork-server\s+v?([\d.]+)/);
         if (match) { resolve(match[1]); return; }
       }
