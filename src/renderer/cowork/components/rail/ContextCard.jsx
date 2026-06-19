@@ -1,8 +1,6 @@
-// Context card body — surfaces memories (Project + Global) AND
-// project instructions (`.anton/anton.md`) plus any legacy `.context/`
-// files. Listed via GET /projects/{name}/files; Working folder hides
-// `.anton/` and `.context/` trees except this rail shows instructions
-// (and legacy context paths).
+// Context card body — surfaces memories (Project + Global) and
+// user-uploaded project files. Listed via GET /projects/{name}/files;
+// hidden directories (`.anton/`, `.git/`, etc.) are excluded.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
@@ -21,7 +19,6 @@ import {
   saveMemory,
   uploadAttachments,
   uploadProjectFiles,
-  ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -70,9 +67,7 @@ function MemoryRow({ entry, onOpen }) {
   );
 }
 
-// Row for a project context file (anton.md or any uploaded file).
-// Same visual rhythm as MemoryRow but distinguishes the always-
-// present anton.md with a subtle "Project instructions" label.
+// Row for a project context file. Same visual rhythm as MemoryRow.
 function attachmentSourceIcon(item) {
   const source = item.source || item.kind || 'file';
   if (source === 'connector') return Ico.link(13);
@@ -146,12 +141,7 @@ function SessionAttachmentRow({
 }
 
 function ContextFileRow({ file, onOpen, onRequestDelete }) {
-  const isAnton = file.path === ANTON_PROJECT_INSTRUCTIONS_PATH;
-  // The instructions file is foundational (Anton reads it on every
-  // turn). Surfacing a delete on hover would tempt a misclick; the
-  // ContextFileModal opened by clicking the row also hides the
-  // delete affordance for `.anton/anton.md` — same rule both places.
-  const canDelete = !isAnton && !!onRequestDelete;
+  const canDelete = !!onRequestDelete;
   // The row was a <button>, but nesting a <button> inside a
   // <button> is invalid HTML and breaks the trash icon's click in
   // some browsers. Switch the outer to a div with role="button" so
@@ -172,7 +162,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
     >
       <span className="text-ink-4 inline-flex flex-none">{Ico.doc(13)}</span>
       <span className="block truncate text-[12.5px] text-ink min-w-0">
-        {isAnton ? 'Instructions' : (file.path || file.name)}
+        {file.path || file.name}
       </span>
       {/* Trailing slot: age normally, trash on hover. Both share
           the same column with relative/absolute stacking so the
@@ -300,21 +290,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     return () => { cancelled = true; };
   }, [project?.id, project?.path, refreshKey, applyMemorySections]);
 
-  // Ticket pattern: every instructions fetch (mount + reload-on-
-  // edit) bumps `loadVersion`. The async response only applies its
-  // result if its ticket is still the latest. Without this, saving a
-  // context edit and immediately switching projects could let the
-  // late response paint into the new project — the same shape of
-  // bug WorkingFolderLive had.
   const loadVersion = useRef(0);
 
-  // List every file in the working folder (the project root). Anton
-  // creates files in here as the project evolves (the instructions
-  // file, scratchpad outputs, generated artifacts, etc.). The card
-  // surfaces all of them so the user has a single view of the
-  // project's real state. Hidden dirs (`.anton/` body, `.git/`, etc.)
-  // are filtered out, with the canonical `.anton/anton.md`
-  // instructions row pinned to the top so it's always reachable.
+  // List user-visible files in the working folder. Hidden directories
+  // (`.anton/`, `.git/`, etc.) are excluded — project instructions
+  // live on the Project record and are edited from the project page.
   const reloadFiles = useCallback(() => {
     if (!project?.name) { setProjectFiles([]); return; }
     const ticket = ++loadVersion.current;
@@ -322,26 +302,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       .then((data) => {
         if (ticket !== loadVersion.current) return;
         const all = Array.isArray(data?.files) ? data.files : [];
-        // Filter: keep the canonical instructions file from `.anton/`
-        // but otherwise hide hidden trees (anything starting with `.`
-        // at any path segment) so the rail isn't drowned in
-        // metadata. Same heuristic as WorkingFolderLive's filter
-        // before we switched it to the artifacts-only registry.
         const visible = all.filter((f) => {
           if (!f || f.is_dir) return false;
           const p = String(f.path || '');
-          if (p === ANTON_PROJECT_INSTRUCTIONS_PATH) return true;
-          // Hide hidden segments.
           if (p.split('/').some((seg) => seg.startsWith('.'))) return false;
           return true;
         });
-        // Instructions first, then everything else by mtime desc.
-        visible.sort((a, b) => {
-          const ai = a.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
-          const bi = b.path === ANTON_PROJECT_INSTRUCTIONS_PATH ? 0 : 1;
-          if (ai !== bi) return ai - bi;
-          return (b.modified || 0) - (a.modified || 0);
-        });
+        visible.sort((a, b) => (b.modified || 0) - (a.modified || 0));
         setProjectFiles(visible);
       })
       .catch(() => { if (ticket === loadVersion.current) setProjectFiles([]); });
@@ -468,12 +435,10 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   return (
     <div className="relative flex flex-col gap-3 pt-2" {...projectFileDropHandlers}>
       <FileDropOverlay active={projectFilesDragging} label="Drop files to add to project" />
-      {/* All working-folder files. Instructions row is pinned first;
-          the rest follow by most-recent-mtime. >10 files gets a
-          fixed-height scroll container so the rail stays compact.
-          Always render the section (even when empty) when the
-          project is loaded, so the "+ Add file" affordance is
-          reachable on fresh projects too. */}
+      {/* User-visible working-folder files. >10 files gets a fixed-height
+          scroll container so the rail stays compact. Always render the
+          section (even when empty) when the project is loaded, so the
+          "+ Add file" affordance is reachable on fresh projects too. */}
       {project?.name && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
@@ -792,7 +757,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         projectName={project?.name}
         projectPath={project?.path}
         filePath={openFile?.path}
-        isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
         onClose={() => setOpenFile(null)}
         onChanged={() => reloadFiles()}
       />

@@ -4,10 +4,9 @@
 // the full create flow:
 //   1. Validate the name (server sanitises + dedupes; we just guard
 //      empty / whitespace).
-//   2. POST /v1/projects to create the folder.
-//   3. If the user supplied instructions text, PUT it at
-//      ANTON_PROJECT_INSTRUCTIONS_PATH (`.anton/anton.md`).
-//   4. If files are queued, upload them in one multipart request.
+//   2. POST /v1/projects to create the folder (instructions included
+//      in the same request when provided).
+//   3. If files are queued, upload them in one multipart request.
 //
 // Failure handling: each step that touches the server is independent
 // — we show a status line if a step fails but don't roll back the
@@ -19,8 +18,6 @@ import { host } from '../../../platform/host';
 import {
   createProject,
   uploadProjectFiles,
-  writeProjectFile,
-  ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
@@ -183,22 +180,10 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     try {
       // 1) Create the folder. Server sanitises + dedupes — `result.name`
       //    is the canonical name the rest of the steps must use.
-      const result = await createProject(trimmed, trimmedPath || undefined);
+      const result = await createProject(trimmed, trimmedPath || undefined, instructions);
       const finalName = result?.name || trimmed;
 
-      // 2) Write instructions if the user typed any. Use the final
-      //    (post-sanitisation) project name.
-      const trimmedInstr = (instructions || '').trim();
-      if (trimmedInstr) {
-        try {
-          await writeProjectFile(finalName, ANTON_PROJECT_INSTRUCTIONS_PATH, trimmedInstr);
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn('[new-project] writing anton.md failed', e);
-        }
-      }
-
-      // 3) Upload files in one multipart request. All-or-nothing per
+      // 2) Upload files in one multipart request. All-or-nothing per
       //    file — server returns a per-file result list we ignore for
       //    now (could surface partial failures in a toast later).
       if (files.length) {
@@ -394,11 +379,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
             <span style={{
               fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
             }}>
-              Saved as <code style={{
-                fontFamily: FONT_MONO,
-                background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 3,
-                color: 'var(--ink-3)',
-              }}>.anton/anton.md</code>
+              Saved with the project and shown on the project page.
             </span>
           </label>
 

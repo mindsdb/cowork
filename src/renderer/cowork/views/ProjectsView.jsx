@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
+import { WorkingFolderBox, ContextBox, ScheduledBox, InstructionsBox } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard } from '../components/project/ProjectCard';
 import NewProjectModal from '../components/project/NewProjectModal';
@@ -674,6 +674,7 @@ function ProjectDetail({
   onRenameCancel,
   onReveal,
   onDelete,
+  onProjectUpdated,
   // Clicking a row inside the rail's Scheduled Tasks card routes to
   // the schedule detail page. Wired by App.jsx — same handler the
   // ScheduledView grid uses.
@@ -944,6 +945,7 @@ function ProjectDetail({
             {Ico.panelCollapseRight(15)}
           </button>
         </div>
+        <InstructionsBox project={project} onUpdated={onProjectUpdated} />
         <WorkingFolderBox project={project} />
         <ContextBox project={project} />
         <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
@@ -1014,10 +1016,9 @@ export default function ProjectsView({
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Create flow — the "+ New project" button (header, empty-state,
-  // trailing dashed card) opens the NewProjectModal. The modal owns
-  // the full create + anton.md + file-upload pipeline; this view
-  // only needs to know "did a project get created?" to refetch.
+  // Create flow — the "+ New project" button opens NewProjectModal.
+  // The modal owns create + optional instructions + file uploads;
+  // this view only needs to know "did a project get created?" to refetch.
   const [creating, setCreating] = useState(false);
   const handleNewProject = () => {
     setCreating(true);
@@ -1132,6 +1133,9 @@ export default function ProjectsView({
         onRenameSubmit={(rawNext) => handleRenameSubmit(detailProject.name, rawNext)}
         onRenameCancel={handleRenameCancel}
         onReveal={handleReveal}
+        onProjectUpdated={(updated) => {
+          if (updated) setDetailProject((prev) => ({ ...prev, ...updated }));
+        }}
         onDelete={(proj) => {
           // Bounce back to the grid first so we don't render a detail
           // page for a project that's about to disappear, then defer
