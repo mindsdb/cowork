@@ -346,11 +346,6 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               style={{ display: 'none' }}
               onChange={onFolderPicked}
             />
-            <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-            }}>
-              Leave blank to create under the default projects folder.
-            </span>
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -376,11 +371,6 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 minHeight: 80, maxHeight: 220,
               }}
             />
-            <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-            }}>
-              Saved with the project and shown on the project page.
-            </span>
           </label>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
