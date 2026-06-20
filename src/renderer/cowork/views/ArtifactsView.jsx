@@ -15,14 +15,15 @@ import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import {
   revealArtifact, publishArtifact, unpublishArtifact,
-  deleteArtifact,
+  deleteArtifact, fetchDeletedArtifacts, restoreDeletedArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { isHtmlArtifact, isPublishableArtifact } from '../lib/artifactKinds';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
-import { ArtifactViewer } from '../components/artifact';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { ArtifactWorkspace } from '../components/artifact';
 import {
   PageHeader,
   FilterRow,
@@ -45,14 +46,26 @@ const EMPTY_ARTIFACTS = [];
 // state isn't relevant to other collections).
 const SORT_OPTIONS = [
   { id: 'published',   label: 'Published first' },
+  { id: 'forYou',      label: 'For you first' },
+  { id: 'new',         label: 'New review activity' },
+  { id: 'needsReview', label: 'Needs review first' },
+  { id: 'openNotes',   label: 'Open notes first' },
   { id: 'recent',      label: 'Recent' },
   { id: 'oldest',      label: 'Oldest' },
   { id: 'title',       label: 'Title (A–Z)' },
   { id: 'type',        label: 'Type' },
 ];
 
-function ArtifactsCounts({ search, total, filtered, publishedCount }) {
-  const filterActive = (search || '').trim().length > 0;
+const REVIEW_FILTER_OPTIONS = [
+  { id: 'all', label: 'All', title: 'Show all artifacts' },
+  { id: 'forYou', label: 'For you', title: 'Show artifacts waiting for your review' },
+  { id: 'new', label: 'New', title: 'Show artifacts with new review activity' },
+  { id: 'needsReview', label: 'Needs review', title: 'Show artifacts waiting for review' },
+  { id: 'openNotes', label: 'Open notes', title: 'Show artifacts with open notes' },
+];
+
+function ArtifactsCounts({ search, reviewFilter = 'all', total, filtered, publishedCount, needsReviewCount }) {
+  const filterActive = (search || '').trim().length > 0 || reviewFilter !== 'all';
   const countText = filterActive
     ? `Showing ${filtered} of ${total}`
     : `${total} ${total === 1 ? 'artifact' : 'artifacts'}`;
@@ -63,6 +76,14 @@ function ArtifactsCounts({ search, total, filtered, publishedCount }) {
         <>
           {' · '}
           <span style={{ color: 'var(--accent)' }}>{publishedCount} published</span>
+        </>
+      )}
+      {needsReviewCount > 0 && (
+        <>
+          {' · '}
+          <span style={{ color: 'var(--warning, var(--accent))' }}>
+            {needsReviewCount} {needsReviewCount === 1 ? 'needs' : 'need'} review
+          </span>
         </>
       )}
     </>
@@ -85,6 +106,11 @@ function projectNameOf(artifact, projects = []) {
   if (m) return m[1];
   const parts = p.split('/').filter(Boolean);
   return parts[parts.length - 2] || '—';
+}
+
+function displayName(path) {
+  if (!path) return 'Artifact';
+  return String(path).split(/[\\/]/).filter(Boolean).pop() || path;
 }
 
 // Resolve to the actual project object so the label can navigate
@@ -127,6 +153,18 @@ function timestampOf(a) {
   return Number.isFinite(t) ? t : 0;
 }
 
+function shortDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 // Kind pill — short uppercase tag for the file type. Pulls from
 // `artifact.kind` or falls back to the file extension.
 function kindOf(a) {
@@ -155,6 +193,475 @@ function iconForArtifact(a) {
   if (['csv', 'json', 'jsonl', 'tsv', 'parquet', 'sqlite', 'db'].includes(ext)) return Ico.database;
   if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'bmp', 'ico'].includes(ext)) return Ico.image;
   return Ico.doc;
+}
+
+function reviewCount(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+function reviewSummaryOf(a) {
+  const raw = a?.reviewSummary || a?.review_summary;
+  if (!raw || typeof raw !== 'object') {
+    return {
+      open: 0,
+      comments: 0,
+      suggestions: 0,
+      reviewRequests: 0,
+      unresolved: 0,
+      needsReview: false,
+      openNotes: 0,
+      hasReview: false,
+      viewerState: { available: false },
+      unreadTotal: 0,
+      needsAction: 0,
+    };
+  }
+  const open = reviewCount(raw.open);
+  const comments = reviewCount(raw.comments);
+  const suggestions = reviewCount(raw.suggestions);
+  const reviewRequests = reviewCount(raw.reviewRequests ?? raw.review_requests);
+  const unresolved = reviewCount(raw.unresolved);
+  const viewerState = raw.viewerState || raw.viewer_state || {};
+  const unreadComments = reviewCount(viewerState.unreadComments ?? viewerState.unread_comments);
+  const unreadActivity = reviewCount(viewerState.unreadActivity ?? viewerState.unread_activity);
+  const needsAction = reviewCount(viewerState.needsAction ?? viewerState.needs_action);
+  const viewerReviewRequests = viewerState.reviewRequests || viewerState.review_requests || {};
+  const unreadReviewRequests = reviewCount(viewerReviewRequests.unread);
+  const viewerOpenRequests = reviewCount(viewerReviewRequests.open);
+  const needsReview = !!raw.needsReview || !!raw.needs_review || reviewRequests > 0;
+  const openNotes = Math.max(open, unresolved);
+  const unreadTotal = unreadComments + unreadActivity;
+  return {
+    open,
+    comments,
+    suggestions,
+    reviewRequests,
+    unresolved,
+    needsReview,
+    openNotes,
+    viewerState: {
+      ...viewerState,
+      unreadComments,
+      unreadActivity,
+      unreadReviewRequests,
+      openReviewRequests: viewerOpenRequests,
+      needsAction,
+    },
+    unreadTotal,
+    needsAction,
+    hasReview: needsReview || openNotes > 0 || comments > 0 || suggestions > 0 || reviewRequests > 0 || unreadTotal > 0 || needsAction > 0,
+  };
+}
+
+function reviewSortScore(a, mode = 'needsReview') {
+  const s = reviewSummaryOf(a);
+  if (mode === 'forYou') {
+    return (s.needsAction * 100000) + (s.unreadTotal * 1000) + (s.reviewRequests * 100) + (s.openNotes * 10) + s.suggestions;
+  }
+  if (mode === 'new') {
+    return (s.unreadTotal * 100000) + (s.needsAction * 1000) + (s.reviewRequests * 100) + (s.openNotes * 10) + s.suggestions;
+  }
+  if (mode === 'openNotes') {
+    return (s.openNotes * 1000) + (s.needsAction * 100) + (s.needsReview ? 50 : 0) + (s.suggestions * 10) + s.comments;
+  }
+  return (s.needsAction * 1000000) + (s.unreadTotal * 10000) + (s.needsReview ? 100000 : 0) + (s.reviewRequests * 1000) + (s.openNotes * 100) + (s.suggestions * 10) + s.comments;
+}
+
+function plural(count, singular, pluralLabel = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : pluralLabel}`;
+}
+
+function ReviewBadges({ artifact, compact = false }) {
+  const s = reviewSummaryOf(artifact);
+  if (!s.hasReview) return null;
+  const chips = [];
+  if (s.needsAction > 0) {
+    chips.push({
+      id: 'forYou',
+      label: compact ? 'For you' : `${s.needsAction} for you`,
+      title: `${s.needsAction} ${s.needsAction === 1 ? 'review request needs' : 'review requests need'} your attention`,
+      tone: 'personal',
+    });
+  }
+  if (s.unreadTotal > 0) {
+    chips.push({
+      id: 'new',
+      label: compact ? 'New' : `${s.unreadTotal} new`,
+      title: `${s.unreadTotal} new review ${s.unreadTotal === 1 ? 'update' : 'updates'}`,
+      tone: 'unread',
+    });
+  }
+  if (s.needsReview) {
+    const detail = s.reviewRequests > 0 ? plural(s.reviewRequests, 'review request') : 'Waiting for review';
+    chips.push({ id: 'needsReview', label: 'Needs review', title: detail, tone: 'attention' });
+  }
+  if (s.openNotes > 0) {
+    chips.push({
+      id: 'openNotes',
+      label: compact ? plural(s.openNotes, 'open note') : `${s.openNotes} open ${s.openNotes === 1 ? 'note' : 'notes'}`,
+      title: `${s.openNotes} unresolved ${s.openNotes === 1 ? 'note' : 'notes'}`,
+      tone: 'note',
+    });
+  } else if (s.comments > 0) {
+    chips.push({
+      id: 'notes',
+      label: compact ? plural(s.comments, 'note') : `${s.comments} ${s.comments === 1 ? 'note' : 'notes'}`,
+      title: `${s.comments} ${s.comments === 1 ? 'note' : 'notes'}`,
+      tone: 'muted',
+    });
+  }
+  if (s.suggestions > 0) {
+    chips.push({
+      id: 'suggestions',
+      label: compact ? plural(s.suggestions, 'suggestion') : `${s.suggestions} ${s.suggestions === 1 ? 'suggestion' : 'suggestions'}`,
+      title: `${s.suggestions} ${s.suggestions === 1 ? 'suggestion' : 'suggestions'}`,
+      tone: 'suggestion',
+    });
+  }
+  if (chips.length === 0) return null;
+
+  const toneStyle = (tone) => {
+    if (tone === 'personal') return {
+      background: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--danger) 32%, transparent)',
+      color: 'var(--danger)',
+    };
+    if (tone === 'unread') return {
+      background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--accent) 34%, transparent)',
+      color: 'var(--accent)',
+    };
+    if (tone === 'attention') return {
+      background: 'color-mix(in srgb, var(--warning, var(--accent)) 14%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--warning, var(--accent)) 36%, transparent)',
+      color: 'var(--warning, var(--accent))',
+    };
+    if (tone === 'suggestion') return {
+      background: 'color-mix(in srgb, var(--success) 10%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--success) 30%, transparent)',
+      color: 'var(--success)',
+    };
+    if (tone === 'note') return {
+      background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--accent) 28%, transparent)',
+      color: 'var(--ink-2)',
+    };
+    return {
+      background: 'var(--surface-2)',
+      borderColor: 'var(--line)',
+      color: 'var(--ink-3)',
+    };
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      flexWrap: compact ? 'nowrap' : 'wrap',
+      minWidth: 0,
+      overflow: compact ? 'hidden' : 'visible',
+    }}>
+      {chips.slice(0, compact ? 2 : 3).map((chip) => (
+        <span
+          key={chip.id}
+          title={chip.title}
+          style={{
+            ...toneStyle(chip.tone),
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            maxWidth: '100%',
+            minWidth: 0,
+            padding: compact ? '2px 6px' : '3px 7px',
+            borderRadius: 999,
+            border: '1px solid',
+            fontFamily: FONT_BODY,
+            fontSize: compact ? 10.5 : 11,
+            fontWeight: chip.tone === 'attention' ? 700 : 600,
+            lineHeight: 1.2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {(chip.tone === 'attention' || chip.tone === 'personal' || chip.tone === 'unread') && (
+            <span style={{
+              width: 5, height: 5, borderRadius: 99,
+              background: 'currentColor', flexShrink: 0,
+            }} />
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{chip.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ReviewFilter({ value, onChange }) {
+  return (
+    <div
+      aria-label="Review filter"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 0,
+        padding: 2, borderRadius: 7,
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+      }}
+    >
+      {REVIEW_FILTER_OPTIONS.map((opt) => {
+        const active = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            title={opt.title}
+            onClick={() => onChange?.(opt.id)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 9px', borderRadius: 5,
+              background: active ? 'var(--surface-3)' : 'transparent',
+              color: active ? 'var(--ink)' : 'var(--ink-3)',
+              border: 0,
+              boxShadow: active ? 'inset 0 0 0 1px var(--line-2)' : 'none',
+              fontFamily: FONT_BODY, fontSize: 12,
+              cursor: 'pointer',
+              transition: 'background .15s ease, color .15s ease',
+            }}
+          >
+            {opt.id === 'needsReview' ? Ico.eye(12) : opt.id === 'openNotes' ? Ico.chats(12) : null}
+            <span>{opt.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReviewQueueBand({ items, totals, onOpen, onFilter }) {
+  if (!items?.length) return null;
+  const visibleItems = items.slice(0, 4);
+  const hiddenCount = Math.max(0, items.length - visibleItems.length);
+  const totalNeedsAction = totals?.needsAction || 0;
+  const totalNew = totals?.unreadTotal || 0;
+  const totalOpen = totals?.openNotes || 0;
+  const totalSuggestions = totals?.suggestions || 0;
+  const totalRequests = totals?.reviewRequests || 0;
+  const countParts = [
+    totalNeedsAction > 0 ? `${totalNeedsAction} for you` : '',
+    totalNew > 0 ? plural(totalNew, 'new update') : '',
+    totalRequests > 0 ? plural(totalRequests, 'review request') : '',
+    totalOpen > 0 ? plural(totalOpen, 'open note') : '',
+    totalSuggestions > 0 ? plural(totalSuggestions, 'suggested change') : '',
+  ].filter(Boolean);
+
+  return (
+    <section style={{
+      marginTop: 14,
+      borderTop: '1px solid var(--line)',
+      borderBottom: '1px solid var(--line)',
+      background: 'color-mix(in srgb, var(--accent) 5%, var(--surface))',
+      padding: '14px 32px',
+    }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(220px, 0.85fr) minmax(0, 1.6fr)',
+        gap: 14,
+        alignItems: 'stretch',
+      }}>
+        <div style={{ display: 'grid', gap: 8, alignContent: 'center', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              display: 'inline-grid',
+              placeItems: 'center',
+              color: 'var(--accent)',
+              background: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
+              border: '1px solid color-mix(in srgb, var(--accent) 28%, var(--line))',
+            }}>
+              {Ico.chats(14)}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>
+                Review queue
+              </div>
+              <div style={{ marginTop: 2, fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.35 }}>
+                {countParts.length ? countParts.join(' · ') : 'Items waiting for review'}
+              </div>
+              {hiddenCount > 0 && (
+                <div style={{ marginTop: 3, fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)', lineHeight: 1.35 }}>
+                  Showing {visibleItems.length} of {items.length}; {plural(hiddenCount, 'artifact')} not shown.
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+            {totalNeedsAction > 0 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => onFilter?.('forYou')}
+                style={{ height: 28, padding: '0 9px' }}
+              >
+                For you
+              </button>
+            )}
+            {totalNew > 0 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => onFilter?.('new')}
+                style={{ height: 28, padding: '0 9px' }}
+              >
+                New
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onFilter?.('needsReview')}
+              style={{ height: 28, padding: '0 9px' }}
+            >
+              Needs review
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onFilter?.('openNotes')}
+              style={{ height: 28, padding: '0 9px' }}
+            >
+              Open notes
+            </button>
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => onFilter?.('needsReview')}
+                style={{ height: 28, padding: '0 9px' }}
+              >
+                View {hiddenCount} more
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 8,
+          minWidth: 0,
+        }}>
+	          {visibleItems.map((artifact) => {
+	            const s = reviewSummaryOf(artifact);
+	            const title = artifact?.title || displayName(artifact?.path || artifact?.folder || '');
+	            const details = [
+	              s.needsAction > 0 ? `${s.needsAction} for you` : '',
+	              s.unreadTotal > 0 ? plural(s.unreadTotal, 'new update') : '',
+	              s.needsReview ? 'Needs review' : '',
+	              s.openNotes > 0 ? plural(s.openNotes, 'open note') : '',
+	              s.suggestions > 0 ? plural(s.suggestions, 'suggested change') : '',
+            ].filter(Boolean).join(' · ');
+            return (
+              <button
+                key={artifact.id || artifact.path}
+                type="button"
+                onClick={() => onOpen?.(artifact)}
+                style={{
+                  minWidth: 0,
+                  textAlign: 'left',
+                  border: '1px solid var(--line)',
+                  borderRadius: 8,
+                  background: 'var(--surface)',
+                  padding: '9px 10px',
+                  cursor: 'pointer',
+                  display: 'grid',
+                  gap: 5,
+                }}
+              >
+                <span style={{
+                  display: 'block',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontFamily: FONT_BODY,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--ink)',
+                }}>
+                  {title}
+                </span>
+                <span style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  minWidth: 0,
+                  fontFamily: FONT_BODY,
+                  fontSize: 11.5,
+                  color: 'var(--ink-3)',
+                }}>
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 99,
+                    background: s.needsReview ? 'var(--warning, var(--accent))' : 'var(--accent)',
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {details || 'Review activity'}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ArtifactModeToggle({ value, onChange, deletedCount = 0 }) {
+  const options = [
+    { id: 'live', label: 'Live', icon: Ico.eye(12) },
+    { id: 'deleted', label: deletedCount > 0 ? `Deleted ${deletedCount}` : 'Deleted', icon: Ico.trash(12) },
+  ];
+  return (
+    <div
+      aria-label="Artifact mode"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 0,
+        padding: 2, borderRadius: 7,
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+      }}
+    >
+      {options.map((opt) => {
+        const active = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onChange?.(opt.id)}
+            aria-pressed={active}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 9px', borderRadius: 5,
+              background: active ? 'var(--surface-3)' : 'transparent',
+              color: active ? 'var(--ink)' : 'var(--ink-3)',
+              border: 0,
+              boxShadow: active ? 'inset 0 0 0 1px var(--line-2)' : 'none',
+              fontFamily: FONT_BODY, fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            {opt.icon}
+            <span>{opt.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // ─── Action button (used by the bubble's bottom row) ─────────────────────
@@ -249,6 +756,44 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
   if (!artifact) return null;
 
   const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(emailsText);
+  const reviewSummary = reviewSummaryOf(artifact);
+  const publishedVersion = artifact?.publishedVersionNumber
+    ? `Version ${artifact.publishedVersionNumber}`
+    : artifact?.publishedVersionId
+      ? `Version ${String(artifact.publishedVersionId).slice(0, 8)}`
+      : '';
+  const selectedPublishVersion = artifact?.publishVersionLabel
+    || (artifact?.publishVersionId ? `Version ${String(artifact.publishVersionId).slice(0, 8)}` : '');
+  const preflightRows = [
+    artifact?.publishedUrl
+      ? {
+        label: 'Replacing the public copy',
+        detail: `${selectedPublishVersion || publishedVersion || 'The selected saved version'} will replace the public copy only after this publish succeeds.`,
+        tone: 'ok',
+      }
+      : {
+        label: selectedPublishVersion ? 'Publishing selected version' : 'Publishing a saved snapshot',
+        detail: selectedPublishVersion
+          ? `${selectedPublishVersion} will be pinned to the public link.`
+          : 'Cowork will publish a versioned copy, not a moving local folder.',
+        tone: 'ok',
+      },
+    reviewSummary.openNotes > 0
+      ? {
+        label: 'Open review items',
+        detail: [
+          reviewSummary.openNotes ? plural(reviewSummary.openNotes, 'open note') : '',
+          reviewSummary.suggestions ? plural(reviewSummary.suggestions, 'suggested change') : '',
+          reviewSummary.reviewRequests ? plural(reviewSummary.reviewRequests, 'review request') : '',
+        ].filter(Boolean).join(' · '),
+        tone: 'warning',
+      }
+      : {
+        label: 'Review is clear',
+        detail: 'No open review notes are attached to this artifact.',
+        tone: 'ok',
+      },
+  ];
   const canConfirm =
     mode === 'public'
     || (mode === 'password' && password.trim().length > 0)
@@ -283,11 +828,58 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
-        title="Publish artifact"
-        subtitle={artifact.title || artifact.path?.split('/').pop()}
+        title={artifact?.publishedUrl ? 'Update public copy' : 'Publish artifact'}
+        subtitle={[artifact.title || artifact.path?.split('/').pop(), selectedPublishVersion].filter(Boolean).join(' · ')}
         onClose={onCancel}
       />
       <ModalBody>
+        <div style={{
+          marginBottom: 12,
+          border: '1px solid var(--line)',
+          borderRadius: 8,
+          background: 'var(--surface-2)',
+          overflow: 'hidden',
+        }}>
+          {preflightRows.map((row) => (
+            <div key={row.label} style={{
+              display: 'grid',
+              gridTemplateColumns: '14px minmax(0, 1fr)',
+              gap: 8,
+              padding: '9px 10px',
+              borderTop: '1px solid var(--line)',
+              marginTop: -1,
+            }}>
+              <span style={{
+                width: 8,
+                height: 8,
+                borderRadius: 99,
+                marginTop: 5,
+                background: row.tone === 'warning' ? 'var(--warning, #f59e0b)' : 'var(--success)',
+              }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{
+                  display: 'block',
+                  fontFamily: FONT_BODY,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: 'var(--ink)',
+                }}>
+                  {row.label}
+                </span>
+                <span style={{
+                  display: 'block',
+                  marginTop: 2,
+                  fontFamily: FONT_BODY,
+                  fontSize: 12,
+                  color: 'var(--ink-3)',
+                  lineHeight: 1.35,
+                }}>
+                  {row.detail}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Option value="public" icon={Ico.globe(16)} title="Public" desc="Anyone with the link can view it." />
           <Option value="password" icon={Ico.lock(16)} title="Password protected" desc="Visitors must enter a password to view it." />
@@ -774,6 +1366,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             </span>
           )}
         </span>
+        <ReviewBadges artifact={artifact} />
       </div>
 
       {/* Surface the public URL when published; otherwise the HTTP
@@ -816,12 +1409,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 
 // ─── List view ───────────────────────────────────────────────────────────
 
-// Status dot · Title · Published · Type · Kind · Project · Updated · ⋯
+// Status dot · Title · Published · Review · Type · Kind · Project · Updated · ⋯
 //
 // `Type` is the bare file extension (html, csv, png, …) and lives
 // before `Kind` (the broader category — Dashboard, Data, Image, …)
 // so the at-a-glance scan reads from concrete to abstract.
-const LIST_GRID = '24px 2fr 100px 60px 70px 1fr 110px 36px';
+const LIST_GRID = '24px minmax(150px, 2fr) 100px minmax(120px, 0.85fr) 60px 70px minmax(110px, 1fr) 110px 36px';
 
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
@@ -841,6 +1434,7 @@ function ListHeaderRow() {
       <Cell />
       <Cell>Title</Cell>
       <Cell>Published</Cell>
+      <Cell>Review</Cell>
       <Cell>Type</Cell>
       <Cell>Kind</Cell>
       <Cell>Project</Cell>
@@ -957,12 +1551,12 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       {/* Delete sits at the bottom under a divider so it reads as a
           terminal / destructive action distinct from the rest of
           the menu. Routes through the parent's `handleTrash`, which
-          unpublishes (if published) and then permanently deletes via
-          cowork-server. */}
+          unpublishes (if published), snapshots the artifact, and
+          moves it into Deleted so it can be restored. */}
       {onDelete && (
         <>
           <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
-          <Item label="Delete artifact" icon={Ico.trash(13)} danger onClick={onDelete} />
+          <Item label="Move to Deleted" icon={Ico.trash(13)} danger onClick={onDelete} />
         </>
       )}
     </div>
@@ -1041,6 +1635,10 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           ) : (
             <span style={{ color: 'var(--ink-5)', fontFamily: FONT_MONO, fontSize: 11 }}>—</span>
           )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+          <ReviewBadges artifact={artifact} compact />
         </div>
 
         {/* Type — prefer the metadata-declared `type` (html-app,
@@ -1178,6 +1776,89 @@ function EmptyState({ agentLabel = 'the agent' }) {
   );
 }
 
+function DeletedArtifactCard({ artifact, busy, onRestore }) {
+  const title = artifact?.title || artifact?.name || artifact?.slug || 'Deleted artifact';
+  const deletedAt = shortDateTime(artifact?.deletedAt || artifact?.deleted_at);
+  const fileCount = typeof artifact?.fileCount === 'number' ? artifact.fileCount : null;
+  const canRestore = !!(artifact?.restoreEligible && artifact?.artifactId && artifact?.preDeleteVersionId);
+  return (
+    <article style={{
+      minWidth: 0,
+      border: '1px solid var(--line)',
+      borderRadius: 8,
+      background: 'color-mix(in srgb, var(--surface) 88%, var(--surface-2))',
+      padding: 14,
+      display: 'grid',
+      gap: 10,
+      boxShadow: '0 10px 26px rgba(0,0,0,.06)',
+    }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr)', gap: 9, alignItems: 'start' }}>
+        <span style={{
+          width: 24,
+          height: 24,
+          display: 'inline-grid',
+          placeItems: 'center',
+          borderRadius: 8,
+          background: 'color-mix(in srgb, var(--danger) 9%, var(--surface))',
+          color: 'var(--danger)',
+          border: '1px solid color-mix(in srgb, var(--danger) 22%, var(--line))',
+        }}>
+          {Ico.trash(13)}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div title={title} style={{
+            fontFamily: FONT_DISPLAY,
+            fontSize: 15,
+            fontWeight: 600,
+            color: 'var(--ink)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {title}
+          </div>
+          <div style={{
+            marginTop: 3,
+            fontFamily: FONT_BODY,
+            fontSize: 12,
+            color: 'var(--ink-4)',
+            display: 'flex',
+            gap: 7,
+            flexWrap: 'wrap',
+          }}>
+            {deletedAt && <span>Deleted {deletedAt}</span>}
+            {fileCount != null && <span>{fileCount} {fileCount === 1 ? 'file' : 'files'}</span>}
+          </div>
+        </div>
+      </div>
+      <div title={artifact?.path || ''} style={{
+        minWidth: 0,
+        border: '1px solid var(--line)',
+        borderRadius: 7,
+        background: 'var(--surface-2)',
+        color: 'var(--ink-4)',
+        padding: '7px 8px',
+        fontFamily: FONT_MONO,
+        fontSize: 10.5,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {artifact?.path || artifact?.slug || 'No path recorded'}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <ActionButton
+          primary
+          title={canRestore ? 'Restore artifact' : 'This deleted artifact cannot be restored'}
+          onClick={() => canRestore && onRestore?.(artifact)}
+        >
+          {busy ? 'Restoring...' : 'Restore'}
+        </ActionButton>
+      </div>
+    </article>
+  );
+}
+
 // ─── Toast ───────────────────────────────────────────────────────────────
 //
 // Inline banner that surfaces publish / unpublish results so failures
@@ -1185,7 +1866,7 @@ function EmptyState({ agentLabel = 'the agent' }) {
 // the console. Auto-dismisses after a few seconds; success and error
 // share the layout but have distinct accent / danger tints.
 
-function Toast({ kind, message, onClose }) {
+function Toast({ kind, message, actionLabel, onAction, onClose }) {
   if (!message) return null;
   const isError = kind === 'error';
   return (
@@ -1206,6 +1887,27 @@ function Toast({ kind, message, onClose }) {
         {isError ? Ico.alert?.(14) || Ico.trash(14) : Ico.check(14)}
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>{message}</span>
+      {actionLabel && (
+        <button
+          type="button"
+          onClick={onAction}
+          style={{
+            flexShrink: 0,
+            height: 26,
+            padding: '0 8px',
+            borderRadius: 7,
+            border: '1px solid var(--line)',
+            background: 'var(--surface)',
+            color: 'var(--ink-2)',
+            cursor: 'pointer',
+            fontFamily: FONT_BODY,
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {actionLabel}
+        </button>
+      )}
       <button
         type="button"
         onClick={onClose}
@@ -1224,8 +1926,12 @@ function Toast({ kind, message, onClose }) {
 
 // ─── Composed view ───────────────────────────────────────────────────────
 
-export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, agentLabel = 'the agent' }) {
+export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, onHandoffArtifact, agentLabel = 'the agent' }) {
   const [list, setList] = useState(initial);
+  const [artifactMode, setArtifactMode] = useState('live');
+  const [deletedList, setDeletedList] = useState([]);
+  const [deletedAvailable, setDeletedAvailable] = useState(true);
+  const [deletedBusyId, setDeletedBusyId] = useState('');
   const [viewer, setViewer] = useState(null);
   const { isMobile } = useBreakpoint();
   const [view, setView] = useState(() =>
@@ -1236,10 +1942,12 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // preference is left untouched.
   const effectiveView = isMobile ? 'grid' : view;
   const [search, setSearch] = useState('');
+  const [reviewFilter, setReviewFilter] = useState('all');
   const [sort, setSort] = useState('published');
   // Per-artifact-path "in flight" set so multiple cards can publish
   // independently without freezing the whole grid.
   const [busyPaths, setBusyPaths] = useState(() => new Set());
+  const [pendingDelete, setPendingDelete] = useState(null);
   // Artifact awaiting the publish visibility choice (public vs password).
   // Null when the chooser is closed.
   const [publishTarget, setPublishTarget] = useState(null);
@@ -1260,8 +1968,19 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
-  const [toast, setToast] = useState(null); // { kind: 'ok'|'error', message }
+  const [toast, setToast] = useState(null); // { kind: 'ok'|'error', message, actionLabel?, action? }
   const searchRef = useRef(null);
+
+  const loadDeletedArtifacts = async () => {
+    try {
+      const data = await fetchDeletedArtifacts();
+      setDeletedAvailable(data?.available !== false);
+      setDeletedList(Array.isArray(data?.artifacts) ? data.artifacts : []);
+    } catch {
+      setDeletedAvailable(false);
+      setDeletedList([]);
+    }
+  };
 
   // Reflect parent refreshes exactly. The parent refetches when the
   // route opens and after streams complete; if a file was trashed from
@@ -1275,6 +1994,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       return fresh ? { ...cur, ...fresh } : null;
     });
   }, [initial]);
+
+  useEffect(() => {
+    loadDeletedArtifacts();
+  }, []);
 
   // Persist view toggle.
   useEffect(() => { localStorage.setItem('anton:artifacts-view', view); }, [view]);
@@ -1293,6 +2016,33 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   const updateOne = (updated) => {
     setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
     setViewer((cur) => (cur && cur.path === updated.path ? { ...cur, ...updated } : cur));
+  };
+
+  const handleForkedArtifact = (result) => {
+    const artifact = result?.artifact || {};
+    const path = artifact.path || result?.preview?.path || result?.artifactPath || '';
+    const folder = artifact.folder || result?.artifactPath || path;
+    const next = {
+      ...artifact,
+      id: result?.artifactId || artifact.id || folder || path,
+      path,
+      folder,
+      title: artifact.title || artifact.name || displayName(path || folder),
+      mtime: Date.now(),
+      updated: 'just now',
+    };
+    if (!next.path && !next.folder) return;
+    setList((prev) => {
+      const withoutDuplicate = prev.filter((item) => (
+        item.id !== next.id
+        && item.path !== next.path
+        && item.folder !== next.folder
+      ));
+      return [next, ...withoutDuplicate];
+    });
+    setArtifactMode('live');
+    setViewer(next);
+    setToast({ kind: 'ok', message: 'Remix created.' });
   };
 
   const removeOne = (path) => {
@@ -1318,7 +2068,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // Publishing is two steps: choose visibility (public / password) in a
   // small dialog, then confirmPublish does the actual POST. Re-publishing
   // a protected artifact pre-fills its existing password.
-  const handlePublish = (artifact) => {
+  const handlePublish = (artifact, options = {}) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
     if (!isPublishableArtifact(artifact)) {
       setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be published.' });
@@ -1327,7 +2077,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     // Settle any prior unresolved flow before starting a new one so a
     // delegated awaiter is never left hanging.
     settlePublish();
-    setPublishTarget(artifact);
+    setPublishTarget({
+      ...artifact,
+      publishVersionId: options.versionId || options.version_id || '',
+      publishVersionLabel: options.versionLabel || options.label || '',
+    });
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
@@ -1337,7 +2091,8 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
     try {
-      const r = await publishArtifact(publishTargetPath(artifact), access);
+      const publishOptions = artifact.publishVersionId ? { versionId: artifact.publishVersionId } : {};
+      const r = await publishArtifact(publishTargetPath(artifact), access, publishOptions);
       if (r?.url) {
         // Server is authoritative (it degrades an empty restricted/password
         // selection back to public); fall back to the requested access.
@@ -1350,6 +2105,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           accessPassword: m === 'password' ? (access?.password || '') : '',
           accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
           orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
+          publishedVersionId: r.publishedVersionId || r.published_version_id || artifact.publishVersionId || artifact.publishedVersionId || '',
+          publishedFilesHash: r.publishedFilesHash || r.published_files_hash || artifact.publishedFilesHash || '',
+          publishedManifestHash: r.publishedManifestHash || r.published_manifest_hash || artifact.publishedManifestHash || '',
+          publishedVersionNumber: r.publishedVersionNumber || r.published_version_number || artifact.publishedVersionNumber || null,
         });
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
         setToast({
@@ -1377,7 +2136,14 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     setBusy(artifact.path, true);
     try {
       await unpublishArtifact(publishTargetPath(artifact));
-      updateOne({ ...artifact, publishedUrl: '' });
+      updateOne({
+        ...artifact,
+        publishedUrl: '',
+        publishedVersionId: '',
+        publishedFilesHash: '',
+        publishedManifestHash: '',
+        publishedVersionNumber: null,
+      });
       setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
@@ -1386,38 +2152,113 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     }
   };
 
-  const handleTrash = async (artifact) => {
+  const requestTrash = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
-    setBusy(artifact.path, true);
-    try {
-      // Unpublish first so deletion never leaves an orphaned public copy.
-      // If this fails we abort and keep the artifact (the server enforces
-      // the same rule as a backstop).
-      if (artifact.publishedUrl) {
-        await unpublishArtifact(artifact.path);
-      }
-      await deleteArtifact(artifact.folder || artifact.path);
-      removeOne(artifact.path);
-      setToast({ kind: 'ok', message: 'Deleted.' });
-    } catch (e) {
-      setToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
-    } finally {
-      setBusy(artifact.path, false);
-    }
+    setMenuFor(null);
+    setPendingDelete(artifact);
   };
 
-  // Filter + sort.
-  const visible = useMemo(() => {
+	  const handleTrash = async (artifact) => {
+	    if (!artifact?.path || busyPaths.has(artifact.path)) return;
+	    setBusy(artifact.path, true);
+	    try {
+	      // Unpublish first so deletion never leaves an orphaned public copy.
+	      // If this fails we abort and keep the artifact (the server enforces
+	      // the same rule as a backstop).
+	      if (artifact.publishedUrl) {
+	        await unpublishArtifact(publishTargetPath(artifact));
+	      }
+	      await deleteArtifact(artifact.folder || artifact.path);
+	      removeOne(artifact.path);
+	      await loadDeletedArtifacts();
+	      setToast({
+	        kind: 'ok',
+	        message: 'Moved to Deleted. Restore is available when Cowork has a saved checkpoint.',
+	        actionLabel: 'View Deleted',
+	        action: () => setArtifactMode('deleted'),
+	      });
+	    } catch (e) {
+	      setToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
+	    } finally {
+	      setBusy(artifact.path, false);
+	    }
+	  };
+
+	  const handleRestoreDeleted = async (artifact) => {
+	    const artifactId = artifact?.artifactId || artifact?.id;
+	    const versionId = artifact?.preDeleteVersionId || artifact?.versionId;
+	    if (!artifactId || !versionId || deletedBusyId) return;
+	    setDeletedBusyId(artifactId);
+	    try {
+	      const result = await restoreDeletedArtifact(artifactId, versionId);
+	      const restored = result?.artifact || {
+	        ...artifact,
+	        id: artifactId,
+	        path: result?.artifactPath || artifact.path,
+	        folder: result?.artifactPath || artifact.folder || artifact.path,
+	      };
+	      setDeletedList((prev) => prev.filter((item) => (item.artifactId || item.id) !== artifactId));
+	      setList((prev) => {
+	        const restoredPath = restored.path || restored.folder;
+	        if (!restoredPath) return prev;
+	        const withoutDuplicate = prev.filter((item) => item.path !== restoredPath && item.folder !== restoredPath);
+	        return [{ ...restored, mtime: Date.now(), updated: 'just now' }, ...withoutDuplicate];
+	      });
+	      setArtifactMode('live');
+	      setToast({ kind: 'ok', message: 'Artifact restored.' });
+	    } catch (e) {
+	      setToast({ kind: 'error', message: `Restore failed: ${e?.message || e}` });
+	    } finally {
+	      setDeletedBusyId('');
+	    }
+	  };
+
+	  const handleHandoffArtifact = async (artifact, options = {}) => {
+	    if (!onHandoffArtifact) return null;
+	    const result = await onHandoffArtifact(artifact, options);
+	    const conversationId = result?.conversationId || result?.conversation_id || result?.conversation?.id;
+	    if (conversationId) setViewer(null);
+	    return result;
+	  };
+
+	  // Filter + sort.
+	  const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     let out = (list || []).slice();
     if (q) out = out.filter((a) =>
       (a.title || '').toLowerCase().includes(q)
       || (a.path || '').toLowerCase().includes(q)
-      || (a.kind || '').toLowerCase().includes(q),
-    );
+      || (a.kind || '').toLowerCase().includes(q)
+	      || (reviewSummaryOf(a).hasReview && 'review notes suggestions needs review open notes for you new'.includes(q)),
+	    );
+    if (reviewFilter === 'forYou') {
+      out = out.filter((a) => reviewSummaryOf(a).needsAction > 0);
+    } else if (reviewFilter === 'new') {
+      out = out.filter((a) => reviewSummaryOf(a).unreadTotal > 0);
+    } else if (reviewFilter === 'needsReview') {
+      out = out.filter((a) => reviewSummaryOf(a).needsReview);
+    } else if (reviewFilter === 'openNotes') {
+      out = out.filter((a) => reviewSummaryOf(a).openNotes > 0);
+    }
 
-    out.sort((a, b) => {
-      switch (sort) {
+	    out.sort((a, b) => {
+	      switch (sort) {
+        case 'forYou': {
+          const score = reviewSortScore(b, 'forYou') - reviewSortScore(a, 'forYou');
+          return score || timestampOf(b) - timestampOf(a);
+        }
+        case 'new': {
+          const score = reviewSortScore(b, 'new') - reviewSortScore(a, 'new');
+          return score || timestampOf(b) - timestampOf(a);
+        }
+	        case 'needsReview': {
+	          const score = reviewSortScore(b, 'needsReview') - reviewSortScore(a, 'needsReview');
+	          return score || timestampOf(b) - timestampOf(a);
+        }
+        case 'openNotes': {
+          const score = reviewSortScore(b, 'openNotes') - reviewSortScore(a, 'openNotes');
+          return score || timestampOf(b) - timestampOf(a);
+        }
         case 'recent':    return timestampOf(b) - timestampOf(a);
         case 'oldest':    return timestampOf(a) - timestampOf(b);
         case 'title':     return (a.title || '').localeCompare(b.title || '');
@@ -1432,17 +2273,64 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         }
       }
     });
-    return out;
-  }, [list, search, sort]);
+	    return out;
+	  }, [list, search, reviewFilter, sort]);
 
-  const total = (list || []).length;
+	  const visibleDeleted = useMemo(() => {
+	    const q = search.trim().toLowerCase();
+	    let out = (deletedList || []).slice();
+	    if (q) out = out.filter((a) =>
+	      (a.title || '').toLowerCase().includes(q)
+	      || (a.path || '').toLowerCase().includes(q)
+	      || (a.slug || '').toLowerCase().includes(q)
+	      || (a.type || '').toLowerCase().includes(q),
+	    );
+	    out.sort((a, b) => {
+	      const at = Date.parse(a.deletedAt || a.deleted_at || '') || 0;
+	      const bt = Date.parse(b.deletedAt || b.deleted_at || '') || 0;
+	      return bt - at;
+	    });
+	    return out;
+	  }, [deletedList, search]);
+
+	  const total = (list || []).length;
+	  const deletedTotal = (deletedList || []).length;
+	  const hasReviewSummaries = (list || []).some((a) => reviewSummaryOf(a).hasReview);
+  useEffect(() => {
+    if (!hasReviewSummaries && reviewFilter !== 'all') setReviewFilter('all');
+  }, [hasReviewSummaries, reviewFilter]);
   // Published count reflects the *visible* set so it tracks the filter
   // (e.g. "Showing 5 of 12 · 2 published" surfaces what's in the view,
   // not the global count). The numerator stays accurate while the
   // denominator changes with the search.
-  const publishedCount = visible.filter((a) => a.publishedUrl).length;
+	  const publishedCount = visible.filter((a) => a.publishedUrl).length;
+		  const needsReviewCount = visible.filter((a) => reviewSummaryOf(a).needsReview).length;
+		  const reviewQueue = useMemo(() => {
+		    return (list || [])
+		      .filter((artifact) => {
+		        const summary = reviewSummaryOf(artifact);
+		        return summary.needsAction > 0 || summary.unreadTotal > 0 || summary.needsReview || summary.openNotes > 0;
+		      })
+		      .sort((a, b) => {
+		        const score = reviewSortScore(b, 'forYou') - reviewSortScore(a, 'forYou');
+		        return score || timestampOf(b) - timestampOf(a);
+		      });
+		  }, [list]);
+	  const reviewQueueTotals = useMemo(() => (
+	    reviewQueue.reduce((acc, artifact) => {
+		      const summary = reviewSummaryOf(artifact);
+		      acc.needsAction += summary.needsAction;
+		      acc.unreadTotal += summary.unreadTotal;
+		      acc.openNotes += summary.openNotes;
+		      acc.suggestions += summary.suggestions;
+		      acc.reviewRequests += summary.reviewRequests;
+		      return acc;
+		    }, { needsAction: 0, unreadTotal: 0, openNotes: 0, suggestions: 0, reviewRequests: 0 })
+	  ), [reviewQueue]);
+	  const inDeletedMode = artifactMode === 'deleted';
+	  const showControls = total > 0 || deletedTotal > 0 || inDeletedMode;
 
-  return (
+	  return (
     // Background intentionally omitted so the gravity-field canvas
     // painted behind the React root shows through.
     <div className="scroll-clean" style={{
@@ -1473,6 +2361,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           <Toast
             kind={toast?.kind}
             message={toast?.message}
+            actionLabel={toast?.actionLabel}
+            onAction={() => {
+              toast?.action?.();
+              setToast(null);
+            }}
             onClose={() => setToast(null)}
           />
         </div>,
@@ -1485,32 +2378,100 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           slightly taller — Artifacts compensates with a few extra. */}
       <div style={{ height: 20 }} />
 
-      {total > 0 && (
-        <FilterRow
-          search={
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              inputRef={searchRef}
-              placeholder="Search artifacts"
-            />
-          }
-          sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ViewToggle value={view} onChange={setView} /></span>}
-          counts={
-            <ArtifactsCounts
-              search={search}
-              total={total}
-              filtered={visible.length}
-              publishedCount={publishedCount}
-            />
-          }
-        />
-      )}
+	      {showControls && (
+	        <FilterRow
+	          search={
+	            <SearchInput
+	              value={search}
+	              onChange={setSearch}
+	              inputRef={searchRef}
+	              placeholder={inDeletedMode ? 'Search deleted artifacts' : 'Search artifacts'}
+	            />
+	          }
+	          sort={inDeletedMode ? null : <SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
+	          right={(
+	            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+	              <ArtifactModeToggle value={artifactMode} onChange={setArtifactMode} deletedCount={deletedTotal} />
+	              {!inDeletedMode && hasReviewSummaries && (
+	                <ReviewFilter value={reviewFilter} onChange={setReviewFilter} />
+	              )}
+	            </span>
+	          )}
+	          view={inDeletedMode ? null : <span className="artifacts-view-toggle"><ViewToggle value={view} onChange={setView} /></span>}
+	          counts={
+	            inDeletedMode ? (
+	              deletedAvailable
+	                ? `${visibleDeleted.length}${visibleDeleted.length === deletedTotal ? '' : ` of ${deletedTotal}`} deleted`
+	                : 'Deleted artifacts are not available on this server'
+	            ) : (
+	              <ArtifactsCounts
+	                search={search}
+	                reviewFilter={reviewFilter}
+	                total={total}
+	                filtered={visible.length}
+	                publishedCount={publishedCount}
+	                needsReviewCount={needsReviewCount}
+	              />
+	            )
+	          }
+	        />
+	      )}
 
-      {total === 0 ? (
-        <EmptyState agentLabel={agentLabel} />
-      ) : effectiveView === 'grid' ? (
+	      {!inDeletedMode && reviewQueue.length > 0 && (
+	        <ReviewQueueBand
+	          items={reviewQueue}
+	          totals={reviewQueueTotals}
+	          onOpen={setViewer}
+	          onFilter={(nextFilter) => {
+	            setReviewFilter(nextFilter);
+	            setSort(nextFilter);
+	          }}
+	        />
+	      )}
+
+	      {inDeletedMode ? (
+	        visibleDeleted.length === 0 ? (
+	          <div style={{
+	            flex: 1,
+	            minHeight: 320,
+	            display: 'grid',
+	            placeItems: 'center',
+	            padding: '40px 24px',
+	          }}>
+	            <div style={{ textAlign: 'center', display: 'grid', gap: 8, justifyItems: 'center' }}>
+	              <span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.trash(28)}</span>
+	              <div style={{ fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600, color: 'var(--ink)' }}>
+	                {deletedAvailable ? 'No deleted artifacts' : 'Deleted artifacts are not available'}
+	              </div>
+	              <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)', maxWidth: 360 }}>
+	                {deletedAvailable
+	                  ? 'Deleted artifacts that can be restored will appear here.'
+	                  : 'This server is not exposing recoverable deleted artifacts yet.'}
+	              </div>
+	            </div>
+	          </div>
+	        ) : (
+	          <div className="artifacts-grid" style={{
+	            padding: '6px 32px 60px',
+	            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
+	            marginTop: 18,
+	          }}>
+	            {visibleDeleted.map((a) => {
+	              const restoreId = a.artifactId || a.id;
+	              return (
+	                <DeletedArtifactCard
+	                  key={`${restoreId}-${a.preDeleteVersionId || a.deletedAt || a.path}`}
+	                  artifact={a}
+	                  busy={deletedBusyId === restoreId}
+	                  onRestore={handleRestoreDeleted}
+	                />
+	              );
+	            })}
+	          </div>
+	        )
+	      ) : total === 0 ? (
+	        <EmptyState agentLabel={agentLabel} />
+	      ) : effectiveView === 'grid' ? (
         <div className="artifacts-grid" style={{
           padding: '6px 32px 60px',
           // Same grid geometry as ProjectsView so cards line up at
@@ -1542,20 +2503,23 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onOpenViewer={setViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
-              onDelete={handleTrash}
+              onDelete={requestTrash}
               onOpenProject={onOpenProject}
             />
           ))}
         </div>
       )}
 
-      <ArtifactViewer
+      <ArtifactWorkspace
         open={!!viewer}
         artifact={viewer}
+        projects={projects}
         onClose={() => setViewer(null)}
         onChange={updateOne}
-        onDelete={removeOne}
         onPublish={handlePublish}
+        onUnpublish={handleUnpublish}
+        onForked={handleForkedArtifact}
+        onHandoff={onHandoffArtifact ? handleHandoffArtifact : null}
       />
 
       {publishTarget && (
@@ -1565,6 +2529,21 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           onConfirm={confirmPublish}
         />
       )}
+
+      <ConfirmModal
+        open={!!pendingDelete}
+        title={`Move "${pendingDelete?.title || displayName(pendingDelete?.path || pendingDelete?.folder)}" to Deleted?`}
+        message="Cowork will remove this artifact from Live Artifacts and move it to Deleted when recovery is available. If it is published, the live link will be unpublished first."
+        confirmLabel="Move to Deleted"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const target = pendingDelete;
+          setPendingDelete(null);
+          if (target) handleTrash(target);
+        }}
+      />
 
       {/* Single shared menu for the whole grid — anchored to whichever
           card the user just clicked. Mounted here at the page level
@@ -1578,6 +2557,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const a = menuFor?.artifact;
           if (!a) return [];
           const isHtml = isHtmlArtifact(a);
+          const isPublishable = isPublishableArtifact(a);
           const published = !!a.publishedUrl;
           const busyA = busyPaths.has(a.path);
           const items = [];
@@ -1588,7 +2568,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               icon: Ico.power(13),
               onClick: () => handleUnpublish(a),
             });
-          } else if (isHtml) {
+          } else if (isPublishable) {
             items.push({
               id: 'publish',
               label: busyA ? 'Publishing…' : 'Publish',
@@ -1630,10 +2610,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           items.push({ separator: true });
           items.push({
             id: 'delete',
-            label: 'Delete',
+            label: 'Move to Deleted',
             icon: Ico.trash(13),
             danger: true,
-            onClick: () => handleTrash(a),
+            onClick: () => requestTrash(a),
           });
           return items;
         })()}

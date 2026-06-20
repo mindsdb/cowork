@@ -2,7 +2,7 @@
 #
 # Build:
 #     docker build -f cowork/Dockerfile -t cowork:dev \
-#       --build-arg COWORK_SERVER_VERSION=0.1.1 .
+#       --build-arg COWORK_SERVER_VERSION=0.1.9 .
 #
 # Run:
 #     docker run -p 26866:26866 \
@@ -20,7 +20,7 @@
 #   py-builder    Python + uv — installs cowork-server from PyPI into /opt/venv
 #   runtime       Python — copies /opt/venv + SPA + wrapper.
 
-ARG COWORK_SERVER_VERSION=0.1.4
+ARG COWORK_SERVER_VERSION=0.1.9
 
 # ── Stage 1: build the cowork SPA ────────────────────────────────────────
 FROM node:22-slim AS spa-builder
@@ -47,7 +47,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /usr/local/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 COPY cowork/scripts/install-cowork-server.sh /tmp/install-cowork-server.sh
 ARG COWORK_SERVER_VERSION
@@ -62,7 +63,7 @@ LABEL org.opencontainers.image.title="cowork"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
 LABEL org.opencontainers.image.description="MindsHub Cowork — FastAPI + SPA"
 
-# ca-certificates is the only runtime apt dep.
+# Runtime dependencies for TLS plus Playwright's Chromium browser.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -74,6 +75,12 @@ RUN useradd -m -u 1000 -s /bin/bash anton
 # read-only at runtime.
 COPY --from=py-builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+COPY --from=py-builder /opt/playwright-browsers /opt/playwright-browsers
+RUN if /opt/venv/bin/python -c "import playwright" >/dev/null 2>&1; then \
+        /opt/venv/bin/python -m playwright install-deps chromium; \
+    fi \
+    && chmod -R a+rX /opt/playwright-browsers
 
 WORKDIR /app
 

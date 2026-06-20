@@ -42,6 +42,7 @@ function getSteps(): InstallStep[] {
     { id: 'git', label: 'Check for git (required)', status: 'pending' },
     { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
     { id: 'cowork-server', label: 'Install cowork-server', status: 'pending' },
+    { id: 'artifact-browser', label: 'Install artifact preview browser', status: 'pending' },
     { id: 'verify', label: 'Verify installation', status: 'pending' },
     { id: 'server', label: 'Start server', status: 'pending' },
   );
@@ -58,6 +59,14 @@ function getCoworkServerBinary(): string {
     return path.join(localBin, 'cowork-server.exe');
   }
   return path.join(localBin, 'cowork-server');
+}
+
+function getCoworkInstallBrowsersBinary(): string {
+  const localBin = getLocalBin();
+  if (process.platform === 'win32') {
+    return path.join(localBin, 'cowork-install-browsers.exe');
+  }
+  return path.join(localBin, 'cowork-install-browsers');
 }
 
 function getUvBinary(): string {
@@ -519,7 +528,27 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, 'cowork-server installed.\n');
     setStep('cowork-server', 'done');
 
-    // Step 4: Verify
+    // Step 4: Install Playwright's Chromium browser for artifact visual diffs.
+    // Keep this best-effort: the server falls back to HTML previews when the
+    // browser runtime is unavailable, so a browser install hiccup should not
+    // block the whole desktop app.
+    if (abortIfRequested()) return false;
+    setStep('artifact-browser', 'running');
+    sendLog(win, '\n--- Installing artifact preview browser ---\n');
+    const browserInstaller = fileExists(getCoworkInstallBrowsersBinary())
+      ? getCoworkInstallBrowsersBinary()
+      : 'cowork-install-browsers';
+    const browserResult = await runCommand(browserInstaller, [], win, { shouldAbort });
+    if (abortIfRequested()) return false;
+    if (browserResult.code !== 0) {
+      sendLog(win, 'WARNING: artifact screenshot diffs will fall back to HTML previews until the browser runtime is installed.\n');
+      setStep('artifact-browser', 'warning');
+    } else {
+      sendLog(win, 'Artifact preview browser installed.\n');
+      setStep('artifact-browser', 'done');
+    }
+
+    // Step 5: Verify
     if (abortIfRequested()) return false;
     setStep('verify', 'running');
     sendLog(win, '\n--- Verifying installation ---\n');
@@ -533,7 +562,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, 'cowork-server is ready!\n');
     setStep('verify', 'done');
 
-    // Step 5: Start the server
+    // Step 6: Start the server
     if (abortIfRequested()) return false;
     setStep('server', 'running');
     sendLog(win, '\n--- Starting server ---\n');

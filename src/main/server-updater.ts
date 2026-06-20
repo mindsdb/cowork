@@ -61,6 +61,11 @@ function getUvBinary(): string {
   return path.join(localBin, process.platform === 'win32' ? 'uv.exe' : 'uv');
 }
 
+function getCoworkInstallBrowsersBinary(): string {
+  const localBin = getLocalBin();
+  return path.join(localBin, process.platform === 'win32' ? 'cowork-install-browsers.exe' : 'cowork-install-browsers');
+}
+
 function findUv(): string | null {
   const explicit = getUvBinary();
   if (fs.existsSync(explicit)) return explicit;
@@ -170,6 +175,20 @@ function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: strin
       uv,
       args,
       { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed' }, timeout: 180000 },
+      (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
+    );
+  });
+}
+
+function installArtifactBrowser(): Promise<{ ok: boolean; stderr: string }> {
+  return new Promise((resolve) => {
+    const command = fs.existsSync(getCoworkInstallBrowsersBinary())
+      ? getCoworkInstallBrowsersBinary()
+      : 'cowork-install-browsers';
+    execFile(
+      command,
+      [],
+      { env: { ...process.env, PATH: getEnvPath() }, timeout: 300000 },
       (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
     );
   });
@@ -301,6 +320,10 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     if (wasRunning) await startServer();
     return { updated: false, previousVersion: prevCowork, error: upgrade.stderr };
   }
+  const browser = await installArtifactBrowser();
+  if (!browser.ok) {
+    console.warn('[server-updater] artifact preview browser install failed:', browser.stderr);
+  }
 
   const result = await startServer();
   if (!result.ok) {
@@ -345,6 +368,10 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     console.error('[server-updater] upgrade failed:', upgrade.stderr);
     if (wasRunning) await startServer();
     return { updated: false, previousVersion: currentVersion, error: upgrade.stderr };
+  }
+  const browser = await installArtifactBrowser();
+  if (!browser.ok) {
+    console.warn('[server-updater] artifact preview browser install failed:', browser.stderr);
   }
 
   const result = await startServer();

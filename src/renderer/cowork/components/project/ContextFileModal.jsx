@@ -64,18 +64,36 @@ function joinAbs(root, rel) {
 // rendered inline.
 function FileAccessButton({ projectPath, projectName, filePath }) {
   const isWeb = !!host.isWeb;
+  const [downloading, setDownloading] = useState(false);
   const abs = joinAbs(projectPath, filePath);
-  const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
+
+  async function downloadProjectFile() {
+    if (!projectName || !filePath || downloading) return;
+    setDownloading(true);
+    try {
+      const url = await projectFileDownloadUrl(projectName, filePath);
+      if (!url) return;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filePath.split('/').pop() || 'download';
+      a.rel = 'noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   if (isWeb) {
-    if (!dlUrl) return null;
+    if (!projectName || !filePath) return null;
     return (
-      <a
-        href={dlUrl}
-        download
+      <button
+        type="button"
+        onClick={downloadProjectFile}
+        disabled={downloading}
         title="Download"
         style={{
-          textDecoration: 'none',
           cursor: 'pointer',
           background: 'transparent', border: '1px solid var(--line)',
           color: 'var(--ink-2)',
@@ -83,7 +101,7 @@ function FileAccessButton({ projectPath, projectName, filePath }) {
           fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
           display: 'inline-flex', alignItems: 'center', gap: 6,
         }}
-      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</a>
+      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} {downloading ? 'Preparing...' : 'Download'}</button>
     );
   }
 

@@ -11,7 +11,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
+import { RailCard, WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
 import { TaskList } from '../components/task';
 import { ProjectCard } from '../components/project/ProjectCard';
 import NewProjectModal from '../components/project/NewProjectModal';
@@ -29,6 +29,17 @@ import {
   renameProject,
   revealProjectInFinder,
   fetchMemory, fetchArtifacts,
+  fetchProjectCollaborators,
+  fetchProjectInvitations,
+  inviteProjectCollaborator,
+  resendProjectInvitation,
+  revokeProjectInvitation,
+  updateProjectCollaborator,
+  deleteProjectCollaborator,
+  fetchProjectNotificationHooks,
+  createProjectNotificationHook,
+  updateProjectNotificationHook,
+  deleteProjectNotificationHook,
 } from '../api';
 
 const FONT_BODY    = 'var(--font-body)';
@@ -771,6 +782,448 @@ function CrumbSep() {
   );
 }
 
+function defaultProjectHookDraft() {
+  return {
+    kind: 'email',
+    target: '',
+    event: 'artifact.review_requested',
+    secret: '',
+    smtpHost: '',
+    smtpPort: '587',
+    smtpFrom: '',
+    smtpUsername: '',
+    smtpStartTls: true,
+  };
+}
+
+function formatProjectCollaborationDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function ProjectCollaborationBox({ project }) {
+  return (
+    <RailCard title="Sharing" defaultOpen={false} maxBodyHeight={460}>
+      <ProjectCollaborationSettings project={project} />
+    </RailCard>
+  );
+}
+
+function ProjectCollaborationSettings({ project }) {
+  const projectId = project?.id || project?.projectId || '';
+  const [state, setState] = useState({
+    status: 'idle',
+    collaborators: [],
+    invitations: [],
+    hooks: [],
+    invitationsAvailable: true,
+    error: '',
+    message: '',
+  });
+  const [personDraft, setPersonDraft] = useState({ email: '', role: 'reviewer' });
+  const [hookDraft, setHookDraft] = useState(defaultProjectHookDraft());
+  const [busy, setBusy] = useState('');
+
+  const fieldStyle = {
+    minWidth: 0,
+    height: 30,
+    borderRadius: 8,
+    border: '1px solid var(--line)',
+    background: 'var(--surface)',
+    color: 'var(--ink-2)',
+    fontFamily: FONT_BODY,
+    fontSize: 12,
+    padding: '0 8px',
+    outline: 0,
+  };
+  const rowStyle = {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    gap: 7,
+    padding: '8px 0',
+    borderTop: '1px solid var(--line)',
+  };
+
+  const load = async () => {
+    if (!projectId) {
+      setState({ status: 'ready', collaborators: [], invitations: [], hooks: [], invitationsAvailable: true, error: '', message: '' });
+      return;
+    }
+    setState((prev) => ({ ...prev, status: 'loading', error: '', message: '' }));
+    try {
+      const [people, invitations, hooks] = await Promise.all([
+        fetchProjectCollaborators(projectId),
+        fetchProjectInvitations(projectId),
+        fetchProjectNotificationHooks(projectId),
+      ]);
+      const invitationsAvailable = invitations?.available !== false;
+      setState({
+        status: 'ready',
+        collaborators: people?.collaborators || [],
+        invitations: invitationsAvailable ? (invitations?.invitations || []) : [],
+        hooks: hooks?.hooks || [],
+        invitationsAvailable,
+        error: '',
+        message: '',
+      });
+    } catch (err) {
+      setState((prev) => ({ ...prev, status: 'error', error: err?.message || 'Collaboration settings could not be loaded.' }));
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) await load();
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const addPerson = async () => {
+    const email = personDraft.email.trim();
+    if (!projectId || !email || busy) return;
+    setBusy('person');
+    try {
+      const result = await inviteProjectCollaborator(projectId, { email, role: personDraft.role });
+      setPersonDraft({ email: '', role: 'reviewer' });
+      await load();
+      setState((prev) => ({
+        ...prev,
+        message: result?.fallbackCollaborator ? 'Access added.' : 'Invitation created.',
+        error: '',
+      }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Invitation could not be created.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const updateRole = async (person, role) => {
+    if (!projectId || !person?.id || busy) return;
+    setBusy(`person:${person.id}`);
+    try {
+      await updateProjectCollaborator(projectId, person.id, { role });
+      await load();
+      setState((prev) => ({ ...prev, message: 'Role updated.', error: '' }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Role could not be updated.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const removePerson = async (person) => {
+    if (!projectId || !person?.id || busy) return;
+    setBusy(`remove-person:${person.id}`);
+    try {
+      await deleteProjectCollaborator(projectId, person.id);
+      await load();
+      setState((prev) => ({ ...prev, message: 'Collaborator removed.', error: '' }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Collaborator could not be removed.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const resendInvitation = async (invitation) => {
+    if (!projectId || !invitation?.id || busy) return;
+    setBusy(`invite:${invitation.id}`);
+    try {
+      await resendProjectInvitation(projectId, invitation.id);
+      await load();
+      setState((prev) => ({ ...prev, message: 'Invitation resent.', error: '' }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Invitation could not be resent.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const revokeInvitation = async (invitation) => {
+    if (!projectId || !invitation?.id || busy) return;
+    setBusy(`revoke-invite:${invitation.id}`);
+    try {
+      await revokeProjectInvitation(projectId, invitation.id);
+      await load();
+      setState((prev) => ({ ...prev, message: 'Invitation revoked.', error: '' }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Invitation could not be revoked.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const addHook = async () => {
+    const target = hookDraft.target.trim();
+    const smtpHost = hookDraft.smtpHost.trim();
+    const smtpFrom = hookDraft.smtpFrom.trim();
+    const smtpPort = hookDraft.smtpPort.trim();
+    const secret = hookDraft.secret.trim();
+    if (!projectId || !target || !smtpHost || !smtpFrom || busy) return;
+    setBusy('hook');
+    try {
+      const body = {
+        kind: 'email',
+        target,
+        events: [hookDraft.event],
+      };
+      if (secret) body.secret = secret;
+      body.config = {
+        smtpHost,
+        smtpPort: smtpPort ? Number(smtpPort) : 587,
+        from: smtpFrom,
+        smtpUsername: hookDraft.smtpUsername.trim(),
+        smtpStartTls: !!hookDraft.smtpStartTls,
+      };
+      await createProjectNotificationHook(projectId, body);
+      setHookDraft(defaultProjectHookDraft());
+      await load();
+      setState((prev) => ({ ...prev, message: 'Notification added.', error: '' }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Notification could not be added.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const setHookEnabled = async (hook, enabled) => {
+    if (!projectId || !hook?.id || busy) return;
+    setBusy(`hook:${hook.id}`);
+    try {
+      await updateProjectNotificationHook(projectId, hook.id, { enabled });
+      await load();
+      setState((prev) => ({ ...prev, message: enabled ? 'Notification enabled.' : 'Notification disabled.', error: '' }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Notification could not be updated.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const removeHook = async (hook) => {
+    if (!projectId || !hook?.id || busy) return;
+    setBusy(`remove-hook:${hook.id}`);
+    try {
+      await deleteProjectNotificationHook(projectId, hook.id);
+      await load();
+      setState((prev) => ({ ...prev, message: 'Notification removed.', error: '' }));
+    } catch (err) {
+      setState((prev) => ({ ...prev, error: err?.message || 'Notification could not be removed.' }));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const canAddHook = hookDraft.target.trim()
+    && hookDraft.smtpHost.trim()
+    && hookDraft.smtpFrom.trim()
+    && busy !== 'hook';
+  const pendingInvitations = (state.invitations || []).filter((invite) => String(invite?.status || 'pending') === 'pending');
+
+  if (!projectId) {
+    return <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)' }}>Collaboration is unavailable for this project.</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {state.status === 'loading' ? (
+        <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)' }}>Loading...</div>
+      ) : (
+        <>
+          <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>Invite people</div>
+            <input
+              value={personDraft.email}
+              onChange={(e) => setPersonDraft((prev) => ({ ...prev, email: e.target.value }))}
+              placeholder="teammate@company.com"
+              style={fieldStyle}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 6 }}>
+              <select
+                value={personDraft.role}
+                onChange={(e) => setPersonDraft((prev) => ({ ...prev, role: e.target.value }))}
+                style={fieldStyle}
+              >
+                <option value="reviewer">Reviewer</option>
+                <option value="editor">Editor</option>
+                <option value="commenter">Commenter</option>
+                <option value="viewer">Viewer</option>
+              </select>
+              <button type="button" className="btn-secondary" onClick={addPerson} disabled={!personDraft.email.trim() || busy === 'person'} style={{ height: 30, padding: '0 9px' }}>
+                {busy === 'person' ? 'Inviting...' : 'Invite'}
+              </button>
+            </div>
+            {state.collaborators.length ? (
+              <div>
+                {state.collaborators.map((person) => (
+                  <div key={person.id || person.email} style={rowStyle}>
+                    <div title={person.email} style={{
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontFamily: FONT_BODY,
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      color: 'var(--ink)',
+                    }}>
+                      {person.displayName || person.email}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 6 }}>
+                      <select
+                        value={person.role || 'viewer'}
+                        onChange={(e) => updateRole(person, e.target.value)}
+                        disabled={busy === `person:${person.id}`}
+                        style={fieldStyle}
+                      >
+                        <option value="owner">Owner</option>
+                        <option value="editor">Editor</option>
+                        <option value="reviewer">Reviewer</option>
+                        <option value="commenter">Commenter</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                      <button type="button" className="btn-secondary" onClick={() => removePerson(person)} disabled={busy === `remove-person:${person.id}`} style={{ height: 30, padding: '0 9px' }}>
+                        {busy === `remove-person:${person.id}` ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-4)' }}>No active collaborators yet.</div>
+            )}
+            {state.invitationsAvailable === false ? (
+              <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-4)' }}>Pending invitation tracking is not available on this server.</div>
+            ) : pendingInvitations.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>Pending invitations</div>
+                {pendingInvitations.map((invitation) => {
+                  const expiry = formatProjectCollaborationDate(invitation.expiresAt);
+                  return (
+                    <div key={invitation.id || invitation.email} style={rowStyle}>
+                      <div title={invitation.email} style={{
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontFamily: FONT_BODY,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        color: 'var(--ink)',
+                      }}>
+                        {invitation.displayName || invitation.email}
+                      </div>
+                      <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>
+                        {(invitation.role || 'viewer').replace(/^./, (ch) => ch.toUpperCase())}
+                        {expiry ? ` - expires ${expiry}` : ''}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => resendInvitation(invitation)}
+                          disabled={busy === `invite:${invitation.id}` || busy === `revoke-invite:${invitation.id}`}
+                          style={{ height: 30, padding: '0 9px' }}
+                        >
+                          {busy === `invite:${invitation.id}` ? 'Sending...' : 'Resend'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => revokeInvitation(invitation)}
+                          disabled={busy === `revoke-invite:${invitation.id}`}
+                          style={{ height: 30, padding: '0 9px' }}
+                        >
+                          {busy === `revoke-invite:${invitation.id}` ? 'Revoking...' : 'Revoke'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+
+          <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>Notifications</div>
+            <input
+              value={hookDraft.target}
+              onChange={(e) => setHookDraft((prev) => ({ ...prev, target: e.target.value }))}
+              placeholder="team@company.com"
+              style={fieldStyle}
+            />
+            <select
+              value={hookDraft.event}
+              onChange={(e) => setHookDraft((prev) => ({ ...prev, event: e.target.value }))}
+              style={fieldStyle}
+            >
+              <option value="artifact.review_requested">Review requests</option>
+              <option value="artifact.suggested">Suggestions</option>
+              <option value="artifact.commented">Comments</option>
+              <option value="*">All updates</option>
+            </select>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 70px', gap: 6 }}>
+              <input value={hookDraft.smtpHost} onChange={(e) => setHookDraft((prev) => ({ ...prev, smtpHost: e.target.value }))} placeholder="SMTP host" style={fieldStyle} />
+              <input value={hookDraft.smtpPort} onChange={(e) => setHookDraft((prev) => ({ ...prev, smtpPort: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="587" inputMode="numeric" style={fieldStyle} />
+            </div>
+            <input value={hookDraft.smtpFrom} onChange={(e) => setHookDraft((prev) => ({ ...prev, smtpFrom: e.target.value }))} placeholder="from@company.com" style={fieldStyle} />
+            <input value={hookDraft.smtpUsername} onChange={(e) => setHookDraft((prev) => ({ ...prev, smtpUsername: e.target.value }))} placeholder="SMTP username" style={fieldStyle} />
+            <input type="password" value={hookDraft.secret} onChange={(e) => setHookDraft((prev) => ({ ...prev, secret: e.target.value }))} placeholder="SMTP password" style={fieldStyle} />
+            <button type="button" className="btn-secondary" onClick={addHook} disabled={!canAddHook} style={{ height: 30, padding: '0 9px' }}>
+              {busy === 'hook' ? 'Adding...' : 'Add notification'}
+            </button>
+            {state.hooks.length ? (
+              <div>
+                {state.hooks.map((hook) => (
+                  <div key={hook.id} style={rowStyle}>
+                    <div title={hook.target} style={{
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontFamily: FONT_BODY,
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      color: 'var(--ink)',
+                    }}>
+	                      {hook.kind === 'email' ? 'Email' : 'Notification'} · {hook.target}
+                    </div>
+                    <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button type="button" className="btn-secondary" onClick={() => setHookEnabled(hook, hook.enabled === false)} disabled={busy === `hook:${hook.id}`} style={{ height: 28, padding: '0 8px' }}>
+                        {hook.enabled === false ? 'Enable' : 'Disable'}
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => removeHook(hook)} disabled={busy === `remove-hook:${hook.id}`} style={{ height: 28, padding: '0 8px' }}>
+                        {busy === `remove-hook:${hook.id}` ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-4)' }}>No notifications yet.</div>
+            )}
+          </section>
+
+          {(state.error || state.message) && (
+            <div style={{
+              fontFamily: FONT_BODY,
+              fontSize: 12.5,
+              lineHeight: 1.4,
+              color: state.error ? 'var(--danger)' : 'var(--success)',
+            }}>
+              {state.error || state.message}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
   onDeleteTask, onShowAll,
@@ -795,6 +1248,7 @@ function ProjectDetail({
   // the schedule detail page. Wired by App.jsx — same handler the
   // ScheduledView grid uses.
   onOpenSchedule,
+  onHandoffArtifact,
 }) {
   const projectTasks = (tasks || [])
     .filter((t) => t.projectName === project.name || t.projectPath === project.path)
@@ -1061,7 +1515,8 @@ function ProjectDetail({
             {Ico.panelCollapseRight(15)}
           </button>
         </div>
-        <WorkingFolderBox project={project} />
+        <WorkingFolderBox project={project} onHandoffArtifact={onHandoffArtifact} />
+        <ProjectCollaborationBox project={project} />
         <ContextBox project={project} />
         <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
       </aside>
@@ -1097,6 +1552,7 @@ export default function ProjectsView({
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
   // clicking a row routes to the schedule detail page.
   onOpenSchedule,
+  onHandoffArtifact,
   agentLabel = 'the agent',
 }) {
   const { pinned, togglePin } = usePinnedProjects();
@@ -1247,6 +1703,7 @@ export default function ProjectsView({
         onRenameSubmit={(rawNext) => handleRenameSubmit(detailProject.name, rawNext)}
         onRenameCancel={handleRenameCancel}
         onReveal={handleReveal}
+        onHandoffArtifact={onHandoffArtifact}
         onDelete={(proj) => {
           // Bounce back to the grid first so we don't render a detail
           // page for a project that's about to disappear, then defer
