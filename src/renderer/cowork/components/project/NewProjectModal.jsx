@@ -42,16 +42,16 @@ async function pickFolderPath(setError) {
   if (host.hasPickDirectory()) {
     try {
       const result = await host.pickDirectory();
-      if (result?.ok && result.path) return result.path;
+      if (result?.ok && result.path) return { status: 'picked', path: result.path };
       if (result?.reason && result.reason !== 'unsupported') {
         setError(result.reason);
       }
-      return null;
+      return { status: 'cancelled' };
     } catch {
-      // fall through to webkit input
+      return { status: 'fallback' };
     }
   }
-  return null;
+  return { status: 'fallback' };
 }
 
 function FileList({ files, onRemove }) {
@@ -289,12 +289,14 @@ export default function NewProjectModal({ open, onClose, onCreated, suggestedNam
   const browseForPath = async () => {
     if (busy || locationLocked) return;
     setError('');
-    const picked = await pickFolderPath(setError);
-    if (picked) {
-      setProjectPath(picked);
+    const result = await pickFolderPath(setError);
+    if (result.status === 'picked') {
+      setProjectPath(result.path);
       return;
     }
-    folderInputRef.current?.click();
+    if (result.status === 'fallback') {
+      folderInputRef.current?.click();
+    }
   };
 
   const onFolderPicked = (e) => {
@@ -317,15 +319,17 @@ export default function NewProjectModal({ open, onClose, onCreated, suggestedNam
   const chooseExistingFolder = async () => {
     if (busy) return;
     setError('');
-    const picked = await pickFolderPath(setError);
-    if (picked) {
-      setChosenFolder(picked);
-      setProjectPath(picked);
-      setName(pathBasename(picked));
+    const result = await pickFolderPath(setError);
+    if (result.status === 'picked') {
+      setChosenFolder(result.path);
+      setProjectPath(result.path);
+      setName(pathBasename(result.path));
       setStep(STEP_EXISTING_FORM);
       return;
     }
-    folderInputRef.current?.click();
+    if (result.status === 'fallback') {
+      folderInputRef.current?.click();
+    }
   };
 
   const goBack = () => {
