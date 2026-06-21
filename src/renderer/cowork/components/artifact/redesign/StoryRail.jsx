@@ -441,7 +441,8 @@ function RowActionButton({ label, onClick, variant = 'ghost' }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      // Stop the click bubbling to the row's "locate on page" handler.
+      onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       className="rd-no-truncate"
       style={{
         height: 24,
@@ -471,8 +472,12 @@ function StoryRow({
   onReopenEvent,
   onRestoreVersion,
   onCompareVersion,
+  onSelectEvent,
 }) {
   const recovered = event?.meta?.tone === 'recovered';
+  // A comment anchored to the page can be "located": clicking the row jumps to its
+  // spot on the artifact and opens its pin. Settled comments have no pin, so no jump.
+  const locatable = (event.kind === 'comment' || event.kind === 'review') && !!event.locatable && !!onSelectEvent;
 
   // Comment & review rows are the actionable ones: full body (no truncation).
   // Active (unsettled) items get [Resolve, Dismiss, Fix with AI]; once an item
@@ -511,7 +516,11 @@ function StoryRow({
       }}
     >
       <Avatar author={event.author} />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div
+        style={{ flex: 1, minWidth: 0, cursor: locatable ? 'pointer' : 'default' }}
+        onClick={locatable ? () => onSelectEvent(event) : undefined}
+        title={locatable ? 'Show where this is on the page' : undefined}
+      >
         <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.4 }}>
           <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{event.author.name}</span>{' '}
           {event.title}
@@ -939,6 +948,9 @@ export function StoryRail({
   // button. Each is called with the version event.
   onRestoreVersion,
   onCompareVersion,
+  // Optional: clicking an anchored comment/review row calls this with the event so
+  // the host can jump to where it's anchored on the page + open its pin.
+  onSelectEvent,
 }) {
   // Uncontrolled fallbacks so the rail is fully interactive when rendered
   // standalone (no parent wiring required).
@@ -1130,6 +1142,7 @@ export function StoryRail({
                   onReopenEvent={onReopenEvent}
                   onRestoreVersion={onRestoreVersion}
                   onCompareVersion={onCompareVersion}
+                  onSelectEvent={onSelectEvent}
                 />
               );
             })}

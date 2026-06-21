@@ -138,6 +138,34 @@ function toEpoch(value) {
   return Number.isNaN(t) ? 0 : t;
 }
 
+// Human-readable "what drove this version" from the stored prompt. Strips the
+// injected "[Context — …]" prefix we prepend to the agent's FIRST turn, and the
+// generic per-file "Edited X" manual-save label, so the Story shows the user's
+// actual instruction (e.g. "Please address this review note: …") instead of noise.
+function cleanPrompt(raw) {
+  let s = String(raw || '').trim();
+  s = s.replace(/^\[Context[\s\S]*?\]\s*/i, '').trim();      // drop our context prefix
+  if (!s || /^edited\b/i.test(s) || /^direct edit$/i.test(s)) return '';
+  return s.length > 220 ? `${s.slice(0, 217)}…` : s;
+}
+
+// Build a precise "Fix with AI" instruction that tells Anton WHERE the comment is
+// anchored (slide, area, the specific element's text) so it edits that exact spot
+// surgically instead of making broad, whole-artifact changes.
+function buildFixPrompt({ note, title, anchor } = {}) {
+  const a = anchor || {};
+  const where = [];
+  if (typeof a.slide === 'number') where.push(`slide ${a.slide + 1}`);
+  if (a.area) where.push(String(a.area));
+  const targetText = a?.target?.text || a?.targetText || '';
+  let p = `Address this reviewer comment on the "${title}" artifact`;
+  if (where.length) p += ` (location: ${where.join(' · ')})`;
+  p += `:\n"${note}"`;
+  if (targetText) p += `\n\nThe comment points specifically at this element: "${targetText}".`;
+  p += '\n\nMake a SURGICAL edit: change only that specific part to satisfy the comment. Do not rewrite, restructure, or restyle the rest of the artifact.';
+  return p;
+}
+
 // Map a backend version → display shape. WHO: AI operations → "Anton"; a user's
 // direct typed edit (operationType "manual_edit") → "You" (self-identity is then
 // normalized in railEvents). WHAT: a clean, single label. The version NUMBER prefers
@@ -159,10 +187,14 @@ function mapVersions(rawVersions, currentVersionId) {
     const who = isAI ? 'Anton' : 'You';
     const serverNum = v?.versionNumber ?? v?.version_number;
     const n = Number.isFinite(serverNum) ? serverNum : (list.length - i);
+    // What drove the change, shown under AI versions so "Generated update" isn't
+    // a mystery — the user's actual instruction. (Manual edits have no useful prompt.)
+    const summary = isAI ? cleanPrompt(v?.prompt ?? v?.summary) : '';
     return {
       id,
       n,
       label: what,
+      summary,
       author: { name: who, initials: isAI ? 'AN' : 'ME', isAI },
       when: relativeWhen(v?.createdAt || v?.created_at || v?.when || v?.timestamp),
       ts: toEpoch(v?.createdAt || v?.created_at || v?.when || v?.timestamp),
@@ -185,6 +217,8 @@ function mapStoryEvents({ comments }) {
     const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
     const email = c?.actorEmail || c?.notificationState?.actorEmail || c?.author?.email || '';
     const isReview = c?.kind === 'suggestion' || c?.kind === 'review';
+    const anchor = c?.anchor || {};
+    const hasPin = typeof (anchor.xPct ?? anchor.x) === 'number' && c?.status !== 'resolved' && c?.status !== 'rejected';
     events.push({
       id: `c-${c?.id || events.length}`,
       commentId: c?.id,
@@ -194,6 +228,9 @@ function mapStoryEvents({ comments }) {
       body: c?.body || c?.text || '',
       when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
       ts: toEpoch(c?.createdAt || c?.created_at || c?.when),
+      // Where it's anchored, so clicking the row can jump there + open the pin.
+      slide: typeof anchor.slide === 'number' ? anchor.slide : null,
+      locatable: hasPin,
       meta: { resolved: c?.status === 'resolved', dismissed: c?.status === 'rejected' },
     });
   }
@@ -388,7 +425,7 @@ function ProseCanvas({
   );
 }
 
-function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveContent, onExitEdit, onError, onSlideChange, commitRef }) {
+function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveContent, onExitEdit, onError, onSlideChange, commitRef, targetResolverRef, deckNavRef }) {
   const [state, setState] = useState({ loading: true, error: '', url: '' });
   const iframeRef = useRef(null);
   // Direct in-place typing on the same-origin preview (degrades if cross-origin).
@@ -407,6 +444,43 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
     commitRef.current = commit;
     return () => { commitRef.current = null; };
   }, [commit, commitRef]);
+
+  // Expose a target-text resolver (element under an x/y% click → its text, for
+  // anchoring comments) and a deck navigator (jump to a slide) to the host. Both
+  // read the same-origin preview defensively (cross-origin / not ready → no-op).
+  useEffect(() => {
+    const readDoc = () => { try { return iframeRef.current?.contentDocument || null; } catch { return null; } };
+    if (targetResolverRef) {
+      targetResolverRef.current = (xPct, yPct) => {
+        const doc = readDoc();
+        if (!doc) return null;
+        try {
+          const w = doc.documentElement?.clientWidth || 0;
+          const h = doc.documentElement?.clientHeight || 0;
+          if (!w || !h) return null;
+          const el = doc.elementFromPoint((xPct / 100) * w, (yPct / 100) * h);
+          if (!el) return null;
+          const text = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+          return text ? { text, tag: el.tagName } : null;
+        } catch { return null; }
+      };
+    }
+    if (deckNavRef) {
+      deckNavRef.current = (index) => {
+        const ifr = iframeRef.current;
+        let win; try { win = ifr?.contentWindow; } catch { win = null; }
+        if (!win) return false;
+        try {
+          if (typeof win.goTo === 'function') { win.goTo(Number(index) + 1); return true; } // deck goTo is 1-based
+        } catch { /* cross-origin / no nav fn */ }
+        return false;
+      };
+    }
+    return () => {
+      if (targetResolverRef) targetResolverRef.current = null;
+      if (deckNavRef) deckNavRef.current = null;
+    };
+  }, [targetResolverRef, deckNavRef]);
 
   // ── Slide tracking (decks) ──────────────────────────────────────────────────
   // Read which `.slide` is `.active` in the same-origin preview and report it up
@@ -545,7 +619,7 @@ function versionsToEvents(versions) {
     versionN: v.n,
     author: v.author,
     title: v.label,
-    body: '',
+    body: v.summary || '',
     when: v.when,
     ts: v.ts,
     meta: { current: !!v.current },
@@ -595,7 +669,11 @@ function commentsToPins(comments) {
         xPct,
         yPct,
         slide,
-        author: { initials: initialsOf(name), color: '#3a4d6e' },
+        // Carried so clicking the pin can show the comment AT its location.
+        body: c?.body || c?.text || '',
+        area: a?.area || '',
+        when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
+        author: { name, initials: initialsOf(name), color: '#3a4d6e' },
         resolved: false,
       });
     }
@@ -637,6 +715,13 @@ export function ArtifactWorkspaceRedesign({
   // HtmlCanvas registers its inline-edit commit here so closing the workspace
   // mid-edit still persists deck edits as one version (prose flushes on unmount).
   const editCommitRef = useRef(null);
+  // HtmlCanvas registers a resolver here: given an (xPct,yPct) click on the deck,
+  // it returns { text, tag } of the element there — captured into a comment's anchor
+  // so "Fix with AI" can target the exact section. (null for non-HTML canvases.)
+  const targetResolverRef = useRef(null);
+  // HtmlCanvas registers a deck navigator here: goToSlide(index) drives the deck to
+  // a slide so clicking a comment in the Story can jump to where it's anchored.
+  const deckNavRef = useRef(null);
 
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -747,6 +832,7 @@ export function ArtifactWorkspaceRedesign({
   const [commentMode, setCommentMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [compare, setCompare] = useState(null); // { from, fromN } → VersionDiff vs current
+  const [activeCommentId, setActiveCommentId] = useState(null); // pin popover open for this comment
   // Edit and Comment modes are mutually exclusive — both bind canvas clicks.
   const toggleEditMode = useCallback(() => { setEditMode((v) => !v); setCommentMode(false); }, []);
   const toggleCommentMode = useCallback(() => { setCommentMode((v) => !v); setEditMode(false); }, []);
@@ -758,6 +844,9 @@ export function ArtifactWorkspaceRedesign({
         // the slide it belongs to (no-op for non-slide artifacts: slide stays null).
         const anchor = { xPct, yPct, area: area || '' };
         if (typeof slideInfo.index === 'number') anchor.slide = slideInfo.index;
+        // Capture the element under the click so "Fix with AI" can target it exactly.
+        const target = targetResolverRef.current?.(xPct, yPct);
+        if (target && target.text) anchor.target = target;
         await createArtifactComment(path, { body, anchor });
         flash('Comment added');
         loadComments();
@@ -791,14 +880,32 @@ export function ArtifactWorkspaceRedesign({
   const onFixEvent = useCallback((ev) => {
     const note = ev?.body || ev?.title || '';
     if (!note) return;
-    const started = chat.send(`Please address this review note and update the artifact: "${note}"`);
+    // Pull the comment's anchor so Anton edits the SPECIFIC spot, not the whole deck.
+    const c = (commentsState.comments || []).find((x) => x.id === ev.commentId);
+    const started = chat.send(buildFixPrompt({ note, title, anchor: c?.anchor }));
     flash(started === false ? 'Anton is mid-reply — try again in a moment.' : 'Anton is addressing it…');
-  }, [chat, flash]);
+  }, [commentsState, title, chat, flash]);
   const onReopenEvent = useCallback(async (ev) => {
     if (!ev?.commentId) return;
     try { await setArtifactSuggestionStatus(ev.commentId, 'open'); flash('Reopened'); loadComments(); }
     catch (e) { flash(e?.message || 'Could not reopen.'); }
   }, [flash, loadComments]);
+
+  // Clicking a comment PIN opens its popover (shows the comment at its location);
+  // the popover's actions reuse the rail handlers.
+  const onResolvePin = useCallback((id) => { onResolveEvent({ commentId: id }); setActiveCommentId(null); }, [onResolveEvent]);
+  const onFixPin = useCallback((id) => {
+    const c = (commentsState.comments || []).find((x) => x.id === id);
+    onFixEvent({ commentId: id, body: c?.body || c?.text || '' });
+    setActiveCommentId(null);
+  }, [commentsState, onFixEvent]);
+  // Clicking a comment in the STORY jumps the deck to where it's anchored and opens
+  // its pin, so the user sees exactly which part of the page it refers to.
+  const onLocateComment = useCallback((ev) => {
+    if (!ev?.commentId) return;
+    if (typeof ev.slide === 'number') { try { deckNavRef.current?.(ev.slide); } catch { /* no deck nav */ } }
+    setActiveCommentId(ev.commentId);
+  }, []);
 
   // ── Restore (forward-restore) ─────────────────────────────────────────────────
   const handleRestore = useCallback(
@@ -1013,6 +1120,7 @@ export function ArtifactWorkspaceRedesign({
     setCompare(null);
     setViewingN(null);
     setReviewDismissed(false);
+    setActiveCommentId(null);
   }, [path]);
 
   if (!open || !artifact) return null;
@@ -1050,6 +1158,8 @@ export function ArtifactWorkspaceRedesign({
         onError={flash}
         onSlideChange={handleSlideChange}
         commitRef={editCommitRef}
+        targetResolverRef={targetResolverRef}
+        deckNavRef={deckNavRef}
       />
     );
   } else {
@@ -1093,6 +1203,7 @@ export function ArtifactWorkspaceRedesign({
             onDismissEvent={onDismissEvent}
             onFixEvent={onFixEvent}
             onReopenEvent={onReopenEvent}
+            onSelectEvent={onLocateComment}
             onRestoreVersion={(ev) => handleRestore(ev.versionN)}
             onCompareVersion={(ev) => setCompare({ from: ev.versionId, fromN: ev.versionN })}
           />
@@ -1120,9 +1231,12 @@ export function ArtifactWorkspaceRedesign({
               active={commentMode}
               pins={pins}
               currentSlide={slideInfo.index}
+              activeId={activeCommentId}
+              onActiveChange={setActiveCommentId}
               onCreate={createPinnedComment}
               onExitActive={() => setCommentMode(false)}
-              onSelectPin={() => flash('Comment is in the Story panel →')}
+              onResolvePin={onResolvePin}
+              onFixPin={onFixPin}
             />
           </div>
         </div>

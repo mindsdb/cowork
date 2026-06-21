@@ -36,7 +36,7 @@ function CommentGlyph({ size = 13, color = 'currentColor' }) {
 }
 
 /* ── a single numbered teardrop marker ─────────────────────────────── */
-function Pin({ pin, active, onSelect }) {
+function Pin({ pin, active, selected = false, onSelect }) {
   const isAI = pin.ai || pin.author?.color?.includes?.('gradient');
   // Open comments must be easy to spot on ANY background, so use the bright accent
   // (AI gradient for AI authors) — never the dim author swatch — plus a white ring
@@ -55,8 +55,8 @@ function Pin({ pin, active, onSelect }) {
         position: 'absolute',
         left: `${pin.xPct}%`,
         top: `${pin.yPct}%`,
-        // Anchor the teardrop's sharp corner at the click point.
-        transform: 'translate(-50%, -100%)',
+        // Anchor the teardrop's sharp corner at the click point; bump the selected pin.
+        transform: selected ? 'translate(-50%, -100%) scale(1.15)' : 'translate(-50%, -100%)',
         width: 28,
         height: 28,
         padding: 0,
@@ -71,13 +71,17 @@ function Pin({ pin, active, onSelect }) {
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'pointer',
-        // dark drop shadow (separates on light bg) + cyan halo (pops on dark bg)
-        boxShadow: '0 4px 14px rgba(0,0,0,.55), 0 0 0 5px rgba(34,211,238,.30)',
+        // dark drop shadow (separates on light bg) + cyan halo (pops on dark bg);
+        // the selected pin gets a stronger, wider halo so it reads as "open".
+        boxShadow: selected
+          ? '0 6px 18px rgba(0,0,0,.6), 0 0 0 7px rgba(34,211,238,.5)'
+          : '0 4px 14px rgba(0,0,0,.55), 0 0 0 5px rgba(34,211,238,.30)',
         // Pins are always clickable, even when the container is click-through.
         pointerEvents: 'auto',
         opacity: 1,
+        transition: 'box-shadow .12s ease, transform .12s ease',
         animation: 'popIn .3s ease',
-        zIndex: 2,
+        zIndex: selected ? 3 : 2,
       }}
     >
       {pin.n}
@@ -246,6 +250,62 @@ function Composer({ x, y, onSubmit, onCancel }) {
   );
 }
 
+/* ── read-only popover anchored at a clicked pin: shows the comment AT its spot ── */
+function PinPopover({ pin, onClose, onResolve, onFix }) {
+  // Flip toward the interior near the right / bottom edges so it stays on-canvas.
+  const flipX = pin.xPct > 62;
+  const flipY = pin.yPct > 64;
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-label="Comment"
+      style={{
+        position: 'absolute',
+        left: `${pin.xPct}%`,
+        top: `${pin.yPct}%`,
+        transform: `translate(${flipX ? 'calc(-100% - 16px)' : '16px'}, ${flipY ? 'calc(-100% - 14px)' : '6px'})`,
+        width: 268,
+        maxWidth: 'calc(100vw - 32px)',
+        background: 'var(--surface)',
+        border: '1px solid var(--accent)',
+        borderRadius: 11,
+        padding: 12,
+        boxShadow: '0 16px 36px -10px rgba(0,0,0,.7), 0 0 0 4px rgba(34,211,238,.08)',
+        pointerEvents: 'auto',
+        animation: 'popIn .16s ease',
+        zIndex: 6,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+        <span style={{ width: 20, height: 20, borderRadius: '50%', background: pin.author?.color || '#3a4d6e', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
+          {pin.author?.initials || '?'}
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{pin.author?.name || 'Comment'}</span>
+        {pin.when ? <span style={{ fontSize: 10.5, color: 'var(--ink-4)', fontFamily: 'var(--font-mono, monospace)' }}>{pin.when}</span> : null}
+        <button type="button" onClick={onClose} aria-label="Close" style={{ marginLeft: 'auto', width: 20, height: 20, border: 'none', background: 'transparent', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 0 }}>×</button>
+      </div>
+      {pin.area ? <div style={{ fontSize: 10.5, color: 'var(--ink-4)', marginBottom: 5, fontFamily: 'var(--font-mono, monospace)' }}>{pin.area}</div> : null}
+      <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 10 }}>
+        {pin.body || '(no text)'}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {onResolve ? (
+          <button type="button" onClick={() => onResolve(pin.id)} style={{ height: 26, padding: '0 11px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--ink-2)', fontSize: 11.5, fontWeight: 500, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer' }}>
+            Resolve
+          </button>
+        ) : null}
+        {onFix ? (
+          <button type="button" onClick={() => onFix(pin.id)} style={{ height: 26, padding: '0 12px', borderRadius: 7, border: '1px solid var(--accent)', background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer' }}>
+            Fix with AI
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 /**
  * CommentLayer
  *
@@ -254,21 +314,27 @@ function Composer({ x, y, onSubmit, onCancel }) {
  *
  * @param {object}   props
  * @param {boolean}  [props.active]        comment mode ON → overlay captures clicks. Default false.
- * @param {Array}    [props.pins]          [{ id, n, xPct, yPct, author?:{initials,color}, ai?, resolved? }]
+ * @param {Array}    [props.pins]          [{ id, n, xPct, yPct, body, area, when, author?:{name,initials,color}, slide? }]
  * @param {Function} [props.onCreate]      ({ xPct, yPct, body, area }) when a comment is submitted
- * @param {Function} [props.onSelectPin]   (id) when an existing pin is clicked
  * @param {Function} [props.onExitActive]  called after submit, and is the host's cue to flip `active` off
  * @param {?number}  [props.currentSlide]  active deck slide index; a pin with a
  *                                         `slide` only shows when it matches (so a
  *                                         slide-3 comment doesn't appear on slide 1).
+ * @param {?string}  [props.activeId]      comment id whose pin popover is open (host-controlled).
+ * @param {Function} [props.onActiveChange] (id|null) — clicking a pin opens its popover.
+ * @param {Function} [props.onResolvePin]  (id) from the popover's Resolve button.
+ * @param {Function} [props.onFixPin]      (id) from the popover's Fix-with-AI button.
  */
 export function CommentLayer({
   active = false,
   pins = DEFAULT_PINS,
   onCreate,
-  onSelectPin,
   onExitActive,
   currentSlide = null,
+  activeId = null,
+  onActiveChange,
+  onResolvePin,
+  onFixPin,
 } = {}) {
   const overlayRef = useRef(null);
   // The in-progress drop: { xPct, yPct } once the user clicks, else null.
@@ -295,6 +361,14 @@ export function CommentLayer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [active, draft, clearDraft, onExitActive]);
 
+  // Esc closes an open pin popover even in view mode (overlay is click-through then).
+  useEffect(() => {
+    if (!activeId) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); onActiveChange?.(null); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeId, onActiveChange]);
+
   // Click on bare overlay → compute xPct/yPct against the overlay box, drop temp pin.
   const handleOverlayClick = useCallback(
     (e) => {
@@ -320,6 +394,11 @@ export function CommentLayer({
     [draft, onCreate, onExitActive],
   );
 
+  const visiblePins = (pins || []).filter(
+    (p) => p.slide == null || currentSlide == null || p.slide === currentSlide,
+  );
+  const activePin = activeId ? visiblePins.find((p) => p.id === activeId) : null;
+
   return (
     <div
       ref={overlayRef}
@@ -341,12 +420,19 @@ export function CommentLayer({
     >
       {/* existing pins — rendered in both modes, individually clickable. A pin
           scoped to a slide only shows when that slide is active; pins without a
-          slide (prose, generic HTML) always show. */}
-      {(pins || [])
-        .filter((p) => p.slide == null || currentSlide == null || p.slide === currentSlide)
-        .map((p) => (
-          <Pin key={p.id} pin={p} active={active} onSelect={onSelectPin} />
-        ))}
+          slide (prose, generic HTML) always show. Clicking a pin opens its popover
+          (the comment shown right at its location). */}
+      {visiblePins.map((p) => (
+        <Pin key={p.id} pin={p} active={active} selected={p.id === activeId} onSelect={onActiveChange} />
+      ))}
+      {activePin ? (
+        <PinPopover
+          pin={activePin}
+          onClose={() => onActiveChange?.(null)}
+          onResolve={onResolvePin}
+          onFix={onFixPin}
+        />
+      ) : null}
 
       {/* comment-mode affordances */}
       {active && (
