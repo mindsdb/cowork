@@ -144,7 +144,9 @@ function toEpoch(value) {
 // actual instruction (e.g. "Please address this review note: …") instead of noise.
 function cleanPrompt(raw) {
   let s = String(raw || '').trim();
-  s = s.replace(/^\[Context[\s\S]*?\]\s*/i, '').trim();      // drop our context prefix
+  // Drop our injected context prefix. Anchor the closing `]` on the blank-line
+  // separator we add after it, so a `]` inside the artifact title can't truncate it.
+  s = s.replace(/^\[Context\b[\s\S]*?\](?=\s*\n\s*\n|\s*$)/i, '').trim();
   if (!s || /^edited\b/i.test(s) || /^direct edit$/i.test(s)) return '';
   return s.length > 220 ? `${s.slice(0, 217)}…` : s;
 }
@@ -903,9 +905,16 @@ export function ArtifactWorkspaceRedesign({
   // its pin, so the user sees exactly which part of the page it refers to.
   const onLocateComment = useCallback((ev) => {
     if (!ev?.commentId) return;
-    if (typeof ev.slide === 'number') { try { deckNavRef.current?.(ev.slide); } catch { /* no deck nav */ } }
     setActiveCommentId(ev.commentId);
-  }, []);
+    // If it's anchored on another slide, drive the deck there so its pin (hence the
+    // popover) becomes visible. If the deck can't be navigated programmatically,
+    // tell the user which slide rather than leaving the click silently inert.
+    if (typeof ev.slide === 'number' && ev.slide !== slideInfo.index) {
+      let moved = false;
+      try { moved = deckNavRef.current?.(ev.slide) === true; } catch { moved = false; }
+      if (!moved) flash(`This comment is on slide ${ev.slide + 1} — open it to see the pin.`);
+    }
+  }, [slideInfo.index, flash]);
 
   // ── Restore (forward-restore) ─────────────────────────────────────────────────
   const handleRestore = useCallback(

@@ -352,6 +352,7 @@ export function CommentLayer({
     if (!active) return;
     const onKeyDown = (e) => {
       if (e.key === 'Escape') {
+        if (activeId) return; // a pin popover is open → let its own Esc handler close it first
         e.preventDefault();
         if (draft) clearDraft();
         else onExitActive?.();
@@ -359,7 +360,7 @@ export function CommentLayer({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [active, draft, clearDraft, onExitActive]);
+  }, [active, draft, clearDraft, onExitActive, activeId]);
 
   // Esc closes an open pin popover even in view mode (overlay is click-through then).
   useEffect(() => {
