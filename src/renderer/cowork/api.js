@@ -1347,6 +1347,79 @@ export async function handoffArtifactToTask({
   });
 }
 
+// ── M1 "Fix it in place" inline-edit endpoints ──────────────────────
+//
+// Transport for the redesigned workspace's EditableBlock. The UI passes
+// these in as `proposeEdit` / `commitEdit` (see redesign/editIntegrationNotes.md).
+// Both follow the authHeaders + fetch(BASE+path) pattern used elsewhere.
+//
+// proposeArtifactEdit asks the backend (which calls the LLM) for a rewrite
+// and resolves with { oldText, newText, proposalId? }. The UI treats an
+// equal old/new as a no-op. Throwing signals a generation failure — the
+// caller (ArtifactWorkspaceRedesign) wraps this in try/catch so a missing
+// endpoint (404) degrades to EditableBlock's built-in mock.
+export async function proposeArtifactEdit({ path, target, instruction, oldText, baseVersionId } = {}) {
+  const payload = {
+    path: path || target?.artifactId || null,
+    artifactId: target?.artifactId || null,
+    blockId: target?.blockId || null,
+    range: target?.range ?? null,
+    instruction: instruction || '',
+    oldText: oldText ?? target?.text ?? null,
+    baseVersionId: baseVersionId || null,
+    type: 'document',
+  };
+  const data = await req('/artifacts/edits/propose', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return {
+    oldText: typeof data?.oldText === 'string' ? data.oldText : (data?.old_text ?? oldText ?? ''),
+    newText: typeof data?.newText === 'string' ? data.newText : (data?.new_text ?? ''),
+    proposalId: data?.proposalId || data?.proposal_id || null,
+  };
+}
+
+// acceptArtifactEdit performs the compare-and-swap commit. On HTTP 409 it
+// resolves with { conflict: { message, currentVersionId } } (NOT a throw),
+// matching the contract the inline-edit hook expects — the UI keeps the
+// proposal on screen and relabels Keep → "Merge & keep". Any other non-ok
+// status throws via the shared error shape.
+export async function acceptArtifactEdit({ path, target, newText, baseVersionId, proposalId } = {}) {
+  const body = JSON.stringify({
+    path: path || target?.artifactId || null,
+    artifactId: target?.artifactId || null,
+    blockId: target?.blockId || null,
+    proposalId: proposalId || null,
+    newText: newText ?? '',
+    baseVersionId: baseVersionId || null,
+  });
+  const res = await fetch(BASE + '/artifacts/edits/accept', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body,
+  });
+  if (res.status === 409) {
+    let data = {};
+    try { data = await res.json(); } catch {}
+    return {
+      conflict: {
+        message: data?.message || data?.detail || 'This changed since you started — Anton can merge your edit',
+        currentVersionId: data?.currentVersionId || data?.current_version_id || null,
+      },
+    };
+  }
+  if (!res.ok) {
+    throw await responseError(res, `Edit accept failed (${res.status})`);
+  }
+  const data = res.status === 204 ? {} : await res.json();
+  return {
+    ok: true,
+    versionId: data?.versionId || data?.version_id || null,
+    text: typeof data?.text === 'string' ? data.text : undefined,
+  };
+}
+
 export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
 }
