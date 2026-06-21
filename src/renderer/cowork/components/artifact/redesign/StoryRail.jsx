@@ -828,7 +828,7 @@ function FilterChip({ chip, active, count, onClick }) {
         alignItems: 'center',
         gap: 4,
         height: 24,
-        // tightened horizontal padding so all four chips + badges fit ~332px
+        // tightened horizontal padding so all four chips + badges fit one row
         padding: '0 7px',
         borderRadius: 6,
         border: '1px solid transparent',
@@ -921,6 +921,7 @@ export function StoryRail({
   filter = 'all',
   onFilterChange,
   onSend,
+  sending = false,
   composerPlaceholder = 'Ask Anton, or @mention…',
   collapsed = false,
   onToggle,
@@ -964,10 +965,12 @@ export function StoryRail({
 
   const handleSend = useCallback(() => {
     const text = draft.trim();
-    if (!text) return;
-    if (onSend) onSend(text);
-    setDraft('');
-  }, [draft, onSend]);
+    if (!text || sending) return;
+    // Clear the input only if the send was actually accepted. `onSend` returns
+    // false when a turn is already streaming, so the user's text isn't lost.
+    const started = onSend ? onSend(text) : true;
+    if (started !== false) setDraft('');
+  }, [draft, onSend, sending]);
 
   // Live per-filter counts from the current events, using the SAME matcher the
   // filter applies — so the badges can never disagree with what a chip shows.
@@ -1150,13 +1153,14 @@ export function StoryRail({
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            disabled={sending}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
               }
             }}
-            placeholder={composerPlaceholder}
+            placeholder={sending ? 'Anton is replying…' : composerPlaceholder}
             style={{
               flex: 1,
               border: 'none',
@@ -1171,6 +1175,7 @@ export function StoryRail({
             type="button"
             onClick={handleSend}
             aria-label="Send"
+            disabled={sending}
             style={{
               width: 26,
               height: 26,
@@ -1180,7 +1185,8 @@ export function StoryRail({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
+              cursor: sending ? 'default' : 'pointer',
+              opacity: sending ? 0.5 : 1,
               flexShrink: 0,
             }}
           >

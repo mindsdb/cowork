@@ -157,12 +157,15 @@ export function useArtifactChat({
    *
    * Ignores empty input and overlapping sends (guarded by `sending`).
    */
+  // Returns true if a turn was started, false if the input was empty or a turn is
+  // already streaming (overlapping send) — so the composer / "Fix with AI" can keep
+  // the user's text and avoid a misleading "sent" toast when nothing was sent.
   const send = useCallback((rawText) => {
     const text = typeof rawText === 'string' ? rawText.trim() : '';
-    if (!text) return;
+    if (!text) return false;
     // Guard overlapping sends. Read the ref, not state, so a second
     // synchronous call in the same tick can't slip past.
-    if (ctrlRef.current) return;
+    if (ctrlRef.current) return false;
 
     const userId = nextId('u');
     const assistantId = nextId('a');
@@ -242,6 +245,7 @@ export function useArtifactChat({
       // readably instead of crashing the workspace.
       handleError(err?.message || String(err));
     }
+    return true;
   }, [appendToAssistant, finalizeAssistant]);
 
   return { messages, sending, error, send, conversationId };

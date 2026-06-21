@@ -1,57 +1,11 @@
 /*
- * redesign.css — global keyframes + helpers for the redesigned artifact workspace (M0 shared chassis).
+ * redesign.css — global keyframes + helpers for the redesigned artifact workspace.
  *
- * This is the SINGLE source of the @keyframes used across every redesign component.
- * Other components (IconRail, TopBar, WorkspaceShell, and later canvas/diff/scrubber
- * components) reference these animations by name in inline styles and assume they
- * already exist globally. Import this file once, near the redesign entrypoint.
- *
- * Colors here use literal rgba() on purpose: keyframes can be registered before any
- * themed ancestor exists, so they must not depend on CSS custom properties.
- */
-
-/* Pop-in for puck menus, diffs, toasts, modals. */
-@keyframes rd-popIn {
-  from { opacity: 0; transform: translateY(4px) scale(.96); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* Loading shimmer sweep for skeleton placeholders (use with background-size:200% 100%). */
-@keyframes rd-shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* "Marching ants" pulse for live/presence/AI-working dots. */
-@keyframes rd-antpulse {
-  0%, 100% { transform: scale(1);   opacity: 1;  }
-  50%      { transform: scale(1.5); opacity: .5; }
-}
-
-/* One-shot accent ring that blooms then fades — applied to a just-changed element. */
-@keyframes rd-diffGlow {
-  0%   { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
-  30%  { box-shadow: 0 0 0 3px rgba(34, 211, 238, .25); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
-}
-
-/* Rise-in for notification banners / cards entering from below. */
-@keyframes rd-riseIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/* Slide-in for the right rail / panels entering from the side. */
-@keyframes rd-slideIn {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: none; }
-}
-
-/*
- * Unprefixed aliases. The HTML prototype authored animations as `popIn`, `shimmer`,
- * `antpulse`, `diffGlow`, `riseIn`, `slideIn`. We expose both names so inline styles
- * copied straight from the prototype keep working, while the rd-* names avoid clashing
- * with any pre-existing app keyframes.
+ * The SINGLE source of the @keyframes used across every redesign component, which
+ * reference them by name in inline styles (popIn, shimmer, antpulse, diffGlow,
+ * riseIn, slideIn) and assume they exist globally. Import this file once, near the
+ * redesign entrypoint. Colors use literal rgba() on purpose: keyframes can be
+ * registered before any themed ancestor exists, so they must not depend on CSS vars.
  */
 @keyframes popIn    { from { opacity: 0; transform: translateY(4px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes shimmer  { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
@@ -63,7 +17,7 @@
 /* Hover helper — quiet surface lift on interactive rail/list items. */
 .rd-hov:hover { background: var(--surface-2); }
 
-/* Direction A prototype layout constants shared by the standalone components. */
+/* Shared layout constants for the redesigned workspace. */
 .rd-workspace-shell {
   --rd-icon-rail-width: 56px;
   --rd-story-rail-width: 376px;
@@ -94,8 +48,8 @@
 .rd-scroll::-webkit-scrollbar-track { background: transparent; }
 
 /*
- * The prototype keeps the Story rail at 332px on desktop. On narrow shells it
- * behaves more like an overlay so labels stay intact and the stage is still usable.
+ * The Story rail is 376px on desktop. On narrow shells it behaves more like an
+ * overlay so labels stay intact and the stage is still usable.
  */
 @media (max-width: 920px) {
   .rd-workspace-shell__rail {

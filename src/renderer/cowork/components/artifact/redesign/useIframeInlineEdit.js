@@ -7,11 +7,12 @@
 // what they can edit. They can retype any number of headings/paragraphs freely —
 // nothing persists mid-edit. Edits only commit when the user hits Save (or leaves
 // edit mode): we diff each editable element's innerHTML against its value at
-// engage and hand the host a list of `{ find, replace }` fragments to apply to the
-// SOURCE bytes — ONE new artifact version. We deliberately do NOT serialize the
-// whole live DOM: that would bake in nodes a script built at runtime (e.g. a deck
-// appending its nav dots on load), which duplicate on every save→reload and brick
-// the deck. `dirty` tells the host whether there's anything to save. No per-blur churn.
+// engage and hand the host a list of `{ locator, html }` edits — the host re-parses
+// the on-disk SOURCE, resolves each locator there, sets innerHTML, and re-serializes
+// as ONE new artifact version. We deliberately do NOT serialize the whole live DOM:
+// that would bake in nodes a script built at runtime (e.g. a deck appending its nav
+// dots on load), which duplicate on every save→reload and brick the deck. `dirty`
+// tells the host whether there's anything to save. No per-blur churn.
 //
 // ── Same-origin / safety contract ────────────────────────────────────────────
 // The preview iframe is served through the :5173 proxy so it's same-origin and
@@ -109,8 +110,9 @@ function isTextLeaf(el) {
  * @param {boolean}  opts.active      when true, the document becomes editable
  * @param {Function} opts.onSaveHtml  async ({ edits }) => void — fired once on
  *                                     Save / exit (not per blur). `edits` is a list
- *                                     of { find, replace } innerHTML fragments the
- *                                     host applies to the SOURCE via saveArtifactContent.
+ *                                     of { locator, html } the host applies to the
+ *                                     re-parsed SOURCE via saveArtifactContent. Must
+ *                                     resolve { ok } so a failed save stays re-savable.
  * @param {Function} [opts.onError]   (message) => void — surfaced if access fails
  *                                     mid-session (e.g. the iframe navigated away)
  * @returns {{
@@ -178,9 +180,12 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
     const doc = getDoc();
     if (!doc) return;
     // Per-element diff: for each editable element whose inner content changed,
-    // emit { find: original innerHTML, replace: current innerHTML }. The host
-    // applies these to the SOURCE bytes, so script-generated DOM (e.g. a deck's
-    // runtime-built nav dots) is never baked back into the file.
+    // emit { locator, html } where `locator` is a structural id-anchored path to
+    // the element and `html` is its new innerHTML. The host re-parses the on-disk
+    // SOURCE (not the live DOM), resolves the locator there, sets innerHTML, and
+    // re-serializes — so script-generated DOM (e.g. a deck's runtime nav dots) is
+    // never baked in, and the edit is matched in DOM space (not by byte-fragile
+    // innerHTML string matching, which fails on `<br/>`/`&`/attr normalization).
     const elements = s.elements || [];
     const edits = [];
     for (const el of elements) {
@@ -188,8 +193,8 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
         if (!el || !el.isConnected) continue;
         const before = el.__coworkInnerAtEngage;
         const after = el.innerHTML;
-        if (typeof before === 'string' && before.length && before !== after) {
-          edits.push({ find: before, replace: after });
+        if (typeof before === 'string' && before !== after && el.__coworkLocator) {
+          edits.push({ locator: el.__coworkLocator, html: after });
         }
       } catch { /* element detached */ }
     }
@@ -274,13 +279,17 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
         return;
       }
 
-      // Snapshot each editable element's original innerHTML. On commit we diff
-      // per-element and emit { find, replace } pairs the host applies to the SOURCE
-      // bytes — NOT a serialization of the whole live DOM. Serializing the live DOM
-      // bakes in nodes a script built at runtime (e.g. a deck that appends its nav
-      // dots on load), which then duplicate on every save→reload and brick the deck.
+      // Snapshot each editable element's original innerHTML + a structural locator
+      // (id-anchored child-index path). On commit we hand the host { locator, html }
+      // and it applies the change to the re-parsed SOURCE — NOT a serialization of
+      // the live DOM. Serializing the live DOM bakes in nodes a script built at
+      // runtime (e.g. a deck appending its nav dots on load), which duplicate on
+      // every save→reload and brick the deck.
       for (const el of elements) {
-        try { el.__coworkInnerAtEngage = el.innerHTML; } catch { /* detached */ }
+        try {
+          el.__coworkInnerAtEngage = el.innerHTML;
+          el.__coworkLocator = locatorFor(el);
+        } catch { /* detached */ }
       }
 
       // Per-element focus snapshot → blur-diff. We also keep a document-level
@@ -364,6 +373,29 @@ function injectStyle(doc) {
   (doc.head || doc.documentElement).appendChild(style);
 }
 
+// Build a structural locator for an element: a child-index path anchored at the
+// nearest ancestor-or-self with an id (else from <html>). This resolves in the
+// re-parsed SOURCE document even though the live document has extra script-built
+// nodes (e.g. a deck's nav dots) — editable content lives inside id'd slides, so
+// the path within that subtree is identical in source and live. Plain-object
+// shape `{ id, path:[childIndex…] }` so it survives the postMessage-style hop to
+// the host's save layer (see resolveLocator in saveArtifactContent).
+function locatorFor(el) {
+  const path = [];
+  let node = el;
+  while (node && node.nodeType === 1) {
+    if (node.id) return { id: node.id, path };
+    const parent = node.parentElement;
+    if (!parent) break;
+    let idx = 0;
+    let sib = node;
+    while ((sib = sib.previousElementSibling)) idx += 1;
+    path.unshift(idx);
+    node = parent;
+  }
+  return { id: null, path };
+}
+
 // Walk the body, mark leaf text holders editable, and return the marked list.
 // We mark the OUTERMOST eligible element on any branch so inline children
 // (span/em inside a marked <p>) are edited as part of their parent rather than
@@ -407,6 +439,7 @@ function teardown(session) {
       doc.removeEventListener('focusin', listeners.onFocusIn, true);
       doc.removeEventListener('focusout', listeners.onFocusOut, true);
       doc.removeEventListener('keydown', listeners.onKeyDown, true);
+      doc.removeEventListener('input', listeners.onInput, true);
     }
   } catch { /* doc gone */ }
   try {
@@ -416,6 +449,7 @@ function teardown(session) {
       el.removeAttribute?.('spellcheck');
       if (el && '__coworkTextAtFocus' in el) delete el.__coworkTextAtFocus;
       if (el && '__coworkInnerAtEngage' in el) delete el.__coworkInnerAtEngage;
+      if (el && '__coworkLocator' in el) delete el.__coworkLocator;
     }
   } catch { /* elements detached */ }
   try {

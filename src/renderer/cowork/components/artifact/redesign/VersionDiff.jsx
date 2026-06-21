@@ -18,8 +18,7 @@
 //   up cleanly with the single rendered "current" content the workspace shows.
 //   The data the workspace already trusts for a version is `previewArtifact`'s
 //   raw content. Diffing those two payloads is exact, always-available, and needs
-//   no extra endpoint round-trip or id-translation. See versionDiffIntegrationNotes.md
-//   for how to swap in the backend payload later if a structured/visual diff is wanted.
+//   no extra endpoint round-trip or id-translation.
 //
 // House rules: React 19 hooks, no new deps, inline styles + CSS vars. Self-contained:
 // if no `previewArtifact` prop is injected, a built-in mock resolves so it renders

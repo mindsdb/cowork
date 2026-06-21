@@ -63,6 +63,26 @@ function isEndpointUnavailable(err) {
 }
 
 /**
+ * Resolve a locator (from useIframeInlineEdit's locatorFor) against a parsed
+ * Document: anchor at the id'd element (or <html>), then walk the child-index
+ * path. Returns the element or null if the path doesn't resolve (structure moved).
+ * @param {Document} doc
+ * @param {{ id: (string|null), path: number[] }} loc
+ */
+export function resolveLocator(doc, loc) {
+  if (!doc || !loc) return null;
+  let node = loc.id ? doc.getElementById(loc.id) : doc.documentElement;
+  if (!node) return null;
+  const path = Array.isArray(loc.path) ? loc.path : [];
+  for (const idx of path) {
+    const children = node.children;
+    if (!children || idx < 0 || idx >= children.length) return null;
+    node = children[idx];
+  }
+  return node;
+}
+
+/**
  * Persist a whole-file direct edit and create a new version.
  *
  * @param {object}   args
@@ -131,11 +151,14 @@ export async function saveArtifactContent({
       : (typeof oldContent === 'string' ? oldContent : '');
 
   // ── Compute the new full-file text ────────────────────────────────────────────
-  // Targeted mode (HTML inline edit): apply each { find, replace } to the SOURCE
-  // bytes. Only the user's edited text changes; runtime-generated DOM (e.g. a deck
-  // building its nav dots on load) is never baked into the file. A find that no
-  // longer matches is skipped (fail-safe — we never corrupt the file).
-  // Whole-content mode (prose): newContent IS the new file.
+  // Targeted mode (HTML inline edit): re-parse the SOURCE into a DOM (DOMParser does
+  // NOT execute scripts, so runtime-built nodes — e.g. a deck's nav dots — are absent
+  // and never baked back in), resolve each edit's structural locator there, set its
+  // innerHTML, and re-serialize the whole document. The edit is matched in DOM space,
+  // so browser innerHTML normalization (<br/>, &, attribute quoting) can't make it
+  // miss the way a raw byte `find` did. A locator that doesn't resolve is skipped
+  // (fail-safe — never corrupts). First save normalizes the file; subsequent saves
+  // diff cleanly. Whole-content mode (prose): newContent IS the new file.
   let newText;
   let skipped = 0;
   if (targeted) {
@@ -159,25 +182,28 @@ export async function saveArtifactContent({
         },
       };
     }
-    let result = storedText;
+    let doc = null;
+    try { doc = new DOMParser().parseFromString(storedText, 'text/html'); } catch { doc = null; }
+    if (!doc || !doc.documentElement) {
+      return {
+        ok: false,
+        conflict: {
+          message: 'Could not parse this artifact to apply your edit. Reload and try again.',
+          currentVersionId: null,
+        },
+      };
+    }
     let applied = 0;
     for (const e of edits) {
-      if (!e || typeof e.find !== 'string' || !e.find || typeof e.replace !== 'string') continue;
-      // Apply only when the find is UNAMBIGUOUS (exactly one occurrence). Zero =
-      // the element's markup didn't match the source (browser normalization);
-      // more than one = identical sibling elements, so we can't tell which the
-      // user meant. Either way, skip rather than edit the wrong text — and report
-      // the skip so the host can tell the user instead of silently losing it.
-      const occurrences = result.split(e.find).length - 1;
-      if (occurrences !== 1) { skipped += 1; continue; }
-      // Function replacer: `String.prototype.replace` would otherwise interpret
-      // `$&`, `$'`, `$1`… in the replacement string and mangle user text like
-      // "$5 & up". The function form inserts the replacement verbatim.
-      result = result.replace(e.find, () => e.replace);
-      applied += 1;
+      if (!e || !e.locator || typeof e.html !== 'string') { skipped += 1; continue; }
+      const node = resolveLocator(doc, e.locator);
+      if (!node) { skipped += 1; continue; } // structure moved / locator didn't resolve
+      try { node.innerHTML = e.html; applied += 1; }
+      catch { skipped += 1; }
     }
-    if (!applied) return { ok: true, noop: true, skipped }; // nothing matched / changed
-    newText = result;
+    if (!applied) return { ok: true, noop: true, skipped }; // nothing resolved / changed
+    const doctype = /^\s*<!doctype/i.test(storedText) ? '<!doctype html>\n' : '';
+    newText = doctype + doc.documentElement.outerHTML;
   } else {
     newText = typeof newContent === 'string' ? newContent : '';
   }

@@ -8,7 +8,7 @@
 // It is presentation-agnostic — <Puck/>, <InlineDiff/> and <EditableBlock/> read
 // from it and call its actions. The actual AI + persistence are injected as
 // `proposeEdit` / `commitEdit` so the same hook drives both the self-contained
-// mock demo and the real backend (see editIntegrationNotes.md for the contract).
+// mock demo and the real backend.
 //
 // State machine:
 //

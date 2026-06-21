@@ -1356,8 +1356,8 @@ export async function handoffArtifactToTask({
 // ── M1 "Fix it in place" inline-edit endpoints ──────────────────────
 //
 // Transport for the redesigned workspace's EditableBlock. The UI passes
-// these in as `proposeEdit` / `commitEdit` (see redesign/editIntegrationNotes.md).
-// Both follow the authHeaders + fetch(BASE+path) pattern used elsewhere.
+// these in as `proposeEdit` / `commitEdit`. Both follow the authHeaders +
+// fetch(BASE+path) pattern used elsewhere.
 //
 // proposeArtifactEdit asks the backend (which calls the LLM) for a rewrite
 // and resolves with { oldText, newText, proposalId? }. The UI treats an

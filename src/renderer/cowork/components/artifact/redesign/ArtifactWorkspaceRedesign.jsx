@@ -1,18 +1,16 @@
 // ArtifactWorkspaceRedesign.jsx — flag-gated, redesigned artifact workspace.
 //
 // This is the composition layer for the redesign component library. It accepts
-// the SAME props as the legacy ArtifactWorkspace and composes the M0 shell
-// (WorkspaceShell + IconRail + TopBar), the M4 Story rail, the M2 version
-// scrubber + history dock, and the M3 review surface — with a canvas that wires
-// the M1 "Fix it in place" hero for prose artifacts against the real backend.
+// the SAME props as the legacy ArtifactWorkspace and composes the shell
+// (WorkspaceShell + TopBar), the unified Story rail (chat · versions · comments ·
+// reviews), the review banner, and a canvas that supports direct in-place editing
+// (prose + HTML decks), AI "fix it in place", and pinned comments — all wired to
+// the real backend (versions, comments, edits) via api.js.
 //
-// House rules: all new logic lives here / under redesign/. The only existing
-// files touched are api.js (the two edit endpoints) and the barrel index.js
-// (the flag switch). The redesign is OFF by default; `shouldUseRedesign()`
-// reads a localStorage flag so it can be flipped per-machine without a rebuild.
-//
-// Data: versions + comments come from existing api.js fns where the mapping is
-// straightforward; everything else is mock/derived and marked TODO.
+// The redesign is ON by default on this branch; `shouldUseRedesign()` reads a
+// localStorage flag so it can be flipped to the legacy workspace per-machine
+// without a rebuild. Versions/comments come from api.js; the Story feed is built
+// in railEvents (versions + comments interleaved by time, live chat appended).
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../../ui/Modal';
@@ -140,12 +138,11 @@ function toEpoch(value) {
   return Number.isNaN(t) ? 0 : t;
 }
 
-// Map an api.js version record to the scrubber/HistoryPanel shape. Version
-// numbers are derived from list order (TODO: use a real server-provided number
-// when the contract exposes one).
 // Map a backend version → display shape. WHO: AI operations → "Anton"; a user's
-// direct typed edit (operationType "manual_edit") → "You". WHAT: a clean, single
-// label (no more confusing "Unknown · Manual · AI edit").
+// direct typed edit (operationType "manual_edit") → "You" (self-identity is then
+// normalized in railEvents). WHAT: a clean, single label. The version NUMBER prefers
+// the server's real `version_number`; it only falls back to newest-first position
+// (so the newest row still gets the highest n) when the server omits it.
 function mapVersions(rawVersions, currentVersionId) {
   const list = Array.isArray(rawVersions) ? rawVersions : [];
   return list.map((v, i) => {
@@ -160,9 +157,11 @@ function mapVersions(rawVersions, currentVersionId) {
       : op.includes('restore') ? 'Restored'
       : (v?.label || v?.name || 'Version');
     const who = isAI ? 'Anton' : 'You';
+    const serverNum = v?.versionNumber ?? v?.version_number;
+    const n = Number.isFinite(serverNum) ? serverNum : (list.length - i);
     return {
       id,
-      n: i + 1,
+      n,
       label: what,
       author: { name: who, initials: isAI ? 'AN' : 'ME', isAI },
       when: relativeWhen(v?.createdAt || v?.created_at || v?.when || v?.timestamp),
@@ -172,35 +171,30 @@ function mapVersions(rawVersions, currentVersionId) {
   });
 }
 
-// Map api.js comments/activity to StoryRail events. Falls back to the rail's own
-// mock when nothing is available (mark TODO: a richer fused chat+version feed).
-function mapStoryEvents({ comments, activity }) {
+// Map api.js comments → StoryRail events. The backend serializes the commenter as
+// `actorName` (e.g. "You") + status/anchor; `actorEmail` lives on notificationState.
+//
+// Activity events are intentionally NOT mapped here: every version snapshot also
+// writes an activity event, so mapping them would double-count each version (once
+// as a version row, once as a generic "updated the artifact" row — the activity
+// shape carries no `kind`/`title` to label it). Versions come from versionsToEvents,
+// comments from here, chat from the live hook — and railEvents sorts them by time.
+function mapStoryEvents({ comments }) {
   const events = [];
   for (const c of comments || []) {
-    // The backend serializes the commenter as `actorName` (e.g. "You"); older
-    // fallbacks kept for safety. Reading the right field fixes "Someone commented".
     const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
+    const email = c?.actorEmail || c?.notificationState?.actorEmail || c?.author?.email || '';
     const isReview = c?.kind === 'suggestion' || c?.kind === 'review';
     events.push({
       id: `c-${c?.id || events.length}`,
       commentId: c?.id,
       kind: isReview ? 'review' : 'comment',
-      author: { name, initials: initialsOf(name), color: '#3a4d6e' },
+      author: { name, email, initials: initialsOf(name), color: '#3a4d6e' },
       title: c?.kind === 'suggestion' ? 'suggested a change' : (c?.kind === 'review' ? 'requested review' : 'commented'),
       body: c?.body || c?.text || '',
       when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
+      ts: toEpoch(c?.createdAt || c?.created_at || c?.when),
       meta: { resolved: c?.status === 'resolved', dismissed: c?.status === 'rejected' },
-    });
-  }
-  for (const a of activity || []) {
-    const name = a?.actorName || a?.author?.name || a?.actor || a?.user || 'Anton';
-    events.push({
-      id: `a-${a?.id || events.length}`,
-      kind: a?.kind || 'system',
-      author: { name, initials: initialsOf(name), isAI: /anton|agent|ai/i.test(String(name)) },
-      title: a?.title || a?.summary || a?.message || 'updated the artifact',
-      body: a?.body || '',
-      when: relativeWhen(a?.createdAt || a?.created_at || a?.when),
     });
   }
   return events;
@@ -293,11 +287,12 @@ function ProseCanvas({
         }
         return { oldText: res.oldText || oldText, newText: res.newText || oldText };
       } catch (err) {
-        // Degrade to a local mock for any "endpoint can't service this" status
-        // (404/405/501) or a contract/validation reject (400/422) — the
-        // per-paragraph AI rewrite needs backend model-generation that isn't
-        // wired yet, so this keeps the interaction from throwing.
-        if ([400, 404, 405, 422, 501].includes(err?.status)) {
+        // Degrade to a local mock ONLY when the endpoint genuinely isn't there
+        // (404/405/501) — the per-paragraph AI rewrite needs backend model-gen that
+        // isn't wired yet, so a missing endpoint shouldn't throw. A 400/422 means the
+        // request was malformed/rejected — surface that real error instead of masking
+        // it behind a fake rewrite.
+        if ([404, 405, 501].includes(err?.status)) {
           return { oldText, newText: mockRewrite(oldText, instruction) };
         }
         throw err; // real failure → hook toasts it
@@ -311,12 +306,12 @@ function ProseCanvas({
       try {
         return await acceptArtifactEdit({ path, target, newText, baseVersionId: bv });
       } catch (err) {
-        if ([400, 404, 405, 422, 501].includes(err?.status)) {
-          // Endpoint unavailable or rejected the per-block contract — mock a
-          // successful commit so Keep doesn't throw. (Direct typing + inline
-          // chat are the proven persist paths; this per-block AI Keep is a
-          // fallback until backend model-gen lands.)
-          return { ok: true, versionId: `v-local-${Date.now()}`, text: newText };
+        if ([404, 405, 501].includes(err?.status)) {
+          // Endpoint not mounted — return an HONEST "not persisted" result (no fake
+          // version id). The host shows the change locally but tells the user it
+          // wasn't saved, rather than lying "Kept your change" and silently reverting
+          // on the next reload. (Direct typing + inline chat are the real persist paths.)
+          return { ok: true, versionId: null, fallback: 'mock', text: newText };
         }
         throw err;
       }
@@ -541,7 +536,7 @@ function PlaceholderCanvas({ path, ext }) {
 }
 
 // Map versions to rail feed events (kind:'version') so the single Story rail's
-// "Versions" filter is populated. Restore/compare live on the bottom scrubber.
+// "Versions" filter is populated. Restore/Compare live on each version row.
 function versionsToEvents(versions) {
   return (versions || []).map((v) => ({
     id: `v-${v.id}`,
@@ -555,6 +550,21 @@ function versionsToEvents(versions) {
     ts: v.ts,
     meta: { current: !!v.current },
   }));
+}
+
+// True when an event's author is the signed-in user — so we can render ONE
+// consistent self-identity ("You" / "Me") across versions, comments, and chat
+// instead of the inconsistent Me / ME / YO. The backend stamps the current user's
+// own rows as actorName "You" in this setup; we also match on the real name/email
+// from the decoded token for multi-user correctness.
+function isSelfActor(name, email, me) {
+  const n = String(name || '').trim().toLowerCase();
+  if (n === 'you' || n === 'me') return true;
+  const myEmail = String(me?.email || '').trim().toLowerCase();
+  const myName = String(me?.name || '').trim().toLowerCase();
+  if (myEmail && String(email || '').trim().toLowerCase() === myEmail) return true;
+  if (myName && n && n === myName) return true;
+  return false;
 }
 
 // Settled = the comment no longer needs the reader's eye on the page.
@@ -648,17 +658,23 @@ export function ArtifactWorkspaceRedesign({
   const bumpReload = useCallback(() => setReloadToken((t) => t + 1), []);
 
   const loadVersions = useCallback(() => {
-    if (!path) return;
-    fetchArtifactVersions(path)
+    if (!path) return Promise.resolve(null);
+    return fetchArtifactVersions(path)
       .then((res) => {
-        if (!res || res.available === false) return;
+        if (!res || res.available === false) return null;
         const rawVersions = res.versions || [];
-        const lastId = rawVersions.length ? (rawVersions[rawVersions.length - 1]?.id || '') : '';
-        const currentVersionId = res.currentVersionId || res.latestVersionId || lastId;
+        // Server returns versions newest-first (version_number DESC), so the newest
+        // is rawVersions[0] — use it as the current-version fallback (NOT [last],
+        // which is the OLDEST and would make the OCC base / "current" label wrong).
+        const newestId = rawVersions.length
+          ? (rawVersions[0]?.id || rawVersions[0]?.versionId || rawVersions[0]?.version_id || '')
+          : '';
+        const currentVersionId = res.currentVersionId || res.latestVersionId || newestId;
         const mapped = mapVersions(rawVersions, currentVersionId);
         setVersionsState({ versions: mapped, currentVersionId });
+        return currentVersionId;
       })
-      .catch(() => { /* graceful */ });
+      .catch(() => null);
   }, [path]);
 
   const loadComments = useCallback(() => {
@@ -675,16 +691,23 @@ export function ArtifactWorkspaceRedesign({
 
   const versions = versionsState.versions;
   const baseVersionId = versionsState.currentVersionId || '';
-  const currentN = versions.length ? versions[versions.length - 1].n : undefined;
-  const versionLabel = versions.length
-    ? (versions.find((v) => v.id === baseVersionId)?.label || versions[versions.length - 1].label)
-    : (artifact?.version ? `v${artifact.version}` : 'v1');
+  // The "current" row is the one whose id matches the server's currentVersionId;
+  // fall back to the highest version number (newest) if it isn't in the list. Both
+  // currentN (the diff "to" label) and versionLabel come from the SAME row, so they
+  // can never describe different versions.
+  const currentVersion = useMemo(() => {
+    if (!versions.length) return null;
+    return versions.find((v) => v.id === baseVersionId)
+      || versions.reduce((a, b) => (b.n > a.n ? b : a));
+  }, [versions, baseVersionId]);
+  const currentN = currentVersion?.n;
+  const versionLabel = currentVersion?.label || (artifact?.version ? `v${artifact.version}` : 'v1');
 
   const storyEvents = useMemo(
-    () => mapStoryEvents({ comments: commentsState.comments, activity: commentsState.activity }),
-    [commentsState],
+    () => mapStoryEvents({ comments: commentsState.comments }),
+    [commentsState.comments],
   );
-  const pins = useMemo(() => commentsToPins(commentsState.comments), [commentsState]);
+  const pins = useMemo(() => commentsToPins(commentsState.comments), [commentsState.comments]);
 
   // ── Inline chat (M4): the rail composer talks to Anton IN the workspace and
   // streams the reply into the feed — it never navigates to the task screen. ────
@@ -692,8 +715,33 @@ export function ArtifactWorkspaceRedesign({
     artifact,
     path,
     projectName,
-    onArtifactChanged: () => { loadVersions(); loadComments(); bumpReload(); flash('Anton updated the artifact — preview refreshed'); },
+    onArtifactChanged: () => {
+      // Only treat a finished turn as an EDIT if it actually advanced the version.
+      // A plain Q&A ("what does this say?") must NOT remount the iframe (which would
+      // reset a deck to slide 1) or claim "Anton updated the artifact".
+      const prev = baseVersionId;
+      loadComments();
+      loadVersions().then((cur) => {
+        if (cur && cur !== prev) {
+          bumpReload();
+          flash('Anton updated the artifact — preview refreshed');
+        }
+      });
+    },
   });
+
+  // Surface a streaming chat error as a toast (it also lands in the assistant
+  // bubble, but the toast makes a failed "Fix with AI" — which has no visible
+  // bubble of its own — actually noticeable).
+  const lastChatErrorRef = useRef(null);
+  useEffect(() => {
+    if (chat.error && chat.error !== lastChatErrorRef.current) {
+      lastChatErrorRef.current = chat.error;
+      flash(`Anton: ${chat.error}`);
+    } else if (!chat.error) {
+      lastChatErrorRef.current = null;
+    }
+  }, [chat.error, flash]);
 
   // ── Comment mark-up (M3) + direct in-place editing ───────────────────────────
   const [commentMode, setCommentMode] = useState(false);
@@ -743,8 +791,8 @@ export function ArtifactWorkspaceRedesign({
   const onFixEvent = useCallback((ev) => {
     const note = ev?.body || ev?.title || '';
     if (!note) return;
-    chat.send(`Please address this review note and update the artifact: "${note}"`);
-    flash('Anton is addressing it…');
+    const started = chat.send(`Please address this review note and update the artifact: "${note}"`);
+    flash(started === false ? 'Anton is mid-reply — try again in a moment.' : 'Anton is addressing it…');
   }, [chat, flash]);
   const onReopenEvent = useCallback(async (ev) => {
     if (!ev?.commentId) return;
@@ -772,9 +820,17 @@ export function ArtifactWorkspaceRedesign({
   );
 
   const handleCommitted = useCallback(
-    ({ versionId }) => {
-      flash(versionId ? 'Kept your change' : 'Saved');
-      onChange?.({ ...artifact, mtime: Date.now(), ...(versionId ? { reviewVersionId: versionId } : {}) });
+    ({ versionId } = {}) => {
+      if (!versionId) {
+        // No server version was created — the per-block AI edit endpoint isn't wired
+        // yet, so the rewrite was a local mock. Be honest instead of claiming "Kept",
+        // and refresh so the block reflects the real (un-rewritten) saved text.
+        flash('AI editing isn’t available yet — that change wasn’t saved.');
+        bumpReload();
+        return;
+      }
+      flash('Kept your change');
+      onChange?.({ ...artifact, mtime: Date.now(), reviewVersionId: versionId });
       loadVersions();
       bumpReload();
     },
@@ -881,8 +937,8 @@ export function ArtifactWorkspaceRedesign({
     const prompt = notes
       ? `Please address these review notes on "${title}" and update the artifact accordingly:\n${notes}`
       : `Please review "${title}" and apply the requested changes.`;
-    chat.send(prompt);
-    flash('Anton is addressing the review…');
+    const started = chat.send(prompt);
+    flash(started === false ? 'Anton is mid-reply — try again in a moment.' : 'Anton is addressing the review…');
   }, [reviewItems, title, chat, flash]);
 
   // ── Presence: the signed-in user first (always "here"), then other humans who
@@ -901,7 +957,8 @@ export function ArtifactWorkspaceRedesign({
     // Don't list the current user (or the literal "You" author) a second time.
     const seen = new Set(['you', 'me', myName.toLowerCase(), myEmail.toLowerCase()].filter(Boolean));
     for (const c of commentsState.comments || []) {
-      const email = (c?.actorEmail || '').trim();
+      // actorEmail isn't a top-level field on comments — it rides on notificationState.
+      const email = (c?.actorEmail || c?.notificationState?.actorEmail || '').trim();
       const name = (c?.actorName || c?.author?.name || c?.author || c?.user || '').trim();
       const key = (email || name).toLowerCase();
       if (!key || seen.has(key)) continue;
@@ -914,22 +971,49 @@ export function ArtifactWorkspaceRedesign({
   }, [commentsState, me]);
 
   // ── Merge versions + comments/reviews + live chat into one rail feed ──────────
+  // History (versions + comments) is interleaved CHRONOLOGICALLY (newest-first) so a
+  // 2-day-old version no longer sorts above a 2-minute-old comment. Live chat stays
+  // appended at the bottom, by the composer, in conversation order. Every author is
+  // run through one self-identity normalizer so the user reads as "You"/"Me"
+  // everywhere (not Me / ME / YO).
   const railEvents = useMemo(() => {
+    const normalizeSelf = (ev) => {
+      const a = ev.author || {};
+      if (a.isAI) return ev;
+      if (isSelfActor(a.name, a.email, me)) {
+        return { ...ev, author: { ...a, name: 'You', initials: 'Me' } };
+      }
+      return ev;
+    };
     const chatEvents = (chat.messages || []).map((m) => ({
       id: `chat-${m.id}`,
       kind: 'chat',
       author:
         m.role === 'user'
-          ? { name: 'You', initials: 'ME', color: '#3a4d6e' }
+          ? { name: 'You', initials: 'Me', color: '#3a4d6e' }
           : { name: 'Anton', initials: 'AN', isAI: true, color: 'linear-gradient(135deg,#A78BFA,#22D3EE)' },
       title: m.role === 'user' ? 'asked' : 'replied',
       body: m.text || (m.streaming ? '…' : ''),
       when: 'now',
       meta: { streaming: !!m.streaming },
     }));
-    const merged = [...versionsToEvents(versions), ...storyEvents, ...chatEvents];
-    return merged;
-  }, [versions, storyEvents, chat.messages]);
+    const timeline = [...versionsToEvents(versions), ...storyEvents]
+      .map(normalizeSelf)
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    return [...timeline, ...chatEvents];
+  }, [versions, storyEvents, chat.messages, me]);
+
+  // The modal stays mounted across artifacts (only `artifact`/`open` change), so
+  // reset transient view state when the artifact changes — otherwise edit/comment
+  // mode, an open Compare, a version-view, or a dismissed review banner from
+  // artifact A bleed into artifact B.
+  useEffect(() => {
+    setEditMode(false);
+    setCommentMode(false);
+    setCompare(null);
+    setViewingN(null);
+    setReviewDismissed(false);
+  }, [path]);
 
   if (!open || !artifact) return null;
 
@@ -1001,8 +1085,9 @@ export function ArtifactWorkspaceRedesign({
         }
         rail={
           <StoryRail
-            events={railEvents.length ? railEvents : undefined}
+            events={railEvents}
             onSend={chat.send}
+            sending={chat.sending}
             composerPlaceholder="Ask Anton, or @mention…"
             onResolveEvent={onResolveEvent}
             onDismissEvent={onDismissEvent}
@@ -1062,7 +1147,7 @@ export function ArtifactWorkspaceRedesign({
         onClose={() => setCompare(null)}
         path={path}
         fromVersion={compare ? { id: compare.from, label: `v${compare.fromN}`, n: compare.fromN } : null}
-        toVersion={{ id: baseVersionId, label: 'current', n: currentN }}
+        toVersion={{ id: currentVersion?.id || baseVersionId, label: 'current', n: currentN }}
       />
     </Modal>
   );

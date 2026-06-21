@@ -13,7 +13,7 @@
  *   iconRail      — left rail slot. Typically <IconRail/>. Has a built-in mock fallback.
  *   topBar        — header slot inside the main panel. Typically <TopBar/>. Mock fallback.
  *   children      — the canvas / stage. Fills remaining width (flex:1).
- *   rail          — right rail slot (332px). Hidden when railCollapsed is true.
+ *   rail          — right rail slot (376px). Hidden when railCollapsed is true.
  *   railCollapsed boolean  — collapse the right rail and show a floating "Story" handle.
  *   onToggleRail  function — invoked by the collapse handle / collapsed-rail button.
  *   bottomStrip   — full-width strip under the body (e.g. scrubber). Omitted if absent.
