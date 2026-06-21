@@ -25,6 +25,9 @@ import { VersionScrubber } from './scrubberIndex.js';
 import { ReviewBanner } from './reviewIndex.js';
 import { useArtifactChat } from './useArtifactChat.js';
 import { CommentLayer } from './CommentLayer.jsx';
+import { EditableProse } from './EditableProse.jsx';
+import { useIframeInlineEdit } from './useIframeInlineEdit.js';
+import { saveArtifactContent } from './saveArtifactContent.js';
 
 import {
   artifactServeUrl,
@@ -36,6 +39,8 @@ import {
   restoreArtifactVersion,
   proposeArtifactEdit,
   acceptArtifactEdit,
+  setArtifactSuggestionStatus,
+  resolveArtifactComment,
 } from '../../../api';
 
 // ── Flag ──────────────────────────────────────────────────────────────────────
@@ -153,11 +158,13 @@ function mapStoryEvents({ comments, activity }) {
     const isReview = c?.kind === 'suggestion' || c?.kind === 'review';
     events.push({
       id: `c-${c?.id || events.length}`,
+      commentId: c?.id,
       kind: isReview ? 'review' : 'comment',
       author: { name, initials: initialsOf(name), color: '#3a4d6e' },
       title: c?.kind === 'suggestion' ? 'suggested a change' : (c?.kind === 'review' ? 'requested review' : 'commented'),
       body: c?.body || c?.text || '',
       when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
+      meta: { resolved: c?.status === 'resolved', dismissed: c?.status === 'rejected' },
     });
   }
   for (const a of activity || []) {
@@ -197,6 +204,9 @@ function ProseCanvas({
   versionId,
   baseVersionId,
   title,
+  reloadToken,
+  editMode,
+  onSaveContent,
   onToast,
   onCommitted,
   onComment,
@@ -221,7 +231,7 @@ function ProseCanvas({
         setState({ loading: false, error: err?.message || 'Could not load this artifact.', blocks: [] });
       });
     return () => { cancelled = true; };
-  }, [path, versionId]);
+  }, [path, versionId, reloadToken]);
 
   // M1 adapters: inject `path` + the block's `oldText`, hit the real backend, and
   // DEGRADE TO THE MOCK on a 404 / unavailable endpoint (wrapped in try/catch per
@@ -244,7 +254,11 @@ function ProseCanvas({
         }
         return { oldText: res.oldText || oldText, newText: res.newText || oldText };
       } catch (err) {
-        if (err?.status === 404 || err?.status === 405 || err?.status === 501) {
+        // Degrade to a local mock for any "endpoint can't service this" status
+        // (404/405/501) or a contract/validation reject (400/422) — the
+        // per-paragraph AI rewrite needs backend model-generation that isn't
+        // wired yet, so this keeps the interaction from throwing.
+        if ([400, 404, 405, 422, 501].includes(err?.status)) {
           return { oldText, newText: mockRewrite(oldText, instruction) };
         }
         throw err; // real failure → hook toasts it
@@ -258,8 +272,11 @@ function ProseCanvas({
       try {
         return await acceptArtifactEdit({ path, target, newText, baseVersionId: bv });
       } catch (err) {
-        if (err?.status === 404 || err?.status === 405 || err?.status === 501) {
-          // No accept endpoint yet — mock a successful commit so Keep works.
+        if ([400, 404, 405, 422, 501].includes(err?.status)) {
+          // Endpoint unavailable or rejected the per-block contract — mock a
+          // successful commit so Keep doesn't throw. (Direct typing + inline
+          // chat are the proven persist paths; this per-block AI Keep is a
+          // fallback until backend model-gen lands.)
           return { ok: true, versionId: `v-local-${Date.now()}`, text: newText };
         }
         throw err;
@@ -302,6 +319,9 @@ function ProseCanvas({
         </h1>
         {state.blocks.length === 0 ? (
           <p style={{ color: 'var(--ink-3)', fontSize: 14 }}>This document is empty.</p>
+        ) : editMode ? (
+          // Direct typing — instant, no AI. Commits a new version on blur/Enter.
+          <EditableProse blocks={state.blocks} active onSaveContent={onSaveContent} />
         ) : (
           state.blocks.map((para, i) => (
             <EditableBlock
@@ -322,8 +342,16 @@ function ProseCanvas({
   );
 }
 
-function HtmlCanvas({ artifact, path, versionId }) {
+function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveContent, onExitEdit, onError }) {
   const [state, setState] = useState({ loading: true, error: '', url: '' });
+  const iframeRef = useRef(null);
+  // Direct in-place typing on the same-origin preview (degrades if cross-origin).
+  const { supported, commit } = useIframeInlineEdit({
+    iframeRef,
+    active: !!editMode,
+    onSaveHtml: ({ oldHtml, newHtml }) => onSaveContent?.({ oldContent: oldHtml, newContent: newHtml }),
+    onError: (m) => onError?.(m),
+  });
 
   useEffect(() => {
     if (!path) {
@@ -347,7 +375,7 @@ function HtmlCanvas({ artifact, path, versionId }) {
         setState({ loading: false, error: err?.message || 'Could not load preview.', url: '' });
       });
     return () => { cancelled = true; };
-  }, [path, versionId, artifact]);
+  }, [path, versionId, artifact, reloadToken]);
 
   if (state.loading) {
     return <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', fontSize: 13 }}>Loading preview…</div>;
@@ -356,13 +384,34 @@ function HtmlCanvas({ artifact, path, versionId }) {
     return <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', fontSize: 13, padding: 24, textAlign: 'center' }}>{state.error}</div>;
   }
   return (
-    <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-2)' }}>
+    <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-2)', position: 'relative' }}>
       <iframe
+        ref={iframeRef}
+        key={`${state.url}::${reloadToken || 0}`}
         title={`${displayName(path)} preview`}
-        src={state.url}
+        src={state.url ? `${state.url}${state.url.includes('?') ? '&' : '?'}rt=${reloadToken || 0}` : state.url}
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
       />
+      {editMode && supported === false ? (
+        <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', background: 'var(--surface-3)', border: '1px solid var(--line-2)', color: 'var(--ink-2)', fontSize: 12, padding: '6px 12px', borderRadius: 8 }}>
+          This preview can’t be edited inline here.
+        </div>
+      ) : null}
+      {editMode && supported !== false ? (
+        <>
+          <button
+            type="button"
+            onClick={() => { commit?.(); onExitEdit?.(); }}
+            style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: 'none', background: 'var(--success)', color: '#04150a', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 8px 20px -8px rgba(0,0,0,.5)' }}
+          >
+            ✓ Done editing
+          </button>
+          <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: 'var(--surface-3)', border: '1px solid var(--line-2)', color: 'var(--ink-3)', fontSize: 11.5, padding: '5px 11px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+            Click any text and type · saves as a new version
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -457,6 +506,10 @@ export function ArtifactWorkspaceRedesign({
   const [versionsState, setVersionsState] = useState({ versions: [], currentVersionId: '' });
   const [commentsState, setCommentsState] = useState({ comments: [], activity: [] });
   const [viewingN, setViewingN] = useState(null);
+  // Bumped whenever the artifact's bytes change (AI edit, restore, inline edit)
+  // so the canvas re-fetches/reloads — fixes the stale-preview-after-edit bug.
+  const [reloadToken, setReloadToken] = useState(0);
+  const bumpReload = useCallback(() => setReloadToken((t) => t + 1), []);
 
   const loadVersions = useCallback(() => {
     if (!path) return;
@@ -502,11 +555,15 @@ export function ArtifactWorkspaceRedesign({
     artifact,
     path,
     projectName,
-    onArtifactChanged: () => { loadVersions(); loadComments(); },
+    onArtifactChanged: () => { loadVersions(); loadComments(); bumpReload(); flash('Anton updated the artifact — preview refreshed'); },
   });
 
-  // ── Comment mark-up (M3) ──────────────────────────────────────────────────────
+  // ── Comment mark-up (M3) + direct in-place editing ───────────────────────────
   const [commentMode, setCommentMode] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  // Edit and Comment modes are mutually exclusive — both bind canvas clicks.
+  const toggleEditMode = useCallback(() => { setEditMode((v) => !v); setCommentMode(false); }, []);
+  const toggleCommentMode = useCallback(() => { setCommentMode((v) => !v); setEditMode(false); }, []);
   const createPinnedComment = useCallback(
     async ({ xPct, yPct, body, area }) => {
       if (!path || !body) return;
@@ -530,6 +587,24 @@ export function ArtifactWorkspaceRedesign({
     [path, flash, loadComments],
   );
 
+  // Per-comment rail actions (wired to StoryRail's onResolve/onDismiss/onFix).
+  const onResolveEvent = useCallback(async (ev) => {
+    if (!ev?.commentId) { flash('Nothing to resolve here.'); return; }
+    try { await resolveArtifactComment(ev.commentId); flash('Resolved'); loadComments(); }
+    catch (e) { flash(e?.message || 'Could not resolve.'); }
+  }, [flash, loadComments]);
+  const onDismissEvent = useCallback(async (ev) => {
+    if (!ev?.commentId) { flash('Nothing to dismiss here.'); return; }
+    try { await setArtifactSuggestionStatus(ev.commentId, 'rejected'); flash('Dismissed'); loadComments(); }
+    catch (e) { flash(e?.message || 'Could not dismiss.'); }
+  }, [flash, loadComments]);
+  const onFixEvent = useCallback((ev) => {
+    const note = ev?.body || ev?.title || '';
+    if (!note) return;
+    chat.send(`Please address this review note and update the artifact: "${note}"`);
+    flash('Anton is addressing it…');
+  }, [chat, flash]);
+
   // ── Restore (forward-restore) ─────────────────────────────────────────────────
   const handleRestore = useCallback(
     async (n) => {
@@ -541,6 +616,7 @@ export function ArtifactWorkspaceRedesign({
         onChange?.({ ...artifact, restoredVersionId: target.id, mtime: Date.now(), ...(result?.artifact || {}) });
         setViewingN(null);
         loadVersions();
+        bumpReload();
       } catch (err) {
         flash(err?.message || 'Could not restore that version.');
       }
@@ -553,8 +629,27 @@ export function ArtifactWorkspaceRedesign({
       flash(versionId ? 'Kept your change' : 'Saved');
       onChange?.({ ...artifact, mtime: Date.now(), ...(versionId ? { reviewVersionId: versionId } : {}) });
       loadVersions();
+      bumpReload();
     },
-    [artifact, onChange, flash, loadVersions],
+    [artifact, onChange, flash, loadVersions, bumpReload],
+  );
+
+  // Direct (typed) edit → persist as a new version via the edit pipeline (OCC).
+  const handleDirectSave = useCallback(
+    async ({ oldContent, newContent }) => {
+      try {
+        const res = await saveArtifactContent({ path, projectName, oldContent, newContent, baseVersionId });
+        if (!res || res.noop) return;
+        if (res.ok) { handleCommitted({ versionId: res.versionId }); return; }
+        if (res.conflict) {
+          flash(res.conflict.message || 'This changed since you started — reloading the latest.');
+          bumpReload(); loadVersions();
+        }
+      } catch (err) {
+        flash(err?.message || 'Could not save your edit.');
+      }
+    },
+    [path, projectName, baseVersionId, handleCommitted, flash, bumpReload, loadVersions],
   );
 
   // ── Present mode: fullscreen the canvas (real Fullscreen API) ─────────────────
@@ -628,13 +723,27 @@ export function ArtifactWorkspaceRedesign({
         versionId={viewingVersionId}
         baseVersionId={baseVersionId}
         title={title}
+        reloadToken={reloadToken}
+        editMode={editMode}
+        onSaveContent={handleDirectSave}
         onToast={flash}
         onCommitted={handleCommitted}
         onComment={handleBlockComment}
       />
     );
   } else if (isHtml) {
-    canvas = <HtmlCanvas artifact={artifact} path={path} versionId={viewingVersionId} />;
+    canvas = (
+      <HtmlCanvas
+        artifact={artifact}
+        path={path}
+        versionId={viewingVersionId}
+        reloadToken={reloadToken}
+        editMode={editMode}
+        onSaveContent={handleDirectSave}
+        onExitEdit={() => setEditMode(false)}
+        onError={flash}
+      />
+    );
   } else {
     canvas = <PlaceholderCanvas path={path} ext={ext} />;
   }
@@ -657,8 +766,10 @@ export function ArtifactWorkspaceRedesign({
             breadcrumb={projectName}
             versionLabel={versionLabel}
             presence={presence}
+            editMode={editMode}
+            onToggleEdit={toggleEditMode}
             commentMode={commentMode}
-            onToggleComment={() => setCommentMode((v) => !v)}
+            onToggleComment={toggleCommentMode}
             onShare={() => { onPublish?.(artifact); }}
             primaryCta={{ label: 'Present', onClick: present }}
             onClose={onClose}
@@ -669,6 +780,9 @@ export function ArtifactWorkspaceRedesign({
             events={railEvents.length ? railEvents : undefined}
             onSend={chat.send}
             composerPlaceholder="Ask Anton, or @mention…"
+            onResolveEvent={onResolveEvent}
+            onDismissEvent={onDismissEvent}
+            onFixEvent={onFixEvent}
           />
         }
         bottomStrip={

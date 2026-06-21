@@ -1,0 +1,372 @@
+// useIframeInlineEdit.js — direct, no-AI in-place editing of a SAME-ORIGIN
+// HTML preview iframe (the slide deck).
+//
+// The feel is "click → type → done": when `active` flips true we reach into the
+// iframe's live document, mark every text-bearing element `contentEditable`, and
+// paint a quiet hover/focus affordance so the user sees what they can edit. They
+// click a heading, retype it, click away — and on that blur (only if it actually
+// changed) we serialize `documentElement.outerHTML` and hand the host
+// `{ oldHtml, newHtml }` to persist as a new artifact version. A small floating
+// "Done" button commits-and-exits explicitly. No agent, no waiting.
+//
+// ── Same-origin / safety contract ────────────────────────────────────────────
+// The preview iframe is served through the :5173 proxy so it's same-origin and
+// `contentDocument` is readable. We never ASSUME that — every contentDocument
+// access is wrapped in try/catch, and if the document is cross-origin (or simply
+// not ready) the hook reports `{ supported:false }` so the host can disable the
+// Edit toggle / show a "can't edit this preview inline" hint instead of throwing.
+//
+// ── What we DON'T do ─────────────────────────────────────────────────────────
+// We only TOGGLE `contentEditable` and attach listeners + a thin style sheet. We
+// never restructure the DOM, rename nodes, or strip scripts — the deck's own
+// scripts and styles keep running untouched. On deactivate / unmount / iframe
+// reload we remove the contentEditable flags, the listeners, and our injected
+// <style>, leaving the document byte-equivalent to how the deck rendered it
+// (modulo the user's intentional text changes).
+//
+// React 19, no external deps.
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+// Tag names we make directly editable. These are leaf-ish text holders where
+// inline editing is safe and intuitive.
+const EDITABLE_TAGS = new Set([
+  'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+  'P', 'SPAN', 'LI', 'TD', 'TH', 'A',
+  'BLOCKQUOTE', 'FIGCAPTION', 'LABEL', 'SUMMARY', 'CAPTION',
+  'EM', 'STRONG', 'B', 'I', 'SMALL', 'CODE',
+]);
+
+// Never make these editable even if they contain text — editing them would
+// corrupt structure, executable content, or form semantics.
+const FORBIDDEN_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED',
+  'SVG', 'CANVAS', 'VIDEO', 'AUDIO', 'IMG', 'INPUT', 'TEXTAREA', 'SELECT',
+  'BUTTON', 'OPTION', 'HEAD', 'TITLE', 'META', 'LINK', 'BASE',
+]);
+
+const STYLE_EL_ID = '__cowork_inline_edit_style__';
+const EDITABLE_ATTR = 'data-cowork-editable';
+
+// The affordance: quiet on hover, accent ring on focus. Scoped to our marker
+// attribute so it can't bleed onto the deck's own styles. The contentEditable
+// caret + native focus stay intact; we only add an outline + cursor hint.
+const AFFORDANCE_CSS = `
+[${EDITABLE_ATTR}] {
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
+  border-radius: 3px;
+  transition: outline-color .12s ease, background-color .12s ease;
+  cursor: text;
+}
+[${EDITABLE_ATTR}]:hover {
+  outline-color: rgba(34, 211, 238, .55);
+  background-color: rgba(34, 211, 238, .06);
+}
+[${EDITABLE_ATTR}]:focus {
+  outline: 2px solid rgba(34, 211, 238, .9);
+  background-color: rgba(34, 211, 238, .08);
+}
+`;
+
+// True if `el` directly holds text and has no element children that are
+// themselves better edit targets — i.e. a leaf text holder. A <div> qualifies
+// ONLY when it contains text and no child elements (the brief's "div with only
+// text"); otherwise editing the div would swallow its children's structure.
+function isTextLeaf(el) {
+  if (!el || el.nodeType !== 1) return false;
+  const tag = el.tagName;
+  if (FORBIDDEN_TAGS.has(tag)) return false;
+
+  const hasText = (el.textContent || '').trim().length > 0;
+  if (!hasText) return false;
+
+  if (EDITABLE_TAGS.has(tag)) {
+    // For inline wrappers (SPAN/A/EM…), prefer the OUTERMOST editable so the
+    // caret spans the whole phrase. If an ancestor is already marked editable,
+    // skip this one (it'll be edited as part of the ancestor).
+    return true;
+  }
+
+  if (tag === 'DIV') {
+    // Editable only if it's a leaf: text but no element children.
+    const hasElementChild = Array.from(el.children).some((c) => c.nodeType === 1);
+    return !hasElementChild;
+  }
+
+  return false;
+}
+
+/**
+ * useIframeInlineEdit
+ *
+ * @param {object}   opts
+ * @param {object}   opts.iframeRef   ref to the preview <iframe>
+ * @param {boolean}  opts.active      when true, the document becomes editable
+ * @param {Function} opts.onSaveHtml  async ({ oldHtml, newHtml }) => void
+ *                                     — fired on a committing blur or "Done".
+ *                                     The host persists via saveArtifactContent.
+ * @param {Function} [opts.onError]   (message) => void — surfaced if access fails
+ *                                     mid-session (e.g. the iframe navigated away)
+ * @returns {{
+ *   supported: boolean|null,  // null until first probe; false if cross-origin/inaccessible
+ *   editing: boolean,         // mirrors `active` once successfully engaged
+ *   commit: () => void,       // force a save of any pending change (used by host "Done")
+ * }}
+ */
+export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } = {}) {
+  const [supported, setSupported] = useState(null);
+  const [editing, setEditing] = useState(false);
+
+  // Mutable session state kept in a ref so listeners always see the latest
+  // without re-binding. Holds the doc, the marked elements, the snapshot of the
+  // HTML at activation (the `oldHtml` baseline), and per-element "dirty since
+  // focus" tracking.
+  const sessionRef = useRef(null);
+  const onSaveRef = useRef(onSaveHtml);
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onSaveRef.current = onSaveHtml; }, [onSaveHtml]);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
+
+  // Defensive accessor — returns the iframe's document or null (never throws).
+  const getDoc = useCallback(() => {
+    try {
+      const ifr = iframeRef?.current;
+      if (!ifr) return null;
+      // Touching contentDocument on a cross-origin frame throws → caught.
+      const doc = ifr.contentDocument || ifr.contentWindow?.document || null;
+      // Reading documentElement also throws cross-origin; force the check now.
+      if (doc && doc.documentElement) return doc;
+      return null;
+    } catch {
+      return null;
+    }
+  }, [iframeRef]);
+
+  // Serialize the current document. Strips our injected style + markers so the
+  // saved HTML is clean (the deck never ships our affordance CSS).
+  const serialize = useCallback((doc) => {
+    try {
+      // Clone so we can clean without disturbing the live, still-editable DOM.
+      const clone = doc.documentElement.cloneNode(true);
+      clone.querySelectorAll?.(`#${STYLE_EL_ID}`).forEach((n) => n.remove());
+      clone.querySelectorAll?.(`[${EDITABLE_ATTR}]`).forEach((n) => {
+        n.removeAttribute(EDITABLE_ATTR);
+        n.removeAttribute('contenteditable');
+      });
+      const doctype = doc.doctype ? '<!doctype html>\n' : '';
+      return doctype + clone.outerHTML;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Commit any pending text change. Compares a fresh serialization against the
+  // activation baseline; only calls onSaveHtml when they differ. Updates the
+  // baseline after a successful save so the next edit diffs against the new HTML.
+  const commit = useCallback(() => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const doc = getDoc();
+    if (!doc) return;
+    const newHtml = serialize(doc);
+    if (newHtml == null) return;
+    if (newHtml === s.baselineHtml) return; // nothing actually changed
+    const oldHtml = s.baselineHtml;
+    s.baselineHtml = newHtml; // optimistic; host owns the version + reload
+    try {
+      onSaveRef.current?.({ oldHtml, newHtml });
+    } catch (err) {
+      onErrorRef.current?.(err?.message || 'Could not save your edit.');
+    }
+  }, [getDoc, serialize]);
+
+  useEffect(() => {
+    // Deactivating (or no iframe yet): tear down any live session.
+    if (!active) {
+      teardown(sessionRef.current);
+      sessionRef.current = null;
+      setEditing(false);
+      return undefined;
+    }
+
+    const doc = getDoc();
+    if (!doc) {
+      // Could be cross-origin OR the iframe just hasn't finished loading. We try
+      // once now and, if it's not ready, watch for `load`; only after load do we
+      // conclude "unsupported" so a slow proxy load isn't misreported.
+      setSupported((prev) => (prev === true ? prev : null));
+      const ifr = iframeRef?.current;
+      if (!ifr) { setSupported(false); return undefined; }
+      const onLoad = () => {
+        const d = getDoc();
+        if (d) {
+          setSupported(true);
+          engage(d);
+        } else {
+          setSupported(false);
+          onErrorRef.current?.('This preview can’t be edited inline (cross-origin).');
+        }
+      };
+      ifr.addEventListener('load', onLoad);
+      return () => ifr.removeEventListener('load', onLoad);
+    }
+
+    setSupported(true);
+    engage(doc);
+    return () => {
+      teardown(sessionRef.current);
+      sessionRef.current = null;
+    };
+
+    // ── helpers closed over this effect run ──
+    function engage(targetDoc) {
+      // Idempotent: if we already engaged this exact document, do nothing.
+      if (sessionRef.current && sessionRef.current.doc === targetDoc) return;
+      teardown(sessionRef.current);
+
+      let elements = [];
+      try {
+        injectStyle(targetDoc);
+        elements = markEditable(targetDoc);
+      } catch (err) {
+        setSupported(false);
+        onErrorRef.current?.(err?.message || 'Could not enter edit mode on this preview.');
+        return;
+      }
+
+      // Per-element focus snapshot → blur-diff. We also keep a document-level
+      // baseline (the activation HTML) so `commit()` / "Done" can diff the whole
+      // doc even if focus/blur tracking missed an edge (e.g. paste then Done).
+      const onFocusIn = (e) => {
+        const t = e.target;
+        if (t && t.getAttribute?.(EDITABLE_ATTR) != null) {
+          t.__coworkTextAtFocus = t.innerHTML;
+        }
+      };
+      const onFocusOut = (e) => {
+        const t = e.target;
+        if (!t || t.getAttribute?.(EDITABLE_ATTR) == null) return;
+        // Only attempt a save if THIS element changed since it gained focus —
+        // keeps blurs that didn't edit anything free of network/version churn.
+        if (typeof t.__coworkTextAtFocus === 'string' && t.innerHTML !== t.__coworkTextAtFocus) {
+          commit();
+        }
+        delete t.__coworkTextAtFocus;
+      };
+      // Enter in a single-line heading shouldn't insert a newline + linger —
+      // treat it as "done with this field": blur to trigger the commit.
+      const onKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          const t = e.target;
+          const tag = t?.tagName || '';
+          if (/^H[1-6]$/.test(tag) || tag === 'A' || tag === 'TD' || tag === 'TH' || tag === 'LABEL') {
+            e.preventDefault();
+            t.blur?.();
+          }
+        }
+        if (e.key === 'Escape') {
+          // Abandon the in-progress field edit (revert to focus snapshot) and blur.
+          const t = e.target;
+          if (t && typeof t.__coworkTextAtFocus === 'string') {
+            t.innerHTML = t.__coworkTextAtFocus;
+            delete t.__coworkTextAtFocus;
+          }
+          t?.blur?.();
+        }
+      };
+
+      targetDoc.addEventListener('focusin', onFocusIn, true);
+      targetDoc.addEventListener('focusout', onFocusOut, true);
+      targetDoc.addEventListener('keydown', onKeyDown, true);
+
+      sessionRef.current = {
+        doc: targetDoc,
+        elements,
+        baselineHtml: serialize(targetDoc) ?? '',
+        listeners: { onFocusIn, onFocusOut, onKeyDown },
+      };
+      setEditing(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, getDoc, iframeRef, serialize, commit]);
+
+  // On unmount, ensure no contentEditable / listeners linger in the iframe.
+  useEffect(() => () => {
+    teardown(sessionRef.current);
+    sessionRef.current = null;
+  }, []);
+
+  return { supported, editing, commit };
+}
+
+// ── module-scope DOM helpers (all defensive; callers wrap in try/catch) ───────
+
+function injectStyle(doc) {
+  if (doc.getElementById(STYLE_EL_ID)) return;
+  const style = doc.createElement('style');
+  style.id = STYLE_EL_ID;
+  style.textContent = AFFORDANCE_CSS;
+  (doc.head || doc.documentElement).appendChild(style);
+}
+
+// Walk the body, mark leaf text holders editable, and return the marked list.
+// We mark the OUTERMOST eligible element on any branch so inline children
+// (span/em inside a marked <p>) are edited as part of their parent rather than
+// becoming independently-editable islands.
+function markEditable(doc) {
+  const root = doc.body || doc.documentElement;
+  if (!root) return [];
+  const marked = [];
+
+  const walker = doc.createTreeWalker(root, 1 /* SHOW_ELEMENT */, {
+    acceptNode(node) {
+      if (FORBIDDEN_TAGS.has(node.tagName)) return 2; // FILTER_REJECT (skip subtree)
+      // If an ancestor is already marked editable, don't descend into it.
+      if (node.closest && node.closest(`[${EDITABLE_ATTR}]`)) return 2;
+      return isTextLeaf(node) ? 1 /* ACCEPT */ : 3 /* SKIP (but visit children) */;
+    },
+  });
+
+  let n = walker.nextNode();
+  while (n) {
+    n.setAttribute(EDITABLE_ATTR, '');
+    n.setAttribute('contenteditable', 'true');
+    // Belt-and-suspenders: keep spellcheck on, but don't let the deck's own
+    // draggable/UA behaviors fight the caret.
+    n.setAttribute('spellcheck', 'true');
+    marked.push(n);
+    // After accepting a node we must NOT walk into it (its inline children are
+    // part of this editable). Jump to the next sibling-ish node.
+    n = walker.nextNode();
+  }
+  return marked;
+}
+
+// Remove everything we added. Safe to call with null / a stale session / a
+// document that has since been torn down.
+function teardown(session) {
+  if (!session) return;
+  const { doc, elements, listeners } = session;
+  try {
+    if (listeners && doc) {
+      doc.removeEventListener('focusin', listeners.onFocusIn, true);
+      doc.removeEventListener('focusout', listeners.onFocusOut, true);
+      doc.removeEventListener('keydown', listeners.onKeyDown, true);
+    }
+  } catch { /* doc gone */ }
+  try {
+    for (const el of elements || []) {
+      el.removeAttribute?.(EDITABLE_ATTR);
+      el.removeAttribute?.('contenteditable');
+      el.removeAttribute?.('spellcheck');
+      if (el && '__coworkTextAtFocus' in el) delete el.__coworkTextAtFocus;
+    }
+  } catch { /* elements detached */ }
+  try {
+    const style = doc?.getElementById?.(STYLE_EL_ID);
+    style?.remove();
+  } catch { /* doc gone */ }
+}
+
+export default useIframeInlineEdit;

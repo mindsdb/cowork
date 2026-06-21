@@ -1309,6 +1309,12 @@ export async function setArtifactSuggestionStatus(commentId, status) {
   return req(`/artifacts/comments/${encodeURIComponent(commentId)}/${action}`, { method: 'POST' });
 }
 
+// Mark a comment/review thread resolved (handled) — distinct from reject (dismiss).
+export async function resolveArtifactComment(commentId) {
+  if (!commentId) throw new Error('Comment id is required.');
+  return req(`/artifacts/comments/${encodeURIComponent(commentId)}/resolve`, { method: 'POST' });
+}
+
 export async function previewArtifactCommentPatch(commentId) {
   if (!commentId) throw new Error('Comment id is required.');
   return req(`/artifacts/comments/${encodeURIComponent(commentId)}/preview`, { method: 'POST' });
@@ -1358,14 +1364,26 @@ export async function handoffArtifactToTask({
 // equal old/new as a no-op. Throwing signals a generation failure — the
 // caller (ArtifactWorkspaceRedesign) wraps this in try/catch so a missing
 // endpoint (404) degrades to EditableBlock's built-in mock.
-export async function proposeArtifactEdit({ path, target, instruction, oldText, baseVersionId } = {}) {
+export async function proposeArtifactEdit({ path, target, instruction, oldText, newText, baseVersionId } = {}) {
+  // _ProposeEditBody requires `target` (file path within the artifact folder) and
+  // both `old_text` + `new_text`. `target` may be the file-basename string (direct
+  // whole-file edits) or the legacy object descriptor (per-block AI edits).
+  const resolvedPath = path || (typeof target === 'object' ? target?.artifactId : null) || null;
+  const resolvedTarget =
+    typeof target === 'string' ? target : (target?.path || target?.target || null);
+  const resolvedOld = oldText ?? (typeof target === 'object' ? target?.text : null) ?? null;
   const payload = {
-    path: path || target?.artifactId || null,
-    artifactId: target?.artifactId || null,
-    blockId: target?.blockId || null,
-    range: target?.range ?? null,
+    path: resolvedPath,
+    target: resolvedTarget,
+    artifactId: typeof target === 'object' ? (target?.artifactId || null) : null,
+    blockId: typeof target === 'object' ? (target?.blockId || null) : null,
+    range: typeof target === 'object' ? (target?.range ?? null) : null,
     instruction: instruction || '',
-    oldText: oldText ?? target?.text ?? null,
+    oldText: resolvedOld,
+    // Backend requires new_text; when the caller hasn't generated one yet (pure
+    // dry-run / LLM-not-wired), echo old_text so the proposal still validates
+    // (applies===true) instead of 422-ing on a missing field.
+    newText: typeof newText === 'string' ? newText : (resolvedOld ?? ''),
     baseVersionId: baseVersionId || null,
     type: 'document',
   };
@@ -1385,12 +1403,26 @@ export async function proposeArtifactEdit({ path, target, instruction, oldText, 
 // matching the contract the inline-edit hook expects — the UI keeps the
 // proposal on screen and relabels Keep → "Merge & keep". Any other non-ok
 // status throws via the shared error shape.
-export async function acceptArtifactEdit({ path, target, newText, baseVersionId, proposalId } = {}) {
+export async function acceptArtifactEdit({ path, target, oldText, newText, baseVersionId, proposalId } = {}) {
+  // The backend (_AcceptEditBody) REQUIRES both `target` (the file path inside the
+  // artifact folder) and `old_text` (the whole-file find string), and re-validates
+  // the find against the staged folder before swapping. `target` may be a string
+  // (the file basename) or the legacy object shape; normalize to the string the
+  // server expects.
+  const resolvedPath = path || (typeof target === 'object' ? target?.artifactId : null) || null;
+  const resolvedTarget =
+    typeof target === 'string' ? target : (target?.path || target?.target || null);
+  // old_text is required server-side and re-validated as the whole-file find. For
+  // the per-block AI flow the find text rides on `target.text`; whole-file direct
+  // saves pass `oldText` explicitly.
+  const resolvedOld = oldText ?? (typeof target === 'object' ? target?.text : null) ?? '';
   const body = JSON.stringify({
-    path: path || target?.artifactId || null,
-    artifactId: target?.artifactId || null,
-    blockId: target?.blockId || null,
+    path: resolvedPath,
+    target: resolvedTarget,
+    artifactId: typeof target === 'object' ? (target?.artifactId || null) : null,
+    blockId: typeof target === 'object' ? (target?.blockId || null) : null,
     proposalId: proposalId || null,
+    oldText: resolvedOld,
     newText: newText ?? '',
     baseVersionId: baseVersionId || null,
   });

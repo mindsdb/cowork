@@ -10,7 +10,12 @@
 // sibling redesign.css — referenced here by name, never redefined.
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { getStoryKind, STORY_FILTERS } from './storyEventKinds';
+import {
+  getStoryKind,
+  STORY_FILTERS,
+  eventMatchesFilter,
+  countEventsByFilter,
+} from './storyEventKinds';
 
 const STORY_RAIL_WIDTH = 332;
 const AI_GRADIENT = 'linear-gradient(135deg,#A78BFA,#22D3EE)';
@@ -334,16 +339,85 @@ function PendingDiffCard({ diff, onKeep, onUndo }) {
   );
 }
 
-/* --------------------------- A single row ---------------------------- */
-function StoryRow({ event }) {
-  const recovered = event?.meta?.tone === 'recovered';
+/* ----------------------- Action button (Resolve / Dismiss / Fix) ---------- */
+// A compact button for the comment/review action row. `variant` picks the
+// treatment: 'ghost' (Resolve/Dismiss) or 'ai' (Fix with AI, gradient-tinted).
+function RowActionButton({ label, onClick, variant = 'ghost' }) {
+  const ai = variant === 'ai';
   return (
-    <div style={{ display: 'flex', gap: 12, paddingBottom: 16, position: 'relative' }}>
+    <button
+      type="button"
+      onClick={onClick}
+      className="rd-no-truncate"
+      style={{
+        height: 24,
+        padding: '0 10px',
+        borderRadius: 6,
+        border: ai ? '1px solid var(--accent)' : '1px solid var(--line-2)',
+        background: ai ? 'var(--accent-bg)' : 'transparent',
+        color: ai ? 'var(--accent)' : 'var(--ink-3)',
+        fontSize: 11,
+        fontWeight: ai ? 600 : 500,
+        fontFamily: 'var(--font-body)',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* --------------------------- A single row ---------------------------- */
+function StoryRow({ event, onResolveEvent, onDismissEvent, onFixEvent }) {
+  const recovered = event?.meta?.tone === 'recovered';
+
+  // Comment & review rows are the actionable ones: full body (no truncation)
+  // plus a Resolve / Dismiss / Fix-with-AI action row.
+  const isActionable = event.kind === 'comment' || event.kind === 'review';
+  const resolved = !!(event?.meta?.resolved || event?.resolved);
+  const dismissed = !!event?.meta?.dismissed;
+  const settled = resolved || dismissed; // visually dimmed, Resolve/Dismiss hidden
+
+  // Resolve/Dismiss disappear once settled; Fix-with-AI may still be useful.
+  const showResolve = isActionable && !settled && !!onResolveEvent;
+  const showDismiss = isActionable && !settled && !!onDismissEvent;
+  const showFix = isActionable && !!onFixEvent;
+  const showActions = showResolve || showDismiss || showFix;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 12,
+        paddingBottom: 16,
+        position: 'relative',
+        opacity: settled ? 0.55 : 1,
+      }}
+    >
       <Avatar author={event.author} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.4 }}>
           <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{event.author.name}</span>{' '}
           {event.title}
+          {settled ? (
+            <span
+              style={{
+                marginLeft: 6,
+                fontSize: 9.5,
+                fontWeight: 600,
+                letterSpacing: '.04em',
+                textTransform: 'uppercase',
+                color: resolved ? 'var(--success)' : 'var(--ink-4)',
+                border: `1px solid ${resolved ? 'var(--success)' : 'var(--line-2)'}`,
+                borderRadius: 5,
+                padding: '1px 5px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {resolved ? 'Resolved' : 'Dismissed'}
+            </span>
+          ) : null}
         </div>
         {event.body ? (
           <div
@@ -353,6 +427,9 @@ function StoryRow({ event }) {
               color: recovered ? 'var(--success)' : 'var(--ink-3)',
               lineHeight: 1.5,
               marginTop: 2,
+              // comment/review bodies show in full; never clamp them
+              overflowWrap: 'anywhere',
+              whiteSpace: isActionable ? 'pre-wrap' : undefined,
             }}
           >
             {event.body}
@@ -368,6 +445,19 @@ function StoryRow({ event }) {
         >
           {event.when}
         </div>
+        {showActions ? (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+            {showResolve ? (
+              <RowActionButton label="Resolve" onClick={() => onResolveEvent(event)} />
+            ) : null}
+            {showDismiss ? (
+              <RowActionButton label="Dismiss" onClick={() => onDismissEvent(event)} />
+            ) : null}
+            {showFix ? (
+              <RowActionButton label="Fix with AI" variant="ai" onClick={() => onFixEvent(event)} />
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -469,17 +559,23 @@ function StoryGroup({ node }) {
 }
 
 /* ------------------------------ Filter chip --------------------------- */
-function FilterChip({ chip, active, onClick }) {
+// A segment inside the filter track. `active` fills it with --accent-bg; the
+// rest read as quiet ghosts. `count` is appended as a dimmed badge so it's
+// obvious each chip is a filtered view of the same feed (e.g. "Versions 2").
+function FilterChip({ chip, active, count, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className="rd-no-truncate"
       style={{
-        height: 26,
-        padding: '0 11px',
-        borderRadius: 7,
-        border: `1px solid ${active ? 'var(--accent)' : 'var(--line-2)'}`,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        height: 24,
+        padding: '0 10px',
+        borderRadius: 6,
+        border: '1px solid transparent',
         background: active ? 'var(--accent-bg)' : 'transparent',
         color: active ? 'var(--accent)' : 'var(--ink-3)',
         fontSize: 11.5,
@@ -488,9 +584,21 @@ function FilterChip({ chip, active, onClick }) {
         cursor: 'pointer',
         whiteSpace: 'nowrap',
         flex: '0 0 auto',
+        transition: 'background .12s ease, color .12s ease',
       }}
     >
-      {chip.label}
+      <span>{chip.label}</span>
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 600,
+          fontFamily: 'var(--font-mono)',
+          color: active ? 'var(--accent)' : 'var(--ink-4)',
+          opacity: active ? 0.85 : 0.7,
+        }}
+      >
+        {count}
+      </span>
     </button>
   );
 }
@@ -554,6 +662,11 @@ export function StoryRail({
   composerPlaceholder = 'Ask Anton, or @mention…',
   collapsed = false,
   onToggle,
+  // Optional, additive: per-event actions for comment/review rows. A button
+  // only renders when its callback is provided; each is called with the event.
+  onResolveEvent,
+  onDismissEvent,
+  onFixEvent,
 }) {
   // Uncontrolled fallbacks so the rail is fully interactive when rendered
   // standalone (no parent wiring required).
@@ -585,12 +698,17 @@ export function StoryRail({
     setDraft('');
   }, [draft, onSend]);
 
+  // Live per-filter counts from the current events, using the SAME matcher the
+  // filter applies — so the badges can never disagree with what a chip shows.
+  const filterCounts = useMemo(() => countEventsByFilter(events), [events]);
+
   // Filter → then coalesce. (Order matters: we coalesce what survives the
   // filter, so e.g. filtering to "Versions" shows them all un-grouped.)
   const nodes = useMemo(() => {
     const activeChip = STORY_FILTERS.find((c) => c.id === activeFilter);
-    const wantKind = activeChip ? activeChip.kind : null;
-    const filtered = wantKind ? events.filter((e) => e.kind === wantKind) : events;
+    const filtered = activeChip
+      ? events.filter((e) => eventMatchesFilter(e, activeChip))
+      : events;
     return coalesce(filtered);
   }, [events, activeFilter]);
 
@@ -618,7 +736,8 @@ export function StoryRail({
         boxSizing: 'border-box',
       }}
     >
-      {/* Header */}
+      {/* Header — just the title. The collapse affordance is intentionally not
+          exposed here (collapse code stays defined for programmatic use). */}
       <div
         style={{
           display: 'flex',
@@ -629,59 +748,65 @@ export function StoryRail({
         }}
       >
         <span className="rd-no-truncate" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Story</span>
-        <span className="rd-no-truncate" style={{ fontSize: 11, color: 'var(--ink-4)' }}>chat · versions · reviews</span>
-        <div style={{ flex: 1 }} />
-        <button
-          type="button"
-          onClick={handleToggle}
-          aria-label="Collapse Story"
+      </div>
+
+      {/* Filter row — chips live inside a segmented track so they read as
+          filters of one feed, not loose tags. Active = filled --accent-bg. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 14px',
+          borderBottom: '1px solid var(--line)',
+        }}
+      >
+        <span
+          aria-hidden="true"
           style={{
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--ink-3)',
+            color: 'var(--ink-4)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
+            flexShrink: 0,
           }}
         >
           <svg
-            width="15"
-            height="15"
+            width="13"
+            height="13"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.7"
+            strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="m9 6 6 6-6 6" />
+            <path d="M3 5h18M6 12h12M10 19h4" />
           </svg>
-        </button>
-      </div>
-
-      {/* Filter row */}
-      <div
-        className="rd-scroll"
-        style={{
-          display: 'flex',
-          gap: 6,
-          padding: '10px 14px',
-          borderBottom: '1px solid var(--line)',
-          overflowX: 'auto',
-        }}
-      >
-        {STORY_FILTERS.map((chip) => (
-          <FilterChip
-            key={chip.id}
-            chip={chip}
-            active={activeFilter === chip.id}
-            onClick={() => handleFilter(chip.id)}
-          />
-        ))}
+        </span>
+        <div
+          className="rd-scroll"
+          style={{
+            display: 'flex',
+            gap: 4,
+            padding: 3,
+            borderRadius: 9,
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line-2)',
+            overflowX: 'auto',
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          {STORY_FILTERS.map((chip) => (
+            <FilterChip
+              key={chip.id}
+              chip={chip}
+              active={activeFilter === chip.id}
+              count={filterCounts[chip.id] ?? 0}
+              onClick={() => handleFilter(chip.id)}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Timeline */}
@@ -725,7 +850,13 @@ export function StoryRail({
               node.type === 'group' ? (
                 <StoryGroup key={node.id} node={node} />
               ) : (
-                <StoryRow key={node.id} event={node.event} />
+                <StoryRow
+                  key={node.id}
+                  event={node.event}
+                  onResolveEvent={onResolveEvent}
+                  onDismissEvent={onDismissEvent}
+                  onFixEvent={onFixEvent}
+                />
               ),
             )}
           </div>

@@ -57,6 +57,15 @@ function CommentIcon() {
   );
 }
 
+function EditIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </svg>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -73,6 +82,8 @@ export function TopBar({
   presence = DEFAULT_PRESENCE,
   onShare,
   primaryCta = { label: 'Present' },
+  editMode = false,
+  onToggleEdit,
   commentMode = false,
   onToggleComment,
   onClose,
@@ -174,6 +185,35 @@ export function TopBar({
             ))}
           </div>
         </div>
+      ) : null}
+
+      {/* Edit mode toggle — direct in-place typing (no AI) */}
+      {onToggleEdit ? (
+        <button
+          onClick={onToggleEdit}
+          className="rd-no-truncate"
+          title="Edit the artifact directly — click text and type"
+          aria-pressed={editMode}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            height: 30,
+            padding: '0 13px',
+            borderRadius: 8,
+            border: `1px solid ${editMode ? 'var(--accent)' : 'var(--line-2)'}`,
+            background: editMode ? 'var(--accent-bg)' : 'transparent',
+            color: editMode ? 'var(--accent)' : 'var(--ink-2)',
+            fontSize: 12.5,
+            fontWeight: editMode ? 600 : 500,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <EditIcon />
+          {editMode ? 'Editing' : 'Edit'}
+        </button>
       ) : null}
 
       {/* Comment mode toggle — ghost, active when on */}

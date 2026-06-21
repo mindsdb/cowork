@@ -77,4 +77,22 @@ export const STORY_FILTERS = [
   { id: 'review', label: 'Reviews', kind: 'review' },
 ];
 
+// Does an event belong to a given filter chip? `kind: null` (the "All" chip)
+// matches everything; otherwise it's an exact kind match. Single source of
+// truth so the live filter and the chip COUNTS can never drift apart.
+export function eventMatchesFilter(event, chip) {
+  if (!chip || chip.kind == null) return true;
+  return event && event.kind === chip.kind;
+}
+
+// Count how many of `events` each filter chip would show. Returns a map keyed
+// by chip.id, e.g. { all: 7, version: 2, comment: 3, review: 1 }.
+export function countEventsByFilter(events = []) {
+  const counts = {};
+  for (const chip of STORY_FILTERS) {
+    counts[chip.id] = events.filter((e) => eventMatchesFilter(e, chip)).length;
+  }
+  return counts;
+}
+
 export default STORY_EVENT_KINDS;
