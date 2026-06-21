@@ -6,9 +6,12 @@
 // `contentEditable`, and paint a quiet hover/focus affordance so the user sees
 // what they can edit. They can retype any number of headings/paragraphs freely —
 // nothing persists mid-edit. Edits only commit when the user hits Save (or leaves
-// edit mode): we serialize `documentElement.outerHTML` and hand the host a single
-// `{ oldHtml, newHtml }` to persist as ONE new artifact version. `dirty` tells the
-// host whether there's anything to save. No agent, no waiting, no per-blur churn.
+// edit mode): we diff each editable element's innerHTML against its value at
+// engage and hand the host a list of `{ find, replace }` fragments to apply to the
+// SOURCE bytes — ONE new artifact version. We deliberately do NOT serialize the
+// whole live DOM: that would bake in nodes a script built at runtime (e.g. a deck
+// appending its nav dots on load), which duplicate on every save→reload and brick
+// the deck. `dirty` tells the host whether there's anything to save. No per-blur churn.
 //
 // ── Same-origin / safety contract ────────────────────────────────────────────
 // The preview iframe is served through the :5173 proxy so it's same-origin and
@@ -104,9 +107,10 @@ function isTextLeaf(el) {
  * @param {object}   opts
  * @param {object}   opts.iframeRef   ref to the preview <iframe>
  * @param {boolean}  opts.active      when true, the document becomes editable
- * @param {Function} opts.onSaveHtml  async ({ oldHtml, newHtml }) => void
- *                                     — fired once on Save / exit (not per blur).
- *                                     The host persists via saveArtifactContent.
+ * @param {Function} opts.onSaveHtml  async ({ edits }) => void — fired once on
+ *                                     Save / exit (not per blur). `edits` is a list
+ *                                     of { find, replace } innerHTML fragments the
+ *                                     host applies to the SOURCE via saveArtifactContent.
  * @param {Function} [opts.onError]   (message) => void — surfaced if access fails
  *                                     mid-session (e.g. the iframe navigated away)
  * @returns {{
@@ -186,18 +190,34 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
     if (!dirtyRef.current) return;
     const doc = getDoc();
     if (!doc) return;
-    const newHtml = serialize(doc);
-    if (newHtml == null) return;
-    if (newHtml === s.baselineHtml) { clearDirty(); return; } // nothing actually changed
-    const oldHtml = s.baselineHtml;
-    s.baselineHtml = newHtml; // optimistic; host owns the version + reload
+    // Per-element diff: for each editable element whose inner content changed,
+    // emit { find: original innerHTML, replace: current innerHTML }. The host
+    // applies these to the SOURCE bytes, so script-generated DOM (e.g. a deck's
+    // runtime-built nav dots) is never baked back into the file.
+    const edits = [];
+    for (const el of s.elements || []) {
+      try {
+        if (!el || !el.isConnected) continue;
+        const before = el.__coworkInnerAtEngage;
+        const after = el.innerHTML;
+        if (typeof before === 'string' && before.length && before !== after) {
+          edits.push({ find: before, replace: after });
+        }
+      } catch { /* element detached */ }
+    }
     clearDirty();
+    if (!edits.length) return;
+    // Advance per-element baselines so a later commit in the same session diffs
+    // from here (and re-saving is a no-op until the next real edit).
+    for (const el of s.elements || []) {
+      try { el.__coworkInnerAtEngage = el.innerHTML; } catch { /* detached */ }
+    }
     try {
-      onSaveRef.current?.({ oldHtml, newHtml });
+      onSaveRef.current?.({ edits });
     } catch (err) {
       onErrorRef.current?.(err?.message || 'Could not save your edit.');
     }
-  }, [getDoc, serialize, clearDirty]);
+  }, [getDoc, clearDirty]);
 
   useEffect(() => {
     // Deactivating (or no iframe yet): persist any accumulated edits as ONE
@@ -258,6 +278,15 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
         return;
       }
 
+      // Snapshot each editable element's original innerHTML. On commit we diff
+      // per-element and emit { find, replace } pairs the host applies to the SOURCE
+      // bytes — NOT a serialization of the whole live DOM. Serializing the live DOM
+      // bakes in nodes a script built at runtime (e.g. a deck that appends its nav
+      // dots on load), which then duplicate on every save→reload and brick the deck.
+      for (const el of elements) {
+        try { el.__coworkInnerAtEngage = el.innerHTML; } catch { /* detached */ }
+      }
+
       // Per-element focus snapshot → blur-diff. We also keep a document-level
       // baseline (the activation HTML) so `commit()` / "Done" can diff the whole
       // doc even if focus/blur tracking missed an edge (e.g. paste then Done).
@@ -312,7 +341,6 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
       sessionRef.current = {
         doc: targetDoc,
         elements,
-        baselineHtml: serialize(targetDoc) ?? '',
         listeners: { onFocusIn, onFocusOut, onKeyDown, onInput },
       };
       clearDirty();
@@ -391,6 +419,7 @@ function teardown(session) {
       el.removeAttribute?.('contenteditable');
       el.removeAttribute?.('spellcheck');
       if (el && '__coworkTextAtFocus' in el) delete el.__coworkTextAtFocus;
+      if (el && '__coworkInnerAtEngage' in el) delete el.__coworkInnerAtEngage;
     }
   } catch { /* elements detached */ }
   try {

@@ -401,7 +401,7 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
   const { supported, commit, dirty } = useIframeInlineEdit({
     iframeRef,
     active: !!editMode,
-    onSaveHtml: ({ oldHtml, newHtml }) => onSaveContent?.({ oldContent: oldHtml, newContent: newHtml }),
+    onSaveHtml: ({ edits }) => onSaveContent?.({ edits }),
     onError: (m) => onError?.(m),
   });
 
@@ -783,9 +783,9 @@ export function ArtifactWorkspaceRedesign({
 
   // Direct (typed) edit → persist as a new version via the edit pipeline (OCC).
   const handleDirectSave = useCallback(
-    async ({ oldContent, newContent }) => {
+    async ({ oldContent, newContent, edits } = {}) => {
       try {
-        const res = await saveArtifactContent({ path, projectName, oldContent, newContent, baseVersionId });
+        const res = await saveArtifactContent({ path, projectName, oldContent, newContent, edits, baseVersionId });
         if (!res || res.noop) return;
         if (res.ok) {
           // Direct edit. For the HTML canvas the iframe DOM ALREADY shows the

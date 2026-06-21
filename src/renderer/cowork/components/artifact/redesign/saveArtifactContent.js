@@ -86,11 +86,12 @@ export async function saveArtifactContent({
   projectName,
   oldContent,
   newContent,
+  edits,
   baseVersionId,
 } = {}) {
   if (!path) throw new Error('saveArtifactContent: path is required');
   const tgt = target || defaultTargetFromPath(path);
-  const newText = typeof newContent === 'string' ? newContent : '';
+  const targeted = Array.isArray(edits);
 
   // ── Whole-file find string: the CURRENT stored bytes, re-fetched at save time ──
   // The backend's replace_text op (in both propose and accept) does a literal
@@ -108,11 +109,17 @@ export async function saveArtifactContent({
   // fails (better an attempt that may 400 than silently dropping the user's edit).
   let storedText = null;
   try {
-    const cur = await previewArtifact(path, { versionId: baseVersionId || '' });
+    // Read the find-content from the LIVE working copy (no versionId). accept_edit
+    // applies the patch against a staged copy of the ON-DISK folder, so the find
+    // must match DISK — not a stored version snapshot that may have diverged from it.
+    const cur = await previewArtifact(path, { versionId: '' });
     if (cur && typeof cur.content === 'string') storedText = cur.content;
   } catch (err) {
     if (isEndpointUnavailable(err)) {
-      return writeFallback({ projectName, path, newText });
+      // Targeted edits can't be rebuilt without the source — never overwrite the
+      // file with a fragment via the write fallback; surface the failure instead.
+      if (targeted) throw err;
+      return writeFallback({ projectName, path, newText: typeof newContent === 'string' ? newContent : '' });
     }
     // Non-fatal: fall back to the caller-supplied oldContent below.
   }
@@ -120,6 +127,37 @@ export async function saveArtifactContent({
     typeof storedText === 'string'
       ? storedText
       : (typeof oldContent === 'string' ? oldContent : '');
+
+  // ── Compute the new full-file text ────────────────────────────────────────────
+  // Targeted mode (HTML inline edit): apply each { find, replace } to the SOURCE
+  // bytes. Only the user's edited text changes; runtime-generated DOM (e.g. a deck
+  // building its nav dots on load) is never baked into the file. A find that no
+  // longer matches is skipped (fail-safe — we never corrupt the file).
+  // Whole-content mode (prose): newContent IS the new file.
+  let newText;
+  if (targeted) {
+    if (typeof storedText !== 'string') {
+      return {
+        ok: false,
+        conflict: {
+          message: 'Could not read the current file to apply your edit. Reload and try again.',
+          currentVersionId: null,
+        },
+      };
+    }
+    let result = storedText;
+    let applied = 0;
+    for (const e of edits) {
+      if (e && typeof e.find === 'string' && e.find && typeof e.replace === 'string' && result.includes(e.find)) {
+        result = result.replace(e.find, e.replace); // first occurrence
+        applied += 1;
+      }
+    }
+    if (!applied) return { ok: true, noop: true }; // nothing matched / changed
+    newText = result;
+  } else {
+    newText = typeof newContent === 'string' ? newContent : '';
+  }
 
   // 0 — no-op guard (instant; never touches the version pipeline). If the edited
   //     text already equals the stored bytes there is genuinely nothing to commit.
