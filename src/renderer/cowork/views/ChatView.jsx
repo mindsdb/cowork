@@ -1677,7 +1677,7 @@ export default function ChatView({
                     output starts. Keep a soft "Thinking…" affordance
                     visible whenever there are no steps and no body text
                     yet. */}
-                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                {!streamingMsg.pendingSelection && !streamingMsg.steps?.length && !streamingMsg.content && (
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,

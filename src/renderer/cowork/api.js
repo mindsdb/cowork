@@ -592,16 +592,6 @@ export async function cancelResponse(conversationId) {
   }
 }
 
-// List a directory for the browse-mode path picker. Returns
-// { path, parent, entries: [{name, path, is_dir}], truncated }.
-export async function listDirectory(path, { kind = 'any', showHidden = false } = {}) {
-  const params = new URLSearchParams();
-  if (path) params.set('path', path);
-  params.set('kind', kind);
-  if (showHidden) params.set('show_hidden', 'true');
-  return req(`/fs/list?${params.toString()}`);
-}
-
 // Deliver a file/folder pick into the paused, in-flight turn that asked for
 // it (the agent's `select_path` tool). `selection` is the chosen path, or
 // null when the user dismissed the picker. A 404 means nothing is awaiting
@@ -617,8 +607,11 @@ export async function submitPathSelection(conversationId, requestId, selection) 
         selection: selection ?? null,
       }),
     });
-  } catch {
-    return { status: 'not_pending', conversation_id: conversationId };
+  } catch (err) {
+    if (err?.status === 404) {
+      return { status: 'not_pending', conversation_id: conversationId };
+    }
+    throw err;
   }
 }
 

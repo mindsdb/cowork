@@ -10,8 +10,8 @@
  * confirmation the instant a choice is made. A fresh request remounts via
  * `key={requestId}`, so local state resets without an effect. */
 
-import { useEffect, useState } from 'react';
-import { submitPathSelection, listDirectory } from '../api';
+import { useState } from 'react';
+import { submitPathSelection } from '../api';
 import { host } from '../../platform/host';
 
 const MONO = "'JetBrains Mono', monospace";
@@ -67,43 +67,54 @@ function basename(p) {
   return parts[parts.length - 1] || '/';
 }
 
-/** Browse mode on Electron — a button that opens the native OS picker
- *  (Finder/Explorer), like Claude Cowork's "Choose folder". No in-app tree. */
+/** Browse mode on Electron — buttons that open the native OS picker
+ *  (Finder/Explorer), like Claude Cowork's "Choose folder". */
 function NativeBrowse({ request, onChoose }) {
   const [busy, setBusy] = useState(false);
-  const label = request.kind === 'file' ? 'Choose file' : 'Choose folder';
 
-  const open = async () => {
+  const open = async (kind) => {
     if (busy) return;
     setBusy(true);
     try {
       const res = await host.pickPath({
-        kind: request.kind,
+        kind,
         title: request.prompt,
         defaultPath: request.root || undefined,
       });
       // On cancel we stay on the card so the user can retry or hit Cancel.
-      if (res?.ok && res.path) onChoose(res.path, basename(res.path));
+      if (res?.ok && res.path) await onChoose(res.path, basename(res.path));
     } finally {
       setBusy(false);
     }
   };
 
+  const actions = request.kind === 'any'
+    ? [
+        { kind: 'file', label: 'Choose file' },
+        { kind: 'folder', label: 'Choose folder' },
+      ]
+    : [{ kind: request.kind === 'file' ? 'file' : 'folder', label: request.kind === 'file' ? 'Choose file' : 'Choose folder' }];
+
   return (
-    <button
-      type="button"
-      onClick={open}
-      disabled={busy}
-      style={{
-        alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8,
-        border: '1px solid var(--line)', background: 'var(--surface-2)', borderRadius: 8,
-        padding: '8px 14px', cursor: busy ? 'default' : 'pointer',
-        fontFamily: BODY, fontSize: 13, fontWeight: 500, color: 'var(--ink)',
-      }}
-    >
-      <Glyph kind="folder" />
-      {busy ? 'Opening…' : label}
-    </button>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {actions.map((action) => (
+        <button
+          key={action.kind}
+          type="button"
+          onClick={() => open(action.kind)}
+          disabled={busy}
+          style={{
+            alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8,
+            border: '1px solid var(--line)', background: 'var(--surface-2)', borderRadius: 8,
+            padding: '8px 14px', cursor: busy ? 'default' : 'pointer',
+            fontFamily: BODY, fontSize: 13, fontWeight: 500, color: 'var(--ink)',
+          }}
+        >
+          <Glyph kind={action.kind} />
+          {busy ? 'Opening…' : action.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -125,104 +136,32 @@ function PickBody({ request, onChoose }) {
   );
 }
 
-/** Browse mode — navigate the filesystem and select a file or folder. */
-function BrowseBody({ request, onChoose }) {
-  const [cwd, setCwd] = useState(request.root || '');
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    listDirectory(cwd, { kind: request.kind })
-      .then((d) => { if (!cancelled) setData(d); })
-      .catch((e) => { if (!cancelled) setError(e?.message || 'Cannot read this folder'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [cwd, request.kind]);
-
-  const here = data?.path || cwd;
-  const canPickFolder = request.kind !== 'file';
-
-  return (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <button
-          type="button"
-          onClick={() => data?.parent && setCwd(data.parent)}
-          disabled={!data?.parent}
-          title="Up one level"
-          style={{
-            border: '1px solid var(--line)', background: 'transparent', borderRadius: 6,
-            padding: '2px 7px', cursor: data?.parent ? 'pointer' : 'default',
-            color: 'var(--ink-3)', fontFamily: MONO, fontSize: 12, flexShrink: 0,
-            opacity: data?.parent ? 1 : 0.4,
-          }}
-        >↑</button>
-        <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl' }} title={here}>
-          {here}
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 240, overflowY: 'auto', margin: '0 -4px', minHeight: 40 }}>
-        {loading && <div style={{ padding: '8px', fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)' }}>Loading…</div>}
-        {error && !loading && <div style={{ padding: '8px', fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)' }}>{error}</div>}
-        {!loading && !error && (data?.entries || []).length === 0 && (
-          <div style={{ padding: '8px', fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)' }}>Empty folder</div>
-        )}
-        {!loading && !error && (data?.entries || []).map((entry) => (
-          <Row
-            key={entry.path}
-            kind={entry.is_dir ? 'folder' : 'file'}
-            label={entry.name}
-            title={entry.path}
-            onClick={() => {
-              if (entry.is_dir) setCwd(entry.path);
-              else onChoose(entry.path, entry.name); // file pick (kind file/any)
-            }}
-          />
-        ))}
-        {data?.truncated && (
-          <div style={{ padding: '6px 8px', fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>
-            …more items not shown
-          </div>
-        )}
-      </div>
-
-      {canPickFolder && (
-        <button
-          type="button"
-          onClick={() => onChoose(here, basename(here))}
-          style={{
-            alignSelf: 'flex-start', border: '1px solid var(--line)', background: 'var(--surface-2)',
-            borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
-            fontFamily: BODY, fontSize: 12, fontWeight: 500, color: 'var(--ink)',
-          }}
-        >
-          Use this folder
-        </button>
-      )}
-    </>
-  );
-}
-
 export function PathSelector({ request, conversationId }) {
   // null while choosing; { label } after a pick; { cancelled: true } on dismiss.
   const [resolved, setResolved] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
   const requestId = request?.requestId;
   const isBrowse = request?.mode === 'browse';
 
-  const choose = (value, label) => {
-    if (resolved) return;
-    setResolved({ label });
-    submitPathSelection(conversationId, requestId, value);
+  const submit = async (value, nextResolved) => {
+    if (resolved || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitPathSelection(conversationId, requestId, value);
+      setResolved(nextResolved);
+    } catch (err) {
+      setError(err?.message || 'Could not submit selection.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const choose = async (value, label) => {
+    await submit(value, { label });
   };
   const dismiss = () => {
-    if (resolved) return;
-    setResolved({ cancelled: true });
-    submitPathSelection(conversationId, requestId, null);
+    submit(null, { cancelled: true });
   };
 
   if (resolved) {
@@ -247,18 +186,29 @@ export function PathSelector({ request, conversationId }) {
         {request?.prompt || 'Which one did you mean?'}
       </div>
 
-      {isBrowse
-        ? (host.canPickPath
+      {host.canPickPath
+        ? (isBrowse
             ? <NativeBrowse request={request} onChoose={choose} />
-            : <BrowseBody request={request} onChoose={choose} />)
-        : <PickBody request={request} onChoose={choose} />}
+            : <PickBody request={request} onChoose={choose} />)
+        : (
+            <div style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)', padding: '2px 0' }}>
+              Desktop app required
+            </div>
+          )}
+
+      {error ? (
+        <div style={{ fontFamily: MONO, fontSize: 11, color: 'var(--danger, #b42318)' }}>
+          {error}
+        </div>
+      ) : null}
 
       <button
         type="button"
         onClick={dismiss}
+        disabled={submitting}
         style={{ alignSelf: 'flex-start', background: 'transparent', border: 'none', padding: '2px 0', cursor: 'pointer', fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)' }}
       >
-        {isBrowse ? 'Cancel' : 'None of these'}
+        {submitting ? 'Submitting…' : (isBrowse ? 'Cancel' : 'None of these')}
       </button>
     </div>
   );
