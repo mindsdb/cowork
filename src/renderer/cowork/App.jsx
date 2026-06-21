@@ -1614,6 +1614,7 @@ function AppCore() {
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
+          pendingSelection: streamState.pendingSelection,
         }] };
       }));
     };
@@ -2359,6 +2360,7 @@ function AppCore() {
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
+          pendingSelection: streamState.pendingSelection,
         }] };
       }));
     };
@@ -2685,6 +2687,7 @@ function AppCore() {
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
+          pendingSelection: streamState.pendingSelection,
         }] };
       }));
     };
@@ -2857,6 +2860,7 @@ function AppCore() {
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
+          pendingSelection: streamState.pendingSelection,
         }] };
       }));
     };

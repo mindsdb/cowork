@@ -15,6 +15,7 @@ import Composer from '../components/Composer';
 import { OrbitMorph } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
+import { PathSelector } from '../components/PathSelector';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
 import { copyText } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
@@ -1654,6 +1655,18 @@ export default function ChatView({
                       return active?.label || null;
                     })()}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
+                  />
+                )}
+                {/* Inline disambiguation picker: shown only while the agent's
+                    select_path tool is awaiting a choice. Keyed by requestId so
+                    a new request mounts fresh. The pick is POSTed back into the
+                    paused turn; this lives inside the streaming turn, never as a
+                    separate user/assistant bubble. */}
+                {streamingMsg.pendingSelection && (
+                  <PathSelector
+                    key={streamingMsg.pendingSelection.requestId}
+                    request={streamingMsg.pendingSelection}
+                    conversationId={task.id}
                   />
                 )}
                 {/* Bridge state: between the first stream event arriving
