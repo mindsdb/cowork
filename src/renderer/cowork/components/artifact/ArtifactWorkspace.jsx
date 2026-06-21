@@ -4,6 +4,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { Modal } from '../ui/Modal';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { copyText } from '../../lib/clipboard';
+import { ArtifactWorkspaceA, shouldUseArtifactWorkspaceA } from './workspaceA/ArtifactWorkspaceA';
 import {
   artifactServeUrl,
   createArtifactCheckpoint,
@@ -5665,7 +5666,7 @@ function PreviewPane({
   );
 }
 
-export function ArtifactWorkspace({ open, artifact, projects, onClose, onChange, onPublish, onUnpublish, onForked, onHandoff }) {
+function LegacyArtifactWorkspace({ open, artifact, projects, onClose, onChange, onPublish, onUnpublish, onForked, onHandoff }) {
   const [activeTab, setActiveTab] = useState('comments');
   const [previewFailed, setPreviewFailed] = useState(false);
   const [previewVersion, setPreviewVersion] = useState(null);
@@ -6234,6 +6235,13 @@ export function ArtifactWorkspace({ open, artifact, projects, onClose, onChange,
       </div>
     </Modal>
   );
+}
+
+export function ArtifactWorkspace(props) {
+  if (shouldUseArtifactWorkspaceA(props)) {
+    return <ArtifactWorkspaceA {...props} />;
+  }
+  return <LegacyArtifactWorkspace {...props} />;
 }
 
 export default ArtifactWorkspace;

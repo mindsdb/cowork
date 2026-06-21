@@ -1,0 +1,214 @@
+/*
+ * TopBar — 50px header bar for the redesigned artifact workspace main panel.
+ *
+ * Pure presentational shell component (M0 chassis). No data fetching, no app state.
+ * Renders standalone with sensible mock defaults so it can be eyeballed in isolation.
+ *
+ * Layout (left → right):
+ *   artifact-type icon · title · "· breadcrumb" · mono version chip
+ *   — flexible spacer —
+ *   presence cluster (pulsing success dot + "N here" + overlapping avatars w/ tooltips)
+ *   · ghost Share button · solid-accent primary CTA.
+ *
+ * Props:
+ *   typeIcon     ReactNode — leading artifact-type glyph. Defaults to a deck/box icon.
+ *   title        string    — artifact title. Default 'Q3 Board Review'.
+ *   breadcrumb   string    — secondary context after the title (e.g. project). Default 'Solverminds'.
+ *   versionLabel string    — mono chip text, e.g. 'v7'. Default 'v7'.
+ *   presence     array     — [{ initials, color, tip }]. `color` is any CSS background
+ *                            (use the AI gradient for the AI/lead). `tip` shows on hover.
+ *   onShare      function  — ghost Share button click handler.
+ *   primaryCta   object    — { label, onClick } for the solid-accent CTA. Default Present.
+ */
+
+import React from 'react';
+
+const AI_GRADIENT = 'linear-gradient(135deg,#A78BFA,#22D3EE)';
+
+const DEFAULT_PRESENCE = [
+  { initials: 'MC', color: AI_GRADIENT, tip: 'Maya Chen — editing' },
+  { initials: 'DP', color: '#3a4d6e', tip: 'Devin Park — viewing' },
+];
+
+function DefaultTypeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-3)" strokeWidth="1.7">
+      <path d="M12 3 21 7.5 12 12 3 7.5 12 3Z" />
+      <path d="M3 7.5v9L12 21V12" />
+      <path d="M21 7.5v9L12 21" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 14a4 4 0 0 1 0-5.66l3-3a4 4 0 1 1 5.66 5.66l-1.5 1.5" />
+      <path d="M14 10a4 4 0 0 1 0 5.66l-3 3a4 4 0 1 1-5.66-5.66l1.5-1.5" />
+    </svg>
+  );
+}
+
+export function TopBar({
+  typeIcon,
+  title = 'Q3 Board Review',
+  breadcrumb = 'Solverminds',
+  versionLabel = 'v7',
+  presence = DEFAULT_PRESENCE,
+  onShare,
+  primaryCta = { label: 'Present' },
+} = {}) {
+  const people = presence ?? [];
+  const presenceLabel = `${people.length} here`;
+
+  return (
+    <div
+      style={{
+        height: 50,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '0 16px',
+        borderBottom: '1px solid var(--line)',
+      }}
+    >
+      {/* Identity cluster */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, overflow: 'visible' }}>
+        {typeIcon ?? <DefaultTypeIcon />}
+        <span
+          className="rd-no-truncate"
+          title={title}
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: 'var(--ink)',
+            whiteSpace: 'nowrap',
+            overflow: 'visible',
+            textOverflow: 'clip',
+          }}
+        >
+          {title}
+        </span>
+        {breadcrumb ? (
+          <span className="rd-no-truncate" style={{ fontSize: 12, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>· {breadcrumb}</span>
+        ) : null}
+        {versionLabel ? (
+          <span
+            className="rd-no-truncate"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: 'var(--accent)',
+              background: 'var(--accent-bg)',
+              borderRadius: 5,
+              padding: '2px 7px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {versionLabel}
+          </span>
+        ) : null}
+      </div>
+
+      <div style={{ flex: 1 }} />
+
+      {/* Presence */}
+      {people.length > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginRight: 4 }}>
+          <span className="rd-no-truncate" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'var(--success)',
+                boxShadow: '0 0 8px var(--success-glow, rgba(74,222,128,.5))',
+                animation: 'antpulse 1.8s infinite',
+              }}
+            />
+            {presenceLabel}
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', marginLeft: 2 }}>
+            {people.map((p, i) => (
+              <div
+                key={`${p.initials}-${i}`}
+                title={p.tip}
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
+                  background: p.color || '#3a4d6e',
+                  border: '2px solid var(--surface)',
+                  marginLeft: i === 0 ? 0 : -9,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  // Avatars on the AI gradient get dark ink; flat-color avatars get light ink.
+                  color: (p.color || '').includes('gradient') ? '#04121a' : 'var(--ink)',
+                }}
+              >
+                {p.initials}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Share — ghost */}
+      <button
+        onClick={onShare}
+        className="rd-no-truncate"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          height: 30,
+          padding: '0 13px',
+          borderRadius: 8,
+          border: '1px solid var(--line-2)',
+          background: 'transparent',
+          color: 'var(--ink-2)',
+          fontSize: 12.5,
+          fontWeight: 500,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <ShareIcon />
+        Share
+      </button>
+
+      {/* Primary CTA — solid accent */}
+      {primaryCta ? (
+        <button
+          onClick={primaryCta.onClick}
+          className="rd-no-truncate"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            height: 30,
+            padding: '0 13px',
+            borderRadius: 8,
+            border: 'none',
+            background: 'var(--accent)',
+            color: '#04121a',
+            fontSize: 12.5,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {primaryCta.label}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export default TopBar;
