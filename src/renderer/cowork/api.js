@@ -1403,7 +1403,7 @@ export async function proposeArtifactEdit({ path, target, instruction, oldText, 
 // matching the contract the inline-edit hook expects — the UI keeps the
 // proposal on screen and relabels Keep → "Merge & keep". Any other non-ok
 // status throws via the shared error shape.
-export async function acceptArtifactEdit({ path, target, oldText, newText, baseVersionId, proposalId } = {}) {
+export async function acceptArtifactEdit({ path, target, oldText, newText, baseVersionId, proposalId, operationType } = {}) {
   // The backend (_AcceptEditBody) REQUIRES both `target` (the file path inside the
   // artifact folder) and `old_text` (the whole-file find string), and re-validates
   // the find against the staged folder before swapping. `target` may be a string
@@ -1425,6 +1425,9 @@ export async function acceptArtifactEdit({ path, target, oldText, newText, baseV
     oldText: resolvedOld,
     newText: newText ?? '',
     baseVersionId: baseVersionId || null,
+    // Distinguishes a direct (typed) edit ('manual_edit') from the default AI
+    // rewrite. Only sent when provided so AI callers keep the server default.
+    ...(operationType ? { operationType } : {}),
   });
   const res = await fetch(BASE + '/artifacts/edits/accept', {
     method: 'POST',

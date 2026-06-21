@@ -112,7 +112,14 @@ function splitParagraphs(text) {
 
 function relativeWhen(value) {
   if (!value) return '';
-  const d = new Date(value);
+  let v = value;
+  // Server timestamps are UTC but often lack an offset (e.g. "2026-06-21T12:09:24").
+  // JS would parse that as LOCAL time, making recent edits read as "1h ago".
+  // Tag bare datetime strings as UTC so the relative time is correct.
+  if (typeof v === 'string' && /\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(v)) {
+    v = v.replace(' ', 'T') + 'Z';
+  }
+  const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(value);
   const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
   if (secs < 60) return 'just now';
@@ -124,27 +131,30 @@ function relativeWhen(value) {
 // Map an api.js version record to the scrubber/HistoryPanel shape. Version
 // numbers are derived from list order (TODO: use a real server-provided number
 // when the contract exposes one).
-function mapVersions(rawVersions) {
+// Map a backend version → display shape. WHO: AI operations → "Anton"; a user's
+// direct typed edit (operationType "manual_edit") → "You". WHAT: a clean, single
+// label (no more confusing "Unknown · Manual · AI edit").
+function mapVersions(rawVersions, currentVersionId) {
   const list = Array.isArray(rawVersions) ? rawVersions : [];
   return list.map((v, i) => {
     const id = v?.id || v?.versionId || v?.version_id || `idx-${i}`;
-    const authorName = v?.author?.name || v?.author || v?.createdBy || v?.created_by || 'Unknown';
-    const isAI =
-      /anton|agent|ai/i.test(String(authorName)) ||
-      /agent/i.test(String(v?.operationType || v?.operation_type || ''));
     const op = String(v?.operationType || v?.operation_type || v?.kind || '').toLowerCase();
-    const tag = op.includes('agent')
-      ? 'Agent update'
-      : op.includes('suggest')
-        ? 'Suggestion accepted'
-        : 'Manual';
+    const isAI = op === 'ai_edit' || op === 'generated_update' || /agent|generated/.test(op) || op.startsWith('ai');
+    const what =
+      op === 'manual_edit' || op === 'manual' ? 'Edited'
+      : op === 'ai_edit' ? 'AI edit'
+      : op === 'generated_update' ? 'Generated update'
+      : op.includes('suggest') ? 'Suggestion accepted'
+      : op.includes('restore') ? 'Restored'
+      : (v?.label || v?.name || 'Version');
+    const who = isAI ? 'Anton' : 'You';
     return {
       id,
       n: i + 1,
-      label: v?.label || v?.name || `v${i + 1}`,
-      author: { name: authorName, initials: initialsOf(authorName), isAI },
+      label: what,
+      author: { name: who, initials: isAI ? 'AN' : 'ME', isAI },
       when: relativeWhen(v?.createdAt || v?.created_at || v?.when || v?.timestamp),
-      tag,
+      current: currentVersionId ? id === currentVersionId : false,
     };
   });
 }
@@ -437,10 +447,13 @@ function versionsToEvents(versions) {
   return (versions || []).map((v) => ({
     id: `v-${v.id}`,
     kind: 'version',
+    versionId: v.id,
+    versionN: v.n,
     author: v.author,
-    title: `${v.tag} · ${v.label}`,
+    title: v.label,
     body: '',
     when: v.when,
+    meta: { current: !!v.current },
   }));
 }
 
@@ -516,9 +529,10 @@ export function ArtifactWorkspaceRedesign({
     fetchArtifactVersions(path)
       .then((res) => {
         if (!res || res.available === false) return;
-        const mapped = mapVersions(res.versions);
-        const currentVersionId =
-          res.currentVersionId || res.latestVersionId || (mapped.length ? mapped[mapped.length - 1].id : '');
+        const rawVersions = res.versions || [];
+        const lastId = rawVersions.length ? (rawVersions[rawVersions.length - 1]?.id || '') : '';
+        const currentVersionId = res.currentVersionId || res.latestVersionId || lastId;
+        const mapped = mapVersions(rawVersions, currentVersionId);
         setVersionsState({ versions: mapped, currentVersionId });
       })
       .catch(() => { /* graceful */ });
@@ -640,7 +654,16 @@ export function ArtifactWorkspaceRedesign({
       try {
         const res = await saveArtifactContent({ path, projectName, oldContent, newContent, baseVersionId });
         if (!res || res.noop) return;
-        if (res.ok) { handleCommitted({ versionId: res.versionId }); return; }
+        if (res.ok) {
+          // Direct edit: the canvas DOM ALREADY shows the user's typed change,
+          // so do NOT bumpReload (that would remount the iframe and reset the
+          // slide — the "saving skipped to the next slide" bug). Just refresh
+          // the version list + notify the host.
+          flash(res.versionId ? 'Saved — new version' : 'Saved');
+          onChange?.({ ...artifact, mtime: Date.now() });
+          loadVersions();
+          return;
+        }
         if (res.conflict) {
           flash(res.conflict.message || 'This changed since you started — reloading the latest.');
           bumpReload(); loadVersions();
@@ -649,7 +672,7 @@ export function ArtifactWorkspaceRedesign({
         flash(err?.message || 'Could not save your edit.');
       }
     },
-    [path, projectName, baseVersionId, handleCommitted, flash, bumpReload, loadVersions],
+    [path, projectName, baseVersionId, artifact, onChange, flash, bumpReload, loadVersions],
   );
 
   // ── Present mode: fullscreen the canvas (real Fullscreen API) ─────────────────
@@ -783,6 +806,8 @@ export function ArtifactWorkspaceRedesign({
             onResolveEvent={onResolveEvent}
             onDismissEvent={onDismissEvent}
             onFixEvent={onFixEvent}
+            onRestoreVersion={(ev) => handleRestore(ev.versionN)}
+            onCompareVersion={(ev) => setViewingN(ev.versionN)}
           />
         }
         bottomStrip={

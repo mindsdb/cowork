@@ -16,9 +16,11 @@
 //        → dry-run; validates that `oldText` is still present in `target`
 //          (a whole-file `replace_text`: find oldText, replace with newText).
 //          Returns { proposalId } we echo back on accept.
-//   2. acceptArtifactEdit({ path, target, newText, baseVersionId, proposalId })
+//   2. acceptArtifactEdit({ path, target, newText, baseVersionId, proposalId,
+//        operationType: 'manual_edit' })
 //        → compare-and-swap on `baseVersionId`; on success applies the swap and
-//          records a NEW `ai_edit` version → { ok, versionId }.
+//          records a NEW version (operationType 'manual_edit' for these direct
+//          typed saves, vs the default 'ai_edit') → { ok, versionId }.
 //          On 409 returns { conflict: { message, currentVersionId } } (no throw).
 //
 // Backend reference:
@@ -162,6 +164,10 @@ export async function saveArtifactContent({
       newText,
       baseVersionId,
       proposalId,
+      // Direct typed edits are the user's own work, not an AI rewrite — record
+      // them as 'manual_edit' so the Versions/Story panel shows "You · Edited"
+      // instead of "Unknown · AI edit".
+      operationType: 'manual_edit',
     });
   } catch (err) {
     if (isEndpointUnavailable(err)) {

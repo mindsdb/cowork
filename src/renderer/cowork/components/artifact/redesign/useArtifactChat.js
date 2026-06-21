@@ -98,6 +98,21 @@ export function useArtifactChat({
   const projectNameRef = useRef(projectName);
   const onArtifactChangedRef = useRef(onArtifactChanged);
   useEffect(() => { projectNameRef.current = projectName; }, [projectName]);
+
+  // Artifact context, prepended to the FIRST message of a conversation so the
+  // agent edits THIS artifact's files directly instead of hunting for it
+  // (fixes "Anton doesn't know which artifact it's on").
+  const artifactCtxRef = useRef('');
+  useEffect(() => {
+    const folder = typeof path === 'string' ? path.replace(/\/[^/]*$/, '') : '';
+    const name =
+      artifact?.title ||
+      (typeof path === 'string' ? path.split(/[\\/]/).filter(Boolean).pop() : '') ||
+      'this artifact';
+    artifactCtxRef.current = folder
+      ? `[Context — you are editing the artifact "${name}". Its file(s) are in this folder: ${folder}. Apply the requested change by editing the file(s) in that folder directly; do not search for or recreate the artifact.]`
+      : '';
+  }, [artifact, path]);
   useEffect(() => { onArtifactChangedRef.current = onArtifactChanged; }, [onArtifactChanged]);
 
   // Guards async callbacks from a stream whose component already
@@ -207,9 +222,15 @@ export function useArtifactChat({
     // value we learned from a previous send in this session.
     try {
       const cid = cidRef.current;
-      ctrlRef.current = cid
-        ? streamMessage(cid, text, opts)
-        : streamNewSession(text, opts);
+      if (cid) {
+        // Continuation — Anton already has the artifact context from turn 1.
+        ctrlRef.current = streamMessage(cid, text, opts);
+      } else {
+        // First turn — prepend the artifact context to the wire text (the UI
+        // message stays the clean user text).
+        const wireText = artifactCtxRef.current ? `${artifactCtxRef.current}\n\n${text}` : text;
+        ctrlRef.current = streamNewSession(wireText, opts);
+      }
       // Defensive: a transport that returned without a controller (or a
       // falsy value) would otherwise leave `sending` stuck true.
       if (!ctrlRef.current) {

@@ -369,7 +369,14 @@ function RowActionButton({ label, onClick, variant = 'ghost' }) {
 }
 
 /* --------------------------- A single row ---------------------------- */
-function StoryRow({ event, onResolveEvent, onDismissEvent, onFixEvent }) {
+function StoryRow({
+  event,
+  onResolveEvent,
+  onDismissEvent,
+  onFixEvent,
+  onRestoreVersion,
+  onCompareVersion,
+}) {
   const recovered = event?.meta?.tone === 'recovered';
 
   // Comment & review rows are the actionable ones: full body (no truncation)
@@ -384,6 +391,15 @@ function StoryRow({ event, onResolveEvent, onDismissEvent, onFixEvent }) {
   const showDismiss = isActionable && !settled && !!onDismissEvent;
   const showFix = isActionable && !!onFixEvent;
   const showActions = showResolve || showDismiss || showFix;
+
+  // Version rows get their own action row: Restore (+ optional Compare). The
+  // latest/current version can't be restored onto itself — show a quiet
+  // "Current" tag there instead of the button.
+  const isVersion = event.kind === 'version';
+  const isCurrentVersion = isVersion && event?.meta?.current === true;
+  const showRestore = isVersion && !isCurrentVersion && !!onRestoreVersion;
+  const showCompare = isVersion && !isCurrentVersion && !!onCompareVersion;
+  const showVersionActions = isCurrentVersion || showRestore || showCompare;
 
   return (
     <div
@@ -455,6 +471,41 @@ function StoryRow({ event, onResolveEvent, onDismissEvent, onFixEvent }) {
             ) : null}
             {showFix ? (
               <RowActionButton label="Fix with AI" variant="ai" onClick={() => onFixEvent(event)} />
+            ) : null}
+          </div>
+        ) : null}
+        {showVersionActions ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            {isCurrentVersion ? (
+              <span
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  letterSpacing: '.04em',
+                  textTransform: 'uppercase',
+                  color: 'var(--ink-4)',
+                  border: '1px solid var(--line-2)',
+                  borderRadius: 5,
+                  padding: '1px 5px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Current
+              </span>
+            ) : null}
+            {showRestore ? (
+              <RowActionButton label="Restore" onClick={() => onRestoreVersion(event)} />
+            ) : null}
+            {showCompare ? (
+              <RowActionButton label="Compare" onClick={() => onCompareVersion(event)} />
             ) : null}
           </div>
         ) : null}
@@ -667,6 +718,12 @@ export function StoryRail({
   onResolveEvent,
   onDismissEvent,
   onFixEvent,
+  // Optional, additive: per-version actions. `onRestoreVersion` adds a Restore
+  // button to each version row (hidden on the current one, where a quiet
+  // "Current" tag shows instead); `onCompareVersion` adds a ghost Compare
+  // button. Each is called with the version event.
+  onRestoreVersion,
+  onCompareVersion,
 }) {
   // Uncontrolled fallbacks so the rail is fully interactive when rendered
   // standalone (no parent wiring required).
@@ -856,6 +913,8 @@ export function StoryRail({
                   onResolveEvent={onResolveEvent}
                   onDismissEvent={onDismissEvent}
                   onFixEvent={onFixEvent}
+                  onRestoreVersion={onRestoreVersion}
+                  onCompareVersion={onCompareVersion}
                 />
               ),
             )}
