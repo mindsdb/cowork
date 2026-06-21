@@ -18,11 +18,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../../ui/Modal';
 
 import './redesign.css';
-import { WorkspaceShell, IconRail, TopBar } from './index.js';
+import { WorkspaceShell, TopBar } from './index.js';
 import { StoryRail } from './storyRailIndex.js';
 import { EditableBlock } from './editIndex.js';
-import { VersionScrubber, HistoryPanel } from './scrubberIndex.js';
+import { VersionScrubber } from './scrubberIndex.js';
 import { ReviewBanner } from './reviewIndex.js';
+import { useArtifactChat } from './useArtifactChat.js';
+import { CommentLayer } from './CommentLayer.jsx';
 
 import {
   artifactServeUrl,
@@ -40,20 +42,19 @@ import {
 export const REDESIGN_FLAG_KEY = 'anton:artifact-workspace-direction-2';
 
 /**
- * shouldUseRedesign — true when the per-machine localStorage flag is explicitly
- * on. Default OFF (and safe when localStorage is unavailable), so existing
- * behavior is byte-identical unless a user opts in via:
- *   localStorage.setItem('anton:artifact-workspace-direction-2', 'true')
+ * shouldUseRedesign — direction-2 is the dedicated redesign branch, so the
+ * redesign is ON by default here. Opt OUT (to see the legacy workspace) via:
+ *   localStorage.setItem('anton:artifact-workspace-direction-2', 'false')
  *
  * Accepts the workspace props for parity / future per-artifact gating, but the
  * current decision is global.
  */
 export function shouldUseRedesign(_props) {
   try {
-    if (typeof localStorage === 'undefined') return false;
-    return localStorage.getItem(REDESIGN_FLAG_KEY) === 'true';
+    if (typeof localStorage === 'undefined') return true;
+    return localStorage.getItem(REDESIGN_FLAG_KEY) !== 'false';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -149,11 +150,12 @@ function mapStoryEvents({ comments, activity }) {
   const events = [];
   for (const c of comments || []) {
     const name = c?.author?.name || c?.author || c?.user || 'Someone';
+    const isReview = c?.kind === 'suggestion' || c?.kind === 'review';
     events.push({
       id: `c-${c?.id || events.length}`,
-      kind: c?.kind === 'suggestion' ? 'review' : 'comment',
+      kind: isReview ? 'review' : 'comment',
       author: { name, initials: initialsOf(name), color: '#3a4d6e' },
-      title: c?.kind === 'suggestion' ? 'suggested a change' : 'commented',
+      title: c?.kind === 'suggestion' ? 'suggested a change' : (c?.kind === 'review' ? 'requested review' : 'commented'),
       body: c?.body || c?.text || '',
       when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
     });
@@ -380,57 +382,41 @@ function PlaceholderCanvas({ path, ext }) {
   );
 }
 
-// ── Dock (right-rail tabs that aren't the Story timeline) ───────────────────────
-function Dock({ tab, onTab, versions, currentN, onPreview, onCompare, onRestore, review }) {
-  const tabs = [
-    { id: 'history', label: 'History' },
-    { id: 'review', label: 'Review' },
-  ];
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'var(--surface)', borderLeft: '1px solid var(--line)' }}>
-      <div style={{ display: 'flex', gap: 4, padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onTab(t.id)}
-            className="rd-no-truncate"
-            style={{
-              height: 28,
-              padding: '0 12px',
-              borderRadius: 8,
-              border: `1px solid ${tab === t.id ? 'var(--accent)' : 'var(--line-2)'}`,
-              background: tab === t.id ? 'var(--accent-bg)' : 'transparent',
-              color: tab === t.id ? 'var(--accent)' : 'var(--ink-3)',
-              fontSize: 12,
-              fontWeight: tab === t.id ? 600 : 500,
-              fontFamily: 'var(--font-body)',
-              cursor: 'pointer',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        {tab === 'history' ? (
-          <HistoryPanel versions={versions} current={currentN} onPreview={onPreview} onCompare={onCompare} onRestore={onRestore} />
-        ) : (
-          <div style={{ padding: 14 }}>
-            <ReviewBanner
-              reviewer={review.reviewer}
-              verdict={review.verdict}
-              commentCount={review.commentCount}
-              note={review.note}
-              onFixWithAI={review.onFixWithAI}
-              onView={review.onView}
-            />
-            {/* TODO: full ReviewerView / VerdictBar flow wired to the review API */}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+// Map versions to rail feed events (kind:'version') so the single Story rail's
+// "Versions" filter is populated. Restore/compare live on the bottom scrubber.
+function versionsToEvents(versions) {
+  return (versions || []).map((v) => ({
+    id: `v-${v.id}`,
+    kind: 'version',
+    author: v.author,
+    title: `${v.tag} · ${v.label}`,
+    body: '',
+    when: v.when,
+  }));
+}
+
+// Comments that carry an x/y anchor become canvas pins.
+function commentsToPins(comments) {
+  const pins = [];
+  let n = 0;
+  for (const c of comments || []) {
+    const a = c?.anchor || {};
+    const xPct = a.xPct ?? a.x_pct ?? a.x;
+    const yPct = a.yPct ?? a.y_pct ?? a.y;
+    if (typeof xPct === 'number' && typeof yPct === 'number') {
+      n += 1;
+      const name = c?.author?.name || c?.author || c?.user || 'Someone';
+      pins.push({
+        id: c?.id || `pin-${n}`,
+        n,
+        xPct,
+        yPct,
+        author: { initials: initialsOf(name), color: '#3a4d6e' },
+        resolved: c?.status === 'resolved' || c?.resolved === true,
+      });
+    }
+  }
+  return pins;
 }
 
 // ── Main component ──────────────────────────────────────────────────────────────
@@ -467,37 +453,35 @@ export function ArtifactWorkspaceRedesign({
   }, []);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  // Versions (real, from api.js). currentVersionId drives the M1 compare-and-swap.
+  // ── Data: versions + comments (real, from api.js) ─────────────────────────────
   const [versionsState, setVersionsState] = useState({ versions: [], currentVersionId: '' });
-  const [storyEvents, setStoryEvents] = useState(null); // null → StoryRail mock
+  const [commentsState, setCommentsState] = useState({ comments: [], activity: [] });
   const [viewingN, setViewingN] = useState(null);
 
-  useEffect(() => {
-    if (!open || !path) return undefined;
-    let cancelled = false;
+  const loadVersions = useCallback(() => {
+    if (!path) return;
     fetchArtifactVersions(path)
       .then((res) => {
-        if (cancelled || !res || res.available === false) return;
+        if (!res || res.available === false) return;
         const mapped = mapVersions(res.versions);
-        const currentVersionId = res.currentVersionId || res.latestVersionId || (mapped.length ? mapped[mapped.length - 1].id : '');
+        const currentVersionId =
+          res.currentVersionId || res.latestVersionId || (mapped.length ? mapped[mapped.length - 1].id : '');
         setVersionsState({ versions: mapped, currentVersionId });
       })
-      .catch(() => { /* graceful: keep mock scrubber */ });
-    return () => { cancelled = true; };
-  }, [open, path]);
+      .catch(() => { /* graceful */ });
+  }, [path]);
 
-  useEffect(() => {
-    if (!open || !path) return undefined;
-    let cancelled = false;
+  const loadComments = useCallback(() => {
+    if (!path) return;
     fetchArtifactComments(path)
       .then((res) => {
-        if (cancelled || !res || res.available === false) return;
-        const events = mapStoryEvents({ comments: res.comments, activity: res.activity });
-        if (events.length) setStoryEvents(events);
+        if (!res || res.available === false) return;
+        setCommentsState({ comments: res.comments || [], activity: res.activity || [] });
       })
-      .catch(() => { /* graceful: keep mock story */ });
-    return () => { cancelled = true; };
-  }, [open, path]);
+      .catch(() => { /* graceful */ });
+  }, [path]);
+
+  useEffect(() => { if (open) { loadVersions(); loadComments(); } }, [open, loadVersions, loadComments]);
 
   const versions = versionsState.versions;
   const baseVersionId = versionsState.currentVersionId || '';
@@ -506,8 +490,47 @@ export function ArtifactWorkspaceRedesign({
     ? (versions.find((v) => v.id === baseVersionId)?.label || versions[versions.length - 1].label)
     : (artifact?.version ? `v${artifact.version}` : 'v1');
 
-  // Restore a version (forward-restore) via the real API; tell the host so the
-  // outer list refreshes, mirroring the legacy onChange contract.
+  const storyEvents = useMemo(
+    () => mapStoryEvents({ comments: commentsState.comments, activity: commentsState.activity }),
+    [commentsState],
+  );
+  const pins = useMemo(() => commentsToPins(commentsState.comments), [commentsState]);
+
+  // ── Inline chat (M4): the rail composer talks to Anton IN the workspace and
+  // streams the reply into the feed — it never navigates to the task screen. ────
+  const chat = useArtifactChat({
+    artifact,
+    path,
+    projectName,
+    onArtifactChanged: () => { loadVersions(); loadComments(); },
+  });
+
+  // ── Comment mark-up (M3) ──────────────────────────────────────────────────────
+  const [commentMode, setCommentMode] = useState(false);
+  const createPinnedComment = useCallback(
+    async ({ xPct, yPct, body, area }) => {
+      if (!path || !body) return;
+      try {
+        await createArtifactComment(path, { body, anchor: { xPct, yPct, area: area || '' } });
+        flash('Comment added');
+        loadComments();
+      } catch (err) {
+        flash(err?.message || 'Could not add comment.');
+      }
+    },
+    [path, flash, loadComments],
+  );
+  // Inline (per-paragraph) comment from the prose EditableBlock puck.
+  const handleBlockComment = useCallback(
+    async ({ text }) => {
+      if (!text) return;
+      try { await createArtifactComment(path, { body: text }); flash('Comment added'); loadComments(); }
+      catch { flash('Could not add comment.'); }
+    },
+    [path, flash, loadComments],
+  );
+
+  // ── Restore (forward-restore) ─────────────────────────────────────────────────
   const handleRestore = useCallback(
     async (n) => {
       const target = versions.find((v) => v.n === n);
@@ -517,77 +540,92 @@ export function ArtifactWorkspaceRedesign({
         flash(`Restored ${target.label} — earlier versions kept`);
         onChange?.({ ...artifact, restoredVersionId: target.id, mtime: Date.now(), ...(result?.artifact || {}) });
         setViewingN(null);
+        loadVersions();
       } catch (err) {
         flash(err?.message || 'Could not restore that version.');
       }
     },
-    [versions, path, artifact, onChange, flash],
-  );
-
-  // StoryRail composer → hand off to a follow-up task (real wiring via onHandoff).
-  const handleSend = useCallback(
-    async (text) => {
-      if (!text) return;
-      if (onHandoff) {
-        try {
-          await onHandoff(artifact, { path, prompt: text });
-          flash('Started a follow-up task');
-          return;
-        } catch (err) {
-          flash(err?.message || 'Could not start a task.');
-          return;
-        }
-      }
-      // No handoff host → persist as a comment so the message isn't lost.
-      try {
-        await createArtifactComment(path, { body: text });
-        flash('Added to the conversation');
-      } catch {
-        flash('Message noted'); // TODO: real chat transport
-      }
-    },
-    [onHandoff, artifact, path, flash],
+    [versions, path, artifact, onChange, flash, loadVersions],
   );
 
   const handleCommitted = useCallback(
     ({ versionId }) => {
       flash(versionId ? 'Kept your change' : 'Saved');
       onChange?.({ ...artifact, mtime: Date.now(), ...(versionId ? { reviewVersionId: versionId } : {}) });
+      loadVersions();
     },
-    [artifact, onChange, flash],
+    [artifact, onChange, flash, loadVersions],
   );
 
-  const handleBlockComment = useCallback(
-    async ({ text }) => {
-      if (!text) return;
-      try { await createArtifactComment(path, { body: text }); flash('Comment added'); }
-      catch { flash(`Comment: "${text}"`); }
-    },
-    [path, flash],
+  // ── Present mode: fullscreen the canvas (real Fullscreen API) ─────────────────
+  const canvasWrapRef = useRef(null);
+  const present = useCallback(() => {
+    const el = canvasWrapRef.current;
+    if (el && el.requestFullscreen) {
+      el.requestFullscreen().catch(() => flash('Could not enter fullscreen.'));
+    } else {
+      flash('Fullscreen is not supported here.');
+    }
+  }, [flash]);
+
+  // ── Review banner (M3): derived from real review/suggestion comments ──────────
+  const [reviewDismissed, setReviewDismissed] = useState(false);
+  const reviewItems = useMemo(
+    () => storyEvents.filter((e) => e.kind === 'review'),
+    [storyEvents],
   );
+  const hasReview = reviewItems.length > 0 && !reviewDismissed;
 
-  const [dockTab, setDockTab] = useState('history');
+  const fixWithAI = useCallback(() => {
+    const notes = reviewItems.map((r) => `- ${r.body}`).filter(Boolean).join('\n');
+    const prompt = notes
+      ? `Please address these review notes on "${title}" and update the artifact accordingly:\n${notes}`
+      : `Please review "${title}" and apply the requested changes.`;
+    chat.send(prompt);
+    flash('Anton is addressing the review…');
+  }, [reviewItems, title, chat, flash]);
 
-  // Presence is mock/derived for now (TODO: real presence channel).
+  // ── Presence: real collaborators where available, + Anton ─────────────────────
   const presence = useMemo(() => {
     const list = [{ initials: 'AN', color: 'linear-gradient(135deg,#A78BFA,#22D3EE)', tip: 'Anton — AI' }];
-    if (artifact?.owner || artifact?.author) {
-      const name = artifact.owner || artifact.author;
-      list.push({ initials: initialsOf(name), color: '#3a4d6e', tip: `${name} — viewing` });
+    const seen = new Set();
+    for (const c of commentsState.comments || []) {
+      const name = c?.author?.name || c?.author || c?.user;
+      if (name && !seen.has(name)) { seen.add(name); list.push({ initials: initialsOf(name), color: '#3a4d6e', tip: `${name}` }); }
+      if (list.length >= 4) break;
     }
     return list;
-  }, [artifact]);
+  }, [commentsState]);
+
+  // ── Merge versions + comments/reviews + live chat into one rail feed ──────────
+  const railEvents = useMemo(() => {
+    const chatEvents = (chat.messages || []).map((m) => ({
+      id: `chat-${m.id}`,
+      kind: 'chat',
+      author:
+        m.role === 'user'
+          ? { name: 'You', initials: 'ME', color: '#3a4d6e' }
+          : { name: 'Anton', initials: 'AN', isAI: true, color: 'linear-gradient(135deg,#A78BFA,#22D3EE)' },
+      title: m.role === 'user' ? 'asked' : 'replied',
+      body: m.text || (m.streaming ? '…' : ''),
+      when: 'now',
+      meta: { streaming: !!m.streaming },
+    }));
+    const merged = [...versionsToEvents(versions), ...storyEvents, ...chatEvents];
+    return merged;
+  }, [versions, storyEvents, chat.messages]);
 
   if (!open || !artifact) return null;
 
-  // Canvas selection.
+  // ── Canvas ────────────────────────────────────────────────────────────────────
+  const viewingVersionId = viewingN != null ? (versions.find((v) => v.n === viewingN)?.id || '') : '';
   let canvas;
   if (isText) {
     canvas = (
       <ProseCanvas
         artifact={artifact}
         path={path}
-        versionId={viewingN != null ? (versions.find((v) => v.n === viewingN)?.id || '') : ''}
+        versionId={viewingVersionId}
         baseVersionId={baseVersionId}
         title={title}
         onToast={flash}
@@ -596,25 +634,10 @@ export function ArtifactWorkspaceRedesign({
       />
     );
   } else if (isHtml) {
-    canvas = (
-      <HtmlCanvas
-        artifact={artifact}
-        path={path}
-        versionId={viewingN != null ? (versions.find((v) => v.n === viewingN)?.id || '') : ''}
-      />
-    );
+    canvas = <HtmlCanvas artifact={artifact} path={path} versionId={viewingVersionId} />;
   } else {
     canvas = <PlaceholderCanvas path={path} ext={ext} />;
   }
-
-  const review = {
-    reviewer: { name: 'Maya Chen', initials: 'MC', color: 'linear-gradient(135deg,#A78BFA,#22D3EE)' },
-    verdict: 'changes',
-    commentCount: (storyEvents || []).filter((e) => e.kind === 'comment' || e.kind === 'review').length || 2,
-    note: 'Review feedback appears here once a reviewer responds.', // TODO: real review summary
-    onFixWithAI: () => flash('Hand the review notes to Anton (TODO: wire to M1 pipeline)'),
-    onView: () => setDockTab('review'),
-  };
 
   return (
     <Modal
@@ -627,21 +650,24 @@ export function ArtifactWorkspaceRedesign({
       closeOnBackdrop={false}
     >
       <WorkspaceShell
-        iconRail={<IconRail activeNav="artifact" />}
+        iconRail={null}
         topBar={
           <TopBar
             title={title}
             breadcrumb={projectName}
             versionLabel={versionLabel}
             presence={presence}
-            onShare={() => { onPublish?.(artifact); flash('Share / publish'); }}
-            primaryCta={{ label: 'Present', onClick: () => flash('Present (TODO)') }}
+            commentMode={commentMode}
+            onToggleComment={() => setCommentMode((v) => !v)}
+            onShare={() => { onPublish?.(artifact); }}
+            primaryCta={{ label: 'Present', onClick: present }}
+            onClose={onClose}
           />
         }
         rail={
           <StoryRail
-            events={storyEvents || undefined}
-            onSend={handleSend}
+            events={railEvents.length ? railEvents : undefined}
+            onSend={chat.send}
             composerPlaceholder="Ask Anton, or @mention…"
           />
         }
@@ -657,22 +683,29 @@ export function ArtifactWorkspaceRedesign({
           ) : null
         }
       >
-        {/* Body: canvas + dock side-by-side. The Story rail is the WorkspaceShell
-            `rail` slot; the dock (History/Review) sits between canvas and rail. */}
-        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* Single right rail (the Story rail = chat · versions · comments · reviews);
+            the canvas fills the rest. A full-width review banner sits above it. */}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {hasReview ? (
+            <ReviewBanner
+              reviewer={reviewItems[reviewItems.length - 1]?.author || undefined}
+              verdict="changes"
+              commentCount={reviewItems.length}
+              note={reviewItems[reviewItems.length - 1]?.body || ''}
+              onFixWithAI={fixWithAI}
+              onDismiss={() => setReviewDismissed(true)}
+            />
+          ) : null}
+          {/* Canvas wrapper: position:relative for the comment overlay + the
+              fullscreen target for Present. */}
+          <div ref={canvasWrapRef} style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)' }}>
             {canvas}
-          </div>
-          <div style={{ width: 300, flexShrink: 0 }}>
-            <Dock
-              tab={dockTab}
-              onTab={setDockTab}
-              versions={versions}
-              currentN={currentN}
-              onPreview={(n) => setViewingN(n)}
-              onCompare={(n) => { setViewingN(n); setDockTab('history'); }}
-              onRestore={handleRestore}
-              review={review}
+            <CommentLayer
+              active={commentMode}
+              pins={pins}
+              onCreate={createPinnedComment}
+              onExitActive={() => setCommentMode(false)}
+              onSelectPin={() => flash('Comment is in the Story panel →')}
             />
           </div>
         </div>

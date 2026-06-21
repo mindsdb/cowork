@@ -4,18 +4,22 @@ import {
   ArtifactWorkspaceRedesign,
   shouldUseRedesign,
 } from './redesign/ArtifactWorkspaceRedesign.jsx';
+import { RedesignErrorBoundary } from './redesign/RedesignErrorBoundary.jsx';
 
 export { ArtifactViewer } from './ArtifactViewer';
 
-// Flag-gated switch. The exported `ArtifactWorkspace` keeps the legacy component
-// as the default; it renders the redesigned workspace only when the per-machine
-// localStorage flag (`anton:artifact-workspace-direction-2`) is on. Default OFF
-// → existing behavior is unchanged. This is the ONLY change to the switch point;
-// the large ArtifactWorkspace.jsx is untouched. (createElement keeps this barrel
-// JSX-free, matching the rest of the .js modules in this tree.)
+// Flag-gated switch. On the direction-2 branch the redesign is ON by default
+// (opt OUT with localStorage `anton:artifact-workspace-direction-2` = 'false').
+// The redesign is wrapped in an error boundary so a runtime error shows a
+// readable panel instead of white-screening; the large ArtifactWorkspace.jsx is
+// untouched. (createElement keeps this barrel JSX-free, matching the tree.)
 export function ArtifactWorkspace(props) {
-  const Component = shouldUseRedesign(props)
-    ? ArtifactWorkspaceRedesign
-    : LegacyArtifactWorkspace;
-  return createElement(Component, props);
+  if (shouldUseRedesign(props)) {
+    return createElement(
+      RedesignErrorBoundary,
+      null,
+      createElement(ArtifactWorkspaceRedesign, props),
+    );
+  }
+  return createElement(LegacyArtifactWorkspace, props);
 }

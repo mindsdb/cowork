@@ -87,11 +87,12 @@ export function WorkspaceShell({
         overflow: 'hidden',
       }}
     >
-      <TrafficLights />
-
-      <div className="rd-workspace-shell__frame" style={{ display: 'flex', height: '100%', padding: 8, paddingTop: 44, gap: 8 }}>
-        {/* Icon rail slot */}
-        {iconRail ?? (
+      <div className="rd-workspace-shell__frame" style={{ display: 'flex', height: '100%', padding: 8, gap: 8 }}>
+        {/* Icon rail slot. Omitted entirely when explicitly null — the redesign
+            runs inside the app modal, which already has the app's sidebar, so a
+            second nav rail is redundant. `undefined` still shows the mock for
+            standalone component preview. */}
+        {iconRail === undefined ? (
           <div
             style={{
               width: 'var(--rd-icon-rail-width, 56px)',
@@ -102,6 +103,8 @@ export function WorkspaceShell({
               boxShadow: 'var(--sh-2, 0 1px 0 rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.5))',
             }}
           />
+        ) : (
+          iconRail
         )}
 
         {/* MAIN PANEL */}

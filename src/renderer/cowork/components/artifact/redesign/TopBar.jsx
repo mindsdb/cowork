@@ -49,6 +49,22 @@ function ShareIcon() {
   );
 }
 
+function CommentIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 14a3 3 0 0 1-3 3H7l-4 3v-9a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v3Z" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
 export function TopBar({
   typeIcon,
   title = 'Q3 Board Review',
@@ -57,6 +73,9 @@ export function TopBar({
   presence = DEFAULT_PRESENCE,
   onShare,
   primaryCta = { label: 'Present' },
+  commentMode = false,
+  onToggleComment,
+  onClose,
 } = {}) {
   const people = presence ?? [];
   const presenceLabel = `${people.length} here`;
@@ -157,6 +176,35 @@ export function TopBar({
         </div>
       ) : null}
 
+      {/* Comment mode toggle — ghost, active when on */}
+      {onToggleComment ? (
+        <button
+          onClick={onToggleComment}
+          className="rd-no-truncate"
+          title="Comment on the artifact"
+          aria-pressed={commentMode}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            height: 30,
+            padding: '0 13px',
+            borderRadius: 8,
+            border: `1px solid ${commentMode ? 'var(--accent)' : 'var(--line-2)'}`,
+            background: commentMode ? 'var(--accent-bg)' : 'transparent',
+            color: commentMode ? 'var(--accent)' : 'var(--ink-2)',
+            fontSize: 12.5,
+            fontWeight: commentMode ? 600 : 500,
+            fontFamily: 'inherit',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <CommentIcon />
+          Comment
+        </button>
+      ) : null}
+
       {/* Share — ghost */}
       <button
         onClick={onShare}
@@ -205,6 +253,32 @@ export function TopBar({
           }}
         >
           {primaryCta.label}
+        </button>
+      ) : null}
+
+      {/* Close (✕) — the workspace is a modal; there is no minimize. */}
+      {onClose ? (
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          title="Close"
+          className="rd-no-truncate"
+          style={{
+            width: 30,
+            height: 30,
+            marginLeft: 2,
+            borderRadius: 8,
+            border: '1px solid var(--line-2)',
+            background: 'transparent',
+            color: 'var(--ink-3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          <CloseIcon />
         </button>
       ) : null}
     </div>
