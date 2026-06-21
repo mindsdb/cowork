@@ -1,13 +1,14 @@
 // useIframeInlineEdit.js — direct, no-AI in-place editing of a SAME-ORIGIN
 // HTML preview iframe (the slide deck).
 //
-// The feel is "click → type → done": when `active` flips true we reach into the
-// iframe's live document, mark every text-bearing element `contentEditable`, and
-// paint a quiet hover/focus affordance so the user sees what they can edit. They
-// click a heading, retype it, click away — and on that blur (only if it actually
-// changed) we serialize `documentElement.outerHTML` and hand the host
-// `{ oldHtml, newHtml }` to persist as a new artifact version. A small floating
-// "Done" button commits-and-exits explicitly. No agent, no waiting.
+// The feel is "click → type → keep going → Save": when `active` flips true we
+// reach into the iframe's live document, mark every text-bearing element
+// `contentEditable`, and paint a quiet hover/focus affordance so the user sees
+// what they can edit. They can retype any number of headings/paragraphs freely —
+// nothing persists mid-edit. Edits only commit when the user hits Save (or leaves
+// edit mode): we serialize `documentElement.outerHTML` and hand the host a single
+// `{ oldHtml, newHtml }` to persist as ONE new artifact version. `dirty` tells the
+// host whether there's anything to save. No agent, no waiting, no per-blur churn.
 //
 // ── Same-origin / safety contract ────────────────────────────────────────────
 // The preview iframe is served through the :5173 proxy so it's same-origin and
@@ -104,19 +105,31 @@ function isTextLeaf(el) {
  * @param {object}   opts.iframeRef   ref to the preview <iframe>
  * @param {boolean}  opts.active      when true, the document becomes editable
  * @param {Function} opts.onSaveHtml  async ({ oldHtml, newHtml }) => void
- *                                     — fired on a committing blur or "Done".
+ *                                     — fired once on Save / exit (not per blur).
  *                                     The host persists via saveArtifactContent.
  * @param {Function} [opts.onError]   (message) => void — surfaced if access fails
  *                                     mid-session (e.g. the iframe navigated away)
  * @returns {{
  *   supported: boolean|null,  // null until first probe; false if cross-origin/inaccessible
  *   editing: boolean,         // mirrors `active` once successfully engaged
- *   commit: () => void,       // force a save of any pending change (used by host "Done")
+ *   commit: () => void,       // force-save any pending change (host "Save" button)
+ *   dirty: boolean,           // true when there are un-saved edits in this session
  * }}
  */
 export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } = {}) {
   const [supported, setSupported] = useState(null);
   const [editing, setEditing] = useState(false);
+  // `dirty` = there are un-saved edits in this session. We DON'T persist on every
+  // blur anymore (that spammed versions and remounted the iframe mid-edit); the
+  // host shows a "Save changes" affordance and we commit once on Save / exit.
+  const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  const markDirty = useCallback(() => {
+    if (!dirtyRef.current) { dirtyRef.current = true; setDirty(true); }
+  }, []);
+  const clearDirty = useCallback(() => {
+    if (dirtyRef.current) { dirtyRef.current = false; setDirty(false); }
+  }, []);
 
   // Mutable session state kept in a ref so listeners always see the latest
   // without re-binding. Holds the doc, the marked elements, the snapshot of the
@@ -167,23 +180,31 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
   const commit = useCallback(() => {
     const s = sessionRef.current;
     if (!s) return;
+    // Only a real text edit (tracked via `input`) ever versions. This stops a
+    // deck whose slide was navigated during edit mode — which mutates `.active`
+    // classes in the live DOM — from writing a spurious no-text "version" on exit.
+    if (!dirtyRef.current) return;
     const doc = getDoc();
     if (!doc) return;
     const newHtml = serialize(doc);
     if (newHtml == null) return;
-    if (newHtml === s.baselineHtml) return; // nothing actually changed
+    if (newHtml === s.baselineHtml) { clearDirty(); return; } // nothing actually changed
     const oldHtml = s.baselineHtml;
     s.baselineHtml = newHtml; // optimistic; host owns the version + reload
+    clearDirty();
     try {
       onSaveRef.current?.({ oldHtml, newHtml });
     } catch (err) {
       onErrorRef.current?.(err?.message || 'Could not save your edit.');
     }
-  }, [getDoc, serialize]);
+  }, [getDoc, serialize, clearDirty]);
 
   useEffect(() => {
-    // Deactivating (or no iframe yet): tear down any live session.
+    // Deactivating (or no iframe yet): persist any accumulated edits as ONE
+    // version, then tear down the session. (Covers the not-ready→load→engage
+    // path, whose effect cleanup only removed the load listener.)
     if (!active) {
+      commit();
       teardown(sessionRef.current);
       sessionRef.current = null;
       setEditing(false);
@@ -215,6 +236,8 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
     setSupported(true);
     engage(doc);
     return () => {
+      // Save pending edits as ONE version, then strip the editing affordances.
+      commit();
       teardown(sessionRef.current);
       sessionRef.current = null;
     };
@@ -247,12 +270,17 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
       const onFocusOut = (e) => {
         const t = e.target;
         if (!t || t.getAttribute?.(EDITABLE_ATTR) == null) return;
-        // Only attempt a save if THIS element changed since it gained focus —
-        // keeps blurs that didn't edit anything free of network/version churn.
-        if (typeof t.__coworkTextAtFocus === 'string' && t.innerHTML !== t.__coworkTextAtFocus) {
-          commit();
-        }
+        // We no longer save on blur — edits accumulate and persist as ONE version
+        // on Save / exit, so the user can make many changes in a row without the
+        // iframe remounting under them. Just drop the per-field focus snapshot
+        // (kept only so Escape can revert the field in progress).
         delete t.__coworkTextAtFocus;
+      };
+      // Any text change anywhere in the editable doc marks the session dirty so
+      // the host can show "Save changes". (Cheap: only flips state on first edit.)
+      const onInput = (e) => {
+        const t = e.target;
+        if (t && t.getAttribute?.(EDITABLE_ATTR) != null) markDirty();
       };
       // Enter in a single-line heading shouldn't insert a newline + linger —
       // treat it as "done with this field": blur to trigger the commit.
@@ -279,13 +307,15 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
       targetDoc.addEventListener('focusin', onFocusIn, true);
       targetDoc.addEventListener('focusout', onFocusOut, true);
       targetDoc.addEventListener('keydown', onKeyDown, true);
+      targetDoc.addEventListener('input', onInput, true);
 
       sessionRef.current = {
         doc: targetDoc,
         elements,
         baselineHtml: serialize(targetDoc) ?? '',
-        listeners: { onFocusIn, onFocusOut, onKeyDown },
+        listeners: { onFocusIn, onFocusOut, onKeyDown, onInput },
       };
+      clearDirty();
       setEditing(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -297,7 +327,7 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
     sessionRef.current = null;
   }, []);
 
-  return { supported, editing, commit };
+  return { supported, editing, commit, dirty };
 }
 
 // ── module-scope DOM helpers (all defensive; callers wrap in try/catch) ───────

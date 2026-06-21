@@ -232,11 +232,25 @@ function ProseCanvas({
   reloadToken,
   editMode,
   onSaveContent,
+  onExitEdit,
   onToast,
   onCommitted,
   onComment,
 }) {
   const [state, setState] = useState({ loading: true, error: '', blocks: [] });
+  // Un-saved edits in the current edit session (mirrors EditableProse). Reset
+  // whenever edit mode toggles so a fresh session starts clean.
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => { if (!editMode) setDirty(false); }, [editMode]);
+
+  // Persist on exit, and optimistically show the saved text in the read-only
+  // render so it doesn't flash the pre-edit content during the version round-trip.
+  const handleProseSave = useCallback((payload) => {
+    if (payload && typeof payload.newContent === 'string') {
+      setState((s) => ({ ...s, blocks: splitParagraphs(payload.newContent) }));
+    }
+    onSaveContent?.(payload);
+  }, [onSaveContent]);
 
   useEffect(() => {
     if (!path) {
@@ -326,6 +340,7 @@ function ProseCanvas({
   }
 
   return (
+    <>
     <div className="rd-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', justifyContent: 'center', padding: '40px 24px', background: 'var(--surface-2)' }}>
       <div
         style={{
@@ -345,8 +360,8 @@ function ProseCanvas({
         {state.blocks.length === 0 ? (
           <p style={{ color: 'var(--ink-3)', fontSize: 14 }}>This document is empty.</p>
         ) : editMode ? (
-          // Direct typing — instant, no AI. Commits a new version on blur/Enter.
-          <EditableProse blocks={state.blocks} active onSaveContent={onSaveContent} />
+          // Direct typing — no AI. Edits accumulate; ONE version on Save / exit.
+          <EditableProse blocks={state.blocks} active onSaveContent={handleProseSave} onDirtyChange={setDirty} />
         ) : (
           state.blocks.map((para, i) => (
             <EditableBlock
@@ -364,19 +379,39 @@ function ProseCanvas({
         )}
       </div>
     </div>
+    {editMode ? (
+      <button
+        type="button"
+        onClick={() => onExitEdit?.()}
+        title={dirty ? 'Save your changes as a new version' : 'Finish editing'}
+        style={{ position: 'absolute', top: 12, right: 12, zIndex: 30, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: dirty ? 'none' : '1px solid var(--line-2)', background: dirty ? 'var(--success)' : 'var(--surface-3)', color: dirty ? '#04150a' : 'var(--ink-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 8px 20px -8px rgba(0,0,0,.5)' }}
+      >
+        {dirty ? '✓ Save changes' : 'Done'}
+      </button>
+    ) : null}
+    </>
   );
 }
 
-function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveContent, onExitEdit, onError, onSlideChange }) {
+function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveContent, onExitEdit, onError, onSlideChange, commitRef }) {
   const [state, setState] = useState({ loading: true, error: '', url: '' });
   const iframeRef = useRef(null);
   // Direct in-place typing on the same-origin preview (degrades if cross-origin).
-  const { supported, commit } = useIframeInlineEdit({
+  // Edits accumulate; nothing persists until Save / exit (see `dirty`).
+  const { supported, commit, dirty } = useIframeInlineEdit({
     iframeRef,
     active: !!editMode,
     onSaveHtml: ({ oldHtml, newHtml }) => onSaveContent?.({ oldContent: oldHtml, newContent: newHtml }),
     onError: (m) => onError?.(m),
   });
+
+  // Expose commit to the host so closing the workspace mid-edit can flush a
+  // pending change (the iframe is still attached during the close click).
+  useEffect(() => {
+    if (!commitRef) return undefined;
+    commitRef.current = commit;
+    return () => { commitRef.current = null; };
+  }, [commit, commitRef]);
 
   // ── Slide tracking (decks) ──────────────────────────────────────────────────
   // Read which `.slide` is `.active` in the same-origin preview and report it up
@@ -441,7 +476,13 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
         setState({ loading: false, error: err?.message || 'Could not load preview.', url: '' });
       });
     return () => { cancelled = true; };
-  }, [path, versionId, artifact, reloadToken]);
+    // NOTE: `artifact` is intentionally NOT a dep. A direct save bumps
+    // artifact.mtime (a new object), and remounting the iframe on that would
+    // reset the deck to slide 1 after every Save. Real reloads come from `path`
+    // (different artifact), `versionId` (viewing a past version), and
+    // `reloadToken` (AI edit / restore). `artifact` is only read for a fallback URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, versionId, reloadToken]);
 
   if (state.loading) {
     return <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: 'var(--ink-3)', fontSize: 13 }}>Loading preview…</div>;
@@ -470,12 +511,13 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
           <button
             type="button"
             onClick={() => { commit?.(); onExitEdit?.(); }}
-            style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: 'none', background: 'var(--success)', color: '#04150a', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 8px 20px -8px rgba(0,0,0,.5)' }}
+            title={dirty ? 'Save your changes as a new version' : 'Finish editing'}
+            style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: dirty ? 'none' : '1px solid var(--line-2)', background: dirty ? 'var(--success)' : 'var(--surface-3)', color: dirty ? '#04150a' : 'var(--ink-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 8px 20px -8px rgba(0,0,0,.5)' }}
           >
-            ✓ Done editing
+            {dirty ? '✓ Save changes' : 'Done'}
           </button>
           <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: 'var(--surface-3)', border: '1px solid var(--line-2)', color: 'var(--ink-3)', fontSize: 11.5, padding: '5px 11px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-            Click any text and type · saves as a new version
+            {dirty ? 'Unsaved edits — click Save to keep them as a new version' : 'Click any text and type — keep editing, then Save'}
           </div>
         </>
       ) : null}
@@ -582,6 +624,9 @@ export function ArtifactWorkspaceRedesign({
   const handleSlideChange = useCallback((info) => {
     setSlideInfo(info && typeof info === 'object' ? info : { index: null, count: 0 });
   }, []);
+  // HtmlCanvas registers its inline-edit commit here so closing the workspace
+  // mid-edit still persists deck edits as one version (prose flushes on unmount).
+  const editCommitRef = useRef(null);
 
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -743,13 +788,14 @@ export function ArtifactWorkspaceRedesign({
         const res = await saveArtifactContent({ path, projectName, oldContent, newContent, baseVersionId });
         if (!res || res.noop) return;
         if (res.ok) {
-          // Direct edit: the canvas DOM ALREADY shows the user's typed change,
-          // so do NOT bumpReload (that would remount the iframe and reset the
-          // slide — the "saving skipped to the next slide" bug). Just refresh
-          // the version list + notify the host.
+          // Direct edit. For the HTML canvas the iframe DOM ALREADY shows the
+          // typed change, so do NOT bumpReload (that would remount the iframe and
+          // reset the slide). Prose swaps back to its read-only render on exit, so
+          // it DOES need a refetch to show the saved text. Always refresh versions.
           flash(res.versionId ? 'Saved — new version' : 'Saved');
           onChange?.({ ...artifact, mtime: Date.now() });
           loadVersions();
+          if (isText) bumpReload();
           return;
         }
         if (res.conflict) {
@@ -760,7 +806,7 @@ export function ArtifactWorkspaceRedesign({
         flash(err?.message || 'Could not save your edit.');
       }
     },
-    [path, projectName, baseVersionId, artifact, onChange, flash, bumpReload, loadVersions],
+    [path, projectName, baseVersionId, artifact, onChange, flash, bumpReload, loadVersions, isText],
   );
 
   // ── Present mode: fullscreen the canvas (real Fullscreen API) ─────────────────
@@ -795,6 +841,13 @@ export function ArtifactWorkspaceRedesign({
     };
     onPublish?.({ ...artifact, reviewSummary });
   }, [commentsState, artifact, onPublish]);
+
+  // Closing while editing should keep work: flush a pending HTML inline-edit as
+  // ONE version (prose flushes itself on unmount), then close.
+  const handleClose = useCallback(() => {
+    try { editCommitRef.current?.(); } catch { /* best-effort */ }
+    onClose?.();
+  }, [onClose]);
 
   // ── Review banner (M3): derived from real review/suggestion comments ──────────
   const [reviewDismissed, setReviewDismissed] = useState(false);
@@ -875,6 +928,7 @@ export function ArtifactWorkspaceRedesign({
         reloadToken={reloadToken}
         editMode={editMode}
         onSaveContent={handleDirectSave}
+        onExitEdit={() => setEditMode(false)}
         onToast={flash}
         onCommitted={handleCommitted}
         onComment={handleBlockComment}
@@ -892,6 +946,7 @@ export function ArtifactWorkspaceRedesign({
         onExitEdit={() => setEditMode(false)}
         onError={flash}
         onSlideChange={handleSlideChange}
+        commitRef={editCommitRef}
       />
     );
   } else {
@@ -901,7 +956,7 @@ export function ArtifactWorkspaceRedesign({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       size="lg"
       width="min(1480px, 98vw)"
       height="min(940px, 94vh)"
@@ -922,7 +977,7 @@ export function ArtifactWorkspaceRedesign({
             onToggleComment={toggleCommentMode}
             onShare={handleShare}
             primaryCta={{ label: 'Present', onClick: present }}
-            onClose={onClose}
+            onClose={handleClose}
           />
         }
         rail={
