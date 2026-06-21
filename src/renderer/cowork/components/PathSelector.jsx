@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { submitPathSelection, listDirectory } from '../api';
+import { host } from '../../platform/host';
 
 const MONO = "'JetBrains Mono', monospace";
 const BODY = "'Inter', system-ui, sans-serif";
@@ -64,6 +65,46 @@ function basename(p) {
   if (!p) return '/';
   const parts = String(p).replace(/\/+$/, '').split('/');
   return parts[parts.length - 1] || '/';
+}
+
+/** Browse mode on Electron — a button that opens the native OS picker
+ *  (Finder/Explorer), like Claude Cowork's "Choose folder". No in-app tree. */
+function NativeBrowse({ request, onChoose }) {
+  const [busy, setBusy] = useState(false);
+  const label = request.kind === 'file' ? 'Choose file' : 'Choose folder';
+
+  const open = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await host.pickPath({
+        kind: request.kind,
+        title: request.prompt,
+        defaultPath: request.root || undefined,
+      });
+      // On cancel we stay on the card so the user can retry or hit Cancel.
+      if (res?.ok && res.path) onChoose(res.path, basename(res.path));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={open}
+      disabled={busy}
+      style={{
+        alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 8,
+        border: '1px solid var(--line)', background: 'var(--surface-2)', borderRadius: 8,
+        padding: '8px 14px', cursor: busy ? 'default' : 'pointer',
+        fontFamily: BODY, fontSize: 13, fontWeight: 500, color: 'var(--ink)',
+      }}
+    >
+      <Glyph kind="folder" />
+      {busy ? 'Opening…' : label}
+    </button>
+  );
 }
 
 /** Pick mode — a flat list of the agent's candidates. */
@@ -207,7 +248,9 @@ export function PathSelector({ request, conversationId }) {
       </div>
 
       {isBrowse
-        ? <BrowseBody request={request} onChoose={choose} />
+        ? (host.canPickPath
+            ? <NativeBrowse request={request} onChoose={choose} />
+            : <BrowseBody request={request} onChoose={choose} />)
         : <PickBody request={request} onChoose={choose} />}
 
       <button

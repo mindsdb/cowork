@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -467,6 +467,25 @@ function setupIPC() {
   // renderer surfaces these in a help modal when the user wonders
   // why the backend is offline.
   ipcMain.handle('server:get-diagnostics', () => getServerDiagnostics());
+
+  // Native OS file/folder picker for the agent's select_path browse mode.
+  // Returns the chosen absolute path, or null if the user cancelled.
+  ipcMain.handle(IPC.DIALOG_PICK_PATH, async (_event, opts: { kind?: string; title?: string; defaultPath?: string } = {}) => {
+    if (!mainWindow) return null;
+    const kind = opts?.kind === 'file' ? 'file' : 'folder';
+    // 'any' and 'folder' both open a directory chooser (the common agent case);
+    // 'file' opens a file chooser. macOS can offer both at once, but keeping it
+    // single-purpose stays predictable cross-platform.
+    const properties: Array<'openFile' | 'openDirectory'> =
+      kind === 'file' ? ['openFile'] : ['openDirectory'];
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: opts?.title || (kind === 'file' ? 'Choose a file' : 'Choose a folder'),
+      defaultPath: opts?.defaultPath || undefined,
+      properties,
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
 
   // PKCE OAuth — opens a one-shot loopback server + the user's
   // default browser. Pure bridge: callers are responsible for any
