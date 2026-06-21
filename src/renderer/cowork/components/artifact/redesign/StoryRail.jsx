@@ -17,7 +17,7 @@ import {
   countEventsByFilter,
 } from './storyEventKinds';
 
-const STORY_RAIL_WIDTH = 332;
+const STORY_RAIL_WIDTH = 376;
 const AI_GRADIENT = 'linear-gradient(135deg,#A78BFA,#22D3EE)';
 
 /* ------------------------------------------------------------------ *
@@ -993,7 +993,7 @@ export function StoryRail({
     <div
       className="rd-story-rail"
       style={{
-        width: 'var(--rd-story-rail-width, 332px)',
+        width: 'var(--rd-story-rail-width, 376px)',
         maxWidth: `min(var(--rd-story-rail-width, ${STORY_RAIL_WIDTH}px), calc(100vw - 88px))`,
         minWidth: 'min(280px, 100%)',
         flexShrink: 0,
@@ -1024,44 +1024,24 @@ export function StoryRail({
       </div>
 
       {/* Filter row — chips live inside a segmented track so they read as
-          filters of one feed, not loose tags. Active = filled --accent-bg. */}
+          filters of one feed, not loose tags. The rail is wide enough that all
+          four sit on ONE row (no wrap, no truncation). Active = filled --accent-bg. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '10px 14px',
+          padding: '10px 12px',
           borderBottom: '1px solid var(--line)',
         }}
       >
-        <span
-          aria-hidden="true"
-          style={{
-            color: 'var(--ink-4)',
-            display: 'flex',
-            alignItems: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3 5h18M6 12h12M10 19h4" />
-          </svg>
-        </span>
         <div
           style={{
             display: 'flex',
-            // wrap to a second line rather than truncating "Reviews" → "Rev"
-            flexWrap: 'wrap',
-            gap: 4,
+            alignItems: 'center',
+            // single row, spread edge-to-edge across the track
+            flexWrap: 'nowrap',
+            justifyContent: 'space-between',
+            gap: 2,
             padding: 3,
             borderRadius: 9,
             background: 'var(--surface-2)',

@@ -37,7 +37,11 @@ function CommentGlyph({ size = 13, color = 'currentColor' }) {
 
 /* ── a single numbered teardrop marker ─────────────────────────────── */
 function Pin({ pin, active, onSelect }) {
-  const accent = pin.ai || pin.author?.color?.includes?.('gradient') ? AI_GRADIENT : pin.author?.color || ACCENT;
+  const isAI = pin.ai || pin.author?.color?.includes?.('gradient');
+  // Open comments must be easy to spot on ANY background, so use the bright accent
+  // (AI gradient for AI authors) — never the dim author swatch — plus a white ring
+  // and an outer cyan glow so the marker pops over both dark slides and light prose.
+  const bg = isAI ? AI_GRADIENT : ACCENT;
   return (
     <button
       type="button"
@@ -46,31 +50,32 @@ function Pin({ pin, active, onSelect }) {
         e.stopPropagation();
         onSelect?.(pin.id);
       }}
-      title={pin.resolved ? `Comment ${pin.n} · resolved` : `Comment ${pin.n}`}
+      title={`Comment ${pin.n}`}
       style={{
         position: 'absolute',
         left: `${pin.xPct}%`,
         top: `${pin.yPct}%`,
         // Anchor the teardrop's sharp corner at the click point.
         transform: 'translate(-50%, -100%)',
-        width: 24,
-        height: 24,
+        width: 28,
+        height: 28,
         padding: 0,
-        border: 'none',
-        borderRadius: '50% 50% 50% 2px',
-        background: accent,
+        border: '2px solid #fff',
+        borderRadius: '50% 50% 50% 3px',
+        background: bg,
         color: ON_ACCENT,
-        fontSize: 11,
-        fontWeight: 700,
+        fontSize: 12,
+        fontWeight: 800,
         fontFamily: 'var(--font-mono, monospace)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'pointer',
-        boxShadow: '0 4px 12px rgba(0,0,0,.5)',
+        // dark drop shadow (separates on light bg) + cyan halo (pops on dark bg)
+        boxShadow: '0 4px 14px rgba(0,0,0,.55), 0 0 0 5px rgba(34,211,238,.30)',
         // Pins are always clickable, even when the container is click-through.
         pointerEvents: 'auto',
-        opacity: pin.resolved ? 0.42 : 1,
+        opacity: 1,
         animation: 'popIn .3s ease',
         zIndex: 2,
       }}
@@ -253,6 +258,9 @@ function Composer({ x, y, onSubmit, onCancel }) {
  * @param {Function} [props.onCreate]      ({ xPct, yPct, body, area }) when a comment is submitted
  * @param {Function} [props.onSelectPin]   (id) when an existing pin is clicked
  * @param {Function} [props.onExitActive]  called after submit, and is the host's cue to flip `active` off
+ * @param {?number}  [props.currentSlide]  active deck slide index; a pin with a
+ *                                         `slide` only shows when it matches (so a
+ *                                         slide-3 comment doesn't appear on slide 1).
  */
 export function CommentLayer({
   active = false,
@@ -260,6 +268,7 @@ export function CommentLayer({
   onCreate,
   onSelectPin,
   onExitActive,
+  currentSlide = null,
 } = {}) {
   const overlayRef = useRef(null);
   // The in-progress drop: { xPct, yPct } once the user clicks, else null.
@@ -330,10 +339,14 @@ export function CommentLayer({
         overflow: 'hidden',
       }}
     >
-      {/* existing pins — rendered in both modes, individually clickable */}
-      {(pins || []).map((p) => (
-        <Pin key={p.id} pin={p} active={active} onSelect={onSelectPin} />
-      ))}
+      {/* existing pins — rendered in both modes, individually clickable. A pin
+          scoped to a slide only shows when that slide is active; pins without a
+          slide (prose, generic HTML) always show. */}
+      {(pins || [])
+        .filter((p) => p.slide == null || currentSlide == null || p.slide === currentSlide)
+        .map((p) => (
+          <Pin key={p.id} pin={p} active={active} onSelect={onSelectPin} />
+        ))}
 
       {/* comment-mode affordances */}
       {active && (

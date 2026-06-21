@@ -23,6 +23,7 @@ import { StoryRail } from './storyRailIndex.js';
 import { EditableBlock } from './editIndex.js';
 import { ReviewBanner } from './reviewIndex.js';
 import { useArtifactChat } from './useArtifactChat.js';
+import { useCurrentUser } from './useCurrentUser.js';
 import { CommentLayer } from './CommentLayer.jsx';
 import { EditableProse } from './EditableProse.jsx';
 import { useIframeInlineEdit } from './useIframeInlineEdit.js';
@@ -176,7 +177,9 @@ function mapVersions(rawVersions, currentVersionId) {
 function mapStoryEvents({ comments, activity }) {
   const events = [];
   for (const c of comments || []) {
-    const name = c?.author?.name || c?.author || c?.user || 'Someone';
+    // The backend serializes the commenter as `actorName` (e.g. "You"); older
+    // fallbacks kept for safety. Reading the right field fixes "Someone commented".
+    const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
     const isReview = c?.kind === 'suggestion' || c?.kind === 'review';
     events.push({
       id: `c-${c?.id || events.length}`,
@@ -190,7 +193,7 @@ function mapStoryEvents({ comments, activity }) {
     });
   }
   for (const a of activity || []) {
-    const name = a?.author?.name || a?.actor || a?.user || 'Anton';
+    const name = a?.actorName || a?.author?.name || a?.actor || a?.user || 'Anton';
     events.push({
       id: `a-${a?.id || events.length}`,
       kind: a?.kind || 'system',
@@ -364,7 +367,7 @@ function ProseCanvas({
   );
 }
 
-function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveContent, onExitEdit, onError }) {
+function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveContent, onExitEdit, onError, onSlideChange }) {
   const [state, setState] = useState({ loading: true, error: '', url: '' });
   const iframeRef = useRef(null);
   // Direct in-place typing on the same-origin preview (degrades if cross-origin).
@@ -374,6 +377,47 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
     onSaveHtml: ({ oldHtml, newHtml }) => onSaveContent?.({ oldContent: oldHtml, newContent: newHtml }),
     onError: (m) => onError?.(m),
   });
+
+  // ── Slide tracking (decks) ──────────────────────────────────────────────────
+  // Read which `.slide` is `.active` in the same-origin preview and report it up
+  // so comment pins can be scoped to the slide they belong to. Harmless for
+  // non-slide HTML (no `.slide` → reports index null). Cross-origin → no-op.
+  const slideObserverRef = useRef(null);
+  const readSlides = useCallback(() => {
+    const ifr = iframeRef.current;
+    if (!ifr) return;
+    let doc;
+    try { doc = ifr.contentDocument || ifr.contentWindow?.document || null; } catch { doc = null; }
+    if (!doc) return;
+    try {
+      const slides = Array.from(doc.querySelectorAll('.slide'));
+      if (!slides.length) { onSlideChange?.({ index: null, count: 0 }); return; }
+      let idx = slides.findIndex((s) => s.classList?.contains('active'));
+      if (idx < 0) idx = 0;
+      onSlideChange?.({ index: idx, count: slides.length });
+    } catch { /* cross-origin or torn down */ }
+  }, [onSlideChange]);
+
+  const handleIframeLoad = useCallback(() => {
+    readSlides();
+    const ifr = iframeRef.current;
+    let doc;
+    try { doc = ifr?.contentDocument || ifr?.contentWindow?.document || null; } catch { doc = null; }
+    if (!doc) return;
+    try {
+      slideObserverRef.current?.disconnect();
+      // The deck toggles `.active` on the current `.slide` as the user navigates;
+      // watch class changes across the subtree and re-read on each.
+      const obs = new MutationObserver(() => readSlides());
+      obs.observe(doc.body || doc.documentElement, { attributes: true, attributeFilter: ['class'], subtree: true });
+      slideObserverRef.current = obs;
+    } catch { /* observing not possible (cross-origin) */ }
+  }, [readSlides]);
+
+  useEffect(
+    () => () => { try { slideObserverRef.current?.disconnect(); } catch { /* gone */ } slideObserverRef.current = null; },
+    [],
+  );
 
   useEffect(() => {
     if (!path) {
@@ -413,6 +457,7 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
         title={`${displayName(path)} preview`}
         src={state.url ? `${state.url}${state.url.includes('?') ? '&' : '?'}rt=${reloadToken || 0}` : state.url}
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+        onLoad={handleIframeLoad}
         style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
       />
       {editMode && supported === false ? (
@@ -470,24 +515,36 @@ function versionsToEvents(versions) {
   }));
 }
 
-// Comments that carry an x/y anchor become canvas pins.
+// Settled = the comment no longer needs the reader's eye on the page.
+function isSettledComment(c) {
+  const s = String(c?.status || '').toLowerCase();
+  return c?.resolved === true || s === 'resolved' || s === 'rejected' || s === 'dismissed' || s === 'accepted';
+}
+
+// OPEN comments that carry an x/y anchor become canvas pins. Resolved/dismissed
+// comments are intentionally NOT marked up on the page (they live in the Story
+// rail) — only things that still need attention get a pin. Each pin also carries
+// the `slide` it was dropped on (for slide decks) so it shows only on that slide.
 function commentsToPins(comments) {
   const pins = [];
   let n = 0;
   for (const c of comments || []) {
+    if (isSettledComment(c)) continue; // only open comments get on-canvas markup
     const a = c?.anchor || {};
     const xPct = a.xPct ?? a.x_pct ?? a.x;
     const yPct = a.yPct ?? a.y_pct ?? a.y;
     if (typeof xPct === 'number' && typeof yPct === 'number') {
       n += 1;
-      const name = c?.author?.name || c?.author || c?.user || 'Someone';
+      const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
+      const slide = typeof a.slide === 'number' ? a.slide : null;
       pins.push({
         id: c?.id || `pin-${n}`,
         n,
         xPct,
         yPct,
+        slide,
         author: { initials: initialsOf(name), color: '#3a4d6e' },
-        resolved: c?.status === 'resolved' || c?.resolved === true,
+        resolved: false,
       });
     }
   }
@@ -517,6 +574,14 @@ export function ArtifactWorkspaceRedesign({
     artifact?.project?.name ||
     artifact?.project ||
     '';
+
+  // The signed-in user (for presence + "You" attribution). Null while loading.
+  const me = useCurrentUser();
+  // Which slide of a deck preview is showing, so comment pins can be scoped to it.
+  const [slideInfo, setSlideInfo] = useState({ index: null, count: 0 });
+  const handleSlideChange = useCallback((info) => {
+    setSlideInfo(info && typeof info === 'object' ? info : { index: null, count: 0 });
+  }, []);
 
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -596,14 +661,18 @@ export function ArtifactWorkspaceRedesign({
     async ({ xPct, yPct, body, area }) => {
       if (!path || !body) return;
       try {
-        await createArtifactComment(path, { body, anchor: { xPct, yPct, area: area || '' } });
+        // Stamp the current deck slide onto the anchor so the pin shows only on
+        // the slide it belongs to (no-op for non-slide artifacts: slide stays null).
+        const anchor = { xPct, yPct, area: area || '' };
+        if (typeof slideInfo.index === 'number') anchor.slide = slideInfo.index;
+        await createArtifactComment(path, { body, anchor });
         flash('Comment added');
         loadComments();
       } catch (err) {
         flash(err?.message || 'Could not add comment.');
       }
     },
-    [path, flash, loadComments],
+    [path, flash, loadComments, slideInfo.index],
   );
   // Inline (per-paragraph) comment from the prose EditableBlock puck.
   const handleBlockComment = useCallback(
@@ -654,7 +723,7 @@ export function ArtifactWorkspaceRedesign({
         flash(err?.message || 'Could not restore that version.');
       }
     },
-    [versions, path, artifact, onChange, flash, loadVersions],
+    [versions, path, artifact, onChange, flash, loadVersions, bumpReload],
   );
 
   const handleCommitted = useCallback(
@@ -705,6 +774,28 @@ export function ArtifactWorkspaceRedesign({
     }
   }, [flash]);
 
+  // ── Share / Publish ───────────────────────────────────────────────────────────
+  // Hand the parent's publish dialog a FRESH review summary computed from the live
+  // comments, so its "open review items" preflight reflects reality (resolving a
+  // note clears it) instead of a stale server-cached count on the artifact record.
+  const handleShare = useCallback(() => {
+    const cs = commentsState.comments || [];
+    const open = cs.filter((c) => !isSettledComment(c));
+    const comments = open.filter((c) => !c?.kind || c.kind === 'comment').length;
+    const suggestions = open.filter((c) => c?.kind === 'suggestion').length;
+    const reviewRequests = open.filter((c) => c?.kind === 'review').length;
+    const total = open.length;
+    const reviewSummary = {
+      open: total,
+      unresolved: total,
+      comments,
+      suggestions,
+      reviewRequests,
+      needsReview: reviewRequests > 0,
+    };
+    onPublish?.({ ...artifact, reviewSummary });
+  }, [commentsState, artifact, onPublish]);
+
   // ── Review banner (M3): derived from real review/suggestion comments ──────────
   const [reviewDismissed, setReviewDismissed] = useState(false);
   const reviewItems = useMemo(
@@ -722,17 +813,33 @@ export function ArtifactWorkspaceRedesign({
     flash('Anton is addressing the review…');
   }, [reviewItems, title, chat, flash]);
 
-  // ── Presence: real collaborators where available, + Anton ─────────────────────
+  // ── Presence: the signed-in user first (always "here"), then other humans who
+  // have collaborated on this artifact. The current user shows as "Me" with their
+  // email on hover — never the anonymous-looking "AN". Other people show the first
+  // letter of their email/name, with the full identity on hover. (Anton is the AI
+  // and appears throughout the Story rail; it isn't a person "here".) ────────────
   const presence = useMemo(() => {
-    const list = [{ initials: 'AN', color: 'linear-gradient(135deg,#A78BFA,#22D3EE)', tip: 'Anton — AI' }];
-    const seen = new Set();
+    const myEmail = (me?.email || '').trim();
+    const myName = (me?.name || '').trim();
+    const list = [{
+      initials: 'Me',
+      color: '#1d4ed8',
+      tip: myEmail ? `You — ${myEmail}` : (myName ? `You — ${myName}` : 'You'),
+    }];
+    // Don't list the current user (or the literal "You" author) a second time.
+    const seen = new Set(['you', 'me', myName.toLowerCase(), myEmail.toLowerCase()].filter(Boolean));
     for (const c of commentsState.comments || []) {
-      const name = c?.author?.name || c?.author || c?.user;
-      if (name && !seen.has(name)) { seen.add(name); list.push({ initials: initialsOf(name), color: '#3a4d6e', tip: `${name}` }); }
-      if (list.length >= 4) break;
+      const email = (c?.actorEmail || '').trim();
+      const name = (c?.actorName || c?.author?.name || c?.author || c?.user || '').trim();
+      const key = (email || name).toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const letter = (email || name).charAt(0).toUpperCase() || '?';
+      list.push({ initials: letter, color: '#3a4d6e', tip: email || name });
+      if (list.length >= 5) break;
     }
     return list;
-  }, [commentsState]);
+  }, [commentsState, me]);
 
   // ── Merge versions + comments/reviews + live chat into one rail feed ──────────
   const railEvents = useMemo(() => {
@@ -784,6 +891,7 @@ export function ArtifactWorkspaceRedesign({
         onSaveContent={handleDirectSave}
         onExitEdit={() => setEditMode(false)}
         onError={flash}
+        onSlideChange={handleSlideChange}
       />
     );
   } else {
@@ -812,7 +920,7 @@ export function ArtifactWorkspaceRedesign({
             onToggleEdit={toggleEditMode}
             commentMode={commentMode}
             onToggleComment={toggleCommentMode}
-            onShare={() => { onPublish?.(artifact); }}
+            onShare={handleShare}
             primaryCta={{ label: 'Present', onClick: present }}
             onClose={onClose}
           />
@@ -852,6 +960,7 @@ export function ArtifactWorkspaceRedesign({
             <CommentLayer
               active={commentMode}
               pins={pins}
+              currentSlide={slideInfo.index}
               onCreate={createPinnedComment}
               onExitActive={() => setCommentMode(false)}
               onSelectPin={() => flash('Comment is in the Story panel →')}

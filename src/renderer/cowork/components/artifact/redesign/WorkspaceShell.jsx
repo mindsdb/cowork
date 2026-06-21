@@ -22,7 +22,7 @@
 import React from 'react';
 
 const ICON_RAIL_WIDTH = 56;
-const STORY_RAIL_WIDTH = 332;
+const STORY_RAIL_WIDTH = 376;
 const TOP_BAR_HEIGHT = 50;
 
 function cssSize(value, fallback) {
@@ -153,8 +153,8 @@ export function WorkspaceShell({
               <div
                 className="rd-workspace-shell__rail"
                 style={{
-                  width: 'var(--rd-story-rail-width, 332px)',
-                  maxWidth: 'min(var(--rd-story-rail-width, 332px), calc(100vw - 88px))',
+                  width: 'var(--rd-story-rail-width, 376px)',
+                  maxWidth: 'min(var(--rd-story-rail-width, 376px), calc(100vw - 88px))',
                   flexShrink: 0,
                   background: rail ? 'transparent' : 'var(--surface)',
                   borderLeft: rail ? 'none' : '1px solid var(--line)',
