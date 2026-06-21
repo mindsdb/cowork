@@ -128,6 +128,9 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
   // host shows a "Save changes" affordance and we commit once on Save / exit.
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
+  // True while a save is in flight, so the Save button + the exit-cleanup commit
+  // can't both fire the same save (which would write two versions).
+  const savingRef = useRef(false);
   const markDirty = useCallback(() => {
     if (!dirtyRef.current) { dirtyRef.current = true; setDirty(true); }
   }, []);
@@ -171,14 +174,16 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
     // deck whose slide was navigated during edit mode — which mutates `.active`
     // classes in the live DOM — from writing a spurious no-text "version" on exit.
     if (!dirtyRef.current) return;
+    if (savingRef.current) return; // a save is already in flight — don't double-fire
     const doc = getDoc();
     if (!doc) return;
     // Per-element diff: for each editable element whose inner content changed,
     // emit { find: original innerHTML, replace: current innerHTML }. The host
     // applies these to the SOURCE bytes, so script-generated DOM (e.g. a deck's
     // runtime-built nav dots) is never baked back into the file.
+    const elements = s.elements || [];
     const edits = [];
-    for (const el of s.elements || []) {
+    for (const el of elements) {
       try {
         if (!el || !el.isConnected) continue;
         const before = el.__coworkInnerAtEngage;
@@ -188,18 +193,26 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
         }
       } catch { /* element detached */ }
     }
-    clearDirty();
-    if (!edits.length) return;
-    // Advance per-element baselines so a later commit in the same session diffs
-    // from here (and re-saving is a no-op until the next real edit).
-    for (const el of s.elements || []) {
-      try { el.__coworkInnerAtEngage = el.innerHTML; } catch { /* detached */ }
-    }
-    try {
-      onSaveRef.current?.({ edits });
-    } catch (err) {
-      onErrorRef.current?.(err?.message || 'Could not save your edit.');
-    }
+    if (!edits.length) { clearDirty(); return; } // nothing net-changed
+    // Capture what we're saving so the per-element baselines advance ONLY after the
+    // host confirms success. We do NOT clear dirty / advance baselines optimistically:
+    // a failed save (e.g. a 500) must stay re-savable, not get stranded.
+    const snapshot = elements.map((el) => [el, el.innerHTML]);
+    savingRef.current = true;
+    Promise.resolve()
+      .then(() => onSaveRef.current?.({ edits }))
+      .then((res) => {
+        savingRef.current = false;
+        if (res && res.ok === false) return; // save failed → keep dirty so the user can retry
+        for (const [el, html] of snapshot) {
+          try { el.__coworkInnerAtEngage = html; } catch { /* detached */ }
+        }
+        clearDirty();
+      })
+      .catch((err) => {
+        savingRef.current = false;
+        onErrorRef.current?.(err?.message || 'Could not save your edit.');
+      });
   }, [getDoc, clearDirty]);
 
   useEffect(() => {

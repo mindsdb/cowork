@@ -786,7 +786,7 @@ export function ArtifactWorkspaceRedesign({
     async ({ oldContent, newContent, edits } = {}) => {
       try {
         const res = await saveArtifactContent({ path, projectName, oldContent, newContent, edits, baseVersionId });
-        if (!res) return;
+        if (!res) return { ok: false };
         if (res.noop) {
           // Edits were attempted but none could be placed (text not found in the
           // source, or ambiguous). Tell the user and re-sync so the shown-but-
@@ -795,7 +795,7 @@ export function ArtifactWorkspaceRedesign({
             flash(`Couldn't save ${res.skipped} change${res.skipped > 1 ? 's' : ''} — the text wasn't found. Reload and retry.`);
             bumpReload();
           }
-          return;
+          return { ok: true };
         }
         if (res.ok) {
           // Direct edit. For the HTML canvas the iframe DOM ALREADY shows the
@@ -812,14 +812,17 @@ export function ArtifactWorkspaceRedesign({
           // HTML keeps its live DOM; refetch only if some edits were dropped (so the
           // unsaved DOM can't look saved). Prose always refetches to show saved text.
           if (isText || res.skipped) bumpReload();
-          return;
+          return { ok: true };
         }
         if (res.conflict) {
           flash(res.conflict.message || 'This changed since you started — reloading the latest.');
           bumpReload(); loadVersions();
+          return { ok: false };
         }
+        return { ok: false };
       } catch (err) {
         flash(err?.message || 'Could not save your edit.');
+        return { ok: false };
       }
     },
     [path, projectName, baseVersionId, artifact, onChange, flash, bumpReload, loadVersions, isText],
