@@ -171,6 +171,100 @@ function groupSummary(node) {
   return `${count} ${node.label.toLowerCase()}`;
 }
 
+/* ------------------------------------------------------------------ *
+ * Time-window version grouping (Google-Docs style). Separate from the
+ * low-signal coalescing above: `version` is high-signal, so it's never
+ * touched by coalesce(). Here we collapse a RUN of consecutive
+ * `version` render-nodes whose ADJACENT timestamps (`event.ts`, epoch
+ * ms) sit within VERSION_GROUP_WINDOW_MS of each other into one
+ * expandable group → e.g. "12 edits · 1:22–1:33 PM".
+ *
+ * - A run of exactly 1 stays a normal single row.
+ * - If `ts` is missing on either side of a boundary we DON'T merge
+ *   across it (conservative fallback → those stay individual rows).
+ * - Operates on the post-coalesce node list, so it only sees `single`
+ *   nodes; group/non-version nodes break any run.
+ *
+ * Emits a new node shape:
+ *   { type:'version-group', id, count, nodes:[…single version nodes…],
+ *     startTs, endTs }
+ * ------------------------------------------------------------------ */
+const VERSION_GROUP_WINDOW_MS = 600000; // 10 minutes
+
+function isVersionNode(node) {
+  return node && node.type === 'single' && node.event && node.event.kind === 'version';
+}
+
+function groupVersionRuns(nodes) {
+  const out = [];
+  let i = 0;
+  while (i < nodes.length) {
+    const node = nodes[i];
+    if (!isVersionNode(node)) {
+      out.push(node);
+      i += 1;
+      continue;
+    }
+    // Extend the run while the NEXT node is also a version AND both it and the
+    // current tail carry a numeric ts within the window. A missing ts on either
+    // side of the boundary ends the run (conservative).
+    let j = i;
+    while (j + 1 < nodes.length && isVersionNode(nodes[j + 1])) {
+      const a = nodes[j].event.ts;
+      const b = nodes[j + 1].event.ts;
+      const adjacent =
+        typeof a === 'number' &&
+        typeof b === 'number' &&
+        Math.abs(a - b) <= VERSION_GROUP_WINDOW_MS;
+      if (!adjacent) break;
+      j += 1;
+    }
+    const run = nodes.slice(i, j + 1);
+    if (run.length >= 2) {
+      const tsList = run
+        .map((n) => n.event.ts)
+        .filter((t) => typeof t === 'number');
+      out.push({
+        type: 'version-group',
+        id: `vgrp-${run[0].id}`,
+        count: run.length,
+        nodes: run,
+        // endTs is the OLDER bound (list is newest-first), startTs the newer.
+        startTs: tsList.length ? Math.max(...tsList) : undefined,
+        endTs: tsList.length ? Math.min(...tsList) : undefined,
+      });
+    } else {
+      out.push(run[0]);
+    }
+    i = j + 1;
+  }
+  return out;
+}
+
+// "1:22 PM" style time from an epoch-ms ts, locale-aware, no seconds.
+function fmtClock(ts) {
+  if (typeof ts !== 'number') return '';
+  try {
+    return new Date(ts).toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+}
+
+// Summary line for a collapsed version group, e.g. "12 edits · 1:22–1:33 PM".
+// Falls back to just the count when timestamps are unavailable.
+function versionGroupSummary(node) {
+  const label = `${node.count} edits`;
+  const start = fmtClock(node.startTs);
+  const end = fmtClock(node.endTs);
+  if (!start && !end) return label;
+  if (start && end && start !== end) return `${label} · ${end}–${start}`;
+  return `${label} · ${start || end}`;
+}
+
 /* ------------------------------- Avatar ------------------------------ */
 function Avatar({ author }) {
   const isAI = !!author.isAI;
@@ -374,23 +468,28 @@ function StoryRow({
   onResolveEvent,
   onDismissEvent,
   onFixEvent,
+  onReopenEvent,
   onRestoreVersion,
   onCompareVersion,
 }) {
   const recovered = event?.meta?.tone === 'recovered';
 
-  // Comment & review rows are the actionable ones: full body (no truncation)
-  // plus a Resolve / Dismiss / Fix-with-AI action row.
+  // Comment & review rows are the actionable ones: full body (no truncation).
+  // Active (unsettled) items get [Resolve, Dismiss, Fix with AI]; once an item
+  // is settled (resolved/dismissed) it gets a single Reopen action instead —
+  // a settled item doesn't need fixing, so Fix-with-AI is wrong there.
   const isActionable = event.kind === 'comment' || event.kind === 'review';
   const resolved = !!(event?.meta?.resolved || event?.resolved);
   const dismissed = !!event?.meta?.dismissed;
-  const settled = resolved || dismissed; // visually dimmed, Resolve/Dismiss hidden
+  const settled = resolved || dismissed; // visually dimmed
 
-  // Resolve/Dismiss disappear once settled; Fix-with-AI may still be useful.
+  // Active row: Resolve / Dismiss / Fix-with-AI.
   const showResolve = isActionable && !settled && !!onResolveEvent;
   const showDismiss = isActionable && !settled && !!onDismissEvent;
-  const showFix = isActionable && !!onFixEvent;
-  const showActions = showResolve || showDismiss || showFix;
+  const showFix = isActionable && !settled && !!onFixEvent;
+  // Settled row: a lone Reopen (replaces the active trio).
+  const showReopen = isActionable && settled && !!onReopenEvent;
+  const showActions = showResolve || showDismiss || showFix || showReopen;
 
   // Version rows get their own action row: Restore (+ optional Compare). The
   // latest/current version can't be restored onto itself — show a quiet
@@ -471,6 +570,9 @@ function StoryRow({
             ) : null}
             {showFix ? (
               <RowActionButton label="Fix with AI" variant="ai" onClick={() => onFixEvent(event)} />
+            ) : null}
+            {showReopen ? (
+              <RowActionButton label="Reopen" onClick={() => onReopenEvent(event)} />
             ) : null}
           </div>
         ) : null}
@@ -609,6 +711,108 @@ function StoryGroup({ node }) {
   );
 }
 
+/* --------------- A collapsed/expandable version group --------------- */
+// Google-Docs-style "N edits · time–time" row. Collapsed by default; expands
+// to the individual version rows, each reusing <StoryRow> so they keep their
+// Restore/Compare buttons, author, label, and the "Current" tag.
+function VersionGroup({
+  node,
+  onResolveEvent,
+  onDismissEvent,
+  onFixEvent,
+  onReopenEvent,
+  onRestoreVersion,
+  onCompareVersion,
+}) {
+  const [open, setOpen] = useState(false);
+  const kindMeta = getStoryKind('version');
+  // The newest version in the run leads the timestamp/when display.
+  const lead = node.nodes[0]?.event;
+  return (
+    <div style={{ paddingBottom: 16, position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: 'flex',
+          gap: 12,
+          alignItems: 'center',
+          width: '100%',
+          padding: 0,
+          border: 'none',
+          background: 'transparent',
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontFamily: 'var(--font-body)',
+        }}
+      >
+        {/* version-flag node, tinted to the version accent */}
+        <div
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--line-2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            zIndex: 1,
+            fontSize: 9,
+            fontWeight: 700,
+            color: kindMeta.accentColor,
+            boxShadow: '0 0 0 3px var(--surface)',
+          }}
+        >
+          {kindMeta.icon}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.4 }}>
+            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{versionGroupSummary(node)}</span>{' '}
+            <span style={{ color: 'var(--ink-4)' }}>{open ? 'hide' : 'show'}</span>
+          </div>
+          <div
+            style={{
+              fontSize: 10.5,
+              color: 'var(--ink-4)',
+              marginTop: 3,
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            {lead ? lead.when : ''}
+          </div>
+        </div>
+      </button>
+
+      {open ? (
+        <div
+          style={{
+            marginTop: 10,
+            marginLeft: 32, // align under the text column, clear of the spine
+            paddingLeft: 12,
+            borderLeft: '1.5px solid var(--line-2)',
+            animation: 'riseIn .2s ease',
+          }}
+        >
+          {node.nodes.map((n) => (
+            <StoryRow
+              key={n.id}
+              event={n.event}
+              onResolveEvent={onResolveEvent}
+              onDismissEvent={onDismissEvent}
+              onFixEvent={onFixEvent}
+              onReopenEvent={onReopenEvent}
+              onRestoreVersion={onRestoreVersion}
+              onCompareVersion={onCompareVersion}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ------------------------------ Filter chip --------------------------- */
 // A segment inside the filter track. `active` fills it with --accent-bg; the
 // rest read as quiet ghosts. `count` is appended as a dimmed badge so it's
@@ -622,14 +826,15 @@ function FilterChip({ chip, active, count, onClick }) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 5,
+        gap: 4,
         height: 24,
-        padding: '0 10px',
+        // tightened horizontal padding so all four chips + badges fit ~332px
+        padding: '0 7px',
         borderRadius: 6,
         border: '1px solid transparent',
         background: active ? 'var(--accent-bg)' : 'transparent',
         color: active ? 'var(--accent)' : 'var(--ink-3)',
-        fontSize: 11.5,
+        fontSize: 11,
         fontWeight: active ? 600 : 500,
         fontFamily: 'var(--font-body)',
         cursor: 'pointer',
@@ -640,12 +845,18 @@ function FilterChip({ chip, active, count, onClick }) {
     >
       <span>{chip.label}</span>
       <span
+        // count badge: tight, fixed-ish pill so it never pushes the label to truncate
         style={{
-          fontSize: 10.5,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minWidth: 13,
+          fontSize: 9.5,
+          lineHeight: 1,
           fontWeight: 600,
           fontFamily: 'var(--font-mono)',
           color: active ? 'var(--accent)' : 'var(--ink-4)',
-          opacity: active ? 0.85 : 0.7,
+          opacity: active ? 0.9 : 0.7,
         }}
       >
         {count}
@@ -715,9 +926,12 @@ export function StoryRail({
   onToggle,
   // Optional, additive: per-event actions for comment/review rows. A button
   // only renders when its callback is provided; each is called with the event.
+  // Active items show [Resolve, Dismiss, Fix with AI]; settled (resolved/
+  // dismissed) items show a single Reopen via `onReopenEvent`.
   onResolveEvent,
   onDismissEvent,
   onFixEvent,
+  onReopenEvent,
   // Optional, additive: per-version actions. `onRestoreVersion` adds a Restore
   // button to each version row (hidden on the current one, where a quiet
   // "Current" tag shows instead); `onCompareVersion` adds a ghost Compare
@@ -759,14 +973,16 @@ export function StoryRail({
   // filter applies — so the badges can never disagree with what a chip shows.
   const filterCounts = useMemo(() => countEventsByFilter(events), [events]);
 
-  // Filter → then coalesce. (Order matters: we coalesce what survives the
-  // filter, so e.g. filtering to "Versions" shows them all un-grouped.)
+  // Filter → coalesce low-signal runs → time-group consecutive versions.
+  // (Order matters: we work on what survives the filter. Version time-grouping
+  // runs last, on the coalesced node list, since `version` is high-signal and
+  // untouched by coalesce.)
   const nodes = useMemo(() => {
     const activeChip = STORY_FILTERS.find((c) => c.id === activeFilter);
     const filtered = activeChip
       ? events.filter((e) => eventMatchesFilter(e, activeChip))
       : events;
-    return coalesce(filtered);
+    return groupVersionRuns(coalesce(filtered));
   }, [events, activeFilter]);
 
   if (isCollapsed) {
@@ -841,15 +1057,15 @@ export function StoryRail({
           </svg>
         </span>
         <div
-          className="rd-scroll"
           style={{
             display: 'flex',
+            // wrap to a second line rather than truncating "Reviews" → "Rev"
+            flexWrap: 'wrap',
             gap: 4,
             padding: 3,
             borderRadius: 9,
             background: 'var(--surface-2)',
             border: '1px solid var(--line-2)',
-            overflowX: 'auto',
             flex: 1,
             minWidth: 0,
           }}
@@ -903,21 +1119,37 @@ export function StoryRail({
                 background: 'var(--line-2)',
               }}
             />
-            {nodes.map((node) =>
-              node.type === 'group' ? (
-                <StoryGroup key={node.id} node={node} />
-              ) : (
+            {nodes.map((node) => {
+              if (node.type === 'group') {
+                return <StoryGroup key={node.id} node={node} />;
+              }
+              if (node.type === 'version-group') {
+                return (
+                  <VersionGroup
+                    key={node.id}
+                    node={node}
+                    onResolveEvent={onResolveEvent}
+                    onDismissEvent={onDismissEvent}
+                    onFixEvent={onFixEvent}
+                    onReopenEvent={onReopenEvent}
+                    onRestoreVersion={onRestoreVersion}
+                    onCompareVersion={onCompareVersion}
+                  />
+                );
+              }
+              return (
                 <StoryRow
                   key={node.id}
                   event={node.event}
                   onResolveEvent={onResolveEvent}
                   onDismissEvent={onDismissEvent}
                   onFixEvent={onFixEvent}
+                  onReopenEvent={onReopenEvent}
                   onRestoreVersion={onRestoreVersion}
                   onCompareVersion={onCompareVersion}
                 />
-              ),
-            )}
+              );
+            })}
           </div>
         )}
       </div>

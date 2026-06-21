@@ -21,13 +21,13 @@ import './redesign.css';
 import { WorkspaceShell, TopBar } from './index.js';
 import { StoryRail } from './storyRailIndex.js';
 import { EditableBlock } from './editIndex.js';
-import { VersionScrubber } from './scrubberIndex.js';
 import { ReviewBanner } from './reviewIndex.js';
 import { useArtifactChat } from './useArtifactChat.js';
 import { CommentLayer } from './CommentLayer.jsx';
 import { EditableProse } from './EditableProse.jsx';
 import { useIframeInlineEdit } from './useIframeInlineEdit.js';
 import { saveArtifactContent } from './saveArtifactContent.js';
+import { VersionDiff } from './VersionDiff.jsx';
 
 import {
   artifactServeUrl,
@@ -128,6 +128,17 @@ function relativeWhen(value) {
   return `${Math.floor(secs / 86400)}d ago`;
 }
 
+// Epoch ms for a server timestamp (UTC-corrected) — used to time-group versions.
+function toEpoch(value) {
+  if (!value) return 0;
+  let v = value;
+  if (typeof v === 'string' && /\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(v)) {
+    v = v.replace(' ', 'T') + 'Z';
+  }
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 // Map an api.js version record to the scrubber/HistoryPanel shape. Version
 // numbers are derived from list order (TODO: use a real server-provided number
 // when the contract exposes one).
@@ -154,6 +165,7 @@ function mapVersions(rawVersions, currentVersionId) {
       label: what,
       author: { name: who, initials: isAI ? 'AN' : 'ME', isAI },
       when: relativeWhen(v?.createdAt || v?.created_at || v?.when || v?.timestamp),
+      ts: toEpoch(v?.createdAt || v?.created_at || v?.when || v?.timestamp),
       current: currentVersionId ? id === currentVersionId : false,
     };
   });
@@ -453,6 +465,7 @@ function versionsToEvents(versions) {
     title: v.label,
     body: '',
     when: v.when,
+    ts: v.ts,
     meta: { current: !!v.current },
   }));
 }
@@ -575,6 +588,7 @@ export function ArtifactWorkspaceRedesign({
   // ── Comment mark-up (M3) + direct in-place editing ───────────────────────────
   const [commentMode, setCommentMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [compare, setCompare] = useState(null); // { from, fromN } → VersionDiff vs current
   // Edit and Comment modes are mutually exclusive — both bind canvas clicks.
   const toggleEditMode = useCallback(() => { setEditMode((v) => !v); setCommentMode(false); }, []);
   const toggleCommentMode = useCallback(() => { setCommentMode((v) => !v); setEditMode(false); }, []);
@@ -618,6 +632,11 @@ export function ArtifactWorkspaceRedesign({
     chat.send(`Please address this review note and update the artifact: "${note}"`);
     flash('Anton is addressing it…');
   }, [chat, flash]);
+  const onReopenEvent = useCallback(async (ev) => {
+    if (!ev?.commentId) return;
+    try { await setArtifactSuggestionStatus(ev.commentId, 'open'); flash('Reopened'); loadComments(); }
+    catch (e) { flash(e?.message || 'Could not reopen.'); }
+  }, [flash, loadComments]);
 
   // ── Restore (forward-restore) ─────────────────────────────────────────────────
   const handleRestore = useCallback(
@@ -806,21 +825,12 @@ export function ArtifactWorkspaceRedesign({
             onResolveEvent={onResolveEvent}
             onDismissEvent={onDismissEvent}
             onFixEvent={onFixEvent}
+            onReopenEvent={onReopenEvent}
             onRestoreVersion={(ev) => handleRestore(ev.versionN)}
-            onCompareVersion={(ev) => setViewingN(ev.versionN)}
+            onCompareVersion={(ev) => setCompare({ from: ev.versionId, fromN: ev.versionN })}
           />
         }
-        bottomStrip={
-          versions.length ? (
-            <VersionScrubber
-              versions={versions}
-              current={currentN}
-              viewing={viewingN ?? currentN}
-              onScrub={(n) => setViewingN(n)}
-              onRestore={handleRestore}
-            />
-          ) : null
-        }
+        bottomStrip={null}
       >
         {/* Single right rail (the Story rail = chat · versions · comments · reviews);
             the canvas fills the rest. A full-width review banner sits above it. */}
@@ -863,6 +873,14 @@ export function ArtifactWorkspaceRedesign({
           <span style={{ fontSize: 12.5, color: 'var(--ink)' }}>{toast}</span>
         </div>
       ) : null}
+
+      <VersionDiff
+        open={!!compare}
+        onClose={() => setCompare(null)}
+        path={path}
+        fromVersion={compare ? { id: compare.from, label: `v${compare.fromN}`, n: compare.fromN } : null}
+        toVersion={{ id: baseVersionId, label: 'current', n: currentN }}
+      />
     </Modal>
   );
 }
