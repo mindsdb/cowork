@@ -270,6 +270,8 @@ export function reduceStream(state, event, now = Date.now) {
         requestId: event.request_id,
         prompt: event.prompt || 'Select a file or folder.',
         kind: event.kind || 'any',
+        mode: event.mode === 'browse' ? 'browse' : 'pick',
+        root: event.root || '',
         options: Array.isArray(event.options) ? event.options : [],
       },
     };
