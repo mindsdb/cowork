@@ -786,16 +786,32 @@ export function ArtifactWorkspaceRedesign({
     async ({ oldContent, newContent, edits } = {}) => {
       try {
         const res = await saveArtifactContent({ path, projectName, oldContent, newContent, edits, baseVersionId });
-        if (!res || res.noop) return;
+        if (!res) return;
+        if (res.noop) {
+          // Edits were attempted but none could be placed (text not found in the
+          // source, or ambiguous). Tell the user and re-sync so the shown-but-
+          // unsaved DOM edits don't masquerade as saved.
+          if (res.skipped) {
+            flash(`Couldn't save ${res.skipped} change${res.skipped > 1 ? 's' : ''} — the text wasn't found. Reload and retry.`);
+            bumpReload();
+          }
+          return;
+        }
         if (res.ok) {
           // Direct edit. For the HTML canvas the iframe DOM ALREADY shows the
           // typed change, so do NOT bumpReload (that would remount the iframe and
           // reset the slide). Prose swaps back to its read-only render on exit, so
           // it DOES need a refetch to show the saved text. Always refresh versions.
-          flash(res.versionId ? 'Saved — new version' : 'Saved');
+          if (res.skipped) {
+            flash(`Saved, but ${res.skipped} change${res.skipped > 1 ? 's' : ''} couldn't be placed — re-syncing.`);
+          } else {
+            flash(res.versionId ? 'Saved — new version' : 'Saved');
+          }
           onChange?.({ ...artifact, mtime: Date.now() });
           loadVersions();
-          if (isText) bumpReload();
+          // HTML keeps its live DOM; refetch only if some edits were dropped (so the
+          // unsaved DOM can't look saved). Prose always refetches to show saved text.
+          if (isText || res.skipped) bumpReload();
           return;
         }
         if (res.conflict) {

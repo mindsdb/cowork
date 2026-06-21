@@ -108,12 +108,14 @@ export async function saveArtifactContent({
   // created. We fall back to the editor-supplied `oldContent` only if the re-fetch
   // fails (better an attempt that may 400 than silently dropping the user's edit).
   let storedText = null;
+  let truncated = false;
   try {
     // Read the find-content from the LIVE working copy (no versionId). accept_edit
     // applies the patch against a staged copy of the ON-DISK folder, so the find
     // must match DISK — not a stored version snapshot that may have diverged from it.
     const cur = await previewArtifact(path, { versionId: '' });
     if (cur && typeof cur.content === 'string') storedText = cur.content;
+    if (cur && cur.truncated) truncated = true;
   } catch (err) {
     if (isEndpointUnavailable(err)) {
       // Targeted edits can't be rebuilt without the source — never overwrite the
@@ -135,6 +137,7 @@ export async function saveArtifactContent({
   // longer matches is skipped (fail-safe — we never corrupt the file).
   // Whole-content mode (prose): newContent IS the new file.
   let newText;
+  let skipped = 0;
   if (targeted) {
     if (typeof storedText !== 'string') {
       return {
@@ -145,15 +148,35 @@ export async function saveArtifactContent({
         },
       };
     }
+    if (truncated) {
+      // We only hold a 200 KB prefix; a swap built on it would mismatch the full
+      // file. Fail clearly instead of silently dropping or mis-applying edits.
+      return {
+        ok: false,
+        conflict: {
+          message: 'This file is too large to edit inline here.',
+          currentVersionId: null,
+        },
+      };
+    }
     let result = storedText;
     let applied = 0;
     for (const e of edits) {
-      if (e && typeof e.find === 'string' && e.find && typeof e.replace === 'string' && result.includes(e.find)) {
-        result = result.replace(e.find, e.replace); // first occurrence
-        applied += 1;
-      }
+      if (!e || typeof e.find !== 'string' || !e.find || typeof e.replace !== 'string') continue;
+      // Apply only when the find is UNAMBIGUOUS (exactly one occurrence). Zero =
+      // the element's markup didn't match the source (browser normalization);
+      // more than one = identical sibling elements, so we can't tell which the
+      // user meant. Either way, skip rather than edit the wrong text — and report
+      // the skip so the host can tell the user instead of silently losing it.
+      const occurrences = result.split(e.find).length - 1;
+      if (occurrences !== 1) { skipped += 1; continue; }
+      // Function replacer: `String.prototype.replace` would otherwise interpret
+      // `$&`, `$'`, `$1`… in the replacement string and mangle user text like
+      // "$5 & up". The function form inserts the replacement verbatim.
+      result = result.replace(e.find, () => e.replace);
+      applied += 1;
     }
-    if (!applied) return { ok: true, noop: true }; // nothing matched / changed
+    if (!applied) return { ok: true, noop: true, skipped }; // nothing matched / changed
     newText = result;
   } else {
     newText = typeof newContent === 'string' ? newContent : '';
@@ -226,7 +249,7 @@ export async function saveArtifactContent({
     };
   }
 
-  return { ok: true, versionId: res?.versionId || null };
+  return { ok: true, versionId: res?.versionId || null, skipped };
 }
 
 // Last-resort persistence when the edit router isn't mounted. Writes bytes with

@@ -160,27 +160,10 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
     }
   }, [iframeRef]);
 
-  // Serialize the current document. Strips our injected style + markers so the
-  // saved HTML is clean (the deck never ships our affordance CSS).
-  const serialize = useCallback((doc) => {
-    try {
-      // Clone so we can clean without disturbing the live, still-editable DOM.
-      const clone = doc.documentElement.cloneNode(true);
-      clone.querySelectorAll?.(`#${STYLE_EL_ID}`).forEach((n) => n.remove());
-      clone.querySelectorAll?.(`[${EDITABLE_ATTR}]`).forEach((n) => {
-        n.removeAttribute(EDITABLE_ATTR);
-        n.removeAttribute('contenteditable');
-      });
-      const doctype = doc.doctype ? '<!doctype html>\n' : '';
-      return doctype + clone.outerHTML;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // Commit any pending text change. Compares a fresh serialization against the
-  // activation baseline; only calls onSaveHtml when they differ. Updates the
-  // baseline after a successful save so the next edit diffs against the new HTML.
+  // Commit any pending text change. Diffs each editable element's innerHTML
+  // against its value at engage and hands the host the changed { find, replace }
+  // fragments; advances the per-element baselines so a later commit in the same
+  // session re-diffs from here. Only fires when there was real input (dirty).
   const commit = useCallback(() => {
     const s = sessionRef.current;
     if (!s) return;
@@ -347,7 +330,7 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
       setEditing(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, getDoc, iframeRef, serialize, commit]);
+  }, [active, getDoc, iframeRef, commit]);
 
   // On unmount, ensure no contentEditable / listeners linger in the iframe.
   useEffect(() => () => {
