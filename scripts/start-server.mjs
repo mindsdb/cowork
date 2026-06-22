@@ -52,6 +52,16 @@ function getEnvPath() {
   return parts.join(path.delimiter);
 }
 
+// Run a command to completion, streaming its output. Resolves true on a
+// clean exit, false otherwise — callers degrade gracefully rather than throw.
+function runToCompletion(cmd, args, cwd, env) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { cwd, env, stdio: ['ignore', 'inherit', 'inherit'] });
+    child.on('exit', (code) => resolve(code === 0));
+    child.on('error', () => resolve(false));
+  });
+}
+
 async function probeHealth(port, timeoutMs) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -95,6 +105,19 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     COWORK_SERVER_PORT: String(DEFAULT_PORT),
     COWORK_SERVER_HOST: SERVER_HOST,
   };
+
+  // Local cross-repo dev: if a sibling ../anton checkout exists, overlay it
+  // as an editable install (via cowork-dev-link) so the developer's anton
+  // feature branch is used instead of the git-pinned one, then launch with
+  // UV_NO_SYNC so the overlay survives — a plain `uv run` re-syncs and
+  // reverts it. Best-effort: on failure we fall back to the pinned anton.
+  const antonDir = path.resolve(serverDir, '..', 'anton');
+  if (fs.existsSync(path.join(antonDir, 'pyproject.toml'))) {
+    process.stdout.write(`⧗ Linking local anton from ${antonDir}…\n`);
+    if (await runToCompletion(uvCmd, ['run', 'cowork-dev-link'], serverDir, env)) {
+      env.UV_NO_SYNC = '1';
+    }
+  }
 
   // detached:true puts the python in its own process group so the
   // terminal's SIGINT (from Ctrl-C) doesn't reach it directly. dev-web.mjs

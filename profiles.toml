@@ -1,0 +1,32 @@
+# Deployment profiles — single source of truth for where each component comes
+# from per environment.
+#
+# Selector: COWORK_ENV = local | staging | prod  (the same value cowork-server
+# reads into its `env` setting via AliasChoices("COWORK_ENV", "ENV")).
+#
+# NOT YET WIRED: nothing reads this file today. It records the intended sources
+# so the build (Docker / installer) and inference wiring can consume it later.
+#
+# NON-SECRET VALUES ONLY — versions, git refs, and plain URLs belong here.
+# Secrets (API keys, tokens, DSNs with credentials) stay in the vault /
+# .anton/.env and must never be committed to this file.
+#
+# Model: `main` is the stable line; production ships gated releases cut from it.
+#   cowork_server  release version (prod) / git branch (staging) / local checkout
+#   anton_ref      how anton-agent is sourced for the profile
+#   inference_url  default Minds endpoint (feeds ANTON_MINDS_URL)
+
+[local]
+cowork_server = "local"      # sibling ../cowork-server checkout (any branch)
+anton_ref     = "local"      # sibling ../anton, editable overlay via cowork-dev-link
+# inference_url — point at your local/staging endpoint when Layer 3 is wired
+
+[staging]
+cowork_server = "staging"    # git staging branch
+anton_ref     = "staging"    # git staging branch
+# inference_url — set to the staging Minds endpoint when Layer 3 is wired
+
+[prod]
+cowork_server = "0.1.9"      # PyPI release cut from main; bump per release
+anton_ref     = "release"    # from the cowork-server release wheel's pinned dep
+inference_url = "https://mdb.ai"   # anton's built-in default (config/settings.py)

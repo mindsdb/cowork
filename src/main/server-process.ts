@@ -87,6 +87,24 @@ function writeLog(text: string): void {
   logStream?.write(text);
 }
 
+// Run a command to completion, prefixing its output. Resolves true on a
+// clean exit, false otherwise — callers degrade gracefully (fall back to the
+// pinned dependency) rather than throw.
+function runToCompletion(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[cowork-dev-link] ${d.toString()}`));
+    child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[cowork-dev-link] ${d.toString()}`));
+    child.on('exit', (code) => resolve(code === 0));
+    child.on('error', () => resolve(false));
+  });
+}
+
 // Kill a child process and its entire process group (POSIX). When we
 // spawn with detached:true the child leads its own group, so
 // process.kill(-pid) reaches grandchildren (e.g. python spawned by uv).
@@ -275,13 +293,26 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   }
 
   pendingStart = (async (): Promise<StartServerResult> => {
-    const env = {
+    const env: NodeJS.ProcessEnv = {
       ...process.env,
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
     };
+
+    // Local cross-repo dev: if a sibling ../anton checkout exists, overlay it
+    // as an editable install (via cowork-dev-link) so the developer's anton
+    // feature branch is used instead of the git-pinned one, then launch with
+    // UV_NO_SYNC so the overlay survives — a plain `uv run` re-syncs and
+    // reverts it. Best-effort: on failure we fall back to the pinned anton.
+    if (isDevSource && devDir) {
+      const antonDir = path.join(devDir, '..', 'anton');
+      if (fs.existsSync(path.join(antonDir, 'pyproject.toml'))) {
+        const linked = await runToCompletion(spawnCmd, ['run', 'cowork-dev-link'], devDir, env);
+        if (linked) env.UV_NO_SYNC = '1';
+      }
+    }
 
     // detached: true on POSIX puts the child in its own process group so
     // we can kill the entire tree (uv + grandchild python) with a single
