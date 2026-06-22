@@ -4,7 +4,7 @@
 // when the artifact has a live URL, plus Publish / Unpublish / Open
 // in OS actions.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import {
   mountArtifactPreview,
