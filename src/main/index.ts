@@ -914,7 +914,12 @@ app.whenReady().then(() => {
       setUpdateNotifier((payload) => {
         mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       });
-      maybeUpdateServer().then((updateResult) => {
+
+      // Update server first, then check for UI updates. This ensures
+      // the renderer and server stay in sync — both track git HEAD on
+      // main, so updating them in sequence (server → UI) avoids any
+      // window where a new renderer talks to an old server.
+      const serverUpdateDone = maybeUpdateServer().then((updateResult) => {
         if (updateResult.updated) {
           console.log(`[server-updater] updated ${updateResult.previousVersion} → ${updateResult.newVersion}`);
         } else if (updateResult.error) {
@@ -923,67 +928,69 @@ app.whenReady().then(() => {
       }).catch((err) => {
         console.error('[server-updater] check failed:', err);
       });
+
+      // OTA UI update check — only in packaged builds and not in DEV_MODE.
+      // Waits for both the server update AND the renderer to finish loading
+      // so the React app has time to mount its IPC listener.
+      const devMode = getDevMode();
+      if (app.isPackaged && !devMode) {
+        const rendererReady = new Promise<void>((resolve) => {
+          mainWindow?.webContents.once('did-finish-load', () => {
+            setTimeout(resolve, 1500);
+          });
+        });
+
+        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
+          try {
+            const updateMode = getUpdateMode();
+            console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
+            mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
+
+            const online = await hasInternet();
+            if (!online) {
+              console.log('[ui-updater] offline — skipping update check');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
+              return;
+            }
+
+            const result = await checkForUIUpdate();
+            if (!result.updateAvailable) {
+              console.log('[ui-updater] up to date');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
+              return;
+            }
+
+            console.log(`[ui-updater] new version available: ${result.newVersion}`);
+
+            if (updateMode === 'auto') {
+              console.log('[ui-updater] auto mode — downloading and applying...');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
+              const applied = await applyUIUpdate();
+              if (applied && mainWindow) {
+                console.log('[ui-updater] update applied — reloading window');
+                mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+                mainWindow.loadFile(getRendererPath());
+              }
+            } else {
+              console.log('[ui-updater] manual mode — notifying renderer');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
+                phase: 'available',
+                version: result.newVersion,
+              });
+            }
+          } catch (err) {
+            console.error('[ui-updater] startup check failed:', err);
+          }
+        });
+      } else if (!app.isPackaged) {
+        console.log('[ui-updater] skipped — not a packaged build');
+      } else if (devMode) {
+        console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
+      }
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
   });
-
-  // OTA UI update check — only in packaged builds and not in DEV_MODE.
-  // Waits for the renderer to finish loading so the React app has time
-  // to mount and register its IPC listener before we push status.
-  const devMode = getDevMode();
-  if (app.isPackaged && !devMode) {
-    const runUpdateCheck = async () => {
-      try {
-        const updateMode = getUpdateMode();
-        console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
-        mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
-
-        const online = await hasInternet();
-        if (!online) {
-          console.log('[ui-updater] offline — skipping update check');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
-          return;
-        }
-
-        const result = await checkForUIUpdate();
-        if (!result.updateAvailable) {
-          console.log('[ui-updater] up to date');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
-          return;
-        }
-
-        console.log(`[ui-updater] new version available: ${result.newVersion}`);
-
-        if (updateMode === 'auto') {
-          console.log('[ui-updater] auto mode — downloading and applying...');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
-          const applied = await applyUIUpdate();
-          if (applied && mainWindow) {
-            console.log('[ui-updater] update applied — reloading window');
-            mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-            mainWindow.loadFile(getRendererPath());
-          }
-        } else {
-          console.log('[ui-updater] manual mode — notifying renderer');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
-            phase: 'available',
-            version: result.newVersion,
-          });
-        }
-      } catch (err) {
-        console.error('[ui-updater] startup check failed:', err);
-      }
-    };
-    // Delay until the renderer has loaded and React has mounted
-    mainWindow?.webContents.once('did-finish-load', () => {
-      setTimeout(runUpdateCheck, 1500);
-    });
-  } else if (!app.isPackaged) {
-    console.log('[ui-updater] skipped — not a packaged build');
-  } else if (devMode) {
-    console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
-  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

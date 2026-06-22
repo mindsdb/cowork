@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import ThemeModal from './components/ThemeModal';
+import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — antontron's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
@@ -37,7 +38,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
-         renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
+         renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
@@ -686,6 +687,7 @@ function AppCore() {
   // subsequent fetchSessions responses so zombies can't reappear.
   const deletedTaskIdsRef = useRef(new Set());
   const [projects, setProjects] = useState([]);
+  const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.
@@ -3092,27 +3094,45 @@ function AppCore() {
     }).catch(() => {});
   };
 
-  const handleMoveTaskToProject = async (taskId, projectName) => {
-    // eslint-disable-next-line no-console
-    console.log('[handleMoveTaskToProject]', taskId, '→', projectName);
-    if (!projectName) return;
-    setTasks((prev) => prev.map((t) =>
-      t.id === taskId
-        ? { ...t, projectName, projectPath: projects.find((p) => p.name === projectName)?.path || t.projectPath }
-        : t
-    ));
+  // Opening the picker just stashes the task; the modal collects the
+  // destination + "move everything" choice and calls handleConfirmMove.
+  const handleOpenMoveModal = (task) => {
+    if (task?.id) setMoveModalTask(task);
+  };
+
+  const handleConfirmMove = async (destName, { isNew = false, moveEverything = true } = {}) => {
+    const task = moveModalTask;
+    if (!task || !destName) return;
+    let targetName = destName;
+    let targetPath = task.projectPath;
     try {
-      await moveConversation(taskId, projectName);
-      // eslint-disable-next-line no-console
-      console.log('[handleMoveTaskToProject] server move ok');
+      if (isNew) {
+        const created = await createProject(destName);
+        targetName = created?.name || destName;
+        targetPath = created?.path || targetPath;
+        const freshProjects = await fetchProjects();
+        if (Array.isArray(freshProjects)) setProjects(freshProjects);
+      } else {
+        targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
+      }
+      // Optimistic: show the task under the new project immediately.
+      setTasks((prev) => prev.map((t) =>
+        t.id === task.id
+          ? { ...t, projectName: targetName, projectPath: targetPath }
+          : t
+      ));
+      await moveTaskToProject(task.id, targetName, moveEverything);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[handleMoveTaskToProject] server move failed', e);
+      console.error('[move task] failed', e);
+    } finally {
+      setMoveModalTask(null);
     }
-    // Refresh sessions so the server's canonical project mapping wins
-    // if our optimistic guess was wrong.
+    // Server is canonical — refresh tasks + projects after the move.
     const fresh = await fetchSessions();
     if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+    const freshProjects = await fetchProjects();
+    if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
   const refreshSchedules = async () => {
@@ -3295,7 +3315,7 @@ function AppCore() {
           onUnpinTask={handleUnpinTask}
           onRenameTask={handleRenameTask}
           onDeleteTask={handleDeleteTask}
-          onMoveTaskToProject={handleMoveTaskToProject}
+          onMoveTaskToProject={handleOpenMoveModal}
           projects={projects}
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
@@ -3416,7 +3436,7 @@ function AppCore() {
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
-            onMoveTaskToProject={handleMoveTaskToProject}
+            onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
@@ -3457,6 +3477,7 @@ function AppCore() {
             }}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
+            onMoveTaskToProject={handleOpenMoveModal}
             onDeleteProject={handleDeleteProject}
             attachments={composerAttachments}
             connectors={connectors}
@@ -3569,6 +3590,7 @@ function AppCore() {
               setRoute('schedule-detail');
             }}
             onDeleteTask={handleDeleteTask}
+            onMoveTaskToProject={handleOpenMoveModal}
           />
         )}
 
@@ -3805,6 +3827,14 @@ function AppCore() {
         onThemeChange={setTheme}
         skin={skin}
         onSkinChange={setSkin}
+      />
+
+      <MoveToProjectModal
+        open={!!moveModalTask}
+        task={moveModalTask}
+        projects={projects}
+        onClose={() => setMoveModalTask(null)}
+        onConfirm={handleConfirmMove}
       />
 
       {/* OTA update overlay — shown during auto-update download/reload */}

@@ -881,6 +881,14 @@ export default function ChatView({
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
+  // Bumps when a turn finishes (assistant message committed) — not only
+  // when messages.length changes. Replacing `_streaming` with `assistant`
+  // often leaves length unchanged, which previously skipped memory refresh.
+  const contextRefreshKey = useMemo(() => {
+    const msgs = task?.messages ?? [];
+    const assistants = msgs.filter((m) => m.role === 'assistant').length;
+    return `${task?.status ?? 'idle'}:${assistants}:${msgs.length}`;
+  }, [task?.status, task?.messages]);
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
@@ -1246,13 +1254,13 @@ export default function ChatView({
           open={settingsOpen}
           anchorRect={settingsAnchor}
           hideRename={false}
-          hideMoveToProject
+          hideMoveToProject={!onMoveTaskToProject}
           onClose={() => setSettingsOpen(false)}
           onPin={() => onPinTask?.(task)}
           onUnpin={() => onUnpinTask?.(task.id)}
           onRename={() => setTitleEditing(true)}
           onDelete={() => onDeleteTask?.(task.id)}
-          onMoveToProject={(p) => onMoveTaskToProject?.(task.id, p.name)}
+          onMoveToProject={() => onMoveTaskToProject?.(task)}
           onSchedule={() => {
             // Placeholder — schedule UX is WIP. Drop a hint into the
             // composer-friendly inbox by sending a message that asks
@@ -1774,7 +1782,7 @@ export default function ChatView({
         <ContextBox
           project={project}
           conversationId={task?.id}
-          refreshKey={task?.messages?.length ?? 0}
+          refreshKey={contextRefreshKey}
         />
       </aside>
 

@@ -14,6 +14,8 @@ import {
   deleteProjectFile,
   fetchAttachments,
   fetchMemory,
+  findMemoryEntry,
+  labelCategory,
   listProjectFiles,
   moveAttachmentToProject,
   saveMemory,
@@ -47,7 +49,7 @@ function MemoryRow({ entry, onOpen }) {
     <button
       type="button"
       onClick={onOpen}
-      title={entry.content || entry.relativePath}
+      title={entry.content || labelCategory(entry.category)}
       className={clsx(
         'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
@@ -57,7 +59,7 @@ function MemoryRow({ entry, onOpen }) {
     >
       <span className="text-ink-4 inline-flex flex-none">{Ico.code(13)}</span>
       <span className="block truncate text-[12.5px] text-ink min-w-0">
-        {entry.relativePath || entry.name}
+        {labelCategory(entry.category) || entry.name}
       </span>
       {entry.modifiedAt && (
         <span className="text-[10.5px] text-ink-4">{relativeAge(entry.modifiedAt)}</span>
@@ -319,13 +321,42 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const [attachmentsTick, setAttachmentsTick] = useState(0);
   const bumpAttachments = useCallback(() => setAttachmentsTick((n) => n + 1), []);
 
+  const applyMemorySections = useCallback((data) => {
+    if (!data?.sections) return;
+    setSections(data.sections);
+    setOpenEntry((prev) => (
+      prev?.path ? findMemoryEntry(data.sections, prev.path) || prev : prev
+    ));
+  }, []);
+
+  const reloadMemory = useCallback(() => (
+    fetchMemory(project)
+      .then((data) => {
+        applyMemorySections(data);
+        return data;
+      })
+      .catch(() => null)
+  ), [project?.id, project?.path, applyMemorySections]);
+
+  const openMemoryEntry = useCallback((entry) => {
+    reloadMemory().then((data) => {
+      const fresh = data?.sections
+        ? findMemoryEntry(data.sections, entry.path) || entry
+        : entry;
+      setOpenEntry(fresh);
+    });
+  }, [reloadMemory]);
+
   useEffect(() => {
     let cancelled = false;
-    fetchMemory(project?.path)
-      .then((data) => { if (!cancelled && data?.sections) setSections(data.sections); })
+    fetchMemory(project)
+      .then((data) => {
+        if (cancelled) return;
+        applyMemorySections(data);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [project?.path]);
+  }, [project?.id, project?.path, refreshKey, applyMemorySections]);
 
   // Ticket pattern: every instructions fetch (mount + reload-on-
   // edit) bumps `loadVersion`. The async response only applies its
@@ -467,10 +498,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     });
     return sorted.map((s) => ({
       ...s,
-      files: (s.files || []).map((f) => ({
-        ...f,
-        scope: s.scope,
-      })),
+      files: (s.files || [])
+        .filter((f) => String(f.content || '').trim())
+        .map((f) => ({
+          ...f,
+          scope: s.scope,
+        })),
     }));
   }, [sections]);
 
@@ -747,9 +780,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
             </span>
             {visible.map((entry) => (
               <MemoryRow
-                key={entry.relativePath || entry.name}
+                key={entry.path || entry.category}
                 entry={entry}
-                onOpen={() => setOpenEntry(entry)}
+                onOpen={() => openMemoryEntry(entry)}
               />
             ))}
             {remaining > 0 && (
@@ -767,7 +800,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
 
       <ContextFileModal
         open={!!openEntry}
-        title={openEntry?.relativePath || openEntry?.name || ''}
+        title={labelCategory(openEntry?.category) || openEntry?.name || ''}
         subtitle={
           openEntry?.scope === 'Project' && openEntry?.projectName
             ? `Project · ${openEntry.projectName}`
@@ -778,31 +811,24 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
           if (!openEntry) return;
           await saveMemory({
             scope: openEntry.scope,
-            relativePath: openEntry.relativePath,
+            category: openEntry.category,
             content,
-            projectPath: openEntry.scope === 'Project' ? openEntry.projectPath : null,
+            projectId: openEntry.scope === 'Project' ? openEntry.projectId : null,
           });
         }}
         remover={async () => {
           if (!openEntry) return;
           await deleteMemory({
             scope: openEntry.scope,
-            relativePath: openEntry.relativePath,
-            projectPath: openEntry.scope === 'Project' ? openEntry.projectPath : null,
+            category: openEntry.category,
+            projectId: openEntry.scope === 'Project' ? openEntry.projectId : null,
           });
         }}
-        emptyMessage="(empty memory file)"
+        emptyMessage="(empty memory)"
         placeholder="Memory contents — what should the agent remember?"
         dense
         onClose={() => setOpenEntry(null)}
-        onChanged={() => {
-          // Refresh the rail's memory listing so adds/edits/deletes
-          // surface immediately. Same project_path the rail uses on
-          // initial load — keeps the displayed sections coherent.
-          fetchMemory(project?.path)
-            .then((data) => { if (data?.sections) setSections(data.sections); })
-            .catch(() => {});
-        }}
+        onChanged={() => { reloadMemory(); }}
       />
       <ContextFileModal
         open={!!openFile}

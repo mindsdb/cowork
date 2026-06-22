@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -10,6 +10,8 @@ import {
   fetchMemory,
   fetchPublishable,
   fetchSkills,
+  findMemoryEntry,
+  labelCategory,
   publishArtifact,
   saveDatasource,
   saveMemory,
@@ -19,7 +21,7 @@ import {
 import { trackArtifactPublished } from '../lib/analytics';
 
 const TITLES = {
-  memory: ['Memory', 'Rules, lessons, identity notes, and saved episodes the agent can reuse.'],
+  memory: ['Memory', 'Profile, rules, and lessons the agent can reuse across tasks.'],
   skills: ['Skill Library', 'Saved agent skills and recall guidance.'],
   // 'connect' (legacy datasources page) is gone — Connect Apps and
   // Data is the canonical surface. Kept the import paths for
@@ -101,9 +103,8 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
 
   return (
     <div className="scroll-clean" style={wrapperStyle}>
-      {/* MemoryView renders its own canonical header (with the
-          + New memory action). For the legacy kinds we keep the
-          plain header here. */}
+      {/* MemoryView renders its own header. For the legacy kinds we
+          keep the plain header here. */}
       {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
       {status && <div style={{ margin: '16px 28px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
@@ -137,247 +138,94 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
 
 function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   const sections = Array.isArray(data?.sections) ? data.sections : [];
-  const projectSections = sections.filter((s) => s.scope === 'Project' && (s.files || []).length > 0);
+  const projectSections = sections.filter((s) => s.scope === 'Project');
   const globalSection = sections.find((s) => s.scope === 'Global');
   const totalFiles = sections.reduce((acc, s) => acc + (s.files?.length || 0), 0);
 
+  // `selected` holds the sidebar selection; after save `data.sections`
+  // refreshes but `selected` can still point at stale content. Always
+  // read the live entry from the latest sections when rendering.
+  const displayed = useMemo(
+    () => (selected?.path ? findMemoryEntry(sections, selected.path) : selected) || selected,
+    [sections, selected],
+  );
+
   const [editing, setEditing] = useState(null);
-  // `projectName` / `projectPath` carry the project context for project-scoped
-  // edits — needed because the universal listing means a memory's project
-  // may not match the rail's currently active project.
-  //
-  // `kind` is the new-memory type picker: 'lessons' | 'rules' | 'topic'.
-  // Lessons + Rules are well-known paths (`lessons.md`, `rules.md`) and
-  // hydrate `draft.content` from the existing file if there's one in the
-  // chosen scope. Topic is a free-form name → `topics/<slug>.md`; we
-  // validate the resulting path isn't already taken before saving.
   const [draft, setDraft] = useState({
-    scope: 'Global', relativePath: '', content: '',
-    projectName: null, projectPath: null,
-    kind: 'lessons', topicName: '',
+    scope: 'Global', category: '', content: '', projectName: null, projectId: null,
   });
 
   const refresh = async () => {
     const latest = await fetchMemory();
     setData(latest);
-  };
-
-  const startNew = () => {
-    setEditing('new');
-    setDraft({
-      scope: 'Global', relativePath: 'lessons.md', content: '',
-      projectName: null, projectPath: null,
-      kind: 'lessons', topicName: '',
-    });
-    onSelect(null);
-  };
-
-  // Files in scope for the new-memory form's hydration / availability
-  // check. Returns the array of file payloads from `data.sections`
-  // matching the current draft scope.
-  const filesForCurrentScope = () => {
-    if (draft.scope === 'Global') return globalSection?.files || [];
-    if (draft.scope === 'Project' && draft.projectName) {
-      const section = sections.find(
-        (s) => s.scope === 'Project' && s.projectName === draft.projectName,
-      );
-      return section?.files || [];
+    if (selected?.path) {
+      const updated = findMemoryEntry(latest?.sections, selected.path);
+      if (updated) onSelect(updated);
     }
-    return [];
+    return latest;
   };
-
-  // Slugify a topic name → safe `topics/<slug>.md` path. Lowercases,
-  // collapses whitespace + non-alphanumerics to `-`, trims dashes.
-  const topicSlug = (raw) => String(raw || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  const relativePathForKind = (kind, topicName) => {
-    if (kind === 'lessons') return 'lessons.md';
-    if (kind === 'rules')   return 'rules.md';
-    const slug = topicSlug(topicName);
-    return slug ? `topics/${slug}.md` : '';
-  };
-
-  // Pull existing content for a given relativePath in the current
-  // scope, or '' when no file is there yet. Used to pre-populate the
-  // body when the user picks Lessons / Rules so they edit instead of
-  // accidentally overwriting.
-  const existingContentForPath = (relPath) => {
-    if (!relPath) return '';
-    const file = filesForCurrentScope().find((f) => f.relativePath === relPath);
-    return file?.content || file?.preview || '';
-  };
-
-  // When the user changes the kind (or the scope, which changes which
-  // files we check against), recompute the implied path and hydrate
-  // body content for lessons/rules. Topic mode keeps the user-typed
-  // body in place — they'll only see content from a colliding file via
-  // the inline error on the topic name field.
-  const onKindChange = (nextKind) => {
-    setDraft((prev) => {
-      const relPath = relativePathForKind(nextKind, prev.topicName);
-      const next = { ...prev, kind: nextKind, relativePath: relPath };
-      if (nextKind === 'lessons' || nextKind === 'rules') {
-        next.content = existingContentForPath(relPath);
-      }
-      return next;
-    });
-  };
-
-  const onTopicNameChange = (value) => {
-    setDraft((prev) => ({
-      ...prev,
-      topicName: value,
-      relativePath: relativePathForKind('topic', value),
-    }));
-  };
-
-  // Topic-mode duplicate check, surfaced inline so the Save button
-  // can communicate the conflict before the user clicks. Computed
-  // each render — cheap, since `filesForCurrentScope()` is small.
-  const topicConflict = (() => {
-    if (draft.kind !== 'topic') return null;
-    const slug = topicSlug(draft.topicName);
-    if (!slug) return null;
-    const candidate = `topics/${slug}.md`;
-    const exists = filesForCurrentScope().some((f) => f.relativePath === candidate);
-    return exists ? candidate : null;
-  })();
 
   const startEdit = (file) => {
     setEditing('edit');
     setDraft({
       scope: file.scope || 'Global',
-      relativePath: file.relativePath,
+      category: file.category,
       content: file.content || file.preview || '',
       projectName: file.projectName || null,
-      projectPath: file.projectPath || null,
+      projectId: file.projectId || null,
     });
     onSelect(file);
   };
 
-  // Lookup table so the new-memory dropdown can offer "Project · <name>"
-  // for any project on disk, not just the active one.
-  const projectChoices = sections
-    .filter((s) => s.scope === 'Project')
-    .map((s) => ({ name: s.projectName, path: s.projectPath }));
-
-  const onScopeChange = (value) => {
-    // The hydration helper reads from the *new* scope, but we can't
-    // call `existingContentForPath` mid-state-update because it
-    // closes over the previous draft. Compute the next scope tuple
-    // first, then re-derive content directly from `sections`.
-    let nextScope = 'Global';
-    let nextProjectName = null;
-    let nextProjectPath = null;
-    if (value !== 'Global') {
-      const projectName = value.startsWith('Project::') ? value.slice('Project::'.length) : null;
-      const match = projectChoices.find((p) => p.name === projectName);
-      nextScope = 'Project';
-      nextProjectName = match?.name || null;
-      nextProjectPath = match?.path || null;
-    }
-    const filesNext = (() => {
-      if (nextScope === 'Global') return globalSection?.files || [];
-      const section = sections.find(
-        (s) => s.scope === 'Project' && s.projectName === nextProjectName,
-      );
-      return section?.files || [];
-    })();
-    setDraft((prev) => {
-      const next = {
-        ...prev,
-        scope: nextScope,
-        projectName: nextProjectName,
-        projectPath: nextProjectPath,
-      };
-      if (prev.kind === 'lessons' || prev.kind === 'rules') {
-        const file = filesNext.find((f) => f.relativePath === prev.relativePath);
-        next.content = file?.content || file?.preview || '';
-      }
-      return next;
-    });
-  };
-
   const save = async () => {
-    // Topic mode: derive the path from the typed name and refuse to
-    // overwrite an existing topic. Lessons/rules intentionally allow
-    // overwriting — they're the canonical files Anton reads, so the
-    // form pre-populates them and saving means "edit", not "create".
-    if (editing === 'new' && draft.kind === 'topic') {
-      const slug = topicSlug(draft.topicName);
-      if (!slug) {
-        setStatus('Enter a topic name.');
-        return;
-      }
-      const candidate = `topics/${slug}.md`;
-      const conflict = filesForCurrentScope().some((f) => f.relativePath === candidate);
-      if (conflict) {
-        setStatus(`A memory at ${candidate} already exists. Choose a different topic name.`);
-        return;
-      }
-    }
-    if (!draft.relativePath.trim()) {
-      setStatus('Choose a Markdown path for this memory file.');
+    if (!draft.category) {
+      setStatus('No memory category selected.');
       return;
     }
-    if (draft.scope === 'Project' && !draft.projectPath) {
-      setStatus('Pick a project for this memory file.');
+    if (draft.scope === 'Project' && !draft.projectId) {
+      setStatus('Pick a project for this memory.');
       return;
     }
     try {
       await saveMemory({
         scope: draft.scope,
-        relativePath: draft.relativePath,
+        category: draft.category,
         content: draft.content,
-        projectPath: draft.scope === 'Project' ? draft.projectPath : null,
+        projectId: draft.scope === 'Project' ? draft.projectId : null,
       });
-      setStatus(`Saved memory file ${draft.relativePath}.`);
+      setStatus(`Saved ${labelCategory(draft.category)} memory.`);
       setEditing(null);
       await refresh();
     } catch (err) {
-      setStatus(err.message || 'Could not save memory file.');
+      setStatus(err.message || 'Could not save memory.');
     }
   };
 
   const remove = async (file) => {
-    if (!window.confirm(`Delete memory file "${file.relativePath}"? A backup will be kept.`)) return;
+    const label = labelCategory(file.category);
+    if (!window.confirm(`Delete "${label}" memory? This clears the saved content.`)) return;
     try {
       await deleteMemory({
         scope: file.scope || 'Global',
-        relativePath: file.relativePath,
-        projectPath: file.scope === 'Project' ? file.projectPath : null,
+        category: file.category,
+        projectId: file.scope === 'Project' ? file.projectId : null,
       });
-      setStatus(`Deleted memory file ${file.relativePath}.`);
+      setStatus(`Deleted ${label} memory.`);
+      setEditing(null);
       onSelect(null);
       await refresh();
     } catch (err) {
-      setStatus(err.message || 'Could not delete memory file.');
+      setStatus(err.message || 'Could not delete memory.');
     }
   };
-
-  const scopeValue = draft.scope === 'Project'
-    ? `Project::${draft.projectName || ''}`
-    : 'Global';
 
   return (
     <>
       <CollectionPageHeader
         title="Memory"
-        subtitle="Rules, lessons, identity notes, and saved episodes the agent can reuse."
-        actions={
-          <button type="button" className="btn-primary" onClick={startNew}>
-            {Ico.plus(14)} New memory
-          </button>
-        }
+        subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
       <div style={{ height: 14 }} />
-      {/* Grid fills the rest of the viewport. Both columns get their
-          own `overflowY: auto` so the file list and the viewer pane
-          scroll independently — picking through a long memory file
-          no longer drags the sidebar with it. */}
       <div className="util-split" style={{
         flex: 1, minHeight: 0,
         display: 'grid', gridTemplateColumns: '300px 1fr',
@@ -389,14 +237,10 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
           display: 'flex', flexDirection: 'column', gap: 14,
           overflowY: 'auto', minHeight: 0,
         }}>
-          {/* Skip the Global section entirely when it has no entries
-              — the empty placeholder reads as broken-list noise. The
-              "+ New memory" form keeps Global as a scope option, so
-              the user can still create one from scratch. */}
-          {(globalSection?.files?.length || 0) > 0 && (
+          {globalSection && (
             <MemorySectionList
               heading="Global"
-              files={globalSection?.files || []}
+              files={globalSection.files || []}
               selected={selected}
               onSelect={onSelect}
             />
@@ -405,108 +249,24 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
             <MemorySectionList
               key={`${section.projectName}-${idx}`}
               heading={`Project · ${section.projectName}`}
-              files={section.files}
+              files={section.files || []}
               selected={selected}
               onSelect={onSelect}
               isActive={section.projectName === project?.name}
             />
           ))}
-          {totalFiles === 0 && <EmptyState>No memory files found.</EmptyState>}
+          {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
         </div>
         <div className="scroll-clean" style={{
           overflowY: 'auto', minHeight: 0,
         }}>
-          {editing === 'new' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* Row 1: Scope (Global / Project) + Type
-                  (Lessons / Rules / Topic). Both <select>s use the
-                  chevron-aware `selectStyle`. */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <select
-                  value={scopeValue}
-                  onChange={(e) => onScopeChange(e.target.value)}
-                  style={selectStyle}
-                >
-                  <option value="Global">Global</option>
-                  {projectChoices.map((p) => (
-                    <option key={p.name} value={`Project::${p.name}`}>Project · {p.name}</option>
-                  ))}
-                </select>
-                <select
-                  value={draft.kind}
-                  onChange={(e) => onKindChange(e.target.value)}
-                  style={selectStyle}
-                >
-                  <option value="lessons">Lessons</option>
-                  <option value="rules">Rules</option>
-                  <option value="topic">Topic</option>
-                </select>
-              </div>
-
-              {/* Row 2: file/topic identification.
-                  - Lessons/Rules show the resolved path read-only —
-                    the user can see what they're editing without
-                    being able to type something else by accident.
-                    A small note flags whether the file already
-                    exists (so saving is "edit", not "create").
-                  - Topic shows a name input → `topics/<slug>.md`
-                    underneath, and an inline conflict message when
-                    the slug collides with an existing file. */}
-              {draft.kind === 'topic' ? (
-                <div>
-                  <input
-                    value={draft.topicName}
-                    onChange={(e) => onTopicNameChange(e.target.value)}
-                    placeholder="customer-notes"
-                    style={inputStyle}
-                  />
-                  <div style={{
-                    marginTop: 4, fontSize: 11.5,
-                    color: topicConflict ? 'var(--danger)' : 'var(--frost-600)',
-                  }}>
-                    {topicConflict
-                      ? `A memory at ${topicConflict} already exists — pick a different name.`
-                      : (draft.relativePath
-                          ? `Will save as ${draft.relativePath}`
-                          : 'Type a topic name (no extension needed).')
-                    }
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{
-                    ...inputStyle,
-                    display: 'flex', alignItems: 'center',
-                    background: 'var(--surface-2)',
-                    color: 'var(--ink-3)', cursor: 'default',
-                    userSelect: 'text',
-                  }}>{draft.relativePath}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>
-                    {existingContentForPath(draft.relativePath)
-                      ? `Editing existing ${draft.relativePath}.`
-                      : `${draft.relativePath} doesn't exist yet — saving creates it.`}
-                  </div>
-                </div>
-              )}
-
-              <textarea
-                value={draft.content}
-                onChange={(e) => setDraft((prev) => ({ ...prev, content: e.target.value }))}
-                style={memoryEditorStyle}
-              />
-              <div className="dialog-actions">
-                <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                <button className="btn-primary" onClick={save} disabled={!!topicConflict}>Save memory</button>
-              </div>
-            </div>
-          ) : editing === 'edit' && selected ? (
-            // Edit mode mirrors the viewer's header tile so swapping
-            // between read and edit doesn't shift the layout — only
-            // the actions on the right and the body change.
+          {editing === 'edit' && selected ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>{selected.relativePath}</div>
+                  <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>
+                    {labelCategory(selected.category)}
+                  </div>
                   <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>
                     {selected.scope === 'Project' && selected.projectName
                       ? `Project · ${selected.projectName}`
@@ -522,35 +282,33 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                 style={memoryEditorStyle}
               />
             </>
-          ) : selected ? (
+          ) : displayed ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>{selected.relativePath}</div>
+                  <div style={{ fontSize: 14, fontWeight: 650, color: 'var(--text-strong)' }}>
+                    {labelCategory(displayed.category)}
+                  </div>
                   <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>
-                    {selected.scope === 'Project' && selected.projectName
-                      ? `Project · ${selected.projectName}`
-                      : selected.scope}
+                    {displayed.scope === 'Project' && displayed.projectName
+                      ? `Project · ${displayed.projectName}`
+                      : displayed.scope}
                   </div>
                 </div>
-                <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
-                <button className="btn-secondary" onClick={() => remove(selected)}>Delete</button>
+                <button className="btn-secondary" onClick={() => startEdit(displayed)}>Edit</button>
+                <button className="btn-secondary" onClick={() => remove(displayed)}>Delete</button>
               </div>
-              {/* Memory files are always `.md` — render via the same
-                  MarkdownContent the chat column uses so headings,
-                  lists, code, tables, and links look the way they do
-                  everywhere else in the app. */}
               <div style={memoryViewerStyle}>
                 <MarkdownContent
-                  text={selected.content || selected.preview || ''}
-                  id={`mem-${selected.path || selected.relativePath || 'doc'}`}
+                  text={displayed.content || displayed.preview || ''}
+                  id={`mem-${displayed.path || displayed.category || 'doc'}`}
                   complete
                   dense
                 />
               </div>
             </>
           ) : (
-            <EmptyState>Select a memory file to inspect it.</EmptyState>
+            <EmptyState>Select a memory entry to inspect it.</EmptyState>
           )}
         </div>
       </div>
@@ -580,7 +338,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
           style={{ height: 'auto', minHeight: 26, padding: '4px 10px', fontSize: 12.5 }}
         >
           <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.doc(13)}</span>
-          <span style={{ flex: 1, whiteSpace: 'normal' }}>{file.relativePath}</span>
+          <span style={{ flex: 1, whiteSpace: 'normal' }}>{labelCategory(file.category)}</span>
         </button>
       ))}
     </div>

@@ -232,7 +232,8 @@ export default function ContextFileModal({
   // so memory rows still render markdown.
   const referencePath = filePath || title || '';
   const isMarkdown = /\.md$/i.test(referencePath) || referencePath === ''
-    || isAnton;
+    || isAnton
+    || genericMode;
 
   // Load on open. Anton.md is special-cased server-side: the read
   // endpoint returns an empty body when the file doesn't exist yet,

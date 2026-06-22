@@ -16,7 +16,7 @@ import {
 } from '../../api';
 import { copyText } from '../../lib/clipboard';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { isPublishableArtifact } from '../../lib/artifactKinds';
+import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { trackArtifactPublished } from '../../lib/analytics';
 import { Modal } from '../ui/Modal';
 import { Menu } from '../ui';
@@ -290,8 +290,6 @@ function AccessPasswordRow({ password }) {
   );
 }
 
-const BACKEND_ARTIFACT_TYPES = new Set(['fullstack-stateless-app', 'fullstack-stateful-app']);
-
 export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, onPublish: onRequestPublish }) {
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const displayPath = artifact?.displayPath || actionPath;
@@ -299,9 +297,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
   const hasActionPath = !!actionPath && !disabledReason;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
   // Backend artifacts treat the folder, not the entry html, as the
-  // "thing" the user opens in their OS or browser.
-  const artifactFolder = actionPath.replace(/[\\/][^\\/]*$/, '') || actionPath;
-  const folderDisplayPath = displayPath.replace(/[\\/][^\\/]*$/, '') || displayPath;
+  // "thing" the user opens in their OS or browser. Prefer the server's
+  // `folder` (the artifact's slug dir) — for fullstack apps the primary
+  // sits in a `static/` subdir, so stripping the filename off the path
+  // would point at `static/`, not the slug folder. Fall back to that
+  // strip for records that don't carry `folder` (e.g. from a chat bubble).
+  const artifactFolder = artifact?.folder || actionPath.replace(/[\\/][^\\/]*$/, '') || actionPath;
+  const folderDisplayPath = artifact?.folder || displayPath.replace(/[\\/][^\\/]*$/, '') || displayPath;
   // Mounted preview URL — iframe loads this with `src=` so relative
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)

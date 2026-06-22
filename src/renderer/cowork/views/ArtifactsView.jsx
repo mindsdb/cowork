@@ -20,7 +20,7 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -478,6 +478,13 @@ function PublishedUrlRow({ url, onOpen, onCopy }) {
 // and not. Ellipsis-truncates a long path; full path lives in the
 // `title` attribute for hover. RTL trick on the path span keeps the
 // filename visible (truncates the front, not the back).
+//
+// Left-to-right mark (U+200E). The `direction: rtl` trick below would
+// otherwise let the bidi algorithm relocate an absolute path's leading
+// "/" to the visual end, rendering a bogus trailing slash. Prefixing the
+// path with a strong-LTR mark pins the leading slash in place.
+const LTR_MARK = String.fromCharCode(0x200e);
+
 function LocalPathRow({ path }) {
   if (!path) return null;
   return (
@@ -500,7 +507,7 @@ function LocalPathRow({ path }) {
         color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         direction: 'rtl', textAlign: 'left',
-      }}>{path}</span>
+      }}>{LTR_MARK + path}</span>
     </div>
   );
 }
@@ -513,6 +520,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // local OS path the user can't reach. Surface that "private" URL in
   // place of the path. Desktop keeps showing the local path.
   const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  // For fullstack apps the artifact "is" its slug folder, not the entry
+  // html — show the folder path on the card. Falls back to the primary
+  // path for everything else (and if `folder` is somehow absent).
+  const localPath = isBackendArtifact(artifact) ? (artifact.folder || artifact.path) : artifact.path;
 
   const { revealed: showControls, hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
@@ -795,7 +806,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           onCopy={onCopyPrivate}
         />
       ) : (
-        <LocalPathRow path={artifact.path} />
+        <LocalPathRow path={localPath} />
       )}
 
       {/* Spacer pushes the meta + actions to the bottom of the card so
@@ -1554,6 +1565,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const a = menuFor?.artifact;
           if (!a) return [];
           const isHtml = isHtmlArtifact(a);
+          const isBackend = isBackendArtifact(a);
           const published = !!a.publishedUrl;
           const busyA = busyPaths.has(a.path);
           const items = [];
@@ -1578,7 +1590,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             icon: (Ico.eye?.(13) || Ico.sparkle(13)),
             onClick: () => setViewer(a),
           });
-          if (isHtml) {
+          // Fullstack apps can't be opened from their static entry html
+          // (it needs the backend), so only offer "Open in browser" for
+          // them once published — then it opens the live public URL.
+          // Unpublished fullstack gets no open/reveal item.
+          if (isHtml && (!isBackend || published)) {
             items.push({
               id: 'open',
               label: 'Open in browser',
@@ -1592,7 +1608,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
                 }
               },
             });
-          } else if (!host.isWeb) {
+          } else if (!isBackend && !host.isWeb) {
             // Reveal hits the server's /artifacts/reveal endpoint which
             // shells out to the OS opener — meaningful only on the
             // desktop where the renderer and server share a filesystem.
