@@ -42,6 +42,7 @@ export const SETTINGS_KEY_MAP = {
   memory_mode: 'memoryMode',
   episodic_memory: 'episodicMemory',
   proactive_dashboards: 'proactiveDashboards',
+  act_first: 'actFirst',
   ui_update_mode: 'uiUpdateMode',
   publish_url: 'publishUrl',
   greeting: 'greeting',
@@ -81,35 +82,13 @@ export function providerTypeToServerValue(value) {
 
 // ─── Static metadata ────────────────────────────────────────────────
 
-// Model options per provider. Single source of truth — Onboarding and
-// SettingsView both import from here. Each entry carries the model ID
-// and a human-readable label for dropdowns.
-export const PROVIDER_MODELS = {
-  // MindsHub model names are owned by the backend, not this repo. The list
-  // is supplied at runtime by `/settings/recommended-models` (the live
-  // MindsHub `/v1/models` set) and overlaid in fetchSettings(). Left empty
-  // so no model names are maintained here.
-  'minds-cloud': [],
-  anthropic: [
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
-    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-  ],
-  openai: [
-    { id: 'gpt-5.5', label: 'GPT-5.5' },
-    { id: 'gpt-5.5-mini', label: 'GPT-5.5 Mini' },
-    { id: 'o3', label: 'o3' },
-    { id: 'o4-mini', label: 'o4 Mini' },
-  ],
-  gemini: [
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' },
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-  ],
-  'openai-compatible': [],
-};
-
+// Model names are NOT maintained in this repo. The cowork-server
+// (`RECOMMENDED_MODELS` / `RECOMMENDED_PAIR` in app_settings.py) is the
+// single source of truth for every provider — it's served by
+// `/settings/recommended-models` and overlaid onto `recommendedModels` /
+// `recommendedPair` in fetchSettings(). The buckets below are empty
+// placeholders so the structure exists before the overlay lands (and so an
+// offline shell degrades to free-text model inputs rather than crashing).
 export const STATIC_SETTINGS = {
   providerTypes: ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'],
   providerTypeLabels: {
@@ -119,19 +98,61 @@ export const STATIC_SETTINGS = {
     gemini: 'Gemini',
     'openai-compatible': 'OpenAI-compatible',
   },
-  // Flat ID lists derived from PROVIDER_MODELS for places that only need IDs.
-  recommendedModels: Object.fromEntries(
-    Object.entries(PROVIDER_MODELS).map(([k, v]) => [k, v.map((m) => m.id)]),
-  ),
+  // Per-provider model id lists (filled at runtime by the backend overlay).
+  recommendedModels: {
+    'minds-cloud': [], anthropic: [], openai: [], gemini: [], 'openai-compatible': [],
+  },
+  // Per-provider (planning, coding) default pair (filled at runtime).
   recommendedPair: {
-    // minds-cloud defaults come from the backend (recommendedPair) at runtime.
-    'minds-cloud': ['', ''],
-    anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-    openai: ['gpt-5.5', 'gpt-5.5-mini'],
-    gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-    'openai-compatible': ['', ''],
+    'minds-cloud': ['', ''], anthropic: ['', ''], openai: ['', ''], gemini: ['', ''], 'openai-compatible': ['', ''],
   },
 };
+
+// ─── Model label derivation ─────────────────────────────────────────
+
+const _cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
+/**
+ * Derive a human-readable label from a model id, so the UI never has to
+ * maintain a parallel name map alongside the backend's id list. Pure and
+ * family-aware (Claude / GPT / Gemini); unknown ids fall through to a
+ * best-effort title-cased form. Resilient to new versions — adding
+ * `claude-opus-4-9` server-side needs no change here.
+ *
+ *   claude-opus-4-8            → "Claude Opus 4.8"
+ *   claude-haiku-4-5-20251001  → "Claude Haiku 4.5"  (date snapshot dropped)
+ *   gpt-5.5-mini               → "GPT-5.5 Mini"
+ *   gemini-3-flash-preview     → "Gemini 3 Flash Preview"
+ *   o4-mini                    → "o4 Mini"
+ */
+export function modelLabel(id) {
+  if (!id) return '';
+  // Drop a trailing date snapshot suffix (e.g. -20251001).
+  const s = String(id).replace(/-\d{6,}$/, '');
+  if (s.startsWith('claude-')) {
+    const [, family, ...ver] = s.split('-');
+    const version = ver.join('.');
+    return `Claude ${_cap(family)}${version ? ` ${version}` : ''}`;
+  }
+  if (s.startsWith('gpt-')) {
+    const [head, ...rest] = s.slice(4).split('-');
+    return `GPT-${head}${rest.map((t) => ` ${_cap(t)}`).join('')}`;
+  }
+  if (s.startsWith('gemini-')) {
+    return `Gemini ${s.slice(7).split('-').map(_cap).join(' ')}`;
+  }
+  const [head, ...rest] = s.split('-');
+  return rest.length ? `${head} ${rest.map(_cap).join(' ')}` : head;
+}
+
+/**
+ * Map a provider's runtime model-id list to `{id, label}` options for
+ * dropdowns. `recommendedModels` is the backend-overlaid map from settings.
+ */
+export function recommendedModelOptions(recommendedModels, providerType) {
+  const ids = (recommendedModels && recommendedModels[providerType]) || [];
+  return ids.map((id) => ({ id, label: modelLabel(id) }));
+}
 
 // ─── Row → client transform ─────────────────────────────────────────
 

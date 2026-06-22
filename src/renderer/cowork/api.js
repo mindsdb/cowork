@@ -6,6 +6,12 @@
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
+import {
+  buildMemoryDeletePayload,
+  buildMemoryWritePayload,
+  groupMemoryItems,
+  resolveProjectId,
+} from './lib/memoryTransform';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -1050,7 +1056,7 @@ export async function revealSettingKey(name) {
 
 export async function fetchIntegrations() {
   try {
-    return await req('/integrations');
+    return await req('/connectors/oauth/catalogue');
   } catch {
     return { items: MOCK_DATA.integrations };
   }
@@ -1080,23 +1086,33 @@ export async function startGcpAuth() {
   return req('/integrations/gcp/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
-export async function fetchMemory(projectPath) {
-  const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
+export async function fetchMemory(projectRef) {
+  const projectId = await resolveProjectId(projectRef, fetchProjects);
+  const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
   // view's row-stats hook can all ask for the same project's memory
   // listing at the same moment; this collapses the duplicates.
-  return dedupe(`memory${suffix}`, () => req(`/memory${suffix}`));
+  return dedupe(`memory${suffix}`, async () => {
+    const [items, projects] = await Promise.all([
+      req(`/memory${suffix}`),
+      fetchProjects(),
+    ]);
+    const list = Array.isArray(items) ? items : [];
+    return groupMemoryItems(list, projects);
+  });
 }
 
 export async function saveMemory(payload) {
-  return req('/memory', { method: 'POST', body: JSON.stringify(payload) });
+  const body = buildMemoryWritePayload(payload);
+  return req('/memory', { method: 'PUT', body: JSON.stringify(body) });
 }
 
-export async function deleteMemory({ scope, relativePath, projectPath }) {
-  const params = new URLSearchParams({ scope, relative_path: relativePath });
-  if (projectPath) params.set('project_path', projectPath);
-  return req(`/memory?${params.toString()}`, { method: 'DELETE' });
+export async function deleteMemory(payload) {
+  const body = buildMemoryDeletePayload(payload);
+  return req('/memory', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
 export async function fetchSkills() {
@@ -1196,20 +1212,7 @@ export async function matchConnector(query, maxCandidates = 3) {
 // engine would reject the credential shape).
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
-  try {
-    return await req('/connectors/submissions', { method: 'POST', body });
-  } catch (err) {
-    // TODO: remove this fallback once cowork-server is the only backend.
-    // The new cowork-server serves POST /connectors/submissions; the
-    // legacy local server/main.py only has POST /connectors/{id}/save
-    // with the SAME payload shape (method / name / values). Fall back
-    // ONLY on a 404 (route absent on this backend) — a 400/422/500
-    // means the endpoint exists and rejected us, so surface that as-is
-    // rather than masking it or risking a double-write.
-    if (err?.status !== 404) throw err;
-    console.warn('saveConnector: /connectors/submissions 404 — falling back to legacy /connectors/{id}/save');
-    return req(`/connectors/${encodeURIComponent(connectorId)}/save`, { method: 'POST', body });
-  }
+  return req('/connectors/connections/save', { method: 'POST', body });
 }
 
 // ─── Web (redirect-based) connector OAuth ──────────────────────────────────
@@ -1223,14 +1226,15 @@ export async function saveConnector(connectorId, payload) {
 //   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
 // The SPA never handles the code or tokens directly.
 
-export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
-  return req(`/connectors/${encodeURIComponent(connectorId)}/oauth/start`, {
+export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret, extraFields } = {}) {
+  return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
     method: 'POST',
     body: JSON.stringify({
       method: method || null,
       name: name || '',
       client_id: clientId || '',
       client_secret: clientSecret || '',
+      extra_fields: extraFields || {},
     }),
   });
 }
@@ -1666,6 +1670,17 @@ export async function moveConversation(id, projectName) {
   });
 }
 
+// Move a task to another project and (when moveObjects) relocate the
+// artifacts the task created + re-tag its files. Backed by
+// POST /conversations/{id}/move. The destination project must exist —
+// the caller creates a new one first, then moves to it.
+export async function moveTaskToProject(id, projectName, moveObjects = true) {
+  return req(`/conversations/${encodeURIComponent(id)}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ project: projectName, moveObjects }),
+  });
+}
+
 export async function recordTaskVisit(task, autoPin = false) {
   const params = new URLSearchParams({ auto_pin: autoPin ? 'true' : 'false' });
   if (task?.title) params.set('title', task.title);
@@ -1786,12 +1801,6 @@ export const MOCK_DATA = {
     { id: 's3', title: 'Hourly — monitor Lightsail spend', cadence: 'Every hour', nextRun: 'in 24m', enabled: false },
   ],
 
-  models: [
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', desc: 'Balanced — fastest for daily work' },
-    { id: 'claude-opus-4-7',   name: 'Claude Opus 4.7',   desc: 'Best for deep reasoning and long tasks' },
-    { id: 'claude-haiku-4-5',  name: 'Claude Haiku 4.5',  desc: 'Quickest, lightweight responses' },
-  ],
-
   settings: {
     greeting: "Let's knock something off your list",
     tone: 'balanced',
@@ -1808,6 +1817,7 @@ export const MOCK_DATA = {
     memoryMode: 'autopilot',
     episodicMemory: true,
     proactiveDashboards: false,
+    actFirst: true,
     anthropicApiKey: '',
     openaiApiKey: '',
     providers: [],

@@ -3,14 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws://localhost:* http://127.0.0.1:* http://localhost:*; frame-src http://127.0.0.1:* http://localhost:*; child-src http://127.0.0.1:* http://localhost:*" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws://localhost:* http://127.0.0.1:* http://localhost:* https://us.i.posthog.com; frame-src http://127.0.0.1:* http://localhost:*; child-src http://127.0.0.1:* http://localhost:*" />
     <title>MindsHub Cowork</title>
     <link rel="stylesheet" href="./gravity-field/gravity-field.css" />
+    <!-- Boot veil: a solid-black layer painted on the very first frame
+         (before JS runs) so the window never flashes the half-initialized
+         canvas / pre-skin theme. It stays opaque until the main process adds
+         `boot-veil--fade` right after the window becomes visible
+         (ready-to-show), then transitions out — so the black is guaranteed to
+         cover the very first frame the user actually sees. -->
+    <style>
+      #boot-veil {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        z-index: 2147483647;
+        pointer-events: none;
+        opacity: 1;
+        transition: opacity 260ms ease-out, visibility 0s linear 260ms;
+      }
+      #boot-veil.boot-veil--fade { opacity: 0; visibility: hidden; }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-veil { transition-duration: 1ms; }
+      }
+    </style>
   </head>
   <!-- Theme is set by React (data-theme=light|dark on body) once it
        reads the persisted preference. Default to dark on first paint so
        the canvas + page colour don't flash white. -->
   <body class="gf-theme-dark">
+    <!-- Painted first, on top of everything, then fades out (see <style>). -->
+    <div id="boot-veil"></div>
     <!-- Animated background canvas — fixed full-window, zero z-index,
          pointer-events:none. The React root sits above with z-index:1. -->
     <canvas id="gravity-field-bg" class="gravity-field" aria-hidden="true"></canvas>
@@ -29,5 +52,30 @@
       );
     </script>
     <script type="module" src="./main.tsx"></script>
+    <script>
+      // Fade the boot veil once the window is actually visible.
+      //   • First open: the window is created hidden (show:false), so the doc
+      //     starts 'hidden' — wait for it to become visible, then fade. (The
+      //     main process also nudges this on ready-to-show; both are idempotent.)
+      //   • Refresh: ready-to-show does NOT fire again, but the window is
+      //     already visible, so fade right away — no long black screen.
+      (function () {
+        function fade() {
+          var v = document.getElementById('boot-veil');
+          if (v) v.classList.add('boot-veil--fade');
+        }
+        if (document.visibilityState === 'visible') {
+          setTimeout(fade, 140);
+        } else {
+          document.addEventListener('visibilitychange', function onVis() {
+            if (document.visibilityState === 'visible') {
+              document.removeEventListener('visibilitychange', onVis);
+              setTimeout(fade, 140);
+            }
+          });
+          setTimeout(fade, 3000); // safety net if visibility never flips
+        }
+      })();
+    </script>
   </body>
 </html>

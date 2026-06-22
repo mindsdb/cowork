@@ -21,7 +21,7 @@ interface InstallerOptions {
 // cowork release that requires backend changes. The installer will
 // install at least this version (a minimum floor), picking up any
 // newer compatible releases automatically.
-const COWORK_SERVER_MIN_VERSION = '0.1.5';
+const COWORK_SERVER_MIN_VERSION = '0.1.9';
 
 // PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
 // Keep in sync with server-updater.ts PYTHON_RANGE and cowork-server requires-python.
