@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
+import ThemeModal from './components/ThemeModal';
+import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — antontron's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
@@ -22,7 +24,7 @@ import UtilitiesView from './views/UtilitiesView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
@@ -36,12 +38,13 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
-         renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
+         renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -685,6 +688,7 @@ function AppCore() {
   // subsequent fetchSessions responses so zombies can't reappear.
   const deletedTaskIdsRef = useRef(new Set());
   const [projects, setProjects] = useState([]);
+  const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.
@@ -727,7 +731,7 @@ function AppCore() {
   // trying to start a parallel turn (anton-core can't handle that
   // gracefully). After the active turn's onDone/onError fires we
   // drain one item from the queue.
-  const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text}] }
+  const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
 
@@ -821,8 +825,11 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, refreshInFlightSet]);
 
-  const enqueueMessage = (taskId, text) => {
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text };
+  const enqueueMessage = (taskId, text, attachments = []) => {
+    // `attachments` rides with the queued item so a message sent while a
+    // turn is in flight keeps its files — the drain re-resolves/uploads
+    // them. Without this the queue stored text only and files were lost.
+    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments };
     setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
@@ -1042,6 +1049,10 @@ function AppCore() {
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
+
+  // Display modal (theme + 8-bit style), opened from the bottom-right
+  // "gamepad" corner button.
+  const [themeModalOpen, setThemeModalOpen] = useState(false);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -2311,6 +2322,7 @@ function AppCore() {
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
     };
+    trackAgentSessionStarted();
     const streamNewSessionFn = () => streamNewSession(text, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
@@ -2447,7 +2459,7 @@ function AppCore() {
   };
 
   // Send inside an existing task
-  const handleSendInTask = async (text) => {
+  const handleSendInTask = async (text, queuedAttachments = null) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -2486,7 +2498,12 @@ function AppCore() {
     //      rapid clicks both pass the guard and we'd end up with
     //      two parallel streams, the first one's controller leaked.
     if (activeStreamingTaskIdRef.current === id || activeStreamCtrlRef.current) {
-      enqueueMessage(id, text);
+      // Queue with the files attached so a mid-stream send doesn't drop
+      // them. A fresh send takes the composer's attachments and clears
+      // them (the queued item now owns them); a re-enqueued queued item
+      // reuses its own and leaves the live composer untouched.
+      enqueueMessage(id, text, queuedAttachments ?? composerAttachments);
+      if (queuedAttachments == null) setComposerAttachments([]);
       return;
     }
     // Synchronous reservation so a second invocation that fires
@@ -2513,7 +2530,9 @@ function AppCore() {
       ({ merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
-        composerAttachments,
+        // A drained queued item carries its own attachments; only a
+        // fresh send pulls from the live composer.
+        queuedAttachments ?? composerAttachments,
       ));
     } catch (err) {
       // Attachment resolution failed before we ever started the
@@ -2542,7 +2561,10 @@ function AppCore() {
           }
         : t,
     ));
-    setComposerAttachments([]);
+    // A fresh send just consumed the live composer's attachments; a
+    // drained queued item brought its own, so don't wipe whatever the
+    // user may have started composing since.
+    if (queuedAttachments == null) setComposerAttachments([]);
 
     let assistantContent = '';
     let streamState = initialStreamState();
@@ -2569,6 +2591,18 @@ function AppCore() {
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      // Migrate the form store so a success-state panel (e.g. the
+      // OAuth success screen set just before onContinue was called)
+      // survives the ID change and stays visible under the new task id.
+      const existingForm = getDataVaultForm(previousId);
+      if (existingForm) {
+        const existingFormState = getDataVaultFormState(previousId);
+        const existingMethod = getDataVaultSelectedMethod(previousId);
+        setDataVaultForm(sid, existingForm);
+        if (existingFormState) setDataVaultFormState(sid, existingFormState);
+        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
+        clearDataVaultForm(previousId);
+      }
     };
 
     const flushStreaming = () => {
@@ -2662,7 +2696,7 @@ function AppCore() {
         // what enqueueMessage used while the adoption was pending.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text));
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
         }
       },
       onError(message, event) {
@@ -2686,7 +2720,7 @@ function AppCore() {
         // queue. The next item gets its own shot at the LLM.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text));
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
         }
       },
     });
@@ -2734,7 +2768,11 @@ function AppCore() {
       // the success patch falls through to a bare setForm.
       const existingForm = getDataVaultForm(previousId);
       if (existingForm) {
+        const existingFormState = getDataVaultFormState(previousId);
+        const existingMethod = getDataVaultSelectedMethod(previousId);
         setDataVaultForm(sid, existingForm);
+        if (existingFormState) setDataVaultFormState(sid, existingFormState);
+        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
         clearDataVaultForm(previousId);
       }
     };
@@ -2791,6 +2829,7 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
+              trackDataSourceConnected(currentForm._connector_id || currentForm.engine || 'unknown');
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,
@@ -2806,6 +2845,17 @@ function AppCore() {
       onChunk(chunk, sid) {
         if (sid) adoptServerId(sid);
         assistantContent += chunk;
+        // data-vault-form-patch blocks are delivered as complete deltas —
+        // parse and apply them immediately so the panel can show the
+        // spinner (_is_probing), status updates, and the error card
+        // (form_error) in real-time without waiting for MarkdownCode.
+        const patchMatch = /```data-vault-form-patch\n([\s\S]*?)\n```/.exec(chunk);
+        if (patchMatch) {
+          try {
+            const patch = JSON.parse(patchMatch[1]);
+            patchDataVaultForm(resolvedId || id, patch);
+          } catch {}
+        }
       },
       onDone(sid) {
         if (sid) adoptServerId(sid);
@@ -3052,27 +3102,45 @@ function AppCore() {
     }).catch(() => {});
   };
 
-  const handleMoveTaskToProject = async (taskId, projectName) => {
-    // eslint-disable-next-line no-console
-    console.log('[handleMoveTaskToProject]', taskId, '→', projectName);
-    if (!projectName) return;
-    setTasks((prev) => prev.map((t) =>
-      t.id === taskId
-        ? { ...t, projectName, projectPath: projects.find((p) => p.name === projectName)?.path || t.projectPath }
-        : t
-    ));
+  // Opening the picker just stashes the task; the modal collects the
+  // destination + "move everything" choice and calls handleConfirmMove.
+  const handleOpenMoveModal = (task) => {
+    if (task?.id) setMoveModalTask(task);
+  };
+
+  const handleConfirmMove = async (destName, { isNew = false, moveEverything = true } = {}) => {
+    const task = moveModalTask;
+    if (!task || !destName) return;
+    let targetName = destName;
+    let targetPath = task.projectPath;
     try {
-      await moveConversation(taskId, projectName);
-      // eslint-disable-next-line no-console
-      console.log('[handleMoveTaskToProject] server move ok');
+      if (isNew) {
+        const created = await createProject(destName);
+        targetName = created?.name || destName;
+        targetPath = created?.path || targetPath;
+        const freshProjects = await fetchProjects();
+        if (Array.isArray(freshProjects)) setProjects(freshProjects);
+      } else {
+        targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
+      }
+      // Optimistic: show the task under the new project immediately.
+      setTasks((prev) => prev.map((t) =>
+        t.id === task.id
+          ? { ...t, projectName: targetName, projectPath: targetPath }
+          : t
+      ));
+      await moveTaskToProject(task.id, targetName, moveEverything);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[handleMoveTaskToProject] server move failed', e);
+      console.error('[move task] failed', e);
+    } finally {
+      setMoveModalTask(null);
     }
-    // Refresh sessions so the server's canonical project mapping wins
-    // if our optimistic guess was wrong.
+    // Server is canonical — refresh tasks + projects after the move.
     const fresh = await fetchSessions();
     if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+    const freshProjects = await fetchProjects();
+    if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
   const refreshSchedules = async () => {
@@ -3255,7 +3323,7 @@ function AppCore() {
           onUnpinTask={handleUnpinTask}
           onRenameTask={handleRenameTask}
           onDeleteTask={handleDeleteTask}
-          onMoveTaskToProject={handleMoveTaskToProject}
+          onMoveTaskToProject={handleOpenMoveModal}
           projects={projects}
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
@@ -3310,6 +3378,14 @@ function AppCore() {
         flex: 1, minWidth: 0, minHeight: 0,
         display: 'flex', flexDirection: 'column',
         background: mainBg,
+        // Opt the whole content column out of the window drag region.
+        // Without this, the empty canvas inherits the root's
+        // `-webkit-app-region: drag` (App container), and Electron then
+        // swallows mouse events over it — so clicking the canvas never
+        // reaches any outside-click handler and dropdowns can't dismiss
+        // (desktop only; the web build has no drag regions). The window
+        // still drags via the sidebar header and the window's top strip.
+        WebkitAppRegion: 'no-drag',
       }}>
         {route === 'home' && (
           <HomeView
@@ -3368,7 +3444,7 @@ function AppCore() {
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
-            onMoveTaskToProject={handleMoveTaskToProject}
+            onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
@@ -3409,6 +3485,7 @@ function AppCore() {
             }}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
+            onMoveTaskToProject={handleOpenMoveModal}
             onDeleteProject={handleDeleteProject}
             attachments={composerAttachments}
             connectors={connectors}
@@ -3521,6 +3598,7 @@ function AppCore() {
               setRoute('schedule-detail');
             }}
             onDeleteTask={handleDeleteTask}
+            onMoveTaskToProject={handleOpenMoveModal}
           />
         )}
 
@@ -3720,30 +3798,52 @@ function AppCore() {
         }}
       />
 
-      {/* Floating theme toggle (bottom-right). Lives outside the sidebar so
-          it's always reachable, including when the sidebar is collapsed. */}
-      <button
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        aria-label="Toggle colour theme"
-        className="floating-theme-toggle"
-        style={{ WebkitAppRegion: 'no-drag' }}
-      >
-        {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-      </button>
+      {/* Floating theme + display toggles (bottom-right). Hidden on the
+          Settings page — it has its own theme/style controls, and the
+          floating buttons otherwise overlap the Save button there. */}
+      {route !== 'settings' && (
+        <>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label="Toggle colour theme"
+            className="floating-theme-toggle"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+          </button>
 
-      {/* Floating skin toggle — stacked above the theme toggle. Cycles
-          through the SKINS registry, same persistence model as
-          light/dark. */}
-      <button
-        onClick={() => setSkin(nextSkin(skin))}
-        title={`Style: ${skinLabel(skin)} — switch to ${skinLabel(nextSkin(skin))}`}
-        aria-label={`Switch style to ${skinLabel(nextSkin(skin))}`}
-        className="floating-theme-toggle floating-skin-toggle"
-        style={{ WebkitAppRegion: 'no-drag' }}
-      >
-        {Ico.gamepad(15)}
-      </button>
+          {/* Style toggle — stacked above the theme toggle. Flips directly
+              between 8-bit arcade and smooth (like the sun/moon theme
+              toggle). The icon shows the destination style. */}
+          <button
+            onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
+            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
+            aria-label="Toggle 8-bit arcade style"
+            className="floating-theme-toggle floating-skin-toggle"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            {Ico.gamepad(15)}
+          </button>
+        </>
+      )}
+
+      <ThemeModal
+        open={themeModalOpen}
+        onClose={() => setThemeModalOpen(false)}
+        theme={theme}
+        onThemeChange={setTheme}
+        skin={skin}
+        onSkinChange={setSkin}
+      />
+
+      <MoveToProjectModal
+        open={!!moveModalTask}
+        task={moveModalTask}
+        projects={projects}
+        onClose={() => setMoveModalTask(null)}
+        onConfirm={handleConfirmMove}
+      />
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (

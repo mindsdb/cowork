@@ -6,7 +6,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { fetchMemory, fetchArtifacts } from '../../api';
+import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
+import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -64,18 +65,14 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
   const [artCount, setArtCount] = useState(null);
 
   useEffect(() => {
-    if (!project?.path) return;
+    if (!project?.id && !project?.path) return;
     let cancelled = false;
-    fetchMemory(project.path).then((data) => {
+    fetchMemory(project).then((data) => {
       if (cancelled) return;
-      const total = (data?.sections || []).reduce(
-        (n, s) => n + (s.files?.length || 0),
-        0,
-      );
-      setMemCount(total);
+      setMemCount(countNonEmptyMemory(data));
     }).catch(() => setMemCount(0));
     return () => { cancelled = true; };
-  }, [project?.path]);
+  }, [project?.id, project?.path]);
 
   useEffect(() => {
     if (!project?.path) return;
@@ -129,17 +126,18 @@ export function ProjectCard({
   onOpen,
   onTogglePin,
   onMenuOpen,
+  isMenuOpen = false,
   onRenameSubmit,
   onRenameCancel,
 }) {
   const stats = useProjectStats(project, { tasks, scheduled });
   const summary = activitySummary(project, tasks);
   const active = isProjectActive(project, tasks);
-  const [hover, setHover] = useState(false);
+  const { hovered, revealed, hoverProps } = useRevealOnHover(isMenuOpen);
   const triggerRef = useRef(null);
   const renameInputRef = useRef(null);
 
-  const showHoverActions = hover || pinned;
+  const showHoverActions = revealed || pinned;
   const isReserved = project.name === 'general' || project.name === 'default';
 
   // When entering edit mode, focus + select the entire name on the
@@ -180,12 +178,11 @@ export function ProjectCard({
       tabIndex={0}
       onClick={handleCardClick}
       onKeyDown={handleCardKey}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
       style={{
         cursor: editing ? 'default' : 'pointer',
-        background: hover && !editing ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${editing ? 'var(--accent)' : (isSelected ? 'var(--accent)' : (hover ? 'var(--line-2)' : 'var(--line)'))}`,
+        background: hovered && !editing ? 'var(--surface-2)' : 'var(--surface)',
+        border: `1px solid ${editing ? 'var(--accent)' : (isSelected ? 'var(--accent)' : (hovered ? 'var(--line-2)' : 'var(--line)'))}`,
         borderRadius: 10,
         padding: '14px 16px',
         minHeight: 120,

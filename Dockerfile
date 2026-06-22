@@ -20,7 +20,7 @@
 #   py-builder    Python + uv — installs cowork-server from PyPI into /opt/venv
 #   runtime       Python — copies /opt/venv + SPA + wrapper.
 
-ARG COWORK_SERVER_VERSION=0.1.4
+ARG COWORK_SERVER_VERSION=0.1.9
 
 # ── Stage 1: build the cowork SPA ────────────────────────────────────────
 FROM node:22-slim AS spa-builder

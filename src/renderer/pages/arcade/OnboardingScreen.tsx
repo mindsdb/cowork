@@ -13,6 +13,7 @@ import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
+import { LegalViewer } from './TermsScreen';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
@@ -103,26 +104,6 @@ function buildProviderEnv(
   return env;
 }
 
-function StageDots({ step }: { step: 1 | 2 }) {
-  const dot = (n: 1 | 2): React.CSSProperties => ({
-    width: 24, height: 24,
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 11, fontWeight: 700, borderRadius: 3,
-    color: step === n ? 'var(--arc-bg)' : 'var(--arc-dim)',
-    background: step === n ? 'var(--arc-cyan)' : 'transparent',
-    border: `1px solid ${step === n ? 'var(--arc-cyan)' : 'var(--arc-edge-2)'}`,
-    boxShadow: step === n ? '0 0 14px color-mix(in srgb, var(--arc-cyan) 40%, transparent)' : 'none',
-  });
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }} aria-label={`Stage ${step} of 2`}>
-      <span style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--arc-dim)', marginRight: 4 }}>STAGE</span>
-      <span style={dot(1)}>1</span>
-      <span style={{ width: 28, height: 1, background: 'var(--arc-edge-2)' }} />
-      <span style={dot(2)}>2</span>
-    </div>
-  );
-}
-
 export default function OnboardingScreen({
   coworker,
   onComplete,
@@ -154,6 +135,8 @@ export default function OnboardingScreen({
   // effect (which re-runs on `provider` toggles) can't double-save /
   // double-fire onComplete.
   const finalizedRef = useRef(false);
+  // Inline Terms/Privacy viewer for the "by continuing you agree" line.
+  const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
 
   // Per-provider model lists, owned by cowork-server and fetched at runtime
   // (same source minds-cloud already uses) — no model names are hardcoded
@@ -315,14 +298,23 @@ export default function OnboardingScreen({
       resolveValidationTarget(byokProvider, customBaseUrl);
     const key = llmApiKey.trim() || (byokProvider === 'openai-compatible' ? 'not-needed' : '');
 
-    const result = await host.validateProvider(
-      validationProvider,
-      key,
-      validationBaseUrl || undefined,
-      resolvedModel
-    );
+    // Validate against the backend when it's reachable. In the login-first
+    // flow the cowork-server may not be installed yet (install runs after
+    // auth), so a network failure here isn't a rejection — defer validation
+    // and let the backend validate on first use.
+    let result: { ok: boolean; error?: string } | null = null;
+    try {
+      result = await host.validateProvider(
+        validationProvider,
+        key,
+        validationBaseUrl || undefined,
+        resolvedModel
+      );
+    } catch {
+      result = null; // server unreachable — proceed, validate later
+    }
 
-    if (!result.ok) {
+    if (result && !result.ok) {
       setPhase('minds-no-llm');
       setErrorMsg(result.error || 'Validation failed');
       return;
@@ -337,6 +329,9 @@ export default function OnboardingScreen({
     };
     merged.ANTON_MEMORY_MODE = merged.ANTON_MEMORY_MODE || 'autopilot';
     merged.ANTON_EPISODIC_MEMORY = merged.ANTON_EPISODIC_MEMORY || 'true';
+    // Continuing past the auth screen records terms consent (the standalone
+    // terms screen is gone — consent is implicit per the "by continuing" line).
+    merged.ANTON_TERMS_CONSENT = 'true';
 
     if (finalizedRef.current) return;
     finalizedRef.current = true;
@@ -364,7 +359,7 @@ export default function OnboardingScreen({
           `Sign-in timed out — the browser never finished authorizing. Try again and complete the newest tab it opens (close any older "You're authorized" tabs), or press ${reloadKey} to reload.`,
         );
       } else if (/cancelled/i.test(reason)) {
-        setErrorMsg('Sign-in was cancelled. Press SIGN IN WITH MINDSHUB to try again.');
+        setErrorMsg('Sign-in was cancelled. Press Sign in with MindsHub to try again.');
       } else {
         setErrorMsg(reason || 'Sign in failed. Please try again.');
       }
@@ -416,17 +411,22 @@ export default function OnboardingScreen({
     return () => { cancelled = true; };
   }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Full-screen Terms/Privacy reader (opened from the consent line).
+  if (legalDoc) {
+    return <LegalViewer doc={legalDoc} onClose={() => setLegalDoc(null)} />;
+  }
+
   // ── Victory ────────────────────────────────────────────────────────
   if (phase === 'success') {
     return (
-      <ArcadeShell title="POWER UP" subtitle="connect a power source">
+      <ArcadeShell title="All set" subtitle="you're signed in">
         <div className="arc-stack arc-pop" style={{ gap: 18 }}>
           <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--arc-green)' }}>
-            {coworker.label} JOINS YOUR PARTY!
+            You're all set!
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, letterSpacing: '0.1em', color: 'var(--arc-muted)' }}>
-            <PixelSprite name="coin" size={18} /> POWER SOURCE CONNECTED
+            <PixelSprite name="coin" size={18} /> Ready to go
           </div>
         </div>
       </ArcadeShell>
@@ -449,17 +449,15 @@ export default function OnboardingScreen({
   if (step === 'byok' && (phase === 'minds-no-llm' || phase === 'validating')) {
     const showLlmForm = phase === 'minds-no-llm';
     return (
-      <ArcadeShell title="POWER UP" subtitle={`choose a power source for ${coworker.label.toLowerCase()}`}>
-        <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(480px, 100%)' }}>
+      <ArcadeShell title="Use your own key" subtitle="add an LLM provider to continue">
+        <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
           {phase === 'validating' && validatingBlock}
 
           {showLlmForm && (
             <>
-              <StageDots step={2} />
-
               <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
                 {skippedMinds
-                  ? <>GUEST MODE — pick an LLM provider for {coworker.label} to run on. You can add MindsHub later in Settings → Providers (needed to publish artifacts to the web).</>
+                  ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to publish to the web).</>
                   : <>Your MindsHub key is valid and saved for publishing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
               </div>
 
@@ -475,11 +473,11 @@ export default function OnboardingScreen({
                   setErrorMsg('');
                   setLlmApiKey('');
                 }}
-              >← back to MindsHub setup</button>
+              >← back to sign in</button>
 
               <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, textAlign: 'left' }}>
                 <div>
-                  <label className="arc-label">Select a power source</label>
+                  <label className="arc-label">Select a provider</label>
                   <div className="arc-seg-row">
                     <button type="button" className={`arc-seg ${byokProvider === 'anthropic' ? 'selected' : ''}`} onClick={() => handleSwitchByokProvider('anthropic')}>Anthropic</button>
                     <button type="button" className={`arc-seg ${byokProvider === 'openai' ? 'selected' : ''}`} onClick={() => handleSwitchByokProvider('openai')}>OpenAI</button>
@@ -570,7 +568,7 @@ export default function OnboardingScreen({
               )}
 
               <button className="arc-btn" disabled={!canConnectLlm} onClick={handleConnectLlm}>
-                ⚡ CONNECT
+                Connect
               </button>
             </>
           )}
@@ -581,24 +579,15 @@ export default function OnboardingScreen({
 
   // ── Stage 1: MindsHub ──────────────────────────────────────────────
   return (
-    <ArcadeShell title="POWER UP" subtitle={`connect a power source for ${coworker.label.toLowerCase()}`}>
-      <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(480px, 100%)' }}>
-        <StageDots step={1} />
-
+    <ArcadeShell title="Sign in" subtitle="sign in or create a free account to continue">
+      <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
         <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'left', borderColor: 'color-mix(in srgb, var(--arc-cyan) 35%, transparent)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <PixelSprite name="bolt" size={26} title="MindsHub" />
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--arc-ink)' }}>MINDSHUB</div>
-                <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--arc-dim)', marginTop: 2 }}>MANAGED BY MINDSDB</div>
-              </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <PixelSprite name="bolt" size={26} title="MindsHub" />
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--arc-ink)' }}>MINDSHUB</div>
+              <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--arc-dim)', marginTop: 2 }}>MANAGED BY MINDSDB</div>
             </div>
-            <span style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: '0.12em',
-              color: 'var(--arc-bg)', background: 'var(--arc-cyan)',
-              borderRadius: 3, padding: '3px 8px', flex: 'none',
-            }}>RECOMMENDED</span>
           </div>
 
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -617,7 +606,7 @@ export default function OnboardingScreen({
                 disabled={phase === 'validating'}
                 onClick={handleMindsSSO}
               >
-                {phase === 'validating' ? 'SIGNING IN…' : '▶ SIGN IN WITH MINDSHUB'}
+                {phase === 'validating' ? 'Signing in…' : 'Sign in with MindsHub'}
               </button>
               <div style={{ fontSize: 10.5, letterSpacing: '0.05em', color: 'var(--arc-dim)', textAlign: 'center' }}>
                 No account?{' '}
@@ -625,7 +614,7 @@ export default function OnboardingScreen({
                   type="button"
                   className="arc-link"
                   onClick={() => host.openExternal(MINDS_REGISTER_URL)}
-                >Insert coin — first week free →</button>
+                >Create one for free →</button>
               </div>
             </>
           ) : (
@@ -650,7 +639,7 @@ export default function OnboardingScreen({
                 disabled={!canConnect || phase === 'validating'}
                 onClick={handleConnect}
               >
-                {phase === 'validating' ? 'CONNECTING…' : '⚡ CONNECT'}
+                {phase === 'validating' ? 'Connecting…' : 'Connect'}
               </button>
               <div style={{ fontSize: 10.5, letterSpacing: '0.05em', color: 'var(--arc-dim)', textAlign: 'center' }}>
                 No account?{' '}
@@ -658,7 +647,7 @@ export default function OnboardingScreen({
                   type="button"
                   className="arc-link"
                   onClick={() => host.openExternal(MINDS_REGISTER_URL)}
-                >Insert coin — first week free →</button>
+                >Create one for free →</button>
               </div>
             </>
           )}
@@ -685,7 +674,16 @@ export default function OnboardingScreen({
               setSkippedMinds(true);
               setPhase('minds-no-llm');
             }}
-          >GUEST MODE → bring my own LLM key</button>
+          >Continue without an account →</button>
+        )}
+
+        {phase !== 'validating' && (
+          <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
+            By continuing, you agree to our{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
+            and{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
+          </div>
         )}
 
         {onBack && phase !== 'validating' && (
