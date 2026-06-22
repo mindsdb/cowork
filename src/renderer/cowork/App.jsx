@@ -3103,19 +3103,25 @@ function AppCore() {
   const handleConfirmMove = async (destName, { isNew = false, moveEverything = true } = {}) => {
     const task = moveModalTask;
     if (!task || !destName) return;
+    let targetName = destName;
+    let targetPath = task.projectPath;
     try {
       if (isNew) {
-        await createProject(destName);
+        const created = await createProject(destName);
+        targetName = created?.name || destName;
+        targetPath = created?.path || targetPath;
         const freshProjects = await fetchProjects();
         if (Array.isArray(freshProjects)) setProjects(freshProjects);
+      } else {
+        targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
       }
       // Optimistic: show the task under the new project immediately.
       setTasks((prev) => prev.map((t) =>
         t.id === task.id
-          ? { ...t, projectName: destName, projectPath: projects.find((p) => p.name === destName)?.path || t.projectPath }
+          ? { ...t, projectName: targetName, projectPath: targetPath }
           : t
       ));
-      await moveTaskToProject(task.id, destName, moveEverything);
+      await moveTaskToProject(task.id, targetName, moveEverything);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[move task] failed', e);
