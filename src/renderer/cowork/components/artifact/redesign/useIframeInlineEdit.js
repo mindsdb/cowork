@@ -166,9 +166,10 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
   }, [iframeRef]);
 
   // Commit any pending text change. Diffs each editable element's innerHTML
-  // against its value at engage and hands the host the changed { find, replace }
-  // fragments; advances the per-element baselines so a later commit in the same
-  // session re-diffs from here. Only fires when there was real input (dirty).
+  // against its value at engage and hands the host the changed { locator, html }
+  // fragments (locator = a structural id-anchored path to the element); advances
+  // the per-element baselines so a later commit in the same session re-diffs from
+  // here. Only fires when there was real input (dirty).
   const commit = useCallback(() => {
     const s = sessionRef.current;
     if (!s) return;
@@ -208,7 +209,10 @@ export function useIframeInlineEdit({ iframeRef, active, onSaveHtml, onError } =
       .then(() => onSaveRef.current?.({ edits }))
       .then((res) => {
         savingRef.current = false;
-        if (res && res.ok === false) return; // save failed → keep dirty so the user can retry
+        // Advance baselines / clear dirty ONLY on an explicit success. A falsy or
+        // shapeless result (failed save, or a host that didn't return { ok:true })
+        // keeps the edit dirty and re-savable rather than silently dropping it.
+        if (!res || res.ok !== true) return;
         for (const [el, html] of snapshot) {
           try { el.__coworkInnerAtEngage = html; } catch { /* detached */ }
         }

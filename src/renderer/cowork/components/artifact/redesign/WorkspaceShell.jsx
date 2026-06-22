@@ -4,19 +4,20 @@
  * This is NOT a modal. It is the full-height application frame: macOS traffic lights,
  * then a flex row of [icon rail] + [main panel]. The main panel is a rounded surface
  * card holding the top bar, the body (canvas + collapsible right rail), and an optional
- * bottom strip (e.g. the version scrubber).
+ * full-width bottom strip.
  *
  * Pure presentational shell (M0 chassis). All content arrives via slots so the
  * composition agent wires real data in later. Renders standalone with mock slots.
  *
  * Props (all slots are ReactNodes unless noted):
- *   iconRail      — left rail slot. Typically <IconRail/>. Has a built-in mock fallback.
+ *   iconRail      — left rail slot. Pass null to omit (the app modal already supplies the
+ *                   nav rail); undefined shows a built-in mock for standalone preview.
  *   topBar        — header slot inside the main panel. Typically <TopBar/>. Mock fallback.
  *   children      — the canvas / stage. Fills remaining width (flex:1).
  *   rail          — right rail slot (376px). Hidden when railCollapsed is true.
  *   railCollapsed boolean  — collapse the right rail and show a floating "Story" handle.
  *   onToggleRail  function — invoked by the collapse handle / collapsed-rail button.
- *   bottomStrip   — full-width strip under the body (e.g. scrubber). Omitted if absent.
+ *   bottomStrip   — full-width strip under the body. Omitted if absent.
  */
 
 import React from 'react';

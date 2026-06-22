@@ -5,22 +5,16 @@
  * owner's artifact. The hero action is "Fix with AI" (AI gradient): one click should
  * hand the reviewer's notes to the M1 inline-edit pipeline (Anton rewrites in place).
  *
- * Two visual keys:
- *   - verdict 'changes'  → danger-tinted gradient bg, danger border (action needed).
- *   - verdict 'approved' → success-tinted bg, success border (informational; the
- *                          "Fix with AI" CTA is suppressed, only "View" remains).
- *
- * Pure presentational. No data fetching — the parent owns dismissal + wires callbacks.
+ * Danger-tinted gradient bg + border signals action is needed; the hero action is
+ * "Fix with AI". Pure presentational — the parent owns dismissal + wires callbacks.
  * Renders standalone with mock defaults so it can be eyeballed in isolation.
  *
  * Props:
  *   reviewer      { name, initials, color } — author of the review. `color` is any CSS
  *                  background (defaults to the AI gradient, matching reviewer pins).
- *   verdict       'changes' | 'approved' — drives copy + color. Default 'changes'.
  *   commentCount  number   — count shown after the verdict line. Default 2.
  *   note          string   — quoted reviewer note. Pass '' to hide the quote line.
- *   onFixWithAI   function  — hero gradient CTA (changes verdict only).
- *   onView        function  — secondary "View comments" / "View" handler.
+ *   onFixWithAI   function  — hero gradient CTA.
  *   onDismiss     function  — close (X) handler.
  */
 
@@ -48,22 +42,17 @@ const DEFAULT_REVIEWER = { name: 'Maya Chen', initials: 'MC', color: AI_GRADIENT
 
 export function ReviewBanner({
   reviewer = DEFAULT_REVIEWER,
-  verdict = 'changes',
   commentCount = 2,
   note = 'Punchy — but add the absolute ARR, and annotate the spike.',
   onFixWithAI,
-  onView,
   onDismiss,
 } = {}) {
   const r = reviewer ?? DEFAULT_REVIEWER;
-  const approved = verdict === 'approved';
 
-  // Tone: changes = danger-leaning gradient; approved = calm success wash.
-  const bg = approved
-    ? 'linear-gradient(100deg,rgba(74,222,128,.10),rgba(34,211,238,.06))'
-    : 'linear-gradient(100deg,rgba(248,113,113,.10),rgba(34,211,238,.06))';
-  const border = approved ? '1px solid rgba(74,222,128,.3)' : '1px solid rgba(248,113,113,.3)';
-  const verb = approved ? 'approved this artifact' : 'requested changes';
+  // Danger-leaning gradient: a returned review means action is needed.
+  const bg = 'linear-gradient(100deg,rgba(248,113,113,.10),rgba(34,211,238,.06))';
+  const border = '1px solid rgba(248,113,113,.3)';
+  const verb = 'requested changes';
 
   const avatarBg = r.color || AI_GRADIENT;
   const avatarInk = String(avatarBg).includes('gradient') ? '#04121a' : 'var(--ink)';
@@ -117,55 +106,30 @@ export function ReviewBanner({
         ) : null}
       </div>
 
-      {/* Hero — Fix with AI (gradient). Suppressed when approved (nothing to fix). */}
-      {!approved ? (
-        <button
-          type="button"
-          onClick={onFixWithAI}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            height: 30,
-            padding: '0 13px',
-            borderRadius: 8,
-            border: 'none',
-            background: AI_GRADIENT,
-            color: '#04121a',
-            fontSize: 12,
-            fontWeight: 600,
-            fontFamily: 'inherit',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          <SparkleIcon />
-          Fix with AI
-        </button>
-      ) : null}
-
-      {/* Secondary — view the comments / the approval */}
-      {onView ? (
-        <button
-          type="button"
-          onClick={onView}
-          style={{
-            height: 30,
-            padding: '0 13px',
-            borderRadius: 8,
-            border: '1px solid var(--line-2)',
-            background: 'transparent',
-            color: 'var(--ink-2)',
-            fontSize: 12,
-            fontWeight: 500,
-            fontFamily: 'inherit',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
-        >
-          {approved ? 'View' : 'View comments'}
-        </button>
-      ) : null}
+      {/* Hero — Fix with AI (gradient). */}
+      <button
+        type="button"
+        onClick={onFixWithAI}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          height: 30,
+          padding: '0 13px',
+          borderRadius: 8,
+          border: 'none',
+          background: AI_GRADIENT,
+          color: '#04121a',
+          fontSize: 12,
+          fontWeight: 600,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        <SparkleIcon />
+        Fix with AI
+      </button>
 
       {/* Dismiss */}
       {onDismiss ? (

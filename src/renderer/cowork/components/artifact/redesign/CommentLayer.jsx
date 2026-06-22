@@ -36,7 +36,7 @@ function CommentGlyph({ size = 13, color = 'currentColor' }) {
 }
 
 /* ── a single numbered teardrop marker ─────────────────────────────── */
-function Pin({ pin, active, selected = false, onSelect }) {
+function Pin({ pin, selected = false, onSelect }) {
   const isAI = pin.ai || pin.author?.color?.includes?.('gradient');
   // Open comments must be easy to spot on ANY background, so use the bright accent
   // (AI gradient for AI authors) — never the dim author swatch — plus a white ring
@@ -46,7 +46,7 @@ function Pin({ pin, active, selected = false, onSelect }) {
     <button
       type="button"
       onClick={(e) => {
-        // While active, selecting a pin must NOT also drop a new one.
+        // Selecting a pin must NOT also drop a new one (stop the overlay's click).
         e.stopPropagation();
         onSelect?.(pin.id);
       }}
@@ -424,7 +424,7 @@ export function CommentLayer({
           slide (prose, generic HTML) always show. Clicking a pin opens its popover
           (the comment shown right at its location). */}
       {visiblePins.map((p) => (
-        <Pin key={p.id} pin={p} active={active} selected={p.id === activeId} onSelect={onActiveChange} />
+        <Pin key={p.id} pin={p} selected={p.id === activeId} onSelect={onActiveChange} />
       ))}
       {activePin ? (
         <PinPopover

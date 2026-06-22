@@ -43,7 +43,9 @@ export const EDIT_STATES = Object.freeze({
 // Swap this out by passing a real `proposeEdit` to the hook.
 const MOCK_LATENCY_MS = 1200;
 
-function mockRewrite(text, instruction) {
+// Exported so the workspace's degraded-edit fallback (when the backend edit endpoint
+// is absent) uses the SAME mock as the hero inline-edit, not a second copy that drifts.
+export function mockRewrite(text, instruction) {
   const t = String(text || '').trim();
   const i = String(instruction || '').toLowerCase();
 

@@ -14,9 +14,6 @@
 @keyframes riseIn   { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes slideIn  { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
 
-/* Hover helper — quiet surface lift on interactive rail/list items. */
-.rd-hov:hover { background: var(--surface-2); }
-
 /* Shared layout constants for the redesigned workspace. */
 .rd-workspace-shell {
   --rd-icon-rail-width: 56px;

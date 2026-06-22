@@ -17,14 +17,15 @@ import { Modal } from '../../ui/Modal';
 
 import './redesign.css';
 import { WorkspaceShell, TopBar } from './index.js';
-import { StoryRail } from './storyRailIndex.js';
-import { EditableBlock } from './editIndex.js';
-import { ReviewBanner } from './reviewIndex.js';
+import { StoryRail } from './StoryRail.jsx';
+import { EditableBlock } from './EditableBlock.jsx';
+import { ReviewBanner } from './ReviewBanner.jsx';
 import { useArtifactChat } from './useArtifactChat.js';
 import { useCurrentUser } from './useCurrentUser.js';
 import { CommentLayer } from './CommentLayer.jsx';
 import { EditableProse } from './EditableProse.jsx';
 import { useIframeInlineEdit } from './useIframeInlineEdit.js';
+import { mockRewrite } from './useInlineEdit.js';
 import { saveArtifactContent } from './saveArtifactContent.js';
 import { VersionDiff } from './VersionDiff.jsx';
 
@@ -109,16 +110,21 @@ function splitParagraphs(text) {
     .filter(Boolean);
 }
 
-function relativeWhen(value) {
-  if (!value) return '';
+// Server timestamps are UTC but often lack an offset (e.g. "2026-06-21T12:09:24").
+// JS would parse that as LOCAL time, making recent edits read as "1h ago". Tag bare
+// datetime strings as UTC before parsing. Single source of truth so relativeWhen and
+// toEpoch can't drift (the drift WAS the "1h ago" bug).
+function toUtcDate(value) {
   let v = value;
-  // Server timestamps are UTC but often lack an offset (e.g. "2026-06-21T12:09:24").
-  // JS would parse that as LOCAL time, making recent edits read as "1h ago".
-  // Tag bare datetime strings as UTC so the relative time is correct.
   if (typeof v === 'string' && /\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(v)) {
     v = v.replace(' ', 'T') + 'Z';
   }
-  const d = new Date(v);
+  return new Date(v);
+}
+
+function relativeWhen(value) {
+  if (!value) return '';
+  const d = toUtcDate(value);
   if (Number.isNaN(d.getTime())) return String(value);
   const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
   if (secs < 60) return 'just now';
@@ -130,11 +136,7 @@ function relativeWhen(value) {
 // Epoch ms for a server timestamp (UTC-corrected) — used to time-group versions.
 function toEpoch(value) {
   if (!value) return 0;
-  let v = value;
-  if (typeof v === 'string' && /\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(v) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(v)) {
-    v = v.replace(' ', 'T') + 'Z';
-  }
-  const t = new Date(v).getTime();
+  const t = toUtcDate(value).getTime();
   return Number.isNaN(t) ? 0 : t;
 }
 
@@ -219,8 +221,7 @@ function mapStoryEvents({ comments }) {
     const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
     const email = c?.actorEmail || c?.notificationState?.actorEmail || c?.author?.email || '';
     const isReview = c?.kind === 'suggestion' || c?.kind === 'review';
-    const anchor = c?.anchor || {};
-    const hasPin = typeof (anchor.xPct ?? anchor.x) === 'number' && c?.status !== 'resolved' && c?.status !== 'rejected';
+    const anchorXY = commentAnchorXY(c);
     events.push({
       id: `c-${c?.id || events.length}`,
       commentId: c?.id,
@@ -231,8 +232,8 @@ function mapStoryEvents({ comments }) {
       when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
       ts: toEpoch(c?.createdAt || c?.created_at || c?.when),
       // Where it's anchored, so clicking the row can jump there + open the pin.
-      slide: typeof anchor.slide === 'number' ? anchor.slide : null,
-      locatable: hasPin,
+      slide: anchorXY?.slide ?? null,
+      locatable: commentHasPin(c),
       meta: { resolved: c?.status === 'resolved', dismissed: c?.status === 'rejected' },
     });
   }
@@ -241,19 +242,20 @@ function mapStoryEvents({ comments }) {
 
 // ── Canvas: prose (M1 hero), HTML (iframe), or placeholder ──────────────────────
 
-// Local mock so a missing/404 backend degrades gracefully INSTEAD of surfacing a
-// generation error. Mirrors useInlineEdit's built-in mock contract.
-function mockRewrite(text, instruction) {
-  const t = String(text || '').trim();
-  const i = String(instruction || '').toLowerCase();
-  if (i.includes('short') || i.includes('trim') || i.includes('concise')) {
-    const first = t.match(/^[^.!?]*[.!?]/);
-    return first ? first[0].trim() : t;
-  }
-  if (i.includes('warm') || i.includes('friendly')) {
-    return `Hi there — ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
-  }
-  return t.replace(/\.$/, '') + ' — refreshed.';
+// The "✓ Save changes / Done" affordance shared by the prose + HTML canvases: green
+// (commit a new version) when there are pending edits, quiet (just exit) otherwise.
+// onClick/zIndex differ per canvas; everything else is identical.
+function SaveExitButton({ dirty, onClick, zIndex = 30 }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={dirty ? 'Save your changes as a new version' : 'Finish editing'}
+      style={{ position: 'absolute', top: 12, right: 12, zIndex, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: dirty ? 'none' : '1px solid var(--line-2)', background: dirty ? 'var(--success)' : 'var(--surface-3)', color: dirty ? '#04150a' : 'var(--ink-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 8px 20px -8px rgba(0,0,0,.5)' }}
+    >
+      {dirty ? '✓ Save changes' : 'Done'}
+    </button>
+  );
 }
 
 function ProseCanvas({
@@ -414,14 +416,7 @@ function ProseCanvas({
       </div>
     </div>
     {editMode ? (
-      <button
-        type="button"
-        onClick={() => onExitEdit?.()}
-        title={dirty ? 'Save your changes as a new version' : 'Finish editing'}
-        style={{ position: 'absolute', top: 12, right: 12, zIndex: 30, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: dirty ? 'none' : '1px solid var(--line-2)', background: dirty ? 'var(--success)' : 'var(--surface-3)', color: dirty ? '#04150a' : 'var(--ink-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 8px 20px -8px rgba(0,0,0,.5)' }}
-      >
-        {dirty ? '✓ Save changes' : 'Done'}
-      </button>
+      <SaveExitButton dirty={dirty} onClick={() => onExitEdit?.()} zIndex={30} />
     ) : null}
     </>
   );
@@ -579,14 +574,7 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
       ) : null}
       {editMode && supported !== false ? (
         <>
-          <button
-            type="button"
-            onClick={() => { commit?.(); onExitEdit?.(); }}
-            title={dirty ? 'Save your changes as a new version' : 'Finish editing'}
-            style={{ position: 'absolute', top: 12, right: 12, zIndex: 20, display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 14px', borderRadius: 9, border: dirty ? 'none' : '1px solid var(--line-2)', background: dirty ? 'var(--success)' : 'var(--surface-3)', color: dirty ? '#04150a' : 'var(--ink-2)', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 8px 20px -8px rgba(0,0,0,.5)' }}
-          >
-            {dirty ? '✓ Save changes' : 'Done'}
-          </button>
+          <SaveExitButton dirty={dirty} onClick={() => { commit?.(); onExitEdit?.(); }} zIndex={20} />
           <div style={{ position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', background: 'var(--surface-3)', border: '1px solid var(--line-2)', color: 'var(--ink-3)', fontSize: 11.5, padding: '5px 11px', borderRadius: 20, whiteSpace: 'nowrap' }}>
             {dirty ? 'Unsaved edits — click Save to keep them as a new version' : 'Click any text and type — keep editing, then Save'}
           </div>
@@ -649,36 +637,57 @@ function isSettledComment(c) {
   return c?.resolved === true || s === 'resolved' || s === 'rejected' || s === 'dismissed' || s === 'accepted';
 }
 
+// A comment carries a positional anchor iff it has BOTH x and y (pct or raw).
+// Returns the normalized { xPct, yPct, slide } or null. Single source of truth so
+// the Story row's "click to locate" affordance and the on-canvas pin can never
+// disagree about whether a comment is locatable (the bug where a row offered a jump
+// to a pin that was never rendered).
+function commentAnchorXY(c) {
+  const a = c?.anchor || {};
+  const xPct = a.xPct ?? a.x_pct ?? a.x;
+  const yPct = a.yPct ?? a.y_pct ?? a.y;
+  if (typeof xPct !== 'number' || typeof yPct !== 'number') return null;
+  return { xPct, yPct, slide: typeof a.slide === 'number' ? a.slide : null };
+}
+
+// A comment shows an on-canvas pin (and is "locatable" from the Story) iff it's
+// still open AND carries a full positional anchor.
+function commentHasPin(c) {
+  return !isSettledComment(c) && commentAnchorXY(c) !== null;
+}
+
 // OPEN comments that carry an x/y anchor become canvas pins. Resolved/dismissed
 // comments are intentionally NOT marked up on the page (they live in the Story
 // rail) — only things that still need attention get a pin. Each pin also carries
 // the `slide` it was dropped on (for slide decks) so it shows only on that slide.
 function commentsToPins(comments) {
   const pins = [];
-  let n = 0;
+  // Number WITHIN each slide so a deck shows a contiguous 1,2,3 per page. (A single
+  // running counter across all slides made on-page numbers non-contiguous — e.g. a
+  // lone "Comment 5" on slide 3 — once CommentLayer filtered pins to the visible slide.)
+  const perSlide = new Map();
   for (const c of comments || []) {
     if (isSettledComment(c)) continue; // only open comments get on-canvas markup
-    const a = c?.anchor || {};
-    const xPct = a.xPct ?? a.x_pct ?? a.x;
-    const yPct = a.yPct ?? a.y_pct ?? a.y;
-    if (typeof xPct === 'number' && typeof yPct === 'number') {
-      n += 1;
-      const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
-      const slide = typeof a.slide === 'number' ? a.slide : null;
-      pins.push({
-        id: c?.id || `pin-${n}`,
-        n,
-        xPct,
-        yPct,
-        slide,
-        // Carried so clicking the pin can show the comment AT its location.
-        body: c?.body || c?.text || '',
-        area: a?.area || '',
-        when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
-        author: { name, initials: initialsOf(name), color: '#3a4d6e' },
-        resolved: false,
-      });
-    }
+    const anchor = commentAnchorXY(c);
+    if (!anchor) continue;
+    const { xPct, yPct, slide } = anchor;
+    const key = slide ?? '_';
+    const n = (perSlide.get(key) || 0) + 1;
+    perSlide.set(key, n);
+    const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
+    pins.push({
+      id: c?.id || `pin-${key}-${n}`,
+      n,
+      xPct,
+      yPct,
+      slide,
+      // Carried so clicking the pin can show the comment AT its location.
+      body: c?.body || c?.text || '',
+      area: c?.anchor?.area || '',
+      when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
+      author: { name, initials: initialsOf(name), color: '#3a4d6e' },
+      resolved: false,
+    });
   }
   return pins;
 }
@@ -738,7 +747,6 @@ export function ArtifactWorkspaceRedesign({
   // ── Data: versions + comments (real, from api.js) ─────────────────────────────
   const [versionsState, setVersionsState] = useState({ versions: [], currentVersionId: '' });
   const [commentsState, setCommentsState] = useState({ comments: [], activity: [] });
-  const [viewingN, setViewingN] = useState(null);
   // Bumped whenever the artifact's bytes change (AI edit, restore, inline edit)
   // so the canvas re-fetches/reloads — fixes the stale-preview-after-edit bug.
   const [reloadToken, setReloadToken] = useState(0);
@@ -925,7 +933,6 @@ export function ArtifactWorkspaceRedesign({
         const result = await restoreArtifactVersion(path, target.id, { createCheckpoint: true });
         flash(`Restored ${target.label} — earlier versions kept`);
         onChange?.({ ...artifact, restoredVersionId: target.id, mtime: Date.now(), ...(result?.artifact || {}) });
-        setViewingN(null);
         loadVersions();
         bumpReload();
       } catch (err) {
@@ -1121,13 +1128,12 @@ export function ArtifactWorkspaceRedesign({
 
   // The modal stays mounted across artifacts (only `artifact`/`open` change), so
   // reset transient view state when the artifact changes — otherwise edit/comment
-  // mode, an open Compare, a version-view, or a dismissed review banner from
-  // artifact A bleed into artifact B.
+  // mode, an open Compare, or a dismissed review banner from artifact A bleed into
+  // artifact B.
   useEffect(() => {
     setEditMode(false);
     setCommentMode(false);
     setCompare(null);
-    setViewingN(null);
     setReviewDismissed(false);
     setActiveCommentId(null);
   }, [path]);
@@ -1135,14 +1141,13 @@ export function ArtifactWorkspaceRedesign({
   if (!open || !artifact) return null;
 
   // ── Canvas ────────────────────────────────────────────────────────────────────
-  const viewingVersionId = viewingN != null ? (versions.find((v) => v.n === viewingN)?.id || '') : '';
   let canvas;
   if (isText) {
     canvas = (
       <ProseCanvas
         artifact={artifact}
         path={path}
-        versionId={viewingVersionId}
+        versionId=""
         baseVersionId={baseVersionId}
         title={title}
         reloadToken={reloadToken}
@@ -1159,7 +1164,7 @@ export function ArtifactWorkspaceRedesign({
       <HtmlCanvas
         artifact={artifact}
         path={path}
-        versionId={viewingVersionId}
+        versionId=""
         reloadToken={reloadToken}
         editMode={editMode}
         onSaveContent={handleDirectSave}
@@ -1224,10 +1229,9 @@ export function ArtifactWorkspaceRedesign({
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {hasReview ? (
             <ReviewBanner
-              reviewer={reviewItems[reviewItems.length - 1]?.author || undefined}
-              verdict="changes"
+              reviewer={reviewItems[0]?.author || undefined}
               commentCount={reviewItems.length}
-              note={reviewItems[reviewItems.length - 1]?.body || ''}
+              note={reviewItems[0]?.body || ''}
               onFixWithAI={fixWithAI}
               onDismiss={() => setReviewDismissed(true)}
             />

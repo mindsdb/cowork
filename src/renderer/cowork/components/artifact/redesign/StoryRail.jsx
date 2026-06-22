@@ -24,9 +24,10 @@ const AI_GRADIENT = 'linear-gradient(135deg,#A78BFA,#22D3EE)';
  * Mock data — 9 events mixing all kinds. Includes the graceful
  * failure/recovery system entry and a run of low-signal events
  * (consecutive "preview ready" + tiny ai-edits) so coalescing is
- * visible the moment the rail mounts alone.
+ * visible the moment the rail mounts alone. In-file only — it's the default
+ * `events` prop for standalone preview; the app always passes real events.
  * ------------------------------------------------------------------ */
-export const MOCK_STORY_EVENTS = [
+const MOCK_STORY_EVENTS = [
   {
     id: 'e1',
     kind: 'comment',
@@ -519,6 +520,11 @@ function StoryRow({
       <div
         style={{ flex: 1, minWidth: 0, cursor: locatable ? 'pointer' : 'default' }}
         onClick={locatable ? () => onSelectEvent(event) : undefined}
+        onKeyDown={locatable ? (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectEvent(event); }
+        } : undefined}
+        role={locatable ? 'button' : undefined}
+        tabIndex={locatable ? 0 : undefined}
         title={locatable ? 'Show where this is on the page' : undefined}
       >
         <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.4 }}>
@@ -726,10 +732,6 @@ function StoryGroup({ node }) {
 // Restore/Compare buttons, author, label, and the "Current" tag.
 function VersionGroup({
   node,
-  onResolveEvent,
-  onDismissEvent,
-  onFixEvent,
-  onReopenEvent,
   onRestoreVersion,
   onCompareVersion,
 }) {
@@ -808,10 +810,6 @@ function VersionGroup({
             <StoryRow
               key={n.id}
               event={n.event}
-              onResolveEvent={onResolveEvent}
-              onDismissEvent={onDismissEvent}
-              onFixEvent={onFixEvent}
-              onReopenEvent={onReopenEvent}
               onRestoreVersion={onRestoreVersion}
               onCompareVersion={onCompareVersion}
             />
@@ -1123,10 +1121,6 @@ export function StoryRail({
                   <VersionGroup
                     key={node.id}
                     node={node}
-                    onResolveEvent={onResolveEvent}
-                    onDismissEvent={onDismissEvent}
-                    onFixEvent={onFixEvent}
-                    onReopenEvent={onReopenEvent}
                     onRestoreVersion={onRestoreVersion}
                     onCompareVersion={onCompareVersion}
                   />
