@@ -41,6 +41,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -943,7 +944,15 @@ function AppCore() {
   // task object via props). Don't compute it here — `activeTaskId` is
   // declared further down and reading it before initialization throws
   // a TDZ ReferenceError at first render.
-  const [models] = useState(MOCK_DATA.models);
+  // Composer model options for the active (planning) provider. Sourced from
+  // the backend-overlaid recommendedModels map (single source of truth in
+  // cowork-server) — labels derived from ids, never hardcoded. Empty until
+  // settings load; the composer then shows just the configured model.
+  const models = useMemo(() => {
+    const providerType = providerValueToType(settings.planningProvider) || 'anthropic';
+    return recommendedModelOptions(settings.recommendedModels, providerType)
+      .map((o) => ({ id: o.id, name: o.label, desc: '' }));
+  }, [settings.recommendedModels, settings.planningProvider]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -1137,7 +1146,8 @@ function AppCore() {
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedModel, setSelectedModel] = useState(MOCK_DATA.models[0]);
+  // Set from the configured planning model once settings load.
+  const [selectedModel, setSelectedModel] = useState(null);
   // In the hosted web shell the FastAPI process IS the host — there
   // is no subprocess to start/stop, and the SPA only loads at all if
   // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
@@ -1181,10 +1191,9 @@ function AppCore() {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
         const modelId = data.defaultModel || data.planningModel;
-        const m = MOCK_DATA.models.find((x) => x.id === modelId);
-        setSelectedModel(m || {
+        setSelectedModel({
           id: modelId,
-          name: modelId || 'Planning model',
+          name: modelLabel(modelId) || modelId || 'Planning model',
           desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
         });
       }
@@ -1431,8 +1440,7 @@ function AppCore() {
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
       const modelId = latest.defaultModel || latest.planningModel;
-      const m = MOCK_DATA.models.find((x) => x.id === modelId);
-      setSelectedModel(m || { id: modelId, name: modelId || 'Planning model', desc: 'Configured planning model' });
+      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model', desc: 'Configured planning model' });
     }
     return result;
   }, [settings]);
