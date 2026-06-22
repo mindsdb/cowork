@@ -492,7 +492,7 @@ export default function Sidebar({
               userSelect: 'none',
             }}
           >·</span>
-          <div className="anton-sidebar__wordmark">MindsHub Cowork</div>
+          <div className="anton-sidebar__wordmark">MindsHub</div>
         </div>
       </div>
 
