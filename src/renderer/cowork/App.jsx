@@ -251,7 +251,7 @@ const RUNNING_STEP_STATUSES = new Set([
 //      fresh one. This is renderer-side only; it never goes to the
 //      server (anton's history stays clean) and it gets replaced as
 //      soon as the user sends their next message.
-function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
+function reconcileTaskMessages(messages, isLive, isServerInFlight = false, allowContinuation = true) {
   if (!Array.isArray(messages)) return messages;
   if (isLive) return messages; // legitimate in-flight (local), leave alone
   // If the server says this conversation's producer is still running,
@@ -274,7 +274,6 @@ function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
     if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
     return messages;
   }
-  const hadStreaming = messages.some((m) => m && m.role === '_streaming');
   // Pass 1 — strip _streaming + activity placeholders, mark
   // running steps as completed. Each rewritten message gets a flag
   // so we can avoid double-tagging continuation prompts.
@@ -301,14 +300,28 @@ function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
     });
 
   // Decide whether a continuation prompt is warranted.
-  // Triggers:
-  //   • we just stripped a `_streaming` row, OR
-  //   • the last surviving message is a user message with no reply,
-  //     OR an assistant message we just had to clean up.
-  let wantContinuation = hadStreaming;
-  if (!wantContinuation && cleaned.length > 0) {
-    const last = cleaned[cleaned.length - 1];
-    if (last && last.role === 'user') wantContinuation = true;
+  //
+  // In the detached-buffer model a turn that finished writes a terminal
+  // record (response.completed/failed) and a returning client just
+  // re-tails the buffer — a client disconnect or a normal completion is
+  // NOT an interruption. So we nudge ONLY when the last turn is
+  // genuinely incomplete:
+  //   • a trailing user message with no assistant reply (producer died
+  //     before persisting anything), OR
+  //   • an assistant turn with no terminal AND no reply text.
+  // A stripped `_streaming` row on its own is just cleanup, never a
+  // signal of interruption (it was the previous trigger's false
+  // positive). Callers that already know the turn finished — e.g. the
+  // in-flight poll's finished-refetch — pass allowContinuation=false.
+  if (!allowContinuation) return cleaned;
+  const tail = cleaned.length > 0 ? cleaned[cleaned.length - 1] : null;
+  let wantContinuation = false;
+  if (tail && tail.role === 'user') {
+    wantContinuation = true;
+  } else if (tail && tail.role === 'assistant') {
+    const finished = tail._turnComplete
+      || (typeof tail.content === 'string' && tail.content.trim().length > 0);
+    wantContinuation = !finished;
   }
   if (!wantContinuation) return cleaned;
 
@@ -499,6 +512,10 @@ function reduceServerEvents(events, fallbackStartedAt) {
   return {
     steps: state.steps || [],
     startedAt: state.startedAt || fallbackStartedAt || null,
+    // 'done' once the persisted events carried response.completed,
+    // 'error' on response.failed — the authoritative "this turn
+    // finished" signal from the detached stream buffer.
+    status: state.status,
   };
 }
 
@@ -514,11 +531,18 @@ function hydrateMessagesFromServerEvents(messages) {
     if (!Array.isArray(events) || events.length === 0) return m;
     const reduced = reduceServerEvents(events, m.startedAt);
     const { events: _drop, ...rest } = m;
-    if (!reduced || reduced.steps.length === 0) return rest;
+    if (!reduced) return rest;
+    // A turn that reached a terminal record (response.completed/failed)
+    // is finished — used downstream to decide it never needs a
+    // "didn't finish" continuation nudge.
+    const turnComplete = reduced.status === 'done' || reduced.status === 'error';
+    const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    if (reduced.steps.length === 0) return { ...rest, ...completeFlag };
     return {
       ...rest,
       steps: reduced.steps,
       startedAt: rest.startedAt || reduced.startedAt,
+      ...completeFlag,
     };
   });
 }
@@ -773,7 +797,12 @@ function AppCore() {
                 if (t.id !== cid) return t;
                 const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
                 const enriched = mergeConvTurns(cid, fromServer);
-                return { ...t, messages: reconcileTaskMessages(enriched, false, false), status: 'idle' };
+                // The producer just LEFT the in-flight list → this turn
+                // finished. Never inject a "didn't finish" nudge here
+                // (allowContinuation=false): if it errored, the persisted
+                // response.failed renders normally; a genuine interruption
+                // is caught on open via the terminal-aware path.
+                return { ...t, messages: reconcileTaskMessages(enriched, false, false, false), status: 'idle' };
               }));
             }).catch(() => {});
           });
