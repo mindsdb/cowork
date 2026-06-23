@@ -60,6 +60,9 @@ export default {
 
         // Status
         danger:     'var(--danger)',
+        'danger-bg':'var(--danger-bg)',
+        'danger-border':'var(--danger-border)',
+        'danger-text':'var(--danger-text)',
         success:    '#1F8F5F',
 
         // Aliases for mdb-ai's class names so a verbatim port works.

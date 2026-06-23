@@ -106,7 +106,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
       {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
-      {status && <div style={{ margin: '16px 28px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
+      {status && <div style={{ margin: '16px 28px 0', color: 'var(--danger-text)', fontSize: 12.5 }}>{status}</div>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
         <MemoryView
@@ -626,7 +626,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
-        <div style={{ padding: 12, border: '1px solid #F0C2B5', borderRadius: 9, background: '#FFF7F4', color: '#8F321A', fontSize: 13 }}>
+        <div style={{ padding: 12, border: '1px solid var(--danger-border)', borderRadius: 9, background: 'var(--danger-bg)', color: 'var(--danger-text)', fontSize: 13 }}>
           Configure a Minds API key in Settings before publishing.
         </div>
       )}

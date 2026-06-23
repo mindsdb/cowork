@@ -138,6 +138,8 @@ body, body[data-theme="light"] {
 
   --danger:       #B91C1C;
   --danger-bg:    #FEE2E2;
+  --danger-border:#F0C2B5;
+  --danger-text:  #8F321A;
 
   /* Active / online indicator (green dot on project cards + list rows).
      Used with --success-glow as a soft halo when the project has live
@@ -230,6 +232,8 @@ body[data-theme="dark"] {
 
   --danger:       #F87171;
   --danger-bg:    rgba(248, 113, 113, 0.12);
+  --danger-border:rgba(248, 113, 113, 0.25);
+  --danger-text:  #FCA5A5;
 
   /* Dark-mode active indicator — neon mint with stronger glow so it
      reads against the deep-blue surfaces. */
@@ -3298,8 +3302,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .dialog-error {
   margin-top: 8px; padding: 8px 10px; border-radius: 8px;
-  background: #FFF7F4; border: 1px solid #F0C2B5;
-  color: #8F321A; font-size: 12.5px;
+  background: var(--danger-bg); border: 1px solid var(--danger-border);
+  color: var(--danger-text); font-size: 12.5px;
 }
 .dialog-empty {
   padding: 12px; color: var(--frost-600); font-size: 12.5px;
