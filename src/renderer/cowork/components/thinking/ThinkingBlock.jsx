@@ -71,6 +71,16 @@ export function ThinkingBlock({
     return null;
   }, [isActive, startedAt, steps]);
 
+  // Glanceable kill signal: how many cells timed out / were killed. Surfaced
+  // in the (collapsed) header so a retry-on-timeout loop is visible without
+  // expanding — otherwise "Thinking…" + a ticking timer looks identical to a
+  // cell that's making progress. Expanding shows which cells via the per-row
+  // "timed out" badge.
+  const timedOutCount = useMemo(
+    () => steps.filter((s) => s.cellStatus === 'timeout').length,
+    [steps]
+  );
+
   const toggleExpanded = useCallback(() => setIsExpanded((p) => !p), []);
 
   // Nothing to show: not active and no recorded steps.
@@ -107,6 +117,15 @@ export function ThinkingBlock({
         ) : (
           <span className="flex-none text-[12px] text-ink-3">
             Worked for {finalDuration || '—'}
+          </span>
+        )}
+
+        {timedOutCount > 0 && (
+          <span
+            className="ml-2 flex-none rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
+            title={`${timedOutCount} cell${timedOutCount > 1 ? 's' : ''} timed out — the agent retried with smaller steps. Expand to see which.`}
+          >
+            {timedOutCount} timed out
           </span>
         )}
       </button>

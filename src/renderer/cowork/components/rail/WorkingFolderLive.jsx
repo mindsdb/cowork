@@ -29,6 +29,7 @@ import { ConfirmModal } from '../ConfirmModal';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { host } from '../../../platform/host';
 import { isPublishableArtifact } from '../../lib/artifactKinds';
+import { trackArtifactPublished } from '../../lib/analytics';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -553,6 +554,8 @@ export function WorkingFolderLive({ project, isStreaming, onHandoffArtifact }) {
       const publishOptions = artifact.publishVersionId ? { versionId: artifact.publishVersionId } : {};
       const result = await publishArtifact(publishTargetPath(artifact), access || { mode: 'public' }, publishOptions);
       applyPublishResult(artifact, result);
+      const publishedUrl = result?.url || result?.publishedUrl || '';
+      if (publishedUrl) trackArtifactPublished(result?.report_id || artifact.id || '', access?.mode || 'public');
       setPendingPublishArtifact(null);
     } catch (e) {
       const message = e?.message || 'Publish failed.';

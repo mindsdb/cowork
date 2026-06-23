@@ -35,7 +35,7 @@ exports.default = async function notarizing(context) {
 
   await notarize({
     tool: "notarytool",
-    appBundleId: "com.anton.app",
+    appBundleId: "com.mindshub.cowork",
     appPath: `${appOutDir}/${appName}.app`,
     ...auth,
   });

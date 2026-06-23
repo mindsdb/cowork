@@ -50,6 +50,13 @@
   -webkit-user-select: none;
 }
 
+/* First loading/welcome screen: match the app's window background for the
+   current theme/skin (the body gf-theme bg) instead of the arcade backdrop,
+   and drop the CRT scanline/vignette overlay. */
+.arc-root.welcome-loading { background: transparent; }
+.arc-root.welcome-loading::before,
+.arc-root.welcome-loading::after { content: none; display: none; }
+
 /* CRT scanlines + vignette laid over everything, clicks pass through. */
 .arc-root::after {
   content: '';
@@ -118,6 +125,7 @@
 .arc-hud-title {
   font-size: 26px;
   font-weight: 700;
+  text-transform: uppercase; /* arcade look; standard presets reset this */
   letter-spacing: 0.22em;
   text-indent: 0.22em; /* optically recenter tracked text */
   color: var(--arc-ink);
@@ -987,22 +995,77 @@ body[data-arcade-preset="daylight"] .arc-legal-overlay {
   --arc-font: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
+/* Standard presets: buttons match the app's .btn.primary — an outlined
+   accent button with a soft glow, NOT the filled arcade cabinet button.
+   (globals.css → .btn / .btn.primary.) */
 body[data-arcade-preset="midnight"] .arc-btn,
 body[data-arcade-preset="daylight"] .arc-btn {
-  border-radius: 9px;
-  letter-spacing: 0.06em;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--arc-cyan);
+  border: 1px solid currentColor;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  text-transform: none;
+  transition: background-color .12s ease, box-shadow .12s ease, transform .04s ease, color .12s ease;
+}
+
+body[data-arcade-preset="midnight"] .arc-btn:hover:not(:disabled),
+body[data-arcade-preset="daylight"] .arc-btn:hover:not(:disabled) {
+  filter: none;
+  background: color-mix(in srgb, var(--arc-cyan) 10%, transparent);
+  box-shadow: 0 0 0 1px var(--arc-cyan), 0 0 22px color-mix(in srgb, var(--arc-cyan) 40%, transparent);
 }
 
 body[data-arcade-preset="midnight"] .arc-btn:active:not(:disabled),
 body[data-arcade-preset="daylight"] .arc-btn:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: none;
+  transform: translateY(0.5px);
+  box-shadow: 0 0 0 1px var(--arc-cyan), 0 0 6px color-mix(in srgb, var(--arc-cyan) 40%, transparent);
+}
+
+body[data-arcade-preset="midnight"] .arc-btn:focus-visible,
+body[data-arcade-preset="daylight"] .arc-btn:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--arc-cyan), 0 0 0 4px color-mix(in srgb, var(--arc-cyan) 35%, transparent);
 }
 
 body[data-arcade-preset="midnight"] .arc-btn:disabled,
 body[data-arcade-preset="daylight"] .arc-btn:disabled {
+  opacity: 0.55;
   box-shadow: none;
+}
+
+/* Welcome orb caption — matches the app's hero greeting (home-greeting-row):
+   var(--font-display) at 36/700/-0.02em, sentence case. The 8-bit skin maps
+   --font-display to its mono face, so this tracks the greeting in every mode. */
+.arc-welcome-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 36px;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--arc-ink);
+}
+
+/* Standard presets: match the app's hero greeting (home-greeting-row in
+   HomeView): font-display, 36px, weight 700, tight tracking, sentence case —
+   no arcade tracking/glow. */
+body[data-arcade-preset="midnight"] .arc-hud-title,
+body[data-arcade-preset="daylight"] .arc-hud-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 36px;
+  letter-spacing: -0.02em;
+  text-indent: 0;
+  text-transform: none;
+  text-shadow: none;
 }
 
 body[data-arcade-preset="midnight"] .arc-input,

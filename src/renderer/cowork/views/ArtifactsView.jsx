@@ -20,7 +20,8 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
+import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ArtifactWorkspace } from '../components/artifact';
@@ -35,10 +36,11 @@ import {
 } from '../components/collection';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
-const FONT_BODY    = "var(--font-body)";
+const FONT_BODY = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
-const FONT_MONO    = "var(--font-mono)";
+const FONT_MONO = "var(--font-mono)";
 
 const EMPTY_ARTIFACTS = [];
 
@@ -1068,6 +1070,13 @@ function PublishedUrlRow({ url, onOpen, onCopy }) {
 // and not. Ellipsis-truncates a long path; full path lives in the
 // `title` attribute for hover. RTL trick on the path span keeps the
 // filename visible (truncates the front, not the back).
+//
+// Left-to-right mark (U+200E). The `direction: rtl` trick below would
+// otherwise let the bidi algorithm relocate an absolute path's leading
+// "/" to the visual end, rendering a bogus trailing slash. Prefixing the
+// path with a strong-LTR mark pins the leading slash in place.
+const LTR_MARK = String.fromCharCode(0x200e);
+
 function LocalPathRow({ path }) {
   if (!path) return null;
   return (
@@ -1090,7 +1099,7 @@ function LocalPathRow({ path }) {
         color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         direction: 'rtl', textAlign: 'left',
-      }}>{path}</span>
+      }}>{LTR_MARK + path}</span>
     </div>
   );
 }
@@ -1103,8 +1112,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // local OS path the user can't reach. Surface that "private" URL in
   // place of the path. Desktop keeps showing the local path.
   const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  // For fullstack apps the artifact "is" its slug folder, not the entry
+  // html — show the folder path on the card. Falls back to the primary
+  // path for everything else (and if `folder` is somehow absent).
+  const localPath = isBackendArtifact(artifact) ? (artifact.folder || artifact.path) : artifact.path;
 
-  const [hover, setHover] = useState(false);
+  const { revealed: showControls, hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
 
   const onCopyUrl = async () => {
@@ -1151,8 +1164,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     <div
       role="button"
       tabIndex={0}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
       onClick={() => canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)}
       onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
       style={{
@@ -1229,7 +1241,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             color: 'var(--ink-3)',
             background: 'transparent', border: 0, padding: 0,
             cursor: 'pointer',
-            visibility: (hover || isMenuOpen) ? 'visible' : 'hidden',
+            visibility: showControls ? 'visible' : 'hidden',
             transition: 'background 120ms ease, color 120ms ease',
           }}
           onMouseOver={(e) => {
@@ -1387,7 +1399,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           onCopy={onCopyPrivate}
         />
       ) : (
-        <LocalPathRow path={artifact.path} />
+        <LocalPathRow path={localPath} />
       )}
 
       {/* Spacer pushes the meta + actions to the bottom of the card so
@@ -1474,100 +1486,72 @@ function StatusDot({ artifact }) {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onDelete }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('mousedown', onClick);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onClick);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open, onClose]);
-  if (!open || !anchorRect) return null;
-
-  const W = 200;
-  const left = Math.min(window.innerWidth - W - 8, Math.max(8, anchorRect.right - W));
-  const top = anchorRect.bottom + 4;
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
-
-  const Item = ({ label, icon, onClick, danger }) => (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onClick?.(); onClose?.(); }}
-      style={{
-        width: 'calc(100% - 8px)', margin: '0 4px',
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 10px', borderRadius: 5,
-        background: 'transparent', border: 0,
-        fontFamily: FONT_BODY, fontSize: 13,
-        color: danger ? 'var(--danger)' : 'var(--ink-2)',
-        textAlign: 'left',
-        cursor: 'pointer',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.background = danger
-          ? 'color-mix(in srgb, var(--danger) 12%, transparent)'
-          : 'var(--surface-2)';
-      }}
-      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      {icon && <span style={{ display: 'inline-flex', flexShrink: 0, color: danger ? 'var(--danger)' : 'var(--ink-3)' }}>{icon}</span>}
-      <span style={{ flex: 1 }}>{label}</span>
-    </button>
-  );
+  const items = [
+    {
+      id: 'open',
+      label: isHtml ? 'Open viewer' : 'Open',
+      icon: Ico.externalLink(13),
+      onClick: onOpen,
+    },
+    onReveal && {
+      id: 'reveal',
+      label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
+      icon: Ico.folder(13),
+      onClick: onReveal,
+    },
+    onDownload && artifact?.serveUrl && {
+      id: 'download',
+      label: 'Download',
+      icon: Ico.download(13),
+      onClick: onDownload,
+    },
+    published && {
+      id: 'copy-url',
+      label: 'Copy URL',
+      icon: Ico.copy(13),
+      onClick: onCopyUrl,
+    },
+    isPublishableArtifact(artifact) && !published && {
+      id: 'publish',
+      label: 'Publish',
+      icon: Ico.upload(13),
+      onClick: onPublish,
+    },
+    published && {
+      id: 'unpublish',
+      label: 'Unpublish',
+      icon: Ico.upload(13),
+      onClick: onUnpublish,
+    },
+    onDelete && { divider: true },
+    onDelete && {
+      id: 'delete',
+      label: 'Delete artifact',
+      icon: Ico.trash(13),
+      danger: true,
+      onClick: onDelete,
+    },
+  ].filter(Boolean);
 
   return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed', top, left, zIndex: 60,
-        width: W,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 8,
-        boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
-        padding: '4px 0',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Item label={isHtml ? 'Open viewer' : 'Open'} icon={Ico.externalLink(13)} onClick={onOpen} />
-      <Item label="Reveal in Finder" icon={Ico.folder(13)} onClick={onReveal} />
-      {onDownload && artifact?.serveUrl && (
-        <Item label="Download" icon={Ico.download(13)} onClick={onDownload} />
-      )}
-      {published && <Item label="Copy URL" icon={Ico.copy(13)} onClick={onCopyUrl} />}
-      {isPublishableArtifact(artifact) && !published && (
-        <Item label="Publish" icon={Ico.upload(13)} onClick={onPublish} />
-      )}
-      {published && (
-        <Item label="Unpublish" icon={Ico.upload(13)} onClick={onUnpublish} />
-      )}
-      {/* Delete sits at the bottom under a divider so it reads as a
-          terminal / destructive action distinct from the rest of
-          the menu. Routes through the parent's `handleTrash`, which
-          unpublishes (if published), snapshots the artifact, and
-          moves it into Deleted so it can be restored. */}
-      {onDelete && (
-        <>
-          <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
-          <Item label="Move to Deleted" icon={Ico.trash(13)} danger onClick={onDelete} />
-        </>
-      )}
-    </div>
+    <HoverMenu
+      open={open}
+      anchorRect={anchorRect}
+      onClose={onClose}
+      width={200}
+      items={items}
+    />
   );
 }
 
 function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onOpenProject }) {
-  const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
+  const { hovered, revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
   const isHtml = isHtmlArtifact(artifact);
   const canPreview = isInlinePreviewable(artifact);
@@ -1592,12 +1576,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         tabIndex={0}
         onClick={onRowOpen}
         onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
+        {...hoverProps}
         style={{
           display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
           padding: '12px 14px',
-          background: hover ? 'var(--surface)' : 'transparent',
+          background: hovered ? 'var(--surface)' : 'transparent',
           borderBottom: '1px solid var(--line)',
           cursor: 'pointer',
           transition: 'background .12s ease',
@@ -1726,7 +1709,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
               width: 26, height: 26, borderRadius: 6,
               background: 'transparent', border: 0,
               color: 'var(--ink-3)',
-              opacity: hover || menuOpen ? 1 : 0,
+              opacity: showKebab ? 1 : 0,
               display: 'inline-grid', placeItems: 'center',
               cursor: 'pointer',
               transition: 'opacity .15s ease, color .15s ease, background .15s ease',
@@ -1745,12 +1728,13 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         artifact={artifact}
         onClose={() => setMenuOpen(false)}
         onOpen={onRowOpen}
-        onReveal={() => revealArtifact(artifact.path)}
+        onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
         onDownload={() => downloadArtifactFile(artifact)}
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
         onDelete={doDelete ? () => doDelete(artifact) : undefined}
+        isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
     </>
   );
@@ -2111,6 +2095,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           publishedVersionNumber: r.publishedVersionNumber || r.published_version_number || artifact.publishedVersionNumber || null,
         });
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
+        trackArtifactPublished(r.report_id || artifact.id || '', m);
         setToast({
           kind: 'ok',
           message: label ? `Published (${label}) — ${r.url}` : `Published — ${r.url}`,
@@ -2485,7 +2470,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               artifact={a}
               projects={projects}
               onOpenViewer={setViewer}
-              onMenuOpen={(art, rect) => setMenuFor({ artifact: art, rect })}
+              onMenuOpen={(art, rect) => setMenuFor((prev) =>
+                prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+              )}
               isMenuOpen={menuFor?.artifact?.path === a.path}
               busy={busyPaths.has(a.path)}
               onOpenProject={onOpenProject}
@@ -2558,6 +2545,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           if (!a) return [];
           const isHtml = isHtmlArtifact(a);
           const isPublishable = isPublishableArtifact(a);
+          const isBackend = isBackendArtifact(a);
           const published = !!a.publishedUrl;
           const busyA = busyPaths.has(a.path);
           const items = [];
@@ -2582,7 +2570,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             icon: (Ico.eye?.(13) || Ico.sparkle(13)),
             onClick: () => setViewer(a),
           });
-          if (isHtml) {
+          // Fullstack apps can't be opened from their static entry html
+          // (it needs the backend), so only offer "Open in browser" for
+          // them once published — then it opens the live public URL.
+          // Unpublished fullstack gets no open/reveal item.
+          if (isHtml && (!isBackend || published)) {
             items.push({
               id: 'open',
               label: 'Open in browser',
@@ -2596,7 +2588,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
                 }
               },
             });
-          } else if (!host.isWeb) {
+          } else if (!isBackend && !host.isWeb) {
             // Reveal hits the server's /artifacts/reveal endpoint which
             // shells out to the OS opener — meaningful only on the
             // desktop where the renderer and server share a filesystem.
@@ -2604,7 +2596,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               id: 'reveal',
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
               icon: Ico.folder(13),
-              onClick: () => { try { revealArtifact(a.path); } catch {} },
+              onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
           items.push({ separator: true });

@@ -61,19 +61,14 @@ function clearStoredProviderState(): void {
 
 /** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null.
  *
- * Defaults to 'full' when the user hasn't set anything — the OTA
- * hot-update path is parked while we stabilize. Bundled renderer is
- * the path of least surprise: every relaunch picks up whatever was
- * shipped in the .app, no async cache fetch in the boot path. Set
- * `DEV_MODE=live` for the Vite dev-server flow, `DEV_MODE=ota` to
- * opt back into the cached-bundle path. `false` / `none` also map
- * to the OTA path for callers that want the previous behaviour.
+ * Defaults to null (OTA enabled). Set `DEV_MODE=live` for the Vite
+ * dev-server flow, `DEV_MODE=full` to force the bundled renderer
+ * and skip OTA updates.
  */
 function getDevMode(): string | null {
   const vars = readEnvFile();
   const val = (vars.DEV_MODE || '').trim().toLowerCase();
-  if (val === 'ota' || val === 'false' || val === 'none') return null;
-  if (!val) return 'full';
+  if (val === 'ota' || val === 'false' || val === 'none' || !val) return null;
   return val; // 'live' or 'full'
 }
 
@@ -160,15 +155,26 @@ async function validateMinds(
   baseUrl: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    // First check the minds API is reachable
+    // Probe the real inference path (a 1-token chat completion) instead
+    // of a listing route. `/v1/minds/` and `/models` are not deployed on
+    // every MindsHub host and 404/401 even for valid keys, which blocked
+    // onboarding with a working key. Mirrors minds_chat_base_url in
+    // cowork-server: mdb.ai needs /api/v1, others need /v1.
     const base = baseUrl.replace(/\/+$/, '');
-    const mindsUrl = base + '/v1/minds/';
-    const res = await httpRequest(mindsUrl, {
-      method: 'GET',
+    const chatBase = base.endsWith('/v1')
+      ? base
+      : base.includes('mdb.ai') ? `${base}/api/v1` : `${base}/v1`;
+    const res = await httpRequest(`${chatBase}/chat/completions`, {
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        model: 'latest:haiku',
+        max_tokens: 20,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
     });
     if (res.status === 401 || res.status === 403) {
       return { ok: false, error: 'Invalid API key' };
@@ -176,7 +182,12 @@ async function validateMinds(
     if (res.status >= 200 && res.status < 300) {
       return { ok: true };
     }
-    return { ok: false, error: `Server returned HTTP ${res.status}` };
+    try {
+      const parsed = JSON.parse(res.body).error?.message || `HTTP ${res.status}`;
+      return { ok: false, error: parsed };
+    } catch {
+      return { ok: false, error: `Server returned HTTP ${res.status}` };
+    }
   } catch (err: any) {
     return { ok: false, error: `Cannot connect: ${err.message}` };
   }
@@ -377,6 +388,19 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+    // Start the boot-veil fade only now that the window is actually visible.
+    // (A parse-time CSS animation would finish while the window is still
+    // hidden behind `show:false`, so the black cover would be gone before the
+    // first frame the user sees.) The welcome orb is already rendered by now,
+    // so we only need a brief mask over the show moment — then fade quickly
+    // into the animated orb. A long black hold reads as a hung/broken screen.
+    setTimeout(() => {
+      mainWindow?.webContents
+        .executeJavaScript(
+          "var v=document.getElementById('boot-veil');if(v)v.classList.add('boot-veil--fade');",
+        )
+        .catch(() => {});
+    }, 140);
   });
 
   mainWindow.on('closed', () => {
@@ -478,6 +502,18 @@ function setupIPC() {
     if (result.ok && result.access_token) {
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
+      // Pull the desktop app back to the foreground. The SSO flow opens the
+      // OS default browser, which is frontmost after the redirect — without
+      // this the user is left on the "you can close this tab" page and may
+      // not realize the app has signed them in.
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          app.focus({ steal: true }); // macOS: steal focus from the browser
+        }
+      } catch {}
     }
     return result;
   });
@@ -878,7 +914,12 @@ app.whenReady().then(() => {
       setUpdateNotifier((payload) => {
         mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       });
-      maybeUpdateServer().then((updateResult) => {
+
+      // Update server first, then check for UI updates. This ensures
+      // the renderer and server stay in sync — both track git HEAD on
+      // main, so updating them in sequence (server → UI) avoids any
+      // window where a new renderer talks to an old server.
+      const serverUpdateDone = maybeUpdateServer().then((updateResult) => {
         if (updateResult.updated) {
           console.log(`[server-updater] updated ${updateResult.previousVersion} → ${updateResult.newVersion}`);
         } else if (updateResult.error) {
@@ -887,67 +928,69 @@ app.whenReady().then(() => {
       }).catch((err) => {
         console.error('[server-updater] check failed:', err);
       });
+
+      // OTA UI update check — only in packaged builds and not in DEV_MODE.
+      // Waits for both the server update AND the renderer to finish loading
+      // so the React app has time to mount its IPC listener.
+      const devMode = getDevMode();
+      if (app.isPackaged && !devMode) {
+        const rendererReady = new Promise<void>((resolve) => {
+          mainWindow?.webContents.once('did-finish-load', () => {
+            setTimeout(resolve, 1500);
+          });
+        });
+
+        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
+          try {
+            const updateMode = getUpdateMode();
+            console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
+            mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
+
+            const online = await hasInternet();
+            if (!online) {
+              console.log('[ui-updater] offline — skipping update check');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
+              return;
+            }
+
+            const result = await checkForUIUpdate();
+            if (!result.updateAvailable) {
+              console.log('[ui-updater] up to date');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
+              return;
+            }
+
+            console.log(`[ui-updater] new version available: ${result.newVersion}`);
+
+            if (updateMode === 'auto') {
+              console.log('[ui-updater] auto mode — downloading and applying...');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
+              const applied = await applyUIUpdate();
+              if (applied && mainWindow) {
+                console.log('[ui-updater] update applied — reloading window');
+                mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+                mainWindow.loadFile(getRendererPath());
+              }
+            } else {
+              console.log('[ui-updater] manual mode — notifying renderer');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
+                phase: 'available',
+                version: result.newVersion,
+              });
+            }
+          } catch (err) {
+            console.error('[ui-updater] startup check failed:', err);
+          }
+        });
+      } else if (!app.isPackaged) {
+        console.log('[ui-updater] skipped — not a packaged build');
+      } else if (devMode) {
+        console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
+      }
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
   });
-
-  // OTA UI update check — only in packaged builds and not in DEV_MODE.
-  // Waits for the renderer to finish loading so the React app has time
-  // to mount and register its IPC listener before we push status.
-  const devMode = getDevMode();
-  if (app.isPackaged && !devMode) {
-    const runUpdateCheck = async () => {
-      try {
-        const updateMode = getUpdateMode();
-        console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
-        mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
-
-        const online = await hasInternet();
-        if (!online) {
-          console.log('[ui-updater] offline — skipping update check');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
-          return;
-        }
-
-        const result = await checkForUIUpdate();
-        if (!result.updateAvailable) {
-          console.log('[ui-updater] up to date');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
-          return;
-        }
-
-        console.log(`[ui-updater] new version available: ${result.newVersion}`);
-
-        if (updateMode === 'auto') {
-          console.log('[ui-updater] auto mode — downloading and applying...');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
-          const applied = await applyUIUpdate();
-          if (applied && mainWindow) {
-            console.log('[ui-updater] update applied — reloading window');
-            mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-            mainWindow.loadFile(getRendererPath());
-          }
-        } else {
-          console.log('[ui-updater] manual mode — notifying renderer');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
-            phase: 'available',
-            version: result.newVersion,
-          });
-        }
-      } catch (err) {
-        console.error('[ui-updater] startup check failed:', err);
-      }
-    };
-    // Delay until the renderer has loaded and React has mounted
-    mainWindow?.webContents.once('did-finish-load', () => {
-      setTimeout(runUpdateCheck, 1500);
-    });
-  } else if (!app.isPackaged) {
-    console.log('[ui-updater] skipped — not a packaged build');
-  } else if (devMode) {
-    console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
-  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
