@@ -256,12 +256,15 @@ function PinPopover({ pin, onClose, onResolve, onFix, onDiscuss, onCopy, onReply
   const flipX = pin.xPct > 62;
   const flipY = pin.yPct > 64;
   const [reply, setReply] = useState('');
+  const [sending, setSending] = useState(false);
   const replies = Array.isArray(pin.replies) ? pin.replies : [];
-  const submitReply = () => {
+  const submitReply = async () => {
     const text = reply.trim();
-    if (!text) return;
-    onReply?.(pin.id, text);
-    setReply('');
+    if (!text || sending) return;
+    setSending(true);
+    const ok = await onReply?.(pin.id, text);
+    setSending(false);
+    if (ok !== false) setReply(''); // clear only on success (handleReply returns false on failure)
   };
   return (
     <div
@@ -328,10 +331,11 @@ function PinPopover({ pin, onClose, onResolve, onFix, onDiscuss, onCopy, onReply
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply(); } }}
             rows={1}
             placeholder="Reply…"
+            aria-label="Reply to comment"
             style={{ flex: 1, resize: 'none', minHeight: 30, maxHeight: 90, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'var(--surface-2)', color: 'var(--ink)', fontSize: 12, fontFamily: 'var(--font-body, inherit)', lineHeight: 1.4 }}
           />
-          <button type="button" onClick={submitReply} disabled={!reply.trim()} style={{ alignSelf: 'flex-end', height: 30, padding: '0 11px', borderRadius: 7, border: 'none', background: reply.trim() ? 'var(--accent)' : 'var(--surface-3)', color: reply.trim() ? '#04121a' : 'var(--ink-4)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: reply.trim() ? 'pointer' : 'default' }}>
-            Reply
+          <button type="button" onClick={submitReply} disabled={!reply.trim() || sending} style={{ alignSelf: 'flex-end', height: 30, padding: '0 11px', borderRadius: 7, border: 'none', background: (reply.trim() && !sending) ? 'var(--accent)' : 'var(--surface-3)', color: (reply.trim() && !sending) ? '#04121a' : 'var(--ink-4)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: (reply.trim() && !sending) ? 'pointer' : 'default' }}>
+            {sending ? '…' : 'Reply'}
           </button>
         </div>
       ) : null}
@@ -490,6 +494,7 @@ export function CommentLayer({
       ))}
       {activePin ? (
         <PinPopover
+          key={activePin.id}
           pin={activePin}
           onClose={() => onActiveChange?.(null)}
           onResolve={onResolvePin}

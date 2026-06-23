@@ -9,7 +9,7 @@
 // no new deps. Global @keyframes (popIn / slideIn / riseIn …) are owned by a
 // sibling redesign.css — referenced here by name, never redefined.
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   getStoryKind,
   STORY_FILTERS,
@@ -480,6 +480,7 @@ function StoryRow({
 }) {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
   const recovered = event?.meta?.tone === 'recovered';
   // A comment anchored to the page can be "located": clicking the row jumps to its
   // spot on the artifact and opens its pin. Settled comments have no pin, so no jump.
@@ -505,12 +506,13 @@ function StoryRow({
   const showActions = showResolve || showDismiss || showFix || showDiscuss || showCopy || showReopen;
   const replies = Array.isArray(event.replies) ? event.replies : [];
   const canReply = isActionable && !!onReply && !!event.commentId;
-  const submitReply = () => {
+  const submitReply = async () => {
     const text = replyText.trim();
-    if (!text || !event.commentId) return;
-    onReply(event.commentId, text);
-    setReplyText('');
-    setShowReply(false);
+    if (!text || !event.commentId || sending) return;
+    setSending(true);
+    const ok = await onReply(event.commentId, text);
+    setSending(false);
+    if (ok !== false) { setReplyText(''); setShowReply(false); } // keep the draft on failure
   };
 
   // Version rows get their own action row: Restore (+ optional Compare). The
@@ -638,10 +640,11 @@ function StoryRow({
               autoFocus
               rows={1}
               placeholder="Reply…"
+              aria-label="Reply to comment"
               style={{ flex: 1, resize: 'none', minHeight: 30, maxHeight: 90, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'var(--surface-2)', color: 'var(--ink)', fontSize: 12, fontFamily: 'var(--font-body, inherit)', lineHeight: 1.4 }}
             />
-            <button type="button" onClick={submitReply} disabled={!replyText.trim()} style={{ alignSelf: 'flex-end', height: 30, padding: '0 11px', borderRadius: 7, border: 'none', background: replyText.trim() ? 'var(--accent)' : 'var(--surface-3)', color: replyText.trim() ? '#04121a' : 'var(--ink-4)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: replyText.trim() ? 'pointer' : 'default' }}>
-              Send
+            <button type="button" onClick={submitReply} disabled={!replyText.trim() || sending} style={{ alignSelf: 'flex-end', height: 30, padding: '0 11px', borderRadius: 7, border: 'none', background: (replyText.trim() && !sending) ? 'var(--accent)' : 'var(--surface-3)', color: (replyText.trim() && !sending) ? '#04121a' : 'var(--ink-4)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: (replyText.trim() && !sending) ? 'pointer' : 'default' }}>
+              {sending ? '…' : 'Send'}
             </button>
           </div>
         ) : null}
@@ -1015,6 +1018,21 @@ export function StoryRail({
   const [internalFilter, setInternalFilter] = useState(filter);
   const activeFilter = onFilterChange ? filter : internalFilter;
 
+  // Keep the newest chat reply (e.g. after "Discuss"/"Apply") in view — the rail
+  // appends chat at the bottom, so scroll there whenever a new message arrives.
+  const feedRef = useRef(null);
+  const chatCount = useMemo(() => (events || []).filter((e) => e.kind === 'chat').length, [events]);
+  useEffect(() => {
+    if (!chatCount) return;
+    const el = feedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chatCount]);
+  // Open (unsettled) comment/review threads exist? — gates the "Copy all" affordance.
+  const hasOpenThreads = useMemo(
+    () => (events || []).some((e) => (e.kind === 'comment' || e.kind === 'review') && !(e?.meta?.resolved || e?.meta?.dismissed)),
+    [events],
+  );
+
   const [internalCollapsed, setInternalCollapsed] = useState(collapsed);
   const isCollapsed = onToggle ? collapsed : internalCollapsed;
 
@@ -1095,11 +1113,12 @@ export function StoryRail({
         }}
       >
         <span className="rd-no-truncate" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Story</span>
-        {onCopyAll ? (
+        {onCopyAll && hasOpenThreads ? (
           <button
             type="button"
             onClick={onCopyAll}
             title="Copy all open comment threads as context"
+            aria-label="Copy all open comment threads as context"
             className="rd-no-truncate"
             style={{ height: 24, padding: '0 9px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--ink-3)', fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
@@ -1149,6 +1168,7 @@ export function StoryRail({
 
       {/* Timeline */}
       <div
+        ref={feedRef}
         className="rd-scroll"
         style={{
           flex: 1,

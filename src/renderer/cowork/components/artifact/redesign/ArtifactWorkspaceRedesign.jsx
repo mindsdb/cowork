@@ -937,12 +937,16 @@ export function ArtifactWorkspaceRedesign({
 
   // Reply to a comment (a thread). The backend stores it as a comment with
   // parentCommentId set; commentsToPins/mapStoryEvents nest it under the parent.
+  // Returns true on success so the composer clears/collapses ONLY then — a failed
+  // post keeps the user's typed reply instead of silently discarding it.
   const handleReply = useCallback(
     async (parentId, body) => {
       const text = String(body || '').trim();
-      if (!path || !parentId || !text) return;
-      try { await createArtifactComment(path, { body: text, parentCommentId: parentId }); flash('Reply posted'); loadComments(); }
-      catch (e) { flash(e?.message || 'Could not post your reply.'); }
+      if (!path || !parentId || !text) return false;
+      try {
+        await createArtifactComment(path, { body: text, parentCommentId: parentId });
+        flash('Reply posted'); loadComments(); return true;
+      } catch (e) { flash(e?.message || 'Could not post your reply.'); return false; }
     },
     [path, flash, loadComments],
   );
@@ -1002,7 +1006,7 @@ export function ArtifactWorkspaceRedesign({
   // Copy EVERY open thread as one context block (rail-level "Copy all").
   const handleCopyAll = useCallback(async () => {
     const tops = (commentsState.comments || []).filter((c) => !c.parentCommentId && !isSettledComment(c));
-    const blocks = tops.map((c) => buildThreadContext(threadFor(c.id))).filter(Boolean);
+    const blocks = tops.map((c) => threadFor(c.id)).filter(Boolean).map(buildThreadContext);
     if (!blocks.length) { flash('No open comments to copy.'); return; }
     try {
       await navigator.clipboard.writeText(blocks.join('\n\n---\n\n'));
