@@ -125,6 +125,9 @@ export async function endKeycloakSession(): Promise<void> {
 interface OrgRef {
   id: string;
   name?: string;
+  /** Raw Keycloak org name (the slug, e.g. `personal_<userId>`), distinct
+   *  from the human display name — used to spot the user's personal org. */
+  slug?: string;
   source?: string;
 }
 
@@ -150,6 +153,7 @@ function normalizeOrgRef(value: any, source: string): OrgRef | null {
   return {
     id: String(id),
     name: raw.displayName ?? raw.display_name ?? raw.name ?? undefined,
+    slug: raw.name ? String(raw.name) : undefined,
     source,
   };
 }
@@ -379,6 +383,18 @@ async function fetchAuthContext(accessToken: string): Promise<{
     });
     let body: any = null;
     try { body = await res.json(); } catch { /* non-JSON */ }
+    const ent = body?.entitlements;
+    // Diagnostic: the exact HUB-scoped entitlement set the auth-service
+    // returned. This is what the upgrade gate keys off — log it so a
+    // failing machine tells us "no subscription" vs "wrong product/org"
+    // instead of surfacing a generic error.
+    console.log(
+      '[minds-auth] /authenticate/ status=%s agents.use=%s api_keys.create=%s deploy_agents=%s',
+      res.status,
+      ent?.permissions?.agents?.use,
+      ent?.permissions?.api_keys?.create,
+      ent?.allocations?.deploy_agents,
+    );
     return { ok: res.ok, status: res.status, body, entitlements: body?.entitlements };
   } catch (e: any) {
     return { ok: false, status: 0, body: { error: e?.message || String(e) } };
@@ -440,10 +456,10 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     const tried = new Set<string>();
     if (currentOrg?.id) tried.add(currentOrg.id);
 
-    let sawUpgradeableOrg = ctx.ok && (
-      canCreateApiKeys(ctx.entitlements) || requiresHubUpgrade(ctx.entitlements)
-    );
-
+    // Try other orgs to find one where the user is fully entitled, so the
+    // minted key is scoped to the best org. If none qualifies we keep the
+    // active org and proceed anyway — lacking the HUB subscription is NOT
+    // a sign-in blocker.
     for (const candidate of orgResult.candidates || []) {
       if (!candidate?.id || tried.has(candidate.id)) continue;
       tried.add(candidate.id);
@@ -452,22 +468,17 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
       const refreshed = await refreshAfterOrgSwitch();
       if (!refreshed) continue;
       const candidateCtx = await fetchAuthContext(refreshed);
-      if (!candidateCtx.ok) {
-        continue;
-      }
+      if (!candidateCtx.ok) continue;
       if (canUseAntonWithMinds(candidateCtx.entitlements)) {
         provisionToken = refreshed;
         provisionCtx = candidateCtx;
-        sawUpgradeableOrg = false;
         break;
       }
-      sawUpgradeableOrg = true;
     }
 
-    if (!canUseAntonWithMinds(provisionCtx.entitlements)) {
-      if (sawUpgradeableOrg) {
-        return { upgradeRequired: true };
-      }
+    // Genuine auth failure (bad/expired token, service error) — can't
+    // mint a key, so surface it. This is the ONLY hard stop here.
+    if (!provisionCtx.ok) {
       const bodyExcerpt = JSON.stringify(provisionCtx.body || {}).slice(0, 280);
       if (provisionCtx.status === 401 || provisionCtx.status === 403) {
         return {
@@ -479,6 +490,47 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
       return {
         error: `Auth-service /authenticate/ returned HTTP ${provisionCtx.status}.`,
       };
+    }
+
+    // Authenticated but lacking the HUB entitlement (no subscription):
+    // proceed to mint and flow the user in. Quota/upgrade is enforced at
+    // the gateway (point of use) and surfaced post-auth in the app — we no
+    // longer gate sign-in on it.
+    if (!canUseAntonWithMinds(provisionCtx.entitlements)) {
+      const norm = normalizeHubEntitlements(provisionCtx.entitlements);
+      console.warn(
+        '[minds-auth] authenticated without HUB entitlement — minting anyway '
+        + '(quota enforced at the gateway): agents.use=%s api_keys.create=%s deploy_agents=%s',
+        norm.permissions.agents.use,
+        norm.permissions.api_keys.create,
+        norm.allocations.deploy_agents,
+      );
+    }
+
+    // Safeguard: if the active org can't mint a key (the user landed in a
+    // SHARED org where they're only a member), fall back to their PERSONAL
+    // org. The personal-org owner always has create+use (auth-side
+    // owner_roles), so this guarantees an authenticated user can get a key
+    // without weakening shared-org permissions or the paid instance gate.
+    if (!canCreateApiKeys(provisionCtx.entitlements)) {
+      const userId = typeof initialPayload?.sub === 'string' ? initialPayload.sub : '';
+      const personal = userId
+        ? (orgResult.candidates || []).find((o) => o.slug === `personal_${userId}`)
+        : undefined;
+      if (personal && personal.id !== getActiveOrgFromPayload(decodeJwtPayload(provisionToken))?.id) {
+        const switched = await switchActiveOrg(provisionToken, personal.id);
+        if (switched) {
+          const refreshed = await refreshAfterOrgSwitch();
+          if (refreshed) {
+            const personalCtx = await fetchAuthContext(refreshed);
+            if (personalCtx.ok && canCreateApiKeys(personalCtx.entitlements)) {
+              provisionToken = refreshed;
+              provisionCtx = personalCtx;
+              console.log('[minds-auth] minting in personal org (active org lacked api_keys.create)');
+            }
+          }
+        }
+      }
     }
   }
 
