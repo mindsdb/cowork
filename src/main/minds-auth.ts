@@ -1,5 +1,6 @@
 import { saveTokens, getRefreshToken } from './token-store';
 import { stopServer, startServer } from './server-process';
+import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -41,7 +42,7 @@ function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
 // access token is worth pulling — the env file is the source of truth
 // for the LLM credential, the JWT only matters for auth-service calls.
 function envHasMindsCommitted(): boolean {
-  const envPath = path.join(os.homedir(), '.anton', '.env');
+  const envPath = coworkEnvPath();
   if (!fs.existsSync(envPath)) return false;
   const content = fs.readFileSync(envPath, 'utf-8');
   return /^ANTON_MINDS_API_KEY=/m.test(content);
@@ -618,14 +619,14 @@ const MINDS_KEYS = [
 // alone, so the OpenAI slot is no longer needed — and leaving it
 // untouched lets a user's own OpenAI key survive login.
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
-  const antonDir = path.join(os.homedir(), '.anton');
-  // ~/.anton normally exists by the time SSO finalize runs (the server
+  const homeDir = coworkHome();
+  // ~/.cowork normally exists by the time SSO finalize runs (the server
   // creates it on boot), but if the server failed to start the finalize
   // write would ENOENT and the user's freshly-minted key is lost.
-  if (!fs.existsSync(antonDir)) {
-    fs.mkdirSync(antonDir, { recursive: true });
+  if (!fs.existsSync(homeDir)) {
+    fs.mkdirSync(homeDir, { recursive: true });
   }
-  const envPath = path.join(antonDir, '.env');
+  const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   const lines = existing.split('\n')
     .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
@@ -641,7 +642,7 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n', 'utf-8');
 
   // Also clean up old provider entries from state.json so they don't show as green in Settings
-  const statePath = path.join(os.homedir(), '.anton', 'cowork', 'state.json');
+  const statePath = coworkStatePath();
   try {
     if (fs.existsSync(statePath)) {
       const raw = fs.readFileSync(statePath, 'utf-8');
