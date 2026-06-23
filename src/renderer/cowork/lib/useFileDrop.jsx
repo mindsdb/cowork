@@ -162,7 +162,17 @@ export function FileDropOverlay({ active, label, busy = false, error = '' }) {
           transition: 'transform 160ms cubic-bezier(.2,.7,.3,1)',
         }}
       >
-        {text}
+        <svg
+          width="18" height="18" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          aria-hidden="true" style={{ flex: '0 0 auto' }}
+        >
+          {/* upload-into-tray glyph (inherits currentColor) */}
+          <path d="M12 15V3" />
+          <path d="m7 8 5-5 5 5" />
+          <path d="M5 16v5h14v-5" />
+        </svg>
+        <span>{text}</span>
       </div>
     </div>
   );

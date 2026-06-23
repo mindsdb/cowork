@@ -29,9 +29,7 @@ import {
   renameProject,
   revealProjectInFinder,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
-  uploadProjectFiles,
 } from '../api';
-import { useFileDrop, FileDropOverlay } from '../lib/useFileDrop';
 import { Menu } from '../components/ui';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
@@ -760,43 +758,8 @@ function ProjectDetail({
     onRenameSubmit?.(next);
   };
 
-  // ── Drag-and-drop OS files onto the project ────────────────────────────
-  // Uploads as project files; bumping fileRefreshKey re-fetches the
-  // ContextBox file list so the new files surface immediately.
-  const [fileRefreshKey, setFileRefreshKey] = useState(0);
-  const [dropBusy, setDropBusy] = useState(false);
-  const [dropError, setDropError] = useState('');
-  const dropErrorTimer = useRef(null);
-  const flashDropError = (msg) => {
-    setDropError(msg);
-    if (dropErrorTimer.current) clearTimeout(dropErrorTimer.current);
-    dropErrorTimer.current = setTimeout(() => setDropError(''), 4000);
-  };
-  useEffect(() => () => { if (dropErrorTimer.current) clearTimeout(dropErrorTimer.current); }, []);
-
-  const handleDropFiles = async (files) => {
-    if (!files?.length || !project?.name) return;
-    setDropError('');
-    setDropBusy(true);
-    try {
-      await uploadProjectFiles(project.name, files);
-      setFileRefreshKey((n) => n + 1);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[project-drop] file upload failed', err);
-      flashDropError(err?.message || 'Upload failed');
-    } finally {
-      setDropBusy(false);
-    }
-  };
-
-  const { isDragging: projectDragging, dropHandlers: projectDropHandlers } = useFileDrop({
-    onFiles: handleDropFiles,
-    disabled: dropBusy,
-  });
-
   return (
-    <div className="project-detail-root" {...projectDropHandlers} style={{
+    <div className="project-detail-root" style={{
       flex: 1, minHeight: 0,
       display: 'grid',
       gridTemplateColumns: railOpen ? 'minmax(0, 1fr) 320px' : 'minmax(0, 1fr) 0px',
@@ -1030,17 +993,9 @@ function ProjectDetail({
           </button>
         </div>
         <WorkingFolderBox project={project} />
-        <ContextBox project={project} refreshKey={fileRefreshKey} />
+        <ContextBox project={project} />
         <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
       </aside>
-
-      {/* Drag-and-drop file overlay — covers the whole project surface. */}
-      <FileDropOverlay
-        active={projectDragging}
-        busy={dropBusy}
-        error={dropError}
-        label={`Drop to add to ${project.name}`}
-      />
     </div>
   );
 }

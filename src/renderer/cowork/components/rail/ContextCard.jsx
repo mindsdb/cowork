@@ -26,6 +26,7 @@ import {
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
 import * as host from '../../../platform/host';
+import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -414,9 +415,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       return;
     }
     reloadFiles();
-    // `refreshKey` lets callers (e.g. ProjectDetail's drag-drop upload)
-    // force a project-files refetch without changing the project.
-  }, [project?.name, refreshKey, reloadFiles]);
+  }, [project?.name, reloadFiles]);
 
   const sessionRelevant = conversationId
     && !String(conversationId).startsWith('tmp-')
@@ -521,6 +520,26 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     && !hasProjectFiles
     && !sessionRelevant;
 
+  // Drag OS files onto the context card to add them as PROJECT files.
+  // Reuses the same upload + reload the "+ Add file" affordance uses.
+  const handleProjectFilesDrop = async (files) => {
+    if (!files.length || !project?.name) return;
+    setUploadError('');
+    setUploadBusy(true);
+    try {
+      await uploadProjectFiles(project.name, files);
+      reloadFiles();
+    } catch (err) {
+      setUploadError(err?.message || 'Upload failed.');
+    } finally {
+      setUploadBusy(false);
+    }
+  };
+  const { isDragging: projectFilesDragging, dropHandlers: projectFileDropHandlers } = useFileDrop({
+    onFiles: handleProjectFilesDrop,
+    disabled: !project?.name || uploadBusy,
+  });
+
   if (blockGlobalEmpty) {
     return (
       <p className="text-[12.5px] text-ink-4 px-1 pt-2 pb-1">
@@ -530,7 +549,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 pt-2">
+    <div className="relative flex flex-col gap-3 pt-2" {...projectFileDropHandlers}>
+      <FileDropOverlay active={projectFilesDragging} label="Drop files to add to project" />
       {/* All working-folder files. Instructions row is pinned first;
           the rest follow by most-recent-mtime. >10 files gets a
           fixed-height scroll container so the rail stays compact.
