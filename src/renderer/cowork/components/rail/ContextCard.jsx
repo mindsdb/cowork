@@ -414,7 +414,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       return;
     }
     reloadFiles();
-  }, [project?.name, reloadFiles]);
+    // `refreshKey` lets callers (e.g. ProjectDetail's drag-drop upload)
+    // force a project-files refetch without changing the project.
+  }, [project?.name, refreshKey, reloadFiles]);
 
   const sessionRelevant = conversationId
     && !String(conversationId).startsWith('tmp-')

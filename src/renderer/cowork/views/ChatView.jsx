@@ -24,7 +24,8 @@ import { ArtifactViewer } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact } from '../api';
+import { revealArtifact, uploadAttachments } from '../api';
+import { useFileDrop, FileDropOverlay } from '../lib/useFileDrop';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -884,11 +885,60 @@ export default function ChatView({
   // Bumps when a turn finishes (assistant message committed) — not only
   // when messages.length changes. Replacing `_streaming` with `assistant`
   // often leaves length unchanged, which previously skipped memory refresh.
+  // Bumped after a drag-drop attachment upload so the ContextBox (TASK
+  // UPLOADS) refetches — a bare upload doesn't change message count, so it
+  // has to be folded into contextRefreshKey explicitly.
+  const [attachmentBump, setAttachmentBump] = useState(0);
   const contextRefreshKey = useMemo(() => {
     const msgs = task?.messages ?? [];
     const assistants = msgs.filter((m) => m.role === 'assistant').length;
-    return `${task?.status ?? 'idle'}:${assistants}:${msgs.length}`;
-  }, [task?.status, task?.messages]);
+    return `${task?.status ?? 'idle'}:${assistants}:${msgs.length}:${attachmentBump}`;
+  }, [task?.status, task?.messages, attachmentBump]);
+
+  // ── Drag-and-drop OS files onto the conversation ───────────────────────
+  // A saved session uploads straight to the conversation; a brand-new
+  // (tmp-) conversation has no valid session id yet, so we fall back to
+  // pending composer attachments that upload on send.
+  const [dropBusy, setDropBusy] = useState(false);
+  const [dropError, setDropError] = useState('');
+  const dropErrorTimer = useRef(null);
+  const flashDropError = (msg) => {
+    setDropError(msg);
+    if (dropErrorTimer.current) clearTimeout(dropErrorTimer.current);
+    dropErrorTimer.current = setTimeout(() => setDropError(''), 4000);
+  };
+  useEffect(() => () => { if (dropErrorTimer.current) clearTimeout(dropErrorTimer.current); }, []);
+
+  const handleDropFiles = async (files) => {
+    if (!files?.length) return;
+    const sessionId = task?.id || '';
+    const isSaved = sessionId && !sessionId.startsWith('tmp-');
+    if (!isSaved) {
+      // No valid session yet — queue as pending composer attachments.
+      onAttachFiles?.(files);
+      return;
+    }
+    setDropError('');
+    setDropBusy(true);
+    try {
+      await uploadAttachments(files, {
+        projectName: task?.projectName || project?.name,
+        sessionId,
+      });
+      setAttachmentBump((n) => n + 1);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[chat-drop] attachment upload failed', err);
+      flashDropError(err?.message || 'Upload failed');
+    } finally {
+      setDropBusy(false);
+    }
+  };
+
+  const { isDragging: chatDragging, dropHandlers: chatDropHandlers } = useFileDrop({
+    onFiles: handleDropFiles,
+    disabled: dropBusy,
+  });
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
@@ -971,8 +1021,10 @@ export default function ChatView({
   }, [streamingMsg]);
 
   return (
-    <div ref={chatRef} style={{
+    <div ref={chatRef} {...chatDropHandlers} style={{
       flex: 1, minHeight: 0,
+      // Anchor the absolutely-positioned drag-drop overlay (inset:0).
+      position: 'relative',
       display: 'grid',
       // minmax(0, 1fr) is critical — bare `1fr` lets the grid track
       // EXPAND past its allocated size when an unbreakable child (e.g.
@@ -1894,6 +1946,14 @@ export default function ChatView({
         </div>,
         document.body,
       )}
+
+      {/* Drag-and-drop file overlay — covers the whole chat surface. */}
+      <FileDropOverlay
+        active={chatDragging}
+        busy={dropBusy}
+        error={dropError}
+        label="Drop to add to this task"
+      />
     </div>
   );
 }
