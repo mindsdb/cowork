@@ -3326,33 +3326,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .dialog-actions {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;
 }
-/* Message — themed callout box with error / warning / info / success variants. */
-.message {
-  border: 1px solid var(--danger-border);
-  background: var(--danger-bg);
-  color: var(--danger-text);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 13.5px;
-  line-height: 1.5;
-  user-select: text;
-}
-.message.warning {
-  border-color: var(--warning-border);
-  background: var(--warning-bg);
-  color: var(--warning-text);
-}
-.message.info {
-  border-color: var(--info-border);
-  background: var(--info-bg);
-  color: var(--info-text);
-}
-.message.success {
-  border-color: var(--success-border);
-  background: var(--success-bg);
-  color: var(--success-text);
-}
 .dialog-error {
   margin-top: 8px; padding: 8px 10px; border-radius: 8px;
   background: var(--danger-bg); border: 1px solid var(--danger-border);
