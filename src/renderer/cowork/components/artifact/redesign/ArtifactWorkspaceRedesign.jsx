@@ -24,7 +24,7 @@ import { useArtifactChat } from './useArtifactChat.js';
 import { useCurrentUser } from './useCurrentUser.js';
 import { CommentLayer } from './CommentLayer.jsx';
 import { EditableProse } from './EditableProse.jsx';
-import { useIframeInlineEdit } from './useIframeInlineEdit.js';
+import { useIframeInlineEdit, locatorFor } from './useIframeInlineEdit.js';
 import { mockRewrite } from './useInlineEdit.js';
 import { saveArtifactContent } from './saveArtifactContent.js';
 import { VersionDiff } from './VersionDiff.jsx';
@@ -153,21 +153,28 @@ function cleanPrompt(raw) {
   return s.length > 220 ? `${s.slice(0, 217)}…` : s;
 }
 
-// Build a precise "Fix with AI" instruction that tells Anton WHERE the comment is
-// anchored (slide, area, the specific element's text) so it edits that exact spot
-// surgically instead of making broad, whole-artifact changes.
-function buildFixPrompt({ note, title, anchor } = {}) {
+// Serialize a comment THREAD (its anchor tether + every message — parent + replies)
+// into agent-ready context. Shared by "Apply with AI" and "Discuss with AI" (sent to
+// the in-workspace chat) and "Copy as context" (clipboard, for any external agent).
+// The tether — slide / area / the element's text + structural locator — is what lets
+// the agent edit the exact spot instead of the whole artifact.
+function buildThreadContext({ title, anchor, messages } = {}) {
   const a = anchor || {};
   const where = [];
   if (typeof a.slide === 'number') where.push(`slide ${a.slide + 1}`);
   if (a.area) where.push(String(a.area));
   const targetText = a?.target?.text || a?.targetText || '';
-  let p = `Address this reviewer comment on the "${title}" artifact`;
-  if (where.length) p += ` (location: ${where.join(' · ')})`;
-  p += `:\n"${note}"`;
-  if (targetText) p += `\n\nThe comment points specifically at this element: "${targetText}".`;
-  p += '\n\nMake a SURGICAL edit: change only that specific part to satisfy the comment. Do not rewrite, restructure, or restyle the rest of the artifact.';
-  return p;
+  const loc = a?.target?.locator;
+  const lines = [`Artifact: "${title}"`];
+  if (where.length) lines.push(`Location: ${where.join(' · ')}`);
+  if (targetText) lines.push(`Element: "${targetText}"`);
+  if (loc && (loc.id || (Array.isArray(loc.path) && loc.path.length))) {
+    const path = Array.isArray(loc.path) && loc.path.length ? ` › child ${loc.path.join('.')}` : '';
+    lines.push(`Element path: ${loc.id ? `#${loc.id}` : '(root)'}${path}`);
+  }
+  lines.push('', 'Comment thread:');
+  for (const m of messages || []) lines.push(`- ${m.author || 'Someone'}: ${m.body}`);
+  return lines.join('\n');
 }
 
 // Map a backend version → display shape. WHO: AI operations → "Anton"; a user's
@@ -207,6 +214,41 @@ function mapVersions(rawVersions, currentVersionId) {
   });
 }
 
+// A comment's display author. `actorEmail` rides on notificationState (a top-level
+// actorEmail is rare) — carried so "You/Me" self-normalization works downstream.
+function commentAuthor(c) {
+  const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
+  const email = c?.actorEmail || c?.notificationState?.actorEmail || c?.author?.email || '';
+  return { name, email, initials: initialsOf(name), color: '#3a4d6e' };
+}
+
+// A reply comment → compact shape for nesting under its parent in the popover/rail.
+function mapReply(c) {
+  return {
+    id: c?.id,
+    author: commentAuthor(c),
+    body: c?.body || c?.text || '',
+    when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
+  };
+}
+
+// parentCommentId → its replies (oldest-first). Lets a thread's PARENT comment carry
+// its replies so replies don't each render as their own pin/row. The backend stores
+// replies as comments with `parentCommentId` set and returns them all in `list_comments`.
+function repliesByParent(comments) {
+  const m = new Map();
+  for (const c of comments || []) {
+    const pid = c?.parentCommentId;
+    if (!pid) continue;
+    if (!m.has(pid)) m.set(pid, []);
+    m.get(pid).push(c);
+  }
+  for (const arr of m.values()) {
+    arr.sort((a, b) => toEpoch(a?.createdAt || a?.created_at || a?.when) - toEpoch(b?.createdAt || b?.created_at || b?.when));
+  }
+  return m;
+}
+
 // Map api.js comments → StoryRail events. The backend serializes the commenter as
 // `actorName` (e.g. "You") + status/anchor; `actorEmail` lives on notificationState.
 //
@@ -216,17 +258,19 @@ function mapVersions(rawVersions, currentVersionId) {
 // shape carries no `kind`/`title` to label it). Versions come from versionsToEvents,
 // comments from here, chat from the live hook — and railEvents sorts them by time.
 function mapStoryEvents({ comments }) {
+  const list = comments || [];
+  const replies = repliesByParent(list);
   const events = [];
-  for (const c of comments || []) {
-    const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
-    const email = c?.actorEmail || c?.notificationState?.actorEmail || c?.author?.email || '';
+  for (const c of list) {
+    if (c?.parentCommentId) continue; // replies nest under their parent's row, not their own
     const isReview = c?.kind === 'suggestion' || c?.kind === 'review';
     const anchorXY = commentAnchorXY(c);
+    const threadReplies = (replies.get(c?.id) || []).map(mapReply);
     events.push({
       id: `c-${c?.id || events.length}`,
       commentId: c?.id,
       kind: isReview ? 'review' : 'comment',
-      author: { name, email, initials: initialsOf(name), color: '#3a4d6e' },
+      author: commentAuthor(c),
       title: c?.kind === 'suggestion' ? 'suggested a change' : (c?.kind === 'review' ? 'requested review' : 'commented'),
       body: c?.body || c?.text || '',
       when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
@@ -234,6 +278,7 @@ function mapStoryEvents({ comments }) {
       // Where it's anchored, so clicking the row can jump there + open the pin.
       slide: anchorXY?.slide ?? null,
       locatable: commentHasPin(c),
+      replies: threadReplies,
       meta: { resolved: c?.status === 'resolved', dismissed: c?.status === 'rejected' },
     });
   }
@@ -458,7 +503,9 @@ function HtmlCanvas({ artifact, path, versionId, reloadToken, editMode, onSaveCo
           const el = doc.elementFromPoint((xPct / 100) * w, (yPct / 100) * h);
           if (!el) return null;
           const text = (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
-          return text ? { text, tag: el.tagName } : null;
+          // Carry a stable structural locator (the element/"container") so a comment is
+          // tethered to the exact node — used by the AI handoff + "Copy as context".
+          return text ? { text, tag: el.tagName, locator: locatorFor(el) } : null;
         } catch { return null; }
       };
     }
@@ -661,12 +708,15 @@ function commentHasPin(c) {
 // rail) — only things that still need attention get a pin. Each pin also carries
 // the `slide` it was dropped on (for slide decks) so it shows only on that slide.
 function commentsToPins(comments) {
+  const list = comments || [];
+  const replies = repliesByParent(list);
   const pins = [];
   // Number WITHIN each slide so a deck shows a contiguous 1,2,3 per page. (A single
   // running counter across all slides made on-page numbers non-contiguous — e.g. a
   // lone "Comment 5" on slide 3 — once CommentLayer filtered pins to the visible slide.)
   const perSlide = new Map();
-  for (const c of comments || []) {
+  for (const c of list) {
+    if (c?.parentCommentId) continue; // replies live in their parent's thread, not their own pin
     if (isSettledComment(c)) continue; // only open comments get on-canvas markup
     const anchor = commentAnchorXY(c);
     if (!anchor) continue;
@@ -674,7 +724,6 @@ function commentsToPins(comments) {
     const key = slide ?? '_';
     const n = (perSlide.get(key) || 0) + 1;
     perSlide.set(key, n);
-    const name = c?.actorName || c?.author?.name || c?.author || c?.user || 'Someone';
     pins.push({
       id: c?.id || `pin-${key}-${n}`,
       n,
@@ -685,7 +734,8 @@ function commentsToPins(comments) {
       body: c?.body || c?.text || '',
       area: c?.anchor?.area || '',
       when: relativeWhen(c?.createdAt || c?.created_at || c?.when),
-      author: { name, initials: initialsOf(name), color: '#3a4d6e' },
+      author: commentAuthor(c),
+      replies: (replies.get(c?.id) || []).map(mapReply),
       resolved: false,
     });
   }
@@ -728,7 +778,7 @@ export function ArtifactWorkspaceRedesign({
   const editCommitRef = useRef(null);
   // HtmlCanvas registers a resolver here: given an (xPct,yPct) click on the deck,
   // it returns { text, tag } of the element there — captured into a comment's anchor
-  // so "Fix with AI" can target the exact section. (null for non-HTML canvases.)
+  // so the AI handoff (Apply/Discuss) + export can target the exact section. (null for non-HTML canvases.)
   const targetResolverRef = useRef(null);
   // HtmlCanvas registers a deck navigator here: goToSlide(index) drives the deck to
   // a slide so clicking a comment in the Story can jump to where it's anchored.
@@ -854,7 +904,7 @@ export function ArtifactWorkspaceRedesign({
         // the slide it belongs to (no-op for non-slide artifacts: slide stays null).
         const anchor = { xPct, yPct, area: area || '' };
         if (typeof slideInfo.index === 'number') anchor.slide = slideInfo.index;
-        // Capture the element under the click so "Fix with AI" can target it exactly.
+        // Capture the element under the click so the AI handoff + export can target it exactly.
         const target = targetResolverRef.current?.(xPct, yPct);
         if (target && target.text) anchor.target = target;
         await createArtifactComment(path, { body, anchor });
@@ -866,12 +916,33 @@ export function ArtifactWorkspaceRedesign({
     },
     [path, flash, loadComments, slideInfo.index],
   );
-  // Inline (per-paragraph) comment from the prose EditableBlock puck.
+  // Inline (per-paragraph) comment from the prose EditableBlock puck. Tether it to the
+  // paragraph (text + index) so threads/AI-context/export know which block it's about.
+  // No x/y anchor → it stays a rail comment, not an on-canvas pin (prose has no pins).
   const handleBlockComment = useCallback(
-    async ({ text }) => {
+    async ({ target, text }) => {
       if (!text) return;
-      try { await createArtifactComment(path, { body: text }); flash('Comment added'); loadComments(); }
-      catch { flash('Could not add comment.'); }
+      const anchor = {};
+      if (target?.text) {
+        anchor.target = { text: String(target.text).slice(0, 160), tag: 'P' };
+        if (typeof target?.range?.index === 'number') anchor.area = `paragraph ${target.range.index + 1}`;
+      }
+      try {
+        await createArtifactComment(path, { body: text, anchor: Object.keys(anchor).length ? anchor : undefined });
+        flash('Comment added'); loadComments();
+      } catch { flash('Could not add comment.'); }
+    },
+    [path, flash, loadComments],
+  );
+
+  // Reply to a comment (a thread). The backend stores it as a comment with
+  // parentCommentId set; commentsToPins/mapStoryEvents nest it under the parent.
+  const handleReply = useCallback(
+    async (parentId, body) => {
+      const text = String(body || '').trim();
+      if (!path || !parentId || !text) return;
+      try { await createArtifactComment(path, { body: text, parentCommentId: parentId }); flash('Reply posted'); loadComments(); }
+      catch (e) { flash(e?.message || 'Could not post your reply.'); }
     },
     [path, flash, loadComments],
   );
@@ -887,28 +958,73 @@ export function ArtifactWorkspaceRedesign({
     try { await setArtifactSuggestionStatus(ev.commentId, 'rejected'); flash('Dismissed'); loadComments(); }
     catch (e) { flash(e?.message || 'Could not dismiss.'); }
   }, [flash, loadComments]);
-  const onFixEvent = useCallback((ev) => {
-    const note = ev?.body || ev?.title || '';
-    if (!note) return;
-    // Pull the comment's anchor so Anton edits the SPECIFIC spot, not the whole deck.
-    const c = (commentsState.comments || []).find((x) => x.id === ev.commentId);
-    const started = chat.send(buildFixPrompt({ note, title, anchor: c?.anchor }));
+  // ── Comment thread → AI handoff (Apply / Discuss) + export (Copy as context) ──
+  // A thread = the parent comment + its replies; threadFor gathers them with the
+  // parent's anchor (the element tether) so the agent edits the exact spot.
+  const threadFor = useCallback((commentId) => {
+    const all = commentsState.comments || [];
+    const parent = all.find((x) => x.id === commentId);
+    if (!parent) return null;
+    const replies = all
+      .filter((x) => x.parentCommentId === commentId)
+      .sort((a, b) => toEpoch(a?.createdAt || a?.created_at || a?.when) - toEpoch(b?.createdAt || b?.created_at || b?.when));
+    const messages = [parent, ...replies].map((c) => ({
+      author: c?.actorName || c?.author?.name || c?.author || 'Someone',
+      body: c?.body || c?.text || '',
+    }));
+    return { title, anchor: parent?.anchor, messages };
+  }, [commentsState, title]);
+
+  // Apply: hand the whole thread to Anton and tell it to make the edit now.
+  const handleApply = useCallback((commentId) => {
+    const t = threadFor(commentId);
+    if (!t) return;
+    const started = chat.send(`${buildThreadContext(t)}\n\nMake a SURGICAL edit: change only that specific part to satisfy the thread above. Do not rewrite, restructure, or restyle the rest of the artifact.`);
     flash(started === false ? 'Anton is mid-reply — try again in a moment.' : 'Anton is addressing it…');
-  }, [commentsState, title, chat, flash]);
+  }, [threadFor, chat, flash]);
+
+  // Discuss: stage the thread as context and ask for a plan FIRST — no edit yet.
+  const handleDiscuss = useCallback((commentId) => {
+    const t = threadFor(commentId);
+    if (!t) return;
+    const started = chat.send(`${buildThreadContext(t)}\n\nBefore changing anything, explain how you would implement this and what you'd change. Wait for my go-ahead before editing.`);
+    flash(started === false ? 'Anton is mid-reply — try again in a moment.' : 'Sent to Anton — review its plan in the chat.');
+  }, [threadFor, chat, flash]);
+
+  // Copy as context: the same thread serialization onto the clipboard, for any agent.
+  const handleCopyThread = useCallback(async (commentId) => {
+    const t = threadFor(commentId);
+    if (!t) return;
+    try { await navigator.clipboard.writeText(buildThreadContext(t)); flash('Copied — paste into your agent'); }
+    catch { flash('Could not copy to clipboard.'); }
+  }, [threadFor, flash]);
+
+  // Copy EVERY open thread as one context block (rail-level "Copy all").
+  const handleCopyAll = useCallback(async () => {
+    const tops = (commentsState.comments || []).filter((c) => !c.parentCommentId && !isSettledComment(c));
+    const blocks = tops.map((c) => buildThreadContext(threadFor(c.id))).filter(Boolean);
+    if (!blocks.length) { flash('No open comments to copy.'); return; }
+    try {
+      await navigator.clipboard.writeText(blocks.join('\n\n---\n\n'));
+      flash(`Copied ${blocks.length} thread${blocks.length === 1 ? '' : 's'} — paste into your agent`);
+    } catch { flash('Could not copy to clipboard.'); }
+  }, [commentsState, threadFor, flash]);
+
+  // Rail (event-shaped) callbacks delegate to the thread handlers.
+  const onFixEvent = useCallback((ev) => { if (ev?.commentId) handleApply(ev.commentId); }, [handleApply]);
+  const onDiscussEvent = useCallback((ev) => { if (ev?.commentId) handleDiscuss(ev.commentId); }, [handleDiscuss]);
+  const onCopyEvent = useCallback((ev) => { if (ev?.commentId) handleCopyThread(ev.commentId); }, [handleCopyThread]);
   const onReopenEvent = useCallback(async (ev) => {
     if (!ev?.commentId) return;
     try { await setArtifactSuggestionStatus(ev.commentId, 'open'); flash('Reopened'); loadComments(); }
     catch (e) { flash(e?.message || 'Could not reopen.'); }
   }, [flash, loadComments]);
 
-  // Clicking a comment PIN opens its popover (shows the comment at its location);
-  // the popover's actions reuse the rail handlers.
+  // Clicking a comment PIN opens its popover; the popover's actions reuse these.
   const onResolvePin = useCallback((id) => { onResolveEvent({ commentId: id }); setActiveCommentId(null); }, [onResolveEvent]);
-  const onFixPin = useCallback((id) => {
-    const c = (commentsState.comments || []).find((x) => x.id === id);
-    onFixEvent({ commentId: id, body: c?.body || c?.text || '' });
-    setActiveCommentId(null);
-  }, [commentsState, onFixEvent]);
+  const onFixPin = useCallback((id) => { handleApply(id); setActiveCommentId(null); }, [handleApply]);
+  const onDiscussPin = useCallback((id) => { handleDiscuss(id); setActiveCommentId(null); }, [handleDiscuss]);
+  const onCopyPin = useCallback((id) => { handleCopyThread(id); }, [handleCopyThread]);
   // Clicking a comment in the STORY jumps the deck to where it's anchored and opens
   // its pin, so the user sees exactly which part of the page it refers to.
   const onLocateComment = useCallback((ev) => {
@@ -1100,13 +1216,21 @@ export function ArtifactWorkspaceRedesign({
   // run through one self-identity normalizer so the user reads as "You"/"Me"
   // everywhere (not Me / ME / YO).
   const railEvents = useMemo(() => {
+    const normalizeActor = (a) => {
+      const author = a || {};
+      if (author.isAI) return a;
+      if (isSelfActor(author.name, author.email, me)) return { ...author, name: 'You', initials: 'Me' };
+      return a;
+    };
     const normalizeSelf = (ev) => {
-      const a = ev.author || {};
-      if (a.isAI) return ev;
-      if (isSelfActor(a.name, a.email, me)) {
-        return { ...ev, author: { ...a, name: 'You', initials: 'Me' } };
+      // Normalize the row author AND every reply author so "You/Me" is consistent
+      // within a thread (otherwise your parent reads "You" but your own reply shows
+      // your raw name).
+      const out = { ...ev, author: normalizeActor(ev.author) };
+      if (Array.isArray(ev.replies) && ev.replies.length) {
+        out.replies = ev.replies.map((r) => ({ ...r, author: normalizeActor(r.author) }));
       }
-      return ev;
+      return out;
     };
     const chatEvents = (chat.messages || []).map((m) => ({
       id: `chat-${m.id}`,
@@ -1216,8 +1340,12 @@ export function ArtifactWorkspaceRedesign({
             onResolveEvent={onResolveEvent}
             onDismissEvent={onDismissEvent}
             onFixEvent={onFixEvent}
+            onDiscussEvent={onDiscussEvent}
+            onCopyEvent={onCopyEvent}
             onReopenEvent={onReopenEvent}
             onSelectEvent={onLocateComment}
+            onReply={handleReply}
+            onCopyAll={handleCopyAll}
             onRestoreVersion={(ev) => handleRestore(ev.versionN)}
             onCompareVersion={(ev) => setCompare({ from: ev.versionId, fromN: ev.versionN })}
           />
@@ -1250,6 +1378,9 @@ export function ArtifactWorkspaceRedesign({
               onExitActive={() => setCommentMode(false)}
               onResolvePin={onResolvePin}
               onFixPin={onFixPin}
+              onDiscussPin={onDiscussPin}
+              onCopyPin={onCopyPin}
+              onReply={handleReply}
             />
           </div>
         </div>

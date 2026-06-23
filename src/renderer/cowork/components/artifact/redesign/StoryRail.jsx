@@ -436,7 +436,7 @@ function PendingDiffCard({ diff, onKeep, onUndo }) {
 
 /* ----------------------- Action button (Resolve / Dismiss / Fix) ---------- */
 // A compact button for the comment/review action row. `variant` picks the
-// treatment: 'ghost' (Resolve/Dismiss) or 'ai' (Fix with AI, gradient-tinted).
+// treatment: 'ghost' (Resolve/Dismiss) or 'ai' (Apply with AI, gradient-tinted).
 function RowActionButton({ label, onClick, variant = 'ghost' }) {
   const ai = variant === 'ai';
   return (
@@ -470,32 +470,48 @@ function StoryRow({
   onResolveEvent,
   onDismissEvent,
   onFixEvent,
+  onDiscussEvent,
+  onCopyEvent,
   onReopenEvent,
   onRestoreVersion,
   onCompareVersion,
   onSelectEvent,
+  onReply,
 }) {
+  const [showReply, setShowReply] = useState(false);
+  const [replyText, setReplyText] = useState('');
   const recovered = event?.meta?.tone === 'recovered';
   // A comment anchored to the page can be "located": clicking the row jumps to its
   // spot on the artifact and opens its pin. Settled comments have no pin, so no jump.
   const locatable = (event.kind === 'comment' || event.kind === 'review') && !!event.locatable && !!onSelectEvent;
 
   // Comment & review rows are the actionable ones: full body (no truncation).
-  // Active (unsettled) items get [Resolve, Dismiss, Fix with AI]; once an item
-  // is settled (resolved/dismissed) it gets a single Reopen action instead —
-  // a settled item doesn't need fixing, so Fix-with-AI is wrong there.
+  // Active (unsettled) items get [Resolve, Dismiss, Apply, Discuss, Copy, Reply]; once
+  // an item is settled (resolved/dismissed) the editing actions collapse to Reopen
+  // (Copy + Reply stay) — a settled item doesn't need Apply/Discuss.
   const isActionable = event.kind === 'comment' || event.kind === 'review';
   const resolved = !!(event?.meta?.resolved || event?.resolved);
   const dismissed = !!event?.meta?.dismissed;
   const settled = resolved || dismissed; // visually dimmed
 
-  // Active row: Resolve / Dismiss / Fix-with-AI.
+  // Active row: Resolve / Dismiss / Apply / Discuss / Copy.
   const showResolve = isActionable && !settled && !!onResolveEvent;
   const showDismiss = isActionable && !settled && !!onDismissEvent;
   const showFix = isActionable && !settled && !!onFixEvent;
+  const showDiscuss = isActionable && !settled && !!onDiscussEvent;
+  const showCopy = isActionable && !!onCopyEvent; // export works even on a settled thread
   // Settled row: a lone Reopen (replaces the active trio).
   const showReopen = isActionable && settled && !!onReopenEvent;
-  const showActions = showResolve || showDismiss || showFix || showReopen;
+  const showActions = showResolve || showDismiss || showFix || showDiscuss || showCopy || showReopen;
+  const replies = Array.isArray(event.replies) ? event.replies : [];
+  const canReply = isActionable && !!onReply && !!event.commentId;
+  const submitReply = () => {
+    const text = replyText.trim();
+    if (!text || !event.commentId) return;
+    onReply(event.commentId, text);
+    setReplyText('');
+    setShowReply(false);
+  };
 
   // Version rows get their own action row: Restore (+ optional Compare). The
   // latest/current version can't be restored onto itself — show a quiet
@@ -575,7 +591,20 @@ function StoryRow({
         >
           {event.when}
         </div>
-        {showActions ? (
+        {replies.length ? (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 7, borderLeft: '2px solid var(--line-2)', paddingLeft: 9 }}>
+            {replies.map((r) => (
+              <div key={r.id}>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{r.author?.name || 'Someone'}</span>
+                  {r.when ? <span style={{ marginLeft: 6, fontFamily: 'var(--font-mono)', color: 'var(--ink-4)' }}>{r.when}</span> : null}
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.45, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{r.body}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {(showActions || canReply) ? (
           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
             {showResolve ? (
               <RowActionButton label="Resolve" onClick={() => onResolveEvent(event)} />
@@ -584,11 +613,36 @@ function StoryRow({
               <RowActionButton label="Dismiss" onClick={() => onDismissEvent(event)} />
             ) : null}
             {showFix ? (
-              <RowActionButton label="Fix with AI" variant="ai" onClick={() => onFixEvent(event)} />
+              <RowActionButton label="Apply with AI" variant="ai" onClick={() => onFixEvent(event)} />
+            ) : null}
+            {showDiscuss ? (
+              <RowActionButton label="Discuss" onClick={() => onDiscussEvent(event)} />
+            ) : null}
+            {showCopy ? (
+              <RowActionButton label="Copy" onClick={() => onCopyEvent(event)} />
             ) : null}
             {showReopen ? (
               <RowActionButton label="Reopen" onClick={() => onReopenEvent(event)} />
             ) : null}
+            {canReply ? (
+              <RowActionButton label={showReply ? 'Cancel' : 'Reply'} onClick={() => setShowReply((v) => !v)} />
+            ) : null}
+          </div>
+        ) : null}
+        {showReply ? (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply(); } }}
+              autoFocus
+              rows={1}
+              placeholder="Reply…"
+              style={{ flex: 1, resize: 'none', minHeight: 30, maxHeight: 90, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'var(--surface-2)', color: 'var(--ink)', fontSize: 12, fontFamily: 'var(--font-body, inherit)', lineHeight: 1.4 }}
+            />
+            <button type="button" onClick={submitReply} disabled={!replyText.trim()} style={{ alignSelf: 'flex-end', height: 30, padding: '0 11px', borderRadius: 7, border: 'none', background: replyText.trim() ? 'var(--accent)' : 'var(--surface-3)', color: replyText.trim() ? '#04121a' : 'var(--ink-4)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: replyText.trim() ? 'pointer' : 'default' }}>
+              Send
+            </button>
           </div>
         ) : null}
         {showVersionActions ? (
@@ -934,11 +988,13 @@ export function StoryRail({
   onToggle,
   // Optional, additive: per-event actions for comment/review rows. A button
   // only renders when its callback is provided; each is called with the event.
-  // Active items show [Resolve, Dismiss, Fix with AI]; settled (resolved/
-  // dismissed) items show a single Reopen via `onReopenEvent`.
+  // Active items show [Resolve, Dismiss, Apply, Discuss, Copy]; settled items show
+  // Reopen (+ Copy) via `onReopenEvent`. Reply + thread export stay available.
   onResolveEvent,
   onDismissEvent,
   onFixEvent,
+  onDiscussEvent,
+  onCopyEvent,
   onReopenEvent,
   // Optional, additive: per-version actions. `onRestoreVersion` adds a Restore
   // button to each version row (hidden on the current one, where a quiet
@@ -949,6 +1005,10 @@ export function StoryRail({
   // Optional: clicking an anchored comment/review row calls this with the event so
   // the host can jump to where it's anchored on the page + open its pin.
   onSelectEvent,
+  // Optional, additive: (parentCommentId, body) to post a reply in a comment thread.
+  onReply,
+  // Optional: copy all open comment threads as context (rail header button).
+  onCopyAll,
 }) {
   // Uncontrolled fallbacks so the rail is fully interactive when rendered
   // standalone (no parent wiring required).
@@ -1028,12 +1088,24 @@ export function StoryRail({
         style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: 8,
           padding: '13px 14px',
           borderBottom: '1px solid var(--line)',
         }}
       >
         <span className="rd-no-truncate" style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Story</span>
+        {onCopyAll ? (
+          <button
+            type="button"
+            onClick={onCopyAll}
+            title="Copy all open comment threads as context"
+            className="rd-no-truncate"
+            style={{ height: 24, padding: '0 9px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--ink-3)', fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            Copy all
+          </button>
+        ) : null}
       </div>
 
       {/* Filter row — chips live inside a segmented track so they read as
@@ -1133,10 +1205,13 @@ export function StoryRail({
                   onResolveEvent={onResolveEvent}
                   onDismissEvent={onDismissEvent}
                   onFixEvent={onFixEvent}
+                  onDiscussEvent={onDiscussEvent}
+                  onCopyEvent={onCopyEvent}
                   onReopenEvent={onReopenEvent}
                   onRestoreVersion={onRestoreVersion}
                   onCompareVersion={onCompareVersion}
                   onSelectEvent={onSelectEvent}
+                  onReply={onReply}
                 />
               );
             })}

@@ -384,7 +384,7 @@ function injectStyle(doc) {
 // the path within that subtree is identical in source and live. Plain-object
 // shape `{ id, path:[childIndex…] }` so it survives the postMessage-style hop to
 // the host's save layer (see resolveLocator in saveArtifactContent).
-function locatorFor(el) {
+export function locatorFor(el) {
   const path = [];
   let node = el;
   while (node && node.nodeType === 1) {

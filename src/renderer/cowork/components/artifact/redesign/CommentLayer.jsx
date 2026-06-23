@@ -251,10 +251,18 @@ function Composer({ x, y, onSubmit, onCancel }) {
 }
 
 /* ── read-only popover anchored at a clicked pin: shows the comment AT its spot ── */
-function PinPopover({ pin, onClose, onResolve, onFix }) {
+function PinPopover({ pin, onClose, onResolve, onFix, onDiscuss, onCopy, onReply }) {
   // Flip toward the interior near the right / bottom edges so it stays on-canvas.
   const flipX = pin.xPct > 62;
   const flipY = pin.yPct > 64;
+  const [reply, setReply] = useState('');
+  const replies = Array.isArray(pin.replies) ? pin.replies : [];
+  const submitReply = () => {
+    const text = reply.trim();
+    if (!text) return;
+    onReply?.(pin.id, text);
+    setReply('');
+  };
   return (
     <div
       onClick={(e) => e.stopPropagation()}
@@ -290,7 +298,45 @@ function PinPopover({ pin, onClose, onResolve, onFix }) {
       <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 10 }}>
         {pin.body || '(no text)'}
       </div>
-      <div style={{ display: 'flex', gap: 6 }}>
+
+      {/* Thread: replies nested under the parent comment. */}
+      {replies.length ? (
+        <div style={{ borderTop: '1px solid var(--line)', paddingTop: 8, marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {replies.map((r) => (
+            <div key={r.id} style={{ display: 'flex', gap: 7 }}>
+              <span style={{ width: 18, height: 18, borderRadius: '50%', background: r.author?.color || '#3a4d6e', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8.5, fontWeight: 700, flexShrink: 0 }}>
+                {r.author?.initials || '?'}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: 'var(--ink-4)' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{r.author?.name || 'Someone'}</span>
+                  {r.when ? <span style={{ marginLeft: 6, fontFamily: 'var(--font-mono, monospace)' }}>{r.when}</span> : null}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{r.body}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Reply composer (Enter sends, Shift+Enter newline). */}
+      {onReply ? (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitReply(); } }}
+            rows={1}
+            placeholder="Reply…"
+            style={{ flex: 1, resize: 'none', minHeight: 30, maxHeight: 90, padding: '6px 8px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'var(--surface-2)', color: 'var(--ink)', fontSize: 12, fontFamily: 'var(--font-body, inherit)', lineHeight: 1.4 }}
+          />
+          <button type="button" onClick={submitReply} disabled={!reply.trim()} style={{ alignSelf: 'flex-end', height: 30, padding: '0 11px', borderRadius: 7, border: 'none', background: reply.trim() ? 'var(--accent)' : 'var(--surface-3)', color: reply.trim() ? '#04121a' : 'var(--ink-4)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: reply.trim() ? 'pointer' : 'default' }}>
+            Reply
+          </button>
+        </div>
+      ) : null}
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {onResolve ? (
           <button type="button" onClick={() => onResolve(pin.id)} style={{ height: 26, padding: '0 11px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--ink-2)', fontSize: 11.5, fontWeight: 500, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer' }}>
             Resolve
@@ -298,7 +344,17 @@ function PinPopover({ pin, onClose, onResolve, onFix }) {
         ) : null}
         {onFix ? (
           <button type="button" onClick={() => onFix(pin.id)} style={{ height: 26, padding: '0 12px', borderRadius: 7, border: '1px solid var(--accent)', background: 'var(--accent-bg)', color: 'var(--accent)', fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer' }}>
-            Fix with AI
+            Apply with AI
+          </button>
+        ) : null}
+        {onDiscuss ? (
+          <button type="button" onClick={() => onDiscuss(pin.id)} style={{ height: 26, padding: '0 11px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--ink-2)', fontSize: 11.5, fontWeight: 500, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer' }}>
+            Discuss
+          </button>
+        ) : null}
+        {onCopy ? (
+          <button type="button" onClick={() => onCopy(pin.id)} style={{ height: 26, padding: '0 11px', borderRadius: 7, border: '1px solid var(--line-2)', background: 'transparent', color: 'var(--ink-2)', fontSize: 11.5, fontWeight: 500, fontFamily: 'var(--font-body, inherit)', cursor: 'pointer' }}>
+            Copy
           </button>
         ) : null}
       </div>
@@ -323,7 +379,10 @@ function PinPopover({ pin, onClose, onResolve, onFix }) {
  * @param {?string}  [props.activeId]      comment id whose pin popover is open (host-controlled).
  * @param {Function} [props.onActiveChange] (id|null) — clicking a pin opens its popover.
  * @param {Function} [props.onResolvePin]  (id) from the popover's Resolve button.
- * @param {Function} [props.onFixPin]      (id) from the popover's Fix-with-AI button.
+ * @param {Function} [props.onFixPin]      (id) "Apply with AI" — agent edits now.
+ * @param {Function} [props.onDiscussPin]  (id) "Discuss" — agent plans first, no edit.
+ * @param {Function} [props.onCopyPin]     (id) "Copy as context" → clipboard.
+ * @param {Function} [props.onReply]       (parentId, body) — post a reply in the thread.
  */
 export function CommentLayer({
   active = false,
@@ -335,6 +394,9 @@ export function CommentLayer({
   onActiveChange,
   onResolvePin,
   onFixPin,
+  onDiscussPin,
+  onCopyPin,
+  onReply,
 } = {}) {
   const overlayRef = useRef(null);
   // The in-progress drop: { xPct, yPct } once the user clicks, else null.
@@ -432,6 +494,9 @@ export function CommentLayer({
           onClose={() => onActiveChange?.(null)}
           onResolve={onResolvePin}
           onFix={onFixPin}
+          onDiscuss={onDiscussPin}
+          onCopy={onCopyPin}
+          onReply={onReply}
         />
       ) : null}
 
