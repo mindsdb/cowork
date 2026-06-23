@@ -78,12 +78,41 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-function checkConfigured(): { configured: boolean; provider: string } {
+// Ask the running server for its readiness (DB-backed config_ready, exposed
+// via /settings/configured). Returns null when the server can't be reached so
+// the caller can fall back to the .env heuristic. Waits briefly for the
+// boot-time server start so cold-boot routing still gets the authoritative
+// answer instead of the stale .env signal.
+async function serverConfigured(): Promise<{ configured: boolean; provider: string } | null> {
+  for (let i = 0; i < 6 && !isServerRunning(); i++) {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  if (!isServerRunning()) return null;
+  try {
+    const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/settings/configured`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { configured?: boolean; provider?: string };
+    return { configured: Boolean(data.configured), provider: String(data.provider || '') };
+  } catch {
+    return null;
+  }
+}
+
+async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
   const vars = readEnvFile();
   if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
+  // The DB's config_ready is authoritative and is the SAME signal the in-app
+  // chat gate uses — defer to it so routing and the chat gate can't disagree.
+  // (The old .env any-key check could pass here while config_ready was false,
+  // stranding the user on "Connect a provider" with no in-app recovery.)
+  const fromServer = await serverConfigured();
+  if (fromServer) return fromServer;
+  // Server unreachable (very early boot): fall back to the .env heuristic so a
+  // configured user isn't needlessly bounced to onboarding.
   if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds' };
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
-  if (vars.ANTON_OPENAI_API_KEY && vars.ANTON_OPENAI_BASE_URL) return { configured: true, provider: 'openai' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
 }
