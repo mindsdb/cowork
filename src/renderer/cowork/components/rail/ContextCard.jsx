@@ -26,6 +26,7 @@ import {
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
 import * as host from '../../../platform/host';
+import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 
 function relativeAge(ts) {
   if (!ts) return '';
@@ -138,7 +139,7 @@ function SessionAttachmentRow({
               onMenuToggle();
             }}
             className={clsx(
-              'absolute inset-0 inline-flex items-center justify-center',
+              'absolute inset-0 inline-flex items-center justify-end',
               menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
               'transition-opacity rounded',
               'text-ink-4 hover:text-ink',
@@ -155,7 +156,9 @@ function SessionAttachmentRow({
           ref={menuRef}
           role="menu"
           onClick={(e) => e.stopPropagation()}
-          className="menu absolute z-50"
+          // z above the drag-drop overlay (z-120) and sibling rail cards
+          // so the menu isn't painted behind them.
+          className="menu absolute z-[200]"
           style={{
             // Anchor the menu under the kebab (trailing-right slot)
             // so it doesn't cover the row's filename. minWidth is
@@ -262,7 +265,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
               onRequestDelete(file);
             }}
             className={clsx(
-              'absolute inset-0 inline-flex items-center justify-center',
+              'absolute inset-0 inline-flex items-center justify-end',
               'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
               'transition-opacity rounded',
               'text-ink-4 hover:text-danger',
@@ -519,6 +522,26 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     && !hasProjectFiles
     && !sessionRelevant;
 
+  // Drag OS files onto the context card to add them as PROJECT files.
+  // Reuses the same upload + reload the "+ Add file" affordance uses.
+  const handleProjectFilesDrop = async (files) => {
+    if (!files.length || !project?.name) return;
+    setUploadError('');
+    setUploadBusy(true);
+    try {
+      await uploadProjectFiles(project.name, files);
+      reloadFiles();
+    } catch (err) {
+      setUploadError(err?.message || 'Upload failed.');
+    } finally {
+      setUploadBusy(false);
+    }
+  };
+  const { isDragging: projectFilesDragging, dropHandlers: projectFileDropHandlers } = useFileDrop({
+    onFiles: handleProjectFilesDrop,
+    disabled: !project?.name || uploadBusy,
+  });
+
   if (blockGlobalEmpty) {
     return (
       <p className="text-[12.5px] text-ink-4 px-1 pt-2 pb-1">
@@ -528,7 +551,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 pt-2">
+    <div className="relative flex flex-col gap-3 pt-2" {...projectFileDropHandlers}>
+      <FileDropOverlay active={projectFilesDragging} label="Drop files to add to project" />
       {/* All working-folder files. Instructions row is pinned first;
           the rest follow by most-recent-mtime. >10 files gets a
           fixed-height scroll container so the rail stays compact.
