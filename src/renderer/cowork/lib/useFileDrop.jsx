@@ -21,7 +21,9 @@
 
 import { useCallback, useRef, useState } from 'react';
 
-const FONT_BODY = "'Inter', system-ui, sans-serif";
+// Theme-driven font — the 8-bit skin (and others) override --font-body,
+// so the overlay label follows whatever theme the user picked.
+const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 
 function dragHasFiles(e) {
   const types = e?.dataTransfer?.types;
