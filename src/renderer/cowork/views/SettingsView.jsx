@@ -760,6 +760,31 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     return result;
   };
 
+  // In default model mode the role provider/model fields are never edited
+  // directly — only the custom-mode controls call setRoleDriver — so the
+  // persisted planning/coding roles stay pinned to whatever they were last
+  // set to (e.g. minds-cloud from sign-in) and the server keeps demanding
+  // that provider's key. Mirror the dropped server-side _resolve_role: pin
+  // both roles to the resolved default-mode provider and its recommended
+  // pair so a configured key actually drives the agent. Only repoints a role
+  // whose provider differs, so unrelated saves don't rewrite the model.
+  const withResolvedRoles = (s) => {
+    if (modelMode === 'custom') return s;
+    const type = defaultModeProviderType;
+    const pair = recommendedPair[type] || [];
+    const next = { ...s };
+    if ((providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
+      next.planningProvider = type;
+      next.planningModel = pair[0] || '';
+      next.defaultModel = pair[0] || '';
+    }
+    if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
+      next.codingProvider = type;
+      next.codingModel = pair[1] || '';
+    }
+    return next;
+  };
+
   const save = async () => {
     // Save runs a validation pass so the banner reflects whether the
     // new config is usable. Provider tests only fire when the LLM
@@ -770,7 +795,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     setTesting(true);
     setTested(false);
     try {
-      await onSave(settings);
+      await onSave(withResolvedRoles(settings));
       const tasks = [validateSettings()];
       if (shouldTestLlm) tasks.push(runProviderTests());
       const [result] = await Promise.all(tasks);
