@@ -139,7 +139,7 @@ function SessionAttachmentRow({
               onMenuToggle();
             }}
             className={clsx(
-              'absolute inset-0 inline-flex items-center justify-center',
+              'absolute inset-0 inline-flex items-center justify-end',
               menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
               'transition-opacity rounded',
               'text-ink-4 hover:text-ink',
@@ -156,7 +156,9 @@ function SessionAttachmentRow({
           ref={menuRef}
           role="menu"
           onClick={(e) => e.stopPropagation()}
-          className="menu absolute z-50"
+          // z above the drag-drop overlay (z-120) and sibling rail cards
+          // so the menu isn't painted behind them.
+          className="menu absolute z-[200]"
           style={{
             // Anchor the menu under the kebab (trailing-right slot)
             // so it doesn't cover the row's filename. minWidth is
@@ -263,7 +265,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
               onRequestDelete(file);
             }}
             className={clsx(
-              'absolute inset-0 inline-flex items-center justify-center',
+              'absolute inset-0 inline-flex items-center justify-end',
               'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
               'transition-opacity rounded',
               'text-ink-4 hover:text-danger',
