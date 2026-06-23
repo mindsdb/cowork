@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { ErrorBubble } from '../components/ui';
+import { Message } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
@@ -107,7 +107,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
       {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
-      {status && <ErrorBubble style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</ErrorBubble>}
+      {status && <Message style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
         <MemoryView
@@ -627,9 +627,9 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
-        <ErrorBubble>
+        <Message variant="warning">
           Configure a Minds API key in Settings before publishing.
-        </ErrorBubble>
+        </Message>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
         <div key={artifact.path} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, border: '1px solid var(--border-01)', borderRadius: 9 }}>

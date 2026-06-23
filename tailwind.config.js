@@ -63,7 +63,17 @@ export default {
         'danger-bg':'var(--danger-bg)',
         'danger-border':'var(--danger-border)',
         'danger-text':'var(--danger-text)',
+        warning:    'var(--warning)',
+        'warning-bg':'var(--warning-bg)',
+        'warning-border':'var(--warning-border)',
+        'warning-text':'var(--warning-text)',
+        'info-bg':  'var(--info-bg)',
+        'info-border':'var(--info-border)',
+        'info-text':'var(--info-text)',
         success:    '#1F8F5F',
+        'success-bg':'var(--success-bg)',
+        'success-border':'var(--success-border)',
+        'success-text':'var(--success-text)',
 
         // Aliases for mdb-ai's class names so a verbatim port works.
         // mdb-ai uses text-text-primary, bg-surface-01, border-border-02.

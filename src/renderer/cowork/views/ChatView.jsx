@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph, ErrorBubble } from '../components/ui';
+import { OrbitMorph, Message } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
@@ -1406,7 +1406,7 @@ export default function ChatView({
               if (m.role === 'error') {
                 return (
                   <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <ErrorBubble>{m.content}</ErrorBubble>
+                    <Message>{m.content}</Message>
                   </AnswerTurn>
                 );
               }

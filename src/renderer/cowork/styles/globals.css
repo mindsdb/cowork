@@ -141,6 +141,19 @@ body, body[data-theme="light"] {
   --danger-border:#F0C2B5;
   --danger-text:  #8F321A;
 
+  --warning:      #B45309;
+  --warning-bg:   #FEF3C7;
+  --warning-border:#F3D9A0;
+  --warning-text: #78350F;
+
+  --info-bg:      var(--accent-bg);
+  --info-border:  color-mix(in srgb, var(--accent) 30%, transparent);
+  --info-text:    var(--accent-2);
+
+  --success-bg:   #DCFCE7;
+  --success-border:#A7F3D0;
+  --success-text: #166534;
+
   /* Active / online indicator (green dot on project cards + list rows).
      Used with --success-glow as a soft halo when the project has live
      activity. */
@@ -234,6 +247,19 @@ body[data-theme="dark"] {
   --danger-bg:    rgba(248, 113, 113, 0.12);
   --danger-border:rgba(248, 113, 113, 0.25);
   --danger-text:  #FCA5A5;
+
+  --warning:      #FBBF24;
+  --warning-bg:   rgba(251, 191, 36, 0.12);
+  --warning-border:rgba(251, 191, 36, 0.25);
+  --warning-text: #FDE68A;
+
+  --info-bg:      var(--accent-bg);
+  --info-border:  color-mix(in srgb, var(--accent) 30%, transparent);
+  --info-text:    var(--accent);
+
+  --success-bg:   rgba(74, 222, 128, 0.12);
+  --success-border:rgba(74, 222, 128, 0.25);
+  --success-text: #86EFAC;
 
   /* Dark-mode active indicator — neon mint with stronger glow so it
      reads against the deep-blue surfaces. */
@@ -3300,7 +3326,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .dialog-actions {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;
 }
-.error-bubble {
+/* Message — themed callout box with error / warning / info / success variants. */
+.message {
   border: 1px solid var(--danger-border);
   background: var(--danger-bg);
   color: var(--danger-text);
@@ -3310,6 +3337,21 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   font-size: 13.5px;
   line-height: 1.5;
   user-select: text;
+}
+.message.warning {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+.message.info {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+.message.success {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 .dialog-error {
   margin-top: 8px; padding: 8px 10px; border-radius: 8px;
