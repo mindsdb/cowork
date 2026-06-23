@@ -380,9 +380,11 @@ export default function OnboardingScreen({
       'ANTON_CODING_PROVIDER=minds-cloud',
     ];
     if (finalizeResult.apiKey) {
+      // ENG-436: write ONLY the dedicated minds slot. minds-cloud
+      // resolves from minds_api_key/minds_url everywhere (main agent +
+      // scratchpad), so we no longer copy the minds key into the OpenAI
+      // slot — that left a user's own OpenAI key clobbered.
       lines.push(`ANTON_MINDS_API_KEY=${finalizeResult.apiKey}`);
-      lines.push(`ANTON_OPENAI_API_KEY=${finalizeResult.apiKey}`);
-      lines.push(`ANTON_OPENAI_BASE_URL=https://api.mindshub.ai/v1`);
     }
     await saveFinal(lines);
   };
