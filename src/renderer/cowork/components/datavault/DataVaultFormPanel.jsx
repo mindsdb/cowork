@@ -22,16 +22,16 @@ import {
   getSelectedMethod, subscribeSelectedMethod, setSelectedMethod,
 } from './formStore';
 
-import { saveConnector, startGoogleDriveAuth, startGoogleCalendarAuth, startGmailAuth, startGoogleAdsAuth, startGoogleAnalyticsAuth, startGcpAuth, fetchIntegrations, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
+import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAuth } from '../../api';
 import { host } from '../../../platform/host';
+import { trackDataSourceConnected } from '../../lib/analytics';
 
-const BROWSER_OAUTH_START = {
-  google_drive: startGoogleDriveAuth,
-  google_calendar: startGoogleCalendarAuth,
-  gmail: startGmailAuth,
-  google_ads: startGoogleAdsAuth,
-  google_analytics_4: startGoogleAnalyticsAuth,
-  gcp: startGcpAuth,
+const ENGINE_TO_OAUTH_SERVICE = {
+  google_drive: 'google-drive',
+  google_calendar: 'google-calendar',
+  gmail: 'gmail',
+  google_ads: 'google-ads',
+  google_analytics_4: 'google-analytics',
 };
 const BROWSER_OAUTH_TITLE = {
   google_drive: 'Google Drive connected',
@@ -39,7 +39,6 @@ const BROWSER_OAUTH_TITLE = {
   gmail: 'Gmail connected',
   google_ads: 'Google Ads connected',
   google_analytics_4: 'Google Analytics connected',
-  gcp: 'Google Cloud connected',
 };
 import { submitDataVaultForm } from '../../api';
 
@@ -80,6 +79,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // the same form_id should NOT — it'd be jarring to re-fade on
   // every status update.
   const animatedFormIdRef = useRef(null);
+  const oauthPollRef = useRef(null);
   const [appearKey, setAppearKey] = useState(0);
   // Status toast: shown when spec.status_text is set; user can
   // dismiss with × . Once dismissed for a given text, it stays
@@ -97,6 +97,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   );
 
   useEffect(() => { _ensureKeyframes(); }, []);
+  useEffect(() => () => { if (oauthPollRef.current) clearInterval(oauthPollRef.current); }, []);
 
   useEffect(() => {
     setSpec(getForm(conversationId));
@@ -134,6 +135,47 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // `dismissedStatus` state untouched in case we want a different
   // in-form indicator in the future.
   const showStatusToast = false;
+
+  const startBrowserOAuthPoll = (state, successTitle, formId) => {
+    const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
+    oauthPollRef.current = setInterval(async () => {
+      try {
+        if (Date.now() > deadline) {
+          clearInterval(oauthPollRef.current);
+          setBusy(false);
+          patchForm(conversationId, {
+            form_id: formId,
+            _is_probing: false,
+            form_error: 'Sign-in timed out. Please try again.',
+            _is_success: false,
+          });
+          return;
+        }
+        const outcome = await pollConnectorOAuth(state);
+        if (outcome?.status === 'success') {
+          clearInterval(oauthPollRef.current);
+          setBusy(false);
+          try { await fetchDatasources(); } catch { /* best effort */ }
+          patchForm(conversationId, {
+            form_id: formId,
+            _is_probing: false,
+            _is_success: true,
+            title: successTitle,
+            subtitle: "Saved to the data vault. Cowork can now use this connection in tasks.",
+          });
+        } else if (outcome?.status === 'error') {
+          clearInterval(oauthPollRef.current);
+          setBusy(false);
+          patchForm(conversationId, {
+            form_id: formId,
+            _is_probing: false,
+            form_error: outcome.error || 'Google sign-in failed. Please try again.',
+            _is_success: false,
+          });
+        }
+      } catch { /* keep polling */ }
+    }, BROWSER_OAUTH_POLL_MS);
+  };
 
   const handleAction = async ({ id, kind, values, skipped, authMethod }) => {
     if (!spec) return;
@@ -188,43 +230,28 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
-      const startFn = BROWSER_OAUTH_START[engine];
-      if (!startFn) { setError(`No OAuth start handler for engine "${engine}".`); return; }
+      const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+      if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); return; }
       const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
       setBusy(true);
       setError('');
       try {
-        const result = await startFn(values || {});
-        if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
+        const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
+        if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
         window.open(result.authUrl, '_blank');
-        const startedAt = result.startedAt || '';
-        const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
-        const poll = setInterval(async () => {
-          try {
-            if (Date.now() > deadline) {
-              clearInterval(poll);
-              setBusy(false);
-              setError('Sign-in timed out. Please try again.');
-              return;
-            }
-            const data = await fetchIntegrations();
-            const item = (data?.items || []).find((i) => i.id === engine);
-            const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
-            if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
-              clearInterval(poll);
-              setBusy(false);
-              try { await fetchDatasources(); } catch { /* best effort */ }
-              patchForm(conversationId, {
-                form_id: spec.form_id,
-                _is_success: true,
-                title: successTitle,
-                subtitle: "Saved to the data vault. Cowork can now use this connection in tasks.",
-              });
-            }
-          } catch { /* keep polling */ }
-        }, BROWSER_OAUTH_POLL_MS);
+        patchForm(conversationId, {
+          form_id: spec.form_id,
+          _is_probing: true,
+          status_text: 'Waiting for Google sign-in…',
+          form_error: null,
+        });
+        startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
       } catch (e) {
-        setError(e?.message || 'Could not start Google sign-in.');
+        patchForm(conversationId, {
+          form_id: spec.form_id,
+          _is_probing: false,
+          form_error: e?.message || 'Could not start Google sign-in.',
+        });
         setBusy(false);
       }
       return;
@@ -352,6 +379,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             title: `${outcome.label || connectorId} connected`,
             subtitle: 'Saved to the data vault. Cowork can use this connection in tasks.',
           });
+          trackDataSourceConnected(connectorId);
           onContinue?.({
             text: `Connected ${outcome.label || connectorId} — saved to the data vault.`,
           });
@@ -377,9 +405,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           setBusy(false);
           return;
         }
-        // Build the credentials payload. Keep the user-entered
-        // client_id / client_secret too — they're needed later for
-        // refresh-token exchanges.
+        // Build the credentials payload. client_id / client_secret are kept
+        // for BYOK flows — the engine needs them for refresh-token exchanges.
         const oauthValues = {
           ...(values || {}),
           client_id: clientId,
@@ -421,6 +448,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
               title: `${saved.label || connectorId} connected`,
               subtitle: 'Saved to the data vault. The agent can use this connection in tasks.',
             });
+            trackDataSourceConnected(connectorId);
             // Surface a one-line confirmation in the chat too.
             onContinue?.({
               text: `Connected ${saved.label || connectorId} — saved to the data vault.`,
@@ -652,121 +680,190 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       </div>
 
       <div style={{ padding: '10px 14px 14px' }}>
-        {/* Status toast — sits at the top of the panel body so it
-            always occupies the same slot, doesn't displace the
-            form below, and can be dismissed independently of any
-            form-level activity. The toast self-resurrect-s when a
-            new status_text arrives (handled by `showStatusToast`). */}
-        {showStatusToast && (
-          <div
-            // `key` on the status text means React swaps the node
-            // when the text changes, re-firing the appearance
-            // animation for a subtle "new update" cue without
-            // needing a separate trigger.
-            key={spec.status_text}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              marginBottom: 12,
-              padding: '8px 10px 8px 12px', borderRadius: 8,
-              background: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
-              border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-              color: 'var(--ink-2)', fontSize: 12.5,
-              animation: 'dvf-appear 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
-            }}
-          >
+        {spec._is_probing ? (
+          /* Probe running — replace the form with a spinner so the
+             popup shows clear progress instead of appearing frozen. */
+          <div style={{
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            padding: '32px 20px 36px', gap: 12,
+          }}>
             <span
               aria-hidden
               style={{
-                width: 11, height: 11, flex: '0 0 11px',
+                display: 'block',
+                width: 22, height: 22,
                 borderRadius: '50%',
-                border: '2px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                border: '2.5px solid color-mix(in srgb, var(--accent) 25%, transparent)',
                 borderTopColor: 'var(--accent)',
                 animation: 'dvf-spin 720ms linear infinite',
               }}
             />
-            <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {spec.status_text}
+            <span style={{ color: 'var(--ink-2)', fontSize: 13, textAlign: 'center' }}>
+              {spec.status_text || 'Testing connection…'}
             </span>
+          </div>
+        ) : spec.form_error && !spec._is_error ? (
+          /* Probe returned failure — show error card + Try again. */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0 2px' }}>
+            <div style={{
+              padding: '12px 14px', borderRadius: 8,
+              background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
+              border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--danger)', marginBottom: 5 }}>
+                Connection failed
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+                {spec.form_error}
+              </div>
+              {spec.subtitle && (
+                <div style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.4, marginTop: 6 }}>
+                  {spec.subtitle}
+                </div>
+              )}
+            </div>
             <button
               type="button"
-              onClick={() => setDismissedStatus(spec.status_text)}
-              title="Dismiss"
-              aria-label="Dismiss status"
-              style={{
-                width: 20, height: 20, borderRadius: 5,
-                background: 'transparent', border: 0, padding: 0,
-                color: 'var(--ink-4)',
-                display: 'inline-grid', placeItems: 'center',
-                cursor: 'pointer', flex: '0 0 20px',
-                transition: 'color 120ms ease, background 120ms ease',
+              onClick={() => {
+                const fieldsPatch = {};
+                if (Array.isArray(spec.fields)) {
+                  for (const f of spec.fields) {
+                    if (f?.name) fieldsPatch[f.name] = { status: null };
+                  }
+                }
+                const methodsPatch = {};
+                if (Array.isArray(spec.methods)) {
+                  for (const m of spec.methods) {
+                    if (!m?.id) continue;
+                    const mf = {};
+                    if (Array.isArray(m.fields)) {
+                      for (const f of m.fields) {
+                        if (f?.name) mf[f.name] = { status: null };
+                      }
+                    }
+                    if (Object.keys(mf).length) methodsPatch[m.id] = { fields: mf };
+                  }
+                }
+                patchForm(conversationId, {
+                  form_id: spec.form_id,
+                  form_error: null,
+                  _is_probing: false,
+                  status_text: null,
+                  ...(Object.keys(fieldsPatch).length ? { fields: fieldsPatch } : {}),
+                  ...(Object.keys(methodsPatch).length ? { methods: methodsPatch } : {}),
+                });
               }}
-              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
+              style={{
+                alignSelf: 'flex-start',
+                padding: '6px 14px', borderRadius: 7,
+                background: 'var(--accent)', border: 0,
+                color: '#fff', fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: FONT_BODY,
+                transition: 'opacity 140ms ease',
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.opacity = '0.85'; }}
+              onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
             >
-              {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
+              Try again
             </button>
           </div>
-        )}
-        <DataVaultForm
-          spec={spec}
-          busy={busy}
-          onAction={handleAction}
-          conversationId={conversationId}
-          onMethodChange={async (methodId) => {
-            if (methodId !== 'browser_oauth_builtin') return;
-            // Methods with fields wait for Submit — handleAction takes over.
-            const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;
-            if (method?.fields?.length) return;
-            // No fields — auto-start immediately on method selection.
-            const engine = spec.engine || spec._connector_id || 'google_drive';
-            const startFn = BROWSER_OAUTH_START[engine];
-            if (!startFn) { setError(`No OAuth start handler for engine "${engine}".`); return; }
-            const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
-            setBusy(true);
-            setError('');
-            try {
-              const result = await startFn({});
-              if (!result?.authUrl) throw new Error('Could not start Google sign-in. Is the server running?');
-              window.open(result.authUrl, '_blank');
-              const startedAt = result.startedAt || '';
-              const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
-              const poll = setInterval(async () => {
+        ) : (
+          /* Normal / success / parse-error state — render the form as usual. */
+          <>
+            {showStatusToast && (
+              <div
+                key={spec.status_text}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  marginBottom: 12,
+                  padding: '8px 10px 8px 12px', borderRadius: 8,
+                  background: 'color-mix(in srgb, var(--accent) 10%, var(--surface))',
+                  border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                  color: 'var(--ink-2)', fontSize: 12.5,
+                  animation: 'dvf-appear 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 11, height: 11, flex: '0 0 11px',
+                    borderRadius: '50%',
+                    border: '2px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                    borderTopColor: 'var(--accent)',
+                    animation: 'dvf-spin 720ms linear infinite',
+                  }}
+                />
+                <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {spec.status_text}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDismissedStatus(spec.status_text)}
+                  title="Dismiss"
+                  aria-label="Dismiss status"
+                  style={{
+                    width: 20, height: 20, borderRadius: 5,
+                    background: 'transparent', border: 0, padding: 0,
+                    color: 'var(--ink-4)',
+                    display: 'inline-grid', placeItems: 'center',
+                    cursor: 'pointer', flex: '0 0 20px',
+                    transition: 'color 120ms ease, background 120ms ease',
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
+                >
+                  {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
+                </button>
+              </div>
+            )}
+            <DataVaultForm
+              spec={spec}
+              busy={busy}
+              onAction={handleAction}
+              conversationId={conversationId}
+              onMethodChange={async (methodId) => {
+                if (methodId !== 'browser_oauth_builtin') return;
+                // Methods with fields wait for Submit — handleAction takes over.
+                const method = Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === methodId) : null;
+                if (method?.fields?.length) return;
+                // No fields — auto-start immediately on method selection.
+                const engine = spec.engine || spec._connector_id || 'google_drive';
+                const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+                if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); return; }
+                const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
+                setBusy(true);
+                setError('');
                 try {
-                  if (Date.now() > deadline) {
-                    clearInterval(poll);
-                    setBusy(false);
-                    setError('Sign-in timed out. Please try again.');
-                    return;
-                  }
-                  const data = await fetchIntegrations();
-                  const item = (data?.items || []).find((i) => i.id === engine);
-                  const lastSuccessAt = item?.oauth?.lastSuccessAt || '';
-                  if (lastSuccessAt && (!startedAt || lastSuccessAt >= startedAt)) {
-                    clearInterval(poll);
-                    setBusy(false);
-                    try { await fetchDatasources(); } catch { /* best effort */ }
-                    patchForm(conversationId, {
-                      form_id: spec.form_id,
-                      _is_success: true,
-                      title: successTitle,
-                      subtitle: "Saved to the data vault. The agent can now use this connection in tasks.",
-                    });
-                  }
-                } catch { /* keep polling */ }
-              }, BROWSER_OAUTH_POLL_MS);
-            } catch (e) {
-              setError(e?.message || 'Could not start Google sign-in.');
-              setBusy(false);
-            }
-          }}
-        />
-        {error && (
-          <div style={{
-            marginTop: 10, padding: '8px 10px', borderRadius: 7,
-            background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
-            border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
-            color: 'var(--danger)', fontSize: 12,
-          }}>{error}</div>
+                  const result = await startConnectorOAuth(serviceId);
+                  if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+                  window.open(result.authUrl, '_blank');
+                  patchForm(conversationId, {
+                    form_id: spec.form_id,
+                    _is_probing: true,
+                    status_text: 'Waiting for Google sign-in…',
+                    form_error: null,
+                  });
+                  startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
+                } catch (e) {
+                  patchForm(conversationId, {
+                    form_id: spec.form_id,
+                    _is_probing: false,
+                    form_error: e?.message || 'Could not start Google sign-in.',
+                  });
+                  setBusy(false);
+                }
+              }}
+            />
+            {error && (
+              <div style={{
+                marginTop: 10, padding: '8px 10px', borderRadius: 7,
+                background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
+                border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+                color: 'var(--danger)', fontSize: 12,
+              }}>{error}</div>
+            )}
+          </>
         )}
       </div>
     </div>

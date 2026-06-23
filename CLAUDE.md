@@ -125,7 +125,7 @@ The app ships as both an Electron desktop app and a headless web SPA (served by 
 2. Terms consent → Setup wizard (installer) → Onboarding (provider selection)
 3. IntroSequence → CoworkApp (main chat UI)
 
-The installer ([src/main/installer.ts](src/main/installer.ts)) handles first-run: Xcode CLT, git, uv, cowork-server, verify, start. Minimum server version: `0.1.4`.
+The installer ([src/main/installer.ts](src/main/installer.ts)) handles first-run: Xcode CLT, git, uv, cowork-server, verify, start. Minimum server version: `0.1.10`.
 
 ### OTA updates
 

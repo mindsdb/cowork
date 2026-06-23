@@ -6,7 +6,11 @@ export const BASE: string;
 
 /** Per-provider recommended (planning, coding) model id pair. */
 export interface RecommendedModels {
+  /** Per-provider model-id lists for the picker (server-owned). */
+  recommendedModels?: Record<string, string[]>;
   recommendedPair?: Record<string, [string, string] | string[]>;
+  /** Per-model effort capability: id → { efforts, default }. */
+  modelEfforts?: Record<string, { efforts: string[]; default: string }>;
   [key: string]: unknown;
 }
 

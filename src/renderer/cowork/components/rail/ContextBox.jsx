@@ -8,7 +8,7 @@ export function ContextBox({
   project,
   /** Conversation / task id — with `project`, lists uploads (GET /v1/attachments/{project}/{session}). */
   conversationId,
-  /** Bumps when the task transcript changes so attachment assignments after a send are re-fetched. */
+  /** Bumps when the task transcript changes (turn finish, send, etc.) so attachments and memory stay in sync. */
   refreshKey,
   defaultOpen = true,
   maxBodyHeight = 360,

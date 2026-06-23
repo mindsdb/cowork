@@ -17,6 +17,19 @@ import { app } from 'electron';
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
 
+function loadBundledServerCredentials(): Record<string, string> {
+  try {
+    const credPath = path.join(process.resourcesPath || '', 'server-credentials.json');
+    if (fs.existsSync(credPath)) {
+      const raw = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+      if (raw && typeof raw === 'object') return raw as Record<string, string>;
+    }
+  } catch {
+    // no credentials file bundled (dev mode) — fine
+  }
+  return {};
+}
+
 let serverProcess: ChildProcess | null = null;
 let serverPort: number = DEFAULT_PORT;
 let serverStarted = false;
@@ -101,21 +114,46 @@ function killTree(proc: ChildProcess, signal: NodeJS.Signals): void {
 // Find and kill the process listening on a port. Used to reap orphaned
 // servers that we adopted but don't have a ChildProcess handle for.
 // Best-effort — failures are silently ignored.
-async function killProcessOnPort(port: number): Promise<void> {
+async function killProcessOnPort(port: number): Promise<boolean> {
+  // Windows: lsof isn't available, so parse `netstat -ano` for the PID
+  // LISTENING on our port and force-kill it (and its child tree). This is
+  // the orphaned-server case that otherwise surfaces as WinError 10048
+  // ("only one usage of each socket address") on every restart, because the
+  // OS — and sometimes our own quit — doesn't reap the prior python.
   if (process.platform === 'win32') {
-    console.warn(`[server] cannot reap orphaned process on port ${port}: lsof not available on Windows`);
-    return;
+    return new Promise<boolean>((resolve) => {
+      execFile('netstat', ['-ano'], { timeout: 4000 }, (err, stdout) => {
+        if (err || !stdout) { resolve(false); return; }
+        const pids = new Set<number>();
+        for (const line of stdout.split(/\r?\n/)) {
+          // columns: proto  local-addr  foreign-addr  state  pid
+          const cols = line.trim().split(/\s+/);
+          if (cols.length >= 5 && cols[3] === 'LISTENING' && cols[1].endsWith(`:${port}`)) {
+            const pid = Number(cols[4]);
+            if (pid > 0) pids.add(pid);
+          }
+        }
+        if (pids.size === 0) { resolve(false); return; }
+        let pending = pids.size;
+        for (const pid of pids) {
+          execFile('taskkill', ['/F', '/T', '/PID', String(pid)], { timeout: 4000 }, () => {
+            if (--pending <= 0) resolve(true);
+          });
+        }
+      });
+    });
   }
-  return new Promise<void>((resolve) => {
+  return new Promise<boolean>((resolve) => {
     execFile('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { timeout: 3000 }, (err, stdout) => {
-      if (err || !stdout.trim()) { resolve(); return; }
+      if (err || !stdout.trim()) { resolve(false); return; }
+      let killed = false;
       for (const pidStr of stdout.trim().split('\n')) {
         const pid = Number(pidStr);
         if (pid > 0) {
-          try { process.kill(pid, 'SIGTERM'); } catch {}
+          try { process.kill(pid, 'SIGTERM'); killed = true; } catch {}
         }
       }
-      resolve();
+      resolve(killed);
     });
   });
 }
@@ -227,6 +265,16 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
     return { ok: true, port: serverPort };
   }
 
+  // Not healthy — but a crashed/hung orphan from a prior session may still
+  // be holding the port (the OS doesn't always reap it, especially on
+  // Windows). If so, our spawn would fail to bind with WinError 10048 /
+  // EADDRINUSE. Reap any non-responsive listener first (no-op if the port is
+  // actually free), then give the OS a moment to release the socket.
+  if (await killProcessOnPort(serverPort)) {
+    console.log(`[server] reaped an orphan holding port ${serverPort} before spawn`);
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
   // 15s is plenty for a normal packaged boot (typically <2s). Dev mode
   // runs `uv run` against the sibling source dir, and the FIRST boot
   // builds a fresh .venv — resolving and downloading the dependency
@@ -277,6 +325,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   pendingStart = (async (): Promise<StartServerResult> => {
     const env = {
       ...process.env,
+      ...loadBundledServerCredentials(),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),

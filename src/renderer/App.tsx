@@ -1,35 +1,29 @@
 import { useState, useEffect } from 'react';
-import TitleScreen from './pages/arcade/TitleScreen';
-import TermsScreen from './pages/arcade/TermsScreen';
 import SetupScreen from './pages/arcade/SetupScreen';
-import CoworkerSelect, { COWORKERS } from './pages/arcade/CoworkerSelect';
-import ThemeSelect, { type ThemePreset } from './pages/arcade/ThemeSelect';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
-import LaunchScreen from './pages/arcade/LaunchScreen';
+import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
+import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
-import { persistSkin } from './lib/skins';
+import { loadSkin, persistSkin } from './lib/skins';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
-type Page = 'loading' | 'intro' | 'terms' | 'setup' | 'coworker' | 'theme' | 'onboarding' | 'launching' | 'terminal';
+// Onboarding flow:
+//   loading (welcome orb) → auth (sign in / register / continue without) →
+//   setup (install) → terminal. Agent + theme are not onboarding steps; the
+//   look (arcade ↔ normal) is toggled via the corner controller button.
+type Page = 'loading' | 'auth' | 'setup' | 'terminal';
 
-// Terms-consent persistence for the web build.
-//
-// The desktop app records consent in the server-side .env
-// (`ANTON_TERMS_CONSENT`), but that flag is only ever written by the
-// Onboarding screen. The web deployment ships with a provider already
-// configured, so onboarding is skipped — meaning the flag was never
-// written and the terms screen reappeared on every refresh. We persist
-// a per-browser flag in localStorage instead: it survives a reload, is
-// scoped to the individual user (unlike the shared server .env), and
-// matches how the app already persists the theme.
+// Per-browser terms-consent flag (web). Desktop also records consent in
+// ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
 const TERMS_CONSENT_KEY = 'anton.termsConsent';
-
-// The cartridge picked on the SELECT YOUR COWORKER screen. Mirrors the
-// backend `harness` setting; kept in localStorage so the launch screen
-// can show "now playing: <coworker>" on later boots too.
 const COWORKER_KEY = 'anton.coworker';
+// Minimum time the welcome orb stays up so it doesn't flash on fast boots.
+// The boot veil only briefly masks the window-show moment (~140ms + ~260ms
+// fade), so the animated orb is on screen almost immediately and stays for
+// roughly this long before routing onward.
+const WELCOME_MIN_MS = 1600;
 
 function hasLocalTermsConsent(): boolean {
   try {
@@ -44,10 +38,8 @@ function rememberTermsConsent(): void {
   try { window.localStorage.setItem(TERMS_CONSENT_KEY, 'true'); } catch {}
 }
 
-function rememberCoworker(id: string): void {
-  try { window.localStorage.setItem(COWORKER_KEY, id); } catch {}
-}
-
+// Agent defaults to Anton (no picker in onboarding). A previously-selected
+// coworker in localStorage is still honored if present.
 function recallCoworker(): { id: string; label: string; sprite: SpriteName } {
   let id = 'anton';
   try { id = window.localStorage.getItem(COWORKER_KEY) || 'anton'; } catch {}
@@ -57,186 +49,177 @@ function recallCoworker(): { id: string; label: string; sprite: SpriteName } {
     : { id: 'anton', label: 'ANTON', sprite: 'anton' };
 }
 
-// Dev-only deep link (`?page=onboarding` etc.) so onboarding screens can
-// be iterated on / screenshotted without replaying the whole gate
-// sequence. Compiled out of production bundles via import.meta.env.DEV.
-function devForcedPage(): Page | null {
-  if (!import.meta.env.DEV) return null;
-  try {
-    const p = new URLSearchParams(window.location.search).get('page');
-    const valid: Page[] = ['intro', 'terms', 'setup', 'coworker', 'theme', 'onboarding', 'launching'];
-    return valid.includes(p as Page) ? (p as Page) : null;
-  } catch {
-    return null;
-  }
+// Map skin + theme → the onboarding shell's look. arcade.css reads
+// body[data-arcade-preset]: 'midnight'/'daylight' = clean (Inter, no CRT),
+// 'gameboy' = 8-bit light, default (no preset) = 8-bit dark CRT.
+function applyArcadePreset(skin: string): void {
+  const theme = document.body.dataset.theme === 'light' ? 'light' : 'dark';
+  const preset = skin === '8bit'
+    ? (theme === 'light' ? 'gameboy' : null)         // null → default arcade dark
+    : (theme === 'light' ? 'daylight' : 'midnight'); // clean / "normal"
+  if (preset) document.body.dataset.arcadePreset = preset;
+  else delete document.body.dataset.arcadePreset;
+}
+
+function GamepadIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 11h4M8 9v4" /><path d="M15.5 12.5h.01M18 10h.01" />
+      <path d="M17.32 6H6.68a4 4 0 0 0-3.98 3.6l-.66 5.86A2.75 2.75 0 0 0 6.8 17.6L8.5 15.5h7l1.7 2.1a2.75 2.75 0 0 0 4.76-2.14l-.66-5.86A4 4 0 0 0 17.32 6Z" />
+    </svg>
+  );
+}
+
+function SunIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+    </svg>
+  );
 }
 
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
-  const [coworker, setCoworker] = useState(recallCoworker);
-  // When inspecting a single screen via `?page=`, freeze it: the
-  // onboarding/launch screens auto-advance on completion, which would
-  // navigate away from the very screen you're trying to look at.
-  const isDevFrozen = Boolean(devForcedPage());
+  const [coworker] = useState(recallCoworker);
+  const [skin, setSkin] = useState(loadSkin);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = window.localStorage.getItem('anton.theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {}
+    return document.body.dataset.theme === 'light' ? 'light' : 'dark';
+  });
+
+  // Keep body skin + onboarding shell preset + persistence in sync.
+  useEffect(() => {
+    document.body.dataset.skin = skin;
+    persistSkin(skin);
+    applyArcadePreset(skin);
+  }, [skin]);
+
+  // Apply + persist the light/dark theme (mirrors CoworkApp), then refresh
+  // the arcade preset since the preset depends on the active theme.
+  useEffect(() => {
+    try { window.localStorage.setItem('anton.theme', theme); } catch {}
+    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
+    document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
+    document.body.dataset.theme = theme;
+    const gf = (window as unknown as { gravityField?: { setTheme?: (t: string) => void } }).gravityField;
+    if (gf && typeof gf.setTheme === 'function') gf.setTheme(theme);
+    applyArcadePreset(skin);
+  }, [theme, skin]);
 
   useEffect(() => {
-    const forced = devForcedPage();
-    if (forced) { setPage(forced); return; }
-
     async function init() {
+      const started = Date.now();
+      let target: Page = 'auth';
       try {
         const settings = await host.readSettings();
-        // Consent counts if either the server-side flag is set (desktop /
-        // onboarding path) or this browser already accepted (web path).
         const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalTermsConsent();
-        if (!consented) {
-          // Terms gate the rest of the app — every launch up until the
-          // user accepts shows the title screen, then terms. Once
-          // accepted, the intro never plays again because we never
-          // re-enter this branch.
-          setPage('intro');
-          return;
-        }
-
-        // Both halves of "ready to start the server": is the anton CLI
-        // installed, AND are the Python deps the bundled FastAPI server
-        // needs importable from the tool venv. Either being false means
-        // setup needs to run. On web both flags are reported true by the
-        // FastAPI host (it IS the install), so this short-circuits there.
-        const status = await host.checkInstall();
-        if (!status.antonInstalled || !status.serverDepsReady) {
-          setPage('setup');
-          return;
-        }
         const { configured } = await host.checkConfigured();
-        if (!configured) {
-          setPage('coworker');
-          return;
+        if (consented && configured) {
+          const status = await host.checkInstall();
+          target = (!status.antonInstalled || !status.serverDepsReady) ? 'setup' : 'terminal';
         }
-        setPage('terminal');
       } catch {
-        setPage('terms');
+        target = 'auth';
       }
+      // Keep the welcome orb up briefly so it doesn't flash on fast boots.
+      const elapsed = Date.now() - started;
+      if (elapsed < WELCOME_MIN_MS) {
+        await new Promise((r) => setTimeout(r, WELCOME_MIN_MS - elapsed));
+      }
+      setPage(target);
     }
     init();
   }, []);
 
-  const advanceFromTerms = async () => {
-    const status = await host.checkInstall();
-    if (!status.antonInstalled || !status.serverDepsReady) {
-      setPage('setup');
-      return;
-    }
-    const { configured } = await host.checkConfigured();
-    if (!configured) {
-      setPage('coworker');
-      return;
-    }
-    setPage('launching');
-  };
-
-  const handleTermsAccepted = () => {
-    // Persist consent before advancing. The web build skips onboarding
-    // (the provider is pre-configured), and onboarding is the only place
-    // the server-side ANTON_TERMS_CONSENT flag is written — so without
-    // this a browser refresh drops the user back onto the terms screen
-    // every single time.
+  // After login (SSO or BYOK): consent is recorded and a provider is saved.
+  // Ensure the backend is installed, then enter the app.
+  const handleAuthComplete = async () => {
     rememberTermsConsent();
-    advanceFromTerms();
-  };
-
-  // After install (or re-install), skip coworker/provider onboarding if
-  // `~/.anton/.env` already provides a supported provider key — the
-  // returning-user case where the installer just refreshed the binary.
-  const handleInstallComplete = async () => {
+    try { await host.restartServer(); } catch {}
     try {
-      const { configured } = await host.checkConfigured();
-      if (configured) {
-        setPage('launching');
+      const status = await host.checkInstall();
+      if (!status.antonInstalled || !status.serverDepsReady) {
+        setPage('setup');
         return;
       }
     } catch {
-      // Fail-open to onboarding — better to ask the user one
-      // unnecessary time than to land in the terminal with no key.
+      setPage('setup');
+      return;
     }
-    setPage('coworker');
+    setPage('terminal');
   };
 
-  const handleCoworkerSelected = (id: string, label: string) => {
-    rememberCoworker(id);
-    const cw = COWORKERS.find((c) => c.id === id);
-    setCoworker({ id, label, sprite: (cw?.sprite ?? 'anton') as SpriteName });
-    setPage('theme');
-  };
-
-  // CHOOSE YOUR DISPLAY → persist both axes. CoworkApp seeds its
-  // theme/skin state from these keys when it mounts after onboarding;
-  // the body attributes are set too so the launch beat is consistent.
-  const handleThemeSelected = (preset: ThemePreset) => {
-    persistSkin(preset.skin);
-    try { window.localStorage.setItem('anton.theme', preset.theme); } catch {}
-    document.body.dataset.skin = preset.skin;
-    document.body.dataset.theme = preset.theme;
-    document.body.classList.remove('gf-theme-dark', 'gf-theme-light');
-    document.body.classList.add(preset.theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
-    // Re-theme the REMAINING onboarding screens (POWER UP, NOW LOADING)
-    // to the chosen preset — arcade.css carries a palette block per
-    // preset id. ThemeSelect clears this on mount so back-nav returns
-    // to the neutral CRT chooser.
-    document.body.dataset.arcadePreset = preset.id;
-    setPage('onboarding');
-  };
-
-  const handleOnboardingComplete = async () => {
-    // Restart the backend so it picks up the freshly-written
-    // ~/.anton/.env (provider keys, model settings). The server
-    // started during Setup before the .env existed, so its cached
-    // env-file list doesn't include it.
+  const handleInstallComplete = async () => {
+    // Restart the backend so it picks up the freshly-written ~/.anton/.env.
     try { await host.restartServer(); } catch {}
-    setPage('launching');
+    setPage('terminal');
   };
 
   const isMac = host.isMac();
-  const isArcadePage = page !== 'terminal' && page !== 'loading';
+  const isArcadePage = page !== 'terminal';
 
   return (
     <>
-      {/* Top-of-window drag overlay only matters for the arcade pages,
-          which don't have their own draggable chrome. The cowork page
-          provides drag via its sidebar header, so we skip this overlay
-          there — otherwise it blocks pointer events for the upper
-          ~38px of the sidebar icons. */}
+      {/* Drag overlay for the chromeless arcade pages (auth/setup). */}
       {isMac && isArcadePage && <div className="titlebar-drag" />}
 
       {page === 'loading' && (
-        <div style={{ position: 'fixed', inset: 0, background: '#0a0a13' }} />
+        <div
+          className="arc-root welcome-loading"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20 }}
+        >
+          <OrbitMorph state="thinking" size={72} />
+          <div className="arc-welcome-title">
+            Welcome to MindsHub Cowork
+          </div>
+        </div>
       )}
 
-      {page === 'intro' && <TitleScreen onComplete={() => setPage('terms')} />}
-      {page === 'terms' && <TermsScreen onAccept={handleTermsAccepted} />}
+      {page === 'auth' && (
+        <OnboardingScreen coworker={coworker} onComplete={handleAuthComplete} />
+      )}
+
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}
-      {page === 'coworker' && <CoworkerSelect onSelect={handleCoworkerSelected} />}
-      {page === 'theme' && (
-        <ThemeSelect
-          onSelect={isDevFrozen ? () => {} : handleThemeSelected}
-          onBack={() => setPage('coworker')}
-        />
-      )}
-      {page === 'onboarding' && (
-        <OnboardingScreen
-          coworker={coworker}
-          onComplete={isDevFrozen ? () => {} : handleOnboardingComplete}
-          onBack={() => setPage('theme')}
-        />
-      )}
-      {page === 'launching' && (
-        <LaunchScreen
-          coworkerLabel={coworker.label}
-          onDone={isDevFrozen ? () => {} : () => setPage('terminal')}
-        />
-      )}
 
       {page === 'terminal' && <CoworkApp />}
+
+      {/* Theme + style toggles on the onboarding corner — mirror the in-app
+          floating buttons (CoworkApp has its own; these only show here). The
+          CSS stacks the style toggle above the theme toggle. */}
+      {isArcadePage && (
+        <>
+          <button
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label="Toggle colour theme"
+            className="floating-theme-toggle"
+            style={{ zIndex: 200 }}
+          >
+            {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+          </button>
+          <button
+            onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
+            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
+            aria-label="Toggle 8-bit arcade style"
+            className="floating-theme-toggle floating-skin-toggle"
+            style={{ zIndex: 200 }}
+          >
+            <GamepadIcon size={15} />
+          </button>
+        </>
+      )}
     </>
   );
 }
