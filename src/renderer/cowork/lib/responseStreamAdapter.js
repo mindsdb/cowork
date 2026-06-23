@@ -47,6 +47,8 @@ export function initialStreamState() {
     harness: null,
     /** Surfaced for diagnostics if a failure event arrives. */
     error: null,
+    /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
+    errorCode: null,
   };
 }
 
@@ -239,6 +241,9 @@ export function reduceStream(state, event, now = Date.now) {
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'error',
       error: event.error || event.message || 'Response failed',
+      // Stable wire code (e.g. 'token_limit') so the renderer can show a
+      // richer affordance — the out-of-credits card — instead of plain text.
+      errorCode: event.code || null,
     };
   }
 
