@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import {
-  revealArtifact, publishArtifact, unpublishArtifact,
+  revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
@@ -218,6 +218,32 @@ function PublishedPill({ mode, protected: isProtected = false }) {
           ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
           : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
       Published
+    </span>
+  );
+}
+
+// Shown next to PublishedPill when a published artifact's files changed after
+// publish (server-computed `artifact.modified`). Amber, so it reads as
+// "published version is stale" — distinct from the cyan Published pill.
+function ModifiedPill() {
+  return (
+    <span
+      title="Edited since publish — use Update to push the latest version"
+      style={{
+        background: 'color-mix(in srgb, #f5a623 16%, transparent)',
+        border: '1px solid color-mix(in srgb, #f5a623 40%, transparent)',
+        color: '#f5a623',
+        padding: '1px 6px', borderRadius: 999,
+        fontSize: 9, fontWeight: 700,
+        lineHeight: 1.2,
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        flexShrink: 0,
+        letterSpacing: '0.05em', textTransform: 'uppercase',
+        fontFamily: FONT_BODY,
+      }}
+    >
+      <span style={{ width: 4, height: 4, borderRadius: 99, background: '#f5a623' }} />
+      Modified
     </span>
   );
 }
@@ -614,7 +640,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       }}>
         {(published || artifact.live) && (
           <span style={{ pointerEvents: 'none' }}>
-            {published ? <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} /> : (
+            {published ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
+                {artifact.modified && <ModifiedPill />}
+              </span>
+            ) : (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 fontFamily: FONT_BODY, fontSize: 11,
@@ -892,7 +923,7 @@ function StatusDot({ artifact }) {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onDelete, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   const items = [
@@ -919,6 +950,12 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       label: 'Copy URL',
       icon: Ico.copy(13),
       onClick: onCopyUrl,
+    },
+    published && artifact.modified && {
+      id: 'update',
+      label: 'Update',
+      icon: Ico.refresh(13),
+      onClick: onUpdate,
     },
     isPublishableArtifact(artifact) && !published && {
       id: 'publish',
@@ -953,7 +990,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   );
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onOpenProject }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onDelete: doDelete, onOpenProject }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
@@ -1009,7 +1046,10 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             the column width fixed so rows align cleanly. */}
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {published ? (
-            <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
+              {artifact.modified && <ModifiedPill />}
+            </span>
           ) : artifact.live ? (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -1135,6 +1175,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
+        onUpdate={() => doUpdate?.(artifact)}
         onDelete={doDelete ? () => doDelete(artifact) : undefined}
         isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
@@ -1371,6 +1412,22 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     }
   };
 
+  const handleUpdate = async (artifact) => {
+    if (!artifact?.path || busyPaths.has(artifact.path)) return;
+    setBusy(artifact.path, true);
+    try {
+      const r = await updateArtifact(publishTargetPath(artifact));
+      // Server refreshed last_md5 + published_mtime, so the artifact is no
+      // longer "modified". Reflect it locally without a refetch.
+      updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
+      setToast({ kind: 'ok', message: 'Updated published version.' });
+    } catch (e) {
+      setToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+    } finally {
+      setBusy(artifact.path, false);
+    }
+  };
+
   const handleTrash = async (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
@@ -1529,6 +1586,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onOpenViewer={setViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
+              onUpdate={handleUpdate}
               onDelete={handleTrash}
               onOpenProject={onOpenProject}
             />
@@ -1570,6 +1628,14 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const busyA = busyPaths.has(a.path);
           const items = [];
           if (published) {
+            if (a.modified) {
+              items.push({
+                id: 'update',
+                label: busyA ? 'Working…' : 'Update',
+                icon: Ico.refresh(13),
+                onClick: () => handleUpdate(a),
+              });
+            }
             items.push({
               id: 'unpublish',
               label: busyA ? 'Working…' : 'Unpublish',

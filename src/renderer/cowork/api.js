@@ -1386,6 +1386,13 @@ export async function publishArtifact(path, access) {
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
 }
 
+// Re-publish an already-published artifact: pushes current files to the same
+// URL with the same access settings (server reuses report_id). Clears the
+// "Modified" badge on success.
+export async function updateArtifact(path) {
+  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
 // The path to send to publish/unpublish for an artifact. Prefer the
 // artifact *folder* so folder-based artifacts publish as a unit — the
 // server resolves the primary file for static artifacts and treats
