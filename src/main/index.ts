@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -740,6 +740,25 @@ function setupIPC() {
       return { ok: true };
     } catch (e: any) {
       return { ok: false, reason: e?.message || String(e) };
+    }
+  });
+
+  // Native folder picker for "choose project location" flows in the
+  // renderer. Returns { ok, path } — path is null when the user cancels.
+  ipcMain.handle(IPC.PICK_DIRECTORY, async () => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    const opts = { properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[] };
+    try {
+      if (win) win.focus();
+      const result = win
+        ? await dialog.showOpenDialog(win, opts)
+        : await dialog.showOpenDialog(opts);
+      if (result.canceled || !result.filePaths.length) {
+        return { ok: false, path: null };
+      }
+      return { ok: true, path: result.filePaths[0] };
+    } catch (e: any) {
+      return { ok: false, path: null, reason: e?.message || String(e) };
     }
   });
 

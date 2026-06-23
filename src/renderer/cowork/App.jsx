@@ -23,6 +23,7 @@ import SettingsView from './views/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
+import NewProjectModal from './components/project/NewProjectModal';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
@@ -727,6 +728,11 @@ function AppCore() {
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
+  const [newProjectModal, setNewProjectModal] = useState({
+    open: false,
+    inline: true,
+    suggestedName: '',
+  });
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
@@ -2938,13 +2944,13 @@ function AppCore() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleCreateProject = async ({ name, _alreadyCreated, _inline }) => {
-    // The new-project modal does the create + anton.md write +
-    // file uploads in one atomic flow; when it calls back here it
-    // sets `_alreadyCreated` so we skip the duplicate POST and just
-    // refresh the projects list + pin the new one as selected.
+  const handleCreateProject = async (args) => {
+    const { _alreadyCreated, _inline, name, ...rest } = args || {};
+    // The new-project modal completes create + uploads in one flow;
+    // `_alreadyCreated` skips the duplicate POST — refresh the list
+    // and pin the new project as selected.
     const project = _alreadyCreated
-      ? { name }
+      ? { name, ...rest }
       : await createProject(name);
     const latest = await fetchProjects();
     let selected = project;
@@ -2961,6 +2967,20 @@ function AppCore() {
     if (!_inline) setRoute('projects');
     return selected;
   };
+
+  const openNewProjectModal = useCallback(({ inline = true, suggestedName = '' } = {}) => {
+    setNewProjectModal({
+      open: true,
+      inline,
+      suggestedName: (suggestedName || '').trim(),
+    });
+  }, []);
+
+  useEffect(() => {
+    const onOpen = () => openNewProjectModal({ inline: false });
+    window.addEventListener('anton:open-new-project', onOpen);
+    return () => window.removeEventListener('anton:open-new-project', onOpen);
+  }, [openNewProjectModal]);
 
   const handlePinTask = async (task) => {
     await pinTask(task);
@@ -3436,7 +3456,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
-            onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
+            onOpenNewProject={(opts) => openNewProjectModal({ inline: true, ...opts })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
             onOpenSettings={() => setRoute('settings')}
@@ -3505,7 +3525,7 @@ function AppCore() {
             scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             onSelectProject={(p) => setSelectedProject(p)}
-            onCreateProject={handleCreateProject}
+            onOpenNewProject={() => openNewProjectModal({ inline: false })}
             onSendInProject={(text) => {
               // Sending from project detail = same path as home, but
               // selectedProject is already pinned to this project so
@@ -3700,19 +3720,7 @@ function AppCore() {
             setRoute('schedule-detail');
           }}
           onNewTask={newTask}
-          onNewProject={() => {
-            // Mobile FAB → "New project". The modal lives inside
-            // ProjectsView, so navigate there first (clearing any
-            // selected project so we land on the grid, not detail),
-            // then dispatch the event ProjectsView listens for. The
-            // small delay lets React commit ProjectsView's mount
-            // before the listener attaches.
-            setSelectedProject(null);
-            setRoute('projects');
-            setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('anton:open-new-project'));
-            }, 60);
-          }}
+          onNewProject={() => openNewProjectModal({ inline: false })}
         >
           {mainEl}
         </MobileShell>
@@ -3729,6 +3737,21 @@ function AppCore() {
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
         onPick={handleConnectorPicked}
+      />
+
+      <NewProjectModal
+        open={newProjectModal.open}
+        suggestedName={newProjectModal.suggestedName}
+        onClose={() => setNewProjectModal((s) => ({ ...s, open: false, suggestedName: '' }))}
+        onCreated={(result) => {
+          handleCreateProject({
+            ...result,
+            name: result?.name,
+            _alreadyCreated: true,
+            _inline: newProjectModal.inline,
+          });
+          setNewProjectModal((s) => ({ ...s, open: false, suggestedName: '' }));
+        }}
       />
 
       {!host.isWeb && (
