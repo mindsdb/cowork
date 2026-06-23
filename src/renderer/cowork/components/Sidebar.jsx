@@ -573,32 +573,30 @@ export default function Sidebar({
           <NavItem icon={Ico.settings(15)} label="Settings"       onClick={() => onNavigate('settings')} active={activeRoute === 'settings'} compact />
         </div>
 
-        {/* Pinned */}
-        <div className="section-label">Pinned</div>
-        {pinnedTasks.length ? (
-          <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {pinnedTasks.map((task) => (
-              <RecentItem
-                key={task.id}
-                task={task}
-                projects={projects}
-                onClick={() => onSelectTask(task.id)}
-                onPin={onPinTask}
-                onUnpin={onUnpinTask}
-                onRename={onRenameTask}
-                onDelete={onDeleteTask}
-                onMoveToProject={onMoveTaskToProject}
-                showTimestamp={showCounters}
-                isActive={activeTaskIds.has(task.id)}
-                agentLabel={agentLabel}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="pinned-empty">
-            <span style={{ display: 'inline-flex' }}>{Ico.pin(12)}</span>
-            <span>Visit or pin tasks to keep them here.</span>
-          </div>
+        {/* Pinned — only rendered when there are pinned tasks; an empty
+            section just wastes rail space. */}
+        {pinnedTasks.length > 0 && (
+          <>
+            <div className="section-label">Pinned</div>
+            <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {pinnedTasks.map((task) => (
+                <RecentItem
+                  key={task.id}
+                  task={task}
+                  projects={projects}
+                  onClick={() => onSelectTask(task.id)}
+                  onPin={onPinTask}
+                  onUnpin={onUnpinTask}
+                  onRename={onRenameTask}
+                  onDelete={onDeleteTask}
+                  onMoveToProject={onMoveTaskToProject}
+                  showTimestamp={showCounters}
+                  isActive={activeTaskIds.has(task.id)}
+                  agentLabel={agentLabel}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* Recents — heading row with a "View all →" link pinned
