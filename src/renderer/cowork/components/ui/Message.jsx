@@ -5,7 +5,7 @@
 //   <Message variant="info">Tip: you can also drag and drop.</Message>
 //   <Message variant="success">Connected successfully.</Message>
 
-const BASE = 'rounded-[10px] px-3 py-2.5 font-body text-[13.5px] leading-normal select-text border';
+const BASE = 'rounded-[10px] px-3 py-2.5 font-body text-[13.5px] leading-normal select-text border border-solid';
 
 const VARIANT_CLASSES = {
   error:   'border-danger-border bg-danger-bg text-danger-text',
