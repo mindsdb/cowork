@@ -1299,12 +1299,6 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   const curModel = roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
-                  // The selected provider is unusable if it's missing its credential
-                  // (not registered, or the keyless MindsHub baseline) or if its last
-                  // connectivity test failed (key present but rejected / no credits) —
-                  // flag it so the picker warns instead of the role silently failing
-                  // at run time. providerStatus is the same per-type test result the
-                  // banner and provider rows read.
                   const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
                   const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
                   const providerUnusable = providerUnconfigured || providerFailed;
