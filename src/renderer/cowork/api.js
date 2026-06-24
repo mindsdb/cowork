@@ -1821,6 +1821,40 @@ export async function pollConnectorOAuth(state) {
   return req(`/connectors/oauth/status?state=${encodeURIComponent(state)}`);
 }
 
+// ─── Connection lifecycle (test / health / reconnect) ──────────────────────
+//
+// Per saved connection:
+//   testConnection(engine, name)     → re-runs the live probe against the
+//       saved credentials; returns { ok, result: 'pass'|'fail'|'', summary,
+//       error, follow_up, tested_at, health, health_detail }. May take a few
+//       seconds (it drives a headless agent turn server-side).
+//   fetchConnectionHealth(engine, name) → cheap, no-network health verdict:
+//       { health: 'healthy'|'expiring_soon'|'broken'|'unknown', detail,
+//         reconnectable, is_oauth, expires_at, last_tested_at, last_test_result }.
+//   reconnectConnection(engine, name) → reconnect entry point. For OAuth it
+//       first tries a silent token refresh; returns { method: 'oauth'|
+//       'credentials', service, refreshed, health, message }.
+
+export async function testConnection(engine, name) {
+  return req(
+    `/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/test`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+export async function fetchConnectionHealth(engine, name) {
+  return req(
+    `/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/health`,
+  );
+}
+
+export async function reconnectConnection(engine, name) {
+  return req(
+    `/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/reconnect`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
 export async function fetchPublishable() {
   return req('/publish');
 }

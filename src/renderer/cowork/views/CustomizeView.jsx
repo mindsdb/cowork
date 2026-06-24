@@ -9,7 +9,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import {
+  deleteDatasource,
+  fetchConnector,
+  fetchDatasources,
+  fetchSavedConnection,
+  reconnectConnection,
+  testConnection,
+} from '../api';
+import { EncryptedBadge, HealthBadge, isReconnectable } from '../components/connector/health';
 import ConnectWorkflowView from './ConnectWorkflowView';
 import {
   PageHeader,
@@ -89,12 +97,27 @@ function NewConnectionCard({ onClick }) {
   );
 }
 
-function ConnectionCard({ connection, onDelete, onModify }) {
+function ConnectionCard({ connection, onDelete, onModify, onTested }) {
   const [hover, setHover] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  // Transient one-shot error from a test the user just ran. Pass/fail is
+  // communicated by the (refetched) health badge; we only surface a short
+  // error string on failure for at-a-glance context. Cleared on the next
+  // refetch via the effect below so it can't contradict a refreshed badge.
+  const [testError, setTestError] = useState('');
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
   const updated = connection.updated_at || connection.updatedAt || null;
+  const health = connection.health || 'unknown';
+
+  // Drop the transient error once the badge no longer says "broken" (e.g. a
+  // later reconnect/refetch recovered the connection), so a stale error can
+  // never sit beneath a green badge. While health stays broken the error and
+  // the red badge agree, so we keep showing it for context.
+  useEffect(() => {
+    if (health !== 'broken') setTestError('');
+  }, [health]);
 
   const handleRemove = async (e) => {
     e.stopPropagation();
@@ -107,12 +130,30 @@ function ConnectionCard({ connection, onDelete, onModify }) {
     }
   };
 
+  const handleTest = async (e) => {
+    e.stopPropagation();
+    if (testing) return;
+    setTesting(true);
+    setTestError('');
+    try {
+      const res = await testConnection(engine, name);
+      if (!res?.ok) setTestError(res?.error || res?.health_detail || 'Connection failed');
+      // Refetch so the persisted health badge reflects the verdict. This also
+      // clears testError via the effect above (the badge now tells the story).
+      onTested?.();
+    } catch (err) {
+      setTestError(err?.message || 'Test failed');
+    } finally {
+      setTesting(false);
+    }
+  };
+
   // Card click → modify. Mirrors the "+ Connect" flow: pulls up the
   // same form (same engine spec), pre-filled with this connection's
   // name. Submitting overwrites the existing entry in the data vault.
   const canModify = typeof onModify === 'function';
   const handleCardClick = () => {
-    if (!canModify || busy) return;
+    if (!canModify || busy || testing) return;
     onModify(connection);
   };
 
@@ -150,6 +191,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
           letterSpacing: '-0.005em', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{name}</span>
+        <HealthBadge health={health} detail={connection.health_detail} />
         <span style={{
           flexShrink: 0,
           fontFamily: FONT_MONO, fontSize: 10.5,
@@ -161,20 +203,64 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         }}>{engine}</span>
       </div>
 
+      {/* Badges row: encrypted-at-rest indicator. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        {connection.encrypted !== false && <EncryptedBadge />}
+      </div>
+
       <div style={{ flex: 1 }} />
 
+      {/* Inline error from a failed test — the green/healthy case is conveyed
+          by the badge, so we only surface failures here for quick context. */}
+      {testError && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontFamily: FONT_BODY, fontSize: 11.5,
+          color: 'var(--danger)',
+          minWidth: 0,
+        }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+            {Ico.alert(13)}
+          </span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {testError}
+          </span>
+        </div>
+      )}
+
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
+        display: 'flex', alignItems: 'center', gap: 8,
         borderTop: '1px solid var(--line)',
         paddingTop: 10,
       }}>
         <span style={{
-          flex: 1,
+          flex: 1, minWidth: 0,
           fontFamily: FONT_MONO, fontSize: 10.5,
           color: 'var(--ink-4)', letterSpacing: '0.04em',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {updated ? `updated ${updated}` : 'connected'}
         </span>
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={testing}
+          title="Test connection"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            background: 'transparent',
+            border: '1px solid var(--line-2)',
+            color: 'var(--ink-2)',
+            padding: '4px 10px', borderRadius: 7,
+            fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
+            cursor: testing ? 'progress' : 'pointer',
+            opacity: testing ? 0.7 : 1,
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ display: 'inline-flex' }}>{Ico.wifi(12)}</span>
+          {testing ? 'Testing…' : 'Test'}
+        </button>
         <button
           type="button"
           onClick={handleRemove}
@@ -188,6 +274,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
             fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
             cursor: busy ? 'progress' : 'pointer',
             opacity: busy ? 0.6 : 1,
+            flexShrink: 0,
           }}
         >
           {busy ? 'Removing…' : 'Disconnect'}
@@ -254,16 +341,20 @@ function MetaRow({ label, value }) {
 
 const VAULT_KEEP = '__anton_vault_keep__';
 
-function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
+function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect, onTested }) {
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);   // { ok, error }
+  const [reconnecting, setReconnecting] = useState(false);
 
   useEffect(() => {
     if (!connection) return;
     setLoading(true);
     setSpec(null);
     setSaved(null);
+    setTestResult(null);
     Promise.all([
       fetchConnector(connection.engine).catch(() => null),
       fetchSavedConnection(connection.engine, connection.name).catch(() => null),
@@ -275,6 +366,57 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   }, [connection?.engine, connection?.name]);
 
   if (!connection) return null;
+
+  // Health/test fields come from the detail endpoint (snake_case), falling
+  // back to whatever the list passed on the connection prop.
+  const health = saved?.health || connection.health || 'unknown';
+  const healthDetail = saved?.health_detail || connection.health_detail || '';
+  const lastTestedAt = saved?.last_tested_at || connection.last_tested_at || null;
+  const lastTestError = saved?.last_test_error || '';
+  const reconnectable = isReconnectable(saved) || isReconnectable(connection);
+
+  const handleTest = async () => {
+    if (testing) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await testConnection(connection.engine, connection.name);
+      setTestResult({ ok: !!res?.ok, error: res?.error || res?.health_detail || '' });
+      // Refresh the saved record so the badge + last-tested reflect the run.
+      const fresh = await fetchSavedConnection(connection.engine, connection.name).catch(() => null);
+      if (fresh) setSaved(fresh);
+      onTested?.();
+    } catch (err) {
+      setTestResult({ ok: false, error: err?.message || 'Test failed' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // Reconnect: try the server's silent path first (OAuth token refresh). If it
+  // recovers the connection we just refresh in place; otherwise fall back to
+  // the full re-auth flow (delete + re-run the connect workflow).
+  const handleReconnectClick = async () => {
+    if (reconnecting) return;
+    setReconnecting(true);
+    try {
+      const info = await reconnectConnection(connection.engine, connection.name).catch(() => null);
+      if (info?.refreshed) {
+        const fresh = await fetchSavedConnection(connection.engine, connection.name).catch(() => null);
+        if (fresh) setSaved(fresh);
+        setTestResult({ ok: true, error: '' });
+        onTested?.();
+        return;
+      }
+      // Needs an interactive flow (OAuth re-consent, or credentials re-entry).
+      if (!window.confirm(
+        `The existing ${spec?.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
+      )) return;
+      onReconnect?.(connection, spec);
+    } finally {
+      setReconnecting(false);
+    }
+  };
 
   const secureKeys = new Set(saved?.secureKeys || []);
   const vaultFields = saved?.fields || {};
@@ -387,6 +529,15 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             <div style={{ fontSize: 13, color: 'var(--ink-4)' }}>Loading…</div>
           ) : (
             <>
+              {/* Status: health + encrypted badges, last-test info. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                marginBottom: 14,
+              }}>
+                <HealthBadge health={health} detail={healthDetail} size="md" />
+                {saved?.encrypted !== false && <EncryptedBadge size="md" />}
+              </div>
+
               {/* Meta */}
               <div style={{
                 padding: '12px 14px', marginBottom: 20,
@@ -395,9 +546,38 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                 display: 'flex', flexDirection: 'column', gap: 8,
               }}>
                 <MetaRow label="Engine" value={connection.engine} />
-                {saved?.updatedAt && <MetaRow label="Last updated" value={fmtDate(saved.updatedAt)} />}
-                {saved?.createdAt && <MetaRow label="Connected" value={fmtDate(saved.createdAt)} />}
+                {(saved?.updated_at || saved?.updatedAt) && (
+                  <MetaRow label="Last updated" value={fmtDate(saved.updated_at || saved.updatedAt)} />
+                )}
+                {(saved?.created_at || saved?.createdAt) && (
+                  <MetaRow label="Connected" value={fmtDate(saved.created_at || saved.createdAt)} />
+                )}
+                {lastTestedAt && <MetaRow label="Last tested" value={fmtDate(lastTestedAt)} />}
               </div>
+
+              {/* Last failure / live test result. */}
+              {(testResult || (health === 'broken' && lastTestError)) && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  padding: '10px 12px', marginBottom: 20, borderRadius: 8,
+                  background: (testResult?.ok)
+                    ? 'color-mix(in srgb, var(--success) 12%, transparent)'
+                    : 'var(--danger-bg)',
+                  border: `1px solid ${(testResult?.ok)
+                    ? 'color-mix(in srgb, var(--success) 30%, transparent)'
+                    : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`,
+                  color: (testResult?.ok) ? 'var(--success)' : 'var(--danger)',
+                }}>
+                  <span style={{ display: 'inline-flex', flexShrink: 0, marginTop: 1 }}>
+                    {testResult?.ok ? Ico.check(14) : Ico.alert(14)}
+                  </span>
+                  <span style={{ fontFamily: FONT_BODY, fontSize: 12.5, lineHeight: 1.4 }}>
+                    {testResult
+                      ? (testResult.ok ? 'Connection works.' : (testResult.error || 'Connection failed.'))
+                      : lastTestError}
+                  </span>
+                </div>
+              )}
 
               {/* Credentials */}
               {displayFields.length > 0 && (
@@ -454,19 +634,54 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           display: 'flex', flexDirection: 'column', gap: 8,
           flexShrink: 0,
         }}>
+          {/* Test connection — always available; re-runs the live probe. */}
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={testing}
+            style={{
+              width: '100%',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: 'transparent',
+              border: '1px solid var(--line-2)',
+              color: 'var(--ink)',
+              padding: '8px 12px', borderRadius: 7,
+              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
+              cursor: testing ? 'progress' : 'pointer',
+              opacity: testing ? 0.7 : 1,
+            }}
+          >
+            <span style={{ display: 'inline-flex' }}>{Ico.wifi(14)}</span>
+            {testing ? 'Testing connection…' : 'Test connection'}
+          </button>
+
+          {/* Reconnect — surfaced as the primary action when the connection is
+              broken/expiring or OAuth (reconnectable); otherwise a quieter
+              option. Tries a silent refresh first, then falls back to re-auth. */}
           {spec && (
             <button
               type="button"
-              className="btn-primary"
-              onClick={() => {
-                if (!window.confirm(
-                  `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
-                )) return;
-                onReconnect?.(connection, spec);
+              onClick={handleReconnectClick}
+              disabled={reconnecting}
+              className={reconnectable ? 'btn-primary' : undefined}
+              style={reconnectable ? {
+                width: '100%', justifyContent: 'center',
+                opacity: reconnecting ? 0.7 : 1,
+                cursor: reconnecting ? 'progress' : 'pointer',
+              } : {
+                width: '100%',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                background: 'transparent',
+                border: '1px solid var(--line-2)',
+                color: 'var(--ink-2)',
+                padding: '8px 12px', borderRadius: 7,
+                fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
+                cursor: reconnecting ? 'progress' : 'pointer',
+                opacity: reconnecting ? 0.7 : 1,
               }}
-              style={{ width: '100%', justifyContent: 'center' }}
             >
-              Reconnect
+              {!reconnectable && <span style={{ display: 'inline-flex' }}>{Ico.refresh(14)}</span>}
+              {reconnecting ? 'Reconnecting…' : 'Reconnect'}
             </button>
           )}
           <button
@@ -591,13 +806,21 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
-  const handleDelete = async (connection) => {
+  // Refetch the connections list and sync it upward. Used after delete and
+  // after a test (which stamps server-side health the badge reflects).
+  const refreshList = async () => {
     try {
-      await deleteDatasource(connection.engine, connection.name);
       const fresh = await fetchDatasources();
       const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
       setList(next);
       onConnectionsSyncedRef.current?.(next);
+    } catch {}
+  };
+
+  const handleDelete = async (connection) => {
+    try {
+      await deleteDatasource(connection.engine, connection.name);
+      await refreshList();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);
@@ -684,6 +907,7 @@ export default function CustomizeView({
               connection={c}
               onDelete={handleDelete}
               onModify={setSelectedConn}
+              onTested={refreshList}
             />
           ))}
           {/* Trailing dashed "New connection" card — appears only
@@ -698,6 +922,7 @@ export default function CustomizeView({
         <ConnectionDetailPanel
           connection={selectedConn}
           onClose={() => setSelectedConn(null)}
+          onTested={refreshList}
           onDisconnect={async (conn) => {
             await handleDelete(conn);
             setSelectedConn(null);
