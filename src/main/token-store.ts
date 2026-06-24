@@ -23,21 +23,22 @@ let _expiresAt = 0; // epoch ms
 // always use it there and never downgrade those platforms to plaintext.
 const IS_MAC = process.platform === 'darwin';
 
-// Whether the COWORK_KEYCHAIN opt-in flag is set in ~/.cowork/.env.
-function keychainFlagSet(): boolean {
+// Whether the user has explicitly disabled keychain in ~/.cowork/.env.
+// Default is keychain ON; only returns false when COWORK_KEYCHAIN=false is set.
+function keychainDisabled(): boolean {
   try {
     const env = fs.readFileSync(coworkEnvPath(), 'utf-8');
-    return /^\s*COWORK_KEYCHAIN\s*=\s*true\s*$/im.test(env);
+    return /^\s*COWORK_KEYCHAIN\s*=\s*false\s*$/im.test(env);
   } catch {
-    return false;
+    return false; // env missing → default to keychain
   }
 }
 
-// Resolve the effective store: keychain on non-mac always; on mac only when
-// the user opted in via the flag (default: plaintext file, no prompts).
+// Resolve the effective store: keychain on non-mac always; on mac, keychain
+// by default unless the user has explicitly disabled it with COWORK_KEYCHAIN=false.
 function useKeychain(): boolean {
   if (!IS_MAC) return true;
-  return keychainFlagSet();
+  return !keychainDisabled();
 }
 
 function writeKeychain(refreshToken: string): boolean {

@@ -365,7 +365,14 @@ export default function OnboardingScreen({
       }
       return;
     }
-    const finalizeResult = await host.mindshubFinalize();
+    let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string };
+    try {
+      finalizeResult = await host.mindshubFinalize();
+    } catch (e: any) {
+      setPhase('error');
+      setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
+      return;
+    }
     if (!finalizeResult.ok) {
       setPhase('error');
       setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');

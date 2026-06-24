@@ -7,8 +7,16 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
-import { getUIVersion, isElectron } from '../../platform/host';
+import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
 import ChannelsView from './ChannelsView';
+
+function decodeJwtPayload(token) {
+  try {
+    let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4) payload += '=';
+    return JSON.parse(atob(payload));
+  } catch { return null; }
+}
 
 function Section({ title, subtitle, children }) {
   return (
@@ -662,10 +670,31 @@ export default function SettingsView({
   // Backend section diagnostics state
   const [diag, setDiag] = useState(null);
   const [diagBusy, setDiagBusy] = useState(false);
+  // Account section — decoded from the JWT, null until loaded
+  const [accountUser, setAccountUser] = useState(null);
 
   useEffect(() => { getUIVersion().then(setUiVersion).catch(() => {}); }, []);
   useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => {}); }, []);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => {}); }, []);
+  useEffect(() => {
+    if (section !== 'account') return;
+    getAccessToken().then((token) => {
+      if (!token) return;
+      const payload = decodeJwtPayload(token);
+      if (!payload) return;
+      setAccountUser({
+        name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
+        email: payload.email || null,
+        username: payload.preferred_username || null,
+        sub: payload.sub || null,
+        org: (() => {
+          let org = payload.active_organization ?? payload.organization;
+          if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
+          return org?.displayName || org?.name || null;
+        })(),
+      });
+    }).catch(() => {});
+  }, [section]);
 
   // Load diagnostics when Backend section is active
   useEffect(() => {
@@ -2029,28 +2058,6 @@ export default function SettingsView({
             </div>
           )}
 
-          {/* macOS keychain (moved from Updates) */}
-          {host.isElectron && host.isMac() && (
-            <div style={{
-              border: '1px solid var(--border-subtle)', borderRadius: 10,
-              background: 'var(--surface-glass)',
-              WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-              backdropFilter: 'blur(var(--surface-glass-blur))',
-              overflow: 'hidden', padding: '0 18px 8px',
-            }}>
-              <Section
-                title="Store login in macOS keychain"
-                subtitle="More secure, but macOS may ask for keychain access on launch. When off, your login is saved in ~/.cowork instead."
-              >
-                <Toggle
-                  value={keychainPref}
-                  onChange={handleKeychainToggle}
-                  title="Store your login refresh token in the macOS keychain instead of a file under ~/.cowork."
-                  ariaLabel="Store login in macOS keychain"
-                />
-              </Section>
-            </div>
-          )}
 
         </div>
       </SettingsSectionPanel>
@@ -2058,20 +2065,105 @@ export default function SettingsView({
   };
 
   const renderAccountSection = () => {
+    const CARD = {
+      border: '1px solid var(--border-subtle)', borderRadius: 10,
+      background: 'var(--surface-glass)',
+      WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
+      backdropFilter: 'blur(var(--surface-glass-blur))',
+      marginBottom: 14, overflow: 'hidden',
+    };
+
+    // User info card — shown on both Electron and web if we have a token
+    const userCard = accountUser && (
+      <div style={{ ...CARD }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14,
+          padding: '16px 18px',
+        }}>
+          {/* Avatar circle with initials */}
+          <div style={{
+            width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+            background: 'color-mix(in srgb, var(--accent, #5d9287) 18%, var(--surface))',
+            border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 35%, transparent)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, fontWeight: 700, color: 'var(--accent, #5d9287)',
+            userSelect: 'none',
+          }} aria-hidden="true">
+            {accountUser.name
+              ? accountUser.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+              : accountUser.email
+                ? accountUser.email[0].toUpperCase()
+                : '?'}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {accountUser.name && (
+              <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--ink)', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {accountUser.name}
+              </div>
+            )}
+            {accountUser.email && (
+              <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: accountUser.name ? 2 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {accountUser.email}
+              </div>
+            )}
+            {!accountUser.name && !accountUser.email && accountUser.username && (
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{accountUser.username}</div>
+            )}
+          </div>
+          <a
+            href="https://console.mindshub.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              flexShrink: 0, fontSize: 12, fontWeight: 500,
+              color: 'var(--accent, #5d9287)', textDecoration: 'none',
+              padding: '5px 10px', borderRadius: 6,
+              border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 40%, transparent)',
+              background: 'color-mix(in srgb, var(--accent, #5d9287) 8%, transparent)',
+            }}
+          >MindsHub ↗</a>
+        </div>
+        {/* Extra rows for username / org if present */}
+        {(accountUser.username || accountUser.org) && (
+          <div style={{
+            borderTop: '1px solid var(--line)',
+            padding: '10px 18px',
+            display: 'flex', gap: 20,
+          }}>
+            {accountUser.username && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Username</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)' }}>{accountUser.username}</div>
+              </div>
+            )}
+            {accountUser.org && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Organization</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{accountUser.org}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+
     if (!host.isElectron) {
       return (
         <SettingsSectionPanel>
-          <div style={{ padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Managed via MindsHub</div>
-            <div style={{ maxWidth: 320 }}>Account management is handled through MindsHub for the web version.</div>
-          </div>
+          {userCard || (
+            <div style={{ padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Managed via MindsHub</div>
+              <div style={{ maxWidth: 320 }}>Account management is handled through MindsHub for the web version.</div>
+            </div>
+          )}
         </SettingsSectionPanel>
       );
     }
 
     return (
       <SettingsSectionPanel>
-        <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, background: 'var(--surface-glass)', WebkitBackdropFilter: 'blur(var(--surface-glass-blur))', backdropFilter: 'blur(var(--surface-glass-blur))', marginBottom: 14, overflow: 'hidden', padding: '0 18px 8px' }}>
+        {userCard}
+        <div style={{ ...CARD, padding: '0 18px 8px' }}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
             <button type="button" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#E07060', background: 'rgba(224,112,96,0.08)', border: '1px solid rgba(224,112,96,0.35)', cursor: loggingOut ? 'progress' : 'pointer', fontFamily: 'inherit', opacity: loggingOut ? 0.7 : 1 }}
