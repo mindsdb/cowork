@@ -927,6 +927,17 @@ export async function uploadProjectFiles(projectName, files) {
   return res.json();
 }
 
+/** Like `uploadProjectFiles` but XHR-backed for a determinate progress bar
+ *  and cancel. The project-files endpoint takes the whole batch in one
+ *  multipart request, so `onProgress` reports aggregate 0..1 across all
+ *  files (then `null` while the server writes them). `signal` cancels. */
+export async function uploadProjectFilesWithProgress(projectName, files, { onProgress, signal } = {}) {
+  const form = new FormData();
+  for (const f of files) form.append('files', f, f.name);
+  const url = BASE + `/projects/${enc(projectName)}/files/upload`;
+  return xhrUpload(url, form, { onProgress, signal, fallback: 'Upload failed' });
+}
+
 export async function deleteProjectFile(projectName, path) {
   const safe = path.split('/').map(enc).join('/');
   const res = await fetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
@@ -2085,6 +2096,90 @@ export async function deleteChannelBinding(bindingId) {
 }
 
 // ─── Attachments And Context ───────────────────────────────────────────────
+
+/** Sentinel thrown when an upload is aborted via its AbortSignal (user hit
+ *  cancel). Callers can branch on `err.aborted` to swallow it quietly rather
+ *  than surfacing it as a failure. */
+export class UploadAbortedError extends Error {
+  constructor(message = 'Upload canceled') {
+    super(message);
+    this.name = 'UploadAbortedError';
+    this.aborted = true;
+  }
+}
+
+/** XHR-backed multipart POST with determinate upload-progress events and
+ *  cancel support — `fetch` still can't report request-body upload progress,
+ *  so the progress bar + cancel control need XMLHttpRequest. `onProgress`
+ *  receives a 0..1 fraction (and `null` once the body is fully sent but the
+ *  response hasn't arrived — i.e. "processing"). `signal` (an AbortSignal)
+ *  cancels the in-flight request. Resolves with the parsed JSON body. */
+async function xhrUpload(url, form, { onProgress, signal, fallback } = {}) {
+  const headers = await authHeaders({}, { json: false });
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadAbortedError());
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    for (const [k, v] of Object.entries(headers)) {
+      // FormData sets its own multipart Content-Type (with boundary); never
+      // override it or the server can't parse the parts.
+      if (k.toLowerCase() === 'content-type') continue;
+      xhr.setRequestHeader(k, v);
+    }
+
+    const onAbort = () => xhr.abort();
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    const cleanup = () => { if (signal) signal.removeEventListener('abort', onAbort); };
+
+    if (xhr.upload && typeof onProgress === 'function') {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total);
+      };
+      // Body fully flushed; now we're waiting on the server. Signal
+      // "processing" (null) so the bar can switch to an indeterminate look.
+      xhr.upload.onload = () => onProgress(null);
+    }
+
+    xhr.onload = () => {
+      cleanup();
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      let body;
+      try { body = JSON.parse(xhr.responseText); } catch { body = undefined; }
+      if (ok) {
+        resolve(body);
+        return;
+      }
+      const detail = body?.detail || body?.message || '';
+      const err = new Error(detail || fallback || `Upload failed (${xhr.status})`);
+      err.status = xhr.status;
+      reject(err);
+    };
+    xhr.onerror = () => { cleanup(); reject(new Error(fallback || 'Upload failed (network error)')); };
+    xhr.onabort = () => { cleanup(); reject(new UploadAbortedError()); };
+
+    xhr.send(form);
+  });
+}
+
+/** Upload ONE file as a conversation attachment with progress + cancel.
+ *  POST /v1/attachments/{project_name}/{session_id}/upload — the endpoint
+ *  takes a repeated `files` field; we send a single part so each file gets
+ *  its own progress bar and its own cancel. Returns the created attachment. */
+export async function uploadAttachmentWithProgress(file, { projectName, sessionId, onProgress, signal } = {}) {
+  if (!projectName || !sessionId) {
+    throw new Error('Open a saved task before attaching files (project and conversation id are required).');
+  }
+  const enc = encodeURIComponent;
+  const form = new FormData();
+  form.append('files', file, file.name);
+  const url = `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`;
+  const data = await xhrUpload(url, form, { onProgress, signal, fallback: 'Attachment upload failed' });
+  const list = Array.isArray(data) ? data : [];
+  return list[0];
+}
 
 /** POST /v1/attachments/{project_name}/{session_id}/upload — response body is a JSON array of file attachments. */
 export async function uploadAttachments(files, { projectName, sessionId } = {}) {

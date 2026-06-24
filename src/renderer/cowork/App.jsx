@@ -35,7 +35,7 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
-         allocateConversationId, uploadAttachments,
+         allocateConversationId, uploadAttachments, uploadAttachmentWithProgress, UploadAbortedError,
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
@@ -136,7 +136,12 @@ function normalizeAntonError(message, event) {
   return text || 'Could not complete this task.';
 }
 
-async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
+async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments, hooks = {}) {
+  // `hooks.onProgress(localId, fraction)` — fraction is 0..1, or null once the
+  // file is fully sent and we're waiting on the server. `hooks.registerAbort(
+  // localId, abortFn)` lets the composer wire a per-file cancel button to the
+  // in-flight XHR. Both are optional; without them this just uploads.
+  const { onProgress, registerAbort } = hooks;
   const list = Array.isArray(attachments) ? attachments : [];
   const pending = list.filter(isPendingFileAttachment);
   const rest = list.filter((a) => !isPendingFileAttachment(a));
@@ -148,10 +153,36 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
       throw new Error('Wait until this conversation has started before sending file attachments.');
     }
   }
-  let uploaded = [];
-  if (pending.length) {
-    const files = pending.map((p) => p.pendingFile);
-    uploaded = await uploadAttachments(files, { projectName, sessionId });
+  // Upload each pending file as its own request so every chip gets an
+  // independent progress bar and cancel. Sequential keeps the order stable
+  // and is gentle on the local server; uploads are small (<=25 MiB cap).
+  const uploaded = [];
+  for (const p of pending) {
+    const controller = new AbortController();
+    registerAbort?.(p.id, () => controller.abort());
+    onProgress?.(p.id, 0);
+    let created;
+    try {
+      created = await uploadAttachmentWithProgress(p.pendingFile, {
+        projectName,
+        sessionId,
+        signal: controller.signal,
+        onProgress: (frac) => onProgress?.(p.id, frac),
+      });
+    } catch (err) {
+      // Carry the files already uploaded in this batch so the caller can
+      // delete the orphans (their conversation never gets a message).
+      if (err && typeof err === 'object') err.uploaded = uploaded;
+      throw err;
+    }
+    if (!created) {
+      // 2xx but no attachment came back — don't silently send the message
+      // without the file. Surface it (and let the caller clean up the rest).
+      const err = new Error(`Could not attach "${p.name || 'file'}" — the server returned no file.`);
+      err.uploaded = uploaded;
+      throw err;
+    }
+    uploaded.push(created);
   }
   const merged = [...rest, ...uploaded];
   return { merged, attachmentIds: merged.map((x) => x.id) };
@@ -724,6 +755,45 @@ function AppCore() {
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
+  // Per-attachment XHR abort fns, keyed by the chip's local id. A pending
+  // chip's cancel button (handleRemoveAttachment) calls this to abort an
+  // in-flight upload; entries are cleared as uploads settle.
+  const uploadAbortsRef = useRef(new Map());
+
+  // Patch one composer chip's live upload state (progress 0..1, or null while
+  // the server processes a fully-sent file). Drives the determinate bar.
+  const setAttachmentProgress = useCallback((localId, fraction) => {
+    setComposerAttachments((prev) => prev.map((a) =>
+      a.id === localId
+        ? { ...a, uploading: true, uploadProgress: fraction === null ? null : fraction }
+        : a,
+    ));
+  }, []);
+
+  // Hooks handed to resolveComposerAttachmentsForSend so it can report
+  // progress into chip state and register a cancel for each file.
+  const composerUploadHooks = useMemo(() => ({
+    onProgress: (localId, fraction) => setAttachmentProgress(localId, fraction),
+    registerAbort: (localId, abortFn) => { uploadAbortsRef.current.set(localId, abortFn); },
+  }), [setAttachmentProgress]);
+
+  // Tidy up after a send whose uploads were canceled (or failed) mid-batch:
+  //   - clear the in-flight bookkeeping,
+  //   - strip the spinning "uploading" state off any chips that survived
+  //     (the canceled one was already removed by handleRemoveAttachment), so
+  //     nothing is left stuck in "Processing…",
+  //   - best-effort delete files that DID finish uploading in this batch —
+  //     their conversation never received a message, so they'd orphan.
+  const cleanupAbortedUploads = useCallback((err) => {
+    uploadAbortsRef.current.clear();
+    setComposerAttachments((prev) => prev.map((a) =>
+      a.uploading ? { ...a, uploading: false, uploadProgress: undefined } : a,
+    ));
+    const orphans = (err && Array.isArray(err.uploaded)) ? err.uploaded : [];
+    for (const o of orphans) {
+      if (o?.id) deleteAttachment(o.id).catch(() => {});
+    }
+  }, []);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -2178,6 +2248,14 @@ function AppCore() {
 
   const handleRemoveAttachment = async (id) => {
     const target = composerAttachments.find((a) => a.id === id);
+    // If this file is mid-upload, abort the in-flight XHR — the cancel button
+    // doubles as "stop uploading". The aborted upload rejects with
+    // UploadAbortedError, which the send flow swallows.
+    const abort = uploadAbortsRef.current.get(id);
+    if (abort) {
+      uploadAbortsRef.current.delete(id);
+      try { abort(); } catch {}
+    }
     setComposerAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
     if (target?.pendingFile) return;
     try {
@@ -2269,11 +2347,25 @@ function AppCore() {
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
 
-    const { merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
-      effectiveProjectName,
-      hasPendingFiles ? taskId : null,
-      rawComposer,
-    );
+    let sendingAttachments, attachmentIds;
+    try {
+      ({ merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
+        effectiveProjectName,
+        hasPendingFiles ? taskId : null,
+        rawComposer,
+        composerUploadHooks,
+      ));
+    } catch (err) {
+      // User canceled an upload mid-send — abort the send quietly and leave
+      // whatever chips remain (handleRemoveAttachment already dropped the
+      // canceled one). Other errors propagate to the composer's catch.
+      if (err?.aborted || err instanceof UploadAbortedError) {
+        cleanupAbortedUploads(err);
+        return;
+      }
+      cleanupAbortedUploads(err);
+      throw err;
+    }
     setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
@@ -2569,14 +2661,24 @@ function AppCore() {
         // A drained queued item carries its own attachments; only a
         // fresh send pulls from the live composer.
         queuedAttachments ?? composerAttachments,
+        // Live progress only matters for a fresh composer send; a drained
+        // queued item has no live chips, so the hooks simply no-op there.
+        queuedAttachments == null ? composerUploadHooks : {},
       ));
     } catch (err) {
       // Attachment resolution failed before we ever started the
-      // stream — release the reservation so the user's next send
-      // doesn't get stuck in the queue forever.
+      // stream — release BOTH reservations (the sync ref and the
+      // cross-client in-flight mark set at markInFlight(id) above) so the
+      // user's next send doesn't get stuck and the task doesn't show a
+      // phantom "running" state.
       activeStreamingTaskIdRef.current = null;
+      markInFlightDone(id);
+      cleanupAbortedUploads(err);
+      // User canceled an upload mid-send: abort quietly, keep remaining chips.
+      if (err?.aborted || err instanceof UploadAbortedError) return;
       throw err;
     }
+    uploadAbortsRef.current.clear();
 
     setTasks((prev) => prev.map((t) =>
       t.id === id

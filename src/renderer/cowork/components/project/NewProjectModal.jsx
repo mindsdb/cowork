@@ -17,8 +17,9 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import {
   createProject,
-  uploadProjectFiles,
+  uploadProjectFilesWithProgress,
   writeProjectFile,
+  UploadAbortedError,
   ANTON_PROJECT_INSTRUCTIONS_PATH,
 } from '../../api';
 
@@ -77,6 +78,12 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  // Upload progress for the batch: null when not uploading, 0..1 while bytes
+  // are in flight, null again ("Saving files…") once sent and the server is
+  // writing. `uploading` gates the progress UI and turns Cancel into Stop.
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const uploadAbortRef = useRef(null);
   const nameRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -90,6 +97,9 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setBusy(false);
     setError('');
     setDragActive(false);
+    setUploading(false);
+    setUploadProgress(null);
+    uploadAbortRef.current = null;
     const id = requestAnimationFrame(() => nameRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
@@ -153,15 +163,29 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         }
       }
 
-      // 3) Upload files in one multipart request. All-or-nothing per
-      //    file — server returns a per-file result list we ignore for
-      //    now (could surface partial failures in a toast later).
+      // 3) Upload files in one multipart request, with a determinate
+      //    progress bar + cancel. The project already exists, so a canceled
+      //    or failed upload is non-fatal — we finish the create and let the
+      //    user add files later (same lenient handling as before).
       if (files.length) {
+        const controller = new AbortController();
+        uploadAbortRef.current = controller;
+        setUploading(true);
+        setUploadProgress(0);
         try {
-          await uploadProjectFiles(finalName, files);
+          await uploadProjectFilesWithProgress(finalName, files, {
+            signal: controller.signal,
+            onProgress: (frac) => setUploadProgress(frac),
+          });
         } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn('[new-project] uploads failed', e);
+          if (!(e?.aborted || e instanceof UploadAbortedError)) {
+            // eslint-disable-next-line no-console
+            console.warn('[new-project] uploads failed', e);
+          }
+        } finally {
+          setUploading(false);
+          setUploadProgress(null);
+          uploadAbortRef.current = null;
         }
       }
 
@@ -172,6 +196,12 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Stop an in-flight upload (the project itself is already created).
+  const cancelUpload = () => {
+    const c = uploadAbortRef.current;
+    if (c) { try { c.abort(); } catch {} }
   };
 
   const removeFile = (i) => setFiles((prev) => prev.filter((_, j) => j !== i));
@@ -364,22 +394,58 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           borderTop: '1px solid var(--line)',
           background: 'var(--surface)',
         }}>
+          {uploading && (
+            <div style={{
+              flex: 1, minWidth: 0,
+              display: 'flex', flexDirection: 'column', gap: 4,
+            }}>
+              <span style={{
+                fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-3)',
+              }}>
+                {typeof uploadProgress === 'number'
+                  ? `Uploading files… ${Math.round(Math.min(1, Math.max(0, uploadProgress)) * 100)}%`
+                  : 'Saving files…'}
+              </span>
+              <span
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                {...(typeof uploadProgress === 'number'
+                  ? { 'aria-valuenow': Math.round(uploadProgress * 100) }
+                  : {})}
+                style={{
+                  display: 'block', height: 3, borderRadius: 999, overflow: 'hidden',
+                  background: 'color-mix(in srgb, var(--accent) 22%, transparent)',
+                }}
+              >
+                <span style={{
+                  display: 'block', height: '100%',
+                  width: typeof uploadProgress === 'number'
+                    ? `${Math.round(Math.min(1, Math.max(0, uploadProgress)) * 100)}%`
+                    : '100%',
+                  background: 'var(--accent)',
+                  transition: 'width .18s ease',
+                  opacity: typeof uploadProgress === 'number' ? 1 : 0.6,
+                }} />
+              </span>
+            </div>
+          )}
           <button
             type="button"
-            onClick={() => !busy && onClose?.()}
-            disabled={busy}
-            // Cancel reads as a quiet text button — no border, no fill,
-            // distinct from the primary CREATE which is the
-            // existing global `.btn-primary` style.
+            // While uploading this becomes "Stop upload" (the project is
+            // already created — we just abort the file transfer). Otherwise
+            // it's the quiet text "Cancel" that closes the modal.
+            onClick={() => (uploading ? cancelUpload() : (!busy && onClose?.()))}
+            disabled={busy && !uploading}
             style={{
-              cursor: busy ? 'not-allowed' : 'pointer',
+              cursor: (busy && !uploading) ? 'not-allowed' : 'pointer',
               background: 'transparent', border: 0,
               color: 'var(--ink-3)',
               padding: '7px 14px', borderRadius: 7,
               fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-              opacity: busy ? 0.5 : 1,
+              opacity: (busy && !uploading) ? 0.5 : 1,
             }}
-          >Cancel</button>
+          >{uploading ? 'Stop upload' : 'Cancel'}</button>
           <button
             type="button"
             className="btn-primary"

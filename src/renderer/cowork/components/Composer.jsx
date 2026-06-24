@@ -12,13 +12,24 @@ function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
   const label = src === 'connector' ? 'Connector' : isImage ? 'Image' : 'File';
-  const status = attachment.pendingFile
-    ? 'Queued'
-    : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
-      ? attachment.extractionStatus.replace('_', ' ')
-      : null);
+  // Mid-upload: `uploading` is set with a 0..1 `uploadProgress`, or null once
+  // the bytes are sent and the server is processing (indeterminate tail).
+  const uploading = !!attachment.uploading;
+  const frac = attachment.uploadProgress;
+  const determinate = uploading && typeof frac === 'number';
+  const pct = determinate ? Math.round(Math.min(1, Math.max(0, frac)) * 100) : null;
+  const status = uploading
+    ? (determinate ? `Uploading… ${pct}%` : 'Processing…')
+    : (attachment.pendingFile
+      ? 'Queued'
+      : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
+        ? attachment.extractionStatus.replace('_', ' ')
+        : null));
   return (
-    <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
+    <div
+      className={`attachment-chip${uploading ? ' is-uploading' : ''}`}
+      title={attachment.note || attachment.textPreview || attachment.name}
+    >
       <span className="attachment-chip-icon">
         {src === 'connector' ? Ico.link(13)
           : isImage ? Ico.image(13)
@@ -27,10 +38,29 @@ function AttachmentChip({ attachment, onRemove }) {
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
         <span className="attachment-chip-meta">{status || label}</span>
+        {uploading && (
+          <span
+            className={`attachment-chip-progress${determinate ? '' : ' is-indeterminate'}`}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            {...(determinate ? { 'aria-valuenow': pct } : {})}
+          >
+            <span
+              className="attachment-chip-progress-fill"
+              style={determinate ? { width: `${pct}%` } : undefined}
+            />
+          </span>
+        )}
       </span>
       {onRemove && (
-        <button className="attachment-chip-remove" title="Remove attachment" onClick={() => onRemove(attachment.id)}>
-          x
+        <button
+          className="attachment-chip-remove"
+          title={uploading ? 'Cancel upload' : 'Remove attachment'}
+          aria-label={uploading ? 'Cancel upload' : 'Remove attachment'}
+          onClick={() => onRemove(attachment.id)}
+        >
+          {Ico.close ? Ico.close(13) : 'x'}
         </button>
       )}
     </div>

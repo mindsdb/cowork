@@ -3290,6 +3290,31 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .attachment-chip-meta {
   font-size: 10.5px; color: var(--frost-600); text-transform: capitalize;
 }
+/* While a file is uploading the meta line reads "Uploading… 42%"; the chip
+   keeps a stable, slightly wider footprint so the bar has room to grow. */
+.attachment-chip.is-uploading { min-width: 168px; }
+.attachment-chip.is-uploading .attachment-chip-meta {
+  color: var(--primary-700); text-transform: none;
+}
+.attachment-chip-progress {
+  display: block; position: relative; overflow: hidden;
+  height: 3px; margin-top: 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-500) 22%, transparent);
+}
+.attachment-chip-progress-fill {
+  display: block; height: 100%; width: 0;
+  border-radius: inherit; background: var(--primary-500);
+  transition: width .18s ease;
+}
+/* No measurable total yet (body sent, server processing): a sliding sliver. */
+.attachment-chip-progress.is-indeterminate .attachment-chip-progress-fill {
+  width: 40%; transition: none;
+  animation: attachment-progress-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes attachment-progress-indeterminate {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(260%); }
+}
 .attachment-chip-remove,
 .mini-icon-btn {
   width: 22px; height: 22px; border-radius: 6px;
