@@ -4,6 +4,8 @@ import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
@@ -115,53 +117,6 @@ function SettingsSectionPanel({ children, footer }) {
   );
 }
 
-function Segmented({ value, onChange, options, style, groupLabel }) {
-  // Use radiogroup semantics when a label is supplied — AT announces the
-  // group and reads each option's checked state. Without a label, fall
-  // back to a plain group so AT users at least hear the boundary.
-  const groupRole = groupLabel ? 'radiogroup' : 'group';
-  return (
-    <div
-      className="segmented"
-      role={groupRole}
-      aria-label={groupLabel}
-      style={style}
-    >
-      {options.map((o) => {
-        const selected = value === o.value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            className={selected ? 'active' : ''}
-            onClick={() => onChange(o.value)}
-            title={o.title}
-            aria-label={o.ariaLabel || o.title}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Toggle({ value, onChange, title, ariaLabel }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={value}
-      aria-label={ariaLabel}
-      title={title}
-      className={`toggle${value ? ' on' : ''}`}
-      onClick={() => onChange(!value)}
-    >
-      <span className="toggle-thumb" />
-    </button>
-  );
-}
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
@@ -1651,13 +1606,13 @@ export default function SettingsView({
 
       <CollapsibleGroup title="Agent Harness">
         <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-          <Segmented
+          <ToggleGroup
             value={settings.harness || 'anton'}
-            onChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-            groupLabel="Agent harness"
+            onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+            aria-label="Agent harness"
             options={[
-              { value: 'anton',  label: 'Anton',  ariaLabel: 'Use Anton agent',  title: 'Anton — the default AI agent.' },
-              { value: 'hermes', label: 'Hermes', ariaLabel: 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+              { value: 'anton',  label: 'Anton',  'aria-label': 'Use Anton agent',  title: 'Anton — the default AI agent.' },
+              { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
             ]}
           />
         </Section>
@@ -1665,10 +1620,10 @@ export default function SettingsView({
 
       <CollapsibleGroup title="Memory" defaultOpen={false}>
         <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
-          <Segmented
+          <ToggleGroup
             value={settings.memoryMode ?? 'autopilot'}
-            onChange={(v) => setSetting('memoryMode', v)}
-            groupLabel="Memory mode"
+            onValueChange={(v) => setSetting('memoryMode', v)}
+            aria-label="Memory mode"
             options={[
               { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
               { value: 'copilot',   label: 'Copilot',   title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
@@ -1677,27 +1632,27 @@ export default function SettingsView({
           />
         </Section>
         <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
-          <Toggle
-            value={settings.episodicMemory ?? true}
-            onChange={(v) => setSetting('episodicMemory', v)}
+          <Switch
+            checked={settings.episodicMemory ?? true}
+            onCheckedChange={(v) => setSetting('episodicMemory', v)}
             title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
-            ariaLabel="Episodic memory"
+            aria-label="Episodic memory"
           />
         </Section>
         <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
-          <Toggle
-            value={settings.proactiveDashboards ?? false}
-            onChange={(v) => setSetting('proactiveDashboards', v)}
+          <Switch
+            checked={settings.proactiveDashboards ?? false}
+            onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
             title="Auto-generate HTML reports from scratchpad output."
-            ariaLabel="Proactive dashboards"
+            aria-label="Proactive dashboards"
           />
         </Section>
         <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
-          <Toggle
-            value={settings.actFirst ?? true}
-            onChange={(v) => setSetting('actFirst', v)}
+          <Switch
+            checked={settings.actFirst ?? true}
+            onCheckedChange={(v) => setSetting('actFirst', v)}
             title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
-            ariaLabel="Act first, ask later"
+            aria-label="Act first, ask later"
           />
         </Section>
       </CollapsibleGroup>
@@ -1708,37 +1663,37 @@ export default function SettingsView({
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <CollapsibleGroup title="Appearance">
       <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
-        <Segmented
+        <ToggleGroup
           value={theme || 'dark'}
-          onChange={(v) => onThemeChange?.(v)}
-          groupLabel="Theme"
+          onValueChange={(v) => onThemeChange?.(v)}
+          aria-label="Theme"
           options={[
             {
               value: 'light',
               label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
-              ariaLabel: 'Light theme',
+              'aria-label': 'Light theme',
               title: 'Use the light theme.',
             },
             {
               value: 'dark',
               label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
-              ariaLabel: 'Dark theme',
+              'aria-label': 'Dark theme',
               title: 'Use the dark theme.',
             },
           ]}
         />
       </Section>
       <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-        <Segmented
+        <ToggleGroup
           value={normalizeSkin(skin)}
-          onChange={(v) => onSkinChange?.(v)}
-          groupLabel="Style"
+          onValueChange={(v) => onSkinChange?.(v)}
+          aria-label="Style"
           options={SKINS.map((s) => ({
             value: s.id,
             label: s.icon && Ico[s.icon]
               ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
               : s.label,
-            ariaLabel: `${s.label} style`,
+            'aria-label': `${s.label} style`,
             title: s.title,
           }))}
         />
@@ -1775,34 +1730,34 @@ export default function SettingsView({
             </div>
           </Section>
           <Section title="Corners" subtitle="How sharp the surfaces feel.">
-            <Segmented
+            <ToggleGroup
               value={String(customTheme.radius)}
-              onChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
-              groupLabel="Corner radius"
+              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+              aria-label="Corner radius"
               options={[
-                { value: '0', label: 'Square', ariaLabel: 'Square corners', title: 'Sharp pixel corners.' },
-                { value: '6', label: 'Soft', ariaLabel: 'Soft corners', title: 'Gently rounded.' },
-                { value: '12', label: 'Round', ariaLabel: 'Round corners', title: 'Fully rounded.' },
+                { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
+                { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
+                { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
               ]}
             />
           </Section>
           <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
-            <Segmented
+            <ToggleGroup
               value={customTheme.font}
-              onChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
-              groupLabel="Custom typeface"
+              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+              aria-label="Custom typeface"
               options={[
-                { value: 'standard', label: 'Standard', ariaLabel: 'Standard font', title: 'Inter for UI text.' },
-                { value: 'mono', label: 'Mono', ariaLabel: 'Mono font', title: 'JetBrains Mono everywhere.' },
+                { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
+                { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
               ]}
             />
           </Section>
           <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
-            <Toggle
-              value={customTheme.scanlines}
-              onChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+            <Switch
+              checked={customTheme.scanlines}
+              onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
               title="Toggle the CRT scanline overlay."
-              ariaLabel="Scanline overlay"
+              aria-label="Scanline overlay"
             />
           </Section>
         </>
@@ -1817,19 +1772,19 @@ export default function SettingsView({
       </Section>
       <div className="settings-hide-mobile">
         <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
-          <Toggle
-            value={settings.showDots}
-            onChange={(v) => setSetting('showDots', v)}
+          <Switch
+            checked={settings.showDots}
+            onCheckedChange={(v) => setSetting('showDots', v)}
             title="Toggle the animated grid background."
-            ariaLabel="Animated background"
+            aria-label="Animated background"
           />
         </Section>
         <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-          <Toggle
-            value={settings.showCounters !== false}
-            onChange={(v) => setSetting('showCounters', v)}
+          <Switch
+            checked={settings.showCounters !== false}
+            onCheckedChange={(v) => setSetting('showCounters', v)}
             title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
-            ariaLabel="Nav-panel counters"
+            aria-label="Nav-panel counters"
           />
         </Section>
       </div>
@@ -1894,10 +1849,10 @@ export default function SettingsView({
           title="UI updates"
           subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
         >
-          <Segmented
+          <ToggleGroup
             value={settings.uiUpdateMode ?? 'auto'}
-            onChange={(v) => setSetting('uiUpdateMode', v)}
-            groupLabel="UI update mode"
+            onValueChange={(v) => setSetting('uiUpdateMode', v)}
+            aria-label="UI update mode"
             options={[
               { value: 'auto',   label: 'Auto',   title: 'Download and apply UI updates automatically.' },
               { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
