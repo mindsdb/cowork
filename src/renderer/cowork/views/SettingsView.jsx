@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { Toggle } from '../components/ui/Toggle';
+import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
@@ -1526,7 +1526,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     />
                   </Section>
                   <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
-                    <Toggle
+                    <Switch
                       checked={customTheme.scanlines}
                       onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
                       title="Toggle the CRT scanline overlay."
@@ -1545,7 +1545,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               </Section>
               <div className="settings-hide-mobile">
                 <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
-                  <Toggle
+                  <Switch
                     checked={settings.showDots}
                     onCheckedChange={(v) => setSetting('showDots', v)}
                     title="Toggle the animated grid background."
@@ -1553,7 +1553,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   />
                 </Section>
                 <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-                  <Toggle
+                  <Switch
                     checked={settings.showCounters !== false}
                     onCheckedChange={(v) => setSetting('showCounters', v)}
                     title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
@@ -1577,7 +1577,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 />
               </Section>
               <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
-                <Toggle
+                <Switch
                   checked={settings.episodicMemory ?? true}
                   onCheckedChange={(v) => setSetting('episodicMemory', v)}
                   title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
@@ -1585,7 +1585,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 />
               </Section>
               <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
-                <Toggle
+                <Switch
                   checked={settings.proactiveDashboards ?? false}
                   onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
                   title="Auto-generate HTML reports from scratchpad output."
@@ -1593,7 +1593,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 />
               </Section>
               <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
-                <Toggle
+                <Switch
                   checked={settings.actFirst ?? true}
                   onCheckedChange={(v) => setSetting('actFirst', v)}
                   title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}

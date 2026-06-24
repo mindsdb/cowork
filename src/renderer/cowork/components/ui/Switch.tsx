@@ -1,13 +1,13 @@
-// Toggle (switch) — an accessible on/off control.
+// Switch — an accessible on/off control.
 //
 // Built on Base UI's Switch for proper role="switch" semantics,
 // keyboard handling (Space to toggle), and focus management.
 // Styled with cva to match the existing .toggle appearance.
 //
-//   <Toggle checked={on} onCheckedChange={setOn} />
-//   <Toggle checked={on} onCheckedChange={setOn} size="sm" />
+//   <Switch checked={on} onCheckedChange={setOn} />
+//   <Switch checked={on} onCheckedChange={setOn} size="sm" />
 
-import { Switch } from '@base-ui/react/switch';
+import { Switch as BaseSwitch } from '@base-ui/react/switch';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
@@ -41,7 +41,7 @@ const thumbVariants = cva(
   }
 );
 
-export interface ToggleProps extends VariantProps<typeof trackVariants> {
+export interface SwitchProps extends VariantProps<typeof trackVariants> {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
@@ -50,16 +50,16 @@ export interface ToggleProps extends VariantProps<typeof trackVariants> {
   title?: string;
 }
 
-export function Toggle({
+export function Switch({
   checked,
   onCheckedChange,
   disabled,
   size,
   className,
   ...rest
-}: ToggleProps) {
+}: SwitchProps) {
   return (
-    <Switch.Root
+    <BaseSwitch.Root
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
@@ -71,9 +71,9 @@ export function Toggle({
       )}
       {...rest}
     >
-      <Switch.Thumb className={cn(thumbVariants({ size }))} />
-    </Switch.Root>
+      <BaseSwitch.Thumb className={cn(thumbVariants({ size }))} />
+    </BaseSwitch.Root>
   );
 }
 
-export default Toggle;
+export default Switch;
