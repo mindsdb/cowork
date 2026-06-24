@@ -32,13 +32,25 @@ export function getChannel(): Channel {
   return (process.env.COWORK_SERVER_CHANNEL || 'git').toLowerCase() === 'pypi' ? 'pypi' : 'git';
 }
 
+// Build-time baked refs (written by scripts/gen-build-channel.mjs via
+// prebuild:main). The file is gitignored and only exists after a build — in
+// dev mode the Makefile-exported env vars take priority anyway.
+function _buildRef(key: 'BUILD_COWORK_SERVER_REF' | 'BUILD_ANTON_REF'): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('./build-channel.gen') as Record<string, string>;
+    return typeof mod[key] === 'string' ? mod[key] : '';
+  } catch {
+    return '';
+  }
+}
+
 export function getCoworkRef(): string {
-  // return COWORK_SERVER_BRANCH;
-  return (process.env.COWORK_SERVER_REF || 'main').trim() || 'main';
+  return (process.env.COWORK_SERVER_REF || _buildRef('BUILD_COWORK_SERVER_REF') || 'main').trim() || 'main';
 }
 
 export function getAntonRef(): string {
-  return (process.env.ANTON_REF || 'main').trim() || 'main';
+  return (process.env.ANTON_REF || _buildRef('BUILD_ANTON_REF') || 'main').trim() || 'main';
 }
 
 export interface InstallSpec {

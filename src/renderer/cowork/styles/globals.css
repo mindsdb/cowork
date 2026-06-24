@@ -2830,6 +2830,15 @@ body[data-theme="dark"] .chrome-btn--small:hover {
   background: transparent;
   box-shadow: 0 0 16px rgba(34,211,238,0.25);
 }
+.chrome-btn--small.is-on {
+  color: var(--accent, #5d9287);
+  background: color-mix(in srgb, var(--accent, #5d9287) 10%, transparent);
+}
+body[data-theme="dark"] .chrome-btn--small.is-on {
+  color: var(--accent);
+  background: transparent;
+  box-shadow: 0 0 14px rgba(34,211,238,0.30);
+}
 
 /* Server (backend) toggle in the sidebar footer. Neutral by default in
    every state — the destructive intent only surfaces on hover when the

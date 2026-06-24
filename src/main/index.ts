@@ -9,18 +9,19 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
 
 function getAntonEnvPath(): string {
-  return path.join(os.homedir(), '.anton', '.env');
+  return coworkEnvPath();
 }
 
 function getCoworkStatePath(): string {
-  return path.join(os.homedir(), '.anton', 'cowork', 'state.json');
+  return coworkStatePath();
 }
 
 function readEnvFile(): Record<string, string> {
@@ -536,15 +537,25 @@ function setupIPC() {
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
     const token = getAccessToken();
-    if (!token) return { ok: false, reason: 'No cached MindsHub access token.' };
+    if (!token) {
+      console.error('[mindshub:finalize] no cached access token — login may not have completed');
+      return { ok: false, reason: 'No cached MindsHub access token.' };
+    }
+    console.log('[mindshub:finalize] provisioning API key…');
     const result = await provisionAntonApiKey(token);
+    console.log('[mindshub:finalize] provisionAntonApiKey result:', result.key ? 'key minted' : `error: ${result.error}`);
     if (result.upgradeRequired) {
       return { ok: false, upgradeRequired: true };
     }
     if (!result.key) {
       return { ok: false, reason: result.error || 'Could not provision a MindsHub API key.' };
     }
-    await writeMindsKeyToEnvAndRestart(result.key);
+    try {
+      await writeMindsKeyToEnvAndRestart(result.key);
+    } catch (err: any) {
+      console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
+      return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
+    }
     return { ok: true, apiKey: result.key };
   });
 
@@ -660,11 +671,11 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
-    const antonDir = path.join(os.homedir(), '.anton');
-    if (!fs.existsSync(antonDir)) {
-      fs.mkdirSync(antonDir, { recursive: true });
+    const homeDir = coworkHome();
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
     }
-    const envPath = path.join(antonDir, '.env');
+    const envPath = coworkEnvPath();
     const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
     const merged = new Map<string, string>();
     for (const line of existing.split('\n')) {
@@ -689,6 +700,39 @@ function setupIPC() {
     }
 
     return true;
+  });
+
+  // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
+  // When enabled the refresh token lives in the macOS keychain; otherwise
+  // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
+  // any existing token to the chosen store.
+  ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
+    const vars = readEnvFile();
+    // Default is enabled; only false when explicitly set to 'false'.
+    return { enabled: vars.COWORK_KEYCHAIN !== 'false' };
+  });
+
+  ipcMain.handle(IPC.KEYCHAIN_PREF_SET, async (_event, enabled: boolean) => {
+    try {
+      const homeDir = coworkHome();
+      if (!fs.existsSync(homeDir)) {
+        fs.mkdirSync(homeDir, { recursive: true });
+      }
+      const envPath = coworkEnvPath();
+      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+      const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
+      // Only write the key when disabling; absence means "enabled" (the default).
+      if (!enabled) lines.push('COWORK_KEYCHAIN=false');
+      const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
+      fs.writeFileSync(envPath, out, 'utf-8');
+
+      // Move any existing token into the newly-chosen store.
+      migrateRefreshTokenStore(enabled);
+      return { ok: true };
+    } catch (error) {
+      console.error('[keychain] failed to set preference', error);
+      return { ok: false };
+    }
   });
 
   ipcMain.handle(IPC.SETTINGS_CHECK_CONFIGURED, async () => {
@@ -774,6 +818,10 @@ function setupIPC() {
 }
 
 app.whenReady().then(() => {
+  // Consolidate the legacy ~/.anton global config into ~/.cowork before
+  // anything reads the env or starts the server. Best-effort + idempotent.
+  migrateLegacyHome();
+
   const isMac = process.platform === 'darwin';
 
   if (isMac) {

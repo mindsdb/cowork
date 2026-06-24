@@ -887,6 +887,12 @@ export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
+// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
+// writes the result into the same artifact folder and returns its path.
+export async function exportArtifact(path, format) {
+  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
+}
+
 // Absolute "private" URL for an artifact's primary file: the
 // origin-relative `/v1/artifacts/serve/...` endpoint made absolute
 // against the current API origin. In the web build this is the
@@ -1384,6 +1390,13 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Re-publish an already-published artifact: pushes current files to the same
+// URL with the same access settings (server reuses report_id). Clears the
+// "Modified" badge on success.
+export async function updateArtifact(path) {
+  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the

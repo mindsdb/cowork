@@ -1,5 +1,7 @@
 import { saveTokens, getRefreshToken } from './token-store';
 import { stopServer, startServer } from './server-process';
+import { checkInstallStatus } from './installer';
+import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -41,7 +43,7 @@ function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
 // access token is worth pulling — the env file is the source of truth
 // for the LLM credential, the JWT only matters for auth-service calls.
 function envHasMindsCommitted(): boolean {
-  const envPath = path.join(os.homedir(), '.anton', '.env');
+  const envPath = coworkEnvPath();
   if (!fs.existsSync(envPath)) return false;
   const content = fs.readFileSync(envPath, 'utf-8');
   return /^ANTON_MINDS_API_KEY=/m.test(content);
@@ -587,9 +589,13 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
 const MINDS_KEYS = [
   'ANTON_MINDS_ENABLED',
   'ANTON_MINDS_URL',
-  'ANTON_OPENAI_API_KEY',
+  // NOTE: ANTON_OPENAI_API_KEY / ANTON_OPENAI_BASE_URL are intentionally
+  // NOT in this strip list (ENG-436). MindsHub no longer commandeers the
+  // OpenAI slot — the scratchpad resolves minds-cloud natively via
+  // minds_api_key/minds_url (cowork-server `_resolve_coding`). Leaving
+  // them out means a user's own OpenAI key survives a MindsHub login,
+  // the same way the Anthropic key already does.
   'ANTON_MINDS_API_KEY',
-  'ANTON_OPENAI_BASE_URL',
   'ANTON_PLANNING_PROVIDER',
   'ANTON_CODING_PROVIDER',
   'ANTON_PLANNING_MODEL',
@@ -603,28 +609,32 @@ const MINDS_KEYS = [
 // overwrite) and restarts the python server so it picks them up.
 // `apiKey` MUST be the `mdb_*` value minted via `provisionAntonApiKey`
 // — passing a raw Keycloak JWT here is what caused the historic 401s
-// from the LLM gateway. ANTON_OPENAI_BASE_URL is required because
-// checkConfigured() demands it alongside ANTON_OPENAI_API_KEY. The
-// live MindsHub gateway now expects the `latest:*` alias namespace;
-// the older deprecated sentinel aliases 500 with "Mind not found".
+// from the LLM gateway. The live MindsHub gateway expects the
+// `latest:*` alias namespace; the older deprecated sentinel aliases
+// 500 with "Mind not found".
+//
+// ENG-436: we write ONLY the dedicated minds_* slots — never
+// ANTON_OPENAI_API_KEY / ANTON_OPENAI_BASE_URL. cowork-server resolves
+// minds-cloud from minds_api_key/minds_url for both the main agent and
+// the scratchpad, and `check_configured` is satisfied by minds_api_key
+// alone, so the OpenAI slot is no longer needed — and leaving it
+// untouched lets a user's own OpenAI key survive login.
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
-  const antonDir = path.join(os.homedir(), '.anton');
-  // ~/.anton normally exists by the time SSO finalize runs (the server
+  const homeDir = coworkHome();
+  // ~/.cowork normally exists by the time SSO finalize runs (the server
   // creates it on boot), but if the server failed to start the finalize
   // write would ENOENT and the user's freshly-minted key is lost.
-  if (!fs.existsSync(antonDir)) {
-    fs.mkdirSync(antonDir, { recursive: true });
+  if (!fs.existsSync(homeDir)) {
+    fs.mkdirSync(homeDir, { recursive: true });
   }
-  const envPath = path.join(antonDir, '.env');
+  const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   const lines = existing.split('\n')
     .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
   lines.push(
     'ANTON_MINDS_ENABLED=true',
     `ANTON_MINDS_URL=${MINDS_LLM_BASE_URL.replace(/\/v1$/, '')}`,
-    `ANTON_OPENAI_API_KEY=${apiKey}`,
     `ANTON_MINDS_API_KEY=${apiKey}`,
-    `ANTON_OPENAI_BASE_URL=${MINDS_LLM_BASE_URL}`,
     'ANTON_PLANNING_PROVIDER=minds-cloud',
     'ANTON_CODING_PROVIDER=minds-cloud',
     'ANTON_PLANNING_MODEL=latest:sonnet',
@@ -632,28 +642,34 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   );
   fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n', 'utf-8');
 
-  // Also clean up old provider entries from state.json so they don't show as green in Settings
-  const statePath = path.join(os.homedir(), '.anton', 'cowork', 'state.json');
+  // Ensure state.json has minds-cloud as the active provider so the server
+  // doesn't default to Anthropic on first boot (state.json may not exist yet
+  // after a flush).
+  const statePath = coworkStatePath();
   try {
+    let state: any = { preferences: {} };
     if (fs.existsSync(statePath)) {
-      const raw = fs.readFileSync(statePath, 'utf-8');
-      const state = JSON.parse(raw) as any;
-      if (state?.preferences?.providers && Array.isArray(state.preferences.providers)) {
-        // Keep only minds-cloud provider; remove anthropic, openai, gemini, openai-compatible
-        state.preferences.providers = state.preferences.providers.filter(
-          (p: any) => p?.type === 'minds-cloud'
-        );
-        // Ensure minds-cloud is marked as default
-        for (const p of state.preferences.providers) {
-          if (p?.type === 'minds-cloud') {
-            p.isDefault = true;
-          }
-        }
-        fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-      }
+      try { state = JSON.parse(fs.readFileSync(statePath, 'utf-8')); } catch { state = { preferences: {} }; }
     }
+    if (!state.preferences) state.preferences = {};
+    // Keep only minds-cloud; remove any other provider entries.
+    const existing: any[] = Array.isArray(state.preferences.providers) ? state.preferences.providers : [];
+    const mindsEntry = existing.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
+    mindsEntry.isDefault = true;
+    state.preferences.providers = [mindsEntry];
+    fs.mkdirSync(coworkHome(), { recursive: true });
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
   } catch (error) {
-    console.warn('[minds-auth] failed to clean up provider state', error);
+    console.warn('[minds-auth] failed to set provider state', error);
+  }
+
+  // Only restart the server if it's already installed. On a fresh install the
+  // server isn't available yet — the setup wizard will start it after install
+  // completes, at which point handleInstallComplete syncs the credentials.
+  const { antonInstalled } = await checkInstallStatus();
+  if (!antonInstalled) {
+    console.log('[minds-auth] server not installed yet — skipping restart; setup will sync creds after install');
+    return;
   }
 
   await stopServer();

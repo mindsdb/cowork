@@ -6,6 +6,7 @@ import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
+import { syncSettingsToDb } from './lib/syncSettings';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -143,8 +144,23 @@ export default function App() {
     init();
   }, []);
 
+  // Common final step for every path that leads to the chat UI:
+  // push any credentials sitting in ~/.cowork/.env into the server DB so
+  // config_ready is true on first mount. Called from both the already-installed
+  // login path and the post-install path so the handshake is never skipped.
+  const handlePostAuth = async () => {
+    try {
+      const saved = await host.readSettings();
+      if (saved && typeof saved === 'object') {
+        const lines = Object.entries(saved as Record<string, string>).map(([k, v]) => `${k}=${v}`);
+        await syncSettingsToDb(lines);
+      }
+    } catch { /* best-effort — backend migration covers the gap on next restart */ }
+    setPage('terminal');
+  };
+
   // After login (SSO or BYOK): consent is recorded and a provider is saved.
-  // Ensure the backend is installed, then enter the app.
+  // Ensure the backend is installed, then run the credential handshake.
   const handleAuthComplete = async () => {
     rememberTermsConsent();
     try { await host.restartServer(); } catch {}
@@ -158,13 +174,12 @@ export default function App() {
       setPage('setup');
       return;
     }
-    setPage('terminal');
+    await handlePostAuth();
   };
 
+  // After install: server is up — run the same credential handshake.
   const handleInstallComplete = async () => {
-    // Restart the backend so it picks up the freshly-written ~/.anton/.env.
-    try { await host.restartServer(); } catch {}
-    setPage('terminal');
+    await handlePostAuth();
   };
 
   const isMac = host.isMac();
