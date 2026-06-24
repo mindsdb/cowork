@@ -17,13 +17,27 @@ function plainTokenFile(): string { return path.join(coworkHome(), 'refresh-toke
 let _accessToken: string | null = null;
 let _expiresAt = 0; // epoch ms
 
-function keychainEnabled(): boolean {
+// The plaintext-file default + opt-in toggle is a macOS-only concession to
+// the keychain access prompts (which recur on unsigned/ad-hoc builds). On
+// Windows/Linux, safeStorage (DPAPI / libsecret) doesn't prompt, so we
+// always use it there and never downgrade those platforms to plaintext.
+const IS_MAC = process.platform === 'darwin';
+
+// Whether the COWORK_KEYCHAIN opt-in flag is set in ~/.cowork/.env.
+function keychainFlagSet(): boolean {
   try {
     const env = fs.readFileSync(coworkEnvPath(), 'utf-8');
     return /^\s*COWORK_KEYCHAIN\s*=\s*true\s*$/im.test(env);
   } catch {
     return false;
   }
+}
+
+// Resolve the effective store: keychain on non-mac always; on mac only when
+// the user opted in via the flag (default: plaintext file, no prompts).
+function useKeychain(): boolean {
+  if (!IS_MAC) return true;
+  return keychainFlagSet();
 }
 
 function writeKeychain(refreshToken: string): boolean {
@@ -56,7 +70,7 @@ function deleteKeychain(): void { try { fs.unlinkSync(KEYCHAIN_FILE); } catch { 
 function deletePlain(): void { try { fs.unlinkSync(plainTokenFile()); } catch { /* absent */ } }
 
 function persistRefreshToken(refreshToken: string): void {
-  if (keychainEnabled() && writeKeychain(refreshToken)) {
+  if (useKeychain() && writeKeychain(refreshToken)) {
     deletePlain();
     return;
   }
@@ -82,7 +96,7 @@ export function getRefreshToken(): string | null {
   // under the previous setting still resolves. In file (default) mode we
   // only touch the keychain when the file is missing — that keeps the
   // no-prompt promise for the common path.
-  if (keychainEnabled()) return readKeychain() ?? readPlain();
+  if (useKeychain()) return readKeychain() ?? readPlain();
   return readPlain() ?? readKeychain();
 }
 

@@ -532,7 +532,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   const [keychainPref, setKeychainPref] = useState(false);
   useEffect(() => { getUIVersion().then(setUiVersion).catch(() => {}); }, []);
   useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => {}); }, []);
-  useEffect(() => { if (host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => {}); }, []);
+  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => {}); }, []);
 
   // Optimistically flip the keychain toggle, then persist via main. Revert
   // the local state if the migration/write fails.
