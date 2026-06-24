@@ -34,6 +34,8 @@ export const SETTINGS_KEY_MAP = {
   model_mode: 'modelMode',
   model_overrides: 'modelOverrides',
   providers_json: 'providers',
+  provider_status: 'providerStatus',
+  provider_status_details: 'providerStatusDetails',
   auto_pin: 'autoPin',
   show_dots: 'showDots',
   show_counters: 'showCounters',
@@ -56,7 +58,7 @@ export const CLIENT_TO_SERVER = Object.fromEntries(
 );
 
 /** Fields whose server value is a JSON string that the client uses as an object. */
-const JSON_FIELDS = new Set(['modelOverrides', 'providers']);
+const JSON_FIELDS = new Set(['modelOverrides', 'providers', 'providerStatus', 'providerStatusDetails']);
 
 const PROVIDER_TO_CLIENT = {
   openai_compatible: 'openai-compatible',
@@ -186,6 +188,18 @@ export function transformSettingsRows(rows) {
 
   result.defaultModel = result.planningModel || result.defaultModel;
   result.providers = backfillProviders(result);
+  // Seed configured-but-untested providers as connected so a fresh boot shows
+  // them active immediately, before any live test. The server-persisted status
+  // parsed above already populated providerStatus and wins; the Settings view's
+  // background re-verify on mount converges these seeds to real results.
+  for (const p of result.providers) {
+    const configured = p.type === 'openai-compatible'
+      ? !!(p.baseUrl || '').trim()
+      : !!(p.apiKey || '').trim();
+    if (configured && !(p.type in result.providerStatus)) {
+      result.providerStatus[p.type] = 'ok';
+    }
+  }
   return result;
 }
 
