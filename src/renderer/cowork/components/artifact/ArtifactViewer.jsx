@@ -834,7 +834,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
               }] : []),
               {
                 label: publishedUrl ? 'Unpublish' : 'Publish',
-                icon: Ico.upload(13),
+                icon: Ico.power(13),
                 disabled: busy || !hasActionPath,
                 onClick: publishedUrl ? onUnpublish : onPublish,
               },

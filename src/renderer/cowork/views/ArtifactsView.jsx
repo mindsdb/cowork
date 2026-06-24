@@ -627,40 +627,16 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
-      {/* Top-right cluster: status pill (left) + hover-revealed
-          kebab (right). The kebab is always rightmost so the user's
-          eye finds it in the same place regardless of pill state.
-          We toggle `visibility` (not display/opacity-without-space)
-          so the pill keeps its X position whether the kebab is
-          showing or not. */}
+      {/* Top-right kebab — hover-revealed, absolute so it sits in the
+          same corner regardless of state. Status pills live inline in
+          the title row (below) so flexbox reserves their width and they
+          can never overlap the title; the title-row reserves a fixed
+          right padding just for this kebab. */}
       <div style={{
         position: 'absolute', top: 12, right: 12,
         display: 'flex', alignItems: 'center', gap: 6,
         zIndex: 2,
       }}>
-        {(published || artifact.live) && (
-          <span style={{ pointerEvents: 'none' }}>
-            {published ? (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
-                {artifact.modified && <ModifiedPill />}
-              </span>
-            ) : (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                fontFamily: FONT_BODY, fontSize: 11,
-                color: 'var(--accent)', fontWeight: 500,
-                border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-                padding: '3px 8px', borderRadius: 999,
-              }}>
-                <span className="pulse-dot" style={{
-                  width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
-                }} />
-                Live
-              </span>
-            )}
-          </span>
-        )}
         <button
           ref={kebabRef}
           type="button"
@@ -704,7 +680,6 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           jump on hover. */}
       <div style={{
         display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0,
-        paddingRight: (published || artifact.live) ? 110 : 40,
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 7, minWidth: 0,
@@ -720,10 +695,37 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             {Icon(14)}
           </span>
           <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
+            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600, lineHeight: 1,
             color: 'var(--ink)', minWidth: 0, flex: 1,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{artifact.title}</span>
+          {/* Status pills — inline so flexbox reserves their width and
+              the (flex:1, truncating) title can never overlap them.
+              `pointerEvents: none` keeps clicks falling through to the
+              card's open handler. */}
+          {(published || artifact.live) && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, lineHeight: 1, pointerEvents: 'none' }}>
+              {published ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
+                  {artifact.modified && <ModifiedPill />}
+                </span>
+              ) : (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontFamily: FONT_BODY, fontSize: 11,
+                  color: 'var(--accent)', fontWeight: 500,
+                  border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
+                  padding: '3px 8px', borderRadius: 999,
+                }}>
+                  <span className="pulse-dot" style={{
+                    width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
+                  }} />
+                  Live
+                </span>
+              )}
+            </span>
+          )}
         </div>
         {/* Description — agent-supplied at create_artifact time. Two-
             line clamp keeps the card height stable across artifacts
@@ -1046,7 +1048,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             the column width fixed so rows align cleanly. */}
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {published ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
               <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
               {artifact.modified && <ModifiedPill />}
             </span>
