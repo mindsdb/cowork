@@ -516,10 +516,14 @@ export function streamMessage(sessionId, text, opts = {}) {
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 // Server returns a flat array of project objects (with id, name, path,
-// is_active). Older servers wrapped in { projects: [...] } — handle both.
-export async function fetchProjects() {
+// is_active, plus organization metadata: pinned, sort_order, archived,
+// last_selected_at). Older servers wrapped in { projects: [...] } — handle both.
+export async function fetchProjects({ includeArchived = true } = {}) {
   try {
-    const data = await req('/projects');
+    // Pass include_archived explicitly. The server defaults to true; older
+    // servers ignore the unknown query param, so this stays backward compatible.
+    const query = includeArchived ? '' : '?include_archived=false';
+    const data = await req(`/projects${query}`);
     if (Array.isArray(data)) return data;
     return Array.isArray(data?.projects) ? data.projects : [];
   } catch {
@@ -529,6 +533,86 @@ export async function fetchProjects() {
 
 export async function createProject(name) {
   return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
+}
+
+// Update a project's organization metadata (pinned / sort_order / archived).
+// Routes through the same PATCH /projects/{id} endpoint that handles rename and
+// active-state. Accepts a project object (with id) or an id string. Fields left
+// undefined are not sent, so the server only mutates what's provided.
+export async function updateProjectMetadata(projectOrId, { pinned, sortOrder, archived } = {}) {
+  const id = typeof projectOrId === 'string' ? projectOrId : projectOrId?.id;
+  if (!id) throw new Error('Project id is required to update metadata.');
+  const body = {};
+  if (pinned !== undefined) body.pinned = pinned;
+  if (sortOrder !== undefined) body.sortOrder = sortOrder;
+  if (archived !== undefined) body.archived = archived;
+  return req(`/projects/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+// Persist a manual ordering. `orderedIds` is the full list of project ids in the
+// desired display order; the server assigns sort_order = 0..n. Older servers
+// without the endpoint return a 404 — surface that to the caller so it can fall
+// back gracefully (the optimistic local order still applies for the session).
+export async function reorderProjects(orderedIds) {
+  const projectIds = (orderedIds || []).filter(Boolean);
+  return req('/projects/reorder', {
+    method: 'POST',
+    body: JSON.stringify({ projectIds }),
+  });
+}
+
+// One-time migration: lift any pins stored in localStorage (the old
+// 'anton:pinned-projects' name-keyed array) onto the server so they follow the
+// user across devices, then clear the local store. Safe to call repeatedly —
+// after the first successful run the local key is removed and it no-ops. Only
+// pins NOT already set server-side are written, so re-pinning is idempotent.
+const LEGACY_PIN_KEY = 'anton:pinned-projects';
+const PIN_MIGRATION_DONE_KEY = 'anton:pinned-projects:migrated';
+
+export async function migratePinnedProjectsToServer(projects) {
+  let names = [];
+  try {
+    if (localStorage.getItem(PIN_MIGRATION_DONE_KEY) === '1') return { migrated: 0 };
+    const raw = localStorage.getItem(LEGACY_PIN_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) names = parsed.filter((n) => typeof n === 'string');
+    }
+  } catch {
+    return { migrated: 0 };
+  }
+
+  if (names.length === 0) {
+    // Nothing to migrate — mark done so we never re-read the (absent) key.
+    try { localStorage.setItem(PIN_MIGRATION_DONE_KEY, '1'); } catch {}
+    return { migrated: 0 };
+  }
+
+  const list = Array.isArray(projects) && projects.length ? projects : await fetchProjects();
+  const wanted = new Set(names);
+  let migrated = 0;
+  for (const project of list) {
+    const alreadyPinned = project?.pinned ?? project?.isPinned ?? false;
+    if (wanted.has(project?.name) && !alreadyPinned && project?.id) {
+      try {
+        await updateProjectMetadata(project.id, { pinned: true });
+        migrated += 1;
+      } catch {
+        // Leave the local key intact so a later load can retry the migration.
+        return { migrated, retry: true };
+      }
+    }
+  }
+
+  // Success — drop the legacy key and record completion.
+  try {
+    localStorage.removeItem(LEGACY_PIN_KEY);
+    localStorage.setItem(PIN_MIGRATION_DONE_KEY, '1');
+  } catch {}
+  return { migrated };
 }
 
 export async function fetchProjectCollaborators(projectId) {

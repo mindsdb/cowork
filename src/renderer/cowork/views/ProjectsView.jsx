@@ -28,6 +28,9 @@ import {
   createProject as createProjectApi,
   renameProject,
   revealProjectInFinder,
+  updateProjectMetadata,
+  reorderProjects,
+  migratePinnedProjectsToServer,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
   fetchProjectCollaborators,
   fetchProjectInvitations,
@@ -49,56 +52,126 @@ const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO    = 'var(--font-mono)';
 
-// ─── Pin persistence (localStorage) ──────────────────────────────────────
+// ─── Project organization (server-side) ──────────────────────────────────
 //
-// The server doesn't track project pin state today, so we keep it client-
-// side. Format: a JSON array of project names. Reserved/missing keys are
-// ignored gracefully. Any caller that mutates the list re-emits a
-// 'storage' event-equivalent via a custom event so the components can
-// react without coupling to the storage primitive directly.
-const PIN_KEY = 'anton:pinned-projects';
-const PIN_EVENT = 'anton:pinned-projects:change';
+// Pin / archived / manual order now live on the server (Project metadata:
+// pinned, sort_order, archived) so they follow the user across devices. The
+// server `projects` list is the source of truth; this hook keeps a small
+// optimistic *overlay* keyed by project id so pin/reorder/archive feel instant,
+// then reconciles when the parent refetches (via 'anton:projects-changed').
+//
+// On first load it migrates any legacy localStorage pins
+// ('anton:pinned-projects', a name-keyed array) onto the server, then drops the
+// local key and relies on server state thereafter.
 
-function readPinned() {
-  try {
-    const raw = localStorage.getItem(PIN_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr : []);
-  } catch {
-    return new Set();
-  }
-}
+const pinnedOf  = (p) => p?.pinned ?? p?.isPinned ?? false;
+const archivedOf = (p) => p?.archived ?? p?.isArchived ?? false;
+const sortOrderOf = (p) => {
+  const v = p?.sortOrder ?? p?.sort_order;
+  return Number.isFinite(v) ? v : 0;
+};
 
-function writePinned(set) {
-  try {
-    localStorage.setItem(PIN_KEY, JSON.stringify([...set]));
-    window.dispatchEvent(new Event(PIN_EVENT));
-  } catch {
-    // Storage might be disabled (private browsing). Silently ignore —
-    // the pin state simply won't persist across reloads.
-  }
-}
+function useProjectOrganization(projects) {
+  // overlay: { [projectId]: { pinned?, archived?, sortOrder? } } — pending
+  // optimistic changes layered on top of the server data until a refetch lands.
+  const [overlay, setOverlay] = useState({});
 
-function usePinnedProjects() {
-  const [pinned, setPinned] = useState(() => readPinned());
+  // Drop overlay entries the server has caught up on, so stale optimistic
+  // values don't shadow fresh server truth after a refetch.
   useEffect(() => {
-    const sync = () => setPinned(readPinned());
-    window.addEventListener(PIN_EVENT, sync);
-    window.addEventListener('storage', sync);
-    return () => {
-      window.removeEventListener(PIN_EVENT, sync);
-      window.removeEventListener('storage', sync);
+    setOverlay((prev) => {
+      if (!Object.keys(prev).length) return prev;
+      const next = {};
+      for (const p of projects) {
+        const pending = prev[p.id];
+        if (!pending) continue;
+        const keep = {};
+        if (pending.pinned !== undefined && pending.pinned !== pinnedOf(p)) keep.pinned = pending.pinned;
+        if (pending.archived !== undefined && pending.archived !== archivedOf(p)) keep.archived = pending.archived;
+        if (pending.sortOrder !== undefined && pending.sortOrder !== sortOrderOf(p)) keep.sortOrder = pending.sortOrder;
+        if (Object.keys(keep).length) next[p.id] = keep;
+      }
+      return next;
+    });
+  }, [projects]);
+
+  // Apply the overlay to produce the effective project list.
+  const resolved = useMemo(() => projects.map((p) => {
+    const pending = overlay[p.id];
+    if (!pending) return p;
+    return {
+      ...p,
+      pinned: pending.pinned ?? pinnedOf(p),
+      archived: pending.archived ?? archivedOf(p),
+      sortOrder: pending.sortOrder ?? sortOrderOf(p),
     };
+  }), [projects, overlay]);
+
+  // One-time legacy localStorage → server migration on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await migratePinnedProjectsToServer(projects);
+        if (!cancelled && result?.migrated > 0) {
+          window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+        }
+      } catch {
+        // Migration failure is non-fatal — pins simply stay local until the
+        // next successful load attempt.
+      }
+    })();
+    return () => { cancelled = true; };
+    // Run once: the migration helper itself is idempotent and self-guards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const togglePin = (name, next) => {
-    const cur = readPinned();
-    if (next === undefined) next = !cur.has(name);
-    if (next) cur.add(name);
-    else cur.delete(name);
-    writePinned(cur);
+
+  const setPending = (id, patch) => setOverlay((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+
+  const togglePin = async (project, next) => {
+    const id = project?.id;
+    if (!id) return;
+    const value = next === undefined ? !pinnedOf(project) : next;
+    setPending(id, { pinned: value });        // optimistic
+    try {
+      await updateProjectMetadata(id, { pinned: value });
+      window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+    } catch {
+      setPending(id, { pinned: !value });      // revert on failure
+    }
   };
-  return { pinned, togglePin };
+
+  const setArchived = async (project, next) => {
+    const id = project?.id;
+    if (!id) return;
+    const value = next === undefined ? !archivedOf(project) : next;
+    setPending(id, { archived: value });       // optimistic
+    try {
+      await updateProjectMetadata(id, { archived: value });
+      window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+    } catch {
+      setPending(id, { archived: !value });    // revert on failure
+    }
+  };
+
+  // Persist a manual ordering. `orderedIds` is the full visible order; we layer
+  // optimistic sort_order locally first, then PATCH the server.
+  const persistOrder = async (orderedIds) => {
+    setOverlay((prev) => {
+      const next = { ...prev };
+      orderedIds.forEach((id, i) => { next[id] = { ...next[id], sortOrder: i }; });
+      return next;
+    });
+    try {
+      await reorderProjects(orderedIds);
+      window.dispatchEvent(new CustomEvent('anton:projects-changed'));
+    } catch {
+      // Older server without the endpoint (or a transient failure): keep the
+      // optimistic order for this session; it just won't persist across reload.
+    }
+  };
+
+  return { resolved, togglePin, setArchived, persistOrder };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -168,6 +241,9 @@ const SORT_OPTIONS = [
   { id: 'name',         label: 'Name' },
   { id: 'most-active',  label: 'Most active' },
   { id: 'least-active', label: 'Least active' },
+  // Manual order persists to the server (Project.sort_order). Selecting it
+  // enables drag-to-reorder on the cards/rows.
+  { id: 'manual',       label: 'Manual' },
 ];
 
 function ProjectsCounts({ search, total, filtered, pinnedCount }) {
@@ -190,7 +266,7 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
 
 // ─── Project menu (kebab popover) ────────────────────────────────────────
 
-function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
+function ProjectMenu({ open, anchorRect, project, pinned, archived = false, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onArchive, onReveal, onDelete }) {
   const items = [
     !hideOpen && {
       id: 'open',
@@ -209,6 +285,15 @@ function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletabl
       label: 'Rename…',
       icon: Ico.edit(13),
       onClick: () => onRename?.(project),
+    },
+    // Archive hides the project from the main list (reversible — the project
+    // and its data are kept; only the `archived` flag flips). Reserved
+    // projects (General) can't be archived.
+    !isReserved && onArchive && {
+      id: 'archive',
+      label: archived ? 'Unarchive' : 'Archive',
+      icon: Ico.archive ? Ico.archive(13) : Ico.folder(13),
+      onClick: () => onArchive?.(project),
     },
     onReveal && {
       id: 'reveal',
@@ -1164,16 +1249,17 @@ function ProjectDetail({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
-  // Header kebab + inline rename — lets users rename / reveal / delete
-  // the active project without bouncing back to the grid. Pin is
-  // intentionally absent: the only pin store today is localStorage on
-  // the grid cards, and exposing the toggle here would imply the
-  // detail view participates in that state.
+  // Header kebab + inline rename — lets users rename / reveal / archive /
+  // delete the active project without bouncing back to the grid. Pin is
+  // intentionally absent here (the grid cards own the pin affordance); the
+  // detail kebab focuses on lifecycle actions.
   editing = false,
   onRenameStart,
   onRenameSubmit,
   onRenameCancel,
   onReveal,
+  onArchive,
+  archived = false,
   onDelete,
   // Clicking a row inside the rail's Scheduled Tasks card routes to
   // the schedule detail page. Wired by App.jsx — same handler the
@@ -1358,12 +1444,14 @@ function ProjectDetail({
           open={!!menuRect}
           anchorRect={menuRect}
           project={project}
+          archived={archived}
           isReserved={isReserved}
           undeletable={project.name === 'general'}
           hideOpen
           hidePin
           onClose={() => setMenuRect(null)}
           onRename={() => onRenameStart?.(project)}
+          onArchive={onArchive ? () => onArchive?.(project) : undefined}
           onReveal={host.isWeb ? undefined : () => onReveal?.(project)}
           onDelete={() => onDelete?.(project)}
         />
@@ -1487,7 +1575,15 @@ export default function ProjectsView({
   onHandoffArtifact,
   agentLabel = 'the agent',
 }) {
-  const { pinned, togglePin } = usePinnedProjects();
+  // Server-backed organization (pin / archived / manual order) with an
+  // optimistic overlay for instant feedback. `resolved` is the projects list
+  // with any pending optimistic changes applied.
+  const { resolved, togglePin, setArchived, persistOrder } = useProjectOrganization(projects);
+  const pinnedSet = useMemo(
+    () => new Set(resolved.filter((p) => pinnedOf(p)).map((p) => p.id)),
+    [resolved],
+  );
+  const isPinned = (p) => pinnedSet.has(p?.id);
   const { isMobile } = useBreakpoint();
   const [view, setView] = useState(() =>
     localStorage.getItem('anton:projects-view') === 'list' ? 'list' : 'grid'
@@ -1499,6 +1595,11 @@ export default function ProjectsView({
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('recent');
   const [menuFor, setMenuFor] = useState(null); // { project, rect }
+  // Drag-reorder state — id of the row/card currently being dragged, and the
+  // id it's hovering over (drop target). Manual drag is enabled in the
+  // 'manual' sort mode; dropping commits the new order to the server.
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
   // Card whose title is currently in inline-edit mode. Only one at a
   // time — null means no card is editing. The card owns the input;
   // we own the "which card" state.
@@ -1584,10 +1685,12 @@ export default function ProjectsView({
     try { await revealProjectInFinder(project.path); } catch {}
   };
 
-  // Filter + sort, with pinned items always at the top.
+  // Filter + sort, with pinned items always at the top. Archived projects are
+  // filtered out of the main list (not deleted — they round-trip via the server
+  // `archived` flag; a dedicated archived view is a follow-up).
   const visibleProjects = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = [...projects];
+    let list = resolved.filter((p) => !archivedOf(p));
     if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q));
 
     const ts = (p) => timestampOfProject(p, tasks);
@@ -1600,16 +1703,36 @@ export default function ProjectsView({
         case 'name':         return a.name.localeCompare(b.name);
         case 'most-active':  return taskCountOf(b) - taskCountOf(a);
         case 'least-active': return taskCountOf(a) - taskCountOf(b);
+        case 'manual':       return sortOrderOf(a) - sortOrderOf(b)
+                                 || a.name.localeCompare(b.name);
         case 'recent':
         default:             return ts(b) - ts(a);
       }
     });
 
     // Pinned to top, preserving relative sort within each group.
-    const pinnedList   = list.filter((p) => pinned.has(p.name));
-    const unpinnedList = list.filter((p) => !pinned.has(p.name));
+    const pinnedList   = list.filter((p) => isPinned(p));
+    const unpinnedList = list.filter((p) => !isPinned(p));
     return [...pinnedList, ...unpinnedList];
-  }, [projects, tasks, search, sort, pinned]);
+  }, [resolved, tasks, search, sort, pinnedSet]);
+
+  // Drag-reorder is only meaningful in manual sort mode (otherwise a computed
+  // sort would immediately override any manual placement). Pins still float to
+  // the top within manual mode.
+  const reorderEnabled = sort === 'manual' && !search.trim();
+
+  const handleDrop = (targetId) => {
+    setDragOverId(null);
+    const sourceId = dragId;
+    setDragId(null);
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const ids = visibleProjects.map((p) => p.id);
+    const from = ids.indexOf(sourceId);
+    const to = ids.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    persistOrder(ids);
+  };
 
   if (detailProject) {
     return (
@@ -1637,6 +1760,14 @@ export default function ProjectsView({
         onRenameCancel={handleRenameCancel}
         onReveal={handleReveal}
         onHandoffArtifact={onHandoffArtifact}
+        archived={archivedOf(resolved.find((p) => p.id === detailProject.id) || detailProject)}
+        onArchive={(proj) => {
+          // Archiving removes the project from the main list, so bounce back to
+          // the grid (it would otherwise sit in a detail view for a now-hidden
+          // project). The flag round-trips via the server; it isn't deleted.
+          setDetailProject(null);
+          setArchived(proj, true);
+        }}
         onDelete={(proj) => {
           // Bounce back to the grid first so we don't render a detail
           // page for a project that's about to disappear, then defer
@@ -1685,9 +1816,9 @@ export default function ProjectsView({
         counts={
           <ProjectsCounts
             search={search}
-            total={projects.length}
+            total={resolved.filter((p) => !archivedOf(p)).length}
             filtered={visibleProjects.length}
-            pinnedCount={visibleProjects.filter((p) => pinned.has(p.name)).length}
+            pinnedCount={visibleProjects.filter((p) => isPinned(p)).length}
           />
         }
       />
@@ -1709,21 +1840,38 @@ export default function ProjectsView({
           marginTop: 18,
         }}>
           {visibleProjects.map((p) => (
-            <ProjectCard
-              key={p.name || p.path}
-              project={p}
-              isSelected={selectedProject?.name === p.name}
-              tasks={tasks}
-              scheduled={scheduled}
-              pinned={pinned.has(p.name)}
-              editing={editingProjectName === p.name}
-              onOpen={handleOpen}
-              onTogglePin={(proj, next) => togglePin(proj.name, next)}
-              onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
-              isMenuOpen={menuFor?.project?.name === p.name}
-              onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
-              onRenameCancel={handleRenameCancel}
-            />
+            <div
+              key={p.id || p.name || p.path}
+              draggable={reorderEnabled && editingProjectName !== p.name}
+              onDragStart={reorderEnabled ? () => setDragId(p.id) : undefined}
+              onDragEnd={reorderEnabled ? () => { setDragId(null); setDragOverId(null); } : undefined}
+              onDragOver={reorderEnabled ? (e) => { e.preventDefault(); if (dragOverId !== p.id) setDragOverId(p.id); } : undefined}
+              onDrop={reorderEnabled ? (e) => { e.preventDefault(); handleDrop(p.id); } : undefined}
+              style={{
+                borderRadius: 10,
+                cursor: reorderEnabled ? 'grab' : undefined,
+                opacity: dragId === p.id ? 0.4 : 1,
+                outline: reorderEnabled && dragOverId === p.id && dragId !== p.id
+                  ? '2px dashed var(--accent)' : 'none',
+                outlineOffset: 2,
+                transition: 'opacity .12s ease',
+              }}
+            >
+              <ProjectCard
+                project={p}
+                isSelected={selectedProject?.name === p.name}
+                tasks={tasks}
+                scheduled={scheduled}
+                pinned={isPinned(p)}
+                editing={editingProjectName === p.name}
+                onOpen={handleOpen}
+                onTogglePin={(proj, next) => togglePin(proj, next)}
+                onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+                isMenuOpen={menuFor?.project?.name === p.name}
+                onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
+                onRenameCancel={handleRenameCancel}
+              />
+            </div>
           ))}
           {/* Trailing dashed "+ New project" card — clicking just
               opens the modal (no inline-edit mode any more). The
@@ -1763,20 +1911,35 @@ export default function ProjectsView({
         <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
           <ListHeader />
           {visibleProjects.map((p) => (
-            <ListRow
-              key={p.name || p.path}
-              project={p}
-              tasks={tasks}
-              scheduled={scheduled}
-              pinned={pinned.has(p.name)}
-              onOpen={handleOpen}
-              onTogglePin={(proj, next) => togglePin(proj.name, next)}
-              onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
-              isMenuOpen={menuFor?.project?.name === p.name}
-              editing={editingProjectName === p.name}
-              onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
-              onRenameCancel={handleRenameCancel}
-            />
+            <div
+              key={p.id || p.name || p.path}
+              draggable={reorderEnabled && editingProjectName !== p.name}
+              onDragStart={reorderEnabled ? () => setDragId(p.id) : undefined}
+              onDragEnd={reorderEnabled ? () => { setDragId(null); setDragOverId(null); } : undefined}
+              onDragOver={reorderEnabled ? (e) => { e.preventDefault(); if (dragOverId !== p.id) setDragOverId(p.id); } : undefined}
+              onDrop={reorderEnabled ? (e) => { e.preventDefault(); handleDrop(p.id); } : undefined}
+              style={{
+                cursor: reorderEnabled ? 'grab' : undefined,
+                opacity: dragId === p.id ? 0.4 : 1,
+                borderTop: reorderEnabled && dragOverId === p.id && dragId !== p.id
+                  ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'opacity .12s ease',
+              }}
+            >
+              <ListRow
+                project={p}
+                tasks={tasks}
+                scheduled={scheduled}
+                pinned={isPinned(p)}
+                onOpen={handleOpen}
+                onTogglePin={(proj, next) => togglePin(proj, next)}
+                onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+                isMenuOpen={menuFor?.project?.name === p.name}
+                editing={editingProjectName === p.name}
+                onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
+                onRenameCancel={handleRenameCancel}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -1785,12 +1948,14 @@ export default function ProjectsView({
         open={!!menuFor}
         anchorRect={menuFor?.rect}
         project={menuFor?.project}
-        pinned={menuFor ? pinned.has(menuFor.project.name) : false}
+        pinned={menuFor ? isPinned(menuFor.project) : false}
+        archived={menuFor ? archivedOf(menuFor.project) : false}
         isReserved={menuFor?.project?.name === 'general' || menuFor?.project?.name === 'default'}
         onClose={() => setMenuFor(null)}
         onOpen={handleOpen}
         onRename={handleRenameStart}
-        onTogglePin={(proj, next) => togglePin(proj.name, next)}
+        onTogglePin={(proj, next) => togglePin(proj, next)}
+        onArchive={(proj) => setArchived(proj, !archivedOf(proj))}
         onReveal={host.isWeb ? undefined : handleReveal}
         onDelete={(proj) => onDeleteProject?.(proj)}
       />

@@ -65,6 +65,8 @@ const Ico = {
   edit:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 4.5l3 3L8 19H5v-3z"/><path d="M14.5 6.5l3 3"/></svg>,
   // Trash — delete action.
   trash:    (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 6.5h17M9 6.5V4.5h6v2"/><path d="M5.5 6.5l1 13a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-13"/><path d="M10 11v6M14 11v6"/></svg>,
+  // Archive — box with lid; hide-from-list action.
+  archive:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>,
   // Move to project — folder + arrow.
   moveTo:   (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="m13 13 3-3-3-3"/><path d="M16 10H9"/></svg>,
   // Schedule — calendar/clock blend.
