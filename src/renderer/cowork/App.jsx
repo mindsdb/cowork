@@ -2344,6 +2344,22 @@ function AppCore() {
 
     let assistantContent = '';
     let resolvedId = taskId;
+    // Server mints the canonical id on `response.created` for tmp- tasks.
+    // adoptServerId keeps activeStreamingTaskIdRef (and cancel) in sync.
+    const adoptServerId = (sid) => {
+      if (!sid || sid === resolvedId) return;
+      const previousId = resolvedId;
+      resolvedId = sid;
+      setTasks((prev) => prev.map((t) =>
+        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t,
+      ));
+      if (activeStreamingTaskIdRef.current === previousId) {
+        activeStreamingTaskIdRef.current = sid;
+      }
+      markInFlightDone(previousId);
+      markInFlight(sid);
+      setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+    };
     // Adapter state — folded by every raw SSE event so the streaming
     // message can carry structured ThinkingStep[] for the UI.
     let streamState = initialStreamState();
@@ -2390,6 +2406,7 @@ function AppCore() {
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
+      markInFlight(taskId);
     };
     trackAgentSessionStarted();
     const streamNewSessionFn = () => streamNewSession(text, {
@@ -2400,6 +2417,8 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
+        const sid = ev?.conversation_id || ev?.response?.conversation_id;
+        if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
@@ -2408,45 +2427,17 @@ function AppCore() {
         flushSync(() => flushStreamingMessage());
       },
       onChunk(chunk, sid) {
-        if (sid && sid !== resolvedId) {
-          const previousId = resolvedId;
-          resolvedId = sid;
-          setTasks((prev) => prev.map((t) =>
-            t.id === previousId || t.id === taskId
-              ? { ...t, id: sid }
-              : t,
-          ));
-          setActiveTaskId(sid);
-        }
+        if (sid) adoptServerId(sid);
         assistantContent += chunk;
-        // The adapter already accumulates bodyText; the chunk callback
-        // remains the source of truth for resolving conversation id.
       },
       onProgress(event, sid) {
-        // Track the resolved conversation id (in case onChunk hasn't
-        // run yet for this stream — onChunk does the same dance).
-        if (sid && sid !== resolvedId) {
-          const previousId = resolvedId;
-          resolvedId = sid;
-          setTasks((prev) => prev.map((t) => t.id === previousId || t.id === taskId ? { ...t, id: sid } : t));
-          setActiveTaskId(sid);
-        }
+        if (sid) adoptServerId(sid);
         // Intentionally a no-op for messages: every `response.in_progress`
         // event already passed through onEvent → flushStreamingMessage,
         // which is the source of truth for the streaming row + steps.
-        // The previous implementation appended an `activity` row here
-        // and stripped the `_streaming` row in the process — but the
-        // chat scroll filters activity rows out (they're never visible)
-        // while losing the streaming row blanked the AnswerTurn until
-        // the body deltas started.
       },
       onToolResult(event, sid) {
-        if (sid && sid !== resolvedId) {
-          const previousId = resolvedId;
-          resolvedId = sid;
-          setTasks((prev) => prev.map((t) => t.id === previousId || t.id === taskId ? { ...t, id: sid } : t));
-          setActiveTaskId(sid);
-        }
+        if (sid) adoptServerId(sid);
         // See onProgress comment — same reasoning. The adapter (via
         // onEvent) captures scratchpad results into the steps array.
       },
@@ -2455,6 +2446,8 @@ function AppCore() {
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
+        markInFlightDone(finalId);
+        if (finalId !== taskId) markInFlightDone(taskId);
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -2506,6 +2499,8 @@ function AppCore() {
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
+        markInFlightDone(resolvedId);
+        if (resolvedId !== taskId) markInFlightDone(taskId);
         setTasks((prev) => prev.map((t) => {
           if (t.id !== resolvedId && t.id !== taskId) return t;
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
