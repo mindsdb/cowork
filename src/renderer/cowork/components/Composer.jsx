@@ -102,6 +102,13 @@ export default function Composer({
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  /** Auto-dismiss timer for the standalone attachment-error notice. The
+      notice surfaces paste/drag-drop rejections that never open the attach
+      menu (which is the only place the old inline error rendered), so it
+      needs to clear itself after a beat the way a transient toast would —
+      without it a one-off "too big" message would hang around until the
+      next send/attach. Held in a ref so re-renders don't reset the clock. */
+  const errorTimerRef = useRef(null);
   const [listening, setListening] = useState(false);
   /** True when the caret is currently inside a fenced block. The boolean
       changes much less often than the caret itself, so we track caret
@@ -512,6 +519,39 @@ export default function Composer({
     if (rec) { try { rec.abort(); } catch {} }
   }, []);
 
+  // Auto-dismiss the standalone attachment-error notice ~7s after it
+  // appears so a transient paste/drop rejection doesn't linger. Re-arms
+  // whenever the message changes (a fresh rejection resets the clock) and
+  // is torn down on clear/unmount. The attach-menu copy of the error is
+  // NOT subject to this — that one is dismissed by closing the menu — but
+  // both read the same `error`, so we only run the timer when the menu is
+  // closed (i.e. when the standalone notice is the thing on screen).
+  useEffect(() => {
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+    if (!error || openMenu === 'attach') return undefined;
+    errorTimerRef.current = setTimeout(() => {
+      errorTimerRef.current = null;
+      setError('');
+    }, 7000);
+    return () => {
+      if (errorTimerRef.current) {
+        clearTimeout(errorTimerRef.current);
+        errorTimerRef.current = null;
+      }
+    };
+  }, [error, openMenu]);
+
+  const dismissError = useCallback(() => {
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+    setError('');
+  }, []);
+
   return (
     <div ref={wrapRef} style={{ width: '100%', maxWidth: 'var(--composer-max-width, 640px)', position: 'relative' }}>
       <input
@@ -534,6 +574,27 @@ export default function Composer({
             <div className="composer-dropzone" aria-hidden="true">
               <span className="composer-dropzone-icon">{Ico.upload?.(20) || Ico.attach(18)}</span>
               <span>Drop files to attach</span>
+            </div>
+          )}
+          {/* Standalone attachment-error notice. The attach menu renders
+              its own copy of `error` (legacy path), but paste and drag-drop
+              never open that menu — so without this notice a rejected
+              file (too big / unsupported type) dropped or pasted would fail
+              silently. Gated on the menu being closed so the two never
+              double-render the same message. Auto-clears via the timer
+              effect above; the user can also dismiss it. */}
+          {error && openMenu !== 'attach' && (
+            <div className="composer-error-notice" role="alert">
+              <span className="composer-error-notice-text">{error}</span>
+              <button
+                type="button"
+                className="composer-error-notice-dismiss"
+                title="Dismiss"
+                aria-label="Dismiss error"
+                onClick={dismissError}
+              >
+                {Ico.close(13)}
+              </button>
             </div>
           )}
           {attachments.length > 0 && (

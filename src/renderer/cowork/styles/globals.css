@@ -3236,6 +3236,35 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 
 /* ─── Attachments / Context ─────────────────────────────────────────────── */
+/* Standalone attachment-error notice — surfaces paste/drag-drop/attach
+   rejections inline at the top of the composer, independent of the attach
+   menu (paste & drop never open that menu, so its error was invisible).
+   Danger tokens are theme-defined in both skins, so this reads correctly
+   in light and dark; the soft tinted surface + mixed border matches the
+   `.pill.danger` and stop-button vocabulary used elsewhere. */
+.composer-error-notice {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 10px 10px 0;
+  padding: 7px 8px 7px 10px;
+  border-radius: 8px;
+  background: var(--danger-bg);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
+  font-size: 12.5px; line-height: 1.4;
+}
+.composer-error-notice-text { flex: 1; min-width: 0; word-break: break-word; }
+.composer-error-notice-dismiss {
+  flex: 0 0 auto;
+  width: 20px; height: 20px; border-radius: 5px;
+  border: 0; background: transparent; color: var(--danger);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0.75;
+  transition: opacity .12s, background .12s;
+}
+.composer-error-notice-dismiss:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
 .attachment-strip {
   display: flex; flex-wrap: wrap; gap: 8px;
   padding: 10px 10px 0;
