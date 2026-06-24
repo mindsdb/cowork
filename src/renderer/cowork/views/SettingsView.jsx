@@ -3,6 +3,7 @@ import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
@@ -76,38 +77,6 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   );
 }
 
-function Segmented({ value, onChange, options, style, groupLabel }) {
-  // Use radiogroup semantics when a label is supplied — AT announces the
-  // group and reads each option's checked state. Without a label, fall
-  // back to a plain group so AT users at least hear the boundary.
-  const groupRole = groupLabel ? 'radiogroup' : 'group';
-  return (
-    <div
-      className="segmented"
-      role={groupRole}
-      aria-label={groupLabel}
-      style={style}
-    >
-      {options.map((o) => {
-        const selected = value === o.value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            className={selected ? 'active' : ''}
-            onClick={() => onChange(o.value)}
-            title={o.title}
-            aria-label={o.ariaLabel || o.title}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function Toggle({ value, onChange, title, ariaLabel }) {
   return (
@@ -1263,13 +1232,13 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Agent">
               <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-                <Segmented
+                <SegmentedControl
                   value={settings.harness || 'anton'}
-                  onChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-                  groupLabel="Agent harness"
+                  onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+                  aria-label="Agent harness"
                   options={[
-                    { value: 'anton',  label: 'Anton',  ariaLabel: 'Use Anton agent',  title: 'Anton — the default AI agent.' },
-                    { value: 'hermes', label: 'Hermes', ariaLabel: 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+                    { value: 'anton',  label: 'Anton',  'aria-label': 'Use Anton agent',  title: 'Anton — the default AI agent.' },
+                    { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
                   ]}
                 />
               </Section>
@@ -1449,37 +1418,37 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Appearance">
               <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
-                <Segmented
+                <SegmentedControl
                   value={theme || 'dark'}
-                  onChange={(v) => onThemeChange?.(v)}
-                  groupLabel="Theme"
+                  onValueChange={(v) => onThemeChange?.(v)}
+                  aria-label="Theme"
                   options={[
                     {
                       value: 'light',
                       label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
-                      ariaLabel: 'Light theme',
+                      'aria-label': 'Light theme',
                       title: 'Use the light theme.',
                     },
                     {
                       value: 'dark',
                       label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
-                      ariaLabel: 'Dark theme',
+                      'aria-label': 'Dark theme',
                       title: 'Use the dark theme.',
                     },
                   ]}
                 />
               </Section>
               <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-                <Segmented
+                <SegmentedControl
                   value={normalizeSkin(skin)}
-                  onChange={(v) => onSkinChange?.(v)}
-                  groupLabel="Style"
+                  onValueChange={(v) => onSkinChange?.(v)}
+                  aria-label="Style"
                   options={SKINS.map((s) => ({
                     value: s.id,
                     label: s.icon && Ico[s.icon]
                       ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
                       : s.label,
-                    ariaLabel: `${s.label} style`,
+                    'aria-label': `${s.label} style`,
                     title: s.title,
                   }))}
                 />
@@ -1516,25 +1485,25 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     </div>
                   </Section>
                   <Section title="Corners" subtitle="How sharp the surfaces feel.">
-                    <Segmented
+                    <SegmentedControl
                       value={String(customTheme.radius)}
-                      onChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
-                      groupLabel="Corner radius"
+                      onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+                      aria-label="Corner radius"
                       options={[
-                        { value: '0', label: 'Square', ariaLabel: 'Square corners', title: 'Sharp pixel corners.' },
-                        { value: '6', label: 'Soft', ariaLabel: 'Soft corners', title: 'Gently rounded.' },
-                        { value: '12', label: 'Round', ariaLabel: 'Round corners', title: 'Fully rounded.' },
+                        { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
+                        { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
+                        { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
                       ]}
                     />
                   </Section>
                   <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
-                    <Segmented
+                    <SegmentedControl
                       value={customTheme.font}
-                      onChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
-                      groupLabel="Custom typeface"
+                      onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+                      aria-label="Custom typeface"
                       options={[
-                        { value: 'standard', label: 'Standard', ariaLabel: 'Standard font', title: 'Inter for UI text.' },
-                        { value: 'mono', label: 'Mono', ariaLabel: 'Mono font', title: 'JetBrains Mono everywhere.' },
+                        { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
+                        { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
                       ]}
                     />
                   </Section>
@@ -1578,10 +1547,10 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Memory" defaultOpen={false}>
               <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
-                <Segmented
+                <SegmentedControl
                   value={settings.memoryMode ?? 'autopilot'}
-                  onChange={(v) => setSetting('memoryMode', v)}
-                  groupLabel="Memory mode"
+                  onValueChange={(v) => setSetting('memoryMode', v)}
+                  aria-label="Memory mode"
                   options={[
                     { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
                     { value: 'copilot',   label: 'Copilot',   title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
@@ -1658,10 +1627,10 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 title="UI updates"
                 subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
               >
-                <Segmented
+                <SegmentedControl
                   value={settings.uiUpdateMode ?? 'auto'}
-                  onChange={(v) => setSetting('uiUpdateMode', v)}
-                  groupLabel="UI update mode"
+                  onValueChange={(v) => setSetting('uiUpdateMode', v)}
+                  aria-label="UI update mode"
                   options={[
                     { value: 'auto',   label: 'Auto',   title: 'Download and apply UI updates automatically.' },
                     { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },

@@ -14,9 +14,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import {
   PageHeader, FilterRow, SearchInput, SortPill,
-  ViewToggle,
   useCollectionShortcut,
 } from '../components/collection';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
@@ -165,7 +165,7 @@ export default function ScheduledView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<ViewToggle value={viewMode} onChange={setViewMode} />}
+          view={<SegmentedControl value={viewMode} onValueChange={setViewMode} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} />}
           counts={
             <>
               {(search || '').trim().length > 0
