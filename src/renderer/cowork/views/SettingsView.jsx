@@ -8,6 +8,7 @@ import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron } from '../../platform/host';
+import ChannelsView from './ChannelsView';
 
 function Section({ title, subtitle, children }) {
   return (
@@ -548,6 +549,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 const NAV_ITEMS = [
   { id: 'agent',      label: 'Agent',      icon: 'sparkle'   },
   { id: 'appearance', label: 'Appearance', icon: 'palette'   },
+  { id: 'channels',   label: 'Channels',   icon: 'chats'     },
   { id: 'updates',    label: 'Updates',    icon: 'refresh'   },
   { id: 'backend',    label: 'Backend',    icon: 'database'  },
   { id: 'account',    label: 'Account',    icon: 'people'    },
@@ -1790,6 +1792,12 @@ export default function SettingsView({
     </SettingsSectionPanel>
   );
 
+  const renderChannelsSection = () => (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      <ChannelsView />
+    </div>
+  );
+
   const renderUpdatesSection = () => (
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <div style={{
@@ -2087,6 +2095,7 @@ export default function SettingsView({
 
       {section === 'agent'      && renderAgentSection()}
       {section === 'appearance' && renderAppearanceSection()}
+      {section === 'channels'   && renderChannelsSection()}
       {section === 'updates'    && renderUpdatesSection()}
       {section === 'backend'    && renderBackendSection()}
       {section === 'account'    && renderAccountSection()}

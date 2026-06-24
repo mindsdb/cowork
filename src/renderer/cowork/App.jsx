@@ -3672,9 +3672,6 @@ function AppCore() {
           />
         )}
 
-        {route === 'dispatch' && (
-          <ChannelsView />
-        )}
 
         {route === 'customize' && (
           <CustomizeView

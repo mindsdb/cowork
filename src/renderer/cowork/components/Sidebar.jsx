@@ -547,10 +547,6 @@ export default function Sidebar({
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
-          {/* Channels — connect messaging apps (Telegram/Slack/etc.) so
-              people can talk to the agent from their chats. Routes to the
-              `dispatch` key, which App.jsx renders as <ChannelsView />. */}
-          <NavItem icon={Ico.chats(15)} label="Channels" onClick={() => onNavigate('dispatch')} active={activeRoute === 'dispatch'} />
         </div>
 
         {/* Brain-style nav — visually grouped panel.
