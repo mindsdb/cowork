@@ -20,6 +20,12 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
+import {
+  EXPORT_FORMATS,
+  canExportArtifact,
+  canExportFormat,
+  exportAndDeliver,
+} from '../lib/artifactExport';
 import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -1486,9 +1492,10 @@ function StatusDot({ artifact }) {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onDelete, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onExport, onCopyUrl, onPublish, onUnpublish, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
+  const canExport = !!onExport && canExportArtifact(artifact);
   const items = [
     {
       id: 'open',
@@ -1507,6 +1514,18 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       label: 'Download',
       icon: Ico.download(13),
       onClick: onDownload,
+    },
+    canExport && {
+      id: 'export',
+      label: 'Download as',
+      icon: Ico.download(13),
+      submenu: EXPORT_FORMATS.map((f) => ({
+        id: `export-${f.id}`,
+        label: f.label,
+        icon: Ico.download(13),
+        disabled: !canExportFormat(artifact, f.id),
+        onClick: () => onExport(f.id),
+      })),
     },
     published && {
       id: 'copy-url',
@@ -1547,7 +1566,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   );
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onOpenProject }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onExport: doExport, onOpenProject }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
@@ -1730,6 +1749,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onOpen={onRowOpen}
         onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
         onDownload={() => downloadArtifactFile(artifact)}
+        onExport={doExport ? (format) => doExport(artifact, format) : undefined}
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
@@ -1931,6 +1951,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // Per-artifact-path "in flight" set so multiple cards can publish
   // independently without freezing the whole grid.
   const [busyPaths, setBusyPaths] = useState(() => new Set());
+  // The export currently running, as `${path}:${format}` (null when idle), so
+  // overlapping picks are serialized to one in-flight conversion at a time.
+  const [downloadingFor, setDownloadingFor] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   // Artifact awaiting the publish visibility choice (public vs password).
   // Null when the chooser is closed.
@@ -2041,6 +2064,24 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       else next.delete(path);
       return next;
     });
+  };
+
+  // Export a document artifact to PDF / Word / HTML and open (desktop) or
+  // download (web) it. Result feedback mirrors the publish flow: a toast on
+  // success/failure (the menu closes on pick, so progress lives in the toast).
+  const handleExportDownload = async (artifact, format) => {
+    if (!artifact?.path) return;
+    const key = `${artifact.path}:${format}`;
+    if (downloadingFor) return;
+    setDownloadingFor(key);
+    try {
+      const { filename } = await exportAndDeliver(artifact, format);
+      setToast({ kind: 'ok', message: filename ? `Exported ${filename}` : 'Export ready' });
+    } catch (err) {
+      setToast({ kind: 'error', message: err?.message || `Could not export as ${String(format).toUpperCase()}.` });
+    } finally {
+      setDownloadingFor(null);
+    }
   };
 
   // Centralized publish — single source of truth for state updates,
@@ -2491,6 +2532,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
               onDelete={requestTrash}
+              onExport={handleExportDownload}
               onOpenProject={onOpenProject}
             />
           ))}
@@ -2597,6 +2639,24 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
               icon: Ico.folder(13),
               onClick: () => { try { revealArtifact(a.path); } catch { } },
+            });
+          }
+          // Download as… — convert markdown/HTML documents to PDF / Word /
+          // HTML. Hidden for non-document artifacts (apps, images, data).
+          // Picking an item closes the menu (anchored menus dismiss on
+          // activation), so progress shows via the toast, not in the menu.
+          if (canExportArtifact(a)) {
+            items.push({
+              id: 'download',
+              label: 'Download as',
+              icon: Ico.download(13),
+              submenu: EXPORT_FORMATS.map((f) => ({
+                id: `download-${f.id}`,
+                label: f.label,
+                icon: Ico.download(13),
+                disabled: !canExportFormat(a, f.id),
+                onClick: () => handleExportDownload(a, f.id),
+              })),
             });
           }
           items.push({ separator: true });

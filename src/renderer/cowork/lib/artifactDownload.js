@@ -13,11 +13,25 @@
 
 import { host } from '../../platform/host';
 
+// Save-as for a file behind an artifact serve URL. Resolves the URL against
+// the API origin (when origin-relative), appends `download=1` so the server
+// sends `Content-Disposition: attachment`, and triggers a native `<a download>`
+// click. Shared by downloadArtifactFile (raw primary file) and the artifact
+// export flow (the converted PDF/Word/HTML), so both stay consistent.
+export function triggerServeDownload(serveUrl, filename) {
+  const base = serveUrl.startsWith('http') ? serveUrl : `${host.getApiOrigin()}${serveUrl}`;
+  const url = base + (base.includes('?') ? '&' : '?') + 'download=1';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'artifact';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export function downloadArtifactFile(artifact, { actionPath } = {}) {
   const rel = artifact?.serveUrl || '';
   if (!rel) return false;
-  const base = rel.startsWith('http') ? rel : `${host.getApiOrigin()}${rel}`;
-  const url = base + (base.includes('?') ? '&' : '?') + 'download=1';
   // Split on either `/` or `\` so Windows-style paths (which can show
   // up in `canonicalPath`/`path` when the app runs against a Windows
   // server) yield the basename instead of leaving the full path as the
@@ -27,11 +41,6 @@ export function downloadArtifactFile(artifact, { actionPath } = {}) {
     rawPath.split(/[\\/]/).filter(Boolean).pop()
     || artifact?.title
     || 'artifact';
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  triggerServeDownload(rel, filename);
   return true;
 }

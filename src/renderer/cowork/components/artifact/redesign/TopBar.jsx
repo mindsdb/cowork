@@ -18,10 +18,16 @@
  *   presence     array     — [{ initials, color, tip }]. `color` is any CSS background
  *                            (use the AI gradient for the AI/lead). `tip` shows on hover.
  *   onShare      function  — ghost Share button click handler.
+ *   downloadFormats array   — [{ id, label, disabled? }] export targets; renders a
+ *                             ghost "Download" button with a format menu when non-empty.
+ *   onDownload   function  — called with a format id when a download item is picked.
+ *   downloading  string    — id of the format currently exporting (shows a spinner), or null.
  *   primaryCta   object    — { label, onClick } for the solid-accent CTA. Default Present.
  */
 
 import React from 'react';
+import Menu from '../../ui/Menu';
+import Spinner from '../../ui/Spinner';
 
 const AI_GRADIENT = 'linear-gradient(135deg,#A78BFA,#22D3EE)';
 
@@ -74,6 +80,22 @@ function CloseIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 4v12m0 0 4-4m-4 4-4-4M4 20h16" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export function TopBar({
   typeIcon,
   title = 'Q3 Board Review',
@@ -81,6 +103,9 @@ export function TopBar({
   versionLabel = 'v7',
   presence = DEFAULT_PRESENCE,
   onShare,
+  downloadFormats = [],
+  onDownload,
+  downloading = null,
   primaryCta = { label: 'Present' },
   editMode = false,
   onToggleEdit,
@@ -90,6 +115,15 @@ export function TopBar({
 } = {}) {
   const people = presence ?? [];
   const presenceLabel = `${people.length} here`;
+  const canDownload = Array.isArray(downloadFormats) && downloadFormats.length > 0;
+  const isDownloading = !!downloading;
+  const downloadItems = (downloadFormats || []).map((f) => ({
+    id: f.id,
+    label: downloading === f.id ? `Exporting ${f.label}…` : `Download as ${f.label}`,
+    icon: downloading === f.id ? <Spinner /> : <DownloadIcon />,
+    disabled: f.disabled || isDownloading,
+    onClick: () => onDownload?.(f.id),
+  }));
 
   return (
     <div
@@ -246,6 +280,45 @@ export function TopBar({
         </button>
       ) : null}
 
+      {/* Download — ghost button opening a format menu (PDF / Word / HTML).
+          Only rendered for exportable document artifacts (caller decides). */}
+      {canDownload ? (
+        <Menu
+          ariaLabel="Download as"
+          width={188}
+          items={downloadItems}
+          trigger={
+            <button
+              type="button"
+              className="rd-no-truncate"
+              title="Download a copy as PDF, Word, or HTML"
+              aria-busy={isDownloading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginLeft: 28,
+                height: 30,
+                padding: '0 11px 0 13px',
+                borderRadius: 8,
+                border: '1px solid var(--line-2)',
+                background: 'transparent',
+                color: 'var(--ink-2)',
+                fontSize: 12.5,
+                fontWeight: 500,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isDownloading ? <Spinner /> : <DownloadIcon />}
+              Download
+              <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}><ChevronDownIcon /></span>
+            </button>
+          }
+        />
+      ) : null}
+
       {/* Share — ghost */}
       <button
         onClick={onShare}
@@ -254,7 +327,7 @@ export function TopBar({
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          marginLeft: 28,
+          marginLeft: canDownload ? 0 : 28,
           height: 30,
           padding: '0 13px',
           borderRadius: 8,

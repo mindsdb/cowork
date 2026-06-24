@@ -28,6 +28,12 @@ import { useIframeInlineEdit, locatorFor } from './useIframeInlineEdit.js';
 import { mockRewrite } from './useInlineEdit.js';
 import { saveArtifactContent } from './saveArtifactContent.js';
 import { VersionDiff } from './VersionDiff.jsx';
+import {
+  EXPORT_FORMATS,
+  canExportArtifact,
+  canExportFormat,
+  exportAndDeliver,
+} from '../../../lib/artifactExport';
 
 import {
   artifactServeUrl,
@@ -1160,6 +1166,33 @@ export function ArtifactWorkspaceRedesign({
     onPublish?.({ ...artifact, reviewSummary });
   }, [commentsState, artifact, onPublish]);
 
+  // ── Download / Export ─────────────────────────────────────────────────────────
+  // Convert the document to PDF / Word / HTML server-side, then open it
+  // (desktop) or save it (web). Exportable only for markdown/HTML sources;
+  // the format list and per-format enablement come from lib/artifactExport so
+  // the TopBar menu and the library row menu stay in lockstep.
+  const [downloading, setDownloading] = useState(null);
+  const downloadFormats = useMemo(() => {
+    if (!canExportArtifact(artifact)) return [];
+    return EXPORT_FORMATS.map((f) => ({
+      id: f.id,
+      label: f.label,
+      disabled: !canExportFormat(artifact, f.id),
+    }));
+  }, [artifact]);
+  const handleDownload = useCallback(async (format) => {
+    if (downloading) return;
+    setDownloading(format);
+    try {
+      const { filename } = await exportAndDeliver(artifact, format);
+      flash(filename ? `Exported ${filename}` : 'Export ready');
+    } catch (err) {
+      flash(err?.message || `Could not export as ${String(format).toUpperCase()}.`);
+    } finally {
+      setDownloading(null);
+    }
+  }, [artifact, downloading, flash]);
+
   // Closing while editing should keep work: flush a pending HTML inline-edit as
   // ONE version (prose flushes itself on unmount), then close.
   const handleClose = useCallback(() => {
@@ -1331,6 +1364,9 @@ export function ArtifactWorkspaceRedesign({
             commentMode={commentMode}
             onToggleComment={toggleCommentMode}
             onShare={handleShare}
+            downloadFormats={downloadFormats}
+            onDownload={handleDownload}
+            downloading={downloading}
             primaryCta={{ label: 'Present', onClick: present }}
             onClose={handleClose}
           />

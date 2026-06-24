@@ -1465,6 +1465,19 @@ export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
+// Convert a document artifact (markdown/HTML) to PDF / Word / HTML. The
+// server writes the result next to the source in the same artifact folder
+// and returns its `{ path, filename, serveUrl }` — `path` is what the
+// desktop app opens in the OS; `serveUrl` is the signed, origin-relative
+// download URL the web build uses (the file isn't on the browser's machine).
+// `format` is one of 'pdf' | 'docx' | 'html'.
+export async function exportArtifact(path, format) {
+  return req('/artifacts/export', {
+    method: 'POST',
+    body: JSON.stringify({ path, format }),
+  });
+}
+
 // Absolute "private" URL for an artifact's primary file: the
 // origin-relative `/v1/artifacts/serve/...` endpoint made absolute
 // against the current API origin. In the web build this is the
