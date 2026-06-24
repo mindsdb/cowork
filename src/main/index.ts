@@ -9,7 +9,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
@@ -690,6 +690,37 @@ function setupIPC() {
     }
 
     return true;
+  });
+
+  // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
+  // When enabled the refresh token lives in the macOS keychain; otherwise
+  // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
+  // any existing token to the chosen store.
+  ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
+    const vars = readEnvFile();
+    return { enabled: vars.COWORK_KEYCHAIN === 'true' };
+  });
+
+  ipcMain.handle(IPC.KEYCHAIN_PREF_SET, async (_event, enabled: boolean) => {
+    try {
+      const homeDir = coworkHome();
+      if (!fs.existsSync(homeDir)) {
+        fs.mkdirSync(homeDir, { recursive: true });
+      }
+      const envPath = coworkEnvPath();
+      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+      const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
+      lines.push(`COWORK_KEYCHAIN=${enabled ? 'true' : 'false'}`);
+      const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
+      fs.writeFileSync(envPath, out, 'utf-8');
+
+      // Move any existing token into the newly-chosen store.
+      migrateRefreshTokenStore(enabled);
+      return { ok: true };
+    } catch (error) {
+      console.error('[keychain] failed to set preference', error);
+      return { ok: false };
+    }
   });
 
   ipcMain.handle(IPC.SETTINGS_CHECK_CONFIGURED, async () => {

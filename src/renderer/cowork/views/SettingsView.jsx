@@ -527,8 +527,24 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
   const [uiVersion, setUiVersion] = useState('');
   const [serverVersion, setServerVersion] = useState('');
+  // Whether the refresh token lives in the macOS keychain (vs a file under
+  // ~/.cowork). Mac-only; read from main on mount.
+  const [keychainPref, setKeychainPref] = useState(false);
   useEffect(() => { getUIVersion().then(setUiVersion).catch(() => {}); }, []);
   useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => {}); }, []);
+  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => {}); }, []);
+
+  // Optimistically flip the keychain toggle, then persist via main. Revert
+  // the local state if the migration/write fails.
+  const handleKeychainToggle = async (next) => {
+    setKeychainPref(next);
+    try {
+      const ok = await host.setKeychainPref(next);
+      if (!ok) setKeychainPref(!next);
+    } catch {
+      setKeychainPref(!next);
+    }
+  };
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
@@ -1672,6 +1688,19 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             {host.isElectron && (
               <CollapsibleGroup title="Account" defaultOpen={false}>
+                {host.isMac() && (
+                  <Section
+                    title="Store login in macOS keychain"
+                    subtitle="More secure, but macOS may ask for keychain access on launch. When off, your login is saved in ~/.cowork instead."
+                  >
+                    <Toggle
+                      value={keychainPref}
+                      onChange={handleKeychainToggle}
+                      title="Store your login refresh token in the macOS keychain instead of a file under ~/.cowork."
+                      ariaLabel="Store login in macOS keychain"
+                    />
+                  </Section>
+                )}
                 <Section
                   title="Sign out"
                   subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch."
