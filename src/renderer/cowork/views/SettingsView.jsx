@@ -905,11 +905,6 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
           padding: '28px 28px 96px',
         }}>
           <div style={{ maxWidth: 820 }}>
-            <h1 className="page-title" style={{ marginTop: 0, marginBottom: 6 }}>Settings</h1>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 22 }}>
-              {`${agentLabel || 'Anton'} configuration and local desktop preferences.`}
-            </div>
-
             {/* Status banner — only shown after Save or Test. While
                 `testing` is true the banner enters a neutral "checking"
                 state with a spinner; on success/failure it flips to the

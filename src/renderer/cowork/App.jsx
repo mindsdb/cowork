@@ -10,6 +10,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 import Sidebar from './components/Sidebar';
 import MobileShell from './components/MobileShell';
 import { ConfirmModal } from './components/ConfirmModal';
+import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
@@ -726,6 +727,7 @@ function AppCore() {
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -1188,7 +1190,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize | settings
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1372,7 +1374,7 @@ function AppCore() {
     if (host.isWeb) return;
     if (health.config_ready === false) {
       bootConfigRedirectFiredRef.current = true;
-      setRoute('settings');
+      setSettingsOpen(true);
     }
   }, [serverOnline, health.config_ready]);
 
@@ -2124,6 +2126,7 @@ function AppCore() {
   }, []);
 
   const navigate = (key) => {
+    if (key === 'settings') { setSettingsOpen(true); return; }
     if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -3347,6 +3350,7 @@ function AppCore() {
           artifactsCount={artifacts.length}
           connectorsCount={connectors.length}
           activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
+          settingsActive={settingsOpen}
           activeTaskId={activeTaskId}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
@@ -3453,7 +3457,7 @@ function AppCore() {
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
-            onOpenSettings={() => setRoute('settings')}
+            onOpenSettings={() => setSettingsOpen(true)}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
             onShowServerHelp={() => setServerHelpOpen(true)}
@@ -3465,7 +3469,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
-            onOpenSettings={() => setRoute('settings')}
+            onOpenSettings={() => setSettingsOpen(true)}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -3654,16 +3658,20 @@ function AppCore() {
             connectors={connectors}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
-            onOpenSettings={() => setRoute('settings')}
+            onOpenSettings={() => setSettingsOpen(true)}
             onConnectNew={handleStartConnectChat}
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
           />
         )}
 
-        {route === 'settings' && (
-          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} agentLabel={agentLabel} />
-        )}
+        {/* Settings modal — rendered over whatever route is active */}
+        <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" labelledBy="settings-modal-title">
+          <ModalHeader id="settings-modal-title" title="Settings" onClose={() => setSettingsOpen(false)} />
+          <ModalBody padding="0">
+            <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} agentLabel={agentLabel} />
+          </ModalBody>
+        </Modal>
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now
             the canonical surface for connector management (route
