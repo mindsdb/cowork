@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
+import { nextRunPreview, absoluteInZone } from '../lib/scheduleTime';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -502,8 +503,10 @@ export default function ScheduleDetailView({
           }}>
             <SummaryStat
               label="Next run"
-              value={task.enabled ? relativeTime(task.nextRunAt) : 'Paused'}
-              hint={absoluteTime(task.nextRunAt)}
+              value={task.enabled
+                ? (nextRunPreview(task.nextRunAt, task.timezone) || relativeTime(task.nextRunAt))
+                : 'Paused'}
+              hint={absoluteInZone(task.nextRunAt, task.timezone) || absoluteTime(task.nextRunAt)}
             />
             <SummaryStat
               label="Last run"

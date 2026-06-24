@@ -19,6 +19,7 @@ import {
 } from '../components/collection';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
+import { nextRunPreview, absoluteInZone } from '../lib/scheduleTime';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -432,11 +433,11 @@ function ScheduleListRow({
         ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
       </div>
 
-      <div title={absoluteFull(task.nextRunAt)} style={{
+      <div title={absoluteInZone(task.nextRunAt, task.timezone) || absoluteFull(task.nextRunAt)} style={{
         fontFamily: FONT_MONO, fontSize: 11,
         color: 'var(--ink-3)', letterSpacing: '0.04em',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
+      }}>{task.enabled ? (nextRunPreview(task.nextRunAt, task.timezone) || formatAbsolute(task.nextRunAt)) : 'Paused'}</div>
 
       <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} style={{
         fontFamily: FONT_MONO, fontSize: 11,

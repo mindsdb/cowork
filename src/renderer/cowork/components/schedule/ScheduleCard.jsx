@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import Ico from '../Icons';
+import { nextRunPreview, absoluteInZone } from '../../lib/scheduleTime';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -254,11 +255,11 @@ export default function ScheduleCard({
         gap: 8,
         fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-3)',
       }}>
-        <span title={absoluteTime(task.nextRunAt)} style={{
+        <span title={absoluteInZone(task.nextRunAt, task.timezone) || absoluteTime(task.nextRunAt)} style={{
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {task.enabled
-            ? <>Next run · <strong style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{relativeTime(task.nextRunAt)}</strong></>
+            ? <>Next run · <strong style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{nextRunPreview(task.nextRunAt, task.timezone) || relativeTime(task.nextRunAt)}</strong></>
             : <>Paused</>}
         </span>
         {task.lastRunAt && (
