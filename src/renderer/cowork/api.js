@@ -981,12 +981,67 @@ export async function setActiveProject(projectOrName) {
 // the `dedupe` wrapper that meant N copies of the same request on
 // every list render. With coalescing, one network request fans out
 // to all subscribers and the cache entry releases on settle.
+// Server-side page size cap (mirrors cowork-server _MAX_PAGE_LIMIT). A request
+// for more than this is clamped server-side; we use it as the "give me a full
+// page" size for the back-compat full-list helper below.
+export const ARTIFACTS_MAX_PAGE = 500;
+
+// Fetch ONE page of the artifact listing and the pagination metadata that rides
+// on the response headers. Returns `{ artifacts, total, offset, limit, hasMore }`.
+// The body is a bare array (back-compat); `X-Total-Count` is the honest count of
+// artifacts the viewer can see, so the library can render "showing N of M" +
+// load-more instead of silently dropping everything past a fixed cap.
+//
+// Done with a raw `fetch` (not `req`) because `req` only returns the JSON body —
+// we need the headers too.
+export async function fetchArtifactsPage({ projectPath, limit, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (projectPath) params.set('project_path', projectPath);
+  if (limit != null) params.set('limit', String(limit));
+  if (offset) params.set('offset', String(offset));
+  const qs = params.toString();
+  const empty = { artifacts: [], total: 0, offset, limit: limit ?? 0, hasMore: false };
+  try {
+    const res = await fetch(`${BASE}/artifacts/${qs ? `?${qs}` : ''}`, {
+      headers: await authHeaders(),
+    });
+    if (!res.ok) return empty;
+    const artifacts = await res.json();
+    const list = Array.isArray(artifacts) ? artifacts : [];
+    // Headers are case-insensitive via the Headers API. Fall back to sane
+    // defaults if a proxy strips them (then there's just no load-more).
+    const headTotal = Number(res.headers.get('X-Total-Count'));
+    const headOffset = Number(res.headers.get('X-Offset'));
+    const headLimit = Number(res.headers.get('X-Limit'));
+    const hasMoreHeader = res.headers.get('X-Has-More');
+    const total = Number.isFinite(headTotal) ? headTotal : list.length;
+    return {
+      artifacts: list,
+      total,
+      offset: Number.isFinite(headOffset) ? headOffset : offset,
+      limit: Number.isFinite(headLimit) ? headLimit : (limit ?? list.length),
+      hasMore: hasMoreHeader != null
+        ? hasMoreHeader === 'true'
+        : (offset + list.length) < total,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 export async function fetchArtifacts({ projectPath } = {}) {
   // `projectPath` scopes the response to one project's
   // `<base>/artifacts/` tree. Used by the project-detail rail card
   // so the response is small and the server skips reading every
   // other project's metadata.json. Omit it (or pass undefined) for
   // the system-wide list the global Live Artifacts page wants.
+  //
+  // Back-compat full-list helper: callers here (project rail card, project-row
+  // counts, App's global seed) expect the WHOLE set, so we request a full page
+  // and keep paging until the server says there's no more. The server no longer
+  // silently caps at 80, so this can't quietly drop artifacts; it just costs
+  // more requests for very large libraries (the Live Artifacts grid uses the
+  // incremental `fetchArtifactsPage` directly instead).
   const suffix = projectPath
     ? `?project_path=${encodeURIComponent(projectPath)}`
     : '';
@@ -994,7 +1049,17 @@ export async function fetchArtifacts({ projectPath } = {}) {
   // fetch don't share an in-flight promise.
   return dedupe(`artifacts${suffix}`, async () => {
     try {
-      return await req(`/artifacts/${suffix}`);
+      let offset = 0;
+      const all = [];
+      // Bounded loop: stop on hasMore=false, an empty page, or a hard ceiling
+      // so a misbehaving server can never spin this forever.
+      for (let i = 0; i < 50; i += 1) {
+        const page = await fetchArtifactsPage({ projectPath, limit: ARTIFACTS_MAX_PAGE, offset });
+        all.push(...page.artifacts);
+        if (!page.hasMore || page.artifacts.length === 0) break;
+        offset += page.artifacts.length;
+      }
+      return all;
     } catch {
       return [];
     }

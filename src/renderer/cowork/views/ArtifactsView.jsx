@@ -17,6 +17,7 @@ import {
   revealArtifact, publishArtifact, unpublishArtifact,
   deleteArtifact, fetchDeletedArtifacts, restoreDeletedArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
+  fetchArtifactsPage,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
@@ -49,6 +50,12 @@ const FONT_DISPLAY = "var(--font-display)";
 const FONT_MONO = "var(--font-mono)";
 
 const EMPTY_ARTIFACTS = [];
+
+// How many artifacts we pull per page from the server, and grow by on each
+// "Load more". The listing is paginated (the server used to silently cap the
+// response at the newest 80 and drop the rest); we fetch a page at a time and
+// surface the true total so nothing is ever quietly lost.
+const ARTIFACTS_PAGE_SIZE = 60;
 
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
@@ -135,17 +142,23 @@ function projectOf(artifact, projects = []) {
   }) || null;
 }
 
-// Extensions we can preview inline in the in-app ArtifactViewer (text
-// branch). Keep in sync with the viewer's own TEXT_PREVIEW_EXTS so the
-// click handlers and the body renderer agree on what's previewable.
+// Extensions we can preview inline in the in-app artifact workspace. Keep in
+// sync with the workspace canvases (text → ProseCanvas, image → ImageCanvas,
+// pdf → PdfCanvas) so the click handlers and the body renderer agree on what's
+// previewable — otherwise clicking an image card would punt to the OS even
+// though the viewer can now render it inline.
 const _INLINE_TEXT_EXTS = new Set(['.md', '.txt', '.csv']);
+const _INLINE_MEDIA_EXTS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.bmp', '.ico', '.pdf',
+]);
 function isInlinePreviewable(a) {
   if (!a) return false;
   if (isHtmlArtifact(a)) return true;
   const declared = (a.ext || '').toLowerCase();
-  if (_INLINE_TEXT_EXTS.has(declared)) return true;
+  if (_INLINE_TEXT_EXTS.has(declared) || _INLINE_MEDIA_EXTS.has(declared)) return true;
   const p = (a.path || '').toLowerCase();
   for (const ext of _INLINE_TEXT_EXTS) if (p.endsWith(ext)) return true;
+  for (const ext of _INLINE_MEDIA_EXTS) if (p.endsWith(ext)) return true;
   return false;
 }
 
@@ -1928,10 +1941,61 @@ function Toast({ kind, message, actionLabel, onAction, onClose }) {
   );
 }
 
+// ─── Load-more bar ─────────────────────────────────────────────────────────
+//
+// Sits under the grid/list when more artifacts are available than are rendered
+// (either still on the server, or held back by the render window). Shows the
+// honest "N of M loaded" so the cap is never silent, with a button to reveal
+// more. Keyboard-focusable; mirrors the secondary-button styling used elsewhere.
+function LoadMoreBar({ shown, total, loading, onLoadMore }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+      padding: '8px 32px 56px',
+    }}>
+      <button
+        type="button"
+        onClick={onLoadMore}
+        disabled={loading}
+        style={{
+          cursor: loading ? 'default' : 'pointer',
+          background: 'var(--surface)',
+          border: '1px solid var(--line)',
+          color: 'var(--ink-2)',
+          padding: '9px 18px', borderRadius: 9,
+          fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          opacity: loading ? 0.6 : 1,
+          transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease',
+        }}
+        onMouseOver={(e) => { if (!loading) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--ink)'; } }}
+        onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.color = 'var(--ink-2)'; }}
+      >
+        {loading ? Ico.refresh(13) : Ico.chevronDown ? Ico.chevronDown(13) : null}
+        {loading ? 'Loading…' : 'Load more'}
+      </button>
+      <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: 'var(--ink-4)', letterSpacing: '0.04em' }}>
+        {shown.toLocaleString()} of {total.toLocaleString()} loaded
+      </span>
+    </div>
+  );
+}
+
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, onHandoffArtifact, agentLabel = 'the agent' }) {
+  // `list` is the set of artifacts loaded so far (grows as the user loads more
+  // pages). It's seeded from the parent's `initial` for an instant first paint,
+  // then reconciled against a fresh page-0 fetch that also tells us the honest
+  // `total` (so we can show "showing N of M" + load-more rather than silently
+  // capping). `total`/`hasMore` come from the server's pagination headers.
   const [list, setList] = useState(initial);
+  // The honest server-side total (from the X-Total-Count header). The grid only
+  // RENDERS the first `renderCount` of the filtered set so a large library
+  // doesn't dump hundreds of cards into the DOM at once; "Load more" grows it.
+  const [total, setTotal] = useState(initial.length);
+  const [renderCount, setRenderCount] = useState(ARTIFACTS_PAGE_SIZE);
+  const [loadingPage, setLoadingPage] = useState(false);
   const [artifactMode, setArtifactMode] = useState('live');
   const [deletedList, setDeletedList] = useState([]);
   const [deletedAvailable, setDeletedAvailable] = useState(true);
@@ -2002,6 +2066,41 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     });
   }, [initial]);
 
+  // Learn the HONEST total from the server's pagination headers, and — should
+  // the server hold MORE than the parent handed us (a very large library where
+  // the parent's full-list helper hit its page ceiling) — pull the remaining
+  // pages and merge them in, so nothing is ever silently missing. Keyed on the
+  // parent set's identity so a refresh re-checks. Page-0 is cheap (one window).
+  useEffect(() => {
+    let cancelled = false;
+    // Cheap probe: ask for a single card just to read the X-Total-Count header.
+    fetchArtifactsPage({ limit: 1, offset: 0 })
+      .then(async (probe) => {
+        if (cancelled) return;
+        const serverTotal = probe.total || initial.length;
+        setTotal(serverTotal);
+        // Common case: the parent already gave us the whole set, so its data
+        // stays the source of truth for the cards — no backfill needed.
+        if (initial.length >= serverTotal) return;
+        // Otherwise the parent's full-list helper hit its ceiling on a very
+        // large library; backfill the tail by paging and merge by path so we
+        // never duplicate what the parent already provided.
+        const merged = new Map(initial.map((a) => [a.path || a.id, a]));
+        let offset = 0;
+        for (let i = 0; i < 50 && offset < serverTotal; i += 1) {
+          const next = await fetchArtifactsPage({ limit: ARTIFACTS_PAGE_SIZE, offset });
+          if (cancelled) return;
+          if (!next.artifacts.length) break;
+          for (const a of next.artifacts) merged.set(a.path || a.id, a);
+          offset += next.artifacts.length;
+          if (!next.hasMore) break;
+        }
+        if (!cancelled) setList(Array.from(merged.values()));
+      })
+      .catch(() => { /* listing still renders from `initial`; total falls back */ });
+    return () => { cancelled = true; };
+  }, [initial]);
+
   useEffect(() => {
     loadDeletedArtifacts();
   }, []);
@@ -2011,6 +2110,14 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
+
+  // When the search query or review filter changes, reset the render window to
+  // the top so a match that would sort past the current window isn't hidden
+  // behind a stale "Load more". The full `list` is always searched, so this only
+  // affects how many of the matches are rendered — never which ones exist.
+  useEffect(() => {
+    setRenderCount(ARTIFACTS_PAGE_SIZE);
+  }, [search, reviewFilter]);
 
   // Auto-dismiss the toast after 5s — long enough to read, short enough
   // not to linger across navigations.
@@ -2045,6 +2152,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         && item.path !== next.path
         && item.folder !== next.folder
       ));
+      // Keep the displayed total in step: a fork/remix adds a genuinely new
+      // artifact, so the "of M" count grows by one.
+      setTotal((t) => t + (withoutDuplicate.length === prev.length ? 1 : 0));
       return [next, ...withoutDuplicate];
     });
     setArtifactMode('live');
@@ -2053,7 +2163,12 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   };
 
   const removeOne = (path) => {
-    setList((prev) => prev.filter((a) => a.path !== path));
+    setList((prev) => {
+      const next = prev.filter((a) => a.path !== path);
+      // Drop the total alongside the card so "showing N of M" stays honest.
+      if (next.length !== prev.length) setTotal((t) => Math.max(next.length, t - 1));
+      return next;
+    });
     setViewer((cur) => (cur && cur.path === path ? null : cur));
   };
 
@@ -2228,6 +2343,8 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 	        const restoredPath = restored.path || restored.folder;
 	        if (!restoredPath) return prev;
 	        const withoutDuplicate = prev.filter((item) => item.path !== restoredPath && item.folder !== restoredPath);
+	        // A restore brings an artifact back into the live set — grow the total.
+	        setTotal((t) => t + (withoutDuplicate.length === prev.length ? 1 : 0));
 	        return [{ ...restored, mtime: Date.now(), updated: 'just now' }, ...withoutDuplicate];
 	      });
 	      setArtifactMode('live');
@@ -2319,9 +2436,58 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 	    return out;
 	  }, [deletedList, search]);
 
-	  const total = (list || []).length;
+	  const loadedCount = (list || []).length;
+	  // The honest grand total to show as "of M": the server's count, but never
+	  // below what we've actually loaded (local adds can briefly outrun a refetch).
+	  const displayTotal = Math.max(total, loadedCount);
 	  const deletedTotal = (deletedList || []).length;
 	  const hasReviewSummaries = (list || []).some((a) => reviewSummaryOf(a).hasReview);
+	  // The cards we actually render: the filtered/sorted set, capped to the
+	  // current window so a large library stays light in the DOM. The FULL `list`
+	  // is what gets searched/sorted, so ⌘K always covers everything loaded.
+	  const visibleWindow = useMemo(
+	    () => visible.slice(0, renderCount),
+	    [visible, renderCount],
+	  );
+	  // More to reveal if either the render window is shorter than the filtered
+	  // set, or the server still holds artifacts we haven't fetched yet.
+	  // While a search/review filter is active, "load more" only reveals more of
+	  // the FILTERED matches (we don't fetch unfiltered server pages mid-search),
+	  // so the denominator is the match count. With no filter it's the honest
+	  // grand total (and load-more can pull more pages from the server).
+	  const filterActive = (search || '').trim().length > 0 || reviewFilter !== 'all';
+	  const loadMoreTotal = filterActive ? visible.length : Math.max(visible.length, displayTotal);
+	  const canLoadMore = filterActive
+	    ? visibleWindow.length < visible.length
+	    : (visibleWindow.length < visible.length || loadedCount < displayTotal);
+
+	  // Reveal the next page. First grow the render window; if that exhausts what
+	  // we've loaded but the server still has more, fetch the next page and merge
+	  // it in (de-duped by path) so search/sort keep covering the full set.
+	  const handleLoadMore = async () => {
+	    if (loadingPage) return;
+	    setRenderCount((n) => n + ARTIFACTS_PAGE_SIZE);
+	    // Mid-filter we only widen the render window over the already-loaded
+	    // matches — the server listing isn't filtered by the client search, so
+	    // fetching more server pages here wouldn't necessarily yield new matches.
+	    if (filterActive || loadedCount >= displayTotal) return;
+	    setLoadingPage(true);
+	    try {
+	      const page = await fetchArtifactsPage({ limit: ARTIFACTS_PAGE_SIZE, offset: loadedCount });
+	      if (page.total) setTotal(page.total);
+	      if (page.artifacts.length) {
+	        setList((prev) => {
+	          const merged = new Map(prev.map((a) => [a.path || a.id, a]));
+	          for (const a of page.artifacts) merged.set(a.path || a.id, a);
+	          return Array.from(merged.values());
+	        });
+	      }
+	    } catch (e) {
+	      setToast({ kind: 'error', message: `Could not load more: ${e?.message || e}` });
+	    } finally {
+	      setLoadingPage(false);
+	    }
+	  };
   useEffect(() => {
     if (!hasReviewSummaries && reviewFilter !== 'all') setReviewFilter('all');
   }, [hasReviewSummaries, reviewFilter]);
@@ -2354,7 +2520,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 		    }, { needsAction: 0, unreadTotal: 0, openNotes: 0, suggestions: 0, reviewRequests: 0 })
 	  ), [reviewQueue]);
 	  const inDeletedMode = artifactMode === 'deleted';
-	  const showControls = total > 0 || deletedTotal > 0 || inDeletedMode;
+	  const showControls = displayTotal > 0 || loadedCount > 0 || deletedTotal > 0 || inDeletedMode;
 
 	  return (
     // Background intentionally omitted so the gravity-field canvas
@@ -2433,7 +2599,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 	              <ArtifactsCounts
 	                search={search}
 	                reviewFilter={reviewFilter}
-	                total={total}
+	                total={displayTotal}
 	                filtered={visible.length}
 	                publishedCount={publishedCount}
 	                needsReviewCount={needsReviewCount}
@@ -2495,9 +2661,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 	            })}
 	          </div>
 	        )
-	      ) : total === 0 ? (
+	      ) : (displayTotal === 0 && loadedCount === 0) ? (
 	        <EmptyState agentLabel={agentLabel} />
 	      ) : effectiveView === 'grid' ? (
+        <>
         <div className="artifacts-grid" style={{
           padding: '6px 32px 60px',
           // Same grid geometry as ProjectsView so cards line up at
@@ -2505,7 +2672,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
           marginTop: 18,
         }}>
-          {visible.map((a) => (
+          {visibleWindow.map((a) => (
             <ArtifactBubble
               key={a.id || a.path}
               artifact={a}
@@ -2520,10 +2687,20 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             />
           ))}
         </div>
+        {canLoadMore && (
+          <LoadMoreBar
+            shown={visibleWindow.length}
+            total={loadMoreTotal}
+            loading={loadingPage}
+            onLoadMore={handleLoadMore}
+          />
+        )}
+        </>
       ) : (
+        <>
         <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
           <ListHeaderRow />
-          {visible.map((a) => (
+          {visibleWindow.map((a) => (
             <ArtifactRow
               key={a.id || a.path}
               artifact={a}
@@ -2537,6 +2714,15 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             />
           ))}
         </div>
+        {canLoadMore && (
+          <LoadMoreBar
+            shown={visibleWindow.length}
+            total={loadMoreTotal}
+            loading={loadingPage}
+            onLoadMore={handleLoadMore}
+          />
+        )}
+        </>
       )}
 
       <ArtifactWorkspace

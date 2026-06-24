@@ -72,6 +72,12 @@ export function shouldUseRedesign(_props) {
 // ── Small helpers (mirrors the legacy workspace's derivation) ───────────────────
 const TEXT_EXTS = new Set(['.md', '.txt', '.markdown', '.csv']);
 const HTML_EXTS = new Set(['.html', '.htm']);
+// Image + PDF artifacts get a read-only inline viewer (an <img> / embedded PDF)
+// instead of falling through to the "no preview" placeholder. Both load the
+// artifact's signed serve URL, so they work in the web build (file lives on the
+// server) and on desktop pointed at a remote server.
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.bmp', '.ico']);
+const PDF_EXTS = new Set(['.pdf']);
 
 function extOfPath(p) {
   if (!p || typeof p !== 'string') return '';
@@ -652,6 +658,122 @@ function PlaceholderCanvas({ path, ext }) {
   );
 }
 
+// Read-only image viewer. Loads the artifact's signed serve URL (absolute, so
+// it resolves in the web build where the file is on the server, not the user's
+// machine). Centered on a checkerboard-free neutral surface, contained so large
+// images fit without scrolling and small ones aren't upscaled past 1:1. A
+// cache-buster keyed on `mtime` means an in-place re-render of the artifact
+// shows the fresh bytes instead of the browser's cached copy.
+function ImageCanvas({ artifact, path }) {
+  const [status, setStatus] = useState('loading'); // 'loading' | 'ok' | 'error'
+  const src = useMemo(() => {
+    const base = artifactServeUrl(artifact);
+    if (!base) return '';
+    const v = artifact?.mtime;
+    if (v == null || v === '') return base;
+    return `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
+  }, [artifact]);
+
+  // Reset the load state whenever the source changes so switching artifacts
+  // doesn't leave a stale "loaded" or "error" frame.
+  useEffect(() => { setStatus(src ? 'loading' : 'error'); }, [src]);
+
+  return (
+    <div className="rd-scroll" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--surface-2)' }}>
+      {status === 'error' || !src ? (
+        <div style={{ color: 'var(--ink-3)', fontSize: 13, textAlign: 'center', padding: 24 }}>
+          {src ? 'Could not load this image.' : 'This image has no preview URL yet.'}
+        </div>
+      ) : (
+        <>
+          {status === 'loading' ? (
+            <div style={{ position: 'absolute', color: 'var(--ink-3)', fontSize: 13 }}>Loading image…</div>
+          ) : null}
+          <img
+            src={src}
+            alt={artifact?.title || displayName(path)}
+            onLoad={() => setStatus('ok')}
+            onError={() => setStatus('error')}
+            style={{
+              maxWidth: '100%',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              borderRadius: 8,
+              boxShadow: '0 1px 0 rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.35)',
+              // Hide the element until it has decoded so the spinner shows
+              // cleanly instead of a half-painted image.
+              opacity: status === 'ok' ? 1 : 0,
+              transition: 'opacity 160ms ease',
+              background: '#fff',
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+// Read-only PDF viewer. Embeds the served PDF in an <iframe> (the browser's
+// native PDF plugin renders it). Uses the absolute serve URL so it works in web
+// + desktop-remote; a "download" affordance under the frame is the escape hatch
+// when a viewer has no inline PDF support.
+function PdfCanvas({ artifact, path }) {
+  const [errored, setErrored] = useState(false);
+  const src = useMemo(() => {
+    const base = artifactServeUrl(artifact);
+    if (!base) return '';
+    const v = artifact?.mtime;
+    return v == null || v === '' ? base : `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
+  }, [artifact]);
+  useEffect(() => { setErrored(false); }, [src]);
+
+  if (!src) {
+    return (
+      <div style={{ flex: 1, display: 'grid', placeItems: 'center', background: 'var(--surface-2)', color: 'var(--ink-3)', fontSize: 13, padding: 24, textAlign: 'center' }}>
+        This PDF has no preview URL yet.
+      </div>
+    );
+  }
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--surface-2)' }}>
+      {errored ? (
+        <div style={{ flex: 1, display: 'grid', placeItems: 'center', textAlign: 'center', padding: 24 }}>
+          <div>
+            <div style={{ color: 'var(--ink-2)', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              {displayName(path)}
+            </div>
+            <div style={{ color: 'var(--ink-3)', fontSize: 12.5, marginBottom: 14 }}>
+              This PDF can’t be shown inline here.
+            </div>
+            <a
+              href={src}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 9,
+                border: '1px solid var(--line-2)', background: 'var(--surface-3)',
+                color: 'var(--ink-2)', fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
+              }}
+            >
+              Open PDF in a new tab
+            </a>
+          </div>
+        </div>
+      ) : (
+        <iframe
+          // `key` on src so switching artifacts forces a fresh load.
+          key={src}
+          title={`${displayName(path)} preview`}
+          src={src}
+          onError={() => setErrored(true)}
+          style={{ flex: 1, width: '100%', height: '100%', border: 'none', background: 'var(--surface)' }}
+        />
+      )}
+    </div>
+  );
+}
+
 // Map versions to rail feed events (kind:'version') so the single Story rail's
 // "Versions" filter is populated. Restore/Compare live on each version row.
 function versionsToEvents(versions) {
@@ -765,6 +887,8 @@ export function ArtifactWorkspaceRedesign({
   const ext = artifactExt(artifact, path);
   const isText = TEXT_EXTS.has(ext);
   const isHtml = HTML_EXTS.has(ext);
+  const isImage = IMAGE_EXTS.has(ext);
+  const isPdf = PDF_EXTS.has(ext);
 
   const projectName =
     artifact?.projectName ||
@@ -1337,6 +1461,10 @@ export function ArtifactWorkspaceRedesign({
         deckNavRef={deckNavRef}
       />
     );
+  } else if (isImage) {
+    canvas = <ImageCanvas artifact={artifact} path={path} />;
+  } else if (isPdf) {
+    canvas = <PdfCanvas artifact={artifact} path={path} />;
   } else {
     canvas = <PlaceholderCanvas path={path} ext={ext} />;
   }

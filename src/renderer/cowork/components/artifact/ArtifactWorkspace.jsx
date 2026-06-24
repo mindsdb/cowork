@@ -43,6 +43,10 @@ const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO = 'var(--font-mono)';
 
 const TEXT_PREVIEW_EXTS = new Set(['.md', '.txt', '.csv']);
+// Image + PDF artifacts render with a read-only inline viewer (served file via
+// <img> / embedded PDF) instead of the "no previewable file" fallback.
+const IMAGE_PREVIEW_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.bmp', '.ico']);
+const PDF_PREVIEW_EXTS = new Set(['.pdf']);
 const BACKEND_ARTIFACT_TYPES = new Set(['fullstack-stateless-app', 'fullstack-stateful-app']);
 
 const TABS = [
@@ -66,6 +70,17 @@ function isTextArtifact(a) {
   const declared = (a.ext || '').toLowerCase();
   const ext = declared || extOfPath(a.canonicalPath || a.file_path || a.path);
   return TEXT_PREVIEW_EXTS.has(ext);
+}
+
+function _artifactExt(a) {
+  if (!a) return '';
+  return (a.ext || '').toLowerCase() || extOfPath(a.canonicalPath || a.file_path || a.path);
+}
+function isImageArtifact(a) {
+  return IMAGE_PREVIEW_EXTS.has(_artifactExt(a));
+}
+function isPdfArtifact(a) {
+  return PDF_PREVIEW_EXTS.has(_artifactExt(a));
 }
 
 function isPreviewablePathForArtifact(path, { isText = false, isBackendArtifact = false } = {}) {
@@ -5443,8 +5458,20 @@ function PreviewPane({
   const [state, setState] = useState({ loading: false, error: '', url: '', text: null, backendPort: null });
   const openNonceRef = useRef(0);
   const isText = isTextArtifact(artifact);
+  const isImage = isImageArtifact(artifact);
+  const isPdf = isPdfArtifact(artifact);
   const textExt = isText ? ((artifact?.ext || '').toLowerCase() || extOfPath(actionPath)) : '';
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  // Image / PDF load the artifact's signed serve URL directly (no preview mount
+  // needed). Absolute so it resolves in web + desktop-remote; cache-busted on
+  // mtime so an in-place re-render shows fresh bytes.
+  const servedUrl = useMemo(() => {
+    if (!isImage && !isPdf) return '';
+    const base = artifactServeUrl(artifact);
+    if (!base) return '';
+    const v = artifact?.mtime;
+    return v == null || v === '' ? base : `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
+  }, [isImage, isPdf, artifact]);
   const previewVersionId = previewVersion?.id || '';
   const showingSavedVersion = !!previewVersionId;
 
@@ -5468,6 +5495,13 @@ function PreviewPane({
   const previewRequestVersionId = previewVersionId || (showingLastGood && lastGoodVersionId ? lastGoodVersionId : '');
 
   useEffect(() => {
+    // Image / PDF render straight from the serve URL — no preview-mount fetch,
+    // so this effect has nothing to do for them (and must not stomp `state`
+    // with a "loading" that never resolves).
+    if (isImage || isPdf) {
+      setState({ loading: false, error: '', url: '', text: null, backendPort: null });
+      return undefined;
+    }
     if (!previewPath) {
       setState({ loading: false, error: 'This artifact does not have a previewable file yet.', url: '', text: null, backendPort: null });
       return undefined;
@@ -5539,7 +5573,7 @@ function PreviewPane({
         setState({ loading: false, error: err?.message || 'Could not load artifact.', url: '', text: null, backendPort: null });
       });
     return () => { cancelled = true; };
-  }, [previewPath, previewRequestVersionId, isText, artifact?.mtime, artifact?.path, onPreviewFailed, isBackendArtifact]);
+  }, [previewPath, previewRequestVersionId, isText, isImage, isPdf, artifact?.mtime, artifact?.path, onPreviewFailed, isBackendArtifact]);
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--surface-2)' }}>
@@ -5605,11 +5639,41 @@ function PreviewPane({
           )}
         </div>
       )}
-      <div style={{ flex: 1, minHeight: 0, overflow: isText ? 'auto' : 'hidden' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: (isText || isImage) ? 'auto' : 'hidden' }}>
         {state.error ? (
           <div style={{ padding: 24, color: 'var(--danger)', fontFamily: FONT_BODY, fontSize: 13 }}>
             {state.error}
           </div>
+        ) : isImage ? (
+          servedUrl ? (
+            <div style={{ minHeight: '100%', display: 'grid', placeItems: 'center', padding: 24 }}>
+              <img
+                src={servedUrl}
+                alt={artifact?.title || displayName(actionPath)}
+                style={{
+                  maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                  borderRadius: 8, background: '#fff',
+                  boxShadow: '0 1px 0 rgba(0,0,0,.06), 0 8px 22px rgba(0,0,0,.1)',
+                }}
+              />
+            </div>
+          ) : (
+            <div style={{ padding: 24, color: 'var(--ink-3)', fontFamily: FONT_BODY, fontSize: 13 }}>
+              This image has no preview URL yet.
+            </div>
+          )
+        ) : isPdf ? (
+          servedUrl ? (
+            <iframe
+              title={artifact?.title || 'PDF preview'}
+              src={servedUrl}
+              style={{ width: '100%', height: '100%', border: 0, background: 'var(--surface)' }}
+            />
+          ) : (
+            <div style={{ padding: 24, color: 'var(--ink-3)', fontFamily: FONT_BODY, fontSize: 13 }}>
+              This PDF has no preview URL yet.
+            </div>
+          )
         ) : state.loading ? (
           <div style={{ padding: 24, color: 'var(--ink-3)', fontFamily: FONT_BODY, fontSize: 13 }}>
             Loading preview...
