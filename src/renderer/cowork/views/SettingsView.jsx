@@ -8,7 +8,25 @@ import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron } from '../../platform/host';
 
-function Section({ title, subtitle, children }) {
+// Small "Soon" pill for settings whose UI isn't wired end-to-end yet.
+// Matches the Sidebar nav's `pill muted` convention so "coming soon" reads
+// consistently across the app.
+function SoonPill() {
+  return (
+    <span
+      className="pill muted"
+      style={{
+        marginLeft: 8, fontSize: 10, fontWeight: 600,
+        letterSpacing: '0.04em', textTransform: 'uppercase',
+        verticalAlign: 'middle',
+      }}
+    >
+      Soon
+    </span>
+  );
+}
+
+function Section({ title, subtitle, children, badge }) {
   return (
     <div className="settings-section" style={{
       display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24,
@@ -20,7 +38,7 @@ function Section({ title, subtitle, children }) {
           margin: 0, padding: 0,
           fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
           fontFamily: 'inherit', lineHeight: 1.3,
-        }}>{title}</h3>
+        }}>{title}{badge}</h3>
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
       </div>
       <div>{children}</div>
@@ -90,16 +108,23 @@ function Segmented({ value, onChange, options, style, groupLabel }) {
     >
       {options.map((o) => {
         const selected = value === o.value;
+        // A per-option `disabled` lets a mode be shown but not selectable
+        // (e.g. "Copilot" before its confirm UI ships) — honest about what
+        // exists without hiding the roadmap.
+        const disabled = !!o.disabled;
         return (
           <button
             key={o.value}
             type="button"
             role="radio"
             aria-checked={selected}
+            aria-disabled={disabled || undefined}
+            disabled={disabled}
             className={selected ? 'active' : ''}
-            onClick={() => onChange(o.value)}
+            onClick={disabled ? undefined : () => onChange(o.value)}
             title={o.title}
             aria-label={o.ariaLabel || o.title}
+            style={disabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
           >
             {o.label}
           </button>
@@ -109,15 +134,18 @@ function Segmented({ value, onChange, options, style, groupLabel }) {
   );
 }
 
-function Toggle({ value, onChange, title, ariaLabel }) {
+function Toggle({ value, onChange, title, ariaLabel, disabled }) {
   return (
     <button
       role="switch"
       aria-checked={value}
+      aria-disabled={disabled || undefined}
+      disabled={disabled}
       aria-label={ariaLabel}
       title={title}
       className={`toggle${value ? ' on' : ''}`}
-      onClick={() => onChange(!value)}
+      onClick={disabled ? undefined : () => onChange(!value)}
+      style={disabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
     >
       <span className="toggle-thumb" />
     </button>
@@ -1577,24 +1605,43 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
             </CollapsibleGroup>
 
             <CollapsibleGroup title="Memory" defaultOpen={false}>
-              <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
+              <Section
+                title="Memory mode"
+                subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory. Autopilot saves as it works (you'll see a "Remembered" note in chat); Off disables saving. Copilot — review each update before it's saved — is coming soon.`}
+              >
+                {/* Copilot is disabled until the review/confirm inbox ships:
+                    the server supports the mode, but there is no UI yet to
+                    approve suggested updates, so selecting it would silently
+                    behave like Autopilot. A saved "copilot" value (e.g. from
+                    the CLI) shows as Autopilot — its current effective
+                    behaviour — rather than a stuck, unselectable pill. */}
                 <Segmented
-                  value={settings.memoryMode ?? 'autopilot'}
+                  value={(settings.memoryMode ?? 'autopilot') === 'copilot' ? 'autopilot' : (settings.memoryMode ?? 'autopilot')}
                   onChange={(v) => setSetting('memoryMode', v)}
                   groupLabel="Memory mode"
                   options={[
                     { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
-                    { value: 'copilot',   label: 'Copilot',   title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
+                    { value: 'copilot',   label: 'Copilot',   title: 'Coming soon — review each memory update before it is saved.', disabled: true },
                     { value: 'off',       label: 'Off',       title: 'Disable long-term memory updates.' },
                   ]}
                 />
               </Section>
-              <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
+              {/* Episodic memory is not wired end-to-end yet — it is disabled
+                  server-side (the recall tool returns "not available"), so the
+                  toggle is shown off + disabled rather than lying. Rules and
+                  lessons (the Cortex) are unaffected and still work; this is
+                  only the conversation-history recall layer. */}
+              <Section
+                title="Episodic memory"
+                subtitle="Save conversation history for future recall. Not available yet — rules and lessons still work."
+                badge={<SoonPill />}
+              >
                 <Toggle
-                  value={settings.episodicMemory ?? true}
-                  onChange={(v) => setSetting('episodicMemory', v)}
-                  title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
-                  ariaLabel="Episodic memory"
+                  value={false}
+                  onChange={() => {}}
+                  disabled
+                  title="Episodic memory is coming soon. Rules and lessons memory is unaffected."
+                  ariaLabel="Episodic memory (coming soon)"
                 />
               </Section>
               <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">

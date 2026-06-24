@@ -45,6 +45,10 @@ export function initialStreamState() {
     awaitingArtifactPayload: false,
     /** Harness/agent ID from `response.created` (e.g. 'anton', 'hermes'). */
     harness: null,
+    /** How many long-term memories the Cortex loaded into this turn's
+     *  prompt. Sourced from the server's `thought.memory.loaded` event
+     *  (field `memory_count`). 0 = none loaded → no "used N memories" chip. */
+    memoriesRecalled: 0,
     /** Surfaced for diagnostics if a failure event arrives. */
     error: null,
   };
@@ -177,6 +181,34 @@ function bestEffortField(text, field) {
   return extractJsonString(text, field);
 }
 
+/** Summarise what a `memorize` tool call wrote, for the "Remembered: …"
+ *  chip. The tool's args JSON (carried on `thought.memorize.end`) looks like
+ *  `{ "entries": [{ "text": "...", "kind": "lesson", "scope": "project" }] }`.
+ *  Returns a short label, or null when nothing usable parsed yet (so the
+ *  step keeps its generic "Saving to memory…" label). */
+function memorizeSummary(content) {
+  const parsed = safeJsonParse(content);
+  let entries = parsed && Array.isArray(parsed.entries) ? parsed.entries : null;
+  // Best-effort for a truncated blob: pull the first entry's text.
+  if (!entries) {
+    const firstText = extractJsonString(content, 'text');
+    if (firstText) return `Remembered: ${oneLine(firstText)}`;
+    return null;
+  }
+  const texts = entries
+    .map((e) => (e && typeof e.text === 'string' ? e.text.trim() : ''))
+    .filter(Boolean);
+  if (texts.length === 0) return null;
+  if (texts.length === 1) return `Remembered: ${oneLine(texts[0])}`;
+  return `Remembered ${texts.length} things: ${oneLine(texts[0])}`;
+}
+
+/** First line of a string, truncated for a single-row label. */
+function oneLine(text) {
+  const first = String(text).split('\n')[0].trim();
+  return first.length > 80 ? first.slice(0, 77) + '…' : first;
+}
+
 /** Classify a finished cell as 'ok' | 'timeout' | 'error'. Prefer the
  *  server-provided `cell_status` (cowork-server derives it from the cell's
  *  structured error field); fall back to deriving from the parsed cell so
@@ -255,6 +287,94 @@ export function reduceStream(state, event, now = Date.now) {
   if (type !== 'response.in_progress') return state;
 
   const role = event.thought_role;
+
+  // ── Memory: recall (context loaded at turn start) ────────────────
+  // The server emits this once per turn with the count of long-term
+  // memories the Cortex injected into the prompt. Drives the "used N
+  // memories this turn" chip. `memory_count` is authoritative; fall
+  // back to parsing `content` for older/partial events.
+  if (role === 'thought.memory.loaded') {
+    const n = Number.isFinite(event.memory_count)
+      ? event.memory_count
+      : parseInt(event.content, 10);
+    if (!Number.isFinite(n) || n <= 0) return state;
+    // Take the max so a re-emitted/replayed event never lowers the count.
+    return { ...state, memoriesRecalled: Math.max(state.memoriesRecalled, n) };
+  }
+
+  // ── Memory: memorize (agent wrote a memory this turn) ────────────
+  // `thought.memorize.start` carries the tool name; `.end` carries the
+  // args JSON (the entries written). Collapse the pair into one step
+  // with a "Remembered: …" badge, correlated by tool_use_id.
+  if (role === 'thought.memorize.start') {
+    const id = `step-${state.steps.length + 1}`;
+    const step = {
+      id,
+      label: 'Saving to memory…',
+      badge: 'Memory',
+      icon: 'brain',
+      status: 'in_progress',
+      startedAt: eventTs,
+      completedAt: null,
+      data: null,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: false,
+      _isMemorize: true,
+      _scratchpadTabId: null,
+      _toolUseId: event.tool_use_id || null,
+    };
+    // Close any open reasoning step — the model is acting, not thinking.
+    const steps = closeReasoningStep(state.steps, eventTs);
+    return { ...state, steps: [...steps, step] };
+  }
+
+  if (role === 'thought.memorize.end') {
+    const toolUseId = event.tool_use_id || null;
+    const summary = memorizeSummary(event.content);
+    const patch = {
+      status: 'completed',
+      completedAt: eventTs,
+      ...(summary ? { label: summary } : null),
+    };
+    if (toolUseId) {
+      const idx = state.steps.findIndex(
+        (s) => s && s._isMemorize && s._toolUseId === toolUseId,
+      );
+      if (idx !== -1) {
+        const updated = state.steps.slice();
+        updated[idx] = { ...state.steps[idx], ...patch };
+        return { ...state, steps: updated };
+      }
+    }
+    // No matching start (legacy/out-of-order) — synthesise a completed
+    // step so the "Remembered" chip still shows.
+    const id = `step-${state.steps.length + 1}`;
+    const step = {
+      id,
+      label: summary || 'Remembered something',
+      badge: 'Memory',
+      icon: 'brain',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: null,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: false,
+      _isMemorize: true,
+      _scratchpadTabId: null,
+      _toolUseId: toolUseId,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
+  // `thought.recall.*` (the episodic recall *tool*) is intentionally not
+  // surfaced: episodic memory is disabled server-side, so that tool
+  // returns "not available" and showing a chip for it would be a lie.
+  // Real recall is the Cortex injection above (thought.memory.loaded).
 
   // New scratchpad cell starts. We push a placeholder step now so the
   // UI sees activity even before the .end event delivers the input.

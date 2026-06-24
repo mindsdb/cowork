@@ -516,6 +516,10 @@ function reduceServerEvents(events, fallbackStartedAt) {
     // 'error' on response.failed — the authoritative "this turn
     // finished" signal from the detached stream buffer.
     status: state.status,
+    // Count of long-term memories the Cortex loaded this turn (from the
+    // persisted thought.memory.loaded event), so the "used N memories"
+    // chip survives a reload.
+    memoriesRecalled: state.memoriesRecalled || 0,
   };
 }
 
@@ -537,12 +541,16 @@ function hydrateMessagesFromServerEvents(messages) {
     // "didn't finish" continuation nudge.
     const turnComplete = reduced.status === 'done' || reduced.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
-    if (reduced.steps.length === 0) return { ...rest, ...completeFlag };
+    const memFlag = reduced.memoriesRecalled > 0
+      ? { memoriesRecalled: reduced.memoriesRecalled }
+      : {};
+    if (reduced.steps.length === 0) return { ...rest, ...completeFlag, ...memFlag };
     return {
       ...rest,
       steps: reduced.steps,
       startedAt: rest.startedAt || reduced.startedAt,
       ...completeFlag,
+      ...memFlag,
     };
   });
 }
@@ -1575,6 +1583,7 @@ function AppCore() {
           startedAt: streamState.startedAt,
           streamStatus: streamState.status,
           harness: streamState.harness,
+          memoriesRecalled: streamState.memoriesRecalled,
         }] };
       }));
     };
@@ -1601,6 +1610,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        const finalMemoriesRecalled = streamState.memoriesRecalled;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
@@ -1617,6 +1627,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalMemoriesRecalled > 0 ? { memoriesRecalled: finalMemoriesRecalled } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -2419,6 +2430,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        const finalMemoriesRecalled = streamState.memoriesRecalled;
         // Anton sometimes wraps auth failures into a 200 stream that
         // emits the error as plain assistant text. Detect that case
         // and replace the assistant turn with the provider_required
@@ -2443,6 +2455,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalMemoriesRecalled > 0 ? { memoriesRecalled: finalMemoriesRecalled } : {}),
               }] }
             : { ...t, id: finalId, status: 'idle', messages: msgs };
         }));
@@ -2694,6 +2707,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        const finalMemoriesRecalled = streamState.memoriesRecalled;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
@@ -2710,6 +2724,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalMemoriesRecalled > 0 ? { memoriesRecalled: finalMemoriesRecalled } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -2894,6 +2909,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        const finalMemoriesRecalled = streamState.memoriesRecalled;
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id && t.id !== resolvedId) return t;
@@ -2906,6 +2922,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                ...(finalMemoriesRecalled > 0 ? { memoriesRecalled: finalMemoriesRecalled } : {}),
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -3526,6 +3543,7 @@ function AppCore() {
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onNavigateToMemory={() => navigate('memory')}
             onCancelModify={handleCancelModify}
             onDisconnectModify={handleDisconnectFromModify}
             onOpenProject={(p) => {

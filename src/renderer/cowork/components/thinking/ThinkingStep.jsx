@@ -111,6 +111,14 @@ export function ThinkingStep({
               artifact
             </span>
           )}
+          {step.badge === 'Memory' && (
+            <span
+              className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4"
+              title="Anton saved this to its long-term memory."
+            >
+              memory
+            </span>
+          )}
         </div>
       </div>
     </div>

@@ -487,6 +487,43 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
   );
 }
 
+// "Used N memories this turn" chip. `count` is the number of long-term
+// memory entries the Cortex loaded into this turn's prompt (server
+// `thought.memory.loaded` event → stream state `memoriesRecalled`).
+// Clicking opens the Memory page where the entries live. Renders nothing
+// when the count is zero, so a turn that recalled nothing shows no chip.
+function MemoryRecallChip({ count, onNavigate }) {
+  if (!count || count <= 0) return null;
+  const label = `Used ${count} ${count === 1 ? 'memory' : 'memories'} this turn`;
+  const clickable = typeof onNavigate === 'function';
+  return (
+    <button
+      type="button"
+      onClick={clickable ? onNavigate : undefined}
+      disabled={!clickable}
+      title={clickable ? 'View these in Memory' : label}
+      aria-label={clickable ? `${label}. View in Memory.` : label}
+      className="memory-recall-chip"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        marginTop: 8, padding: '3px 9px 3px 7px',
+        fontSize: 11.5, fontWeight: 500,
+        color: 'var(--text-muted)',
+        background: 'var(--surface-2, rgba(127,127,127,0.08))',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 999,
+        cursor: clickable ? 'pointer' : 'default',
+        font: 'inherit',
+      }}
+    >
+      <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--text-muted)' }}>
+        {Ico.brain ? Ico.brain(13) : null}
+      </span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
@@ -792,6 +829,7 @@ export default function ChatView({
   onDeleteTurn,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
+  onNavigateToMemory,
   onCancelModify,
   onDisconnectModify,
   onMoveTaskToProject,
@@ -1517,6 +1555,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <MemoryRecallChip count={m.memoriesRecalled} onNavigate={onNavigateToMemory} />
                 </AnswerTurn>
               );
               });
@@ -1566,6 +1605,7 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <MemoryRecallChip count={streamingMsg.memoriesRecalled} onNavigate={onNavigateToMemory} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
