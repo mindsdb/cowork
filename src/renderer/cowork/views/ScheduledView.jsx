@@ -14,18 +14,23 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import {
   PageHeader, FilterRow, SearchInput, SortPill,
-  ViewToggle,
   useCollectionShortcut,
 } from '../components/collection';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
 const FONT_BODY = 'var(--font-body)';
 
 const SORT_OPTIONS = [
-  { id: 'next',    label: 'Next run' },
-  { id: 'name',    label: 'Name' },
+  { id: 'next', label: 'Next run' },
+  { id: 'name', label: 'Name' },
   { id: 'created', label: 'Recently created' },
+];
+
+const VIEW_OPTIONS = [
+  { value: 'grid', label: 'Grid', icon: Ico.grid(12) },
+  { value: 'list', label: 'List', icon: Ico.list(12) }
 ];
 
 // Match the storage-key convention used by ArtifactsView /
@@ -41,7 +46,7 @@ function loadViewMode() {
 
 function saveViewMode(mode) {
   if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch {}
+  try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { }
 }
 
 
@@ -104,8 +109,8 @@ export default function ScheduledView({
       return Number.isFinite(t) ? t : 0;
     };
     const cmp = {
-      next:    (a, b) => ts(a.nextRunAt) - ts(b.nextRunAt),
-      name:    (a, b) => (a.title || '').localeCompare(b.title || ''),
+      next: (a, b) => ts(a.nextRunAt) - ts(b.nextRunAt),
+      name: (a, b) => (a.title || '').localeCompare(b.title || ''),
       created: (a, b) => ts(b.createdAt) - ts(a.createdAt),
     }[sort] || (() => 0);
     return [...filtered].sort(cmp);
@@ -125,7 +130,7 @@ export default function ScheduledView({
 
   async function handleSubmit(payload, id) {
     if (id) await onUpdate(id, payload);
-    else    await onCreate(payload);
+    else await onCreate(payload);
   }
 
   async function handleDelete(id) {
@@ -137,7 +142,7 @@ export default function ScheduledView({
     setError('');
     try { await action(id); }
     catch (err) { setError(err?.message || 'Schedule action failed.'); }
-    finally     { setBusyId(null); }
+    finally { setBusyId(null); }
   }
 
   return (
@@ -165,7 +170,7 @@ export default function ScheduledView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<ViewToggle value={viewMode} onChange={setViewMode} />}
+          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} size="sm" aria-label="View" options={VIEW_OPTIONS} />}
           counts={
             <>
               {(search || '').trim().length > 0
@@ -211,9 +216,9 @@ export default function ScheduledView({
               busy={busyId === task.id}
               onOpen={() => onOpenSchedule?.(task)}
               onRunNow={() => runAction(task.id, onRunNow)}
-              onPause={()  => runAction(task.id, onPause)}
+              onPause={() => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
-              onEdit={()   => openEdit(task)}
+              onEdit={() => openEdit(task)}
               onOpenProject={onOpenProject}
             />
           ))}
@@ -229,9 +234,9 @@ export default function ScheduledView({
               busy={busyId === task.id}
               onOpen={() => onOpenSchedule?.(task)}
               onRunNow={() => runAction(task.id, onRunNow)}
-              onPause={()  => runAction(task.id, onPause)}
+              onPause={() => runAction(task.id, onPause)}
               onResume={() => runAction(task.id, onResume)}
-              onEdit={()   => openEdit(task)}
+              onEdit={() => openEdit(task)}
               onOpenProject={onOpenProject}
             />
           ))}
@@ -269,7 +274,7 @@ export default function ScheduledView({
 //   • action menu (hover-revealed)
 
 const FONT_DISPLAY = 'var(--font-display)';
-const FONT_MONO    = 'var(--font-mono)';
+const FONT_MONO = 'var(--font-mono)';
 
 // 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
 // 110px last · fixed-width actions slot.
@@ -317,8 +322,8 @@ function ScheduleListRow({
   const stop = (e) => { e.stopPropagation(); };
 
   const status = (() => {
-    if (!task.enabled)       return { label: 'Paused',   dot: 'var(--ink-4)' };
-    if (task.lastError)      return { label: 'Failed',   dot: 'var(--danger)' };
+    if (!task.enabled) return { label: 'Paused', dot: 'var(--ink-4)' };
+    if (task.lastError) return { label: 'Failed', dot: 'var(--danger)' };
     return { label: 'Active', dot: 'var(--success)' };
   })();
   const missedRuns = Number(task.missedRuns) || 0;
@@ -455,7 +460,7 @@ function ScheduleListRow({
       >
         <RowAction icon={Ico.send(12)} label="Run" onClick={onRunNow} busy={busy} />
         {task.enabled
-          ? <RowAction icon={Ico.pause(12)} label="Pause"  onClick={onPause}  busy={busy} />
+          ? <RowAction icon={Ico.pause(12)} label="Pause" onClick={onPause} busy={busy} />
           : <RowAction icon={Ico.power(12)} label="Resume" onClick={onResume} busy={busy} />}
         <RowAction icon={Ico.edit(12)} label="Edit" onClick={onEdit} busy={busy} />
       </div>

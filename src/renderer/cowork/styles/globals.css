@@ -2970,26 +2970,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   padding: revert !important;
 }
 
-/* ─── Segmented control ──────────────────────────────────────────────────── */
-.segmented {
-  display: inline-flex;
-  background: var(--stone-100);
-  border: 1px solid var(--border-01);
-  border-radius: 8px; padding: 2px;
-}
-.segmented button {
-  height: 28px; padding: 0 12px;
-  border: 0; border-radius: 6px;
-  font-size: 12.5px; font-weight: 500; line-height: 1;
-  background: transparent; color: var(--frost-700);
-  transition: background .1s, color .1s, box-shadow .1s;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.segmented button.active {
-  background: var(--surface-0); color: var(--text-strong);
-  box-shadow: var(--shadow-sm);
-}
-
 /* ─── Toggle ─────────────────────────────────────────────────────────────── */
 .toggle {
   width: 38px; height: 22px; border-radius: 11px;
