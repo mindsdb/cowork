@@ -62,16 +62,21 @@ function joinAbs(root, rel) {
 // both the HTML and binary branches — they live in the modal header
 // so the user always has an escape hatch regardless of what's
 // rendered inline.
-function FileAccessButton({ projectPath, projectName, filePath }) {
+function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
   const isWeb = !!host.isWeb;
   const abs = joinAbs(projectPath, filePath);
   const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
+  // Attachments have a `rawUrl` but no project filePath — Reveal-in-
+  // Finder has nothing to point at (the file isn't on a local project
+  // path), so it's hidden and Open prefers the raw URL via host.
+  const hasProjectFile = !!(projectName && filePath);
 
   if (isWeb) {
-    if (!dlUrl) return null;
+    const webUrl = dlUrl || rawUrl;
+    if (!webUrl) return null;
     return (
       <a
-        href={dlUrl}
+        href={webUrl}
         download
         title="Download"
         style={{
@@ -89,22 +94,30 @@ function FileAccessButton({ projectPath, projectName, filePath }) {
 
   return (
     <div style={{ display: 'inline-flex', gap: 4 }}>
+      {hasProjectFile && (
+        <button
+          type="button"
+          onClick={() => abs && window.antontron?.showItemInFolder?.(abs)}
+          title="Reveal in Finder"
+          style={{
+            cursor: 'pointer',
+            background: 'transparent', border: '1px solid var(--line)',
+            color: 'var(--ink-2)',
+            padding: '6px 12px', borderRadius: 6,
+            fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}
+        >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</button>
+      )}
       <button
         type="button"
-        onClick={() => abs && window.antontron?.showItemInFolder?.(abs)}
-        title="Reveal in Finder"
-        style={{
-          cursor: 'pointer',
-          background: 'transparent', border: '1px solid var(--line)',
-          color: 'var(--ink-2)',
-          padding: '6px 12px', borderRadius: 6,
-          fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-          display: 'inline-flex', alignItems: 'center', gap: 6,
+        onClick={() => {
+          // Prefer the raw URL (attachments + anything that passed one)
+          // via the OS shell; fall back to opening the local project
+          // file in the default app.
+          if (rawUrl) host.openExternal(rawUrl);
+          else if (abs) window.antontron?.openPath?.(abs);
         }}
-      >{Ico.folder ? Ico.folder(13) : '📁'} Reveal</button>
-      <button
-        type="button"
-        onClick={() => abs && window.antontron?.openPath?.(abs)}
         title="Open in default app"
         style={{
           cursor: 'pointer',
@@ -124,7 +137,7 @@ function FileAccessButton({ projectPath, projectName, filePath }) {
 // Renders a centered icon + the filename + one-line explanation
 // + the same reveal/download affordances as the header chip, so the
 // modal stays useful even when nothing can be displayed inline.
-function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath }) {
+function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath, rawUrl }) {
   return (
     <div style={{
       flex: 1, minHeight: 0,
@@ -159,6 +172,7 @@ function BinaryFilePanel({ fileName, detail, projectPath, projectName, filePath 
         projectPath={projectPath}
         projectName={projectName}
         filePath={filePath}
+        rawUrl={rawUrl}
       />
     </div>
   );
@@ -173,6 +187,10 @@ export default function ContextFileModal({
                    //   Electron IPC. Falls back to the download URL on
                    //   the web.
   filePath,        // project-relative path (instructions: ANTON_PROJECT_INSTRUCTIONS_PATH)
+  rawUrl,          // optional absolute URL for inline media (images) and the
+                   //   binary-mode "Open" action. Lets attachments — which
+                   //   have no project file path — render images inline and
+                   //   open in the OS shell without project-file IO.
   isAntonMd,       // optional override; otherwise derived from filePath
   // ── Generic / shared ─────────────────────────────────────────
   title,           // overrides the header title (otherwise filePath / 'anton.md')
@@ -199,6 +217,8 @@ export default function ContextFileModal({
   //   'text'   — Markdown / plain text, the original editable view.
   //   'html'   — load as an iframe via projects preview-mount (parity
   //              with how artifacts surface HTML dashboards).
+  //   'image'  — render the file inline as an <img> from its raw URL
+  //              (project download URL or an attachment's raw URL).
   //   'binary' — can't render inline (too large, not UTF-8, image,
   //              archive…). Show "Open in Finder" / "Download"
   //              affordances instead of dumping bytes into the modal.
@@ -231,6 +251,10 @@ export default function ContextFileModal({
   // entries identified by relativePath through `title`) is "anton.md"
   // so memory rows still render markdown.
   const referencePath = filePath || title || '';
+  // Image files render inline as an <img>. Detected purely by
+  // extension on the reference path so it works for both project
+  // files (download URL) and attachments (raw URL, no project path).
+  const isImage = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(referencePath);
   const isMarkdown = /\.md$/i.test(referencePath) || referencePath === ''
     || isAnton
     || genericMode;
@@ -242,12 +266,54 @@ export default function ContextFileModal({
   // files fall through to a "Reveal / Download" affordance.
   useEffect(() => {
     if (!open) return;
-    if (!genericMode && (!filePath || !projectName)) return;
     let cancelled = false;
     setError('');
     setPreviewUrl('');
     setBinaryDetail('');
     setMode('text');
+
+    // Image branch (before the project-IO guard): render inline as an
+    // <img>. Works for project files (download URL from name+path) and
+    // attachments (a `rawUrl` with no projectName). Runs first so an
+    // attachment image never falls into the guard below.
+    if (isImage) {
+      const url = rawUrl || (projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '');
+      if (url) {
+        setMode('image');
+        setLoading(true);
+        // The CSP blocks a direct <img src="http://127.0.0.1/…"> (img-src is
+        // 'self' data: blob:), but connect-src allows the loopback origin —
+        // so fetch the bytes and render them as a blob: URL.
+        let objectUrl = '';
+        fetch(url)
+          .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+          .then((blob) => {
+            if (cancelled) return;
+            objectUrl = URL.createObjectURL(blob);
+            setPreviewUrl(objectUrl);
+            setLoading(false);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setMode('binary');
+            setBinaryDetail('Could not load image.');
+            setLoading(false);
+          });
+        return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+      }
+    }
+
+    // No project file IO is possible (e.g. an attachment: `rawUrl` set,
+    // no projectName). A non-image attachment can still be opened in the
+    // OS shell via the binary panel's Open action, so land in 'binary'
+    // mode rather than a stuck empty 'text' view.
+    if (!genericMode && (!filePath || !projectName)) {
+      if (rawUrl) {
+        setMode('binary');
+        setLoading(false);
+      }
+      return () => { cancelled = true; };
+    }
 
     // HTML branch: project-file preview-mount, iframe srcs `BASE + relUrl`.
     if (!genericMode && filePath && /\.html?$/i.test(filePath)) {
@@ -308,7 +374,7 @@ export default function ContextFileModal({
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode]);
+  }, [open, filePath, projectName, initialContent, isAnton, loader, genericMode, startInEditMode, isImage, rawUrl]);
 
   // Esc closes when not busy.
   useEffect(() => {
@@ -435,15 +501,16 @@ export default function ContextFileModal({
                 }}
               >Edit</button>
             )}
-            {/* HTML preview + binary modes both expose a "Reveal" /
-                "Download" affordance in the header so the user can
-                always get at the file even when the modal renders
+            {/* HTML / image / binary modes all expose a "Reveal" /
+                "Open" / "Download" affordance in the header so the user
+                can always get at the file even when the modal renders
                 something else inline. */}
-            {(mode === 'html' || mode === 'binary') && !loading && (
+            {(mode === 'html' || mode === 'image' || mode === 'binary') && !loading && (
               <FileAccessButton
                 projectPath={projectPath}
                 projectName={projectName}
                 filePath={filePath}
+                rawUrl={rawUrl}
               />
             )}
             <button
@@ -501,6 +568,26 @@ export default function ContextFileModal({
               />
             </div>
           )}
+          {/* Image branch — render inline, centered in the same preview
+              area the html/binary modes use. On load failure, fall back
+              to the binary panel so the user keeps a Reveal/Open escape. */}
+          {!loading && mode === 'image' && previewUrl && (
+            <div style={{
+              flex: 1, minHeight: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 8, overflow: 'hidden',
+              border: '1px solid var(--line)',
+              background: 'var(--surface-2)',
+              padding: 12,
+            }}>
+              <img
+                src={previewUrl}
+                alt={headerTitle}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                onError={() => { setMode('binary'); setBinaryDetail('Could not load image.'); }}
+              />
+            </div>
+          )}
           {/* Binary / oversized branch — graceful escape hatch. */}
           {!loading && mode === 'binary' && (
             <BinaryFilePanel
@@ -509,6 +596,7 @@ export default function ContextFileModal({
               projectPath={projectPath}
               projectName={projectName}
               filePath={filePath}
+              rawUrl={rawUrl}
             />
           )}
           {!loading && mode === 'text' && (editing ? (

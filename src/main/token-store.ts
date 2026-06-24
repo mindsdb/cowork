@@ -23,35 +23,50 @@ let _expiresAt = 0; // epoch ms
 // always use it there and never downgrade those platforms to plaintext.
 const IS_MAC = process.platform === 'darwin';
 
-// Whether the COWORK_KEYCHAIN opt-in flag is set in ~/.cowork/.env.
-function keychainFlagSet(): boolean {
+// Whether the user has explicitly disabled keychain in ~/.cowork/.env.
+// Default is keychain ON; only returns false when COWORK_KEYCHAIN=false is set.
+function keychainDisabled(): boolean {
   try {
     const env = fs.readFileSync(coworkEnvPath(), 'utf-8');
-    return /^\s*COWORK_KEYCHAIN\s*=\s*true\s*$/im.test(env);
+    return /^\s*COWORK_KEYCHAIN\s*=\s*false\s*$/im.test(env);
   } catch {
-    return false;
+    return false; // env missing → default to keychain
   }
 }
 
-// Resolve the effective store: keychain on non-mac always; on mac only when
-// the user opted in via the flag (default: plaintext file, no prompts).
+// Resolve the effective store: keychain on non-mac always; on mac, keychain
+// by default unless the user has explicitly disabled it with COWORK_KEYCHAIN=false.
 function useKeychain(): boolean {
   if (!IS_MAC) return true;
-  return keychainFlagSet();
+  return !keychainDisabled();
 }
 
 function writeKeychain(refreshToken: string): boolean {
   try {
-    if (!safeStorage.isEncryptionAvailable()) return false;
+    const available = safeStorage.isEncryptionAvailable();
+    console.log(`[token-store] writeKeychain: safeStorage.isEncryptionAvailable()=${available}`);
+    if (!available) return false;
     fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
+    console.log(`[token-store] writeKeychain: wrote to ${KEYCHAIN_FILE}`);
     return true;
-  } catch { return false; }
+  } catch (err) {
+    console.error('[token-store] writeKeychain error:', err);
+    return false;
+  }
 }
 function readKeychain(): string | null {
   try {
-    if (!fs.existsSync(KEYCHAIN_FILE) || !safeStorage.isEncryptionAvailable()) return null;
-    return safeStorage.decryptString(fs.readFileSync(KEYCHAIN_FILE));
-  } catch { return null; }
+    const exists = fs.existsSync(KEYCHAIN_FILE);
+    const available = safeStorage.isEncryptionAvailable();
+    console.log(`[token-store] readKeychain: file exists=${exists} safeStorage.isEncryptionAvailable()=${available}`);
+    if (!exists || !available) return null;
+    const val = safeStorage.decryptString(fs.readFileSync(KEYCHAIN_FILE));
+    console.log(`[token-store] readKeychain: decrypted ok, length=${val.length}`);
+    return val;
+  } catch (err) {
+    console.error('[token-store] readKeychain error:', err);
+    return null;
+  }
 }
 function writePlain(refreshToken: string): boolean {
   try {
@@ -70,11 +85,14 @@ function deleteKeychain(): void { try { fs.unlinkSync(KEYCHAIN_FILE); } catch { 
 function deletePlain(): void { try { fs.unlinkSync(plainTokenFile()); } catch { /* absent */ } }
 
 function persistRefreshToken(refreshToken: string): void {
-  if (useKeychain() && writeKeychain(refreshToken)) {
+  const kc = useKeychain();
+  console.log(`[token-store] persistRefreshToken: useKeychain=${kc}`);
+  if (kc && writeKeychain(refreshToken)) {
     deletePlain();
+    console.log('[token-store] persistRefreshToken: stored in keychain');
     return;
   }
-  // Default, or keychain unavailable: store as a file so login still persists.
+  console.warn('[token-store] persistRefreshToken: falling back to plain file');
   writePlain(refreshToken);
   deleteKeychain();
 }

@@ -537,15 +537,25 @@ function setupIPC() {
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
     const token = getAccessToken();
-    if (!token) return { ok: false, reason: 'No cached MindsHub access token.' };
+    if (!token) {
+      console.error('[mindshub:finalize] no cached access token — login may not have completed');
+      return { ok: false, reason: 'No cached MindsHub access token.' };
+    }
+    console.log('[mindshub:finalize] provisioning API key…');
     const result = await provisionAntonApiKey(token);
+    console.log('[mindshub:finalize] provisionAntonApiKey result:', result.key ? 'key minted' : `error: ${result.error}`);
     if (result.upgradeRequired) {
       return { ok: false, upgradeRequired: true };
     }
     if (!result.key) {
       return { ok: false, reason: result.error || 'Could not provision a MindsHub API key.' };
     }
-    await writeMindsKeyToEnvAndRestart(result.key);
+    try {
+      await writeMindsKeyToEnvAndRestart(result.key);
+    } catch (err: any) {
+      console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
+      return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
+    }
     return { ok: true, apiKey: result.key };
   });
 
@@ -698,7 +708,8 @@ function setupIPC() {
   // any existing token to the chosen store.
   ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
     const vars = readEnvFile();
-    return { enabled: vars.COWORK_KEYCHAIN === 'true' };
+    // Default is enabled; only false when explicitly set to 'false'.
+    return { enabled: vars.COWORK_KEYCHAIN !== 'false' };
   });
 
   ipcMain.handle(IPC.KEYCHAIN_PREF_SET, async (_event, enabled: boolean) => {
@@ -710,7 +721,8 @@ function setupIPC() {
       const envPath = coworkEnvPath();
       const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
       const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
-      lines.push(`COWORK_KEYCHAIN=${enabled ? 'true' : 'false'}`);
+      // Only write the key when disabling; absence means "enabled" (the default).
+      if (!enabled) lines.push('COWORK_KEYCHAIN=false');
       const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
       fs.writeFileSync(envPath, out, 'utf-8');
 

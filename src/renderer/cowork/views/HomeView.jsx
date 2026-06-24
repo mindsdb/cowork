@@ -523,7 +523,7 @@ export default function HomeView({
                 <button
                   type="button"
                   className="btn-primary"
-                  onClick={onOpenSettings}
+                  onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
                 >Settings</button>
               </div>
