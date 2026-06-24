@@ -115,6 +115,12 @@ export default function Composer({
   const overlayRef = useRef(null);
   const fileRef = useRef(null);
   const wrapRef = useRef(null);
+  /** True while a file drag is hovering the composer — drives the dashed
+      drop-target overlay. A counter ref tracks enter/leave across nested
+      children so moving over the textarea/toolbar doesn't flicker the
+      state off (dragleave fires when crossing into a child). */
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
   /** Caret position the textarea last reported. Updated on input and
       selection events; consumed by handlers that need the live caret
       without a render cycle. */
@@ -397,6 +403,67 @@ export default function Composer({
     }
   }
 
+  // A drag is "file-bearing" only if the OS advertises files in it — text
+  // selections and link drags also fire dragover, and we don't want the
+  // drop overlay flashing for those.
+  function dragHasFiles(e) {
+    const types = e.dataTransfer?.types;
+    if (!types) return false;
+    return Array.from(types).includes('Files');
+  }
+
+  function handleDragEnter(e) {
+    if (disabled || !onAttachFiles || !dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  }
+
+  function handleDragOver(e) {
+    if (disabled || !onAttachFiles || !dragHasFiles(e)) return;
+    // Preventing default on dragover is what tells the browser this is a
+    // valid drop target (otherwise onDrop never fires).
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragLeave(e) {
+    if (!dragActive) return;
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  }
+
+  function handleDrop(e) {
+    if (disabled || !onAttachFiles) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    const files = e.dataTransfer?.files;
+    if (files?.length) handleAttachFiles(files);
+  }
+
+  // Paste-to-upload. Pulls files off the clipboard — this covers both a
+  // screenshot paste (a single image/* item with no name) and a real
+  // file copied from the OS file manager. We only swallow the paste when
+  // it actually carried files; a normal text paste falls through to the
+  // textarea untouched.
+  function handlePaste(e) {
+    if (disabled || !onAttachFiles) return;
+    const items = e.clipboardData?.items;
+    if (!items?.length) return;
+    const files = [];
+    for (const item of items) {
+      if (item.kind !== 'file') continue;
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+    if (!files.length) return;
+    // Has files — take over so the image bytes don't also land as text.
+    e.preventDefault();
+    handleAttachFiles(files);
+  }
+
   function pairKey(engine, name) {
     return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
   }
@@ -456,7 +523,19 @@ export default function Composer({
       />
 
       <div style={{ width: '100%' }}>
-        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <div
+          className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}${dragActive ? ' drag-active' : ''}`}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {dragActive && (
+            <div className="composer-dropzone" aria-hidden="true">
+              <span className="composer-dropzone-icon">{Ico.upload?.(20) || Ico.attach(18)}</span>
+              <span>Drop files to attach</span>
+            </div>
+          )}
           {attachments.length > 0 && (
             <div className="attachment-strip">
               {attachments.map((attachment) => (
@@ -480,6 +559,7 @@ export default function Composer({
             disabled={disabled}
             value={value}
             onChange={(e) => { setValue(e.target.value); bumpTyping(); }}
+            onPaste={handlePaste}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onSelect={syncCaret}

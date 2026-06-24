@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
 import ThemeModal from './components/ThemeModal';
 import MoveToProjectModal from './components/MoveToProjectModal';
+import { partitionFiles } from './components/attachmentValidation';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — antontron's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
@@ -2137,7 +2138,12 @@ function AppCore() {
   const attachmentSessionId = route === 'task' && currentTask && !String(currentTask.id).startsWith('tmp-') ? currentTask.id : null;
 
   const handleAttachFiles = (files) => {
-    const list = Array.from(files || []).map((file) => ({
+    // Guardrail client-side first (size cap + type allow-list). Accepted
+    // files still queue even if siblings are rejected — don't punish the
+    // whole drop/paste for one bad file. The combined reason is thrown so
+    // the Composer's catch surfaces it inline ("X is 41 MB — max is 25 MB").
+    const { accepted, error } = partitionFiles(files);
+    const list = accepted.map((file) => ({
       id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
       source: 'file',
       pendingFile: file,
@@ -2145,7 +2151,8 @@ function AppCore() {
       mime: file.type || undefined,
       size: file.size,
     }));
-    setComposerAttachments((prev) => [...prev, ...list]);
+    if (list.length) setComposerAttachments((prev) => [...prev, ...list]);
+    if (error) throw new Error(error);
   };
 
   const handleComposerConnectorMute = useCallback((connector, useInChat) => {

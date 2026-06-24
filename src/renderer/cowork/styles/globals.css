@@ -528,6 +528,7 @@ a[href],
 
 /* ─── Composer ───────────────────────────────────────────────────────────── */
 .composer-wrap {
+  position: relative;
   width: 100%; max-width: var(--composer-max-width, 640px);
   background: var(--surface-0);
   border: 1px solid var(--border-01);
@@ -556,6 +557,25 @@ a[href],
     0 0 0 3px rgba(31, 156, 176, 0.15),
     0 6px 18px -8px rgba(0, 0, 0, 0.12);
 }
+/* Drag-to-attach — a dashed accent ring + tinted wash while a file drag
+   hovers the composer, with a centered "Drop files to attach" overlay.
+   Colours come from theme tokens so it reads correctly in dark mode. The
+   overlay never eats pointer events, so the drop still lands on the wrap. */
+.composer-wrap.drag-active {
+  border-color: var(--accent);
+  border-style: dashed;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.composer-dropzone {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-0));
+  color: var(--accent);
+  font-size: 13px; font-weight: 600;
+  pointer-events: none;
+}
+.composer-dropzone-icon { display: inline-flex; }
 /* Font, line-height, and padding MUST match the textarea exactly — both
    consume the same custom properties from .composer-input-shell so any
    change propagates to both automatically. */
