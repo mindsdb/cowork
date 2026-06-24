@@ -11,6 +11,7 @@ import {
   previewArtifact,
   publishArtifact,
   unpublishArtifact,
+  updateArtifact,
   publishTargetPath,
   deleteArtifact,
 } from '../../api';
@@ -327,6 +328,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
+  // Whether the published version is stale vs the local files (server-computed
+  // `artifact.modified`). Tracked locally so Update can clear it without a refetch.
+  const [modified, setModified] = useState(!!artifact?.modified);
   const [backendPort, setBackendPort] = useState(null);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -347,7 +351,8 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
   // different one without closing first).
   useEffect(() => {
     setPublishedUrl(artifact?.publishedUrl || '');
-  }, [artifact?.path, artifact?.publishedUrl]);
+    setModified(!!artifact?.modified);
+  }, [artifact?.path, artifact?.publishedUrl, artifact?.modified]);
 
   // Esc-to-close + portal + body-scroll lock all live in <Modal>.
 
@@ -512,6 +517,26 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
       setBusy(false);
     }
   };
+  const onUpdate = async () => {
+    if (busy) return;
+    if (!hasActionPath) {
+      setErr(disabledReason || 'This artifact does not have a local file path.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await updateArtifact(publishTargetPath(artifact));
+      // Server refreshed last_md5 + published_mtime — no longer stale.
+      setModified(false);
+      const url = r?.url || publishedUrl;
+      if (url) setPublishedUrl(url);
+      onChange?.({ ...artifact, modified: false, publishedUrl: url });
+    } catch (e) {
+      setErr(e?.message || 'Update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
   // Open the local file only when the file is actually on this machine
   // (Electron + loopback server). When the desktop app points at a
   // REMOTE server, or in web, the path is on the server box — open the
@@ -651,7 +676,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
           {Ico.doc(18)}
         </span>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <div id="artifact-viewer-title" style={{
               fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15,
               color: 'var(--ink)',
@@ -683,6 +708,47 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
                 fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
                 flexShrink: 0,
               }}>· {artifact.fileCount} files</span>
+            )}
+            {/* Published marker — matches the cyan "Published" pill on the
+                collection cards. Shown whenever the artifact is published. */}
+            {publishedUrl && (
+              <span
+                title="Published"
+                style={{
+                  fontFamily: FONT_BODY, fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                  color: 'var(--accent)',
+                  background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
+                  padding: '1px 6px', borderRadius: 999,
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />
+                Published
+              </span>
+            )}
+            {/* Stale-publish marker — matches the amber "Modified" pill on the
+                collection cards. Shown only for a published artifact whose
+                local files changed after publish. */}
+            {publishedUrl && modified && (
+              <span
+                title="Edited since publish — use Update to push the latest version"
+                style={{
+                  fontFamily: FONT_BODY, fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                  color: '#f5a623',
+                  background: 'color-mix(in srgb, #f5a623 16%, transparent)',
+                  border: '1px solid color-mix(in srgb, #f5a623 40%, transparent)',
+                  padding: '1px 6px', borderRadius: 999,
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ width: 4, height: 4, borderRadius: 99, background: '#f5a623' }} />
+                Modified
+              </span>
             )}
           </div>
           {/* Description — agent-supplied at create_artifact, single
@@ -760,9 +826,15 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
                 icon: Ico.download(13),
                 onClick: onDownload,
               }] : []),
+              ...(publishedUrl && modified ? [{
+                label: 'Update',
+                icon: Ico.refresh(13),
+                disabled: busy || !hasActionPath,
+                onClick: onUpdate,
+              }] : []),
               {
                 label: publishedUrl ? 'Unpublish' : 'Publish',
-                icon: Ico.upload(13),
+                icon: Ico.power(13),
                 disabled: busy || !hasActionPath,
                 onClick: publishedUrl ? onUnpublish : onPublish,
               },
