@@ -402,11 +402,33 @@ For hotfixes or out-of-band releases, coordinate with `@mindsdb/devops` to bypas
 # macOS — unsigned DMG (universal: x64 + arm64)
 npm run dist:mac
 
+# macOS — .app only, no DMG (faster, unsigned)
+npm run pack
+
 # Windows — NSIS installer (x64)
 npm run dist:win
 ```
 
 Prerequisites: Node.js 18+, npm. For signed builds: Apple Developer certificates (macOS) or EV code signing certificate (Windows).
+
+#### Building from local uncommitted source (via parent Makefile)
+
+When working in the `minds-platform` superproject, use `make pack-local` instead of `npm run pack`. It installs `cowork-server` from the local `backend/core_api/` directory (no push required), builds to `/tmp` to avoid the iCloud re-tagging codesign failure, then copies the result to `frontend/release/mac-arm64/`.
+
+```bash
+# from the minds-platform root:
+make pack-local
+# launch the built app with local server (auto-update disabled):
+COWORK_SERVER_DISABLE_AUTOUPDATE=1 open "frontend/release/mac-arm64/MindsHub Cowork.app"
+```
+
+> **iCloud builds** — If the repo lives under `~/Documents` (iCloud Drive), `npm run pack` fails with `resource fork, Finder information, or similar detritus not allowed` during codesign. Build to `/tmp` manually:
+>
+> ```bash
+> PATH="/opt/homebrew/opt/node@20/bin:$PATH" \
+>   npx electron-builder --mac --arm64 --config.directories.output=/tmp/minds-build
+> cp -R /tmp/minds-build/mac-arm64 release/
+> ```
 
 ### Code signing
 
@@ -640,6 +662,8 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
 | `UI_UPDATE_MODE` | Settings | OTA UI update behavior (`auto` / `manual`; default `auto`) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
+| `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
+| `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
 
 ---
 
