@@ -1008,18 +1008,28 @@ export async function fetchArtifactsPage({ projectPath, limit, offset = 0 } = {}
     if (!res.ok) return empty;
     const artifacts = await res.json();
     const list = Array.isArray(artifacts) ? artifacts : [];
-    // Headers are case-insensitive via the Headers API. Fall back to sane
-    // defaults if a proxy strips them (then there's just no load-more).
-    const headTotal = Number(res.headers.get('X-Total-Count'));
-    const headOffset = Number(res.headers.get('X-Offset'));
-    const headLimit = Number(res.headers.get('X-Limit'));
+    // Parse a numeric header, distinguishing ABSENT (proxy stripped it →
+    // `get` returns null → use the fallback) from a legitimate 0. Using
+    // `Number(null)` here would silently coerce a missing header to 0, which
+    // for X-Total-Count would report "0 artifacts" on a non-empty page and
+    // hide everything behind a never-appearing "Load more".
+    const numHeader = (name, fallback) => {
+      const raw = res.headers.get(name);
+      if (raw == null) return fallback;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    // Honest total: header when present, else at least what we got back (so a
+    // header-stripping proxy degrades to "no more pages" rather than "zero").
+    const total = numHeader('X-Total-Count', offset + list.length);
+    const headOffset = numHeader('X-Offset', offset);
+    const headLimit = numHeader('X-Limit', limit ?? list.length);
     const hasMoreHeader = res.headers.get('X-Has-More');
-    const total = Number.isFinite(headTotal) ? headTotal : list.length;
     return {
       artifacts: list,
       total,
-      offset: Number.isFinite(headOffset) ? headOffset : offset,
-      limit: Number.isFinite(headLimit) ? headLimit : (limit ?? list.length),
+      offset: headOffset,
+      limit: headLimit,
       hasMore: hasMoreHeader != null
         ? hasMoreHeader === 'true'
         : (offset + list.length) < total,
@@ -1052,12 +1062,15 @@ export async function fetchArtifacts({ projectPath } = {}) {
       let offset = 0;
       const all = [];
       // Bounded loop: stop on hasMore=false, an empty page, or a hard ceiling
-      // so a misbehaving server can never spin this forever.
+      // so a misbehaving server can never spin this forever. Advance the offset
+      // by the requested page SIZE (not the count returned) so a short page —
+      // were the server ever to return fewer than requested while still
+      // reporting hasMore — can't make us re-request the same window forever.
       for (let i = 0; i < 50; i += 1) {
         const page = await fetchArtifactsPage({ projectPath, limit: ARTIFACTS_MAX_PAGE, offset });
         all.push(...page.artifacts);
         if (!page.hasMore || page.artifacts.length === 0) break;
-        offset += page.artifacts.length;
+        offset += page.limit || page.artifacts.length || ARTIFACTS_MAX_PAGE;
       }
       return all;
     } catch {

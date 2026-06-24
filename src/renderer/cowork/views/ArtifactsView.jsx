@@ -2092,7 +2092,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           if (cancelled) return;
           if (!next.artifacts.length) break;
           for (const a of next.artifacts) merged.set(a.path || a.id, a);
-          offset += next.artifacts.length;
+          // Advance by the requested page size, not the returned count, so a
+          // short page can never stall the walk on the same offset.
+          offset += next.limit || next.artifacts.length || ARTIFACTS_PAGE_SIZE;
           if (!next.hasMore) break;
         }
         if (!cancelled) setList(Array.from(merged.values()));
