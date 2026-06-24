@@ -728,6 +728,7 @@ function AppCore() {
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState('agent');
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -1211,6 +1212,7 @@ function AppCore() {
   const [serverOnline, setServerOnline] = useState(host.isWeb);
   const [serverBusy, setServerBusy] = useState(false);
   const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
+
   // `config_ready` deliberately omitted from the initial state — the
   // boot-time settings redirect at line ~798 keys off `=== false` so
   // that "not yet fetched" (undefined) and "server confirmed
@@ -1259,6 +1261,27 @@ function AppCore() {
   useEffect(() => {
     refreshData();
   }, [refreshData]);
+
+  const handleServerStart = useCallback(async () => {
+    setServerBusyKind('starting');
+    setServerBusy(true);
+    try {
+      const result = await host.serverStart?.();
+      if (result) {
+        setServerOnline(!!result.running);
+        if (result.running) setTimeout(refreshData, 400);
+      }
+    } catch {} finally { setServerBusy(false); }
+  }, [refreshData]);
+
+  const handleServerStop = useCallback(async () => {
+    setServerBusyKind('stopping');
+    setServerBusy(true);
+    try {
+      const result = await host.serverStop?.();
+      if (result) setServerOnline(!!result.running);
+    } catch {} finally { setServerBusy(false); }
+  }, []);
 
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
   // ask for a fresh projects list without prop-drilling a refetch
@@ -3384,7 +3407,7 @@ function AppCore() {
           showCounters={settings.showCounters !== false}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
-          onShowServerHelp={() => setServerHelpOpen(true)}
+          onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
           onToggleServer={async () => {
             if (serverBusy) return;
             // Decide intent from main's actual state, not renderer state.
@@ -3457,10 +3480,10 @@ function AppCore() {
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
-            onShowServerHelp={() => setServerHelpOpen(true)}
+            onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
             skipIntro={bootIntroDone}
           />
         )}
@@ -3469,7 +3492,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -3658,7 +3681,7 @@ function AppCore() {
             connectors={connectors}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
             onConnectNew={handleStartConnectChat}
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
@@ -3666,10 +3689,23 @@ function AppCore() {
         )}
 
         {/* Settings modal — rendered over whatever route is active */}
-        <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" labelledBy="settings-modal-title">
+        <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
           <ModalHeader id="settings-modal-title" title="Settings" onClose={() => setSettingsOpen(false)} />
-          <ModalBody padding="0">
-            <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} agentLabel={agentLabel} />
+          <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <SettingsView
+              settings={settings} setSetting={setSetting} onSave={saveSettings}
+              theme={theme} onThemeChange={setTheme}
+              skin={skin} onSkinChange={setSkin}
+              customTheme={customTheme} onCustomThemeChange={setCustomTheme}
+              agentLabel={agentLabel}
+              section={settingsSection}
+              onSectionChange={setSettingsSection}
+              serverOnline={serverOnline}
+              serverBusy={serverBusy}
+              serverBusyKind={serverBusyKind}
+              onStartServer={handleServerStart}
+              onStopServer={handleServerStop}
+            />
           </ModalBody>
         </Modal>
 
@@ -3761,46 +3797,8 @@ function AppCore() {
         serverBusy={serverBusy}
         serverBusyKind={serverBusyKind}
         agentLabel={agentLabel}
-        onStart={async () => {
-          // Atomic start — used by both the offline "Start" button
-          // and the composed "Restart" path inside the modal.
-          setServerBusyKind('starting');
-          setServerBusy(true);
-          try {
-            if (serverOnline) {
-              setServerBusyKind('stopping');
-              setServerBusy(true);
-              try {
-                const stopRes = await host.serverStop?.();
-                if (stopRes) setServerOnline(!!stopRes.running);
-              } catch {}
-            }
-            setServerBusyKind('starting');
-            setServerBusy(true);
-            const result = await host.serverStart?.();
-            if (result) {
-              setServerOnline(!!result.running);
-              if (result.running) setTimeout(refreshData, 400);
-            }
-          } catch {} finally {
-            setServerBusy(false);
-          }
-        }}
-        onStop={async () => {
-          // Atomic stop — used by the new modal "Stop" button so the
-          // user can shut down the backend without it immediately
-          // re-starting. The previous single-button onRetry forced
-          // stop+start every click and made it impossible to leave
-          // the backend off.
-          setServerBusyKind('stopping');
-          setServerBusy(true);
-          try {
-            const result = await host.serverStop();
-            if (result) setServerOnline(!!result.running);
-          } catch {} finally {
-            setServerBusy(false);
-          }
-        }}
+        onStart={handleServerStart}
+        onStop={handleServerStop}
       />
       )}
 

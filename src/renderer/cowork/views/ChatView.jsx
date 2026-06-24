@@ -1513,7 +1513,7 @@ export default function ChatView({
                           >Add credits</button>
                           <button
                             type="button"
-                            onClick={() => onOpenSettings?.()}
+                            onClick={() => onOpenSettings?.('agent')}
                             style={{
                               border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
                               borderRadius: 8, padding: '8px 14px',
@@ -1587,7 +1587,7 @@ export default function ChatView({
                         >Subscribe with MindsHub</button>
                         <button
                           type="button"
-                          onClick={() => onOpenSettings?.()}
+                          onClick={() => onOpenSettings?.('agent')}
                           style={{
                             border: `1px solid ${T.line}`,
                             background: 'transparent',
