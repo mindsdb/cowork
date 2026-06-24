@@ -279,10 +279,27 @@ export default function ContextFileModal({
     if (isImage) {
       const url = rawUrl || (projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '');
       if (url) {
-        setPreviewUrl(url);
         setMode('image');
-        setLoading(false);
-        return () => { cancelled = true; };
+        setLoading(true);
+        // The CSP blocks a direct <img src="http://127.0.0.1/…"> (img-src is
+        // 'self' data: blob:), but connect-src allows the loopback origin —
+        // so fetch the bytes and render them as a blob: URL.
+        let objectUrl = '';
+        fetch(url)
+          .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+          .then((blob) => {
+            if (cancelled) return;
+            objectUrl = URL.createObjectURL(blob);
+            setPreviewUrl(objectUrl);
+            setLoading(false);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setMode('binary');
+            setBinaryDetail('Could not load image.');
+            setLoading(false);
+          });
+        return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
       }
     }
 
