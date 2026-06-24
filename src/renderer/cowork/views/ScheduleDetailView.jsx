@@ -100,10 +100,21 @@ function CrumbSep() {
 
 // ── pills ──
 
+// `health` (ok | failing | paused) from the server is authoritative; fall
+// back to the enabled/lastError heuristic for pre-health schedules.
 function StatusPill({ task }) {
   const cfg = (() => {
-    if (!task.enabled)  return { label: 'Paused',          fg: 'var(--ink-3)' };
-    if (task.lastError) return { label: 'Last run failed', fg: 'var(--danger)' };
+    const health = task.health;
+    if (!task.enabled) {
+      const autoPaused = health === 'paused' && task.lastError;
+      return {
+        label: autoPaused ? 'Auto-paused' : 'Paused',
+        fg: autoPaused ? 'var(--danger)' : 'var(--ink-3)',
+      };
+    }
+    if (health === 'failing' || (health == null && task.lastError)) {
+      return { label: 'Failing', fg: 'var(--accent)' };
+    }
     return { label: 'Active', fg: 'var(--success)' };
   })();
   return (
@@ -121,6 +132,70 @@ function StatusPill({ task }) {
       }} />
       {cfg.label}
     </span>
+  );
+}
+
+
+// Human-readable labels for the missed-run policy enum the server stores.
+const MISSED_POLICY_LABEL = {
+  skip:     'Skip missed runs',
+  run_once: 'Run once on resume',
+  catch_up: 'Catch up all missed',
+};
+
+function missedPolicyLabel(policy) {
+  return MISSED_POLICY_LABEL[policy] || 'Skip missed runs';
+}
+
+
+// ── health banner ──
+//
+// Surfaces *why* a task is failing or auto-paused, with the consecutive-
+// failure count and the last error message. Only shown when there's
+// something worth saying — a healthy task stays quiet.
+
+function HealthBanner({ task }) {
+  const health = task.health;
+  const fails = Number(task.consecutiveFailures) || 0;
+  const autoPaused = !task.enabled && health === 'paused' && task.lastError;
+  const failing = task.enabled && (health === 'failing' || (health == null && task.lastError));
+  if (!autoPaused && !failing) return null;
+
+  const accent = autoPaused ? 'var(--danger)' : 'var(--accent)';
+  const headline = autoPaused
+    ? `Auto-paused after ${fails} consecutive failure${fails === 1 ? '' : 's'}`
+    : (fails > 1 ? `Last ${fails} runs failed` : 'Last run failed');
+  const hint = autoPaused
+    ? 'Resolve the issue below, then re-enable to resume on the normal cadence.'
+    : 'Still retrying on the normal cadence.';
+
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: 8,
+      background: `color-mix(in srgb, ${accent} 8%, transparent)`,
+      border: `1px solid color-mix(in srgb, ${accent} 28%, transparent)`,
+      display: 'flex', flexDirection: 'column', gap: 6,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600, color: accent,
+      }}>
+        <span aria-hidden style={{
+          display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+          background: 'currentColor', flexShrink: 0,
+        }} />
+        {headline}
+      </div>
+      {task.lastError && (
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-2)',
+          background: 'var(--surface-2)', border: '1px solid var(--line)',
+          borderRadius: 6, padding: '7px 9px',
+          maxHeight: 96, overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}>{task.lastError}</div>
+      )}
+      <div style={{ fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-3)' }}>{hint}</div>
+    </div>
   );
 }
 
@@ -481,6 +556,9 @@ export default function ScheduleDetailView({
             </div>
           </div>
 
+          {/* Health banner — only renders when failing / auto-paused. */}
+          <HealthBanner task={task} />
+
           {/* Prompt preview. */}
           {task.prompt && (
             <div style={{
@@ -517,6 +595,11 @@ export default function ScheduleDetailView({
               label="Project"
               value={task.projectPath ? lastSegment(task.projectPath) : '—'}
               hint={task.projectPath || ''}
+            />
+            <SummaryStat
+              label="If missed"
+              value={missedPolicyLabel(task.missedRunPolicy)}
+              hint="What happens to runs that come due while the app is closed."
             />
             <SummaryStat
               label="Model"

@@ -102,6 +102,7 @@ export default function ScheduleTaskModal({
         cadence:     task.cadence || 'once',
         nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
         projectPath: taskProjectPath || defaultProjectPath || '',
+        missedRunPolicy: task.missedRunPolicy || 'skip',
       });
     } else {
       setForm(emptyForm({ defaultProjectPath }));
@@ -130,6 +131,9 @@ export default function ScheduleTaskModal({
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  new Date(form.nextRunAt).toISOString(),
       project:      projectMatch?.name || null,
+      // What to do with occurrences that came due while the desktop app
+      // was closed. The server keys this as snake_case.
+      missed_run_policy: form.missedRunPolicy,
       // Scheduled tasks always use the user's configured default
       // model — exposing the picker here let people accidentally
       // pin a stale model id that's no longer valid.
@@ -209,18 +213,34 @@ export default function ScheduleTaskModal({
             </Field>
           </div>
 
-          <Field label="Project">
-            <select
-              value={form.projectPath}
-              onChange={(e) => update('projectPath', e.target.value)}
-              style={fieldSelect}
-            >
-              <option value="">No project</option>
-              {projects.map((p) => (
-                <option key={p.path} value={p.path}>{p.name}</option>
-              ))}
-            </select>
-          </Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Project">
+              <select
+                value={form.projectPath}
+                onChange={(e) => update('projectPath', e.target.value)}
+                style={fieldSelect}
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.path} value={p.path}>{p.name}</option>
+                ))}
+              </select>
+            </Field>
+            {/* What to do with occurrences that came due while the desktop
+                app was closed. A one-off whose time passed can still run
+                under "Run once" or "Catch up". */}
+            <Field label="If a run is missed">
+              <select
+                value={form.missedRunPolicy}
+                onChange={(e) => update('missedRunPolicy', e.target.value)}
+                style={fieldSelect}
+              >
+                <option value="skip">Skip to next</option>
+                <option value="run_once">Run once on resume</option>
+                <option value="catch_up">Catch up all missed</option>
+              </select>
+            </Field>
+          </div>
 
           <Field label="Prompt">
             <textarea
@@ -301,6 +321,7 @@ function emptyForm({ defaultProjectPath }) {
     cadence: 'once',
     nextRunAt: defaultNextRun(),
     projectPath: defaultProjectPath || '',
+    missedRunPolicy: 'skip',
   };
 }
 

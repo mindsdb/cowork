@@ -49,9 +49,21 @@ function absoluteTime(iso) {
   });
 }
 
+// Roll the server's `health` (ok | failing | paused) together with the
+// enabled flag into a single status pill. `health` is authoritative when
+// present; we fall back to the older enabled/lastError heuristic for
+// schedules created before the health field existed.
 function StatusPill({ task }) {
-  if (!task.enabled)  return <Pill color="muted" label="Paused" />;
-  if (task.lastError) return <Pill color="danger" label="Last failed" />;
+  const health = task.health;
+  if (!task.enabled) {
+    // A task auto-paused after repeated failures still carries a lastError;
+    // call that out so "Paused" isn't mistaken for a deliberate pause.
+    const autoPaused = health === 'paused' && task.lastError;
+    return <Pill color={autoPaused ? 'danger' : 'muted'} label={autoPaused ? 'Auto-paused' : 'Paused'} />;
+  }
+  if (health === 'failing' || (health == null && task.lastError)) {
+    return <Pill color="amber" label="Failing" />;
+  }
   return <Pill color="success" label="Active" />;
 }
 
