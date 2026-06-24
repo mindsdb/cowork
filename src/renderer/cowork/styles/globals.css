@@ -452,6 +452,34 @@ a[href],
   to { transform: rotate(360deg); }
 }
 
+/* ─── Streaming text fade-in ─────────────────────────────────────────────── */
+/* Word-level: individual words fade in as they stream. React reconciliation
+   preserves existing <span> elements (keyed by index) so only newly
+   appended words play the animation. */
+@keyframes stream-word-fade {
+  from { opacity: 0; filter: blur(2px); }
+  to   { opacity: 1; filter: blur(0px); }
+}
+.stream-word {
+  animation: stream-word-fade 0.32s ease-out both;
+}
+
+/* Block-level: non-text elements (code blocks, tables, blockquotes, hrs)
+   slide + fade in when they first appear during streaming. Text-bearing
+   elements (p, h1-h3, li) use word-level animation instead. */
+@keyframes stream-block-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.markdown-content.is-streaming > *:not(p):not(h1):not(h2):not(h3):not(ul):not(ol) {
+  animation: stream-block-fade 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-word { animation: none !important; }
+  .markdown-content.is-streaming > * { animation: none !important; }
+}
+
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 .typing-dot { animation: typing 1.2s ease-in-out infinite; }
 

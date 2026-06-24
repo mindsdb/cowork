@@ -5,7 +5,7 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -322,7 +322,29 @@ export function MarkdownContent({
     return () => root.removeEventListener('click', onClick);
   }, []);
 
-  const components = useMemo(() => ({
+  const streaming = !complete;
+
+  const components = useMemo(() => {
+    // During streaming, wrap text children in individual <span> elements
+    // so each new word fades in via CSS animation. Defined inside useMemo
+    // so the component overrides stay referentially stable across renders —
+    // if the function reference changed every render, react-markdown would
+    // unmount/remount every element, re-triggering all animations.
+    // React's reconciliation preserves existing spans (by index key) and
+    // only creates new DOM nodes for newly appended words.
+    const _animate = !complete ? (children) => {
+      let wordKey = 0;
+      return Children.map(children, (child) => {
+        if (typeof child !== 'string') return child;
+        const words = child.match(/\s*\S+\s*/g);
+        if (!words) return child;
+        return words.map((word) => (
+          <span key={wordKey++} className="stream-word">{word}</span>
+        ));
+      });
+    } : null;
+
+    return {
     code: (props) => (
       <MarkdownCode
         id={id}
@@ -341,14 +363,25 @@ export function MarkdownContent({
     th: TableHead,
     td: TableCell,
     // Inline body styling — keep paragraphs compact and consistent
-    // with the rest of the chat column.
-    p: (props) => <p className={sz.p} {...props} />,
-    h1: (props) => <h1 className={sz.h1} {...props} />,
-    h2: (props) => <h2 className={sz.h2} {...props} />,
-    h3: (props) => <h3 className={sz.h3} {...props} />,
+    // with the rest of the chat column. During streaming, words are
+    // individually wrapped so each new word fades in.
+    p: ({ children, node, ...rest }) => (
+      <p className={sz.p} {...rest}>{_animate ? _animate(children) : children}</p>
+    ),
+    h1: ({ children, node, ...rest }) => (
+      <h1 className={sz.h1} {...rest}>{_animate ? _animate(children) : children}</h1>
+    ),
+    h2: ({ children, node, ...rest }) => (
+      <h2 className={sz.h2} {...rest}>{_animate ? _animate(children) : children}</h2>
+    ),
+    h3: ({ children, node, ...rest }) => (
+      <h3 className={sz.h3} {...rest}>{_animate ? _animate(children) : children}</h3>
+    ),
     ul: (props) => <ul className={sz.ul} {...props} />,
     ol: (props) => <ol className={sz.ol} {...props} />,
-    li: (props) => <li className="text-ink-2 marker:text-ink-4" {...props} />,
+    li: ({ children, node, ...rest }) => (
+      <li className="text-ink-2 marker:text-ink-4" {...rest}>{_animate ? _animate(children) : children}</li>
+    ),
     a: (props) => {
       const href = props.href || '';
       // Engram metadata chip — see _renderEngramComments above. We
@@ -435,11 +468,12 @@ export function MarkdownContent({
 
       return <pre className="my-2 overflow-x-auto" {...props} />;
     },
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [id, complete, conversationId, dense, variant, enableForms, enableCharts]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts]);
 
   return (
-    <div ref={rootRef} className={sz.root}>
+    <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
