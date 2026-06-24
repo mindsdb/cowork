@@ -40,7 +40,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
-         fetchSavedConnection, deleteDatasource,
+         fetchSavedConnection, deleteDatasource, recordProjectSelection,
          fetchInFlightStatus, tailInFlight, fetchInFlightList, handoffArtifactToTask } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
@@ -1394,6 +1394,26 @@ function AppCore() {
       }
     })();
   }, [projects, selectedProject, serverOnline]);
+
+  // Record the user's current project on the server (last_selected_at) whenever
+  // it changes. The client's selectedProject is canonical for interactive use —
+  // every task carries its project explicitly — so this is purely to keep the
+  // server's single fallback current for HEADLESS / SCHEDULED runs that don't
+  // name a project. Best-effort: a failed PATCH never blocks the UI, and we
+  // only record real selections (not the cleared/null grid-view state).
+  const lastRecordedProjectRef = useRef(null);
+  useEffect(() => {
+    if (!serverOnline) return;
+    const id = selectedProject?.id;
+    if (!id) return;
+    if (lastRecordedProjectRef.current === id) return;
+    lastRecordedProjectRef.current = id;
+    recordProjectSelection(selectedProject).catch(() => {
+      // Non-fatal: the interactive path doesn't depend on this. Allow a
+      // retry on the next selection by clearing the de-dupe marker.
+      if (lastRecordedProjectRef.current === id) lastRecordedProjectRef.current = null;
+    });
+  }, [selectedProject, serverOnline]);
 
   // Seed server state from main's truth on first paint so the toggle
   // button reflects reality (running OR starting) even before /health

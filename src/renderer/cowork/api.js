@@ -515,9 +515,9 @@ export function streamMessage(sessionId, text, opts = {}) {
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
-// Server returns a flat array of project objects (with id, name, path,
-// is_active, plus organization metadata: pinned, sort_order, archived,
-// last_selected_at). Older servers wrapped in { projects: [...] } — handle both.
+// Server returns a flat array of project objects (with id, name, path, plus
+// organization metadata: pinned, sort_order, archived, last_selected_at).
+// Older servers wrapped in { projects: [...] } — handle both.
 export async function fetchProjects({ includeArchived = true } = {}) {
   try {
     // Pass include_archived explicitly. The server defaults to true; older
@@ -537,7 +537,7 @@ export async function createProject(name) {
 
 // Update a project's organization metadata (pinned / sort_order / archived).
 // Routes through the same PATCH /projects/{id} endpoint that handles rename and
-// active-state. Accepts a project object (with id) or an id string. Fields left
+// selection. Accepts a project object (with id) or an id string. Fields left
 // undefined are not sent, so the server only mutates what's provided.
 export async function updateProjectMetadata(projectOrId, { pinned, sortOrder, archived } = {}) {
   const id = typeof projectOrId === 'string' ? projectOrId : projectOrId?.id;
@@ -1027,24 +1027,39 @@ export async function deleteProjectFile(projectName, path) {
 }
 
 
+// Resolve the server's fallback "active" project — the one the user most
+// recently selected (last_selected_at). The client's own selectedProject is
+// canonical for interactive use; this is only for surfaces with no project in
+// hand (e.g. the working-folder rail before a task is open). Returns the
+// project name, or null when nothing has been selected yet.
 export async function fetchActiveProject() {
   try {
     const projects = await fetchProjects();
-    const active = projects.find((p) => p.is_active || p.isActive);
-    return active?.name || null;
+    const selected = projects
+      .filter((p) => p.last_selected_at || p.lastSelectedAt)
+      .sort((a, b) =>
+        String(b.last_selected_at || b.lastSelectedAt).localeCompare(
+          String(a.last_selected_at || a.lastSelectedAt),
+        ),
+      )[0];
+    return selected?.name || null;
   } catch {
     return null;
   }
 }
 
-// Set the active project via PATCH /projects/{id} with { is_active: true }.
+// Record that the user selected a project, via PATCH /projects/{id} with
+// { lastSelected: true }. This updates last_selected_at — the single
+// server-side signal for the "active" project, used only as the
+// headless/scheduled-run fallback. Interactive task routing relies on the
+// explicit project sent on each turn, not on this; recording is best-effort.
 // Accepts a project object (with id) or a name string.
-export async function setActiveProject(projectOrName) {
+export async function recordProjectSelection(projectOrName) {
   const id = projectOrName?.id;
   if (id) {
     return req(`/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_active: true }),
+      body: JSON.stringify({ lastSelected: true }),
     });
   }
   // Fallback: lookup by name
@@ -1054,7 +1069,7 @@ export async function setActiveProject(projectOrName) {
   if (!match?.id) throw new Error(`Project "${name}" not found`);
   return req(`/projects/${encodeURIComponent(match.id)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ is_active: true }),
+    body: JSON.stringify({ lastSelected: true }),
   });
 }
 
