@@ -16,3 +16,5 @@ __pycache__/
 CertificateSigningRequest.certSigningRequest
 developerID_application.cer
 --apple-id
+# Build-time generated channel config (written by scripts/gen-build-channel.mjs)
+src/main/build-channel.gen.ts
