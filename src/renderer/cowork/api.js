@@ -887,6 +887,12 @@ export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
+// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
+// writes the result into the same artifact folder and returns its path.
+export async function exportArtifact(path, format) {
+  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
+}
+
 // Absolute "private" URL for an artifact's primary file: the
 // origin-relative `/v1/artifacts/serve/...` endpoint made absolute
 // against the current API origin. In the web build this is the

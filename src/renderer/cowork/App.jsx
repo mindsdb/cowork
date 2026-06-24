@@ -842,6 +842,20 @@ function AppCore() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshInFlightSet]);
 
+  // Stray-drop guard: a file dropped OUTSIDE a registered dropzone would
+  // otherwise make the (Electron) window navigate to / open the file.
+  // Swallowing the default dragover+drop at the window level kills that
+  // navigation; React's per-zone onDrop still fires (it stops propagation).
+  useEffect(() => {
+    const prevent = (e) => { e.preventDefault(); };
+    window.addEventListener('dragover', prevent, false);
+    window.addEventListener('drop', prevent, false);
+    return () => {
+      window.removeEventListener('dragover', prevent, false);
+      window.removeEventListener('drop', prevent, false);
+    };
+  }, []);
+
   // Heartbeat poll — every 5 seconds, but ONLY while the set is
   // non-empty. When nothing's in flight, an idle tab makes zero
   // background HTTP calls. When something IS in flight, the poll

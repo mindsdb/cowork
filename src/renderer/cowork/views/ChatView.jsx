@@ -24,7 +24,7 @@ import { ArtifactViewer } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact } from '../api';
+import { revealArtifact, exportArtifact } from '../api';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -489,10 +489,20 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
 
 function ArtifactCard({ artifact, onOpen }) {
   const [status, setStatus] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
+  // Close the export menu on any outside click. Clicks on the menu/toggle
+  // stopPropagation, so this only fires for clicks elsewhere.
+  useEffect(() => {
+    if (!exportOpen) return undefined;
+    const close = () => setExportOpen(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -518,6 +528,34 @@ function ArtifactCard({ artifact, onOpen }) {
   const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
     || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
   const canPreviewInline = isHtml || isInlineText;
+  // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
+  const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
+  const canExport = canAct
+    && (_EXPORTABLE_EXTS.includes(lcExt) || _EXPORTABLE_EXTS.some((e) => lcPath.endsWith(e)));
+  const handleExport = async (fmt) => {
+    setExportOpen(false);
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
+    setExporting(true);
+    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
+    try {
+      const res = await exportArtifact(path, fmt);
+      showStatus('ok', `Exported ${res.filename}`);
+      // Desktop: open the result in the OS. Web: it's saved in the artifact
+      // folder and shows in the Artifacts panel.
+      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
+    }
+    catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[artifact-export] failed', e);
+      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
+    }
+    finally {
+      setExporting(false);
+    }
+  };
   const handleOpen = async () => {
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
@@ -659,6 +697,43 @@ function ArtifactCard({ artifact, onOpen }) {
           }}>
             {status.text}
           </span>
+        )}
+        {canExport && (
+          <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+            <SmallBtn
+              disabled={!canAct || exporting}
+              onClick={() => setExportOpen((v) => !v)}
+              title="Export to another format"
+            >
+              Export ▾
+            </SmallBtn>
+            {exportOpen && (
+              <div
+                role="menu"
+                style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
+                  background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  display: 'flex', flexDirection: 'column', gap: 2,
+                }}
+              >
+                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
+                    style={{
+                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
+                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >{label}</button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {!host.isWeb && (
           <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
@@ -1404,6 +1479,52 @@ export default function ChatView({
                 );
               }
               if (m.role === 'error') {
+                // Out-of-credits: render an actionable card (Add credits /
+                // Bring your own keys) instead of a plain error. Reused for
+                // ANY turn that fails with the `token_limit` code — the
+                // first message on a fresh account that's spent its free
+                // tokens, or a mid-session exhaustion.
+                if (m.code === 'token_limit') {
+                  return (
+                    <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                      <div style={{
+                        border: `1px solid ${T.line}`,
+                        background: T.surface,
+                        borderRadius: 12,
+                        padding: '16px 18px',
+                        maxWidth: 520,
+                        display: 'flex', flexDirection: 'column', gap: 10,
+                      }}>
+                        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+                          You're out of credits
+                        </div>
+                        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+                          {m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                          <button
+                            type="button"
+                            onClick={() => host.openExternal(MINDS_BILLING_URL)}
+                            style={{
+                              border: 'none', background: T.ink, color: 'var(--bg)',
+                              borderRadius: 8, padding: '8px 14px',
+                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            }}
+                          >Add credits</button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenSettings?.()}
+                            style={{
+                              border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+                              borderRadius: 8, padding: '8px 14px',
+                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            }}
+                          >Bring your own keys</button>
+                        </div>
+                      </div>
+                    </AnswerTurn>
+                  );
+                }
                 return (
                   <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <div style={{

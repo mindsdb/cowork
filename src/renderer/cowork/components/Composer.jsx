@@ -7,6 +7,7 @@ import {
   parseOpenerLine,
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
+import { useFileDrop, FileDropOverlay } from '../lib/useFileDrop';
 
 function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
@@ -397,6 +398,12 @@ export default function Composer({
     }
   }
 
+  // Drag OS files onto the composer to attach them to the message.
+  const { isDragging: filesDragging, dropHandlers: fileDropHandlers } = useFileDrop({
+    onFiles: handleAttachFiles,
+    disabled: disabled || busy || !onAttachFiles,
+  });
+
   function pairKey(engine, name) {
     return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
   }
@@ -446,7 +453,8 @@ export default function Composer({
   }, []);
 
   return (
-    <div ref={wrapRef} style={{ width: '100%', maxWidth: 'var(--composer-max-width, 640px)', position: 'relative' }}>
+    <div ref={wrapRef} {...fileDropHandlers} style={{ width: '100%', maxWidth: 'var(--composer-max-width, 640px)', position: 'relative' }}>
+      <FileDropOverlay active={filesDragging} label="Drop files to attach" />
       <input
         ref={fileRef}
         type="file"
