@@ -4,6 +4,7 @@ import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
@@ -148,20 +149,6 @@ function Segmented({ value, onChange, options, style, groupLabel }) {
   );
 }
 
-function Toggle({ value, onChange, title, ariaLabel }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={value}
-      aria-label={ariaLabel}
-      title={title}
-      className={`toggle${value ? ' on' : ''}`}
-      onClick={() => onChange(!value)}
-    >
-      <span className="toggle-thumb" />
-    </button>
-  );
-}
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
@@ -1661,27 +1648,27 @@ export default function SettingsView({
           />
         </Section>
         <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
-          <Toggle
-            value={settings.episodicMemory ?? true}
-            onChange={(v) => setSetting('episodicMemory', v)}
+          <Switch
+            checked={settings.episodicMemory ?? true}
+            onCheckedChange={(v) => setSetting('episodicMemory', v)}
             title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
-            ariaLabel="Episodic memory"
+            aria-label="Episodic memory"
           />
         </Section>
         <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
-          <Toggle
-            value={settings.proactiveDashboards ?? false}
-            onChange={(v) => setSetting('proactiveDashboards', v)}
+          <Switch
+            checked={settings.proactiveDashboards ?? false}
+            onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
             title="Auto-generate HTML reports from scratchpad output."
-            ariaLabel="Proactive dashboards"
+            aria-label="Proactive dashboards"
           />
         </Section>
         <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
-          <Toggle
-            value={settings.actFirst ?? true}
-            onChange={(v) => setSetting('actFirst', v)}
+          <Switch
+            checked={settings.actFirst ?? true}
+            onCheckedChange={(v) => setSetting('actFirst', v)}
             title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
-            ariaLabel="Act first, ask later"
+            aria-label="Act first, ask later"
           />
         </Section>
       </CollapsibleGroup>
@@ -1782,11 +1769,11 @@ export default function SettingsView({
             />
           </Section>
           <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
-            <Toggle
-              value={customTheme.scanlines}
-              onChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+            <Switch
+              checked={customTheme.scanlines}
+              onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
               title="Toggle the CRT scanline overlay."
-              ariaLabel="Scanline overlay"
+              aria-label="Scanline overlay"
             />
           </Section>
         </>
@@ -1801,19 +1788,19 @@ export default function SettingsView({
       </Section>
       <div className="settings-hide-mobile">
         <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
-          <Toggle
-            value={settings.showDots}
-            onChange={(v) => setSetting('showDots', v)}
+          <Switch
+            checked={settings.showDots}
+            onCheckedChange={(v) => setSetting('showDots', v)}
             title="Toggle the animated grid background."
-            ariaLabel="Animated background"
+            aria-label="Animated background"
           />
         </Section>
         <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-          <Toggle
-            value={settings.showCounters !== false}
-            onChange={(v) => setSetting('showCounters', v)}
+          <Switch
+            checked={settings.showCounters !== false}
+            onCheckedChange={(v) => setSetting('showCounters', v)}
             title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
-            ariaLabel="Nav-panel counters"
+            aria-label="Nav-panel counters"
           />
         </Section>
       </div>
