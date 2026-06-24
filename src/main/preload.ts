@@ -67,6 +67,10 @@ contextBridge.exposeInMainWorld('antontron', {
   getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
 
+  // Keychain preference (Electron-only, mac-relevant)
+  getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),
+  setKeychainPref: (enabled: boolean) => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_SET, enabled),
+
   // Settings / Onboarding
   readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),
   saveSettings: (content: string) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, content),

@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import {
-  revealArtifact, publishArtifact, unpublishArtifact,
+  revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
@@ -29,10 +29,10 @@ import {
   FilterRow,
   SearchInput,
   SortPill,
-  ViewToggle,
   HoverMenu,
   useCollectionShortcut,
 } from '../components/collection';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -218,6 +218,32 @@ function PublishedPill({ mode, protected: isProtected = false }) {
           ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
           : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
       Published
+    </span>
+  );
+}
+
+// Shown next to PublishedPill when a published artifact's files changed after
+// publish (server-computed `artifact.modified`). Amber, so it reads as
+// "published version is stale" — distinct from the cyan Published pill.
+function ModifiedPill() {
+  return (
+    <span
+      title="Edited since publish — use Update to push the latest version"
+      style={{
+        background: 'color-mix(in srgb, #f5a623 16%, transparent)',
+        border: '1px solid color-mix(in srgb, #f5a623 40%, transparent)',
+        color: '#f5a623',
+        padding: '1px 6px', borderRadius: 999,
+        fontSize: 9, fontWeight: 700,
+        lineHeight: 1.2,
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        flexShrink: 0,
+        letterSpacing: '0.05em', textTransform: 'uppercase',
+        fontFamily: FONT_BODY,
+      }}
+    >
+      <span style={{ width: 4, height: 4, borderRadius: 99, background: '#f5a623' }} />
+      Modified
     </span>
   );
 }
@@ -601,35 +627,16 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
-      {/* Top-right cluster: status pill (left) + hover-revealed
-          kebab (right). The kebab is always rightmost so the user's
-          eye finds it in the same place regardless of pill state.
-          We toggle `visibility` (not display/opacity-without-space)
-          so the pill keeps its X position whether the kebab is
-          showing or not. */}
+      {/* Top-right kebab — hover-revealed, absolute so it sits in the
+          same corner regardless of state. Status pills live inline in
+          the title row (below) so flexbox reserves their width and they
+          can never overlap the title; the title-row reserves a fixed
+          right padding just for this kebab. */}
       <div style={{
         position: 'absolute', top: 12, right: 12,
         display: 'flex', alignItems: 'center', gap: 6,
         zIndex: 2,
       }}>
-        {(published || artifact.live) && (
-          <span style={{ pointerEvents: 'none' }}>
-            {published ? <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} /> : (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                fontFamily: FONT_BODY, fontSize: 11,
-                color: 'var(--accent)', fontWeight: 500,
-                border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-                padding: '3px 8px', borderRadius: 999,
-              }}>
-                <span className="pulse-dot" style={{
-                  width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
-                }} />
-                Live
-              </span>
-            )}
-          </span>
-        )}
         <button
           ref={kebabRef}
           type="button"
@@ -673,7 +680,6 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           jump on hover. */}
       <div style={{
         display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0,
-        paddingRight: (published || artifact.live) ? 110 : 40,
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 7, minWidth: 0,
@@ -689,10 +695,37 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             {Icon(14)}
           </span>
           <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
+            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600, lineHeight: 1,
             color: 'var(--ink)', minWidth: 0, flex: 1,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{artifact.title}</span>
+          {/* Status pills — inline so flexbox reserves their width and
+              the (flex:1, truncating) title can never overlap them.
+              `pointerEvents: none` keeps clicks falling through to the
+              card's open handler. */}
+          {(published || artifact.live) && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0, lineHeight: 1, pointerEvents: 'none' }}>
+              {published ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
+                  {artifact.modified && <ModifiedPill />}
+                </span>
+              ) : (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontFamily: FONT_BODY, fontSize: 11,
+                  color: 'var(--accent)', fontWeight: 500,
+                  border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
+                  padding: '3px 8px', borderRadius: 999,
+                }}>
+                  <span className="pulse-dot" style={{
+                    width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
+                  }} />
+                  Live
+                </span>
+              )}
+            </span>
+          )}
         </div>
         {/* Description — agent-supplied at create_artifact time. Two-
             line clamp keeps the card height stable across artifacts
@@ -892,7 +925,7 @@ function StatusDot({ artifact }) {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onDelete, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   const items = [
@@ -919,6 +952,12 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       label: 'Copy URL',
       icon: Ico.copy(13),
       onClick: onCopyUrl,
+    },
+    published && artifact.modified && {
+      id: 'update',
+      label: 'Update',
+      icon: Ico.refresh(13),
+      onClick: onUpdate,
     },
     isPublishableArtifact(artifact) && !published && {
       id: 'publish',
@@ -953,7 +992,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   );
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onOpenProject }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onDelete: doDelete, onOpenProject }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
@@ -1009,7 +1048,10 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             the column width fixed so rows align cleanly. */}
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {published ? (
-            <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
+            <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, minWidth: 0 }}>
+              <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
+              {artifact.modified && <ModifiedPill />}
+            </span>
           ) : artifact.live ? (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -1135,6 +1177,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
+        onUpdate={() => doUpdate?.(artifact)}
         onDelete={doDelete ? () => doDelete(artifact) : undefined}
         isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
@@ -1371,6 +1414,22 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     }
   };
 
+  const handleUpdate = async (artifact) => {
+    if (!artifact?.path || busyPaths.has(artifact.path)) return;
+    setBusy(artifact.path, true);
+    try {
+      const r = await updateArtifact(publishTargetPath(artifact));
+      // Server refreshed last_md5 + published_mtime, so the artifact is no
+      // longer "modified". Reflect it locally without a refetch.
+      updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
+      setToast({ kind: 'ok', message: 'Updated published version.' });
+    } catch (e) {
+      setToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+    } finally {
+      setBusy(artifact.path, false);
+    }
+  };
+
   const handleTrash = async (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
@@ -1481,7 +1540,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ViewToggle value={view} onChange={setView} /></span>}
+          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
           counts={
             <ArtifactsCounts
               search={search}
@@ -1529,6 +1588,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onOpenViewer={setViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
+              onUpdate={handleUpdate}
               onDelete={handleTrash}
               onOpenProject={onOpenProject}
             />
@@ -1570,6 +1630,14 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const busyA = busyPaths.has(a.path);
           const items = [];
           if (published) {
+            if (a.modified) {
+              items.push({
+                id: 'update',
+                label: busyA ? 'Working…' : 'Update',
+                icon: Ico.refresh(13),
+                onClick: () => handleUpdate(a),
+              });
+            }
             items.push({
               id: 'unpublish',
               label: busyA ? 'Working…' : 'Unpublish',
