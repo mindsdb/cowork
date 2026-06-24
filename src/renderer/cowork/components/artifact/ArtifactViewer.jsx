@@ -676,7 +676,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
           {Ico.doc(18)}
         </span>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <div id="artifact-viewer-title" style={{
               fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15,
               color: 'var(--ink)',
