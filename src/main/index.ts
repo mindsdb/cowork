@@ -14,13 +14,14 @@ import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisi
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
 
 function getAntonEnvPath(): string {
-  return path.join(os.homedir(), '.anton', '.env');
+  return coworkEnvPath();
 }
 
 function getCoworkStatePath(): string {
-  return path.join(os.homedir(), '.anton', 'cowork', 'state.json');
+  return coworkStatePath();
 }
 
 function readEnvFile(): Record<string, string> {
@@ -660,11 +661,11 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
-    const antonDir = path.join(os.homedir(), '.anton');
-    if (!fs.existsSync(antonDir)) {
-      fs.mkdirSync(antonDir, { recursive: true });
+    const homeDir = coworkHome();
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
     }
-    const envPath = path.join(antonDir, '.env');
+    const envPath = coworkEnvPath();
     const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
     const merged = new Map<string, string>();
     for (const line of existing.split('\n')) {
@@ -774,6 +775,10 @@ function setupIPC() {
 }
 
 app.whenReady().then(() => {
+  // Consolidate the legacy ~/.anton global config into ~/.cowork before
+  // anything reads the env or starts the server. Best-effort + idempotent.
+  migrateLegacyHome();
+
   const isMac = process.platform === 'darwin';
 
   if (isMac) {
