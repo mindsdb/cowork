@@ -8,7 +8,7 @@
 //
 // Design source: docs/design-handoff/Anton Projects (D1).
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import { WorkingFolderBox, ContextBox, ScheduledBox } from '../components/rail';
@@ -28,8 +28,11 @@ import {
   createProject as createProjectApi,
   renameProject,
   revealProjectInFinder,
-  fetchMemory, fetchArtifacts,
+  fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
+import { Menu } from '../components/ui';
+import { useRevealOnHover } from '../hooks/useRevealOnHover';
+import { host } from '../../platform/host';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -177,124 +180,54 @@ function ProjectsCounts({ search, total, filtered, pinnedCount }) {
 // ─── Project menu (kebab popover) ────────────────────────────────────────
 
 function ProjectMenu({ open, anchorRect, project, pinned, isReserved, undeletable = false, hideOpen = false, hidePin = false, onClose, onOpen, onRename, onTogglePin, onReveal, onDelete }) {
-  const ref = useRef(null);
-  // Measured layout for the flip-up-when-no-room-below trick — same
-  // pattern TaskMenu uses for the sidebar/header kebabs. Without this,
-  // a card on the bottom row of the grid opens its menu past the
-  // viewport and the destructive items get clipped.
-  const [layout, setLayout] = useState({ top: 0, measured: false, flipped: false });
-
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('mousedown', onClick);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onClick);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open, onClose]);
-
-  // Reset measurement on every (re)open so a hidden->visible cycle
-  // re-runs the layout pass. We need the popover to mount once
-  // (visibility:hidden) so we can read its real offsetHeight.
-  useLayoutEffect(() => {
-    if (open) setLayout((l) => ({ ...l, measured: false }));
-  }, [open, anchorRect, isReserved, pinned]);
-
-  const VISIBLE_GAP = 4;
-  const VIEWPORT_PAD = 8;
-
-  useLayoutEffect(() => {
-    if (!open || !ref.current || !anchorRect) return;
-    const h = ref.current.offsetHeight;
-    const VH = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const spaceBelow = VH - VIEWPORT_PAD - anchorRect.bottom;
-    const flip = h + VISIBLE_GAP > spaceBelow;
-    const next = flip
-      ? Math.max(VIEWPORT_PAD, anchorRect.top - VISIBLE_GAP - h)
-      : anchorRect.bottom + VISIBLE_GAP;
-    setLayout({ top: next, measured: true, flipped: flip });
-  }, [open, anchorRect, isReserved, pinned]);
-
-  if (!open || !anchorRect) return null;
-
-  const MENU_W = 200;
-  const left = Math.min(window.innerWidth - MENU_W - 8, Math.max(8, anchorRect.right - MENU_W));
-
-  const Item = ({ label, icon, onClick, danger, disabled, title }) => (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (disabled) return;
-        onClick?.();
-        onClose?.();
-      }}
-      style={{
-        width: 'calc(100% - 8px)', margin: '0 4px',
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 10px', borderRadius: 5,
-        background: 'transparent', border: 0,
-        fontFamily: FONT_BODY, fontSize: 13,
-        color: danger ? 'var(--danger)' : 'var(--ink-2)',
-        textAlign: 'left',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-      }}
-      onMouseOver={(e) => {
-        if (disabled) return;
-        e.currentTarget.style.background = danger
-          ? 'color-mix(in srgb, var(--danger) 12%, transparent)'
-          : 'var(--surface-2)';
-      }}
-      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      {icon && <span style={{ display: 'inline-flex', flexShrink: 0, color: danger ? 'var(--danger)' : 'var(--ink-3)' }}>{icon}</span>}
-      <span style={{ flex: 1 }}>{label}</span>
-    </button>
-  );
+  const items = [
+    !hideOpen && {
+      id: 'open',
+      label: 'Open',
+      icon: Ico.folder(13),
+      onClick: () => onOpen?.(project),
+    },
+    !hidePin && {
+      id: 'pin',
+      label: pinned ? 'Unpin' : 'Pin',
+      icon: Ico.pin(13),
+      onClick: () => onTogglePin?.(project, !pinned),
+    },
+    !isReserved && {
+      id: 'rename',
+      label: 'Rename…',
+      icon: Ico.edit(13),
+      onClick: () => onRename?.(project),
+    },
+    onReveal && {
+      id: 'reveal',
+      label: 'Reveal in Finder',
+      icon: Ico.externalLink(13),
+      onClick: () => onReveal?.(project),
+    },
+    { divider: true },
+    {
+      id: 'delete',
+      label: 'Delete…',
+      icon: Ico.trash(13),
+      danger: true,
+      disabled: undeletable,
+      title: undeletable ? "The General project can't be deleted — it's the orphan-fallback workspace." : undefined,
+      onClick: () => onDelete?.(project),
+    },
+  ].filter(Boolean);
 
   return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed', top: layout.top, left, zIndex: 60,
-        width: MENU_W,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 8,
-        boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
-        padding: '4px 0',
-        WebkitAppRegion: 'no-drag',
-        // Stay invisible while the layout effect is measuring height
-        // — prevents a one-frame flash at the wrong y when flipping.
-        visibility: layout.measured ? 'visible' : 'hidden',
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {!hideOpen && <Item label="Open" icon={Ico.folder(13)} onClick={() => onOpen?.(project)} />}
-      {!hidePin && (
-        <Item
-          label={pinned ? 'Unpin' : 'Pin'}
-          icon={Ico.pin(13)}
-          onClick={() => onTogglePin?.(project, !pinned)}
-        />
-      )}
-      {!isReserved && <Item label="Rename…" icon={Ico.edit(13)} onClick={() => onRename?.(project)} />}
-      <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
-      <Item
-        label="Delete…"
-        icon={Ico.trash(13)}
-        danger
-        disabled={undeletable}
-        title={undeletable ? "The General project can't be deleted — it's the orphan-fallback workspace." : undefined}
-        onClick={() => onDelete?.(project)}
-      />
-    </div>
+    <Menu
+      open={open}
+      anchor={anchorRect}
+      onClose={onClose}
+      align="end"
+      width={200}
+      zIndex={60}
+      ariaLabel="Project actions"
+      items={items}
+    />
   );
 }
 
@@ -517,12 +450,11 @@ function useRowStats(project) {
   const [mem, setMem] = useState(0);
   const [art, setArt] = useState(0);
   useEffect(() => {
-    if (!project?.path) return;
+    if (!project?.id && !project?.path) return;
     let cancelled = false;
-    fetchMemory(project.path).then((data) => {
+    fetchMemory(project).then((data) => {
       if (cancelled) return;
-      const total = (data?.sections || []).reduce((n, s) => n + (s.files?.length || 0), 0);
-      setMem(total);
+      setMem(countNonEmptyMemory(data));
     }).catch(() => {});
     fetchArtifacts().then((data) => {
       if (cancelled || !Array.isArray(data)) return;
@@ -530,12 +462,12 @@ function useRowStats(project) {
       setArt(data.filter((a) => a.path?.startsWith(prefix)).length);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [project?.path]);
+  }, [project?.id, project?.path]);
   return { mem, art };
 }
 
 function ListRow({
-  project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen,
+  project, tasks, scheduled, pinned, onOpen, onTogglePin, onMenuOpen, isMenuOpen = false,
   // Inline-edit plumbing — wired from the parent the same way the
   // grid `ProjectCard` is, so the kebab → Rename action works in both
   // views. Earlier the list row showed no input when editing, which
@@ -544,7 +476,7 @@ function ListRow({
   onRenameSubmit,
   onRenameCancel,
 }) {
-  const [hover, setHover] = useState(false);
+  const { hovered, revealed, hoverProps } = useRevealOnHover(isMenuOpen);
   const triggerRef = useRef(null);
   const inputRef = useRef(null);
   const { mem, art } = useRowStats(project);
@@ -579,13 +511,12 @@ function ListRow({
       role={editing ? undefined : 'button'}
       tabIndex={editing ? undefined : 0}
       onClick={editing ? undefined : () => onOpen?.(project)}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
       onKeyDown={(e) => { if (!editing && e.key === 'Enter') onOpen?.(project); }}
       style={{
         display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
         padding: '12px 14px',
-        background: hover ? 'var(--surface)' : 'transparent',
+        background: hovered ? 'var(--surface)' : 'transparent',
         borderBottom: '1px solid var(--line)',
         cursor: editing ? 'default' : 'pointer',
         transition: 'background .12s ease',
@@ -672,7 +603,7 @@ function ListRow({
             width: 26, height: 26, borderRadius: 6,
             background: 'transparent', border: 0,
             color: 'var(--ink-3)',
-            opacity: hover || isReserved ? 1 : 0,
+            opacity: revealed || isReserved ? 1 : 0,
             display: isReserved ? 'none' : 'inline-grid',
             placeItems: 'center',
             cursor: 'pointer',
@@ -773,7 +704,7 @@ function CrumbSep() {
 
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
-  onDeleteTask, onShowAll,
+  onDeleteTask, onMoveTaskToProject, onShowAll,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -803,12 +734,12 @@ function ProjectDetail({
     .filter((s) => (s.project || s.projectName) === project.name);
 
   const [railOpen, setRailOpen] = useState(true);
-  const [titleHover, setTitleHover] = useState(false);
   const [menuRect, setMenuRect] = useState(null);
   const kebabRef = useRef(null);
   const renameInputRef = useRef(null);
   const isReserved = project.name === 'general' || project.name === 'default';
-  const showKebab = !isReserved && (titleHover || !!menuRect);
+  const { revealed, hoverProps } = useRevealOnHover(!!menuRect);
+  const showKebab = !isReserved && revealed;
 
   // Focus + select-all the inline input on mount of the editing state.
   useEffect(() => {
@@ -890,8 +821,7 @@ function ProjectDetail({
             <Crumb label="Projects" onClick={onShowAll} title="All projects" />
             <CrumbSep />
             <div
-              onMouseEnter={() => setTitleHover(true)}
-              onMouseLeave={() => setTitleHover(false)}
+              {...hoverProps}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 minWidth: 0, flex: '1 1 0',
@@ -980,7 +910,7 @@ function ProjectDetail({
           hidePin
           onClose={() => setMenuRect(null)}
           onRename={() => onRenameStart?.(project)}
-          onReveal={() => onReveal?.(project)}
+          onReveal={host.isWeb ? undefined : () => onReveal?.(project)}
           onDelete={() => onDelete?.(project)}
         />
 
@@ -1022,6 +952,7 @@ function ProjectDetail({
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
+              onMoveTaskToProject={onMoveTaskToProject}
             />
           </div>
         </div>
@@ -1088,6 +1019,7 @@ export default function ProjectsView({
   onSendInProject,
   onSelectTask,
   onDeleteTask,
+  onMoveTaskToProject,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -1235,6 +1167,7 @@ export default function ProjectsView({
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
+        onMoveTaskToProject={onMoveTaskToProject}
         attachments={attachments}
         connectors={connectors}
         onAttachFiles={onAttachFiles}
@@ -1330,6 +1263,7 @@ export default function ProjectsView({
               onOpen={handleOpen}
               onTogglePin={(proj, next) => togglePin(proj.name, next)}
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+              isMenuOpen={menuFor?.project?.name === p.name}
               onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
               onRenameCancel={handleRenameCancel}
             />
@@ -1381,6 +1315,7 @@ export default function ProjectsView({
               onOpen={handleOpen}
               onTogglePin={(proj, next) => togglePin(proj.name, next)}
               onMenuOpen={(proj, rect) => setMenuFor({ project: proj, rect })}
+              isMenuOpen={menuFor?.project?.name === p.name}
               editing={editingProjectName === p.name}
               onRenameSubmit={(next) => handleRenameSubmit(p.name, next)}
               onRenameCancel={handleRenameCancel}
@@ -1399,7 +1334,7 @@ export default function ProjectsView({
         onOpen={handleOpen}
         onRename={handleRenameStart}
         onTogglePin={(proj, next) => togglePin(proj.name, next)}
-        onReveal={handleReveal}
+        onReveal={host.isWeb ? undefined : handleReveal}
         onDelete={(proj) => onDeleteProject?.(proj)}
       />
 

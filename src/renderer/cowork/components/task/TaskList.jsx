@@ -76,6 +76,7 @@ export function TaskList({
   onPinTask,
   onUnpinTask,
   onDeleteTask,
+  onMoveTaskToProject,
 }) {
   const rows = useMemo(
     () => groupTasks(tasks, schedules, scheduleRunsIndex),
@@ -129,6 +130,7 @@ export function TaskList({
                 onPin={isGroup ? undefined : onPinTask}
                 onUnpin={isGroup ? undefined : onUnpinTask}
                 onDelete={isGroup ? undefined : onDeleteTask}
+                onMoveToProject={isGroup ? undefined : onMoveTaskToProject}
               />
             );
           })}

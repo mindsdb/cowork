@@ -125,7 +125,7 @@ The app ships as both an Electron desktop app and a headless web SPA (served by 
 2. Terms consent → Setup wizard (installer) → Onboarding (provider selection)
 3. IntroSequence → CoworkApp (main chat UI)
 
-The installer ([src/main/installer.ts](src/main/installer.ts)) handles first-run: Xcode CLT, git, uv, cowork-server, verify, start. Minimum server version: `0.1.4`.
+The installer ([src/main/installer.ts](src/main/installer.ts)) handles first-run: Xcode CLT, git, uv, cowork-server, verify, start. Minimum server version: `0.1.10`.
 
 ### OTA updates
 
@@ -140,6 +140,12 @@ Settings live in `~/.anton/.env` (API keys, consent flags, provider choice). Ser
 ### Theming
 
 Dark/light via `body[data-theme="dark"]` selector. Colors defined as CSS variables (`--bg`, `--surface`, `--ink`, `--accent`, …) and aliased in [tailwind.config.js](tailwind.config.js). Tailwind's preflight is disabled to preserve existing inline styles.
+
+### Renderer component layering
+
+- **`components/ui/`** — pure primitives (buttons, inputs, cards, menu/modal primitives, pills, spinners). No product-specific logic.
+- **`components/`** — reusable app-level compositions (`OverflowMenu`, `ConfirmModal`, `TaskMenu`) that combine primitives with Cowork icons/labels/patterns.
+- **Feature folders** (`rail/`, `task/`, `project/`, etc.) — domain-specific components. Prefer shared `Menu` or `OverflowMenu` over hand-rolling portals/outside-click/keyboard handling.
 
 ## Misc
 

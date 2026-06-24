@@ -1,187 +1,12 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL } from '../../lib/mindsUrls';
+import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron } from '../../platform/host';
-
-// Provider preset → underlying canonical fields. The Settings UI uses
-// hyphenated provider types; the API layer translates those to the
-// server's enum values when saving.
-const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-const MINDS_API_PATH_SUFFIX = '/v1';
-
-const PROVIDER_PRESETS = [
-  { value: 'anthropic',         label: 'Anthropic' },
-  { value: 'openai',            label: 'OpenAI' },
-  { value: 'gemini',            label: 'Gemini' },
-  { value: 'openai-compatible', label: 'Compatible' },
-  { value: 'minds-cloud',       label: 'Minds Cloud' },
-];
-
-// Default models we drop into the planning/coding fields when the user
-// switches providers. Empty strings mean "user must fill in" (true for
-// generic openai-compatible and minds-cloud where the model name depends
-// on the deployment).
-const PROVIDER_DEFAULTS = {
-  anthropic:           { planning: 'claude-sonnet-4-6', coding: 'claude-haiku-4-5-20251001' },
-  openai:              { planning: 'gpt-5.5',           coding: 'gpt-5.5-mini' },
-  gemini:              { planning: 'gemini-2.5-pro',    coding: 'gemini-2.5-flash' },
-  'openai-compatible': { planning: '',                  coding: '' },
-  // No minds-cloud entry: MindsHub model names are owned by the backend.
-  // applyProviderPreset reads settings.recommendedPair['minds-cloud']
-  // (from /settings/recommended-models) so nothing is maintained here.
-};
-
-// Known model lists per provider — surfaced as quick-pick chips below
-// the text input so users can swap models without typing.
-const PROVIDER_MODELS = {
-  anthropic:     ['claude-sonnet-4-6', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5-20251001'],
-  openai:        ['gpt-5.5', 'gpt-5.5-mini', 'o3', 'o4-mini'],
-  gemini:        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
-  // Minds Cloud quick-picks come from the server's `recommendedModels`
-  // bucket (the full `latest:*` alias list) — rendered by the dedicated
-  // minds-cloud panel further down rather than this generic chip row.
-};
-
-// Per-provider credential relevance map. Drives the Required / Optional /
-// Unused badges and the dimming of unrelated rows in the Credentials card.
-const CREDENTIAL_RELEVANCE = {
-  // Minds-related credentials live in their own card but are only on
-  // the auth path for the `minds-cloud` preset. Marking them `unused`
-  // for everything else dims the rows (and drops the Optional badge) so
-  // attention sticks to the credentials the active provider actually
-  // touches. The fields stay editable for users who keep a Minds key
-  // around for routing/publishing.
-  anthropic: {
-    anthropicApiKey: 'required',
-    openaiApiKey:    'unused',
-    openaiBaseUrl:   'unused',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
-  },
-  openai: {
-    anthropicApiKey: 'unused',
-    openaiApiKey:    'required',
-    openaiBaseUrl:   'unused',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
-  },
-  gemini: {
-    anthropicApiKey: 'unused',
-    openaiApiKey:    'required',
-    openaiBaseUrl:   'auto',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
-  },
-  'openai-compatible': {
-    anthropicApiKey: 'unused',
-    openaiApiKey:    'required',
-    openaiBaseUrl:   'required',
-    mindsApiKey:     'unused',
-    mindsUrl:        'unused',
-    mindsMindName:   'unused',
-    mindsDatasource: 'unused',
-  },
-  'minds-cloud': {
-    // OpenAI key + base URL are populated as a side-effect of the Minds
-    // preset (the backend reuses the openai-compatible pipeline). They
-    // aren't something the user maintains — keep them dimmed so attention
-    // stays on the Minds credentials.
-    anthropicApiKey: 'unused',
-    openaiApiKey:    'unused',
-    openaiBaseUrl:   'unused',
-    mindsApiKey:     'required',
-    mindsUrl:        'required',
-    mindsMindName:   'optional',
-    mindsDatasource: 'optional',
-  },
-};
-
-function inferProviderPreset(s) {
-  const provider = s.planningProvider || 'anthropic';
-  const baseUrl = (s.openaiBaseUrl || '').trim();
-  if (provider === 'anthropic') return 'anthropic';
-  if (provider === 'openai') return 'openai';
-  // The backend DB stores "minds_cloud" for MindsHub; treat it the same
-  // as detecting openai-compatible + a mindshub base URL.
-  if (provider === 'minds_cloud' || provider === 'minds-cloud') return 'minds-cloud';
-  if (provider === 'openai-compatible' || provider === 'openai_compatible') {
-    if (baseUrl.startsWith('https://generativelanguage.googleapis.com/')) return 'gemini';
-    if (baseUrl.includes('mdb.ai') || baseUrl.includes('mindshub.ai') || baseUrl.endsWith(MINDS_API_PATH_SUFFIX) && (s.mindsApiKey || s.mindsUrl)) {
-      return 'minds-cloud';
-    }
-    return 'openai-compatible';
-  }
-  return 'anthropic';
-}
-
-// True iff the credentials needed for `preset` are present in `s`.
-function isProviderConfigured(preset, s) {
-  const trim = (v) => (typeof v === 'string' ? v.trim() : '');
-  if (preset === 'anthropic') return Boolean(trim(s.anthropicApiKey));
-  if (preset === 'openai') return Boolean(trim(s.openaiApiKey));
-  if (preset === 'gemini') return Boolean(trim(s.openaiApiKey));
-  if (preset === 'openai-compatible') return Boolean(trim(s.openaiApiKey) && trim(s.openaiBaseUrl));
-  if (preset === 'minds-cloud') return Boolean(trim(s.mindsApiKey) && trim(s.mindsUrl));
-  return false;
-}
-
-function applyProviderPreset(preset, settings, setSetting) {
-  // 1. Wire the canonical provider field(s) to the underlying backend
-  //    representation. Gemini + Minds Cloud are openai-compatible presets.
-  if (preset === 'anthropic') {
-    setSetting('planningProvider', 'anthropic');
-    setSetting('codingProvider', 'anthropic');
-  } else if (preset === 'openai') {
-    setSetting('planningProvider', 'openai');
-    setSetting('codingProvider', 'openai');
-    setSetting('openaiBaseUrl', '');
-  } else if (preset === 'gemini') {
-    setSetting('planningProvider', 'openai-compatible');
-    setSetting('codingProvider', 'openai-compatible');
-    setSetting('openaiBaseUrl', GEMINI_BASE_URL);
-  } else if (preset === 'openai-compatible') {
-    setSetting('planningProvider', 'openai-compatible');
-    setSetting('codingProvider', 'openai-compatible');
-    if ((settings.openaiBaseUrl || '').startsWith('https://generativelanguage.googleapis.com/')) {
-      setSetting('openaiBaseUrl', '');
-    }
-  } else if (preset === 'minds-cloud') {
-    setSetting('planningProvider', 'minds-cloud');
-    setSetting('codingProvider', 'minds-cloud');
-    const mindsUrl = (settings.mindsUrl || 'https://api.mindshub.ai').replace(/\/+$/, '');
-    setSetting('mindsUrl', mindsUrl);
-    setSetting('openaiBaseUrl', `${mindsUrl}${MINDS_API_PATH_SUFFIX}`);
-    // The server's build_llm_client reads minds_api_key (not
-    // openai_api_key) for the minds_cloud provider, so we no longer
-    // copy the Minds key into the OpenAI slot — that would clobber
-    // any real OpenAI key the user configures separately.
-  }
-
-  // 2. Reset planning + coding models to the new provider's defaults so
-  //    the user never lands on a "claude-sonnet-4-6 on OpenAI" mismatch.
-  //    The backend's recommendedPair (from /settings/recommended-models) is
-  //    authoritative — used for minds-cloud, whose names live only on the
-  //    server. PROVIDER_DEFAULTS is the fallback for the direct BYOK
-  //    providers; for those without a default we clear the fields.
-  const recPair = settings.recommendedPair?.[preset];
-  const defaults = recPair
-    ? { planning: recPair[0] || '', coding: recPair[1] || '' }
-    : (PROVIDER_DEFAULTS[preset] || { planning: '', coding: '' });
-  setSetting('planningModel', defaults.planning);
-  setSetting('defaultModel', defaults.planning);
-  setSetting('codingModel', defaults.coding);
-}
 
 function Section({ title, subtitle, children }) {
   return (
@@ -702,8 +527,24 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
   const [uiVersion, setUiVersion] = useState('');
   const [serverVersion, setServerVersion] = useState('');
+  // Whether the refresh token lives in the macOS keychain (vs a file under
+  // ~/.cowork). Mac-only; read from main on mount.
+  const [keychainPref, setKeychainPref] = useState(false);
   useEffect(() => { getUIVersion().then(setUiVersion).catch(() => {}); }, []);
   useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => {}); }, []);
+  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => {}); }, []);
+
+  // Optimistically flip the keychain toggle, then persist via main. Revert
+  // the local state if the migration/write fails.
+  const handleKeychainToggle = async (next) => {
+    setKeychainPref(next);
+    try {
+      const ok = await host.setKeychainPref(next);
+      if (!ok) setKeychainPref(!next);
+    } catch {
+      setKeychainPref(!next);
+    }
+  };
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
@@ -935,6 +776,31 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     return result;
   };
 
+  // In default model mode the role provider/model fields are never edited
+  // directly — only the custom-mode controls call setRoleDriver — so the
+  // persisted planning/coding roles stay pinned to whatever they were last
+  // set to (e.g. minds-cloud from sign-in) and the server keeps demanding
+  // that provider's key. Mirror the dropped server-side _resolve_role: pin
+  // both roles to the resolved default-mode provider and its recommended
+  // pair so a configured key actually drives the agent. Only repoints a role
+  // whose provider differs, so unrelated saves don't rewrite the model.
+  const withResolvedRoles = (s) => {
+    if (modelMode === 'custom') return s;
+    const type = defaultModeProviderType;
+    const pair = recommendedPair[type] || [];
+    const next = { ...s };
+    if ((providerValueToType(s.planningProvider) || 'minds-cloud') !== type) {
+      next.planningProvider = type;
+      next.planningModel = pair[0] || '';
+      next.defaultModel = pair[0] || '';
+    }
+    if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
+      next.codingProvider = type;
+      next.codingModel = pair[1] || '';
+    }
+    return next;
+  };
+
   const save = async () => {
     // Save runs a validation pass so the banner reflects whether the
     // new config is usable. Provider tests only fire when the LLM
@@ -945,7 +811,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     setTesting(true);
     setTested(false);
     try {
-      await onSave(settings);
+      await onSave(withResolvedRoles(settings));
       const tasks = [validateSettings()];
       if (shouldTestLlm) tasks.push(runProviderTests());
       const [result] = await Promise.all(tasks);
@@ -1310,12 +1176,12 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                         <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
                           Don't have an account?{' '}
                           <a
-                            href="https://mindshub.ai"
+                            href={MINDS_REGISTER_URL}
                             target="_blank"
                             rel="noreferrer noopener"
-                            title="Open mindshub.ai sign-up in your browser."
+                            title="Open the MindsHub sign-up page in your browser."
                             style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                          >Sign up at mindshub.ai →</a>
+                          >Sign up →</a>
                         </div>
                       )}
                       {status === 'fail' && friendlyError && (
@@ -1449,6 +1315,10 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   const curModel = roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
+                  const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
+                  const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
+                  const providerUnusable = providerUnconfigured || providerFailed;
+                  const providerWarnId = `agent-model-${role}-provider`;
 
                   // Reasoning effort — a per-role setting shown beside the model
                   // dropdown, only for models that advertise effort levels
@@ -1492,8 +1362,10 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                               setModelInputMode((m) => ({ ...m, [role]: false }));
                               writeOverride({ providerType: t, model: newModel });
                             }}
+                            aria-invalid={providerUnusable || undefined}
+                            aria-describedby={providerUnusable ? providerWarnId : undefined}
                             title={`Choose which provider powers the ${role} role.`}
-                            style={{ width: '100%' }}
+                            style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
                           >
                             {providers.map((p) => (
                               <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
@@ -1533,7 +1405,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                                   style={{ width: '100%' }}
                                 >
-                                  {modelList.map((m) => <option key={m} value={m}>{m}</option>)}
+                                  {modelList.map((m) => <option key={m} value={m}>{modelLabel(m)}</option>)}
                                   {allowOther && <option value="__custom__">Other…</option>}
                                 </select>
                                 {inputMode && allowOther && (
@@ -1569,8 +1441,14 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                             </select>
                           </label>
                         )}
-                        {!provider && curType && (
-                          <div style={{ fontSize: 11.5, color: '#E07060' }}>This provider is not configured. Add it under Providers above.</div>
+                        {providerUnusable && (
+                          <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
+                            {providerUnconfigured
+                              ? (provider
+                                  ? `${providerDisplayName(provider)} isn't configured — add its credentials under Providers above, or pick another provider.`
+                                  : 'This provider is not configured. Add it under Providers above.')
+                              : `${providerDisplayName(provider)} failed its last test — check it under Providers above, or pick another provider.`}
+                          </div>
                         )}
                       </div>
                     </Section>
@@ -1714,202 +1592,6 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
               </div>
             </CollapsibleGroup>
 
-            {/* Legacy single-provider Models + Credentials block kept
-                here for the transition window while old installs migrate. */}
-            {false && (() => {
-              const activePreset = inferProviderPreset(settings);
-              const activeLabel = PROVIDER_PRESETS.find((p) => p.value === activePreset)?.label || activePreset;
-              const configuredForActive = isProviderConfigured(activePreset, settings);
-              const relevance = CREDENTIAL_RELEVANCE[activePreset] || {};
-              const quickPicks = PROVIDER_MODELS[activePreset] || [];
-              const has = (field) => Boolean(String(settings[field] ?? '').trim());
-              const ChipRow = ({ items, current, onPick }) => items.length === 0 ? null : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                  {items.map((m) => (
-                    <button key={m} type="button" onClick={() => onPick(m)}
-                      style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, padding: '3px 8px', borderRadius: 999, background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)', cursor: 'pointer' }}>{m}</button>
-                  ))}
-                </div>
-              );
-              return (
-                <>
-                  <CollapsibleGroup title="Models (legacy)">
-                    {/* Provider row + active-state summary. The segmented
-                        control spans the full row so the 5 presets fit on
-                        one line instead of wrapping. */}
-                    <div style={{ padding: '16px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>Provider</div>
-                          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4, maxWidth: 480 }}>
-                            Drives planning + coding. Gemini and Minds Cloud are presets that map to OpenAI-compatible with the right base URL.
-                          </div>
-                        </div>
-                        {/* Active-provider status pill */}
-                        <div
-                          title={configuredForActive ? 'Credentials present for this provider' : 'This provider is missing credentials'}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 8,
-                            padding: '4px 10px', borderRadius: 999,
-                            fontSize: 12, fontWeight: 600,
-                            color: configuredForActive ? 'var(--sage-500, #5d9287)' : '#E07060',
-                            background: configuredForActive ? 'rgba(93,146,135,0.10)' : 'rgba(211,80,80,0.08)',
-                            border: `1px solid ${configuredForActive ? 'rgba(93,146,135,0.30)' : 'rgba(211,80,80,0.30)'}`,
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          <span style={{
-                            width: 7, height: 7, borderRadius: 999,
-                            background: configuredForActive ? 'var(--sage-500, #5d9287)' : '#E07060',
-                            boxShadow: configuredForActive ? '0 0 6px rgba(93,146,135,0.6)' : 'none',
-                          }} />
-                          {activeLabel}
-                          <span style={{ fontWeight: 500, color: 'inherit', opacity: 0.85 }}>
-                            · {configuredForActive ? 'Active' : 'Needs key'}
-                          </span>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 12 }}>
-                        <Segmented
-                          value={activePreset}
-                          onChange={(v) => applyProviderPreset(v, settings, setSetting)}
-                          options={PROVIDER_PRESETS}
-                          style={{ display: 'inline-flex', flexWrap: 'wrap' }}
-                        />
-                      </div>
-                    </div>
-
-                    <Section title="Planning model" subtitle="Used for reasoning, orchestration, and responses.">
-                      <TextInput
-                        value={settings.planningModel ?? settings.defaultModel ?? ''}
-                        onChange={(v) => {
-                          setSetting('planningModel', v);
-                          setSetting('defaultModel', v);
-                        }}
-                        placeholder={recommendedPair[activePreset]?.[0] || PROVIDER_DEFAULTS[activePreset]?.planning || 'model-id'}
-                      />
-                      <ChipRow
-                        items={quickPicks}
-                        current={settings.planningModel ?? settings.defaultModel ?? ''}
-                        onPick={(m) => { setSetting('planningModel', m); setSetting('defaultModel', m); }}
-                      />
-                    </Section>
-                    <Section title="Coding model" subtitle="Used for scratchpad code generation.">
-                      <TextInput
-                        value={settings.codingModel ?? ''}
-                        onChange={(v) => setSetting('codingModel', v)}
-                        placeholder={recommendedPair[activePreset]?.[1] || PROVIDER_DEFAULTS[activePreset]?.coding || 'model-id'}
-                      />
-                      <ChipRow
-                        items={quickPicks}
-                        current={settings.codingModel ?? ''}
-                        onPick={(m) => setSetting('codingModel', m)}
-                      />
-                    </Section>
-                  </CollapsibleGroup>
-
-                  <CollapsibleGroup title="Credentials">
-                    <CredentialRow
-                      title="Anthropic API key"
-                      subtitle="Required for Claude models."
-                      status={relevance.anthropicApiKey}
-                      hasValue={has('anthropicApiKey')}
-                    >
-                      <ApiKeyInput
-                        value={settings.anthropicApiKey ?? ''}
-                        onChange={(v) => setSetting('anthropicApiKey', v)}
-                        placeholder="sk-ant-••••••••"
-                        revealName="anthropic"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="OpenAI API key"
-                      subtitle="Required for GPT, Gemini, and OpenAI-compatible providers."
-                      status={relevance.openaiApiKey}
-                      hasValue={has('openaiApiKey')}
-                    >
-                      <ApiKeyInput
-                        value={settings.openaiApiKey ?? ''}
-                        onChange={(v) => setSetting('openaiApiKey', v)}
-                        placeholder="sk-••••••••"
-                        revealName="openai"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="OpenAI-compatible base URL"
-                      subtitle={relevance.openaiBaseUrl === 'auto'
-                        ? 'Auto-managed by the selected preset.'
-                        : 'Required for OpenAI-compatible providers unless Minds credentials derive it.'}
-                      status={relevance.openaiBaseUrl}
-                      hasValue={has('openaiBaseUrl')}
-                    >
-                      <ClearableTextInput
-                        value={settings.openaiBaseUrl ?? ''}
-                        onChange={(v) => setSetting('openaiBaseUrl', v)}
-                        placeholder="https://example.com/v1"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds API key"
-                      subtitle="Used for Minds-backed routing and publishing."
-                      status={relevance.mindsApiKey}
-                      hasValue={has('mindsApiKey')}
-                    >
-                      <ApiKeyInput
-                        value={settings.mindsApiKey ?? ''}
-                        onChange={(v) => setSetting('mindsApiKey', v)}
-                        placeholder="mdb_••••••••"
-                        revealName="minds"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds URL"
-                      subtitle="Base URL for Minds-backed MindsHub Cowork features."
-                      status={relevance.mindsUrl}
-                      hasValue={has('mindsUrl')}
-                    >
-                      <ClearableTextInput
-                        value={settings.mindsUrl ?? 'https://api.mindshub.ai'}
-                        onChange={(v) => setSetting('mindsUrl', v)}
-                        placeholder="https://api.mindshub.ai"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds mind"
-                      subtitle="Optional Mind name to use for data-aware tasks."
-                      status={relevance.mindsMindName}
-                      hasValue={has('mindsMindName')}
-                    >
-                      <ClearableTextInput
-                        value={settings.mindsMindName ?? ''}
-                        onChange={(v) => setSetting('mindsMindName', v)}
-                        placeholder="sales_data_expert"
-                      />
-                    </CredentialRow>
-                    <CredentialRow
-                      title="Minds datasource"
-                      subtitle="Optional datasource name and engine."
-                      status={relevance.mindsDatasource}
-                      hasValue={has('mindsDatasource') || has('mindsDatasourceEngine')}
-                    >
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                        <ClearableTextInput
-                          value={settings.mindsDatasource ?? ''}
-                          onChange={(v) => setSetting('mindsDatasource', v)}
-                          placeholder="datasource name"
-                        />
-                        <ClearableTextInput
-                          value={settings.mindsDatasourceEngine ?? ''}
-                          onChange={(v) => setSetting('mindsDatasourceEngine', v)}
-                          placeholder="postgres"
-                        />
-                      </div>
-                    </CredentialRow>
-                  </CollapsibleGroup>
-                </>
-              );
-            })()}
-
             <CollapsibleGroup title="Memory" defaultOpen={false}>
               <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
                 <Segmented
@@ -1937,6 +1619,14 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                   onChange={(v) => setSetting('proactiveDashboards', v)}
                   title="Auto-generate HTML reports from scratchpad output."
                   ariaLabel="Proactive dashboards"
+                />
+              </Section>
+              <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
+                <Toggle
+                  value={settings.actFirst ?? true}
+                  onChange={(v) => setSetting('actFirst', v)}
+                  title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
+                  ariaLabel="Act first, ask later"
                 />
               </Section>
             </CollapsibleGroup>
@@ -1998,6 +1688,19 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             {host.isElectron && (
               <CollapsibleGroup title="Account" defaultOpen={false}>
+                {host.isMac() && (
+                  <Section
+                    title="Store login in macOS keychain"
+                    subtitle="More secure, but macOS may ask for keychain access on launch. When off, your login is saved in ~/.cowork instead."
+                  >
+                    <Toggle
+                      value={keychainPref}
+                      onChange={handleKeychainToggle}
+                      title="Store your login refresh token in the macOS keychain instead of a file under ~/.cowork."
+                      ariaLabel="Store login in macOS keychain"
+                    />
+                  </Section>
+                )}
                 <Section
                   title="Sign out"
                   subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch."

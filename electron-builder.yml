@@ -1,4 +1,4 @@
-appId: com.anton.app
+appId: com.mindshub.cowork
 productName: MindsHub Cowork
 copyright: Copyright © 2024
 
@@ -60,5 +60,8 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
+  - from: server-credentials.json
+    to: server-credentials.json
 
+afterPack: scripts/strip-xattrs.js
 afterSign: scripts/notarize.js

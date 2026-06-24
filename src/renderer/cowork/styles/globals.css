@@ -2487,10 +2487,11 @@ body:not([data-theme="dark"]) .btn-primary {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 11px;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink);
   padding-right: 4px;
+  white-space: nowrap;
 }
 body[data-theme="dark"] .anton-sidebar__wordmark {
   text-shadow: 0 0 14px var(--accent-glow);

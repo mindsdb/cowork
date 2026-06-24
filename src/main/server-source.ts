@@ -18,12 +18,13 @@
 // dependency, so ANTON_REF is ignored there.
 
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
+// export const COWORK_SERVER_BRANCH = 'main';
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
 export const ANTON_PACKAGE = 'anton-agent';
 
 // Minimum version for the PyPI channel (a floor; newer compatible
 // releases are picked up automatically). Keep in sync with installer.ts.
-export const COWORK_SERVER_MIN_VERSION = '0.1.5';
+export const COWORK_SERVER_MIN_VERSION = '0.1.10';
 
 export type Channel = 'git' | 'pypi';
 
@@ -32,6 +33,7 @@ export function getChannel(): Channel {
 }
 
 export function getCoworkRef(): string {
+  // return COWORK_SERVER_BRANCH;
   return (process.env.COWORK_SERVER_REF || 'main').trim() || 'main';
 }
 

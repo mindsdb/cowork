@@ -30,25 +30,51 @@ body[data-skin="8bit"] {
   --r-xl: 6px;
 }
 
+/* The window-level bg is hardcoded blue by .gf-theme-dark (styles.css);
+   override it so the 8-bit skin uses its own neutral dark-grey --bg. */
+body[data-skin="8bit"].gf-theme-light { background: var(--bg); }
+
+/* 8-bit DARK background = the sign-in screen's arcade backdrop (.arc-root):
+   the deep arcade base + a soft top glow, applied app-wide via the body so
+   every transparent surface above it — main app AND welcome/loading — shares
+   the identical color and CRT effect (the scanline + vignette is in ::after). */
+body[data-skin="8bit"].gf-theme-dark {
+  background-color: #0a0a13;
+  background-image: radial-gradient(120% 90% at 50% 10%, rgba(61, 79, 134, 0.10), transparent 60%);
+}
+/* Drop the animated gravity-field dots — the arcade backdrop replaces them. */
+body[data-skin="8bit"][data-theme="dark"] .gravity-field { display: none; }
+
+/* Soften the cyan halo at the top of the sidebar (globals.css default is
+   rgba(34,211,238,0.10)) — fainter + tighter falloff for the 8-bit look. */
+body[data-skin="8bit"][data-theme="dark"] .app-sidebar::before {
+  background: radial-gradient(circle at 50% -10%, rgba(61,214,245,0.035), transparent 38%);
+}
+
 /* CRT scanlines over everything. Static (no flicker — this is a work
    tool), pointer-transparent, and suppressed while an arcade onboarding
-   screen is mounted (those draw their own scanlines via .arc-root). */
-body[data-skin="8bit"]:not(:has(.arc-root))::after {
+   screen is mounted (those draw their own scanlines via .arc-root). The
+   welcome/loading screen is excluded from that suppression so it carries
+   the same dot-grid + scanline backdrop as the main app. */
+body[data-skin="8bit"]:not(:has(.arc-root:not(.welcome-loading)))::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 100000;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.07) 0px,
-    rgba(0, 0, 0, 0.07) 1px,
-    transparent 1px,
-    transparent 3px
-  );
+  /* Matches .arc-root::after — the sign-in screen's scanlines + vignette. */
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.16) 0px,
+      rgba(0, 0, 0, 0.16) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    radial-gradient(115% 115% at 50% 50%, transparent 62%, rgba(0, 0, 0, 0.42) 100%);
 }
 
-body[data-skin="8bit"][data-theme="light"]:not(:has(.arc-root))::after {
+body[data-skin="8bit"][data-theme="light"]:not(:has(.arc-root:not(.welcome-loading)))::after {
   background: repeating-linear-gradient(
     to bottom,
     rgba(35, 43, 30, 0.05) 0px,
@@ -113,11 +139,11 @@ body[data-skin="8bit"][data-theme="dark"] {
   --line-2:       #2e2e44;
   --sidebar-bg:   #10101a;
 
-  --ink:          #ecedf6;
-  --ink-2:        #c6c9de;
-  --ink-3:        #8d8fa8;
-  --ink-4:        #6b6e8c;
-  --ink-5:        #44465e;
+  --ink:          #d4d5d9;
+  --ink-2:        #b3b4ba;
+  --ink-3:        #84858d;
+  --ink-4:        #66676f;
+  --ink-5:        #45464d;
 
   --accent:       #3dd6f5;
   --accent-2:     #22b8d6;

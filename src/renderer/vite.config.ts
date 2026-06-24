@@ -47,6 +47,7 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   root: __dirname,
+  envDir: path.resolve(__dirname, '../..'),
   base: './',
   build: {
     outDir: path.resolve(

@@ -3,6 +3,7 @@ import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
+import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
@@ -46,14 +47,18 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
 }
 
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, agentLabel }) {
-  const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
+  const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
   const openMenu = (e) => {
     e.stopPropagation();
     e.preventDefault();
+    // Toggle: a second click on the kebab closes the menu (the menu's
+    // own outside-press dismiss ignores clicks on the trigger, so the
+    // close has to come from here).
+    if (menuOpen) { setMenuOpen(false); return; }
     if (!triggerRef.current) return;
     setAnchorRect(triggerRef.current.getBoundingClientRect());
     setMenuOpen(true);
@@ -63,12 +68,10 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   // rendered (cross-fade on hover). Reserving the same width means
   // the row height/width stays constant whether the kebab is visible
   // or not — no jumping when moving between rows.
-  const showKebab = hover || menuOpen;
   return (
     <div
       style={{ position: 'relative', display: 'flex' }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
     >
       <button className="recent-item" onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
         <span className="recent-row__title" style={{
@@ -169,7 +172,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           if (next != null) onRename?.(task.id, next);
         }}
         onDelete={() => onDelete?.(task.id)}
-        onMoveToProject={(p) => onMoveToProject?.(task.id, p.name)}
+        hideMoveToProject={!onMoveToProject}
+        onMoveToProject={() => onMoveToProject?.(task)}
       />
     </div>
   );
@@ -488,7 +492,7 @@ export default function Sidebar({
               userSelect: 'none',
             }}
           >·</span>
-          <div className="anton-sidebar__wordmark">Minds</div>
+          <div className="anton-sidebar__wordmark">MindsHub</div>
         </div>
       </div>
 
@@ -548,12 +552,18 @@ export default function Sidebar({
           <NavItem icon={Ico.chats(15)} label="Channels" onClick={() => onNavigate('dispatch')} active={activeRoute === 'dispatch'} />
         </div>
 
-        {/* Anton group — visually grouped panel for the brain-style nav.
+        {/* Brain-style nav — visually grouped panel.
             Order: Memories → Skills library → Settings. Labels read
             as the things the user OWNS (plural collections) rather
-            than the abstract concepts the engine names them after. */}
-        <div className="section-label">{agentLabel || 'Anton'}</div>
-        <div className="anton-group">
+            than the abstract concepts the engine names them after.
+            No heading: the agent name (e.g. "Anton") read as
+            inconsistent branding here, and the bordered panel already
+            sets the group apart on its own. marginTop gives the group
+            a deliberate top gap (matching the breathing room below it,
+            before the Pinned label) in place of the removed heading —
+            a touch tighter than the heading's own footprint, which
+            avoids leaving an empty heading-sized void. */}
+        <div className="anton-group" style={{ marginTop: 18 }}>
           <NavItem icon={Ico.brain(15)}    label="Memories"       onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
           <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
           {/* "Connect data" removed from the sidebar — the canonical
@@ -563,32 +573,30 @@ export default function Sidebar({
           <NavItem icon={Ico.settings(15)} label="Settings"       onClick={() => onNavigate('settings')} active={activeRoute === 'settings'} compact />
         </div>
 
-        {/* Pinned */}
-        <div className="section-label">Pinned</div>
-        {pinnedTasks.length ? (
-          <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {pinnedTasks.map((task) => (
-              <RecentItem
-                key={task.id}
-                task={task}
-                projects={projects}
-                onClick={() => onSelectTask(task.id)}
-                onPin={onPinTask}
-                onUnpin={onUnpinTask}
-                onRename={onRenameTask}
-                onDelete={onDeleteTask}
-                onMoveToProject={onMoveTaskToProject}
-                showTimestamp={showCounters}
-                isActive={activeTaskIds.has(task.id)}
-                agentLabel={agentLabel}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="pinned-empty">
-            <span style={{ display: 'inline-flex' }}>{Ico.pin(12)}</span>
-            <span>Visit or pin tasks to keep them here.</span>
-          </div>
+        {/* Pinned — only rendered when there are pinned tasks; an empty
+            section just wastes rail space. */}
+        {pinnedTasks.length > 0 && (
+          <>
+            <div className="section-label">Pinned</div>
+            <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {pinnedTasks.map((task) => (
+                <RecentItem
+                  key={task.id}
+                  task={task}
+                  projects={projects}
+                  onClick={() => onSelectTask(task.id)}
+                  onPin={onPinTask}
+                  onUnpin={onUnpinTask}
+                  onRename={onRenameTask}
+                  onDelete={onDeleteTask}
+                  onMoveToProject={onMoveTaskToProject}
+                  showTimestamp={showCounters}
+                  isActive={activeTaskIds.has(task.id)}
+                  agentLabel={agentLabel}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* Recents — heading row with a "View all →" link pinned

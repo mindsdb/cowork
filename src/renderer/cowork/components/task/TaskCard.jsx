@@ -11,6 +11,7 @@
 import { useRef, useState } from 'react';
 import Ico from '../Icons';
 import { TaskMenu } from '../TaskMenu';
+import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
@@ -44,16 +45,16 @@ export function TaskCard({
   onPin,
   onUnpin,
   onDelete,
+  onMoveToProject,
 }) {
-  const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
+  const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
   const subtitle = task.subtitle || task.preview || '';
   const updated = relativeAge(task.updatedAt || task.updated_at || task.created_at);
   const turns = turnsCount(task);
-  const showKebab = hover || menuOpen;
   // App.jsx flips task.status to 'active' while a turn is streaming
   // and back to 'idle' on completion. Use it as the live indicator —
   // a subtle pulsing accent dot beside the title reads as "this one
@@ -63,6 +64,10 @@ export function TaskCard({
   const openMenu = (e) => {
     e.stopPropagation();
     e.preventDefault();
+    // Toggle: a second click on the kebab closes the menu (the menu's
+    // own outside-press dismiss ignores clicks on the trigger, so the
+    // close has to come from here).
+    if (menuOpen) { setMenuOpen(false); return; }
     if (!triggerRef.current) return;
     setAnchorRect(triggerRef.current.getBoundingClientRect());
     setMenuOpen(true);
@@ -71,8 +76,7 @@ export function TaskCard({
   return (
     <div
       style={{ position: 'relative' }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
     >
       <button
         type="button"
@@ -220,9 +224,10 @@ export function TaskCard({
         onPin={onPin ? () => onPin(task) : undefined}
         onUnpin={onUnpin ? () => onUnpin(task.id) : undefined}
         onDelete={onDelete ? () => onDelete(task.id) : undefined}
-        // Move + Rename intentionally hidden for now — see TaskMenu
-        // props (hideMoveToProject, hideRename).
-        hideMoveToProject
+        // "Move to project…" opens the picker modal (parent handles it).
+        // Rename stays hidden on the card surface for now.
+        onMoveToProject={onMoveToProject ? () => onMoveToProject(task) : undefined}
+        hideMoveToProject={!onMoveToProject}
         hideRename
       />
     </div>
