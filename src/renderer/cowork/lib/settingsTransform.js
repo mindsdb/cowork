@@ -22,6 +22,8 @@
 export const SETTINGS_KEY_MAP = {
   anthropic_api_key: 'anthropicApiKey',
   openai_api_key: 'openaiApiKey',
+  gemini_api_key: 'geminiApiKey',
+  openai_compatible_api_key: 'openaiCompatibleApiKey',
   minds_api_key: 'mindsApiKey',
   minds_url: 'mindsUrl',
   planning_provider: 'planningProvider',
@@ -241,9 +243,14 @@ function backfillProviders(result) {
   }
 
   // Stamp the masked sentinel on existing entries that have a stored key.
+  // gemini / openai-compatible read their own slot, falling back to the shared
+  // openai slot for display (mirrors the server-side provider_api_key fallback)
+  // so a user on the legacy shared key still shows as configured.
   for (const p of providers) {
     if (p.type === 'anthropic' && result.anthropicApiKey === '***') p.apiKey = '***';
-    if ((p.type === 'openai' || p.type === 'gemini' || p.type === 'openai-compatible') && result.openaiApiKey === '***') p.apiKey = '***';
+    if (p.type === 'openai' && result.openaiApiKey === '***') p.apiKey = '***';
+    if (p.type === 'gemini' && (result.geminiApiKey === '***' || result.openaiApiKey === '***')) p.apiKey = '***';
+    if (p.type === 'openai-compatible' && (result.openaiCompatibleApiKey === '***' || result.openaiApiKey === '***')) p.apiKey = '***';
     if (p.type === 'minds-cloud' && result.mindsApiKey === '***') p.apiKey = '***';
   }
   if (providers.length > 0 && !providers.some((p) => p.isDefault)) {
@@ -290,6 +297,8 @@ export function diffSettingsForWrite(patch, lastFetched) {
 export function providerTypeToKeyField(type) {
   if (type === 'anthropic') return 'anthropicApiKey';
   if (type === 'minds-cloud') return 'mindsApiKey';
-  if (type === 'openai' || type === 'gemini' || type === 'openai-compatible') return 'openaiApiKey';
+  if (type === 'openai') return 'openaiApiKey';
+  if (type === 'gemini') return 'geminiApiKey';
+  if (type === 'openai-compatible') return 'openaiCompatibleApiKey';
   return null;
 }
