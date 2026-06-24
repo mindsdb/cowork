@@ -20,12 +20,12 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
 const rootVariants = cva(
-  'inline-flex items-center gap-0 rounded-lg border border-line bg-surface-2 p-0.5',
+  'inline-flex bg-[var(--stone-100)] border border-solid border-[var(--border-01)] p-0.5',
   {
     variants: {
       size: {
         sm: 'rounded-md',
-        md: '',
+        md: 'rounded-lg',
       },
     },
     defaultVariants: {
@@ -36,10 +36,11 @@ const rootVariants = cva(
 
 const itemVariants = cva(
   [
-    'inline-flex items-center justify-center border-0 font-body font-medium',
-    'cursor-pointer transition-all duration-100',
-    'text-ink-3',
-    'data-[pressed]:bg-surface-3 data-[pressed]:text-ink data-[pressed]:shadow-sm',
+    'inline-flex items-center justify-center',
+    'border-0 bg-transparent font-medium leading-none',
+    'text-[var(--frost-700)]',
+    'cursor-pointer transition-[background,color,box-shadow] duration-100',
+    'data-[pressed]:bg-[var(--surface-0)] data-[pressed]:text-[var(--text-strong)] data-[pressed]:[box-shadow:var(--shadow-sm)]',
   ],
   {
     variants: {

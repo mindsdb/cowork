@@ -27,7 +27,7 @@ const trackVariants = cva(
 );
 
 const thumbVariants = cva(
-  'block rounded-full bg-white shadow-sm transition-[left] duration-150 absolute top-0.5',
+  'block rounded-full bg-white [box-shadow:0_1px_2px_rgba(0,0,0,0.2)] transition-[left] duration-150 absolute top-0.5',
   {
     variants: {
       size: {
