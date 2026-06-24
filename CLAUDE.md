@@ -141,6 +141,12 @@ Settings live in `~/.anton/.env` (API keys, consent flags, provider choice). Ser
 
 Dark/light via `body[data-theme="dark"]` selector. Colors defined as CSS variables (`--bg`, `--surface`, `--ink`, `--accent`, …) and aliased in [tailwind.config.js](tailwind.config.js). Tailwind's preflight is disabled to preserve existing inline styles.
 
+### Renderer component layering
+
+- **`components/ui/`** — pure primitives (buttons, inputs, cards, menu/modal primitives, pills, spinners). No product-specific logic.
+- **`components/`** — reusable app-level compositions (`OverflowMenu`, `ConfirmModal`, `TaskMenu`) that combine primitives with Cowork icons/labels/patterns.
+- **Feature folders** (`rail/`, `task/`, `project/`, etc.) — domain-specific components. Prefer shared `Menu` or `OverflowMenu` over hand-rolling portals/outside-click/keyboard handling.
+
 ## Misc
 
 - DevTools: `ANTON_DEVTOOLS=1` or Cmd+Option+I (auto-open removed).

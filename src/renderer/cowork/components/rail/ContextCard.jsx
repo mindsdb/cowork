@@ -25,6 +25,7 @@ import {
 } from '../../api';
 import ContextFileModal from '../project/ContextFileModal';
 import { ConfirmModal } from '../ConfirmModal';
+import { OverflowMenu } from '../OverflowMenu';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 
@@ -80,7 +81,7 @@ function attachmentSourceIcon(item) {
 }
 
 function SessionAttachmentRow({
-  item, menuOpen, onMenuToggle, onOpen, onMove, onDelete, menuRef,
+  item, menuOpen, onMenuOpenChange, onOpen, menuItems = [],
 }) {
   const label = item.name || item.id || 'Attachment';
   const when = item.updated_at || item.created_at || item.updatedAt || item.createdAt;
@@ -94,6 +95,7 @@ function SessionAttachmentRow({
   ].filter(Boolean);
   const titleText = titleSegments.length ? `${label} — ${titleSegments.join(' · ')}` : label;
   const canOpen = !!onOpen;
+  const hasMenuActions = menuItems.length > 0;
   return (
     <div
       role={canOpen ? 'button' : undefined}
@@ -119,92 +121,26 @@ function SessionAttachmentRow({
         {when ? (
           <span className={clsx(
             'text-[10.5px] text-ink-4 transition-opacity',
-            (onMenuToggle) && 'group-hover:opacity-0',
+            hasMenuActions && 'group-hover:opacity-0',
             menuOpen && 'opacity-0',
           )}>
             {relativeAge(when)}
           </span>
         ) : null}
-        {onMenuToggle && (
-          <button
-            type="button"
-            aria-label="More actions"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            title="More actions"
-            onClick={(e) => {
-              // Don't let the kebab click open the file — the menu
-              // takes over here.
-              e.stopPropagation();
-              onMenuToggle();
-            }}
-            className={clsx(
+        {hasMenuActions && (
+          <OverflowMenu
+            open={menuOpen}
+            onOpenChange={onMenuOpenChange}
+            ariaLabel="Task upload actions"
+            width={180}
+            items={menuItems}
+            triggerClassName={clsx(
               'absolute inset-0 inline-flex items-center justify-end',
               menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-              'transition-opacity rounded',
-              'text-ink-4 hover:text-ink',
-              'bg-transparent border-0 cursor-pointer p-0',
             )}
-          >
-            {Ico.moreVert(13)}
-          </button>
+          />
         )}
       </span>
-
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          role="menu"
-          onClick={(e) => e.stopPropagation()}
-          // z above the drag-drop overlay (z-120) and sibling rail cards
-          // so the menu isn't painted behind them.
-          className="menu absolute z-[200]"
-          style={{
-            // Anchor the menu under the kebab (trailing-right slot)
-            // so it doesn't cover the row's filename. minWidth is
-            // sized for the longest label ("Move to project files").
-            right: 4, top: 'calc(100% + 2px)',
-            minWidth: 180,
-          }}
-        >
-          {canOpen && (
-            <button
-              type="button"
-              className="menu-item"
-              onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
-            >
-              <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.upload(13)}</span>
-              <span>Open</span>
-            </button>
-          )}
-          {onMove && (
-            <button
-              type="button"
-              className="menu-item"
-              onClick={(e) => { e.stopPropagation(); onMove(); }}
-            >
-              <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(13)}</span>
-              <span>Move to project files</span>
-            </button>
-          )}
-          {onDelete && (
-            <>
-              {(canOpen || onMove) && (
-                <div style={{ height: 1, background: 'var(--border-0)', margin: '4px 0' }} />
-              )}
-              <button
-                type="button"
-                className="menu-item"
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                style={{ color: 'var(--danger)' }}
-              >
-                <span style={{ display: 'inline-flex', color: 'var(--danger)' }}>{Ico.trash(13)}</span>
-                <span>Delete</span>
-              </button>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -311,14 +247,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   const [taskUploadError, setTaskUploadError] = useState('');
   const taskUploadInputRef = useRef(null);
   // Which attachment's kebab menu is currently open. Single-open
-  // policy — clicking one closes any other. `attachmentMenuRef` is
-  // attached to the open menu's outer div so the document
-  // outside-click listener can ignore clicks inside it (without it,
-  // mousedown would null `openAttachmentMenuId` before the menu
-  // item's own click handler ran, so Move/Delete never fired).
+  // policy — clicking one closes any other. The popup itself is rendered
+  // by the shared Base UI-backed <OverflowMenu>, so it portals out of the
+  // RailCard overflow container and keeps keyboard/focus behavior in one
+  // place.
   const [openAttachmentMenuId, setOpenAttachmentMenuId] = useState(null);
   const [pendingDeleteAttachment, setPendingDeleteAttachment] = useState(null);
-  const attachmentMenuRef = useRef(null);
   // Bump to re-run the attachments effect after a mutation (upload /
   // delete / move) without needing to wire `onChanged` up to App.jsx.
   const [attachmentsTick, setAttachmentsTick] = useState(0);
@@ -467,30 +401,6 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       });
     return () => { cancelled = true; };
   }, [sessionRelevant, conversationId, refreshKey, project?.name, attachmentsTick]);
-
-  // Click anywhere outside an open attachment kebab menu closes it.
-  // Three subtleties:
-  //   1. Listen for `click`, not `mousedown` — `mousedown` fires
-  //      BEFORE the menu item's own click handler, and would null
-  //      `openAttachmentMenuId` before the menu item's onClick ever
-  //      ran (so Move-to-project / Delete never fired).
-  //   2. Attach on the next tick so the click that OPENED the menu
-  //      doesn't immediately propagate up and close it.
-  //   3. Check the ref so clicks INSIDE the menu (which stopPropagate
-  //      on React's synthetic event but still bubble at the native
-  //      document level) don't fall through to "close".
-  useEffect(() => {
-    if (openAttachmentMenuId == null) return undefined;
-    const onClick = (e) => {
-      if (attachmentMenuRef.current && attachmentMenuRef.current.contains(e.target)) return;
-      setOpenAttachmentMenuId(null);
-    };
-    const id = setTimeout(() => document.addEventListener('click', onClick), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', onClick);
-    };
-  }, [openAttachmentMenuId]);
 
   // Order: Project section first, Global second.
   const ordered = useMemo(() => {
@@ -727,29 +637,23 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
           {!attachmentsLoading
             && sessionAttachments.map((item) => {
               const rawUrl = attachmentRawUrl(project?.name, conversationId, item.id);
-              return (
-                <SessionAttachmentRow
-                  key={item.id}
-                  item={item}
-                  menuOpen={openAttachmentMenuId === item.id}
-                  menuRef={openAttachmentMenuId === item.id ? attachmentMenuRef : null}
-                  onMenuToggle={() => setOpenAttachmentMenuId(
-                    openAttachmentMenuId === item.id ? null : item.id,
-                  )}
-                  onOpen={rawUrl
-                    ? () => {
-                        // Browser shell + Electron shell both supported
-                        // through host.openExternal — Electron forwards
-                        // to shell.openExternal (OS default app); web
-                        // does window.open in a new tab where the
-                        // server's `inline` Content-Disposition lets
-                        // the browser render images/PDFs natively.
-                        setOpenAttachmentMenuId(null);
-                        host.openExternal(rawUrl);
-                      }
-                    : null}
-                  onMove={() => {
-                    setOpenAttachmentMenuId(null);
+              const closeAttachmentMenu = () => setOpenAttachmentMenuId(null);
+              const menuItems = [
+                rawUrl && {
+                  id: 'open',
+                  label: 'Open',
+                  icon: Ico.upload(13),
+                  onClick: () => {
+                    closeAttachmentMenu();
+                    host.openExternal(rawUrl);
+                  },
+                },
+                {
+                  id: 'move',
+                  label: 'Move to project files',
+                  icon: Ico.folder(13),
+                  onClick: () => {
+                    closeAttachmentMenu();
                     // Optimistic: drop from Task uploads right away
                     // so the row disappears the moment the user
                     // clicks. The server move is fast (rename(2) on
@@ -774,11 +678,39 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
                         });
                       }
                     })();
-                  }}
-                  onDelete={() => {
-                    setOpenAttachmentMenuId(null);
+                  },
+                },
+                { separator: true },
+                {
+                  id: 'delete',
+                  label: 'Delete',
+                  icon: Ico.trash(13),
+                  danger: true,
+                  onClick: () => {
+                    closeAttachmentMenu();
                     setPendingDeleteAttachment(item);
-                  }}
+                  },
+                },
+              ].filter(Boolean);
+              return (
+                <SessionAttachmentRow
+                  key={item.id}
+                  item={item}
+                  menuOpen={openAttachmentMenuId === item.id}
+                  menuItems={menuItems}
+                  onMenuOpenChange={(next) => setOpenAttachmentMenuId(next ? item.id : null)}
+                  onOpen={rawUrl
+                    ? () => {
+                        // Browser shell + Electron shell both supported
+                        // through host.openExternal — Electron forwards
+                        // to shell.openExternal (OS default app); web
+                        // does window.open in a new tab where the
+                        // server's `inline` Content-Disposition lets
+                        // the browser render images/PDFs natively.
+                        setOpenAttachmentMenuId(null);
+                        host.openExternal(rawUrl);
+                      }
+                    : null}
                 />
               );
             })}
