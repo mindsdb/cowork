@@ -78,24 +78,38 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-// Ask the running server for its readiness (DB-backed config_ready, exposed
-// via /settings/configured). Returns null when the server can't be reached so
-// the caller can fall back to the .env heuristic. Waits briefly for the
-// boot-time server start so cold-boot routing still gets the authoritative
-// answer instead of the stale .env signal.
+// Resolves once the boot-time server start has settled (server up, or
+// decided-not-to-start because it isn't installed). serverConfigured() awaits
+// this instead of polling, so cold-boot routing waits exactly as long as the
+// real startup takes — uvicorn cold start included — rather than a fixed cap.
+// Assigned synchronously in app.whenReady() so it exists before the renderer's
+// init() can call through to checkConfigured().
+let bootServerSettled: Promise<void> = Promise.resolve();
+
+// Ask the running server for its readiness. Reads `config_ready` from /health —
+// the SAME signal the in-app chat gate uses (settings.config_status) — so
+// routing and the chat gate read one identical value and cannot disagree.
+// Returns null when the server can't be reached/answered, so the caller falls
+// back to the .env heuristic.
 async function serverConfigured(): Promise<{ configured: boolean; provider: string } | null> {
-  for (let i = 0; i < 6 && !isServerRunning(); i++) {
-    await new Promise((r) => setTimeout(r, 500));
-  }
+  try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
   if (!isServerRunning()) return null;
   try {
-    const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/settings/configured`, {
-      signal: AbortSignal.timeout(2000),
+    const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/health/`, {
+      signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return null;
-    const data = await res.json() as { configured?: boolean; provider?: string };
-    return { configured: Boolean(data.configured), provider: String(data.provider || '') };
-  } catch {
+    if (!res.ok) {
+      console.warn(`[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
+      return null;
+    }
+    const data = await res.json() as { config_ready?: boolean; provider?: string };
+    if (typeof data.config_ready !== 'boolean') {
+      console.warn('[checkConfigured] /health had no config_ready; falling back to .env');
+      return null;
+    }
+    return { configured: data.config_ready, provider: data.provider ?? '' };
+  } catch (err) {
+    console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
     return null;
   }
 }
@@ -103,15 +117,17 @@ async function serverConfigured(): Promise<{ configured: boolean; provider: stri
 async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
   const vars = readEnvFile();
   if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
-  // The DB's config_ready is authoritative and is the SAME signal the in-app
-  // chat gate uses — defer to it so routing and the chat gate can't disagree.
-  // (The old .env any-key check could pass here while config_ready was false,
-  // stranding the user on "Connect a provider" with no in-app recovery.)
+  // config_ready from /health is authoritative and is the SAME signal the
+  // in-app chat gate uses — defer to it so routing and the chat gate can't
+  // disagree. (The old .env any-key check could pass here while config_ready
+  // was false, stranding the user on "Connect a provider" with no recovery.)
   const fromServer = await serverConfigured();
   if (fromServer) return fromServer;
-  // Server unreachable (very early boot): fall back to the .env heuristic so a
-  // configured user isn't needlessly bounced to onboarding.
-  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds' };
+  // Server genuinely unreachable: fall back to the .env heuristic so a
+  // configured user isn't needlessly bounced to onboarding. Provider strings
+  // mirror the server's config_status vocabulary so the IPC value isn't
+  // path-dependent.
+  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds_cloud' };
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
@@ -908,9 +924,16 @@ app.whenReady().then(() => {
   // Boot-time server start. If cowork-server is installed, start it
   // in the background. If not, skip — the renderer's boot flow will
   // route to the setup screen which handles installation.
+  //
+  // `bootServerSettled` is resolved the moment the start decision is made
+  // (server up, failed, or skipped) — before the slow OTA update checks — so
+  // checkConfigured() can await the real readiness without polling.
+  let resolveBootServer: () => void = () => {};
+  bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
+      resolveBootServer();
       return;
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
@@ -932,6 +955,7 @@ app.whenReady().then(() => {
     }
 
     const result = await startServer();
+    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     if (!result.ok) {
       console.error(`[server] start failed: ${result.reason}`);
     } else {
@@ -1019,6 +1043,7 @@ app.whenReady().then(() => {
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
+    resolveBootServer();  // never leave checkConfigured() awaiting a stuck boot
   });
 
   app.on('activate', () => {
