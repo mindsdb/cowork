@@ -65,7 +65,7 @@ export function Switch({
       disabled={disabled}
       className={cn(
         trackVariants({ size }),
-        checked ? 'bg-accent' : 'bg-ink-4/40',
+        checked ? 'bg-[var(--primary-700)]' : 'bg-[var(--stone-300)]',
         disabled && 'cursor-not-allowed opacity-50',
         className,
       )}
