@@ -12,6 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
+import Pill from '../components/ui/Pill';
 import { OrbitMorph } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
@@ -487,6 +488,50 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
   );
 }
 
+// Steps with everything-but the skill-fired markers. Skill steps ride the
+// same `steps` array (so they survive reload + persist for free) but are
+// shown as chips by StepSkills, not as Thinking-block rows — so we strip
+// them before handing steps to ThinkingBlock.
+function nonSkillSteps(steps) {
+  if (!Array.isArray(steps)) return steps;
+  return steps.some((s) => s._isSkill) ? steps.filter((s) => !s._isSkill) : steps;
+}
+
+// "Skill fired" chips. One per skill Anton recalled this turn (its
+// `recall_skill` tool firing, surfaced by the server as
+// `response.skill_recalled`). Clicking opens the skill in the Skills
+// library. The label shown is the recalled skill label.
+function StepSkills({ steps, onNavigate }) {
+  const skills = steps?.filter((s) => s._isSkill && s._skillLabel) || [];
+  if (skills.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, marginBottom: 2 }}>
+      {skills.map((s) => {
+        const label = s._skillLabel;
+        const clickable = typeof onNavigate === 'function';
+        return (
+          <Pill
+            key={s.id}
+            variant="muted"
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onNavigate(label) : undefined}
+            onKeyDown={clickable ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate(label); }
+            } : undefined}
+            title={clickable ? `Open “${label}” in the Skills library` : `Skill: ${label}`}
+            aria-label={`Skill used: ${label}. Open in the Skills library.`}
+            style={clickable ? { cursor: 'pointer' } : undefined}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>{Ico.brain(12)}</span>
+            <span>Skill: {label}</span>
+          </Pill>
+        );
+      })}
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
@@ -792,6 +837,7 @@ export default function ChatView({
   onDeleteTurn,
   onSubmitDataVaultForm,
   onNavigateToConnectors,
+  onNavigateToSkill,
   onCancelModify,
   onDisconnectModify,
   onMoveTaskToProject,
@@ -1501,14 +1547,15 @@ export default function ChatView({
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                 >
-                  {m.steps?.length > 0 && (
+                  {nonSkillSteps(m.steps)?.length > 0 && (
                     <ThinkingBlock
-                      steps={m.steps}
+                      steps={nonSkillSteps(m.steps)}
                       startedAt={m.startedAt}
                       isActive={false}
                       onActivateStep={(step) => setOpenScratchpadStepId(prefixId(messageKey(m, i), step.id))}
                     />
                   )}
+                  <StepSkills steps={m.steps} onNavigate={onNavigateToSkill} />
                   <TextBlock text={m.content} id={m.id || `msg-${i}`} complete conversationId={task.id} />
                   {m.artifact && (
                     <ArtifactCard
@@ -1524,18 +1571,19 @@ export default function ChatView({
 
             {streamingMsg ? (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} slotIdHeader="header:streaming" agentLabel={harnessLabel(streamingMsg.harness) || agentLabel}>
-                {streamingMsg.steps?.length > 0 && (
+                {nonSkillSteps(streamingMsg.steps)?.length > 0 && (
                   <ThinkingBlock
-                    steps={streamingMsg.steps}
+                    steps={nonSkillSteps(streamingMsg.steps)}
                     startedAt={streamingMsg.startedAt}
                     isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
                     currentLabel={(() => {
-                      const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
+                      const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress' && !s._isSkill);
                       return active?.label || null;
                     })()}
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
+                <StepSkills steps={streamingMsg.steps} onNavigate={onNavigateToSkill} />
                 {/* Bridge state: between the first stream event arriving
                     (which strips the activity placeholder) and the first
                     step or body chunk landing, the AnswerTurn would
@@ -1544,7 +1592,7 @@ export default function ChatView({
                     output starts. Keep a soft "Thinking…" affordance
                     visible whenever there are no steps and no body text
                     yet. */}
-                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                {!nonSkillSteps(streamingMsg.steps)?.length && !streamingMsg.content && (
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,

@@ -251,6 +251,42 @@ export function reduceStream(state, event, now = Date.now) {
     return { ...state, status: 'streaming', bodyText: state.bodyText + delta, steps };
   }
 
+  // ── Skill fired ───────────────────────────────────────────────────
+  // Anton's `recall_skill` tool pulled a procedural skill into context.
+  // The server surfaces it as this dedicated event (additive — the
+  // thought.recall.* signal still drives the thinking block). We push a
+  // lightweight "skill" step so it rides the same `steps` array as
+  // everything else (live stream, reload via reduceServerEvents, and the
+  // persisted turn cache all carry it for free). The transcript renders
+  // these as chips and excludes them from the Thinking block.
+  if (type === 'response.skill_recalled') {
+    const label = typeof event.skill_label === 'string' ? event.skill_label.trim() : '';
+    if (!label) return state;
+    // De-dupe: a turn may recall the same skill more than once, but one
+    // chip per skill is enough.
+    if (state.steps.some((s) => s._isSkill && s._skillLabel === label)) return state;
+    const id = `skill-${state.steps.length + 1}`;
+    const step = {
+      id,
+      label,
+      badge: 'Skill',
+      icon: 'brain',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: null,
+      output: null,
+      result: null,
+      _isScratchpad: false,
+      _isToolCall: false,
+      _isSkill: true,
+      _skillLabel: label,
+      _scratchpadTabId: null,
+      _toolUseId: event.tool_use_id || null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
   // ── thought.* sub-events live under response.in_progress ──────────
   if (type !== 'response.in_progress') return state;
 

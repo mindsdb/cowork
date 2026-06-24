@@ -72,7 +72,7 @@ function shouldUseTextarea(field) {
   return isLongField(field) && !field.secret;
 }
 
-export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
+export default function UtilitiesView({ kind, project, onRefreshArtifacts, focusSkillLabel, onSkillFocusConsumed }) {
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState(null);
   const [status, setStatus] = useState('');
@@ -89,6 +89,16 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
     if (kind === 'skills') fetchSkills().then(setData).catch((err) => setStatus(err.message));
     if (kind === 'publish') fetchPublishable().then(setData).catch((err) => setStatus(err.message));
   }, [kind, project?.path]);
+
+  // Deep-link from a transcript "Skill fired" chip: once the skills list
+  // has loaded, pre-select the requested skill (by label) so the detail
+  // pane opens on it, then clear the request so it doesn't re-fire.
+  useEffect(() => {
+    if (kind !== 'skills' || !focusSkillLabel || !data) return;
+    const match = (data.skills || []).find((s) => s.label === focusSkillLabel);
+    if (match) setSelected(match);
+    onSkillFocusConsumed?.();
+  }, [kind, focusSkillLabel, data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [title, subtitle] = TITLES[kind] || ['Utility', ''];
 
@@ -400,6 +410,14 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
           <button key={skill.label} className={`recent-item${selected?.label === skill.label ? ' active' : ''}`} onClick={() => onSelect(skill)} style={{ height: 'auto', minHeight: 38, padding: '8px 10px' }}>
             <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.brain(14)}</span>
             <span style={{ flex: 1, whiteSpace: 'normal' }}>{skill.name}</span>
+            {skill.used > 0 && (
+              <span
+                title={`Recalled by the coworker ${skill.used} time${skill.used === 1 ? '' : 's'}`}
+                style={{ flex: 'none', fontSize: 11, color: 'var(--frost-600)', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {skill.used}×
+              </span>
+            )}
           </button>
         ))}
         {!skills.length && <EmptyState>No saved skills found.</EmptyState>}
@@ -424,7 +442,12 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-strong)' }}>{selected.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>{selected.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>
+                  {selected.label}
+                  {selected.used > 0 && (
+                    <> · recalled {selected.used} time{selected.used === 1 ? '' : 's'}</>
+                  )}
+                </div>
               </div>
               <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
               <button className="btn-secondary" onClick={() => remove(selected)}>Remove</button>

@@ -573,6 +573,8 @@ function persistTurnState(cid, turnIndex, steps, startedAt) {
     stderr: s.stderr || null,
     _isScratchpad: !!s._isScratchpad,
     _isToolCall: !!s._isToolCall,
+    _isSkill: !!s._isSkill,
+    _skillLabel: s._skillLabel || null,
     _scratchpadTabId: s._scratchpadTabId || null,
   }));
   map[turnIndex] = { steps: sanitized, startedAt: startedAt ?? null };
@@ -1175,6 +1177,10 @@ function AppCore() {
   }, [settings.showDots]);
 
   const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize | settings
+  // Deep-link target for the Skills library: set when a "Skill fired"
+  // chip in the transcript is clicked, consumed by UtilitiesView to
+  // pre-select that skill. Cleared on consume so it doesn't re-fire.
+  const [focusedSkillLabel, setFocusedSkillLabel] = useState(null);
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -3526,6 +3532,7 @@ function AppCore() {
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
+            onNavigateToSkill={(label) => { setFocusedSkillLabel(label || null); navigate('skills'); }}
             onCancelModify={handleCancelModify}
             onDisconnectModify={handleDisconnectFromModify}
             onOpenProject={(p) => {
@@ -3713,6 +3720,8 @@ function AppCore() {
             project={selectedProject}
             onRefreshArtifacts={() => fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); })}
             agentLabel={agentLabel}
+            focusSkillLabel={route === 'skills' ? focusedSkillLabel : null}
+            onSkillFocusConsumed={() => setFocusedSkillLabel(null)}
           />
         )}
       </main>
