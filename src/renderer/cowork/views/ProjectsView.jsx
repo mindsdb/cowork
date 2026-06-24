@@ -1726,12 +1726,18 @@ export default function ProjectsView({
     const sourceId = dragId;
     setDragId(null);
     if (!sourceId || !targetId || sourceId === targetId) return;
-    const ids = visibleProjects.map((p) => p.id);
-    const from = ids.indexOf(sourceId);
-    const to = ids.indexOf(targetId);
+    // Reordering is scoped to the unpinned group. Pinned cards always
+    // re-float to the top on render (see `visibleProjects`), so persisting
+    // an order that interleaves them with unpinned cards would just snap
+    // back — a misleading drop. Dragging a pinned card, or dropping onto/
+    // above a pinned one, is therefore a no-op; we only shuffle unpinned
+    // ids and persist sort_order across that group.
+    const unpinnedIds = visibleProjects.filter((p) => !isPinned(p)).map((p) => p.id);
+    const from = unpinnedIds.indexOf(sourceId);
+    const to = unpinnedIds.indexOf(targetId);
     if (from === -1 || to === -1) return;
-    ids.splice(to, 0, ids.splice(from, 1)[0]);
-    persistOrder(ids);
+    unpinnedIds.splice(to, 0, unpinnedIds.splice(from, 1)[0]);
+    persistOrder(unpinnedIds);
   };
 
   if (detailProject) {
@@ -1839,19 +1845,25 @@ export default function ProjectsView({
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
           marginTop: 18,
         }}>
-          {visibleProjects.map((p) => (
+          {visibleProjects.map((p) => {
+            // Pinned cards stay pinned-to-top, so they're not draggable and
+            // can't be dropped onto — only unpinned cards reorder among
+            // themselves. Keeps the drag affordance honest (no drop hint on a
+            // target that would just snap back).
+            const canReorder = reorderEnabled && !isPinned(p);
+            return (
             <div
               key={p.id || p.name || p.path}
-              draggable={reorderEnabled && editingProjectName !== p.name}
-              onDragStart={reorderEnabled ? () => setDragId(p.id) : undefined}
-              onDragEnd={reorderEnabled ? () => { setDragId(null); setDragOverId(null); } : undefined}
-              onDragOver={reorderEnabled ? (e) => { e.preventDefault(); if (dragOverId !== p.id) setDragOverId(p.id); } : undefined}
-              onDrop={reorderEnabled ? (e) => { e.preventDefault(); handleDrop(p.id); } : undefined}
+              draggable={canReorder && editingProjectName !== p.name}
+              onDragStart={canReorder ? () => setDragId(p.id) : undefined}
+              onDragEnd={canReorder ? () => { setDragId(null); setDragOverId(null); } : undefined}
+              onDragOver={canReorder ? (e) => { e.preventDefault(); if (dragOverId !== p.id) setDragOverId(p.id); } : undefined}
+              onDrop={canReorder ? (e) => { e.preventDefault(); handleDrop(p.id); } : undefined}
               style={{
                 borderRadius: 10,
-                cursor: reorderEnabled ? 'grab' : undefined,
+                cursor: canReorder ? 'grab' : undefined,
                 opacity: dragId === p.id ? 0.4 : 1,
-                outline: reorderEnabled && dragOverId === p.id && dragId !== p.id
+                outline: canReorder && dragOverId === p.id && dragId !== p.id
                   ? '2px dashed var(--accent)' : 'none',
                 outlineOffset: 2,
                 transition: 'opacity .12s ease',
@@ -1872,7 +1884,8 @@ export default function ProjectsView({
                 onRenameCancel={handleRenameCancel}
               />
             </div>
-          ))}
+            );
+          })}
           {/* Trailing dashed "+ New project" card — clicking just
               opens the modal (no inline-edit mode any more). The
               modal handles name + instructions + file uploads in a
@@ -1910,18 +1923,22 @@ export default function ProjectsView({
       ) : (
         <div style={{ padding: '6px 32px 60px', marginTop: 18 }}>
           <ListHeader />
-          {visibleProjects.map((p) => (
+          {visibleProjects.map((p) => {
+            // See the grid branch: pinned rows float to top, so they're not
+            // draggable and aren't drop targets — only unpinned rows reorder.
+            const canReorder = reorderEnabled && !isPinned(p);
+            return (
             <div
               key={p.id || p.name || p.path}
-              draggable={reorderEnabled && editingProjectName !== p.name}
-              onDragStart={reorderEnabled ? () => setDragId(p.id) : undefined}
-              onDragEnd={reorderEnabled ? () => { setDragId(null); setDragOverId(null); } : undefined}
-              onDragOver={reorderEnabled ? (e) => { e.preventDefault(); if (dragOverId !== p.id) setDragOverId(p.id); } : undefined}
-              onDrop={reorderEnabled ? (e) => { e.preventDefault(); handleDrop(p.id); } : undefined}
+              draggable={canReorder && editingProjectName !== p.name}
+              onDragStart={canReorder ? () => setDragId(p.id) : undefined}
+              onDragEnd={canReorder ? () => { setDragId(null); setDragOverId(null); } : undefined}
+              onDragOver={canReorder ? (e) => { e.preventDefault(); if (dragOverId !== p.id) setDragOverId(p.id); } : undefined}
+              onDrop={canReorder ? (e) => { e.preventDefault(); handleDrop(p.id); } : undefined}
               style={{
-                cursor: reorderEnabled ? 'grab' : undefined,
+                cursor: canReorder ? 'grab' : undefined,
                 opacity: dragId === p.id ? 0.4 : 1,
-                borderTop: reorderEnabled && dragOverId === p.id && dragId !== p.id
+                borderTop: canReorder && dragOverId === p.id && dragId !== p.id
                   ? '2px solid var(--accent)' : '2px solid transparent',
                 transition: 'opacity .12s ease',
               }}
@@ -1940,7 +1957,8 @@ export default function ProjectsView({
                 onRenameCancel={handleRenameCancel}
               />
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

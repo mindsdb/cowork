@@ -324,14 +324,20 @@ export default function Composer({
   // Filter + create logic shared by Enter-on-search-input and the
   // explicit create footer. Defined inside the component body so the
   // menu render can call into them without prop-drilling.
+  // Archived projects round-trip in the shared `projects` list (so the
+  // Projects view can manage them), but they aren't valid chat targets —
+  // drop them here so the selector only offers live projects.
+  const _selectableProjects = projects.filter((p) => !(p?.archived ?? p?.isArchived));
   const _projectSearchTrimmed = projectSearch.trim();
   const _filteredProjects = _projectSearchTrimmed
-    ? projects.filter((p) => p.name.toLowerCase().includes(_projectSearchTrimmed.toLowerCase()))
-    : projects;
+    ? _selectableProjects.filter((p) => p.name.toLowerCase().includes(_projectSearchTrimmed.toLowerCase()))
+    : _selectableProjects;
   // Case-insensitive exact match short-circuits "create" so Enter on
   // a search term that already names a project selects it rather than
   // POSTing a duplicate (the server would reject anyway, but failing
-  // fast on the client keeps the UX snappy).
+  // fast on the client keeps the UX snappy). Match against the full
+  // `projects` list, not just selectable ones, so typing the name of an
+  // archived project doesn't try to create a duplicate folder.
   const _projectExactMatch = _projectSearchTrimmed
     ? projects.find((p) => p.name.toLowerCase() === _projectSearchTrimmed.toLowerCase())
     : null;

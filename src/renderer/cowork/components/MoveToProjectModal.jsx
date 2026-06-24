@@ -31,14 +31,21 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
   const q = query.trim();
 
   const candidates = useMemo(() => {
-    const others = projects.filter((p) => p.name !== currentName);
+    // Archived projects ride along in the shared `projects` list so the
+    // Projects view can manage them, but they aren't valid move targets —
+    // exclude them (along with the task's current project) here.
+    const others = projects.filter(
+      (p) => p.name !== currentName && !(p?.archived ?? p?.isArchived),
+    );
     if (!q) return others;
     const lc = q.toLowerCase();
     return others.filter((p) => p.name.toLowerCase().includes(lc));
   }, [projects, currentName, q]);
 
-  // A typed name that matches no existing project (and isn't the current
-  // one) becomes a "create new project" option.
+  // A typed name that matches any existing project (archived or not, and
+  // not the current one) shouldn't offer "create" — the server would
+  // reject the duplicate. Match the full list so an archived name still
+  // suppresses creation.
   const exactMatch = projects.some((p) => p.name.toLowerCase() === q.toLowerCase());
   const canCreateNew = q.length > 0 && !exactMatch && q !== currentName;
 
