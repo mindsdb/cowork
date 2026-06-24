@@ -709,6 +709,26 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
                 flexShrink: 0,
               }}>· {artifact.fileCount} files</span>
             )}
+            {/* Published marker — matches the cyan "Published" pill on the
+                collection cards. Shown whenever the artifact is published. */}
+            {publishedUrl && (
+              <span
+                title="Published"
+                style={{
+                  fontFamily: FONT_BODY, fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                  color: 'var(--accent)',
+                  background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
+                  padding: '1px 6px', borderRadius: 999,
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />
+                Published
+              </span>
+            )}
             {/* Stale-publish marker — matches the amber "Modified" pill on the
                 collection cards. Shown only for a published artifact whose
                 local files changed after publish. */}
