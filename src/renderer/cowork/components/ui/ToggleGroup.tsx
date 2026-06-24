@@ -16,43 +16,19 @@
 
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
-import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
-const rootVariants = cva(
-  'inline-flex items-center gap-0 rounded-lg border border-line bg-surface-2 p-0.5',
-  {
-    variants: {
-      size: {
-        sm: 'rounded-md',
-        md: '',
-      },
-    },
-    defaultVariants: {
-      size: 'md',
-    },
-  }
-);
-
-const itemVariants = cva(
-  [
-    'inline-flex items-center justify-center border-0 font-body font-medium',
-    'cursor-pointer transition-all duration-100',
-    'text-ink-3',
-    'data-[pressed]:bg-surface-3 data-[pressed]:text-ink data-[pressed]:shadow-sm',
-  ],
-  {
-    variants: {
-      size: {
-        sm: 'h-6 rounded px-2 text-[11px]',
-        md: 'h-7 rounded-md px-3 text-[12.5px]',
-      },
-    },
-    defaultVariants: {
-      size: 'md',
-    },
-  }
-);
+// Outer container sizes mirror toolbar controls (SearchInput / SortPill).
+// Container padding (2px) + item vertical padding + font line-height ≈ same
+// total height as a SortPill with padding: 7px 11px.
+const CONTAINER_SIZE = {
+  md: { padding: 2,     borderRadius: 7 },
+  sm: { padding: 1,     borderRadius: 5 },
+};
+const ITEM_SIZE = {
+  md: { padding: '5px 10px', borderRadius: 5, fontSize: 12.5 },
+  sm: { padding: '3px 7px',  borderRadius: 3, fontSize: 11   },
+};
 
 export interface ToggleGroupOption {
   value: string;
@@ -62,10 +38,11 @@ export interface ToggleGroupOption {
   'aria-label'?: string;
 }
 
-export interface ToggleGroupProps extends VariantProps<typeof rootVariants> {
+export interface ToggleGroupProps {
   value: string;
   onValueChange: (value: string) => void;
   options: ToggleGroupOption[];
+  size?: 'sm' | 'md';
   className?: string;
   'aria-label'?: string;
 }
@@ -74,10 +51,13 @@ export function ToggleGroup({
   value,
   onValueChange,
   options,
-  size,
+  size = 'md',
   className,
   'aria-label': ariaLabel,
 }: ToggleGroupProps) {
+  const cs = CONTAINER_SIZE[size] ?? CONTAINER_SIZE.md;
+  const is = ITEM_SIZE[size] ?? ITEM_SIZE.md;
+
   return (
     <BaseToggleGroup
       value={[value]}
@@ -88,7 +68,13 @@ export function ToggleGroup({
         const next = newValue.find((v) => v !== value);
         if (next) onValueChange(next);
       }}
-      className={cn(rootVariants({ size }), className)}
+      className={cn('inline-flex items-center', className)}
+      style={{
+        padding: cs.padding,
+        borderRadius: cs.borderRadius,
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+      }}
       aria-label={ariaLabel}
     >
       {options.map((opt) => (
@@ -97,9 +83,20 @@ export function ToggleGroup({
           value={opt.value}
           aria-label={opt['aria-label'] || opt.title}
           title={opt.title}
-          className={cn(itemVariants({ size }))}
+          className="inline-flex items-center gap-[6px] cursor-pointer"
+          style={(state: { pressed: boolean }) => ({
+            padding: is.padding,
+            borderRadius: is.borderRadius,
+            fontFamily: 'var(--font-body)',
+            fontSize: is.fontSize,
+            border: 0,
+            background: state.pressed ? 'var(--surface-3)' : 'transparent',
+            color: state.pressed ? 'var(--ink)' : 'var(--ink-3)',
+            boxShadow: state.pressed ? 'inset 0 0 0 1px var(--line-2)' : 'none',
+            transition: 'background 0.15s ease, color 0.15s ease',
+          })}
         >
-          {opt.icon && <span className="mr-1.5 inline-flex">{opt.icon}</span>}
+          {opt.icon && <span className="inline-flex">{opt.icon}</span>}
           {opt.label}
         </BaseToggle>
       ))}
