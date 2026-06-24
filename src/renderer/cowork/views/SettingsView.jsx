@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
@@ -1232,7 +1232,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Agent">
               <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-                <SegmentedControl
+                <ToggleGroup
                   value={settings.harness || 'anton'}
                   onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
                   aria-label="Agent harness"
@@ -1418,7 +1418,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Appearance">
               <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
-                <SegmentedControl
+                <ToggleGroup
                   value={theme || 'dark'}
                   onValueChange={(v) => onThemeChange?.(v)}
                   aria-label="Theme"
@@ -1439,7 +1439,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 />
               </Section>
               <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-                <SegmentedControl
+                <ToggleGroup
                   value={normalizeSkin(skin)}
                   onValueChange={(v) => onSkinChange?.(v)}
                   aria-label="Style"
@@ -1485,7 +1485,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     </div>
                   </Section>
                   <Section title="Corners" subtitle="How sharp the surfaces feel.">
-                    <SegmentedControl
+                    <ToggleGroup
                       value={String(customTheme.radius)}
                       onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
                       aria-label="Corner radius"
@@ -1497,7 +1497,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                     />
                   </Section>
                   <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
-                    <SegmentedControl
+                    <ToggleGroup
                       value={customTheme.font}
                       onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
                       aria-label="Custom typeface"
@@ -1547,7 +1547,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
 
             <CollapsibleGroup title="Memory" defaultOpen={false}>
               <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
-                <SegmentedControl
+                <ToggleGroup
                   value={settings.memoryMode ?? 'autopilot'}
                   onValueChange={(v) => setSetting('memoryMode', v)}
                   aria-label="Memory mode"
@@ -1627,7 +1627,7 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
                 title="UI updates"
                 subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
               >
-                <SegmentedControl
+                <ToggleGroup
                   value={settings.uiUpdateMode ?? 'auto'}
                   onValueChange={(v) => setSetting('uiUpdateMode', v)}
                   aria-label="UI update mode"

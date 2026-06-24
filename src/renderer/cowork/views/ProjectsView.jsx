@@ -23,7 +23,7 @@ import {
   SortPill,
   useCollectionShortcut,
 } from '../components/collection';
-import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import {
   createProject as createProjectApi,
   renameProject,
@@ -1224,7 +1224,7 @@ export default function ProjectsView({
           />
         }
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<span className="proj-view-toggle"><SegmentedControl value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
         counts={
           <ProjectsCounts
             search={search}

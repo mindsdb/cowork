@@ -1,9 +1,9 @@
-// SegmentedControl — a row of mutually exclusive options.
+// ToggleGroup — a row of mutually exclusive options.
 //
 // Built on Base UI's ToggleGroup for proper radiogroup semantics
 // and keyboard navigation (arrow keys, Home/End).
 //
-//   <SegmentedControl
+//   <ToggleGroup
 //     value="grid"
 //     onValueChange={setView}
 //     options={[
@@ -12,9 +12,9 @@
 //     ]}
 //   />
 //
-//   <SegmentedControl size="sm" ... />
+//   <ToggleGroup size="sm" ... />
 
-import { ToggleGroup } from '@base-ui/react/toggle-group';
+import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
@@ -54,7 +54,7 @@ const itemVariants = cva(
   }
 );
 
-export interface SegmentedOption {
+export interface ToggleGroupOption {
   value: string;
   label: React.ReactNode;
   icon?: React.ReactNode;
@@ -62,27 +62,27 @@ export interface SegmentedOption {
   'aria-label'?: string;
 }
 
-export interface SegmentedControlProps extends VariantProps<typeof rootVariants> {
+export interface ToggleGroupProps extends VariantProps<typeof rootVariants> {
   value: string;
   onValueChange: (value: string) => void;
-  options: SegmentedOption[];
+  options: ToggleGroupOption[];
   className?: string;
   'aria-label'?: string;
 }
 
-export function SegmentedControl({
+export function ToggleGroup({
   value,
   onValueChange,
   options,
   size,
   className,
   'aria-label': ariaLabel,
-}: SegmentedControlProps) {
+}: ToggleGroupProps) {
   return (
-    <ToggleGroup
+    <BaseToggleGroup
       value={[value]}
       onValueChange={(newValue) => {
-        // ToggleGroup returns an array; we want single-select behavior.
+        // BaseToggleGroup returns an array; we want single-select behavior.
         // When clicking the already-active item, newValue removes it
         // (empty array) — ignore that to keep one always selected.
         const next = newValue.find((v) => v !== value);
@@ -103,8 +103,8 @@ export function SegmentedControl({
           {opt.label}
         </BaseToggle>
       ))}
-    </ToggleGroup>
+    </BaseToggleGroup>
   );
 }
 
-export default SegmentedControl;
+export default ToggleGroup;

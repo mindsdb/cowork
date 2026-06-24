@@ -16,7 +16,7 @@ import {
   PageHeader, FilterRow, SearchInput, SortPill,
   useCollectionShortcut,
 } from '../components/collection';
-import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
@@ -165,7 +165,7 @@ export default function ScheduledView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<SegmentedControl value={viewMode} onValueChange={setViewMode} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} />}
+          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} />}
           counts={
             <>
               {(search || '').trim().length > 0
