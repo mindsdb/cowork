@@ -457,7 +457,7 @@ function Section({ label, muted = false, right, children }) {
     <div className="mt-4 flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className={clsx(
-          'font-display text-[10.5px] font-semibold uppercase tracking-widest',
+          'font-body text-[11px] font-semibold',
           muted ? 'text-ink-4 opacity-60' : 'text-ink-4'
         )}>
           {label}

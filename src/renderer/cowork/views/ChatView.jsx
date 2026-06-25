@@ -206,7 +206,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             <span style={{
-              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+              fontFamily: FONT_BODY, fontWeight: 600, fontSize: 14,
               color: T.ink, letterSpacing: '-0.005em',
             }}>{title}</span>
             <span style={{
@@ -630,8 +630,8 @@ function ArtifactCard({ artifact, onOpen }) {
           style={{
             all: 'unset',
             cursor: canAct ? 'pointer' : 'not-allowed',
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0.01em',
+            fontFamily: FONT_BODY, fontWeight: 600, fontSize: 16, color: T.ink,
+            letterSpacing: '-0.01em',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block', minWidth: 0,
             transition: 'color 120ms ease',
@@ -1198,8 +1198,8 @@ export default function ChatView({
                   autoCorrect="off"
                   style={{
                     flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    fontFamily: FONT_BODY, fontWeight: 600, fontSize: 14,
+                    letterSpacing: '-0.005em', color: T.ink,
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
@@ -1226,8 +1226,8 @@ export default function ChatView({
                     }
                   }}
                   style={{
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    fontFamily: FONT_BODY, fontWeight: 600, fontSize: 14,
+                    letterSpacing: '-0.005em', color: T.ink,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     overflowWrap: 'anywhere',
                     minWidth: 0, flex: '0 1 auto',
@@ -1477,7 +1477,7 @@ export default function ChatView({
                         maxWidth: 520,
                         display: 'flex', flexDirection: 'column', gap: 10,
                       }}>
-                        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+                        <div style={{ fontFamily: FONT_BODY, fontSize: 15, fontWeight: 600, letterSpacing: '-0.005em', color: T.ink }}>
                           You're out of credits
                         </div>
                         <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
@@ -1525,9 +1525,10 @@ export default function ChatView({
                       display: 'flex', flexDirection: 'column', gap: 10,
                     }}>
                       <div style={{
-                        fontFamily: FONT_DISPLAY,
+                        fontFamily: FONT_BODY,
                         fontSize: 15,
-                        letterSpacing: '0.02em',
+                        fontWeight: 600,
+                        letterSpacing: '-0.005em',
                         color: T.ink,
                       }}>Connect a provider to start chatting</div>
                       <div style={{
