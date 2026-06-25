@@ -4663,39 +4663,42 @@ body[data-theme="dark"] .mshell__drawer-title {
   box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
   user-select: text;
 }
-/* Action toolbar — always present, subtle at rest, brightens on bubble-
-   or self-hover. The previous opacity:0 + pointer-events:none default
-   broke clickability: buttons sit at right:-32px, outside `.user-turn`'s
-   bounding box, so the cursor couldn't reach them without losing the
-   parent's :hover. Keeping them always interactive (with a low-opacity
-   resting state) sidesteps that entirely. `has-meta` lifts the button
-   above the "you · time" line; `is-stacked` adds another row when both
-   Edit and Trash are visible. */
-.user-turn-action {
-  position: absolute;
-  right: -32px;
-  bottom: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 0;
-  background: transparent;
+/* ─── Shared turn-action toolbar ──────────────────────────────────────────
+   Horizontal row of icon buttons below both user and assistant messages.
+   Hidden at rest, revealed on hover of the parent turn. `.is-last` keeps
+   the most recent exchange's toolbar always visible (Claude pattern). */
+.turn-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
   color: var(--ink-4);
-  display: inline-grid;
-  place-items: center;
-  cursor: pointer;
-  opacity: 0.55;
-  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+  opacity: 0;
+  transition: opacity 140ms ease;
 }
-.user-turn:hover .user-turn-action,
-.user-turn-action:hover,
-.user-turn-action:focus-visible {
+.turn-actions.is-last { opacity: 1; }
+.user-turn:hover .turn-actions,
+.answer-turn:hover .turn-actions,
+.turn-actions:focus-within {
   opacity: 1;
 }
-.user-turn-action:hover { color: var(--accent); }
-.user-turn-action--danger:hover { color: var(--danger); }
-.user-turn-action.has-meta { bottom: 18px; }
-.user-turn-action.is-stacked { bottom: 48px; }
+.turn-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.turn-action-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--accent);
+}
+.turn-action-btn--danger:hover { color: var(--danger); }
 
 .user-turn-attachment {
   display: flex;
@@ -4718,12 +4721,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--ink-4);
-}
-.user-turn-meta {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-4);
-  letter-spacing: 0.04em;
 }
 
 /* Heading scale inside user-message bubbles — MarkdownContent's defaults
