@@ -348,7 +348,7 @@ export default function SkillsView() {
 
           {/* Description */}
           {selected.description && (
-            <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--ink-3)', lineHeight: 1.5, userSelect: 'text' }}>
               {selected.description}
             </p>
           )}
@@ -360,6 +360,7 @@ export default function SkillsView() {
             padding: 24,
             display: 'flex', flexDirection: 'column', gap: 16,
             background: 'var(--surface)',
+            userSelect: 'text',
           }}>
             <MarkdownContent
               text={selected.declarative || ''}
