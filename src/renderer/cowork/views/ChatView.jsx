@@ -20,7 +20,7 @@ import { copyText } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
-import { ArtifactViewer } from '../components/artifact';
+import { ArtifactWorkspace } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -882,6 +882,7 @@ export default function ChatView({
   queuedMessages = [],
   onRemoveFromQueue,
   agentLabel,
+  onHandoffArtifact,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -1891,6 +1892,7 @@ export default function ChatView({
         <WorkingFolderBox
           project={project}
           isStreaming={isStreaming}
+          onHandoffArtifact={onHandoffArtifact}
         />
         <ContextBox
           project={project}
@@ -1913,14 +1915,16 @@ export default function ChatView({
         focusStepId={openScratchpadStepId}
       />
 
-      {/* Inline ArtifactCard viewer — same modal the Live artifacts
-          page and the Working folder card use. The card only routes
+      {/* Inline ArtifactCard workspace — same modal the Live artifacts
+          page and the Artifacts rail card use. The card only routes
           HTML here; non-HTML opens straight in the OS via openPath. */}
-      <ArtifactViewer
+      <ArtifactWorkspace
         open={!!previewArt}
         artifact={previewArt}
+        projects={projects}
         onClose={() => setPreviewArt(null)}
         onChange={(updated) => setPreviewArt(updated)}
+        onHandoff={onHandoffArtifact}
       />
 
       {/* Data-vault connection form — rendered as a centered modal

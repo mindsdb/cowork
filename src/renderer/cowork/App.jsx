@@ -42,7 +42,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource,
-         fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
+         fetchInFlightStatus, tailInFlight, fetchInFlightList, handoffArtifactToTask } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted } from './lib/analytics';
@@ -3255,6 +3255,55 @@ function AppCore() {
     refreshData();
   };
 
+  const handleArtifactHandoff = async (artifact, options = {}) => {
+    const artifactPath = options.path
+      || artifact?.canonicalPath
+      || artifact?.file_path
+      || artifact?.path
+      || '';
+    const artifactTitle = artifact?.title || artifact?.name || artifact?.label || 'artifact';
+    const result = await handoffArtifactToTask({
+      path: artifactPath,
+      artifactId: artifact?.id || artifact?.artifactId || null,
+      versionId: options.versionId || null,
+      commentId: options.commentId || null,
+      title: options.title || `Work on ${artifactTitle}`,
+      prompt: options.prompt || `Continue work on the artifact "${artifactTitle}".`,
+      projectId: artifact?.projectId || artifact?.project_id || null,
+      project: artifact?.project || artifact?.projectName || null,
+    });
+    const conversationId = result?.conversationId || result?.conversation_id || result?.conversation?.id;
+    if (!conversationId) return result;
+
+    const title = result?.conversation?.title || result?.title || `Work on ${artifactTitle}`;
+    markInFlight(conversationId);
+    setTasks((prev) => {
+      const existing = prev.find((task) => task.id === conversationId);
+      const shell = {
+        ...(existing || {}),
+        id: conversationId,
+        title,
+        preview: title,
+        project: result?.conversation?.project || result?.project || artifact?.project || artifact?.projectName || existing?.project || null,
+        project_id: result?.conversation?.projectId || result?.conversation?.project_id || result?.projectId || result?.project_id || artifact?.projectId || artifact?.project_id || existing?.project_id || null,
+        messages: existing?.messages || [],
+        status: 'active',
+      };
+      return [shell, ...prev.filter((task) => task.id !== conversationId)];
+    });
+    setActiveTaskId(conversationId);
+    setRoute('task');
+    reconnectInFlight(conversationId).catch(() => {});
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) {
+        setTasks((prev) =>
+          mergeTasksFromServer(data, prev).filter((task) => !deletedTaskIdsRef.current.has(task.id))
+        );
+      }
+    }).catch(() => {});
+    return result;
+  };
+
   const handleSearchSelect = (result) => {
     if (result.type === 'task' || (result.type === 'pin' && result.route === 'task')) {
       selectTask(result.id);
@@ -3534,6 +3583,7 @@ function AppCore() {
             projects={projects}
             sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
+            onHandoffArtifact={handleArtifactHandoff}
           />
         )}
 
@@ -3569,6 +3619,7 @@ function AppCore() {
               setSelectedScheduleId(task.id);
               setRoute('schedule-detail');
             }}
+            onHandoffArtifact={handleArtifactHandoff}
             agentLabel={agentLabel}
           />
         )}
@@ -3642,6 +3693,7 @@ function AppCore() {
             artifacts={artifacts}
             projects={projects}
             agentLabel={agentLabel}
+            onHandoffArtifact={handleArtifactHandoff}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local

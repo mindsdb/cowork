@@ -1,18 +1,15 @@
 import { createElement } from 'react';
-import { ArtifactViewer } from './ArtifactViewer';
+import { ArtifactWorkspaceRedesign } from './redesign/ArtifactWorkspaceRedesign.jsx';
+import { RedesignErrorBoundary } from './redesign/RedesignErrorBoundary.jsx';
 
 export { ArtifactViewer } from './ArtifactViewer';
 
-// Temporary stack bridge for the list/publish slice. The real redesigned
-// workspace replaces this export later in the stack, after its dependencies land.
-export function ArtifactWorkspace({ open, artifact, onClose, onChange, onPublish, onUnpublish }) {
-  if (!open || !artifact) return null;
-  return createElement(ArtifactViewer, {
-    open,
-    artifact,
-    onClose,
-    onChange,
-    onPublish,
-    onUnpublish,
-  });
+// Redesign-only workspace export for the staging stack. The old fallback
+// workspace is intentionally kept out of this branch series.
+export function ArtifactWorkspace(props) {
+  return createElement(
+    RedesignErrorBoundary,
+    null,
+    createElement(ArtifactWorkspaceRedesign, props),
+  );
 }
