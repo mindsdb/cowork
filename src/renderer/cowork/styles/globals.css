@@ -3842,19 +3842,19 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
    (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: 18px;
   /* 10px horizontal + textarea side padding = same 18px text inset as
      .composer-textarea on home; toolbar is flush on the bottom so the card
      doesn't pick up a double band (toolbar pb + wrap pb). */
-  padding: 14px 10px 12px;
+  padding: 16px 14px 12px;
   /* Subtle all-around lift — replaces the heavier downward shadow we
      used to pair with the bottom gradient mask. With the mask gone, a
      soft even glow reads as "floating panel" without darkening the
      gravity field below. */
   box-shadow:
-    0 1px 2px rgba(15, 16, 17, 0.04),
-    0 4px 14px rgba(15, 16, 17, 0.06);
+    0 2px 4px rgba(15, 16, 17, 0.05),
+    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 /* Override the shared metrics on the shell so the textarea and overlay
    stay coupled. Font-family still ships on each child because it's not
@@ -3864,9 +3864,9 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   /* 10px (wrap) + 8px = 18px body inset — matches home .composer-textarea.
      Tighter bottom than default textarea: toolbar supplies top spacing so we
      don't stack 12px + 10px and leave a tall band under the input line. */
-  --composer-font-size: 14px;
-  --composer-line-height: 1.45;
-  --composer-padding: 2px 8px 6px;
+  --composer-font-size: 15px;
+  --composer-line-height: 1.5;
+  --composer-padding: 4px 8px 8px;
 }
 .chat-floating-composer .composer-textarea {
   font-family: var(--font-body);
