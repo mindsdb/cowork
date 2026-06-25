@@ -24,9 +24,12 @@ function EmptyState({ children }) {
   return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
 }
 
+const CARD_SHADOW = '0px 0px 0px 0.5px rgba(39,39,42,0.15), 0px 1px 2px rgba(0,0,0,0.05), 0px 0.5px 0px rgba(0,0,0,0.08)';
+
 function SkillCard({ skill, onClick }) {
   const [hovered, setHovered] = useState(false);
   const age = relativeAge(skill.updatedAt);
+  const project = skill.projects?.[0] || skill.project;
   return (
     <div
       role="button"
@@ -37,34 +40,38 @@ function SkillCard({ skill, onClick }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(skill); } }}
       style={{
         cursor: 'pointer',
-        background: hovered ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${hovered ? 'var(--line-2)' : 'var(--line)'}`,
-        borderRadius: 10,
-        padding: '14px 16px',
-        display: 'flex', flexDirection: 'column', gap: 10,
-        transition: 'background .15s ease, border-color .15s ease',
+        background: hovered ? '#f9f9f9' : '#fff',
+        boxShadow: CARD_SHADOW,
+        borderRadius: 8,
+        padding: '12px 0 0',
+        display: 'flex', flexDirection: 'column', gap: 12,
+        transition: 'background .15s ease',
         outline: 'none',
         font: 'inherit', color: 'inherit',
-        minHeight: 120,
+        overflow: 'hidden',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      {/* Top content */}
+      <div style={{ padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {/* Slash badge */}
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, width: 20, height: 20, borderRadius: 4,
+            boxShadow: CARD_SHADOW,
+            fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 500,
+            color: '#828285',
+          }}>/</span>
+          <span style={{
+            flex: 1, minWidth: 0,
+            fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 500,
+            color: '#111115',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{skill.name}</span>
+        </div>
         <span style={{
-          display: 'inline-flex', flexShrink: 0,
-          fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500,
-          color: 'var(--ink-3)',
-        }}>/</span>
-        <span style={{
-          flex: 1, minWidth: 0,
-          fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600,
-          letterSpacing: '-0.005em', color: 'var(--ink)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{skill.name}</span>
-      </div>
-      <div style={{ flex: 1 }}>
-        <span style={{
-          fontFamily: 'var(--font-body)', fontSize: 13, lineHeight: 1.5,
-          color: 'var(--ink-3)',
+          fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: '24px',
+          color: '#69696B',
           display: '-webkit-box',
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
@@ -73,15 +80,19 @@ function SkillCard({ skill, onClick }) {
           {skill.description || skill.declarative?.slice(0, 120) || '—'}
         </span>
       </div>
+
+      {/* Footer */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderTop: '1px solid var(--line)', paddingTop: 10,
-        fontFamily: 'var(--font-mono)', fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.02em',
+        padding: '8px 12px',
+        background: '#FCFCFC',
+        boxShadow: 'inset 0px 0.5px 0px rgba(39,39,42,0.06), inset 0px 1px 1px -0.5px rgba(39,39,42,0.06), inset 0px 2px 2px -1px rgba(39,39,42,0.06)',
+        fontFamily: 'var(--font-body)', fontSize: 12,
+        color: '#69696B',
       }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          {Ico.folder(11)}
-          <span>{skill.project || 'General'}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {Ico.folder(14)}
+          <span>{project}</span>
         </span>
         {age && <span>Updated {age}</span>}
       </div>
