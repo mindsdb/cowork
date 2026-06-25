@@ -25,6 +25,12 @@ import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import {
+  AccessChooser,
+  accessDraftFromArtifact,
+  isAccessDraftValid,
+  buildAccessPayload,
+} from '../components/artifact/publish/AccessChooser';
+import {
   PageHeader,
   FilterRow,
   SearchInput,
@@ -248,149 +254,30 @@ function ModifiedPill() {
   );
 }
 
-// Loose-but-practical email shape check. Splits on whitespace, commas and
-// semicolons; trims, lowercases and de-dupes; partitions into valid/invalid.
-const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-function parseEmailList(raw) {
-  const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const seen = new Set();
-  const valid = [];
-  const invalid = [];
-  for (const p of parts) {
-    if (seen.has(p)) continue;
-    seen.add(p);
-    (_EMAIL_RE.test(p) ? valid : invalid).push(p);
-  }
-  return { valid, invalid };
-}
-
-// Publish visibility chooser — Public / Password-protected / For selected
-// users (emails + org). On confirm it hands back an access object
-// ({ mode, ... }). Re-publishing pre-fills the existing selection (password is
-// revealable via the eye; emails/org come from the server's owner-side state).
+// Publish visibility chooser — a thin wrapper over the shared
+// <AccessChooser>. Owns only the draft + dialog chrome; the Public /
+// Password / Restricted UI and its validation live in one place now.
+// On confirm it hands back the access payload. Re-publishing pre-fills
+// the existing selection.
 function PublishDialog({ artifact, onCancel, onConfirm }) {
-  const [mode, setMode] = useState(artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public'));
-  const [password, setPassword] = useState(artifact?.accessPassword || '');
-  const [reveal, setReveal] = useState(false);
-  const [emailsText, setEmailsText] = useState((artifact?.accessEmails || []).join(', '));
-  const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
+  const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
   if (!artifact) return null;
-
-  const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(emailsText);
-  const canConfirm =
-    mode === 'public'
-    || (mode === 'password' && password.trim().length > 0)
-    || (mode === 'restricted' && (parsedEmails.length > 0 || orgAllowed));
-  const submit = () => {
-    if (!canConfirm) return;
-    if (mode === 'restricted') onConfirm({ mode: 'restricted', emails: parsedEmails, org_allowed: orgAllowed });
-    else if (mode === 'password') onConfirm({ mode: 'password', password: password.trim() });
-    else onConfirm({ mode: 'public' });
-  };
-
-  const Option = ({ value, icon, title, desc }) => {
-    const active = mode === value;
-    return (
-      <button type="button" onClick={() => setMode(value)} style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left', width: '100%',
-        padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-        background: active ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface-2)',
-        border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-        transition: 'background 120ms ease, border-color 120ms ease',
-      }}>
-        <span style={{ display: 'inline-flex', color: active ? 'var(--accent)' : 'var(--ink-3)', marginTop: 1 }}>{icon}</span>
-        <span style={{ minWidth: 0 }}>
-          <span style={{ display: 'block', fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{title}</span>
-          <span style={{ display: 'block', fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{desc}</span>
-        </span>
-      </button>
-    );
-  };
+  const canConfirm = isAccessDraftValid(draft);
+  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft)); };
 
   return (
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
-        title="Publish artifact"
+        title="Publish to the Web"
         subtitle={artifact.title || artifact.path?.split('/').pop()}
         onClose={onCancel}
       />
       <ModalBody>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Option value="public" icon={Ico.globe(16)} title="Public" desc="Anyone with the link can view it." />
-          <Option value="password" icon={Ico.lock(16)} title="Password protected" desc="Visitors must enter a password to view it." />
-          <Option value="restricted" icon={Ico.people(16)} title="For selected users" desc="Only people you list — or your whole org — can view it." />
+        <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink)', marginBottom: 8 }}>
+          Who can access your app
         </div>
-        {mode === 'password' && (
-          <div style={{ marginTop: 12 }}>
-            <label style={{
-              display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)',
-              marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>Password</label>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'var(--surface-2)', border: '1px solid var(--line)',
-              borderRadius: 8, padding: '0 8px 0 10px',
-            }}>
-              <input
-                type={reveal ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-                autoFocus
-                placeholder="Enter a password"
-                style={{
-                  flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none',
-                  color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 0',
-                }}
-              />
-              <button type="button" onClick={() => setReveal((v) => !v)} title={reveal ? 'Hide' : 'Show'}
-                style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
-                {reveal ? Ico.eyeOff(15) : Ico.eye(15)}
-              </button>
-            </div>
-            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
-              You can view this password anytime from the artifact’s preview.
-            </div>
-          </div>
-        )}
-        {mode === 'restricted' && (
-          <div style={{ marginTop: 12 }}>
-            <label style={{
-              display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)',
-              marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>Allowed emails</label>
-            <textarea
-              value={emailsText}
-              onChange={(e) => setEmailsText(e.target.value)}
-              autoFocus
-              rows={3}
-              placeholder="alice@acme.com, bob@acme.com"
-              style={{
-                width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8,
-                color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
-              }}
-            />
-            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
-              {parsedEmails.length} recipient{parsedEmails.length === 1 ? '' : 's'}
-              {invalidEmails.length ? ` · ${invalidEmails.length} invalid ignored` : ''}
-              {' '}· comma- or newline-separated.
-            </div>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer',
-              fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink)',
-            }}>
-              <input
-                type="checkbox"
-                checked={orgAllowed}
-                onChange={(e) => setOrgAllowed(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              Everyone in my organization
-            </label>
-          </div>
-        )}
+        <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
       </ModalBody>
       <ModalFooter>
         <button type="button" onClick={onCancel} style={{
@@ -403,7 +290,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
           opacity: canConfirm ? 1 : 0.5,
         }}>
-          {mode === 'password' ? 'Publish protected' : mode === 'restricted' ? 'Publish restricted' : 'Publish'}
+          {draft.mode === 'password' ? 'Publish protected' : draft.mode === 'restricted' ? 'Publish restricted' : 'Publish'}
         </button>
       </ModalFooter>
     </Modal>
@@ -683,6 +570,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 7, minWidth: 0,
+          // Reserve the absolute kebab's footprint (top:12/right:12, 26px wide
+          // against 16px card padding → ~22px intrusion) so the rightmost
+          // status pill can never slide under it. Always reserved so the row
+          // doesn't reflow when the kebab reveals on hover.
+          paddingRight: 28,
         }}>
           <span style={{
             display: 'inline-flex', flexShrink: 0,
