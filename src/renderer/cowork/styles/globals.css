@@ -100,6 +100,28 @@
   --sage-500: #5D9287;
   --sage-600: #4D7A70;
   --sage-700: #3D6159;
+
+  /* ─── Type scale ─────────────────────────────────────────────────────── */
+  --text-2xs:  10px;   /* timestamps, mono badges, kbd labels */
+  --text-xs:   11px;   /* section labels (UPPERCASE), eyebrows */
+  --text-sm:   12.5px; /* secondary body, captions, helper text */
+  --text-base: 14px;   /* primary body, buttons, form inputs */
+  --text-md:   15px;   /* slightly emphasized body, composer */
+  --text-lg:   17px;   /* subheadings, card titles */
+  --text-xl:   22px;   /* pane titles, modal headings */
+  --text-2xl:  28px;   /* page-level headings */
+  --text-3xl:  36px;   /* home greeting, hero text */
+
+  /* ─── Spacing scale (4px base) ───────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
 }
 
 /* ─── Light mode (default) ────────────────────────────────────────────────
