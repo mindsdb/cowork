@@ -312,7 +312,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
                 animation: 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}

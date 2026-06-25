@@ -200,7 +200,7 @@ export function Modal({
           background: 'var(--surface)',
           border: '1px solid var(--line)',
           borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+          boxShadow: '0 16px 48px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.04)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
           animation: 'modal-appear 180ms ease-out both',

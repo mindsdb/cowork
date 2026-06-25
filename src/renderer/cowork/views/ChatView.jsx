@@ -593,7 +593,7 @@ function ArtifactCard({ artifact, onOpen }) {
         display: 'grid', gridTemplateColumns: '64px 1fr auto', alignItems: 'center', gap: 16,
         background: T.surface, border: `1px solid ${T.line}`,
         borderRadius: 14, padding: '14px 16px',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
         cursor: canAct ? 'pointer' : 'default',
         transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
         outline: 'none',
@@ -602,12 +602,12 @@ function ArtifactCard({ artifact, onOpen }) {
         if (!canAct) return;
         e.currentTarget.style.borderColor = T.accent;
         e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 26px rgba(15,16,17,0.06)';
+        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
       }}
       onMouseOut={(e) => {
         e.currentTarget.style.borderColor = T.line;
         e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)';
+        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
       }}
     >
       <div style={{
@@ -683,7 +683,7 @@ function ArtifactCard({ artifact, onOpen }) {
                 style={{
                   position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
                   background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.06)', padding: 4, minWidth: 140,
                   display: 'flex', flexDirection: 'column', gap: 2,
                 }}
               >

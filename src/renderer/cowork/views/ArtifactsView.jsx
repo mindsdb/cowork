@@ -613,17 +613,17 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         padding: '14px 16px',
         display: 'flex', flexDirection: 'column', gap: 10,
         transition: 'border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
         minHeight: 120,
       }}
       onMouseOver={(e) => {
         e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 28px rgba(15,16,17,0.08)';
+        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
         e.currentTarget.style.transform = 'translateY(-1px)';
       }}
       onMouseOut={(e) => {
         e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02)';
+        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.03)';
         e.currentTarget.style.transform = 'translateY(0)';
       }}
     >

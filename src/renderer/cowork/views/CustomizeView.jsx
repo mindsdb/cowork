@@ -333,7 +333,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           width: 'min(400px, 92vw)',
           background: 'var(--surface)',
           borderLeft: '1px solid var(--line)',
-          boxShadow: '-12px 0 40px rgba(0,0,0,0.12)',
+          boxShadow: '-8px 0 24px rgba(0,0,0,0.06)',
           display: 'flex', flexDirection: 'column',
           fontFamily: FONT_BODY,
         }}
