@@ -2,19 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu } from '../components/ui';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { deleteSkill, fetchSkills, saveSkill } from '../api';
 
-const inputStyle = {
-  width: '100%',
-  height: 34,
-  border: '1px solid var(--border-01)',
-  borderRadius: 7,
-  padding: '0 10px',
-  fontSize: 13,
-  outline: 'none',
-  background: 'var(--surface-0)',
-  color: 'var(--ink)',
-};
 
 function relativeAge(input) {
   if (!input) return null;
@@ -97,6 +87,122 @@ function SkillCard({ skill, onClick }) {
   );
 }
 
+function toLabel(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+const fieldStyle = {
+  width: '100%',
+  border: '1px solid var(--border-01)',
+  borderRadius: 8,
+  padding: 8,
+  fontSize: 13,
+  outline: 'none',
+  background: 'var(--surface-0)',
+  color: 'var(--ink)',
+  fontFamily: 'var(--font-body)',
+  resize: 'vertical',
+  boxSizing: 'border-box',
+};
+
+function FieldLabel({ children }) {
+  return (
+    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', marginBottom: 4 }}>
+      {children}
+    </div>
+  );
+}
+
+// initial — передаётся при редактировании существующего скила, null при создании
+function SkillModal({ open, onClose, onSaved, setStatus, initial = null }) {
+  const isEdit = initial !== null;
+  const empty = { name: '', description: '', declarative: '' };
+  const [draft, setDraft] = useState(empty);
+  const [busy, setBusy] = useState(false);
+
+  // Когда модал открывается с initial — заполняем поля
+  useEffect(() => {
+    if (open) setDraft(initial ? { name: initial.name || '', description: initial.description || '', declarative: initial.declarative || '' } : empty);
+  }, [open]);
+
+  const setField = (key, value) =>
+    setDraft((prev) => ({ ...prev, [key]: value }));
+
+  const handleClose = () => {
+    onClose();
+  };
+
+  const submit = async () => {
+    const label = isEdit ? initial.label : toLabel(draft.name);
+    if (!label || !draft.name.trim() || !draft.declarative.trim()) return;
+    setBusy(true);
+    try {
+      await saveSkill({ label, ...draft }, isEdit);
+      setStatus(`Saved ${draft.name}.`);
+      handleClose();
+      await onSaved();
+    } catch (err) {
+      setStatus(err.message || 'Could not save skill.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canSubmit = draft.name.trim() && draft.declarative.trim() && !busy;
+
+  return (
+    <Modal open={open} onClose={handleClose} width="549px" labelledBy="skill-modal-title">
+      <ModalHeader
+        id="skill-modal-title"
+        title={isEdit ? 'Edit Skill' : 'Add a Skill'}
+        subtitle="Write a name, description, and instructions for the skill."
+        onClose={handleClose}
+      />
+      <ModalBody padding="20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <FieldLabel>Skill name</FieldLabel>
+            <input
+              aria-label="Skill name"
+              value={draft.name}
+              onChange={(e) => setField('name', e.target.value)}
+              placeholder="weekly-status-report"
+              style={{ ...fieldStyle, height: 34, resize: 'none' }}
+              autoFocus
+            />
+          </div>
+          <div>
+            <FieldLabel>Description</FieldLabel>
+            <textarea
+              aria-label="Description"
+              value={draft.description}
+              onChange={(e) => setField('description', e.target.value)}
+              placeholder="Generate weekly status reports from recent work. Use when asked for updates or progress summaries."
+              style={{ ...fieldStyle, height: 80 }}
+            />
+          </div>
+          <div>
+            <FieldLabel>Instructions</FieldLabel>
+            <textarea
+              aria-label="Instructions"
+              value={draft.declarative}
+              onChange={(e) => setField('declarative', e.target.value)}
+              placeholder="Summarize my recent work in three sections: wins, blockers, and next steps. Keep the tone professional but not stiff..."
+              style={{ ...fieldStyle, height: 198, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
+            />
+          </div>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className="btn-secondary" onClick={handleClose}>Cancel</button>
+        <button type="button" className="btn-primary" disabled={!canSubmit} onClick={submit}>
+          {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
+        </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
 function CreateSkillDropdown({ onWrite }) {
   const items = [
     { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(13), onClick: () => {} },
@@ -123,16 +229,13 @@ const SORT_OPTIONS = [
 ];
 
 export default function SkillsView() {
-  const [skills, setSkills]   = useState(null);
-  const [selected, setSelected] = useState(null);
-  const [editing, setEditing]  = useState(null);
-  const [status, setStatus]    = useState('');
-  const [search, setSearch]    = useState('');
-  const [sortBy, setSortBy]    = useState('name');
+  const [skills, setSkills]       = useState(null);
+  const [selected, setSelected]   = useState(null);
+  const [modalSkill, setModalSkill] = useState(null); // null = closed, undefined = new, skill = edit
+  const [status, setStatus]       = useState('');
+  const [search, setSearch]       = useState('');
+  const [sortBy, setSortBy]       = useState('name');
   const searchRef = useRef(null);
-
-  const emptyDraft = { label: '', name: '', description: '', declarative: '' };
-  const [draft, setDraft] = useState(emptyDraft);
 
   useEffect(() => {
     fetchSkills()
@@ -157,75 +260,29 @@ export default function SkillsView() {
     }
   };
 
-  const startNew = () => {
-    setEditing('new');
-    setDraft(emptyDraft);
-    setSelected(null);
-  };
+  const startNew  = () => setModalSkill(undefined);
+  const startEdit = (skill) => setModalSkill(skill);
+  const closeModal = () => setModalSkill(null);
 
-  const startEdit = (skill) => {
-    setEditing('edit');
-    setDraft({
-      label: skill.label || '',
-      name: skill.name || '',
-      description: skill.description || '',
-      declarative: skill.declarative || '',
-    });
-    setSelected(skill);
-  };
+  // ── Grid list ─────────────────────────────────────────────────────────────
+  const filtered = (skills ?? []).filter((s) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
+  });
 
-  const save = async () => {
-    try {
-      await saveSkill(draft, editing === 'edit');
-      setStatus(`Saved ${draft.name || draft.label}.`);
-      setEditing(null);
-      setSelected(draft);
-      await reload();
-    } catch (err) {
-      setStatus(err.message || 'Could not save skill.');
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
+    if (sortBy === 'recent') {
+      return (b.updatedAt ? Date.parse(b.updatedAt) : 0) - (a.updatedAt ? Date.parse(a.updatedAt) : 0);
     }
-  };
+    return 0;
+  });
 
-  const cancelEditing = () => {
-    setEditing(null);
-    setSelected(null);
-  };
-
-  // ── Editing form ──────────────────────────────────────────────────────────
-  if (editing) {
-    return (
-      <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto' }}>
-        <div style={{ padding: 32, maxWidth: 640 }}>
-          {status && <div style={{ marginBottom: 12, color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={cancelEditing}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 24 }}
-          >
-            {Ico.chevLeft(13)} Back
-          </button>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 8 }}>
-              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((p) => ({ ...p, label: e.target.value }))} placeholder="skill-label" style={inputStyle} disabled={editing === 'edit'} />
-              <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
-            </div>
-            <input aria-label="Skill description" value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} placeholder="Short description: when the agent should use this skill" style={inputStyle} />
-            <textarea aria-label="Skill instructions" value={draft.declarative} onChange={(e) => setDraft((p) => ({ ...p, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
-            <div className="dialog-actions">
-              <button className="secondary-btn" onClick={cancelEditing}>Cancel</button>
-              <button className="primary-btn" disabled={!draft.label.trim() || !draft.name.trim() || !draft.declarative.trim()} onClick={save}>Save skill</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Detail view ───────────────────────────────────────────────────────────
-  if (selected) {
-    return (
-      <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto' }}>
+  return (
+    <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
+      {selected ? (
+        // ── Detail view ────────────────────────────────────────────────────
         <div style={{ padding: 32, maxWidth: 720 }}>
           {status && <div style={{ marginBottom: 12, color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
           <button
@@ -247,52 +304,41 @@ export default function SkillsView() {
           {selected.description && <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--ink-3)' }}>{selected.description}</p>}
           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', userSelect: 'text', fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.55 }}>{selected.declarative}</pre>
         </div>
-      </div>
-    );
-  }
-
-  // ── Grid list ─────────────────────────────────────────────────────────────
-  const list = skills ?? [];
-
-  const filtered = list.filter((s) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
-  });
-
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
-    if (sortBy === 'recent') {
-      return (b.updatedAt ? Date.parse(b.updatedAt) : 0) - (a.updatedAt ? Date.parse(a.updatedAt) : 0);
-    }
-    return 0;
-  });
-
-  return (
-    <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
-      <PageHeader
-        title="Skills"
-        subtitle="Extend Cowork's capabilities with task-specific skills"
-        actions={<CreateSkillDropdown onWrite={startNew} />}
-      />
-      {status && <div style={{ margin: '12px 32px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
-      <div style={{ padding: '20px 32px 0' }}>
-        <FilterRow
-          search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
-          sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} label="Sort by" />}
-        />
-      </div>
-      {skills === null ? (
-        <EmptyState>Loading…</EmptyState>
-      ) : sorted.length > 0 ? (
-        <div style={{ padding: '20px 32px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          {sorted.map((skill) => (
-            <SkillCard key={skill.label} skill={skill} onClick={setSelected} />
-          ))}
-        </div>
       ) : (
-        <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
+        // ── Grid ───────────────────────────────────────────────────────────
+        <>
+          <PageHeader
+            title="Skills"
+            subtitle="Extend Cowork's capabilities with task-specific skills"
+            actions={<CreateSkillDropdown onWrite={startNew} />}
+          />
+          {status && <div style={{ margin: '12px 32px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
+          <div style={{ padding: '20px 32px 0' }}>
+            <FilterRow
+              search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
+              sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} label="Sort by" />}
+            />
+          </div>
+          {skills === null ? (
+            <EmptyState>Loading…</EmptyState>
+          ) : sorted.length > 0 ? (
+            <div style={{ padding: '20px 32px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+              {sorted.map((skill) => (
+                <SkillCard key={skill.label} skill={skill} onClick={setSelected} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
+          )}
+        </>
       )}
+      <SkillModal
+        open={modalSkill !== null}
+        onClose={closeModal}
+        onSaved={reload}
+        setStatus={setStatus}
+        initial={modalSkill ?? null}
+      />
     </div>
   );
 }
