@@ -12,12 +12,14 @@ export function WorkingFolderBox({
   isStreaming = false,
   defaultOpen = true,
   maxBodyHeight = 320,
+  onHandoffArtifact,
 }) {
   return (
     <RailCard title="Artifacts" defaultOpen={defaultOpen} maxBodyHeight={maxBodyHeight}>
       <WorkingFolderLive
         project={project}
         isStreaming={isStreaming}
+        onHandoffArtifact={onHandoffArtifact}
       />
     </RailCard>
   );

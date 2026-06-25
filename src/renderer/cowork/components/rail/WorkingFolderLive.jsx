@@ -11,7 +11,7 @@
 // - Polls every 3s while streaming, plus once when streaming ends.
 // - Click → HTML opens in-app viewer; other types → OS openPath.
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import Ico from '../Icons';
@@ -24,9 +24,11 @@ import {
   publishTargetPath,
   deleteArtifact,
 } from '../../api';
-import { ArtifactViewer } from '../artifact';
+import { ArtifactWorkspace } from '../artifact';
 import { ConfirmModal } from '../ConfirmModal';
+import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { host } from '../../../platform/host';
+import { isPublishableArtifact } from '../../lib/artifactKinds';
 import { trackArtifactPublished } from '../../lib/analytics';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -63,8 +65,195 @@ function iconForRow(row) {
   return EXT_ICON[ext] || 'doc';
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function WorkingFolderLive({ project, isStreaming }) {
+function parseEmailList(raw) {
+  const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const seen = new Set();
+  const valid = [];
+  const invalid = [];
+  for (const part of parts) {
+    if (seen.has(part)) continue;
+    seen.add(part);
+    (EMAIL_RE.test(part) ? valid : invalid).push(part);
+  }
+  return { valid, invalid };
+}
+
+function RailPublishDialog({ artifact, busy, error, onCancel, onConfirm }) {
+  const [mode, setMode] = useState(artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public'));
+  const [password, setPassword] = useState(artifact?.accessPassword || '');
+  const [emailsText, setEmailsText] = useState((artifact?.accessEmails || []).join(', '));
+  const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
+  const [reveal, setReveal] = useState(false);
+  const selectedPublishVersion = artifact?.publishVersionLabel
+    || (artifact?.publishVersionId ? `Version ${String(artifact.publishVersionId).slice(0, 8)}` : '');
+  useEffect(() => {
+    if (!artifact) return;
+    setMode(artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public'));
+    setPassword(artifact?.accessPassword || '');
+    setEmailsText((artifact?.accessEmails || []).join(', '));
+    setOrgAllowed(!!artifact?.orgAllowed);
+    setReveal(false);
+  }, [artifact?.path, artifact?.accessMode, artifact?.accessProtected, artifact?.accessPassword, artifact?.orgAllowed]);
+  if (!artifact) return null;
+
+  const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(emailsText);
+  const canConfirm = mode === 'public'
+    || (mode === 'password' && password.trim().length > 0)
+    || (mode === 'restricted' && (parsedEmails.length > 0 || orgAllowed));
+  const submit = () => {
+    if (!canConfirm || busy) return;
+    if (mode === 'password') onConfirm({ mode: 'password', password: password.trim() });
+    else if (mode === 'restricted') onConfirm({ mode: 'restricted', emails: parsedEmails, org_allowed: orgAllowed });
+    else onConfirm({ mode: 'public' });
+  };
+  const Option = ({ value, icon, title, detail }) => {
+    const active = mode === value;
+    return (
+      <button
+        type="button"
+        onClick={() => setMode(value)}
+        className="w-full text-left"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '16px minmax(0, 1fr)',
+          gap: 10,
+          padding: '10px 12px',
+          borderRadius: 8,
+          border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+          background: active ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface-2)',
+          cursor: 'pointer',
+        }}
+      >
+        <span style={{ display: 'inline-flex', color: active ? 'var(--accent)' : 'var(--ink-3)', marginTop: 2 }}>
+          {icon}
+        </span>
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 650, color: 'var(--ink)' }}>{title}</span>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{detail}</span>
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" labelledBy="rail-publish-title">
+      <ModalHeader
+        id="rail-publish-title"
+        title={artifact?.publishedUrl ? 'Update published copy' : 'Publish artifact'}
+        subtitle={[artifact?.title || artifact?.path?.split('/').pop(), selectedPublishVersion].filter(Boolean).join(' · ')}
+        onClose={onCancel}
+      />
+      <ModalBody>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '10px minmax(0, 1fr)',
+          gap: 8,
+          padding: '10px 12px',
+          borderRadius: 8,
+          border: '1px solid var(--line)',
+          background: 'var(--surface-2)',
+          marginBottom: 12,
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: 99, background: 'var(--success)', marginTop: 5 }} />
+          <span>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 650, color: 'var(--ink)' }}>
+              {selectedPublishVersion ? 'Publishing selected version' : 'Publishing a saved snapshot'}
+            </span>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+              {selectedPublishVersion
+                ? `${selectedPublishVersion} will be pinned to the public link.`
+                : 'Cowork will publish a versioned copy, not a moving local folder.'}
+            </span>
+          </span>
+        </div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Option
+            value="public"
+            icon={Ico.globe ? Ico.globe(14) : Ico.upload(14)}
+            title="Public"
+            detail="Anyone with the link can view it."
+          />
+          <Option
+            value="password"
+            icon={(Ico.lock || Ico.doc)(14)}
+            title="Password"
+            detail="Viewers need the password you set here."
+          />
+          <Option
+            value="restricted"
+            icon={(Ico.people || Ico.doc)(14)}
+            title="Selected people"
+            detail="Only invited emails, or your organization, can open it."
+          />
+        </div>
+        {mode === 'password' && (
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <input
+              type={reveal ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoFocus
+              style={{
+                flex: 1,
+                minWidth: 0,
+                border: '1px solid var(--line)',
+                background: 'var(--surface)',
+                color: 'var(--ink)',
+                borderRadius: 8,
+                padding: '9px 10px',
+                fontSize: 13,
+              }}
+            />
+            <button type="button" className="btn" onClick={() => setReveal((v) => !v)}>
+              {reveal ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        )}
+        {mode === 'restricted' && (
+          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            <textarea
+              value={emailsText}
+              onChange={(e) => setEmailsText(e.target.value)}
+              placeholder="teammate@example.com, client@example.com"
+              rows={3}
+              style={{
+                resize: 'vertical',
+                border: '1px solid var(--line)',
+                background: 'var(--surface)',
+                color: 'var(--ink)',
+                borderRadius: 8,
+                padding: '9px 10px',
+                fontSize: 13,
+              }}
+            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ink-2)' }}>
+              <input type="checkbox" checked={orgAllowed} onChange={(e) => setOrgAllowed(e.target.checked)} />
+              Allow everyone in my organization
+            </label>
+            {invalidEmails.length > 0 && (
+              <div style={{ color: 'var(--danger)', fontSize: 12 }}>
+                Check: {invalidEmails.join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+        {error && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 10 }}>{error}</div>}
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="btn primary" onClick={submit} disabled={!canConfirm || busy}>
+          {busy ? 'Publishing...' : 'Publish'}
+        </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+
+export function WorkingFolderLive({ project, isStreaming, onHandoffArtifact }) {
   const [resolvedProject, setResolvedProject] = useState(null);
   useEffect(() => {
     if (project) return;
@@ -87,6 +276,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
   }, [project]);
 
   const effectiveProject = project || resolvedProject;
+  const projectHints = useMemo(() => (effectiveProject ? [effectiveProject] : []), [effectiveProject]);
 
   const [rows, setRows] = useState([]);
   // Bumped on every project switch / streaming-tick load. The async
@@ -154,7 +344,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
   const [previewArt, setPreviewArt] = useState(null);
   // Keep the open viewer in sync with the 3s poll: when the artifact being
   // previewed is rebuilt, its row's `mtime` changes — propagate that into
-  // `previewArt` so ArtifactViewer re-mounts and reloads the iframe instead
+  // `previewArt` so ArtifactWorkspace re-mounts and reloads the iframe instead
   // of showing the stale first load (ENG-375). No-op (same reference) when
   // nothing changed, so it doesn't churn renders.
   useEffect(() => {
@@ -178,6 +368,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
   const [menuPos, setMenuPos] = useState(null);
   const [busyPath, setBusyPath] = useState(null);
   const [rowError, setRowError] = useState('');
+  const [pendingPublishArtifact, setPendingPublishArtifact] = useState(null);
+  const [publishDialogError, setPublishDialogError] = useState('');
   // Pending artifact-delete payload — drives the ConfirmModal, same
   // lifted-state pattern as the project-files / task-uploads deletes
   // in ContextCard and the task / project deletes in App.jsx.
@@ -269,22 +461,106 @@ export function WorkingFolderLive({ project, isStreaming }) {
     }
   };
 
+  const applyPublishResult = (artifact, result) => {
+    const url = result?.url || result?.publishedUrl || '';
+    const update = (row) => row.path === artifact.path ? {
+      ...row,
+      publishedUrl: url,
+      publishedVersionId: result?.publishedVersionId || result?.published_version_id || row.publishedVersionId || '',
+      publishedFilesHash: result?.publishedFilesHash || result?.published_files_hash || row.publishedFilesHash || '',
+      publishedManifestHash: result?.publishedManifestHash || result?.published_manifest_hash || row.publishedManifestHash || '',
+      publishedVersionNumber: result?.publishedVersionNumber || result?.published_version_number || row.publishedVersionNumber || null,
+      accessMode: result?.access?.mode || row.accessMode || 'public',
+      accessProtected: !!result?.access?.protected || row.accessProtected || false,
+      accessEmails: result?.access?.emails || row.accessEmails || [],
+      orgAllowed: result?.access?.org_allowed ?? row.orgAllowed ?? false,
+    } : row;
+    setRows((prev) => prev.map(update));
+    setPreviewArt((current) => current && current.path === artifact.path ? update(current) : current);
+  };
+
+  const applyForkResult = (result) => {
+    const artifact = result?.artifact || {};
+    const path = artifact.path || result?.preview?.path || result?.artifactPath || '';
+    const folder = artifact.folder || result?.artifactPath || path;
+    const title = artifact.title || artifact.name || String(path || folder).split(/[\\/]/).filter(Boolean).pop() || 'Remix';
+    const next = {
+      ...artifact,
+      id: result?.artifactId || artifact.id || folder || path,
+      path,
+      folder,
+      title,
+      updated: 'just now',
+      mtime: Date.now(),
+    };
+    if (!next.path && !next.folder) return;
+    setRows((prev) => {
+      const withoutDuplicate = prev.filter((row) => (
+        row.id !== next.id
+        && row.path !== next.path
+        && row.folder !== next.folder
+      ));
+      return [next, ...withoutDuplicate];
+    });
+    setPreviewArt(next);
+  };
+
   const onTogglePublish = async (a) => {
     if (!a?.path) return;
-    setBusyPath(a.path);
     setRowError('');
+    if (!a.publishedUrl) {
+      setPublishDialogError('');
+      setPendingPublishArtifact(a);
+      return;
+    }
+    setBusyPath(a.path);
     try {
-      if (a.publishedUrl) {
-        await unpublishArtifact(publishTargetPath(a));
-        setRows((prev) => prev.map((r) => r.path === a.path ? { ...r, publishedUrl: '' } : r));
-      } else {
-        const r = await publishArtifact(publishTargetPath(a));
-        const url = r?.url || r?.publishedUrl || '';
-        if (url) trackArtifactPublished(r?.report_id || a.id || '', 'public');
-        setRows((prev) => prev.map((row) => row.path === a.path ? { ...row, publishedUrl: url } : row));
-      }
+      await unpublishArtifact(publishTargetPath(a));
+      const clearPublished = (row) => row.path === a.path ? {
+        ...row,
+        publishedUrl: '',
+        publishedVersionId: '',
+        publishedFilesHash: '',
+        publishedManifestHash: '',
+        publishedVersionNumber: null,
+      } : row;
+      setRows((prev) => prev.map(clearPublished));
+      setPreviewArt((current) => current && current.path === a.path ? clearPublished(current) : current);
     } catch (e) {
       setRowError(e?.message || 'Publish toggle failed.');
+    } finally {
+      setBusyPath(null);
+    }
+  };
+
+  const onRequestPublish = (a, options = {}) => {
+    if (!a?.path) return;
+    setRowError('');
+    setPublishDialogError('');
+    setPendingPublishArtifact({
+      ...a,
+      publishVersionId: options.versionId || options.version_id || '',
+      publishVersionLabel: options.versionLabel || options.label || '',
+    });
+  };
+
+  const onConfirmPublish = async (access) => {
+    const artifact = pendingPublishArtifact;
+    if (!artifact?.path) return;
+    setBusyPath(artifact.path);
+    setPublishDialogError('');
+    setRowError('');
+    try {
+      const publishOptions = artifact.publishVersionId ? { versionId: artifact.publishVersionId } : {};
+      const result = await publishArtifact(publishTargetPath(artifact), access || { mode: 'public' }, publishOptions);
+      applyPublishResult(artifact, result);
+      const publishedUrl = result?.url || result?.publishedUrl || '';
+      if (publishedUrl) trackArtifactPublished(result?.report_id || artifact.id || '', access?.mode || 'public');
+      setPendingPublishArtifact(null);
+    } catch (e) {
+      const message = e?.message || 'Publish failed.';
+      setPublishDialogError(message);
+      setRowError(message);
     } finally {
       setBusyPath(null);
     }
@@ -304,7 +580,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       // Unpublish first so deletion never leaves an orphaned public copy.
       // The server enforces the same rule as a backstop.
       if (a.publishedUrl) {
-        await unpublishArtifact(a.path);
+        await unpublishArtifact(publishTargetPath(a));
       }
       // Deletion is centralized through cowork-server (not shell.trashItem),
       // so it works in every shell and the server's unpublish-before-delete
@@ -318,7 +594,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       setBusyPath(null);
     }
   };
-  // Inline-previewable artifacts open the ArtifactViewer modal; the
+  // Inline-previewable artifacts open the ArtifactWorkspace modal; the
   // viewer handles HTML via sandboxed iframe and .md/.txt/.csv via
   // the inline text path. Anything else falls through to the OS
   // handler so the user's default app picks it up.
@@ -450,6 +726,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
           const a = rows.find((r) => r.path === openMenuPath);
           if (!a) return null;
           const isPublished = !!a.publishedUrl;
+          const canTogglePublish = isPublished || isPublishableArtifact(a);
           const openLabel = canOpenLocalFile ? 'Open in OS' : 'Open in new tab';
           return (
             <div
@@ -480,24 +757,26 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 </span>
                 <span>{openLabel}</span>
               </button>
-              <button
-                type="button"
-                className="menu-item"
-                disabled={busyPath === a.path}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMenuPath(null);
-                  onTogglePublish(a);
-                }}
-              >
-                <span style={{
-                  display: 'inline-flex',
-                  color: isPublished ? 'var(--accent)' : 'var(--frost-700)',
-                }}>
-                  {Ico.globe ? Ico.globe(13) : Ico.upload(13)}
-                </span>
-                <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
-              </button>
+              {canTogglePublish && (
+                <button
+                  type="button"
+                  className="menu-item"
+                  disabled={busyPath === a.path}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuPath(null);
+                    onTogglePublish(a);
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-flex',
+                    color: isPublished ? 'var(--accent)' : 'var(--frost-700)',
+                  }}>
+                    {Ico.globe ? Ico.globe(13) : Ico.upload(13)}
+                  </span>
+                  <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
+                </button>
+              )}
               <div style={{ height: 1, background: 'var(--border-0)', margin: '4px 0' }} />
               <button
                 type="button"
@@ -514,7 +793,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
                 style={{ color: 'var(--danger)' }}
               >
                 <span style={{ display: 'inline-flex', color: 'var(--danger)' }}>{Ico.trash(13)}</span>
-                <span>Delete</span>
+                <span>Move to Deleted</span>
               </button>
             </div>
           );
@@ -524,9 +803,9 @@ export function WorkingFolderLive({ project, isStreaming }) {
 
       <ConfirmModal
         open={!!pendingDeleteArtifact}
-        title={`Delete "${pendingDeleteArtifact?.title || pendingDeleteArtifact?.path?.split('/').pop() || 'artifact'}"?`}
-        message="The artifact will be permanently deleted, and unpublished first if it's currently published. This can't be undone."
-        confirmLabel="Delete"
+        title={`Move "${pendingDeleteArtifact?.title || pendingDeleteArtifact?.path?.split('/').pop() || 'artifact'}" to Deleted?`}
+        message="Cowork will remove this artifact from Live Artifacts and move it to Deleted when recovery is available. If it is published, the live link will be unpublished first."
+        confirmLabel="Move to Deleted"
         cancelLabel="Keep"
         destructive
         onClose={() => setPendingDeleteArtifact(null)}
@@ -537,16 +816,32 @@ export function WorkingFolderLive({ project, isStreaming }) {
         }}
       />
 
-      <ArtifactViewer
+      <RailPublishDialog
+        artifact={pendingPublishArtifact}
+        busy={!!pendingPublishArtifact && busyPath === pendingPublishArtifact.path}
+        error={publishDialogError}
+        onCancel={() => {
+          if (busyPath === pendingPublishArtifact?.path) return;
+          setPendingPublishArtifact(null);
+          setPublishDialogError('');
+        }}
+        onConfirm={onConfirmPublish}
+      />
+
+      <ArtifactWorkspace
         open={!!previewArt}
         artifact={previewArt}
+        projects={projectHints}
         onClose={() => setPreviewArt(null)}
+        onPublish={onRequestPublish}
+        onUnpublish={onTogglePublish}
+        onForked={applyForkResult}
+        onHandoff={onHandoffArtifact}
         onChange={(updated) => {
           setPreviewArt(updated);
-          setRows((prev) => prev.map((a) => a.path === updated.path ? { ...a, publishedUrl: updated.publishedUrl } : a));
-        }}
-        onDelete={(path) => {
-          setRows((prev) => prev.filter((a) => a.path !== path));
+          setRows((prev) => prev.map((a) => (
+            a.path === updated.path ? { ...a, ...updated } : a
+          )));
         }}
       />
     </div>

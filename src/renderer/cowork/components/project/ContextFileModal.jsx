@@ -64,23 +64,43 @@ function joinAbs(root, rel) {
 // rendered inline.
 function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
   const isWeb = !!host.isWeb;
+  const [downloading, setDownloading] = useState(false);
   const abs = joinAbs(projectPath, filePath);
-  const dlUrl = projectName && filePath ? projectFileDownloadUrl(projectName, filePath) : '';
   // Attachments have a `rawUrl` but no project filePath — Reveal-in-
   // Finder has nothing to point at (the file isn't on a local project
   // path), so it's hidden and Open prefers the raw URL via host.
   const hasProjectFile = !!(projectName && filePath);
 
+  async function downloadProjectFile() {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      let url = rawUrl || '';
+      if (hasProjectFile) {
+        url = await projectFileDownloadUrl(projectName, filePath);
+      }
+      if (!url) return;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filePath?.split('/').pop() || '';
+      a.rel = 'noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (isWeb) {
-    const webUrl = dlUrl || rawUrl;
-    if (!webUrl) return null;
+    if (!hasProjectFile && !rawUrl) return null;
     return (
-      <a
-        href={webUrl}
-        download
+      <button
+        type="button"
+        onClick={downloadProjectFile}
+        disabled={downloading}
         title="Download"
         style={{
-          textDecoration: 'none',
           cursor: 'pointer',
           background: 'transparent', border: '1px solid var(--line)',
           color: 'var(--ink-2)',
@@ -88,7 +108,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
           display: 'inline-flex', alignItems: 'center', gap: 6,
         }}
-      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} Download</a>
+      >{Ico.downloadCloud ? Ico.downloadCloud(13) : '↓'} {downloading ? 'Preparing...' : 'Download'}</button>
     );
   }
 
