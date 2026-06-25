@@ -3,6 +3,8 @@ import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu } from '../components/ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
+import { MarkdownContent } from '../components/markdown/MarkdownContent';
+import OverflowMenu from '../components/OverflowMenu';
 import { deleteSkill, fetchSkills, saveSkill } from '../api';
 
 
@@ -84,6 +86,30 @@ function SkillCard({ skill, onClick }) {
         {age && <span>Updated {age}</span>}
       </div>
     </div>
+  );
+}
+
+function Toggle({ checked, onChange }) {
+  return (
+    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+      <input type="checkbox" checked={checked} onChange={onChange} style={{ display: 'none' }} />
+      <div style={{
+        width: 36, height: 20, borderRadius: 10,
+        background: checked ? 'var(--accent)' : 'var(--line-2)',
+        position: 'relative',
+        transition: 'background .2s ease',
+        flexShrink: 0,
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 2, left: checked ? 18 : 2,
+          width: 16, height: 16, borderRadius: '50%',
+          background: 'white',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          transition: 'left .2s ease',
+        }} />
+      </div>
+    </label>
   );
 }
 
@@ -229,12 +255,13 @@ const SORT_OPTIONS = [
 ];
 
 export default function SkillsView() {
-  const [skills, setSkills]       = useState(null);
-  const [selected, setSelected]   = useState(null);
+  const [skills, setSkills]         = useState(null);
+  const [selected, setSelected]     = useState(null);
+  const [enabled, setEnabled]       = useState(true);
   const [modalSkill, setModalSkill] = useState(null); // null = closed, undefined = new, skill = edit
-  const [status, setStatus]       = useState('');
-  const [search, setSearch]       = useState('');
-  const [sortBy, setSortBy]       = useState('name');
+  const [status, setStatus]         = useState('');
+  const [search, setSearch]         = useState('');
+  const [sortBy, setSortBy]         = useState('name');
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -283,26 +310,64 @@ export default function SkillsView() {
     <div className="scroll-clean" style={{ flex: 1, overflowY: 'auto', paddingBottom: 40 }}>
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
-        <div style={{ padding: 32, maxWidth: 720 }}>
+        <div style={{ padding: 32 }}>
           {status && <div style={{ marginBottom: 12, color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setSelected(null)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 24 }}
-          >
-            {Ico.chevLeft(13)} Back
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 18, fontWeight: 650, color: 'var(--ink)' }}>{selected.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>{selected.label}</div>
-            </div>
-            <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
-            <button className="btn-secondary" onClick={() => remove(selected)}>Remove</button>
+
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              style={{
+                display: 'inline-flex', alignItems: 'center',
+                background: 'transparent', border: 0, padding: 0,
+                color: 'var(--ink-3)', cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              aria-label="Back"
+            >
+              {Ico.chevLeft(16)}
+            </button>
+            <span style={{
+              fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600,
+              color: 'var(--ink)', letterSpacing: '-0.005em',
+            }}>
+              {selected.label}
+            </span>
+            <div style={{ flex: 1 }} />
+            <Toggle checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <OverflowMenu
+              items={[
+                { id: 'try',       label: 'Try in chat', onClick: () => {} },
+                { id: 'edit',      label: 'Edit',        onClick: () => startEdit(selected) },
+                { divider: true },
+                { id: 'uninstall', label: 'Uninstall',   danger: true, onClick: () => remove(selected) },
+              ]}
+            />
           </div>
-          {selected.description && <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--ink-3)' }}>{selected.description}</p>}
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', userSelect: 'text', fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.55 }}>{selected.declarative}</pre>
+
+          {/* Description */}
+          {selected.description && (
+            <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>
+              {selected.description}
+            </p>
+          )}
+
+          {/* Content card */}
+          <div style={{
+            borderRadius: 20,
+            border: '1px solid var(--line)',
+            padding: 24,
+            display: 'flex', flexDirection: 'column', gap: 16,
+            background: 'var(--surface)',
+          }}>
+            <MarkdownContent
+              text={selected.declarative || ''}
+              id={`skill-${selected.label}`}
+              complete
+              dense
+            />
+          </div>
         </div>
       ) : (
         // ── Grid ───────────────────────────────────────────────────────────
