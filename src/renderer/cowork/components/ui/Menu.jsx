@@ -52,7 +52,7 @@ function _ensureMenuCss() {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
   padding: 4px 0;
   outline: none;
   font-family: var(--font-body);

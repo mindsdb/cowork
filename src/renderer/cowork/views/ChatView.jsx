@@ -72,7 +72,7 @@ function Divider({ label }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
-      fontFamily: FONT_DISPLAY, fontWeight: 600, letterSpacing: '0.18em',
+      fontFamily: FONT_BODY, fontWeight: 500, letterSpacing: '0.06em',
       fontSize: 10.5, color: T.ink4, textTransform: 'uppercase',
       marginTop: 8,
     }}>
@@ -396,8 +396,8 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
             />
           ) : null}
           <span style={{
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-            letterSpacing: '0.14em', textTransform: 'uppercase', color: T.ink,
+            fontFamily: FONT_BODY, fontWeight: 600, fontSize: 11,
+            letterSpacing: '0.06em', textTransform: 'uppercase', color: T.ink3,
           }}>{agentLabel || 'Anton'}</span>
         </div>
         {time && (
@@ -768,7 +768,7 @@ function CrumbSep() {
     <span
       aria-hidden="true"
       style={{
-        color: T.ink4, fontFamily: FONT_DISPLAY, fontWeight: 400,
+        color: T.ink4, fontFamily: FONT_BODY, fontWeight: 400,
         fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
         userSelect: 'none',
       }}
@@ -795,8 +795,8 @@ function CrumbButton({ label, onClick, title, maxWidth }) {
         // suppresses the mouse-click ring while preserving the
         // keyboard-focus ring for WCAG 2.4.7.
         font: 'inherit',
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: T.ink3,
+        fontFamily: FONT_BODY, fontWeight: 500, fontSize: 13,
+        letterSpacing: '0.01em', color: T.ink3,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         maxWidth, flexShrink: 1,
         padding: '2px 6px', borderRadius: 5,

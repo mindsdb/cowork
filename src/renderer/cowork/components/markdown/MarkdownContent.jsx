@@ -445,7 +445,7 @@ export function MarkdownContent({
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
-    hr: () => <hr className="my-5 border-t border-line opacity-25" />,
+    hr: () => <hr className="my-5 border-t border-line" />,
     pre: (props) => {
       // Fenced code blocks with a language are handled by MarkdownCode,
       // which renders its own anton-code-block wrapper. We drop the outer
