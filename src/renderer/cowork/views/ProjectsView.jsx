@@ -21,9 +21,9 @@ import {
   FilterRow,
   SearchInput,
   SortPill,
-  ViewToggle,
   useCollectionShortcut,
 } from '../components/collection';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import {
   createProject as createProjectApi,
   renameProject,
@@ -1681,7 +1681,7 @@ export default function ProjectsView({
           />
         }
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<span className="proj-view-toggle"><ViewToggle value={view} onChange={setView} /></span>}
+        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
         counts={
           <ProjectsCounts
             search={search}

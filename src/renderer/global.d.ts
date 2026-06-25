@@ -68,6 +68,8 @@ interface AntonTronAPI {
   mindshubGetCachedToken: () => Promise<{ access_token: string | null }>;
   getAccessToken: () => Promise<string | null>;
   logout: () => Promise<void>;
+  getKeychainPref: () => Promise<{ enabled: boolean }>;
+  setKeychainPref: (enabled: boolean) => Promise<{ ok: boolean }>;
   getPathForFile: (file: File) => string;
 }
 

@@ -29,6 +29,10 @@ export const IPC = {
   AUTH_GET_ACCESS_TOKEN: 'auth:get-access-token',
   AUTH_LOGOUT: 'auth:logout',
 
+  // Keychain — where the refresh token is stored (file vs macOS keychain)
+  KEYCHAIN_PREF_GET: 'keychain:get',
+  KEYCHAIN_PREF_SET: 'keychain:set',
+
   // OAuth — pure PKCE bridge (no MindsHub-specific side effects)
   OAUTH_CANCEL: 'oauth:cancel',
 

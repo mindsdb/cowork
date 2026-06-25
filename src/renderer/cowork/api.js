@@ -1359,6 +1359,24 @@ export async function handoffArtifactToTask({
   });
 }
 
+function basenameFromPath(value) {
+  const text = String(value || '');
+  return text.split(/[\\/]/).filter(Boolean).pop() || text;
+}
+
+function artifactEditTarget(target, path) {
+  if (typeof target === 'string') return target;
+  if (!target || typeof target !== 'object') return basenameFromPath(path);
+  return (
+    target.path ||
+    target.target ||
+    target.filePath ||
+    target.file ||
+    target.primary ||
+    basenameFromPath(path || target.artifactId)
+  );
+}
+
 // ── M1 "Fix it in place" inline-edit endpoints ──────────────────────
 //
 // Transport for the redesigned workspace's EditableBlock. The UI passes
@@ -1375,8 +1393,7 @@ export async function proposeArtifactEdit({ path, target, instruction, oldText, 
   // both `old_text` + `new_text`. `target` may be the file-basename string (direct
   // whole-file edits) or the legacy object descriptor (per-block AI edits).
   const resolvedPath = path || (typeof target === 'object' ? target?.artifactId : null) || null;
-  const resolvedTarget =
-    typeof target === 'string' ? target : (target?.path || target?.target || null);
+  const resolvedTarget = artifactEditTarget(target, resolvedPath);
   const resolvedOld = oldText ?? (typeof target === 'object' ? target?.text : null) ?? null;
   const payload = {
     path: resolvedPath,
@@ -1416,8 +1433,7 @@ export async function acceptArtifactEdit({ path, target, oldText, newText, baseV
   // (the file basename) or the legacy object shape; normalize to the string the
   // server expects.
   const resolvedPath = path || (typeof target === 'object' ? target?.artifactId : null) || null;
-  const resolvedTarget =
-    typeof target === 'string' ? target : (target?.path || target?.target || null);
+  const resolvedTarget = artifactEditTarget(target, resolvedPath);
   // old_text is required server-side and re-validated as the whole-file find. For
   // the per-block AI flow the find text rides on `target.text`; whole-file direct
   // saves pass `oldText` explicitly.
@@ -1463,6 +1479,12 @@ export async function acceptArtifactEdit({ path, target, oldText, newText, baseV
 
 export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
+// writes the result into the same artifact folder and returns its path.
+export async function exportArtifact(path, format) {
+  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
 }
 
 // Absolute "private" URL for an artifact's primary file: the
@@ -1965,6 +1987,13 @@ export async function publishArtifact(path, access, options = {}) {
   const versionId = options?.versionId || options?.version_id;
   if (versionId) body.versionId = versionId;
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Re-publish an already-published artifact: pushes current files to the same
+// URL with the same access settings (server reuses report_id). Clears the
+// "Modified" badge on success.
+export async function updateArtifact(path) {
+  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the

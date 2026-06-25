@@ -216,6 +216,7 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   agentLabel,
+  settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
@@ -546,10 +547,6 @@ export default function Sidebar({
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
-          {/* Channels — connect messaging apps (Telegram/Slack/etc.) so
-              people can talk to the agent from their chats. Routes to the
-              `dispatch` key, which App.jsx renders as <ChannelsView />. */}
-          <NavItem icon={Ico.chats(15)} label="Channels" onClick={() => onNavigate('dispatch')} active={activeRoute === 'dispatch'} />
         </div>
 
         {/* Brain-style nav — visually grouped panel.
@@ -564,41 +561,34 @@ export default function Sidebar({
             a touch tighter than the heading's own footprint, which
             avoids leaving an empty heading-sized void. */}
         <div className="anton-group" style={{ marginTop: 18 }}>
-          <NavItem icon={Ico.brain(15)}    label="Memories"       onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
-          <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
-          {/* "Connect data" removed from the sidebar — the canonical
-              connector surface is the Connect Apps and Data page
-              (route='customize'). The legacy 'connect' route used to
-              render UtilitiesView/ConnectView and has been retired. */}
-          <NavItem icon={Ico.settings(15)} label="Settings"       onClick={() => onNavigate('settings')} active={activeRoute === 'settings'} compact />
+          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} compact />
+          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} compact />
         </div>
 
-        {/* Pinned */}
-        <div className="section-label">Pinned</div>
-        {pinnedTasks.length ? (
-          <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {pinnedTasks.map((task) => (
-              <RecentItem
-                key={task.id}
-                task={task}
-                projects={projects}
-                onClick={() => onSelectTask(task.id)}
-                onPin={onPinTask}
-                onUnpin={onUnpinTask}
-                onRename={onRenameTask}
-                onDelete={onDeleteTask}
-                onMoveToProject={onMoveTaskToProject}
-                showTimestamp={showCounters}
-                isActive={activeTaskIds.has(task.id)}
-                agentLabel={agentLabel}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="pinned-empty">
-            <span style={{ display: 'inline-flex' }}>{Ico.pin(12)}</span>
-            <span>Visit or pin tasks to keep them here.</span>
-          </div>
+        {/* Pinned — only rendered when there are pinned tasks; an empty
+            section just wastes rail space. */}
+        {pinnedTasks.length > 0 && (
+          <>
+            <div className="section-label">Pinned</div>
+            <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {pinnedTasks.map((task) => (
+                <RecentItem
+                  key={task.id}
+                  task={task}
+                  projects={projects}
+                  onClick={() => onSelectTask(task.id)}
+                  onPin={onPinTask}
+                  onUnpin={onUnpinTask}
+                  onRename={onRenameTask}
+                  onDelete={onDeleteTask}
+                  onMoveToProject={onMoveTaskToProject}
+                  showTimestamp={showCounters}
+                  isActive={activeTaskIds.has(task.id)}
+                  agentLabel={agentLabel}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* Recents — heading row with a "View all →" link pinned
@@ -797,25 +787,13 @@ export default function Sidebar({
           </button>
           <div className="anton-sidebar__footer-actions">
             <button
-              className={
-                'chrome-btn--small server-toggle' +
-                (serverOnline ? ' is-on' : '') +
-                (serverBusy ? ' is-busy' : '')
-              }
-              onClick={onToggleServer}
-              disabled={serverBusy}
-              title={
-                serverBusy
-                  ? `Backend ${serverBusyKind}…`
-                  : serverOnline ? `Stop ${agentLabel || 'Anton'} backend` : `Start ${agentLabel || 'Anton'} backend`
-              }
-              aria-label={serverOnline ? 'Stop backend' : 'Start backend'}
-              aria-busy={serverBusy ? 'true' : undefined}
+              className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+              onClick={() => onNavigate('settings')}
+              title="Settings"
+              aria-label="Settings"
               style={{ WebkitAppRegion: 'no-drag' }}
             >
-              {serverBusy
-                ? <Spinner intervalMs={70} />
-                : (serverOnline ? Ico.powerOff(13) : Ico.power(13))}
+              {Ico.settings(13)}
             </button>
           </div>
         </div>

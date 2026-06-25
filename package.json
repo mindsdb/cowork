@@ -1,5 +1,6 @@
 {
   "name": "anton",
+  "productName": "MindsHub Cowork",
   "version": "2.0.7",
   "description": "MindsHub Cowork — autonomous AI coworker",
   "author": "MindsDB",
@@ -13,6 +14,7 @@
     "dev:electron": "sleep 3 && VITE_DEV=1 electron dist/main/main/index.js",
     "dev:electron:debug": "sleep 3 && VITE_DEV=1 ANTON_OPEN_DEVTOOLS=1 electron dist/main/main/index.js",
     "build": "npm run build:main && npm run build:renderer",
+    "prebuild:main": "node scripts/gen-build-channel.mjs",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build src/renderer",
     "build:web": "BUILD_TARGET=web vite build src/renderer",
@@ -50,6 +52,7 @@
     "@base-ui/react": "^1.5.0",
     "@react-keycloak/web": "^3.4.0",
     "chart.js": "^4.5.1",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
     "keycloak-js": "^26.2.4",
@@ -60,6 +63,7 @@
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
     "rehype-sanitize": "^6.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.6.0"
   }
 }

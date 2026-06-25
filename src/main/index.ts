@@ -9,18 +9,19 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
 
 function getAntonEnvPath(): string {
-  return path.join(os.homedir(), '.anton', '.env');
+  return coworkEnvPath();
 }
 
 function getCoworkStatePath(): string {
-  return path.join(os.homedir(), '.anton', 'cowork', 'state.json');
+  return coworkStatePath();
 }
 
 function readEnvFile(): Record<string, string> {
@@ -78,12 +79,57 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-function checkConfigured(): { configured: boolean; provider: string } {
+// Resolves once the boot-time server start has settled (server up, or
+// decided-not-to-start because it isn't installed). serverConfigured() awaits
+// this instead of polling, so cold-boot routing waits exactly as long as the
+// real startup takes — uvicorn cold start included — rather than a fixed cap.
+// Assigned synchronously in app.whenReady() so it exists before the renderer's
+// init() can call through to checkConfigured().
+let bootServerSettled: Promise<void> = Promise.resolve();
+
+// Ask the running server for its readiness. Reads `config_ready` from /health —
+// the SAME signal the in-app chat gate uses (settings.config_status) — so
+// routing and the chat gate read one identical value and cannot disagree.
+// Returns null when the server can't be reached/answered, so the caller falls
+// back to the .env heuristic.
+async function serverConfigured(): Promise<{ configured: boolean; provider: string } | null> {
+  try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
+  if (!isServerRunning()) return null;
+  try {
+    const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/health/`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) {
+      console.warn(`[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
+      return null;
+    }
+    const data = await res.json() as { config_ready?: boolean; provider?: string };
+    if (typeof data.config_ready !== 'boolean') {
+      console.warn('[checkConfigured] /health had no config_ready; falling back to .env');
+      return null;
+    }
+    return { configured: data.config_ready, provider: data.provider ?? '' };
+  } catch (err) {
+    console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
+    return null;
+  }
+}
+
+async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
   const vars = readEnvFile();
   if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
-  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds' };
+  // config_ready from /health is authoritative and is the SAME signal the
+  // in-app chat gate uses — defer to it so routing and the chat gate can't
+  // disagree. (The old .env any-key check could pass here while config_ready
+  // was false, stranding the user on "Connect a provider" with no recovery.)
+  const fromServer = await serverConfigured();
+  if (fromServer) return fromServer;
+  // Server genuinely unreachable: fall back to the .env heuristic so a
+  // configured user isn't needlessly bounced to onboarding. Provider strings
+  // mirror the server's config_status vocabulary so the IPC value isn't
+  // path-dependent.
+  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds_cloud' };
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
-  if (vars.ANTON_OPENAI_API_KEY && vars.ANTON_OPENAI_BASE_URL) return { configured: true, provider: 'openai' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
 }
@@ -536,15 +582,25 @@ function setupIPC() {
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
     const token = getAccessToken();
-    if (!token) return { ok: false, reason: 'No cached MindsHub access token.' };
+    if (!token) {
+      console.error('[mindshub:finalize] no cached access token — login may not have completed');
+      return { ok: false, reason: 'No cached MindsHub access token.' };
+    }
+    console.log('[mindshub:finalize] provisioning API key…');
     const result = await provisionAntonApiKey(token);
+    console.log('[mindshub:finalize] provisionAntonApiKey result:', result.key ? 'key minted' : `error: ${result.error}`);
     if (result.upgradeRequired) {
       return { ok: false, upgradeRequired: true };
     }
     if (!result.key) {
       return { ok: false, reason: result.error || 'Could not provision a MindsHub API key.' };
     }
-    await writeMindsKeyToEnvAndRestart(result.key);
+    try {
+      await writeMindsKeyToEnvAndRestart(result.key);
+    } catch (err: any) {
+      console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
+      return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
+    }
     return { ok: true, apiKey: result.key };
   });
 
@@ -660,11 +716,11 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
-    const antonDir = path.join(os.homedir(), '.anton');
-    if (!fs.existsSync(antonDir)) {
-      fs.mkdirSync(antonDir, { recursive: true });
+    const homeDir = coworkHome();
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
     }
-    const envPath = path.join(antonDir, '.env');
+    const envPath = coworkEnvPath();
     const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
     const merged = new Map<string, string>();
     for (const line of existing.split('\n')) {
@@ -689,6 +745,39 @@ function setupIPC() {
     }
 
     return true;
+  });
+
+  // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
+  // When enabled the refresh token lives in the macOS keychain; otherwise
+  // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
+  // any existing token to the chosen store.
+  ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
+    const vars = readEnvFile();
+    // Default is enabled; only false when explicitly set to 'false'.
+    return { enabled: vars.COWORK_KEYCHAIN !== 'false' };
+  });
+
+  ipcMain.handle(IPC.KEYCHAIN_PREF_SET, async (_event, enabled: boolean) => {
+    try {
+      const homeDir = coworkHome();
+      if (!fs.existsSync(homeDir)) {
+        fs.mkdirSync(homeDir, { recursive: true });
+      }
+      const envPath = coworkEnvPath();
+      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+      const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
+      // Only write the key when disabling; absence means "enabled" (the default).
+      if (!enabled) lines.push('COWORK_KEYCHAIN=false');
+      const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
+      fs.writeFileSync(envPath, out, 'utf-8');
+
+      // Move any existing token into the newly-chosen store.
+      migrateRefreshTokenStore(enabled);
+      return { ok: true };
+    } catch (error) {
+      console.error('[keychain] failed to set preference', error);
+      return { ok: false };
+    }
   });
 
   ipcMain.handle(IPC.SETTINGS_CHECK_CONFIGURED, async () => {
@@ -774,6 +863,10 @@ function setupIPC() {
 }
 
 app.whenReady().then(() => {
+  // Consolidate the legacy ~/.anton global config into ~/.cowork before
+  // anything reads the env or starts the server. Best-effort + idempotent.
+  migrateLegacyHome();
+
   const isMac = process.platform === 'darwin';
 
   if (isMac) {
@@ -879,9 +972,16 @@ app.whenReady().then(() => {
   // Boot-time server start. If cowork-server is installed, start it
   // in the background. If not, skip — the renderer's boot flow will
   // route to the setup screen which handles installation.
+  //
+  // `bootServerSettled` is resolved the moment the start decision is made
+  // (server up, failed, or skipped) — before the slow OTA update checks — so
+  // checkConfigured() can await the real readiness without polling.
+  let resolveBootServer: () => void = () => {};
+  bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
+      resolveBootServer();
       return;
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
@@ -903,6 +1003,7 @@ app.whenReady().then(() => {
     }
 
     const result = await startServer();
+    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     if (!result.ok) {
       console.error(`[server] start failed: ${result.reason}`);
     } else {
@@ -990,6 +1091,7 @@ app.whenReady().then(() => {
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
+    resolveBootServer();  // never leave checkConfigured() awaiting a stuck boot
   });
 
   app.on('activate', () => {
