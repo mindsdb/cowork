@@ -2226,14 +2226,34 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .btn:focus-visible { outline: 0; box-shadow: var(--ring), var(--sh-1); }
 .btn:disabled, .btn[aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; pointer-events: none; }
 
-/* Primary — filled accent. The thing the user came to do. */
+/* Primary — filled accent. The thing the user came to do.
+   .btn-primary is used standalone in legacy code (without .btn),
+   so it must carry the full base shape. */
 .btn--primary,
 .btn.primary,
 .btn-primary {
   --b-bg: var(--accent); --b-bd: transparent; --b-fg: #FFFFFF;
   --b-bg-h: var(--accent-2); --b-bd-h: transparent;
   --b-bg-a: var(--accent-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r);
+  background: var(--b-bg);
+  color: var(--b-fg);
+  border: 1px solid var(--b-bd);
+  font-family: var(--font-body);
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color .12s ease, border-color .12s ease,
+    box-shadow .12s ease, transform .04s ease, color .12s ease;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.18),
     0 1px 0 rgba(15,16,17,0.06),
@@ -2283,7 +2303,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 /* Default — the base. White surface with hairline border. */
 .btn--default {} /* explicit no-op for docs */
 
-/* Subtle — borderless until hovered. Quietest variant. */
+/* Subtle — borderless until hovered. Quietest variant.
+   .btn-secondary / .btn-ghost used standalone in legacy code. */
 .btn--subtle,
 .btn.subtle,
 .btn-secondary,
@@ -2291,7 +2312,26 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   --b-bg: transparent; --b-bd: transparent; --b-fg: var(--ink-2);
   --b-bg-h: var(--surface-2); --b-bd-h: transparent;
   --b-bg-a: var(--surface-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  background: var(--b-bg);
+  color: var(--b-fg);
+  border: 1px solid var(--b-bd);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  user-select: none;
   box-shadow: none;
+  transition:
+    background-color .12s ease, border-color .12s ease,
+    box-shadow .12s ease, color .12s ease;
 }
 .btn--subtle:hover, .btn.subtle:hover,
 .btn-secondary:hover, .btn-ghost:hover {
