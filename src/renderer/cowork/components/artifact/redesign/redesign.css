@@ -1,0 +1,66 @@
+/*
+ * redesign.css — global keyframes + helpers for the redesigned artifact workspace.
+ *
+ * The SINGLE source of the @keyframes used across every redesign component, which
+ * reference them by name in inline styles (popIn, shimmer, antpulse, diffGlow,
+ * riseIn, slideIn) and assume they exist globally. Import this file once, near the
+ * redesign entrypoint. Colors use literal rgba() on purpose: keyframes can be
+ * registered before any themed ancestor exists, so they must not depend on CSS vars.
+ */
+@keyframes popIn    { from { opacity: 0; transform: translateY(4px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes shimmer  { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes antpulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .5; } }
+@keyframes diffGlow { 0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); } 30% { box-shadow: 0 0 0 3px rgba(34, 211, 238, .25); } 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); } }
+@keyframes riseIn   { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes slideIn  { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+
+/* Shared layout constants for the redesigned workspace. */
+.rd-workspace-shell {
+  --rd-icon-rail-width: 56px;
+  --rd-story-rail-width: 376px;
+  --rd-topbar-height: 50px;
+}
+
+.rd-workspace-shell__rail,
+.rd-story-rail {
+  width: var(--rd-story-rail-width);
+  max-width: min(var(--rd-story-rail-width), calc(100vw - 88px));
+}
+
+.rd-no-truncate {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* Custom scrollbar to match the prototype's calm, thin track. */
+.rd-scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.rd-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
+.rd-scroll::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.rd-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/*
+ * The Story rail is 376px on desktop. On narrow shells it behaves more like an
+ * overlay so labels stay intact and the stage is still usable.
+ */
+@media (max-width: 920px) {
+  .rd-workspace-shell__rail {
+    position: absolute;
+    top: var(--rd-topbar-height);
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    box-shadow: var(--sh-3, 0 1px 0 rgba(0,0,0,.4),0 18px 40px rgba(0,0,0,.6));
+  }
+}
+
+@media (max-width: 520px) {
+  .rd-workspace-shell {
+    --rd-story-rail-width: calc(100vw - 24px);
+  }
+}
