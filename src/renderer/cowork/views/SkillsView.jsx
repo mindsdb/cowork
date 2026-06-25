@@ -306,13 +306,8 @@ export default function SkillsView() {
       .catch((err) => setStatus(err.message || 'Could not load skills.'));
 
   const onSkillSaved = (saved) => {
-    if (!saved) { reload(); return; }
-    const exists = skills?.some((s) => s.label === saved.label);
-    setSkills((prev) => exists
-      ? (prev ?? []).map((s) => s.label === saved.label ? saved : s)
-      : [...(prev ?? []), saved]
-    );
-    setSelected((prev) => prev?.label === saved.label ? saved : prev);
+    setSelected((prev) => prev?.label === saved?.label ? saved : prev);
+    reload();
   };
 
   const remove = async (skill) => {
