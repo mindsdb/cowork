@@ -677,7 +677,7 @@ function Crumb({ label, onClick, title, maxWidth }) {
         // rule, which keeps the ring for true keyboard nav.
         cursor: 'pointer', background: 'transparent', border: 0,
         fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
+        letterSpacing: '-0.005em', color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         maxWidth, flexShrink: 1,
         padding: '2px 6px', borderRadius: 5,
@@ -851,7 +851,7 @@ function ProjectDetail({
                   style={{
                     flex: '1 1 0', minWidth: 0,
                     fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
+                    letterSpacing: '-0.005em', color: 'var(--ink)',
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
@@ -862,7 +862,7 @@ function ProjectDetail({
                   title={project.name}
                   style={{
                     fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
+                    letterSpacing: '-0.005em', color: 'var(--ink)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     minWidth: 0, flex: '0 1 auto',
                   }}

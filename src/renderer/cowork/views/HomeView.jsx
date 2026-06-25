@@ -194,7 +194,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
   return (
     <div style={{ width: '100%', maxWidth: 640, marginTop: 36 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, padding: '0 4px' }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--frost-700)', letterSpacing: '0.02em' }}>Active</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--frost-700)', letterSpacing: '-0.005em' }}>Active</div>
         <div style={{ flex: 1 }} />
         <button
           onClick={onClear}

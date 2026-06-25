@@ -73,7 +73,7 @@ function CrumbButton({ label, onClick, title, maxWidth }) {
         // rule, which keeps the ring for true keyboard nav.
         cursor: 'pointer', background: 'transparent', border: 0,
         fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
+        letterSpacing: '-0.005em', color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         maxWidth, flexShrink: 1,
         padding: '2px 6px', borderRadius: 5,
@@ -401,7 +401,7 @@ export default function ScheduleDetailView({
         <span style={{
           padding: '2px 6px',
           fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-          letterSpacing: '0.04em', color: 'var(--ink)',
+          letterSpacing: '-0.005em', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360,
         }}>{task.title || 'Untitled schedule'}</span>
       </div>
