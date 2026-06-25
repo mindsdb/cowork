@@ -86,9 +86,9 @@
   --stone-50:  #F9FAFB;
   --stone-100: #F4F5F6;
   --stone-150: #EFF0F1;
-  --stone-200: #E4E5E7;
-  --stone-300: #D2D4D6;
-  --stone-400: #A6A8AB;
+  --stone-200: #E4E5E6;
+  --stone-300: #D3D4D5;
+  --stone-400: #A7A8A9;
 
   /* Ocean */
   --ocean-50:  #E2F5FD;
@@ -137,14 +137,14 @@ body, body[data-theme="light"] {
   /* Guideline names — primary token surface for new code */
   --bg:           #F9FAFB;
   --surface:      #FFFFFF;
-  --surface-2:    #F3F4F6;
-  --surface-3:    #EAECEE;
+  --surface-2:    #F3F4F5;
+  --surface-3:    #EBECED;
   --line:         rgba(0, 0, 0, 0.06);
   --line-2:       rgba(0, 0, 0, 0.10);
   /* Sidebar surface — matches surface-3 so the OS-drawn inactive
      traffic-light circles (~#a8a8a8) read against it. Dark mode
      follows the regular surface. */
-  --sidebar-bg:   #EAECEE;
+  --sidebar-bg:   #EBECED;
 
   --ink:          #0E0F10;   /* primary text */
   --ink-2:        #3A3D40;   /* body */
