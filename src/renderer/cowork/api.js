@@ -26,10 +26,24 @@ const API_ORIGIN = (() => {
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
+async function authHeaders(extra = {}, { json = true } = {}) {
+  const headers = {
+    ...(json ? { 'Content-Type': 'application/json' } : {}),
+    ...(extra || {}),
+  };
+  if (!headers.Authorization && !headers.authorization) {
+    try {
+      const token = await host.getAccessToken?.();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch {}
+  }
+  return headers;
+}
+
 async function req(path, options = {}) {
   const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
+    headers: await authHeaders(options.headers),
   });
   if (!res.ok) {
     let detail = '';
@@ -52,8 +66,8 @@ async function req(path, options = {}) {
 
 async function rootReq(path, options = {}) {
   const res = await fetch(ROOT_BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
+    headers: await authHeaders(options.headers),
   });
   if (!res.ok) {
     throw new Error(`API ${path} returned ${res.status}`);
@@ -276,7 +290,7 @@ function _streamResponse(text, { conversationId, projectName, projectPath, model
     try {
       const res = await fetch(`${BASE}/responses`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({
           input: text,
           model: model || null,
@@ -411,7 +425,7 @@ export function tailInFlight(conversationId, {
       const url = `${BASE}/responses/tail?conversation_id=${encodeURIComponent(conversationId)}&from_seq=${fromSeq}&model=${encodeURIComponent(model)}`;
       const res = await fetch(url, {
         method: 'GET',
-        headers: { Accept: 'text/event-stream' },
+        headers: await authHeaders({ Accept: 'text/event-stream' }, { json: false }),
         signal: ctrl.signal,
       });
       if (res.status === 404) {
@@ -517,6 +531,154 @@ export async function createProject(name) {
   return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
+export async function fetchProjectCollaborators(projectId) {
+  if (!projectId) return { collaborators: [] };
+  try {
+    const data = await req(`/projects/${encodeURIComponent(projectId)}/collaborators`);
+    return {
+      ...data,
+      collaborators: Array.isArray(data?.collaborators) ? data.collaborators : [],
+    };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return { collaborators: [], available: false };
+    throw err;
+  }
+}
+
+export async function upsertProjectCollaborator(projectId, { email, displayName, role } = {}) {
+  if (!projectId || !email) throw new Error('Project id and collaborator email are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/collaborators`, {
+    method: 'POST',
+    body: JSON.stringify({ email, displayName: displayName || null, role: role || 'viewer' }),
+  });
+}
+
+export async function fetchProjectInvitations(projectId, { includeClosed = false } = {}) {
+  if (!projectId) return { invitations: [] };
+  const query = includeClosed ? '?include_closed=true' : '';
+  try {
+    const data = await req(`/projects/${encodeURIComponent(projectId)}/invitations${query}`);
+    return {
+      ...data,
+      invitations: Array.isArray(data?.invitations) ? data.invitations : [],
+    };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return { invitations: [], available: false };
+    throw err;
+  }
+}
+
+export async function inviteProjectCollaborator(projectId, { email, displayName, role } = {}) {
+  if (!projectId || !email) throw new Error('Project id and invitee email are required.');
+  try {
+    return await req(`/projects/${encodeURIComponent(projectId)}/invitations`, {
+      method: 'POST',
+      body: JSON.stringify({ email, displayName: displayName || null, role: role || 'viewer' }),
+    });
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) {
+      const fallback = await upsertProjectCollaborator(projectId, { email, displayName, role });
+      return { ...fallback, fallbackCollaborator: true };
+    }
+    throw err;
+  }
+}
+
+export async function resendProjectInvitation(projectId, invitationId) {
+  if (!projectId || !invitationId) throw new Error('Project id and invitation id are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/invitations/${encodeURIComponent(invitationId)}/resend`, {
+    method: 'POST',
+  });
+}
+
+export async function revokeProjectInvitation(projectId, invitationId) {
+  if (!projectId || !invitationId) throw new Error('Project id and invitation id are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/invitations/${encodeURIComponent(invitationId)}/revoke`, {
+    method: 'POST',
+  });
+}
+
+export async function updateProjectCollaborator(projectId, collaboratorId, body = {}) {
+  if (!projectId || !collaboratorId) throw new Error('Project id and collaborator id are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/collaborators/${encodeURIComponent(collaboratorId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteProjectCollaborator(projectId, collaboratorId) {
+  if (!projectId || !collaboratorId) throw new Error('Project id and collaborator id are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/collaborators/${encodeURIComponent(collaboratorId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchProjectNotificationHooks(projectId) {
+  if (!projectId) return { hooks: [] };
+  try {
+    const data = await req(`/projects/${encodeURIComponent(projectId)}/notification-hooks`);
+    return {
+      ...data,
+      hooks: Array.isArray(data?.hooks) ? data.hooks : [],
+    };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return { hooks: [], available: false };
+    throw err;
+  }
+}
+
+export async function createProjectNotificationHook(projectId, body = {}) {
+  if (!projectId) throw new Error('Project id is required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/notification-hooks`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateProjectNotificationHook(projectId, hookId, body = {}) {
+  if (!projectId || !hookId) throw new Error('Project id and hook id are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/notification-hooks/${encodeURIComponent(hookId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteProjectNotificationHook(projectId, hookId) {
+  if (!projectId || !hookId) throw new Error('Project id and hook id are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/notification-hooks/${encodeURIComponent(hookId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function testProjectNotificationHook(projectId, hookId) {
+  if (!projectId || !hookId) throw new Error('Project id and hook id are required.');
+  return req(`/projects/${encodeURIComponent(projectId)}/notification-hooks/${encodeURIComponent(hookId)}/test`, {
+    method: 'POST',
+  });
+}
+
+export async function fetchProjectNotificationDeliveries(projectId) {
+  if (!projectId) return { deliveries: [] };
+  try {
+    const data = await req(`/projects/${encodeURIComponent(projectId)}/notification-deliveries`);
+    return {
+      ...data,
+      deliveries: Array.isArray(data?.deliveries) ? data.deliveries : [],
+    };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return { deliveries: [], available: false };
+    throw err;
+  }
+}
+
+export async function retryProjectNotificationDelivery(projectId, deliveryId) {
+  if (!projectId || !deliveryId) throw new Error('Project id and delivery id are required.');
+  return req(
+    `/projects/${encodeURIComponent(projectId)}/notification-deliveries/${encodeURIComponent(deliveryId)}/retry`,
+    { method: 'POST' },
+  );
+}
+
 // Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
 // project directory and updates internal references; the response is
 // the renamed Project record. Accepts either a project object (with id)
@@ -597,7 +759,7 @@ export async function unpublishArtifact(path) {
   // end state.
   const res = await fetch(BASE + `/publish?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
   });
   if (res.status === 404) return { status: 'gone' };
   if (!res.ok) {
@@ -611,6 +773,7 @@ export async function unpublishArtifact(path) {
 export async function deleteArtifact(path) {
   const res = await fetch(BASE + `/artifacts/?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
+    headers: await authHeaders({}, { json: false }),
   });
   if (!res.ok) {
     let detail = '';
@@ -633,7 +796,7 @@ export async function deleteProject(projectOrName) {
   // Idempotent: 404 = "already gone" = success.
   const res = await fetch(BASE + `/projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
   });
   if (res.status === 404) return { status: 'gone', name };
   if (res.status === 204) return { status: 'deleted', name };
@@ -719,19 +882,22 @@ export async function mountProjectFilePreview(projectName, path) {
   });
 }
 
-// Absolute URL for downloading a project file's raw bytes. Server
-// sets `Content-Disposition: attachment` so browsers trigger a save
-// dialog rather than rendering inline.
-export function projectFileDownloadUrl(projectName, path) {
-  const safe = path.split('/').map(enc).join('/');
-  return `${BASE}/projects/${enc(projectName)}/files-raw/${safe}`;
+// Mint a short-lived URL for downloading a project file's raw bytes.
+// Browser downloads can't carry the Authorization header, so the raw
+// endpoint accepts a scoped bearer grant instead of exposing stable URLs.
+export async function projectFileDownloadUrl(projectName, path) {
+  const res = await req(`/projects/${enc(projectName)}/files-raw-token`, {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+  return res?.url ? `${ROOT_BASE}${res.url}` : '';
 }
 
 export async function writeProjectFile(projectName, path, content) {
   const safe = path.split('/').map(enc).join('/');
   const res = await fetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({ content: content || '' }),
   });
   if (!res.ok) {
@@ -750,6 +916,7 @@ export async function uploadProjectFiles(projectName, files) {
   for (const f of files) form.append('files', f, f.name);
   const res = await fetch(BASE + `/projects/${enc(projectName)}/files/upload`, {
     method: 'POST',
+    headers: await authHeaders({}, { json: false }),
     body: form,
   });
   if (!res.ok) {
@@ -764,6 +931,7 @@ export async function deleteProjectFile(projectName, path) {
   const safe = path.split('/').map(enc).join('/');
   const res = await fetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
     method: 'DELETE',
+    headers: await authHeaders({}, { json: false }),
   });
   if (res.status === 404) return { status: 'gone', path };
   if (!res.ok) {
@@ -833,8 +1001,35 @@ export async function fetchArtifacts({ projectPath } = {}) {
   });
 }
 
-export async function previewArtifact(path) {
-  return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
+export async function fetchDeletedArtifacts() {
+  return dedupe('artifacts:deleted', async () => {
+    try {
+      const data = await req('/artifacts/deleted');
+      return {
+        available: true,
+        artifacts: Array.isArray(data?.artifacts)
+          ? data.artifacts
+          : (Array.isArray(data?.deleted) ? data.deleted : []),
+      };
+    } catch (err) {
+      if (_isEndpointUnavailable(err)) return { available: false, artifacts: [] };
+      return { available: false, artifacts: [] };
+    }
+  });
+}
+
+export async function restoreDeletedArtifact(artifactId, versionId) {
+  if (!artifactId || !versionId) throw new Error('Artifact id and version id are required.');
+  return req(`/artifacts/${encodeURIComponent(artifactId)}/restore`, {
+    method: 'POST',
+    body: JSON.stringify({ versionId }),
+  });
+}
+
+export async function previewArtifact(path, { versionId } = {}) {
+  const params = new URLSearchParams({ path });
+  if (versionId) params.set('version_id', versionId);
+  return req(`/artifacts/preview?${params.toString()}`);
 }
 
 // Mount an artifact for iframe preview. Two response shapes:
@@ -844,18 +1039,18 @@ export async function previewArtifact(path) {
 //     artifact dir; the renderer then asks the Electron main process to
 //     point the local preview proxy at that dir and gets back the URL.
 // `kind` is the discriminator; legacy callers can keep using `url`.
-export async function mountArtifactPreview(path) {
+export async function mountArtifactPreview(path, { versionId } = {}) {
   const data = await req('/artifacts/preview-mount', {
     method: 'POST',
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ path, version_id: versionId || null }),
   });
   const kind = data?.kind || (data?.relUrl ? 'static' : '');
-  // Prefer the stateless `serveUrl` over the token `relUrl`: it's stable,
-  // shareable, and resolves against any origin — works in web deployment.
-  // `serveUrl` already carries `/v1`, so combine with ROOT_BASE, not BASE.
-  const url = data?.serveUrl
-    ? `${ROOT_BASE}${data.serveUrl}`
-    : (data?.relUrl ? `${BASE}${data.relUrl}` : '');
+  // Prefer the tokenized preview mount for static HTML. It preserves
+  // relative CSS/JS/image asset loads inside the iframe, while `serveUrl`
+  // signs only the primary file for open/download actions.
+  const url = data?.relUrl
+    ? `${BASE}${data.relUrl}`
+    : (data?.serveUrl ? `${ROOT_BASE}${data.serveUrl}` : '');
   return {
     kind,
     token: data?.token,
@@ -876,10 +1071,409 @@ export async function mountArtifactPreview(path) {
     // when opened from a chat bubble — those carry no publishedUrl on
     // the artifact object since they're built from streamed payloads.
     publishedUrl: data?.publishedUrl || '',
+    publishedVersionId: data?.publishedVersionId || data?.published_version_id || '',
+    publishedFilesHash: data?.publishedFilesHash || data?.published_files_hash || '',
+    publishedManifestHash: data?.publishedManifestHash || data?.published_manifest_hash || '',
+    publishedVersionNumber: data?.publishedVersionNumber || data?.published_version_number || null,
     // Backend launch status for proxy previews. When false, launchError
     // carries the reason — the viewer surfaces it instead of an empty iframe.
     backendRunning: data?.backendRunning !== false,
     launchError: data?.launchError || '',
+  };
+}
+
+function _isEndpointUnavailable(err) {
+  return err?.status === 404 || err?.status === 405 || err?.status === 501;
+}
+
+function _versionUnavailable(status) {
+  return { available: false, status: status || null };
+}
+
+function _apiAssetUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/api/')) return `${ROOT_BASE}${url}`;
+  if (url.startsWith('/')) return `${BASE}${url}`;
+  return url;
+}
+
+function _normalizeVisualSide(side) {
+  if (!side || typeof side !== 'object') return side;
+  const relUrl = side.relUrl || side.rel_url || '';
+  const screenshotRelUrl = side.screenshotRelUrl || side.screenshot_rel_url || '';
+  return {
+    ...side,
+    relUrl,
+    url: _apiAssetUrl(side.url || relUrl),
+    screenshotRelUrl,
+    screenshotUrl: _apiAssetUrl(side.screenshotUrl || side.screenshot_url || screenshotRelUrl),
+  };
+}
+
+function _normalizeArtifactChangePayload(body) {
+  const visual = body?.visualDiff || body?.visual_diff || null;
+  const textDiff = typeof body?.textDiff === 'string'
+    ? body.textDiff
+    : typeof body?.text_diff === 'string'
+      ? body.text_diff
+      : typeof body?.patch === 'string'
+        ? body.patch
+        : typeof body?.content === 'string'
+          ? body.content
+          : typeof body?.diff === 'string'
+            ? body.diff
+            : typeof body?.diff?.textDiff === 'string'
+              ? body.diff.textDiff
+              : typeof body?.diff?.text_diff === 'string'
+                ? body.diff.text_diff
+                : typeof body?.diff?.patch === 'string'
+                  ? body.diff.patch
+                  : '';
+  const changedFiles = body?.changedFiles
+    || body?.changed_files
+    || body?.fileDiffs
+    || body?.file_diffs
+    || null;
+  const datasetDiffs = body?.datasetDiffs || body?.dataset_diffs || null;
+  const normalized = {
+    ...body,
+    ...(textDiff ? { textDiff } : {}),
+    ...(changedFiles ? { changedFiles } : {}),
+    ...(datasetDiffs ? { datasetDiffs } : {}),
+  };
+  if (!visual || typeof visual !== 'object') return normalized;
+  return {
+    ...normalized,
+    visualDiff: {
+      ...visual,
+      base: _normalizeVisualSide(visual.base),
+      compare: _normalizeVisualSide(visual.compare),
+      diff: visual.diff && typeof visual.diff === 'object'
+        ? {
+          ...visual.diff,
+          imageRelUrl: visual.diff.imageRelUrl || visual.diff.image_rel_url || '',
+          imageUrl: _apiAssetUrl(visual.diff.imageUrl || visual.diff.image_url || visual.diff.imageRelUrl || visual.diff.image_rel_url),
+        }
+        : visual.diff,
+    },
+  };
+}
+
+// Version endpoints are optional until cowork-server ships the review
+// history contract. Callers can render a graceful empty state when
+// `available` is false, while real backend failures still throw.
+export async function fetchArtifactVersions(path) {
+  if (!path) return _versionUnavailable(null);
+  try {
+    const data = await req(`/artifacts/versions?path=${encodeURIComponent(path)}`);
+    const versions = Array.isArray(data)
+      ? data
+      : (Array.isArray(data?.versions) ? data.versions
+          : Array.isArray(data?.checkpoints) ? data.checkpoints
+            : Array.isArray(data?.items) ? data.items
+              : Array.isArray(data?.history) ? data.history
+                : []);
+    const latest = data?.latestVersionId || data?.latest_version_id || data?.latest || null;
+    const current = data?.currentVersionId || data?.current_version_id || data?.current || null;
+    const lastGood = data?.lastKnownGoodVersionId || data?.last_known_good_version_id || data?.lastGoodVersionId || data?.last_good_version_id || null;
+    return {
+      available: true,
+      versions,
+      latestVersionId: typeof latest === 'object' ? (latest?.id || latest?.versionId || null) : latest,
+      currentVersionId: typeof current === 'object' ? (current?.id || current?.versionId || null) : current,
+      lastKnownGoodVersionId: typeof lastGood === 'object' ? (lastGood?.id || lastGood?.versionId || null) : lastGood,
+    };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return _versionUnavailable(err.status);
+    throw err;
+  }
+}
+
+export async function createArtifactCheckpoint(path, { label, prompt } = {}) {
+  if (!path) throw new Error('Artifact path is required.');
+  return req('/artifacts/versions', {
+    method: 'POST',
+    body: JSON.stringify({
+      path,
+      label: label || 'Saved version',
+      operation_type: 'checkpoint',
+      prompt: prompt || null,
+    }),
+  });
+}
+
+export async function fetchArtifactChanges(path, { from, to } = {}) {
+  if (!path) return _versionUnavailable(null);
+  const params = new URLSearchParams({ path });
+  if (from) {
+    params.set('from', from);
+    params.set('from_version_id', from);
+  }
+  if (to) {
+    params.set('to', to);
+    params.set('to_version_id', to);
+  }
+  try {
+    const data = await req(`/artifacts/diff?${params.toString()}`);
+    const body = Array.isArray(data)
+      ? { changedFiles: data }
+      : data && typeof data === 'object'
+        ? data
+        : { diff: data == null ? '' : String(data) };
+    return { available: true, ..._normalizeArtifactChangePayload(body) };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return _versionUnavailable(err.status);
+    throw err;
+  }
+}
+
+export async function restoreArtifactVersion(path, versionId, { createCheckpoint = true } = {}) {
+  if (!path || !versionId) throw new Error('Artifact path and version id are required.');
+  return req('/artifacts/versions/restore', {
+    method: 'POST',
+    body: JSON.stringify({ path, version_id: versionId, createCheckpoint }),
+  });
+}
+
+export async function forkArtifactVersion(path, versionId, { name, slug, targetProjectId, project } = {}) {
+  if (!path || !versionId) throw new Error('Artifact path and version id are required.');
+  return req('/artifacts/versions/fork', {
+    method: 'POST',
+    body: JSON.stringify({
+      path,
+      version_id: versionId,
+      name: name || null,
+      slug: slug || null,
+      targetProjectId: targetProjectId || null,
+      project: project || null,
+    }),
+  });
+}
+
+export async function fetchArtifactComments(path) {
+  if (!path) return _versionUnavailable(null);
+  try {
+    const data = await req(`/artifacts/comments?path=${encodeURIComponent(path)}`);
+    return {
+      available: true,
+      comments: Array.isArray(data?.comments) ? data.comments : [],
+      activity: Array.isArray(data?.activity) ? data.activity : [],
+      viewerState: data?.viewerState || data?.viewer_state || { available: false },
+    };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return _versionUnavailable(err.status);
+    throw err;
+  }
+}
+
+export async function markArtifactCommentsRead(path, { commentId = null, activityId = null } = {}) {
+  if (!path) throw new Error('Artifact path is required.');
+  const payload = { path };
+  if (commentId) payload.commentId = commentId;
+  if (activityId) payload.activityId = activityId;
+  try {
+    const data = await req('/artifacts/comments/read', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return {
+      available: true,
+      comments: Array.isArray(data?.comments) ? data.comments : [],
+      activity: Array.isArray(data?.activity) ? data.activity : [],
+      viewerState: data?.viewerState || data?.viewer_state || { available: false },
+    };
+  } catch (err) {
+    if (_isEndpointUnavailable(err)) return _versionUnavailable(err.status);
+    throw err;
+  }
+}
+
+export async function createArtifactComment(path, { body, kind = 'comment', anchor = {}, proposedPatch = null, parentCommentId = null } = {}) {
+  if (!path || !body) throw new Error('Artifact path and comment body are required.');
+  const payload = { path, body, kind, anchor };
+  if (proposedPatch) payload.proposedPatch = proposedPatch;
+  if (parentCommentId) payload.parentCommentId = parentCommentId;
+  return req('/artifacts/comments', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function setArtifactCommentResolved(commentId, resolved = true) {
+  if (!commentId) throw new Error('Comment id is required.');
+  return req(`/artifacts/comments/${encodeURIComponent(commentId)}/${resolved ? 'resolve' : 'reopen'}`, {
+    method: 'POST',
+  });
+}
+
+export async function setArtifactSuggestionStatus(commentId, status) {
+  if (!commentId || !['accepted', 'rejected', 'open'].includes(status)) {
+    throw new Error('Comment id and a valid suggestion status are required.');
+  }
+  const action = status === 'accepted' ? 'accept' : status === 'rejected' ? 'reject' : 'reopen';
+  return req(`/artifacts/comments/${encodeURIComponent(commentId)}/${action}`, { method: 'POST' });
+}
+
+// Mark a comment/review thread resolved (handled) — distinct from reject (dismiss).
+export async function resolveArtifactComment(commentId) {
+  if (!commentId) throw new Error('Comment id is required.');
+  return req(`/artifacts/comments/${encodeURIComponent(commentId)}/resolve`, { method: 'POST' });
+}
+
+export async function previewArtifactCommentPatch(commentId) {
+  if (!commentId) throw new Error('Comment id is required.');
+  return req(`/artifacts/comments/${encodeURIComponent(commentId)}/preview`, { method: 'POST' });
+}
+
+export async function applyArtifactCommentPatch(commentId) {
+  if (!commentId) throw new Error('Comment id is required.');
+  return req(`/artifacts/comments/${encodeURIComponent(commentId)}/apply`, { method: 'POST' });
+}
+
+export async function handoffArtifactToTask({
+  path,
+  artifactId,
+  versionId,
+  commentId,
+  prompt,
+  title,
+  projectId,
+  project,
+  model,
+} = {}) {
+  if (!path && !artifactId) throw new Error('Artifact path or id is required.');
+  return req('/artifacts/handoff', {
+    method: 'POST',
+    body: JSON.stringify({
+      path: path || null,
+      artifactId: artifactId || null,
+      versionId: versionId || null,
+      commentId: commentId || null,
+      prompt: prompt || null,
+      title: title || null,
+      projectId: projectId || null,
+      project: project || null,
+      model: model || null,
+    }),
+  });
+}
+
+function basenameFromPath(value) {
+  const text = String(value || '');
+  return text.split(/[\\/]/).filter(Boolean).pop() || text;
+}
+
+function artifactEditTarget(target, path) {
+  if (typeof target === 'string') return target;
+  if (!target || typeof target !== 'object') return basenameFromPath(path);
+  return (
+    target.path ||
+    target.target ||
+    target.filePath ||
+    target.file ||
+    target.primary ||
+    basenameFromPath(path || target.artifactId)
+  );
+}
+
+// ── M1 "Fix it in place" inline-edit endpoints ──────────────────────
+//
+// Transport for the redesigned workspace's EditableBlock. The UI passes
+// these in as `proposeEdit` / `commitEdit`. Both follow the authHeaders +
+// fetch(BASE+path) pattern used elsewhere.
+//
+// proposeArtifactEdit asks the backend (which calls the LLM) for a rewrite
+// and resolves with { oldText, newText, proposalId? }. The UI treats an
+// equal old/new as a no-op. Throwing signals a generation failure — the
+// caller (ArtifactWorkspaceRedesign) wraps this in try/catch so a missing
+// endpoint (404) degrades to EditableBlock's built-in mock.
+export async function proposeArtifactEdit({ path, target, instruction, oldText, newText, baseVersionId } = {}) {
+  // _ProposeEditBody requires `target` (file path within the artifact folder) and
+  // both `old_text` + `new_text`. `target` may be the file-basename string (direct
+  // whole-file edits) or the legacy object descriptor (per-block AI edits).
+  const resolvedPath = path || (typeof target === 'object' ? target?.artifactId : null) || null;
+  const resolvedTarget = artifactEditTarget(target, resolvedPath);
+  const resolvedOld = oldText ?? (typeof target === 'object' ? target?.text : null) ?? null;
+  const payload = {
+    path: resolvedPath,
+    target: resolvedTarget,
+    artifactId: typeof target === 'object' ? (target?.artifactId || null) : null,
+    blockId: typeof target === 'object' ? (target?.blockId || null) : null,
+    range: typeof target === 'object' ? (target?.range ?? null) : null,
+    instruction: instruction || '',
+    oldText: resolvedOld,
+    // Backend requires new_text; when the caller hasn't generated one yet (pure
+    // dry-run / LLM-not-wired), echo old_text so the proposal still validates
+    // (applies===true) instead of 422-ing on a missing field.
+    newText: typeof newText === 'string' ? newText : (resolvedOld ?? ''),
+    baseVersionId: baseVersionId || null,
+    type: 'document',
+  };
+  const data = await req('/artifacts/edits/propose', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return {
+    oldText: typeof data?.oldText === 'string' ? data.oldText : (data?.old_text ?? oldText ?? ''),
+    newText: typeof data?.newText === 'string' ? data.newText : (data?.new_text ?? ''),
+    proposalId: data?.proposalId || data?.proposal_id || null,
+  };
+}
+
+// acceptArtifactEdit performs the compare-and-swap commit. On HTTP 409 it
+// resolves with { conflict: { message, currentVersionId } } (NOT a throw),
+// matching the contract the inline-edit hook expects — the UI keeps the
+// proposal on screen and relabels Keep → "Merge & keep". Any other non-ok
+// status throws via the shared error shape.
+export async function acceptArtifactEdit({ path, target, oldText, newText, baseVersionId, proposalId, operationType } = {}) {
+  // The backend (_AcceptEditBody) REQUIRES both `target` (the file path inside the
+  // artifact folder) and `old_text` (the whole-file find string), and re-validates
+  // the find against the staged folder before swapping. `target` may be a string
+  // (the file basename) or the legacy object shape; normalize to the string the
+  // server expects.
+  const resolvedPath = path || (typeof target === 'object' ? target?.artifactId : null) || null;
+  const resolvedTarget = artifactEditTarget(target, resolvedPath);
+  // old_text is required server-side and re-validated as the whole-file find. For
+  // the per-block AI flow the find text rides on `target.text`; whole-file direct
+  // saves pass `oldText` explicitly.
+  const resolvedOld = oldText ?? (typeof target === 'object' ? target?.text : null) ?? '';
+  const body = JSON.stringify({
+    path: resolvedPath,
+    target: resolvedTarget,
+    artifactId: typeof target === 'object' ? (target?.artifactId || null) : null,
+    blockId: typeof target === 'object' ? (target?.blockId || null) : null,
+    proposalId: proposalId || null,
+    oldText: resolvedOld,
+    newText: newText ?? '',
+    baseVersionId: baseVersionId || null,
+    // Distinguishes a direct (typed) edit ('manual_edit') from the default AI
+    // rewrite. Only sent when provided so AI callers keep the server default.
+    ...(operationType ? { operationType } : {}),
+  });
+  const res = await fetch(BASE + '/artifacts/edits/accept', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body,
+  });
+  if (res.status === 409) {
+    let data = {};
+    try { data = await res.json(); } catch {}
+    return {
+      conflict: {
+        message: data?.message || data?.detail || 'This changed since you started — Anton can merge your edit',
+        currentVersionId: data?.currentVersionId || data?.current_version_id || null,
+      },
+    };
+  }
+  if (!res.ok) {
+    throw await responseError(res, `Edit accept failed (${res.status})`);
+  }
+  const data = res.status === 204 ? {} : await res.json();
+  return {
+    ok: true,
+    versionId: data?.versionId || data?.version_id || null,
+    text: typeof data?.text === 'string' ? data.text : undefined,
   };
 }
 
@@ -1276,7 +1870,7 @@ export function streamDataVaultSubmission({
     try {
       const res = await fetch(`${BASE}/connectors/submissions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({
           form_id: formId,
           conversation_id: conversationId || null,
@@ -1364,7 +1958,7 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
   // the response — useful for tests/probes that don't want SSE.
   const res = await fetch(`${BASE}/connectors/submissions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     body: JSON.stringify({
       form_id: formId,
       conversation_id: conversationId || null,
@@ -1385,10 +1979,13 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
 //   { mode: 'restricted', emails: [...], org_allowed: bool }
-// Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish.
-export async function publishArtifact(path, access) {
-  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
+// Callers that collect an access choice should pass it explicitly, including
+// `{ mode: 'public' }`. Legacy callers may still omit access; the server keeps
+// treating that as public for backwards compatibility.
+export async function publishArtifact(path, access, options = {}) {
+  const body = access && access.mode ? { path, access } : { path };
+  const versionId = options?.versionId || options?.version_id;
+  if (versionId) body.versionId = versionId;
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
 }
 
@@ -1528,7 +2125,7 @@ export async function uploadAttachments(files, { projectName, sessionId } = {}) 
   Array.from(files).forEach((file) => form.append('files', file));
   const res = await fetch(
     `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
-    { method: 'POST', body: form },
+    { method: 'POST', headers: await authHeaders({}, { json: false }), body: form },
   );
   if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
   const data = await res.json();
@@ -1645,7 +2242,7 @@ export async function deleteConversationTurn(id, turnIndex) {
     BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
     {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
     },
   );
   if (res.status === 404) return { status: 'gone', id, turnIndex };
@@ -1664,7 +2261,7 @@ export async function deleteConversation(id) {
   // ("gone from server") is achieved.
   const res = await fetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
   });
   if (res.status === 404) return { status: 'gone', id };
   if (!res.ok) {
