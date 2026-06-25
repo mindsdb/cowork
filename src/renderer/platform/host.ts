@@ -265,7 +265,10 @@ export async function checkConfigured(): Promise<{ configured: boolean; provider
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
   }
-  return fetchJson('/api/v1/settings/configured');
+  // Web: read config_ready from /health — the SAME signal the in-app chat gate
+  // uses — so onboarding-vs-app routing can't disagree with the chat gate.
+  const h = await fetchJson('/api/v1/health/') as { config_ready?: boolean; provider?: string };
+  return { configured: Boolean(h.config_ready), provider: h.provider ?? '' };
 }
 
 export async function validateProvider(
