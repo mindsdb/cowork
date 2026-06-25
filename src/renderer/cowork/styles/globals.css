@@ -84,13 +84,13 @@
   --frost-800: #0E0F10;   /* = ink   */
   --frost-900: #0E0F10;
 
-  /* Stone */
-  --stone-50:  #F9FAFB;
-  --stone-100: #F4F5F6;
-  --stone-150: #EFF0F1;
-  --stone-200: #E4E5E6;
-  --stone-300: #D3D4D5;
-  --stone-400: #A7A8A9;
+  /* Stone — neutral (brandbook-aligned, no cool/warm tint) */
+  --stone-50:  #FAFAFA;
+  --stone-100: #F4F4F4;
+  --stone-150: #EFEFED;
+  --stone-200: #E4E4E1;
+  --stone-300: #D4D4D0;
+  --stone-400: #A8A8A6;
 
   /* Ocean */
   --ocean-50:  #E2F5FD;
@@ -136,17 +136,16 @@ body, body[data-theme="light"] {
      (macOS uses a native NSMenu that ignores CSS, so it never shows.) */
   color-scheme: light;
 
-  /* Guideline names — primary token surface for new code */
-  --bg:           #F9FAFB;
+  /* Surfaces — brandbook neutral scale (no cool/warm tint) */
+  --bg:           #FAFAFA;
   --surface:      #FFFFFF;
-  --surface-2:    #F3F4F5;
-  --surface-3:    #EBECED;
-  --line:         rgba(0, 0, 0, 0.06);
-  --line-2:       rgba(0, 0, 0, 0.10);
-  /* Sidebar surface — subtle step down from --bg so the sidebar reads
-     as a distinct lane without heavy contrast.  OS-drawn inactive
-     traffic-light circles (~#a8a8a8) still read fine against it. */
-  --sidebar-bg:   #F0F1F2;
+  --surface-2:    #F4F4F4;
+  --surface-3:    #ECECEA;
+  --line:         #E4E4E1;
+  --line-2:       #D4D4D0;
+  --line-soft:    #EFEFED;
+  /* Sidebar surface — matches surface-2 per brandbook scale */
+  --sidebar-bg:   #F4F4F4;
 
   --ink:          #0E0F10;   /* primary text */
   --ink-2:        #3A3D40;   /* body */
@@ -201,9 +200,10 @@ body, body[data-theme="light"] {
   --r-lg:         10px;
   --r-xl:         16px;
 
-  --sh-1:         0 1px 3px rgba(0, 0, 0, 0.04);
-  --sh-2:         0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
-  --sh-3:         0 4px 20px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
+  /* Shadows — brandbook "flat-but-physical" with 1px bottom edge */
+  --sh-1:         0 1px 0 rgba(15,16,17,0.04), 0 1px 2px rgba(15,16,17,0.05);
+  --sh-2:         0 1px 0 rgba(15,16,17,0.04), 0 4px 12px rgba(15,16,17,0.06);
+  --sh-3:         0 1px 0 rgba(15,16,17,0.04), 0 12px 28px rgba(15,16,17,0.08);
   --ring:         0 0 0 3px rgba(31,156,176,0.30);
 
   /* Legacy/cowork token aliases — keep existing components working */
@@ -2180,17 +2180,22 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 [data-coming-soon]:hover::after { opacity: 1; }
 
-/* ─── Button system (per guideline) ──────────────────────────────────────
-   All variants share shape: transparent fill, colored border + label.
-   Each variant supplies --fg (the colour) and --glow (hover halo).
-   .btn is the canonical class name; .btn-primary / .btn-secondary stay as
-   backward-compat aliases that pin specific variants. */
+/* ─── Button system (brandbook) ──────────────────────────────────────────
+   Four variants × five sizes × every interactive state. Flat-but-physical:
+   a quiet shadow, a 1px border, 32px tall by default. Primary is filled
+   teal; default is white with a hairline border; subtle is no chrome
+   until hovered; danger is white with red text.
+
+   BEM notation:  .btn .btn--primary, .btn .btn--subtle .btn--sm, etc.
+   Legacy aliases: .btn-primary, .btn-secondary, .btn-ghost still work. */
 
 .btn {
-  --fg:    var(--ink);
-  --glow:  rgba(199, 210, 229, 0.22);
-  --bg-h:  color-mix(in srgb, var(--fg) 10%, transparent);
-  --bg-a:  color-mix(in srgb, var(--fg) 18%, transparent);
+  --b-bg:   var(--surface);
+  --b-bd:   var(--line-2);
+  --b-fg:   var(--ink);
+  --b-bg-h: var(--surface-2);
+  --b-bd-h: var(--line-2);
+  --b-bg-a: var(--surface-3);
 
   display: inline-flex;
   align-items: center;
@@ -2199,11 +2204,11 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   height: 32px;
   padding: 0 12px;
   border-radius: var(--r);
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid currentColor;
+  background: var(--b-bg);
+  color: var(--b-fg);
+  border: 1px solid var(--b-bd);
   box-shadow: var(--sh-1);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.005em;
@@ -2216,84 +2221,37 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
     transform .04s ease,
     color .12s ease;
 }
-.btn:hover {
-  background: var(--bg-h);
-  box-shadow: 0 0 0 1px var(--fg), 0 0 22px var(--glow);
-  text-shadow: 0 0 12px var(--glow);
-}
-.btn:active {
-  background: var(--bg-a);
-  transform: translateY(0.5px);
-  box-shadow: 0 0 0 1px var(--fg), 0 0 6px var(--glow);
-}
-.btn:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 1px var(--fg), 0 0 0 4px var(--glow);
-}
-.btn:disabled, .btn[aria-disabled="true"] {
-  cursor: not-allowed;
-  opacity: 0.55;
-  pointer-events: none;
-}
+.btn:hover    { background: var(--b-bg-h); border-color: var(--b-bd-h); }
+.btn:active   { background: var(--b-bg-a); transform: translateY(0.5px); box-shadow: 0 0 0 rgba(0,0,0,0); }
+.btn:focus-visible { outline: 0; box-shadow: var(--ring), var(--sh-1); }
+.btn:disabled, .btn[aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; pointer-events: none; }
 
-/* Primary — accent action. Always-on idle glow, intensifies on hover. */
+/* Primary — filled accent. The thing the user came to do. */
+.btn--primary,
 .btn.primary,
 .btn-primary {
-  --fg:    var(--accent);
-  --glow:  var(--accent-glow);
+  --b-bg: var(--accent); --b-bd: transparent; --b-fg: #FFFFFF;
+  --b-bg-h: var(--accent-2); --b-bd-h: transparent;
+  --b-bg-a: var(--accent-3);
   font-weight: 600;
-  /* Apply .btn shape if the consumer omitted it (legacy callers used .btn-primary alone) */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid currentColor;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  letter-spacing: -0.005em;
-  cursor: pointer;
-  user-select: none;
-  transition:
-    background-color .12s ease, border-color .12s ease,
-    box-shadow .12s ease, transform .04s ease, color .12s ease;
-  box-shadow: 0 0 14px color-mix(in srgb, var(--fg) 18%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    0 1px 0 rgba(15,16,17,0.06),
+    0 1px 2px rgba(15,16,17,0.10);
 }
-body[data-theme="light"] .btn.primary,
-body[data-theme="light"] .btn-primary,
-body:not([data-theme="dark"]) .btn.primary,
-body:not([data-theme="dark"]) .btn-primary {
-  /* Light mode: no idle glow; ring + soft halo on hover only. */
-  box-shadow: var(--sh-1);
+.btn--primary:hover, .btn.primary:hover, .btn-primary:hover {
+  background: var(--b-bg-h);
 }
-.btn.primary:hover,
-.btn-primary:hover {
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-  box-shadow: 0 0 0 1px var(--fg), 0 0 28px var(--glow);
-}
-.btn.primary:active,
-.btn-primary:active {
-  background: color-mix(in srgb, var(--fg) 18%, transparent);
+.btn--primary:active, .btn.primary:active, .btn-primary:active {
+  background: var(--b-bg-a);
   transform: translateY(0.5px);
 }
-.btn.primary:disabled,
-.btn-primary:disabled,
-.btn.primary[aria-disabled="true"],
-.btn-primary[aria-disabled="true"] {
+.btn--primary:disabled, .btn-primary:disabled,
+.btn--primary[aria-disabled="true"], .btn-primary[aria-disabled="true"] {
   cursor: not-allowed; opacity: 0.55; pointer-events: none;
 }
 
-/* Busy variant — used while the button is awaiting an async result
-   (e.g. a connection probe in the data-vault form). Reads as
-   "locked but still alive": no dim opacity, gentle accent pulse on
-   the surface + a soft halo that breathes. The base .btn-primary
-   :disabled rule above bottoms out at 0.55 opacity, which makes a
-   busy button read as broken; this rule wins on specificity (two
-   classes) and overrides both opacity and pointer-events. */
+/* Busy variant — awaiting an async result. Gentle accent pulse. */
 @keyframes btn-busy-pulse {
   0%, 100% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
@@ -2305,106 +2263,84 @@ body:not([data-theme="dark"]) .btn-primary {
   }
 }
 .btn-primary.is-busy,
+.btn--primary.is-busy,
 .btn.primary.is-busy {
   cursor: progress;
   pointer-events: none;
   opacity: 1;
   animation: btn-busy-pulse 1.4s ease-in-out infinite;
-  /* The keyframe paints a soft halo via box-shadow; ensure the
-     button has its own border-radius mask so the halo follows the
-     pill shape rather than overflowing as a square. */
   will-change: filter, box-shadow;
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-primary.is-busy,
+  .btn--primary.is-busy,
   .btn.primary.is-busy {
     animation: none;
-    /* Static visual cue when motion is reduced — slightly elevated
-       brightness so the disabled / busy distinction is still
-       readable without movement. */
     filter: brightness(1.04);
   }
 }
 
-/* Subtle — borderless until hovered. Quietest variant. Aliased from
-   the older .btn-secondary / .btn-ghost classes. */
+/* Default — the base. White surface with hairline border. */
+.btn--default {} /* explicit no-op for docs */
+
+/* Subtle — borderless until hovered. Quietest variant. */
+.btn--subtle,
 .btn.subtle,
 .btn-secondary,
 .btn-ghost {
-  --fg:   var(--ink-3);
-  --glow: rgba(199, 210, 229, 0.18);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid transparent;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.005em;
-  cursor: pointer;
-  transition:
-    background-color .12s ease, border-color .12s ease,
-    box-shadow .12s ease, color .12s ease;
+  --b-bg: transparent; --b-bd: transparent; --b-fg: var(--ink-2);
+  --b-bg-h: var(--surface-2); --b-bd-h: transparent;
+  --b-bg-a: var(--surface-3);
+  box-shadow: none;
 }
-.btn.subtle:hover,
-.btn-secondary:hover,
-.btn-ghost:hover {
+.btn--subtle:hover, .btn.subtle:hover,
+.btn-secondary:hover, .btn-ghost:hover {
+  background: var(--b-bg-h);
   color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  box-shadow: 0 0 0 1px var(--line-2), 0 0 18px rgba(199, 210, 229, 0.10);
 }
 
-/* Tinted — accent border + label, with a faint accent fill at rest. */
+/* Tinted — accent-bg fill, accent-2 text. Soft CTA. */
+.btn--tinted,
 .btn.tinted {
-  --fg:   var(--accent);
-  --glow: var(--accent-glow);
-  background: var(--accent-bg);
-  border-color: currentColor;
+  --b-bg: var(--accent-bg); --b-bd: transparent; --b-fg: var(--accent-2);
+  --b-bg-h: #D4ECF1; --b-bd-h: transparent; --b-bg-a: #C2E3EA;
+  box-shadow: none;
 }
 
-/* Danger */
+/* Danger — white surface, red text. */
+.btn--danger,
 .btn.danger {
-  --fg:   var(--danger);
-  --glow: rgba(248, 113, 113, 0.45);
-}
-.btn.danger.primary {
-  font-weight: 600;
-  box-shadow: 0 0 14px rgba(248, 113, 113, 0.22);
+  --b-bg: #FFFFFF; --b-bd: var(--line-2); --b-fg: var(--danger);
+  --b-bg-h: var(--danger-bg); --b-bd-h: #FCA5A5; --b-bg-a: #FECACA;
 }
 
 /* Sizes */
-.btn.xs { height: 24px; padding: 0 8px;  font-size: 12px;   border-radius: var(--r-sm); gap: 4px; }
-.btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; gap: 5px; }
-.btn.lg { height: 36px; padding: 0 16px; font-size: 14px; }
-.btn.xl { height: 44px; padding: 0 20px; font-size: 15px; border-radius: var(--r); }
+.btn--xs, .btn.xs { height: 24px; padding: 0 8px;  font-size: 12px;   border-radius: var(--r-sm); gap: 4px; }
+.btn--sm, .btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; gap: 5px; }
+.btn--lg, .btn.lg { height: 36px; padding: 0 16px; font-size: 14px; }
+.btn--xl, .btn.xl { height: 44px; padding: 0 20px; font-size: 15px; }
 
 /* Icon-only */
-.btn.icon { width: 32px; padding: 0; }
-.btn.icon.sm { width: 28px; }
-.btn.icon.xs { width: 24px; }
-.btn.icon.lg { width: 36px; }
+.btn--icon, .btn.icon { width: 32px; padding: 0; }
+.btn--icon.btn--sm, .btn.icon.sm { width: 28px; }
+.btn--icon.btn--xs, .btn.icon.xs { width: 24px; }
+.btn--icon.btn--lg, .btn.icon.lg { width: 36px; }
 
 /* Block */
-.btn.block { display: flex; width: 100%; }
+.btn--block, .btn.block { display: flex; width: 100%; }
 
 /* Embedded keyboard hint */
 .btn .kbd {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: currentColor;
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  background: rgba(15,16,17,0.06);
+  color: inherit;
   padding: 1px 5px;
   border-radius: 3px;
   margin-left: 4px;
-  opacity: 0.9;
+  opacity: 0.85;
 }
+.btn--primary .kbd, .btn-primary .kbd { background: rgba(255,255,255,0.18); }
 
 /* ─── Type scale (per guideline) ─────────────────────────────────────── */
 .s-display     { font-family: var(--font-sans); font-size: 44px;   line-height: 1.05; letter-spacing: -0.025em; font-weight: 600; color: var(--ink); }
