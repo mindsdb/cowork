@@ -143,10 +143,10 @@ body, body[data-theme="light"] {
   --surface-3:    #EBECED;
   --line:         rgba(0, 0, 0, 0.06);
   --line-2:       rgba(0, 0, 0, 0.10);
-  /* Sidebar surface — matches surface-3 so the OS-drawn inactive
-     traffic-light circles (~#a8a8a8) read against it. Dark mode
-     follows the regular surface. */
-  --sidebar-bg:   #EBECED;
+  /* Sidebar surface — subtle step down from --bg so the sidebar reads
+     as a distinct lane without heavy contrast.  OS-drawn inactive
+     traffic-light circles (~#a8a8a8) still read fine against it. */
+  --sidebar-bg:   #F0F1F2;
 
   --ink:          #0E0F10;   /* primary text */
   --ink-2:        #3A3D40;   /* body */
