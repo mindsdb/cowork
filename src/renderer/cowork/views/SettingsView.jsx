@@ -3,6 +3,7 @@ import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
+import { trackHarnessSwapped } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
@@ -1592,7 +1593,12 @@ export default function SettingsView({
         <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
           <ToggleGroup
             value={settings.harness || 'anton'}
-            onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+            onValueChange={(v) => {
+              const from = settings.harness || 'anton';
+              setSetting('harness', v);
+              setLlmDirty(true);
+              if (v !== from) trackHarnessSwapped(from, v);
+            }}
             aria-label="Agent harness"
             options={[
               { value: 'anton',  label: 'Anton',  'aria-label': 'Use Anton agent',  title: 'Anton — the default AI agent.' },
