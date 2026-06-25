@@ -177,10 +177,10 @@ function SkillModal({ open, onClose, onSaved, setStatus, initial = null, project
     if (!label || !draft.name.trim() || !draft.declarative.trim()) return;
     setBusy(true);
     try {
-      await saveSkill({ label, name: draft.name, description: draft.description, declarative: draft.declarative, projects: [draft.project] }, isEdit);
+      const saved = await saveSkill({ label, name: draft.name, description: draft.description, declarative: draft.declarative, projects: [draft.project] }, isEdit);
       setStatus(`Saved ${draft.name}.`);
       handleClose();
-      await onSaved();
+      await onSaved(saved);
     } catch (err) {
       setStatus(err.message || 'Could not save skill.');
     } finally {
@@ -304,6 +304,16 @@ export default function SkillsView() {
     fetchSkills()
       .then((data) => setSkills(data.skills || []))
       .catch((err) => setStatus(err.message || 'Could not load skills.'));
+
+  const onSkillSaved = (saved) => {
+    if (!saved) { reload(); return; }
+    const exists = skills?.some((s) => s.label === saved.label);
+    setSkills((prev) => exists
+      ? (prev ?? []).map((s) => s.label === saved.label ? saved : s)
+      : [...(prev ?? []), saved]
+    );
+    setSelected((prev) => prev?.label === saved.label ? saved : prev);
+  };
 
   const remove = async (skill) => {
     if (!window.confirm(`Remove skill "${skill.name}"?`)) return;
@@ -462,7 +472,7 @@ export default function SkillsView() {
       <SkillModal
         open={modalSkill !== null}
         onClose={closeModal}
-        onSaved={reload}
+        onSaved={onSkillSaved}
         setStatus={setStatus}
         initial={modalSkill ?? null}
         projects={projects}
