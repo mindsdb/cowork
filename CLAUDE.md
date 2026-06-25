@@ -65,7 +65,7 @@ uv run cowork-server
 # or %LOCALAPPDATA%/bin/cowork-server.exe (Windows)
 ```
 
-FastAPI runs loopback-only at `127.0.0.1:26866`. CORS is locked to the renderer origin.
+FastAPI runs loopback-only at `127.0.0.1:26866`. CORS defaults to localhost origins only; override with `COWORK_ALLOWED_ORIGINS='["*"]'` for cloud/VPC deployments or an ingress-controlled environment.
 
 #### Install source & channel
 

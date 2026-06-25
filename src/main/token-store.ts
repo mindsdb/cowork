@@ -1,106 +1,89 @@
 import { safeStorage, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { coworkHome, coworkEnvPath } from './cowork-home';
+import * as crypto from 'crypto';
+import { coworkHome } from './cowork-home';
 
-// Persistence for the Keycloak refresh token. Two stores:
-//   • keychain (opt-in): safeStorage-encrypted blob in Electron userData.
-//     Most secure, but on unsigned/ad-hoc macOS builds the keychain ACL
-//     doesn't persist (no stable Developer-ID signature), so macOS prompts
-//     for access on every launch.
-//   • file (default): plaintext at ~/.cowork/refresh-token (0600). No
-//     prompts; sits next to the already-plaintext ~/.cowork/.env creds.
-// Governed by COWORK_KEYCHAIN=true in ~/.cowork/.env (absent/false → file).
+// Persistence for the Keycloak refresh token.
+//
+// On macOS, Electron's safeStorage (Keychain) binds ACLs to the binary's
+// CDHash, which changes on every build — even with the same Developer ID
+// cert — causing a keychain-access prompt on every app launch. We use
+// AES-256-CBC file-based storage instead (encrypted, 0600 permissions).
+//
+// On Windows/Linux, safeStorage (DPAPI / libsecret) doesn't prompt, so
+// we keep using it there.
+
+const IS_MAC = process.platform === 'darwin';
 const KEYCHAIN_FILE = path.join(app.getPath('userData'), 'mindshub-refresh.bin');
-function plainTokenFile(): string { return path.join(coworkHome(), 'refresh-token'); }
+const ENCRYPTED_FILE = path.join(coworkHome(), 'refresh-token.dat');
+
+// ── Mac file-based encryption ───────────────────────────────────────
+
+// Machine-local obfuscation key derived from a stable per-user path.
+// This is NOT cryptographic security — it prevents casual plaintext
+// exposure on disk. The real protection is file permissions (0600).
+function deriveKey(): Buffer {
+  const seed = `mindshub-cowork:${app.getPath('userData')}`;
+  return crypto.createHash('sha256').update(seed).digest();
+}
+
+function encryptToken(plaintext: string): Buffer {
+  const key = deriveKey();
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  return Buffer.concat([iv, encrypted]);
+}
+
+function decryptToken(data: Buffer): string {
+  const key = deriveKey();
+  const iv = data.subarray(0, 16);
+  const encrypted = data.subarray(16);
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+}
+
+// ── Read / write per platform ───────────────────────────────────────
+
+function writeToken(refreshToken: string): void {
+  if (IS_MAC) {
+    fs.mkdirSync(coworkHome(), { recursive: true });
+    fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
+  } else if (safeStorage.isEncryptionAvailable()) {
+    fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
+  }
+}
+
+function readToken(): string | null {
+  // Mac: encrypted file
+  if (IS_MAC) {
+    if (!fs.existsSync(ENCRYPTED_FILE)) return null;
+    return decryptToken(fs.readFileSync(ENCRYPTED_FILE));
+  }
+  // Windows/Linux: safeStorage
+  if (!fs.existsSync(KEYCHAIN_FILE) || !safeStorage.isEncryptionAvailable()) return null;
+  return safeStorage.decryptString(fs.readFileSync(KEYCHAIN_FILE));
+}
+
+function deleteTokenFiles(): void {
+  try { fs.unlinkSync(ENCRYPTED_FILE); } catch {}
+  try { fs.unlinkSync(KEYCHAIN_FILE); } catch {}
+}
+
+// ── Public API ──────────────────────────────────────────────────────
 
 let _accessToken: string | null = null;
 let _expiresAt = 0; // epoch ms
 
-// The plaintext-file default + opt-in toggle is a macOS-only concession to
-// the keychain access prompts (which recur on unsigned/ad-hoc builds). On
-// Windows/Linux, safeStorage (DPAPI / libsecret) doesn't prompt, so we
-// always use it there and never downgrade those platforms to plaintext.
-const IS_MAC = process.platform === 'darwin';
-
-// Whether the user has explicitly disabled keychain in ~/.cowork/.env.
-// Default is keychain ON; only returns false when COWORK_KEYCHAIN=false is set.
-function keychainDisabled(): boolean {
-  try {
-    const env = fs.readFileSync(coworkEnvPath(), 'utf-8');
-    return /^\s*COWORK_KEYCHAIN\s*=\s*false\s*$/im.test(env);
-  } catch {
-    return false; // env missing → default to keychain
-  }
-}
-
-// Resolve the effective store: keychain on non-mac always; on mac, keychain
-// by default unless the user has explicitly disabled it with COWORK_KEYCHAIN=false.
-function useKeychain(): boolean {
-  if (!IS_MAC) return true;
-  return !keychainDisabled();
-}
-
-function writeKeychain(refreshToken: string): boolean {
-  try {
-    const available = safeStorage.isEncryptionAvailable();
-    console.log(`[token-store] writeKeychain: safeStorage.isEncryptionAvailable()=${available}`);
-    if (!available) return false;
-    fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
-    console.log(`[token-store] writeKeychain: wrote to ${KEYCHAIN_FILE}`);
-    return true;
-  } catch (err) {
-    console.error('[token-store] writeKeychain error:', err);
-    return false;
-  }
-}
-function readKeychain(): string | null {
-  try {
-    const exists = fs.existsSync(KEYCHAIN_FILE);
-    const available = safeStorage.isEncryptionAvailable();
-    console.log(`[token-store] readKeychain: file exists=${exists} safeStorage.isEncryptionAvailable()=${available}`);
-    if (!exists || !available) return null;
-    const val = safeStorage.decryptString(fs.readFileSync(KEYCHAIN_FILE));
-    console.log(`[token-store] readKeychain: decrypted ok, length=${val.length}`);
-    return val;
-  } catch (err) {
-    console.error('[token-store] readKeychain error:', err);
-    return null;
-  }
-}
-function writePlain(refreshToken: string): boolean {
-  try {
-    fs.mkdirSync(coworkHome(), { recursive: true });
-    fs.writeFileSync(plainTokenFile(), refreshToken, { mode: 0o600 });
-    return true;
-  } catch { return false; }
-}
-function readPlain(): string | null {
-  try {
-    if (!fs.existsSync(plainTokenFile())) return null;
-    return fs.readFileSync(plainTokenFile(), 'utf-8').trim() || null;
-  } catch { return null; }
-}
-function deleteKeychain(): void { try { fs.unlinkSync(KEYCHAIN_FILE); } catch { /* absent */ } }
-function deletePlain(): void { try { fs.unlinkSync(plainTokenFile()); } catch { /* absent */ } }
-
-function persistRefreshToken(refreshToken: string): void {
-  const kc = useKeychain();
-  console.log(`[token-store] persistRefreshToken: useKeychain=${kc}`);
-  if (kc && writeKeychain(refreshToken)) {
-    deletePlain();
-    console.log('[token-store] persistRefreshToken: stored in keychain');
-    return;
-  }
-  console.warn('[token-store] persistRefreshToken: falling back to plain file');
-  writePlain(refreshToken);
-  deleteKeychain();
-}
-
 export function saveTokens(accessToken: string, expiresInSeconds: number, refreshToken: string): void {
   _accessToken = accessToken;
   _expiresAt = Date.now() + expiresInSeconds * 1000;
-  if (refreshToken) persistRefreshToken(refreshToken);
+  if (refreshToken) {
+    try { writeToken(refreshToken); } catch (e) {
+      console.warn('[token-store] failed to persist refresh token', e);
+    }
+  }
 }
 
 export function getAccessToken(): string | null { return _accessToken; }
@@ -110,30 +93,20 @@ export function isAccessTokenExpired(): boolean {
 }
 
 export function getRefreshToken(): string | null {
-  // Read the active store first; fall back to the other so a token written
-  // under the previous setting still resolves. In file (default) mode we
-  // only touch the keychain when the file is missing — that keeps the
-  // no-prompt promise for the common path.
-  if (useKeychain()) return readKeychain() ?? readPlain();
-  return readPlain() ?? readKeychain();
+  try {
+    return readToken();
+  } catch {
+    return null;
+  }
 }
 
 export function clearTokens(): void {
   _accessToken = null;
   _expiresAt = 0;
-  deletePlain();
-  deleteKeychain();
+  deleteTokenFiles();
 }
 
-// Move the stored refresh token to the store matching a just-changed
-// COWORK_KEYCHAIN setting. Call AFTER writing the new flag. Best-effort;
-// switching keychain OFF reads (decrypts) the keychain blob once to move it.
-export function migrateRefreshTokenStore(toKeychain: boolean): void {
-  const token = getRefreshToken();
-  if (!token) return;
-  if (toKeychain) {
-    if (writeKeychain(token)) deletePlain();
-  } else {
-    if (writePlain(token)) deleteKeychain();
-  }
-}
+// Stub — the keychain toggle in settings calls this, but on macOS we no
+// longer use the keychain so there is nothing to migrate. On Windows/Linux
+// there is only one store (safeStorage) so migration is also a no-op.
+export function migrateRefreshTokenStore(_toKeychain: boolean): void {}

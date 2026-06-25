@@ -205,14 +205,14 @@ function _renderEngramComments(text) {
 // reading column is narrower and we want more lessons on screen.
 const _SIZES = {
   default: {
-    root: 'markdown-content space-y-2 break-words text-body text-ink-2',
+    root: 'markdown-content space-y-4 break-words text-body text-ink-2',
     p: 'font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[20px] font-semibold text-ink mt-4 mb-2',
-    h2: 'font-display text-[17px] font-semibold text-ink mt-4 mb-2',
-    h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-3 mb-1',
-    ul: 'list-disc pl-5 my-2 text-body text-ink-2 space-y-1',
-    ol: 'list-decimal pl-5 my-2 text-body text-ink-2 space-y-1',
-    blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2',
+    h1: 'font-display text-[20px] font-semibold text-ink mt-6 mb-3',
+    h2: 'font-display text-[17px] font-semibold text-ink mt-5 mb-2',
+    h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-4 mb-1.5',
+    ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-2.5',
+    ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-2.5',
+    blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-3',
   },
   // `dense` is the memory-preview density. Trimmed one notch off
   // chat defaults (and a comfortable line-height) for an elegant
@@ -412,7 +412,7 @@ export function MarkdownContent({
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
-    hr: () => <hr className="my-3 border-t border-line" />,
+    hr: () => <hr className="my-5 border-t border-line opacity-25" />,
     pre: (props) => {
       // Fenced code blocks with a language are handled by MarkdownCode,
       // which renders its own anton-code-block wrapper. We drop the outer
