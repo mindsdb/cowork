@@ -32,8 +32,8 @@ export function FilterRow({ search, sort, view, counts, right }) {
       </div>
       {counts && (
         <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: 'var(--font-body)', fontSize: 11,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>
           {counts}
         </div>

@@ -47,7 +47,7 @@ function FileList({ files, onRemove }) {
             flex: 1, minWidth: 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{f.name}</span>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>
+          <span style={{ fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)' }}>
             {Math.ceil(f.size / 1024)} KB
           </span>
           <button
@@ -235,7 +235,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
+              fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Project name</span>
             <input
@@ -264,7 +264,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
+              fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Instructions <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
             <textarea
@@ -286,7 +286,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               }}
             />
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+              fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)',
             }}>
               Saved as <code style={{
                 fontFamily: FONT_MONO,
@@ -298,7 +298,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
+              fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Files <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
             <div

@@ -72,15 +72,17 @@
   --primary-700: #115562;
   --primary-800: #0E4651;
 
-  /* Frost */
+  /* Frost — text-level values (500–900) aligned to the ink neutral
+     scale so muted text is the same hue everywhere. Background-level
+     values (50–400) keep a subtle teal tint for tinted surfaces. */
   --frost-50:  #EBF2F5;
   --frost-100: #DDE9EE;
   --frost-400: #A0BECA;
-  --frost-500: #7D95A1;
-  --frost-600: #64777E;
-  --frost-700: #55666D;
-  --frost-800: #3A464B;
-  --frost-900: #1A2023;
+  --frost-500: #9B9FA3;   /* = ink-4 */
+  --frost-600: #6B6F73;   /* = ink-3 */
+  --frost-700: #3A3D40;   /* = ink-2 */
+  --frost-800: #0E0F10;   /* = ink   */
+  --frost-900: #0E0F10;
 
   /* Stone */
   --stone-50:  #F9FAFB;
@@ -2413,7 +2415,7 @@ body:not([data-theme="dark"]) .btn-primary {
 .s-body-strong { font-family: var(--font-sans); font-size: 14px;   line-height: 1.55; font-weight: 500; color: var(--ink); }
 .s-small       { font-family: var(--font-sans); font-size: 13px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
 .s-caption     { font-family: var(--font-sans); font-size: 12px;   line-height: 1.5;  font-weight: 400; color: var(--ink-3); }
-.s-overline    { font-family: var(--font-mono); font-size: 11px;   line-height: 1.6;  font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-3); }
+.s-overline    { font-family: var(--font-body); font-size: 11px;   line-height: 1.6;  font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .s-mono        { font-family: var(--font-mono); font-size: 13px;   line-height: 1.5; color: var(--ink); }
 
 /* ─── Special title ───────────────────────────────────────────────────── */
@@ -2527,9 +2529,10 @@ body:not([data-theme="dark"]) .btn-primary {
 
 /* Eyebrow — uppercase mono label sitting above headings (per guideline) */
 .eyebrow {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 11px;
-  letter-spacing: 0.12em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-4);
   margin: 0 0 8px;
@@ -2879,7 +2882,7 @@ body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
   50%      { opacity: 0.45; transform: scale(0.85); }
 }
 .status-text {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 11px;
   color: var(--ink-2);
   letter-spacing: 0.02em;
@@ -3733,8 +3736,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .chat-header__title .chat-header__chev { color: var(--ink-4); display: inline-flex; }
 .chat-header__meta {
   display: inline-flex; align-items: center; gap: 12px;
-  font-family: var(--font-mono);
-  font-size: 11px; letter-spacing: 0.04em;
+  font-family: var(--font-body);
+  font-size: 11px; letter-spacing: 0.01em;
   color: var(--ink-3);
 }
 .chat-header__sep {
@@ -3827,8 +3830,8 @@ body[data-theme="dark"] .chat-shell .msg-user {
   color: var(--ink-3);
 }
 .anton-turn__time {
-  font-family: var(--font-mono);
-  font-size: 10.5px; letter-spacing: 0.04em;
+  font-family: var(--font-body);
+  font-size: 10.5px; letter-spacing: 0.01em;
   color: var(--ink-4);
 }
 .anton-turn__body {
@@ -4782,7 +4785,7 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .user-turn-attachment-name { color: var(--ink); }
 .user-turn-attachment-meta {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 10.5px;
   color: var(--ink-4);
 }

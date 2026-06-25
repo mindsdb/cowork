@@ -102,7 +102,7 @@ function D1Stat({ label, value }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'baseline', gap: 5,
-      fontFamily: FONT_MONO,
+      fontFamily: FONT_BODY,
     }}>
       <span style={{
         fontSize: 12, fontWeight: 500,
@@ -325,8 +325,8 @@ export function ProjectCard({
 
         <span style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 6,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>
           {active && (
             <span aria-hidden style={{

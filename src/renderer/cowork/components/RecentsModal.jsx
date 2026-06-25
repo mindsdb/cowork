@@ -198,8 +198,8 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
             }}
           />
           <span style={{
-            fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
-            letterSpacing: '0.04em',
+            fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)',
+            letterSpacing: '0.01em',
           }}>
             {filtered.length} of {tasks.length}
           </span>
@@ -242,8 +242,8 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 12px 4px',
-                  fontFamily: FONT_MONO, fontSize: 10.5,
-                  letterSpacing: '0.12em', textTransform: 'uppercase',
+                  fontFamily: FONT_BODY, fontSize: 10.5,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
                   color: 'var(--ink-4)',
                 }}>
                   <span style={{

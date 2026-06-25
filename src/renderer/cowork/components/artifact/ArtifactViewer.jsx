@@ -693,7 +693,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
               <span
                 title={`Artifact type: ${artifact.type}`}
                 style={{
-                  fontFamily: FONT_MONO, fontSize: 10,
+                  fontFamily: FONT_BODY, fontSize: 10,
                   color: 'var(--ink-4)', letterSpacing: '0.08em',
                   textTransform: 'uppercase',
                   background: 'var(--surface-2)',
@@ -705,7 +705,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             )}
             {typeof artifact.fileCount === 'number' && artifact.fileCount > 1 && (
               <span style={{
-                fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+                fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)',
                 flexShrink: 0,
               }}>· {artifact.fileCount} files</span>
             )}

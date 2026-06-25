@@ -529,7 +529,7 @@ function LocalPathRow({ path }) {
       </span>
       <span style={{
         flex: 1, minWidth: 0,
-        fontFamily: FONT_MONO, fontSize: 11.5,
+        fontFamily: FONT_BODY, fontSize: 11.5,
         color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         direction: 'rtl', textAlign: 'left',
@@ -751,8 +751,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         <span
           title={projectLabel}
           style={{
-            fontFamily: FONT_MONO, fontSize: 11,
-            color: 'var(--ink-4)', letterSpacing: '0.04em',
+            fontFamily: FONT_BODY, fontSize: 11,
+            color: 'var(--ink-4)', letterSpacing: '0.01em',
             display: 'flex', alignItems: 'baseline', gap: 4,
             minWidth: 0,
           }}
@@ -805,8 +805,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             file-count chip surfaces multi-file artifacts at a glance
             without competing with the title for space. */}
         <span style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 11,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
           display: 'flex', alignItems: 'baseline', gap: 8,
           minWidth: 0,
         }}>
@@ -847,7 +847,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       <div style={{ flex: 1 }} />
 
       <div style={{
-        fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.01em',
         color: 'var(--ink-4)',
       }}>
         {artifact.updated || '—'}
@@ -871,8 +871,8 @@ const LIST_GRID = '24px 2fr 100px 60px 70px 1fr 110px 36px';
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+      color: 'var(--ink-4)', letterSpacing: '0.06em',
       textTransform: 'uppercase',
       textAlign: align || 'left',
     }}>{children}</div>
@@ -1064,7 +1064,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
               Live
             </span>
           ) : (
-            <span style={{ color: 'var(--ink-5)', fontFamily: FONT_MONO, fontSize: 11 }}>—</span>
+            <span style={{ color: 'var(--ink-5)', fontFamily: FONT_BODY, fontSize: 11 }}>—</span>
           )}
         </div>
 
@@ -1075,14 +1075,14 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         <div
           title={artifact.type || extensionOf(artifact)}
           style={{
-            fontFamily: FONT_MONO, fontSize: 11,
+            fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
             color: 'var(--ink-4)', letterSpacing: '0.06em', textTransform: 'uppercase',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
         >{artifact.type || extensionOf(artifact)}</div>
 
         <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
+          fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
           color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{kindOf(artifact)}</div>
@@ -1135,8 +1135,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         </div>
 
         <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 11,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>{artifact.updated || '—'}</div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

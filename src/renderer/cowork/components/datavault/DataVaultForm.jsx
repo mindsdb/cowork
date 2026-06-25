@@ -545,8 +545,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                     style={{
                       cursor: busy ? 'not-allowed' : 'pointer',
                       background: 'transparent', border: 0, padding: 0,
-                      fontFamily: FONT_MONO, fontSize: 10.5,
-                      color: 'var(--ink-4)', letterSpacing: '0.04em',
+                      fontFamily: FONT_BODY, fontSize: 10.5,
+                      color: 'var(--ink-4)', letterSpacing: '0.01em',
                     }}
                   >{isSkipped ? 'unskip' : 'skip'}</button>
                 )}
@@ -849,7 +849,7 @@ function MethodPicker({ methods, onPick, busy }) {
               }}>{m.label || m.id}</span>
               {m.recommended && (
                 <span style={{
-                  fontSize: 10.5, fontFamily: FONT_MONO, letterSpacing: '0.04em',
+                  fontSize: 10.5, fontFamily: FONT_BODY, letterSpacing: '0.04em',
                   color: 'var(--accent)',
                   padding: '2px 7px', borderRadius: 999,
                   background: 'color-mix(in srgb, var(--accent) 12%, transparent)',

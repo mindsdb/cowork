@@ -480,7 +480,7 @@ export default function ContextFileModal({
             }}>{headerTitle}</h2>
             {headerSubtitle && (
               <span style={{
-                fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+                fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)',
                 letterSpacing: '0.06em', textTransform: 'uppercase',
               }}>{headerSubtitle}</span>
             )}

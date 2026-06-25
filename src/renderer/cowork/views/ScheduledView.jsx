@@ -290,8 +290,8 @@ const LIST_GRID = '24px minmax(0, 2.2fr) 90px minmax(0, 1.1fr) 130px 110px 190px
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+      color: 'var(--ink-4)', letterSpacing: '0.06em',
       textTransform: 'uppercase',
       textAlign: align || 'left',
     }}>{children}</div>
@@ -382,8 +382,8 @@ function ScheduleListRow({
               app was off. Cleared on the next successful run. */}
           {missedRuns > 0 && (
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5,
-              color: 'var(--ink-4)', letterSpacing: '0.04em',
+              fontFamily: FONT_BODY, fontSize: 10.5,
+              color: 'var(--ink-4)', letterSpacing: '0.01em',
               flexShrink: 0,
             }}>
               missed {missedRuns}
@@ -400,7 +400,7 @@ function ScheduleListRow({
       </div>
 
       <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
+        fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
         color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
       }}>{cadenceLabel}</div>
 
@@ -438,14 +438,14 @@ function ScheduleListRow({
       </div>
 
       <div title={absoluteFull(task.nextRunAt)} style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-3)', letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11,
+        color: 'var(--ink-3)', letterSpacing: '0.01em',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
 
       <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11,
+        color: 'var(--ink-4)', letterSpacing: '0.01em',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{task.lastRunAt ? formatAbsolute(task.lastRunAt) : '—'}</div>
 

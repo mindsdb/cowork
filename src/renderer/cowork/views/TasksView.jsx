@@ -56,8 +56,8 @@ function relAge(input) {
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+      color: 'var(--ink-4)', letterSpacing: '0.06em',
       textTransform: 'uppercase',
       textAlign: align || 'left',
     }}>{children}</div>
@@ -185,8 +185,8 @@ function TaskRow({
 
       {/* Updated */}
       <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11,
+        color: 'var(--ink-4)', letterSpacing: '0.01em',
       }}>{updated}</div>
 
       {/* Hover-revealed trash. Fixed slot width keeps the Updated
@@ -292,7 +292,7 @@ function ScheduleGroupRow({
           minWidth: 0,
         }}>{schedule?.title || latest?.title || 'Scheduled task'}</span>
         <span style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
+          fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
           color: 'var(--accent)', letterSpacing: '0.06em',
           textTransform: 'uppercase',
           padding: '2px 7px', borderRadius: 999,
@@ -338,8 +338,8 @@ function ScheduleGroupRow({
       </div>
 
       <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11,
+        color: 'var(--ink-4)', letterSpacing: '0.01em',
       }}>{updated}</div>
 
       {/* Action slot — hover-revealed "Open latest" so the user can

@@ -332,8 +332,8 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
           />
         </div>
         <div style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>
           {busy ? 'Creating…' : '↵ create · esc cancel'}
         </div>
@@ -380,8 +380,8 @@ const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
 function ListHeader() {
   const Cell = ({ children, align }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+      color: 'var(--ink-4)', letterSpacing: '0.06em',
       textTransform: 'uppercase',
       textAlign: align || 'left',
     }}>{children}</div>
@@ -408,7 +408,7 @@ function D1Num({ value }) {
   const isZero = !value;
   return (
     <span style={{
-      fontFamily: FONT_MONO, fontSize: 12,
+      fontFamily: FONT_BODY, fontSize: 12,
       color: isZero ? 'var(--ink-5)' : 'var(--ink)',
       textAlign: 'right',
       fontVariantNumeric: 'tabular-nums',
@@ -425,7 +425,7 @@ function ActiveNum({ value }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
       gap: 6,
-      fontFamily: FONT_MONO, fontSize: 12,
+      fontFamily: FONT_BODY, fontSize: 12,
       color: isZero ? 'var(--ink-5)' : 'var(--accent)',
       textAlign: 'right',
       fontVariantNumeric: 'tabular-nums',

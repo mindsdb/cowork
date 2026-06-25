@@ -2088,7 +2088,7 @@ export default function SettingsView({
             {accountUser.username && (
               <div>
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Username</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)' }}>{accountUser.username}</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-body)' }}>{accountUser.username}</div>
               </div>
             )}
             {accountUser.org && (

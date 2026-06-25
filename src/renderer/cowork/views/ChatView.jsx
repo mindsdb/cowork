@@ -401,7 +401,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           }}>{agentLabel || 'Anton'}</span>
         </div>
         {time && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
+          <span style={{ fontFamily: FONT_BODY, fontSize: 10.5, color: T.ink4, letterSpacing: '0.01em' }}>
             {state === 'thinking' ? `${time} · drafting` : time}
           </span>
         )}
@@ -645,8 +645,8 @@ function ArtifactCard({ artifact, onOpen }) {
         </span>
         {previewText && (
           <span title={previewText} style={{
-            fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4,
-            marginTop: 2, letterSpacing: '0.04em',
+            fontFamily: FONT_BODY, fontSize: 10.5, color: T.ink4,
+            marginTop: 2, letterSpacing: '0.01em',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {previewText}
@@ -1415,7 +1415,7 @@ export default function ChatView({
                     <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
                       <div style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
-                        fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                        fontFamily: FONT_BODY, fontSize: 11, color: T.ink4,
                       }}>
                         <StreamCursor />
                         <span>{m._label || 'Thinking…'}</span>
@@ -1643,7 +1643,7 @@ export default function ChatView({
                 {!streamingMsg.steps?.length && !streamingMsg.content && (
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
-                    fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                    fontFamily: FONT_BODY, fontSize: 11, color: T.ink4,
                   }}>
                     <StreamCursor />
                     {/* `_placeholderLabel` is set by the pre-first-
@@ -1667,7 +1667,7 @@ export default function ChatView({
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                  fontFamily: FONT_BODY, fontSize: 11, color: T.ink4,
                 }}>
                   <StreamCursor />
                   <span>streaming…</span>

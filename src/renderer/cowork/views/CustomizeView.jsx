@@ -152,8 +152,8 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         }}>{name}</span>
         <span style={{
           flexShrink: 0,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+          color: 'var(--ink-4)', letterSpacing: '0.06em',
           textTransform: 'uppercase',
           padding: '2px 7px', borderRadius: 99,
           background: 'var(--surface-3)',
@@ -170,8 +170,8 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       }}>
         <span style={{
           flex: 1,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>
           {updated ? `updated ${updated}` : 'connected'}
         </span>
@@ -363,7 +363,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             }}>
               {spec?.label || connection.engine}
             </div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>
               {connection.name}
             </div>
           </div>
