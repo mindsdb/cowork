@@ -430,19 +430,19 @@ export default function SkillsView() {
             actions={<CreateSkillDropdown onWrite={startNew} />}
           />
           {status && <div style={{ margin: '12px 32px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
-          <div style={{ padding: '20px 32px 0' }}>
+          <div style={{ padding: '20px 0 0' }}>
             <FilterRow
               search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
-              sort={<>
-                <SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} label="Sort by" />
+              right={<>
                 {projects.length > 0 && (
                   <SortPill
                     value={filterProject}
                     onChange={(v) => setFilterProject(v === filterProject ? '' : v)}
                     options={[{ id: '', label: 'All' }, ...projects.map((p) => ({ id: p.name, label: p.name }))]}
-                    label="Scope"
+                    label="Filter by"
                   />
                 )}
+                <SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} label="Sort by" />
               </>}
             />
           </div>
