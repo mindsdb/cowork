@@ -219,7 +219,6 @@ function SkillModal({ open, onClose, onSaved, setStatus, initial = null, project
               onChange={(e) => setField('project', e.target.value)}
               style={{ ...fieldStyle, height: 34, resize: 'none', cursor: 'pointer' }}
             >
-              {projects.length === 0 && <option value="general">general</option>}
               {projects.map((p) => (
                 <option key={p.id ?? p.name} value={p.name}>{p.name}</option>
               ))}
@@ -329,7 +328,7 @@ export default function SkillsView() {
       if (!s.name?.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q)) return false;
     }
     if (filterProject) {
-      const proj = s.projects?.[0] || 'general';
+      const proj = s.projects?.[0];
       if (proj !== filterProject) return false;
     }
     return true;
@@ -389,7 +388,7 @@ export default function SkillsView() {
               Scope
             </div>
             <p style={{ margin: 0, fontSize: 13.5, color: '#111115', lineHeight: 1.5, userSelect: 'text' }}>
-              {selected.projects?.[0] || 'general'}
+              {selected.projects?.[0]}
             </p>
           </div>
 
