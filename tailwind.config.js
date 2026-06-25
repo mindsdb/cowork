@@ -93,11 +93,32 @@ export default {
         mono:    ['"JetBrains Mono"', 'monospace'],
       },
       fontSize: {
+        // Design-system type scale (from globals.css tokens)
+        '2xs':  'var(--text-2xs)',
+        'xs':   'var(--text-xs)',
+        'sm':   'var(--text-sm)',
+        'base': 'var(--text-base)',
+        'md':   'var(--text-md)',
+        'lg':   'var(--text-lg)',
+        'xl':   'var(--text-xl)',
+        '2xl':  'var(--text-2xl)',
+        '3xl':  'var(--text-3xl)',
         // mdb-ai uses text-detail, text-body, text-small. Map to px sizes
         // close to ours so the ports don't look out of place.
         detail: ['11px',   { lineHeight: '1.4' }],
         body:   ['14.5px', { lineHeight: '1.55' }],
         small:  ['12.5px', { lineHeight: '1.4' }],
+      },
+      spacing: {
+        '1':  'var(--space-1)',
+        '2':  'var(--space-2)',
+        '3':  'var(--space-3)',
+        '4':  'var(--space-4)',
+        '5':  'var(--space-5)',
+        '6':  'var(--space-6)',
+        '8':  'var(--space-8)',
+        '10': 'var(--space-10)',
+        '12': 'var(--space-12)',
       },
     },
   },
