@@ -348,9 +348,14 @@ export default function SkillsView() {
 
           {/* Description */}
           {selected.description && (
-            <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--ink-3)', lineHeight: 1.5, userSelect: 'text' }}>
-              {selected.description}
-            </p>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 500, color: '#828285', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
+                Description
+              </div>
+              <p style={{ margin: 0, fontSize: 13.5, color: '#111115', lineHeight: 1.5, userSelect: 'text' }}>
+                {selected.description}
+              </p>
+            </div>
           )}
 
           {/* Content card */}
