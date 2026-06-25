@@ -139,8 +139,8 @@ body, body[data-theme="light"] {
   --surface:      #FFFFFF;
   --surface-2:    #F4F4F4;
   --surface-3:    #ECECEA;
-  --line:         #E4E4E1;
-  --line-2:       #D4D4D0;
+  --line:         rgba(0, 0, 0, 0.06);
+  --line-2:       rgba(0, 0, 0, 0.10);
   /* Sidebar surface — light mode uses a warmer grey so the OS-drawn
      inactive traffic-light circles (~#a8a8a8) read against it. Dark
      mode follows the regular surface. */
@@ -199,9 +199,9 @@ body, body[data-theme="light"] {
   --r-lg:         10px;
   --r-xl:         16px;
 
-  --sh-1:         0 1px 0 rgba(15,16,17,0.04), 0 1px 2px rgba(15,16,17,0.05);
-  --sh-2:         0 1px 0 rgba(15,16,17,0.04), 0 4px 12px rgba(15,16,17,0.06);
-  --sh-3:         0 1px 0 rgba(15,16,17,0.04), 0 12px 28px rgba(15,16,17,0.08);
+  --sh-1:         0 1px 3px rgba(0, 0, 0, 0.04);
+  --sh-2:         0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --sh-3:         0 4px 20px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
   --ring:         0 0 0 3px rgba(31,156,176,0.30);
 
   /* Legacy/cowork token aliases — keep existing components working */
@@ -243,8 +243,8 @@ body[data-theme="dark"] {
   --surface:      #0E1626;
   --surface-2:    #131D31;
   --surface-3:    #1A2640;
-  --line:         #1E2A44;
-  --line-2:       #2A3957;
+  --line:         rgba(255, 255, 255, 0.06);
+  --line-2:       rgba(255, 255, 255, 0.10);
   /* Sidebar base — a hint of cyan over the surface navy, sized
      small enough that the panel still reads as part of the same
      dark family as the rest of the app. The ::before halo at the
@@ -297,9 +297,9 @@ body[data-theme="dark"] {
   --tint-5:       #C4B5FD;  /* lavender */
   --tint-6:       #BEF264;  /* lime */
 
-  --sh-1:         0 1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.4);
-  --sh-2:         0 1px 0 rgba(0,0,0,0.4), 0 6px 18px rgba(0,0,0,0.5);
-  --sh-3:         0 1px 0 rgba(0,0,0,0.4), 0 18px 40px rgba(0,0,0,0.6);
+  --sh-1:         0 1px 3px rgba(0, 0, 0, 0.20);
+  --sh-2:         0 2px 10px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.12);
+  --sh-3:         0 6px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
   --ring:         0 0 0 3px rgba(34, 211, 238, 0.35);
 
   /* Frost — remap to dark ink tones so sidebar text, nav items,
@@ -361,6 +361,16 @@ body[data-theme="dark"] em {
 
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Base micro-interaction: smooth transitions on all interactive elements.
+   Individual rules can override with more specific transition properties. */
+button, a, [role="button"], input, select, textarea,
+.nav-item, .recent-item, .icon-btn, .btn, .meta-pill,
+.artifact-card, .rail-panel {
+  transition: background 0.15s ease, color 0.15s ease,
+              border-color 0.15s ease, box-shadow 0.15s ease,
+              opacity 0.15s ease;
+}
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 body {
   font-family: var(--font-sans);
@@ -912,7 +922,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   align-items: center;
   gap: 10px;
   padding: 0 18px;
-  border-bottom: 1px solid #e8e6df;
+  border-bottom: 1px solid var(--line);
   background: #fff;
   flex-shrink: 0;
 }
@@ -985,8 +995,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-subnav {
-  background: #fafaf7;
-  border-right: 1px solid #e8e6e1;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
   padding: 18px 14px;
   display: flex;
   flex-direction: column;
@@ -1060,7 +1070,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   height: 34px;
   padding: 0 15px;
   border-radius: 8px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   background: #fff;
   color: #1a1a1a;
   font-size: 13px;
@@ -1148,7 +1158,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   align-items: center;
   gap: 18px;
   padding: 18px 22px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: #fff;
   text-align: left;
@@ -1156,7 +1166,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-home-card:hover {
-  background: #fafaf7;
+  background: var(--bg);
 }
 
 .customize-home-card.active {
@@ -1200,7 +1210,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-middle-pane {
-  border-right: 1px solid #e8e6df;
+  border-right: 1px solid var(--line);
 }
 
 .customize-pane-header {
@@ -1371,9 +1381,9 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 .customize-drive-card,
 .customize-form-card {
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fafaf7;
+  background: var(--bg);
 }
 
 .customize-drive-card {
@@ -1416,8 +1426,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   gap: 12px;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid #e8e6df;
-  background: #fafaf7;
+  border: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .customize-saved-title {
@@ -1458,7 +1468,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .customize-search-input input {
   width: 100%;
   height: 40px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
   color: #1a1a1a;
@@ -1469,7 +1479,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 .customize-input:focus,
 .customize-search-input input:focus {
-  border-color: #cfcac0;
+  border-color: var(--line-2);
   box-shadow: var(--ring);
 }
 /* WCAG 2.4.7 / 2.4.11 — the 8% alpha glow above is too faint for a
@@ -1524,8 +1534,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  background: #f5f3ee;
-  border: 1px solid #e8e6df;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1807,7 +1817,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   min-width: 130px;
   height: 38px;
   padding: 0 14px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
   color: #1a1a1a;
@@ -1845,7 +1855,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 .customize-directory-card {
   padding: 18px 20px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: #fff;
   cursor: pointer;
@@ -1894,7 +1904,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   background: #fff;
   display: inline-flex;
   align-items: center;
@@ -2119,9 +2129,9 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 /* ─── Artifact card ──────────────────────────────────────────────────────── */
 .artifact-card {
-  margin-top: 12px; border: 1px solid var(--border-01);
+  margin-top: 12px; border: 1px solid var(--line);
   border-radius: 12px; background: var(--surface-0);
-  overflow: hidden; box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 .artifact-head {
   display: flex; align-items: center; gap: 10px;
@@ -3573,7 +3583,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   display: none;
 }
 .rail-panel {
-  border: 1px solid var(--border-01); border-radius: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
   background: var(--surface-0); padding: 12px;
 }
 .rail-title {
@@ -3613,8 +3623,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    each schedule card / row instead of an actionable banner. */
 .schedule-form {
   margin: 20px 28px 0; padding: 14px;
-  border: 1px solid var(--border-01); border-radius: 12px;
-  background: var(--surface-0); box-shadow: var(--shadow-sm);
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface-0);
 }
 .schedule-grid {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
