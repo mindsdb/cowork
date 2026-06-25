@@ -5066,3 +5066,9 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
 .channels-btn-sm { padding: 5px 10px; font-size: 12px; }
+
+@keyframes step-error-dot-fade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
