@@ -5,7 +5,7 @@ import { Menu } from '../components/ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
-import { deleteSkill, fetchSkills, saveSkill } from '../api';
+import { deleteSkill, fetchProjects, fetchSkills, saveSkill } from '../api';
 
 
 function relativeAge(input) {
@@ -142,13 +142,23 @@ function FieldLabel({ children }) {
 // initial — передаётся при редактировании существующего скила, null при создании
 function SkillModal({ open, onClose, onSaved, setStatus, initial = null }) {
   const isEdit = initial !== null;
-  const empty = { name: '', description: '', declarative: '' };
+  const empty = { name: '', description: '', declarative: '', project: 'general' };
   const [draft, setDraft] = useState(empty);
   const [busy, setBusy] = useState(false);
+  const [projects, setProjects] = useState([]);
 
-  // Когда модал открывается с initial — заполняем поля
   useEffect(() => {
-    if (open) setDraft(initial ? { name: initial.name || '', description: initial.description || '', declarative: initial.declarative || '' } : empty);
+    if (!open) return;
+    fetchProjects().then((list) => {
+      setProjects(list);
+      if (initial) {
+        const proj = initial.projects?.[0] || 'general';
+        setDraft({ name: initial.name || '', description: initial.description || '', declarative: initial.declarative || '', project: proj });
+      } else {
+        const def = list.some((p) => p.name === 'general') ? 'general' : (list[0]?.name || 'general');
+        setDraft({ ...empty, project: def });
+      }
+    });
   }, [open]);
 
   const setField = (key, value) =>
@@ -163,7 +173,7 @@ function SkillModal({ open, onClose, onSaved, setStatus, initial = null }) {
     if (!label || !draft.name.trim() || !draft.declarative.trim()) return;
     setBusy(true);
     try {
-      await saveSkill({ label, ...draft }, isEdit);
+      await saveSkill({ label, name: draft.name, description: draft.description, declarative: draft.declarative, projects: [draft.project] }, isEdit);
       setStatus(`Saved ${draft.name}.`);
       handleClose();
       await onSaved();
@@ -196,6 +206,20 @@ function SkillModal({ open, onClose, onSaved, setStatus, initial = null }) {
               style={{ ...fieldStyle, height: 34, resize: 'none' }}
               autoFocus
             />
+          </div>
+          <div>
+            <FieldLabel>Scope</FieldLabel>
+            <select
+              aria-label="Scope"
+              value={draft.project}
+              onChange={(e) => setField('project', e.target.value)}
+              style={{ ...fieldStyle, height: 34, resize: 'none', cursor: 'pointer' }}
+            >
+              {projects.length === 0 && <option value="general">general</option>}
+              {projects.map((p) => (
+                <option key={p.id ?? p.name} value={p.name}>{p.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <FieldLabel>Description</FieldLabel>
