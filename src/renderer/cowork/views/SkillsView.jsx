@@ -139,26 +139,19 @@ function FieldLabel({ children }) {
   );
 }
 
-// initial — передаётся при редактировании существующего скила, null при создании
-function SkillModal({ open, onClose, onSaved, setStatus, initial = null }) {
+function SkillModal({ open, onClose, onSaved, setStatus, initial = null, projects = [] }) {
   const isEdit = initial !== null;
-  const empty = { name: '', description: '', declarative: '', project: 'general' };
-  const [draft, setDraft] = useState(empty);
+  const defaultProject = (list) => list.some((p) => p.name === 'general') ? 'general' : (list[0]?.name || 'general');
+  const [draft, setDraft] = useState({ name: '', description: '', declarative: '', project: 'general' });
   const [busy, setBusy] = useState(false);
-  const [projects, setProjects] = useState([]);
 
   useEffect(() => {
     if (!open) return;
-    fetchProjects().then((list) => {
-      setProjects(list);
-      if (initial) {
-        const proj = initial.projects?.[0] || 'general';
-        setDraft({ name: initial.name || '', description: initial.description || '', declarative: initial.declarative || '', project: proj });
-      } else {
-        const def = list.some((p) => p.name === 'general') ? 'general' : (list[0]?.name || 'general');
-        setDraft({ ...empty, project: def });
-      }
-    });
+    if (initial) {
+      setDraft({ name: initial.name || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || defaultProject(projects) });
+    } else {
+      setDraft({ name: '', description: '', declarative: '', project: defaultProject(projects) });
+    }
   }, [open]);
 
   const setField = (key, value) =>
@@ -279,19 +272,22 @@ const SORT_OPTIONS = [
 ];
 
 export default function SkillsView() {
-  const [skills, setSkills]         = useState(null);
-  const [selected, setSelected]     = useState(null);
-  const [enabled, setEnabled]       = useState(true);
-  const [modalSkill, setModalSkill] = useState(null); // null = closed, undefined = new, skill = edit
-  const [status, setStatus]         = useState('');
-  const [search, setSearch]         = useState('');
-  const [sortBy, setSortBy]         = useState('name');
+  const [skills, setSkills]           = useState(null);
+  const [projects, setProjects]       = useState([]);
+  const [selected, setSelected]       = useState(null);
+  const [enabled, setEnabled]         = useState(true);
+  const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
+  const [status, setStatus]           = useState('');
+  const [search, setSearch]           = useState('');
+  const [sortBy, setSortBy]           = useState('name');
+  const [filterProject, setFilterProject] = useState('');
   const searchRef = useRef(null);
 
   useEffect(() => {
     fetchSkills()
       .then((data) => setSkills(data.skills || []))
       .catch((err) => setStatus(err.message || 'Could not load skills.'));
+    fetchProjects().then(setProjects);
   }, []);
 
   const reload = () =>
@@ -317,9 +313,15 @@ export default function SkillsView() {
 
   // ── Grid list ─────────────────────────────────────────────────────────────
   const filtered = (skills ?? []).filter((s) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return s.name?.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q);
+    if (search) {
+      const q = search.toLowerCase();
+      if (!s.name?.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q)) return false;
+    }
+    if (filterProject) {
+      const proj = s.projects?.[0] || 'general';
+      if (proj !== filterProject) return false;
+    }
+    return true;
   });
 
   const sorted = [...filtered].sort((a, b) => {
@@ -421,7 +423,17 @@ export default function SkillsView() {
           <div style={{ padding: '20px 32px 0' }}>
             <FilterRow
               search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
-              sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} label="Sort by" />}
+              sort={<>
+                <SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} label="Sort by" />
+                {projects.length > 0 && (
+                  <SortPill
+                    value={filterProject}
+                    onChange={(v) => setFilterProject(v === filterProject ? '' : v)}
+                    options={[{ id: '', label: 'All' }, ...projects.map((p) => ({ id: p.name, label: p.name }))]}
+                    label="Scope"
+                  />
+                )}
+              </>}
             />
           </div>
           {skills === null ? (
@@ -443,6 +455,7 @@ export default function SkillsView() {
         onSaved={reload}
         setStatus={setStatus}
         initial={modalSkill ?? null}
+        projects={projects}
       />
     </div>
   );
