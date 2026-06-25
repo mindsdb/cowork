@@ -16,7 +16,7 @@ import { fetchConnectors } from '../../api';
 import { Modal } from '../ui/Modal';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-body)";
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.

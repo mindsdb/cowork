@@ -273,7 +273,7 @@ export default function ScheduledView({
 //   • Last run
 //   • action menu (hover-revealed)
 
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 const FONT_MONO = 'var(--font-mono)';
 
 // 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
@@ -532,7 +532,7 @@ function EmptyState({ onCreate, agentLabel }) {
         {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
       </span>
       <div style={{
-        fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600,
+        fontFamily: 'var(--font-body)', fontSize: 18, fontWeight: 600,
         color: 'var(--ink)',
       }}>No scheduled tasks yet</div>
       <div style={{

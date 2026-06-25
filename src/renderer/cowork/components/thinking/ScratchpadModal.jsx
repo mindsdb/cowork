@@ -100,7 +100,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
         <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
-            <span className="font-display text-[15px] font-semibold tracking-tight text-ink">
+            <span className="font-body text-[15px] font-semibold tracking-tight text-ink">
               Scratchpad
             </span>
           </div>
@@ -144,7 +144,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                     background: 'transparent',
                     border: 0,
                     cursor: 'pointer',
-                    fontFamily: 'var(--font-display)',
+                    fontFamily: 'var(--font-body)',
                     fontSize: 12.5,
                     fontWeight: 500,
                     letterSpacing: '-0.005em',
@@ -310,7 +310,7 @@ function CellView({ cell, index, total, focused = false }) {
               hitting "Code" lands at eye level, not floated above
               the badge. */}
           <div className="flex items-baseline justify-between gap-3">
-            <span className="truncate font-display text-[14px] font-semibold tracking-tight text-ink">
+            <span className="truncate font-body text-[14px] font-semibold tracking-tight text-ink">
               {data.one_line_description || cell.label || 'Untitled'}
             </span>
             {code && (

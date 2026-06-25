@@ -83,12 +83,12 @@
   --frost-900: #1A2023;
 
   /* Stone */
-  --stone-50:  #FAFAF9;
-  --stone-100: #F5F5F4;
-  --stone-150: #F0F0EF;
-  --stone-200: #E7E5E4;
-  --stone-300: #D6D3D1;
-  --stone-400: #ADA7A4;
+  --stone-50:  #FAFAFA;
+  --stone-100: #F5F5F5;
+  --stone-150: #F0F0F0;
+  --stone-200: #E5E5E5;
+  --stone-300: #D4D4D4;
+  --stone-400: #A8A8A8;
 
   /* Ocean */
   --ocean-50:  #E2F5FD;
@@ -138,13 +138,13 @@ body, body[data-theme="light"] {
   --bg:           #FAFAFA;
   --surface:      #FFFFFF;
   --surface-2:    #F4F4F4;
-  --surface-3:    #ECECEA;
+  --surface-3:    #ECECEC;
   --line:         rgba(0, 0, 0, 0.06);
   --line-2:       rgba(0, 0, 0, 0.10);
-  /* Sidebar surface — light mode uses a warmer grey so the OS-drawn
-     inactive traffic-light circles (~#a8a8a8) read against it. Dark
-     mode follows the regular surface. */
-  --sidebar-bg:   #ECECEA;
+  /* Sidebar surface — matches surface-3 so the OS-drawn inactive
+     traffic-light circles (~#a8a8a8) read against it. Dark mode
+     follows the regular surface. */
+  --sidebar-bg:   #ECECEC;
 
   --ink:          #0E0F10;   /* primary text */
   --ink-2:        #3A3D40;   /* body */
@@ -2148,7 +2148,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   border-bottom: 1px solid var(--border-0);
 }
 .page-title {
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-size: 26px; font-weight: 700; letter-spacing: -0.015em;
   color: var(--text-strong); margin: 0;
 }
@@ -2416,10 +2416,10 @@ body:not([data-theme="dark"]) .btn-primary {
 .s-overline    { font-family: var(--font-mono); font-size: 11px;   line-height: 1.6;  font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-3); }
 .s-mono        { font-family: var(--font-mono); font-size: 13px;   line-height: 1.5; color: var(--ink); }
 
-/* ─── Special title — Josefin Sans (display only) ─────────────────────── */
+/* ─── Special title ───────────────────────────────────────────────────── */
 .t-special {
-  font-family: var(--font-display);
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  text-transform: none;
   color: var(--ink);
   line-height: 1.05;
 }
@@ -2969,7 +2969,7 @@ body[data-theme="dark"] .server-toggle.is-on:hover {
 /* Help affordance next to the server toggle — appears only when the
    backend is offline. Same size as the toggle so they read as a pair. */
 .server-help {
-  font-family: var(--font-display, inherit);
+  font-family: var(--font-body, inherit);
   font-weight: 700;
   color: var(--ink-3);
 }
@@ -3724,8 +3724,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .chat-header__title {
   display: inline-flex; align-items: center; gap: 8px;
-  font-family: var(--font-display);
-  font-size: 14px; font-weight: 600; letter-spacing: 0.04em;
+  font-family: var(--font-body);
+  font-size: 14px; font-weight: 600; letter-spacing: -0.005em;
   color: var(--ink);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   flex: 1; min-width: 0;
@@ -3772,9 +3772,9 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   content: ''; height: 1px; background: var(--line);
 }
 .chat-divider__label {
-  font-family: var(--font-display);
-  font-size: 10.5px; font-weight: 600;
-  letter-spacing: 0.18em; text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--ink-4);
 }
 
@@ -3821,10 +3821,10 @@ body[data-theme="dark"] .chat-shell .msg-user {
   display: flex; align-items: baseline; gap: 10px;
 }
 .anton-turn__label {
-  font-family: var(--font-display);
-  font-size: 13px; font-weight: 600;
-  letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--ink-2);
+  font-family: var(--font-body);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
 }
 .anton-turn__time {
   font-family: var(--font-mono);
@@ -3843,9 +3843,9 @@ body[data-theme="dark"] .chat-shell .msg-user {
 .thinking-toggle {
   display: inline-flex; align-items: center; gap: 6px;
   background: none; border: 0; padding: 0; cursor: pointer;
-  font-family: var(--font-display);
-  font-size: 10.5px; font-weight: 600;
-  letter-spacing: 0.18em; text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--ink-4);
 }
 .thinking-toggle:hover { color: var(--ink-3); }
@@ -5041,7 +5041,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 
 /* ── Channels (ChannelsView) ─────────────────────────────────────────── */
 .channels-view { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); }
-.channels-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,.08)); font-family: var(--font-display, inherit); font-size: 15px; font-weight: 600; }
+.channels-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,.08)); font-family: var(--font-body, inherit); font-size: 15px; font-weight: 600; }
 .channels-lede { padding: 16px 20px 0; }
 .channels-pad { padding: 16px 20px; }
 /* Master–detail split. flex:1 + min-height:0 give the two panes a bounded

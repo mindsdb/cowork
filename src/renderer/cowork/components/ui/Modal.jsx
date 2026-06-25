@@ -26,7 +26,7 @@ import { createPortal } from 'react-dom';
 import Ico from '../Icons';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 
 // Width × max-height. Heights are caps; modals shrink to content.
 // All three stay inside the viewport on the smallest target screen

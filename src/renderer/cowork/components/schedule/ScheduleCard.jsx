@@ -12,7 +12,7 @@ import { useState } from 'react';
 import Ico from '../Icons';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 
 // Format an ISO timestamp into a relative phrase ("in 3 hours", "5
 // minutes ago"). Fall back to a clean date if it's far away. Keep it

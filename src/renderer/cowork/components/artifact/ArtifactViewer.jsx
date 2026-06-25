@@ -156,7 +156,7 @@ function _csvRowsToGfmTable(rows) {
 }
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Single-row "label: value [copy]" — used twice in the header (local

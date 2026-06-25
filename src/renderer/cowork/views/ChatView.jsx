@@ -49,7 +49,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "'Inter', system-ui, sans-serif";
 const FONT_MONO    = "'JetBrains Mono', monospace";
 const FONT_BODY    = "'Inter', system-ui, sans-serif";
 

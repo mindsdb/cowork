@@ -42,7 +42,7 @@ import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 const FONT_MONO    = 'var(--font-mono)';
 
 function FormLogo({ logo, logoUrl, color }) {

@@ -23,7 +23,7 @@ import {
 } from '../../api';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 function FileList({ files, onRemove }) {

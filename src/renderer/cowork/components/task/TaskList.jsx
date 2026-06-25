@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { TaskCard } from './TaskCard';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-body)";
 
 const _ts = (raw) => {
   if (!raw) return 0;

@@ -20,7 +20,7 @@ import {
 } from '../components/collection';
 
 const FONT_BODY    = "var(--font-body)";
-const FONT_DISPLAY = "var(--font-display)";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO    = "var(--font-mono)";
 
 // ─── Header ──────────────────────────────────────────────────────────────

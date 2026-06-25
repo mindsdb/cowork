@@ -63,9 +63,9 @@ export function ConfirmModal({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div style={{
-          fontFamily: "'Josefin Sans', sans-serif",
+          fontFamily: "'Inter', sans-serif",
           fontSize: 16, fontWeight: 600, color: 'var(--ink)',
-          letterSpacing: '0.01em',
+          letterSpacing: '-0.01em',
         }}>
           {title}
         </div>
