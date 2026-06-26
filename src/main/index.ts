@@ -1198,44 +1198,20 @@ app.whenReady().then(async () => {
       console.error(`[server] start failed: ${result.reason}`);
     } else {
       console.log(`[server] running on http://127.0.0.1:${result.port}`);
-      // Background update check — runs after the server is already
-      // serving so users aren't blocked. If a newer version is found
-      // on PyPI, stops the server, upgrades, and restarts. Rolls back
-      // automatically if the new version fails the health probe.
       setUpdateNotifier((payload) => {
         mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       });
 
-      // Update server first, then check for UI updates. This ensures
-      // the renderer and server stay in sync — both track git HEAD on
-      // main, so updating them in sequence (server → UI) avoids any
-      // window where a new renderer talks to an old server.
-      const serverUpdateDone = maybeUpdateServer().then((updateResult) => {
-        if (updateResult.updated) {
-          console.log(`[server-updater] updated ${updateResult.previousVersion} → ${updateResult.newVersion}`);
-        } else if (updateResult.error) {
-          console.error(`[server-updater] ${updateResult.error}`);
-        }
-      }).catch((err) => {
-        console.error('[server-updater] check failed:', err);
-      });
-
-      // OTA UI update check — only in packaged builds and not in DEV_MODE.
-      // Waits for both the server update AND the renderer to finish loading
-      // so the React app has time to mount its IPC listener.
+      // Unified update check — covers both UI and server, respects the
+      // auto/manual update mode, and runs periodically (every 4 hours)
+      // so long-running sessions surface new versions without a restart.
       //
-      // After the initial boot check, a periodic poll runs every 4 hours so
-      // long-running sessions surface new versions without a restart.
-      // Periodic checks always notify (show the banner) — they never
-      // auto-apply mid-session to avoid disrupting in-progress work.
+      // Auto mode on boot: apply both server and UI immediately.
+      // Manual mode on boot + all periodic checks: show the banner.
       const devMode = getDevMode();
       if (app.isPackaged && !devMode) {
         // rendererReady is captured at the top of app.whenReady() — see above.
 
-        /** Check for UI and server updates. On boot (`isBootCheck=true`),
-         *  auto mode downloads and applies UI immediately; server updates
-         *  are already handled by maybeUpdateServer() above. Periodic checks
-         *  only notify — they never auto-apply mid-session. */
         const runUpdateCheck = async (isBootCheck = false) => {
           try {
             const updateMode = getUpdateMode();
@@ -1251,13 +1227,9 @@ app.whenReady().then(async () => {
               return;
             }
 
-            // Check UI and server in parallel. On boot, skip the server
-            // check — maybeUpdateServer() already handled it above.
             const [uiResult, serverResult] = await Promise.all([
               checkForUIUpdate(),
-              isBootCheck
-                ? Promise.resolve({ updateAvailable: false } as import('./server-updater').ServerUpdateCheckResult)
-                : checkForServerUpdate(),
+              checkForServerUpdate(),
             ]);
 
             const anyUpdate = uiResult.updateAvailable || serverResult.updateAvailable;
@@ -1274,7 +1246,16 @@ app.whenReady().then(async () => {
             if (serverResult.updateAvailable) console.log(`[updater] server update available: ${serverResult.currentVersion} → ${serverResult.latestVersion}`);
 
             if (isBootCheck && updateMode === 'auto') {
-              // Boot + auto: apply UI immediately (server already handled by maybeUpdateServer)
+              // Boot + auto: apply server first, then UI, then reload.
+              if (serverResult.updateAvailable) {
+                console.log('[updater] auto mode — applying server update...');
+                const result = await maybeUpdateServer();
+                if (result.updated) {
+                  console.log(`[updater] server updated: ${result.previousVersion} → ${result.newVersion}`);
+                } else if (result.error) {
+                  console.error(`[updater] server update failed: ${result.error}`);
+                }
+              }
               if (uiResult.updateAvailable) {
                 console.log('[updater] auto mode — downloading and applying UI...');
                 mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: uiResult.newVersion });
@@ -1284,9 +1265,13 @@ app.whenReady().then(async () => {
                   mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
                   mainWindow.loadFile(getRendererPath());
                 }
+              } else if (serverResult.updateAvailable && mainWindow) {
+                // Server updated but no UI update — reload to pick up API changes
+                mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+                mainWindow.loadFile(getRendererPath());
               }
             } else {
-              // Periodic or manual mode: notify, let user decide when to apply
+              // Manual mode or periodic: notify, let user decide when to apply
               console.log('[updater] notifying renderer of available update');
               mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
                 phase: 'available',
@@ -1302,7 +1287,7 @@ app.whenReady().then(async () => {
 
         const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
-        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
+        rendererReady.then(async () => {
           await runUpdateCheck(true);
           setInterval(() => runUpdateCheck(false), UPDATE_POLL_MS);
         });
