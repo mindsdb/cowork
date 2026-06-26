@@ -151,16 +151,11 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
       {hasValue && (
         <button
           type="button"
+          className="icon-btn"
           onClick={() => onChange('')}
           title="Clear (commits on Save settings)"
           aria-label="Clear value"
-          style={{
-            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 28, height: 26, borderRadius: 6,
-            border: 0, background: 'transparent', cursor: 'pointer',
-            color: 'var(--ink-3)', padding: 0,
-          }}
+          style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
         >
           {Ico.close(13)}
         </button>
@@ -247,14 +242,6 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
     onChange('');
   };
 
-  const btnStyle = {
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    width: 28, height: 26, borderRadius: 6,
-    border: 0, background: 'transparent', cursor: 'pointer',
-    color: 'var(--ink-3)', padding: 0,
-  };
-  const btnStyleActive = { ...btnStyle, color: 'var(--text-strong)', background: 'var(--surface-2, rgba(255,255,255,0.04))' };
-
   // When the field is holding the server sentinel and the user hasn't
   // toggled reveal, render the input as empty + a long bullet placeholder.
   // The literal "***" rendered as type=password is only 3 dots wide, which
@@ -283,6 +270,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
         <span style={{ position: 'relative', display: 'inline-flex' }}>
           <button
             type="button"
+            className="icon-btn"
             onClick={onCopy}
             disabled={!canCopy}
             title={
@@ -291,7 +279,6 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
               :                       'Copy to clipboard'
             }
             aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
-            style={canCopy ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
           >
             {copied ? Ico.check(13) : Ico.copy(13)}
           </button>
@@ -312,7 +299,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                boxShadow: 'var(--sh-2)',
                 animation: 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}
@@ -321,22 +308,23 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
         </span>
         <button
           type="button"
+          className="icon-btn"
           onClick={onToggleShow}
           disabled={revealing}
           title={show ? 'Hide key' : (revealing ? 'Revealing…' : 'Reveal key')}
           aria-label={show ? 'Hide key' : 'Reveal key'}
           aria-pressed={show}
-          style={show ? btnStyleActive : btnStyle}
+          style={show ? { color: 'var(--ink)', background: 'var(--surface-2)' } : undefined}
         >
           {show ? Ico.eyeOff(13) : Ico.eye(13)}
         </button>
         <button
           type="button"
+          className="icon-btn"
           onClick={onClearField}
           disabled={!hasValue}
           title="Clear this key (commits on Save settings)"
           aria-label="Clear key"
-          style={hasValue ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
         >
           {Ico.close(13)}
         </button>
@@ -556,11 +544,11 @@ function SettingsNav({ section, onSectionChange }) {
               alignItems: 'center',
               gap: 8,
               padding: '8px 10px',
-              borderRadius: 7,
+              borderRadius: 6,
               border: 0,
               background: active ? 'var(--surface-2)' : 'transparent',
               color: active ? 'var(--ink)' : 'var(--ink-3)',
-              fontWeight: active ? 600 : 400,
+              fontWeight: 500,
               fontSize: 13,
               fontFamily: 'inherit',
               cursor: 'pointer',
@@ -2084,7 +2072,7 @@ export default function SettingsView({
             {accountUser.username && (
               <div>
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Username</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)' }}>{accountUser.username}</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-body)' }}>{accountUser.username}</div>
               </div>
             )}
             {accountUser.org && (

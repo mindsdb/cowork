@@ -575,13 +575,13 @@ a[href],
 .nav-item {
   display: flex; align-items: center; gap: 10px;
   height: 28px; padding: 0 10px; border-radius: 6px;
-  font-size: 13px; color: var(--frost-800);
+  font-size: 13px; font-weight: 500; color: var(--frost-800);
   transition: background .12s;
   border: 0; background: transparent;
   width: 100%; text-align: left;
 }
 .nav-item:hover { background: var(--stone-100); }
-.nav-item.active { background: var(--stone-150); color: var(--text-strong); font-weight: 500; }
+.nav-item.active { background: var(--stone-150); color: var(--text-strong); }
 .nav-item.primary { height: 36px; margin-bottom: 4px; font-size: 13.5px; }
 .nav-item.primary:hover { background: var(--primary-50); }
 
@@ -599,7 +599,7 @@ a[href],
 
 .section-label {
   font-size: 11px; font-weight: 600;
-  color: var(--frost-600); letter-spacing: 0.02em;
+  color: var(--frost-600); letter-spacing: -0.005em;
   padding: 12px 12px 6px;
 }
 
@@ -2069,7 +2069,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   border: 0; background: transparent; width: 100%; text-align: left;
 }
 .menu-item:hover { background: var(--stone-100); color: var(--text-strong); }
-.menu-item.checked { color: var(--primary-700); font-weight: 500; }
+.menu-item.checked { color: var(--primary-700); }
 
 /* ─── Task row ───────────────────────────────────────────────────────────── */
 .task-row {
@@ -2767,23 +2767,10 @@ body[data-theme="dark"] .btn-new-task:hover {
 }
 .app-sidebar .nav-item.active {
   color: var(--ink);
-  font-weight: 550;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  background: var(--surface);
 }
 body[data-theme="dark"] .app-sidebar .nav-item.active {
-  background: var(--accent-bg);
-  text-shadow: 0 0 14px var(--accent-glow);
-}
-.app-sidebar .nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: -10px; top: 6px; bottom: 6px;
-  width: 2px;
-  background: var(--accent);
-  border-radius: 2px;
-}
-body[data-theme="dark"] .app-sidebar .nav-item.active::before {
-  box-shadow: 0 0 10px var(--accent-glow);
+  background: var(--surface);
 }
 .app-sidebar .nav-item.active span:first-child { color: var(--accent) !important; }
 

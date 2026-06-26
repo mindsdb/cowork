@@ -22,11 +22,11 @@ import { cn } from '../../lib/cn';
 // Container padding (2px) + item vertical padding + font line-height ≈ same
 // total height as a SortPill with padding: 7px 11px.
 const CONTAINER_SIZE = {
-  md: { padding: 2,     borderRadius: 7 },
+  md: { padding: 2,     borderRadius: 'var(--r, 6px)' },
   sm: { padding: 1,     borderRadius: 5 },
 };
 const ITEM_SIZE = {
-  md: { padding: '5px 10px', borderRadius: 5, fontSize: 12.5 },
+  md: { padding: '7px 12px', borderRadius: 'var(--r-sm, 4px)', fontSize: 13 },
   sm: { padding: '3px 7px',  borderRadius: 3, fontSize: 11   },
 };
 
@@ -90,9 +90,9 @@ export function ToggleGroup({
             fontFamily: 'var(--font-body)',
             fontSize: is.fontSize,
             border: 0,
-            background: state.pressed ? 'var(--surface-3)' : 'transparent',
+            background: state.pressed ? 'var(--surface)' : 'transparent',
             color: state.pressed ? 'var(--ink)' : 'var(--ink-3)',
-            boxShadow: state.pressed ? 'inset 0 0 0 1px var(--line-2)' : 'none',
+            boxShadow: state.pressed ? 'var(--sh-1)' : 'none',
             transition: 'background 0.15s ease, color 0.15s ease',
           })}
         >
