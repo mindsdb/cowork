@@ -1145,6 +1145,20 @@ app.whenReady().then(async () => {
   await resolveServerPort();
   createWindow();
 
+  // Capture renderer readiness NOW, before the async server start —
+  // did-finish-load fires quickly (especially with Vite dev server)
+  // and would be missed if we attached the listener after server boot.
+  const rendererReady = new Promise<void>((resolve) => {
+    if (mainWindow?.webContents.isLoading() === false) {
+      // Already loaded (race: window created and loaded before we got here)
+      setTimeout(resolve, 1500);
+    } else {
+      mainWindow?.webContents.once('did-finish-load', () => {
+        setTimeout(resolve, 1500);
+      });
+    }
+  });
+
   // Boot-time server start. If cowork-server is installed, start it
   // in the background. If not, skip — the renderer's boot flow will
   // route to the setup screen which handles installation.
@@ -1216,11 +1230,7 @@ app.whenReady().then(async () => {
       // auto-apply mid-session to avoid disrupting in-progress work.
       const devMode = getDevMode();
       if (app.isPackaged && !devMode) {
-        const rendererReady = new Promise<void>((resolve) => {
-          mainWindow?.webContents.once('did-finish-load', () => {
-            setTimeout(resolve, 1500);
-          });
-        });
+        // rendererReady is captured at the top of app.whenReady() — see above.
 
         /** Check for UI and server updates. On boot (`isBootCheck=true`),
          *  auto mode downloads and applies UI immediately; server updates
