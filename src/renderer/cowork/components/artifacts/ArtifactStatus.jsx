@@ -66,7 +66,9 @@ function AccessChip({ mode }) {
   );
 }
 
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry }) {
+// `inlineChanges` — list view flows the "Unpublished changes" pill inline
+// right after the access chip; the card (default) pushes it to the right edge.
+export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false }) {
   // Transient phases win over the persisted state.
   if (phase === 'failed') {
     return (
@@ -103,9 +105,9 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry })
       <Pill tone="green" dot label="Published" />
       <AccessChip mode={mode} />
       {artifact.modified && (
-        <span style={{ marginLeft: 'auto', display: 'inline-flex' }}>
-          <Pill tone="amber" dot label="Unpublished changes" />
-        </span>
+        inlineChanges
+          ? <Pill tone="amber" dot label="Unpublished changes" />
+          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Pill tone="amber" dot label="Unpublished changes" /></span>
       )}
     </span>
   );

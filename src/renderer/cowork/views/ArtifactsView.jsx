@@ -540,9 +540,10 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           )}
         </div>
 
-        {/* Status */}
-        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} />
+        {/* Status — query container so the access chip drops to icon-only
+            when the column gets tight (frees room for "Unpublished changes"). */}
+        <div className="cw-status-cell" style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} inlineChanges />
         </div>
 
         {/* Updated + open + ⋯ */}

@@ -5089,6 +5089,9 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
    Class is `cw-artifact-card` (not `artifact-card`) to avoid a legacy
    `.artifact-card` rule elsewhere in this file. */
 .cw-artifact-card { container-type: inline-size; }
+/* List status cell is also a query container, so the access label collapses
+   to icon-only when the Status column is tight (frees room for the pills). */
+.cw-status-cell { container-type: inline-size; }
 @container (max-width: 230px) {
   .cw-access-label { display: none; }
 }
