@@ -280,6 +280,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               <textarea
                 value={draft.content}
                 onChange={(e) => setDraft((prev) => ({ ...prev, content: e.target.value }))}
+                className="field-textarea mono"
                 style={memoryEditorStyle}
               />
             </>
@@ -409,12 +410,12 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 8 }}>
-              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill_label" style={inputStyle} disabled={editing === 'edit'} />
-              <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
+              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill_label" className="field-input" disabled={editing === 'edit'} />
+              <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" className="field-input" />
             </div>
-            <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" style={inputStyle} />
-            <input aria-label="When the agent should use this skill" value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When the agent should use this skill" style={inputStyle} />
-            <textarea aria-label="Skill instructions" value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
+            <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" className="field-input" />
+            <input aria-label="When the agent should use this skill" value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When the agent should use this skill" className="field-input" />
+            <textarea aria-label="Skill instructions" value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." className="field-textarea mono" style={{ userSelect: 'text' }} />
             <div className="dialog-actions">
               <button className="secondary-btn" onClick={() => setEditing(null)}>Cancel</button>
               <button className="primary-btn" disabled={!draft.label.trim() || !draft.name.trim() || !draft.declarative.trim()} onClick={save}>Save skill</button>
@@ -553,15 +554,15 @@ function ConnectView({ data, setData, setStatus }) {
         )) : <EmptyState>No data vault connections found.</EmptyState>}
       </div>
       <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <select aria-label="Engine" value={engine} onChange={(e) => setEngineAndTemplate(e.target.value)} style={inputStyle}>
+        <select aria-label="Engine" value={engine} onChange={(e) => setEngineAndTemplate(e.target.value)} className="field-input">
           {(data.engines || []).map((item) => <option key={item.engine} value={item.engine}>{item.displayName}</option>)}
         </select>
         {(engineDef?.authMethods || []).length > 0 && (
-          <select aria-label="Authentication method" value={selectedAuth?.name || ''} onChange={(e) => setAuthAndTemplate(e.target.value)} style={inputStyle}>
+          <select aria-label="Authentication method" value={selectedAuth?.name || ''} onChange={(e) => setAuthAndTemplate(e.target.value)} className="field-input">
             {(engineDef.authMethods || []).map((method) => <option key={method.name} value={method.name}>{method.display}</option>)}
           </select>
         )}
-        <input aria-label="Connection name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" style={inputStyle} />
+        <input aria-label="Connection name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" className="field-input" />
         {fields.length > 0 && (
           <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>
             Required: {fields.filter((field) => field.required).map((field) => field.name).join(', ') || 'none'}
@@ -579,7 +580,7 @@ function ConnectView({ data, setData, setStatus }) {
                 rows={4}
                 placeholder={field.description || field.default || ''}
                 spellCheck={false}
-                style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }}
+                className="field-textarea mono" style={{ userSelect: 'text' }}
               />
             ) : (
               <input
@@ -587,7 +588,7 @@ function ConnectView({ data, setData, setStatus }) {
                 onChange={(event) => updateCredential(field, event.target.value)}
                 type={field.secret ? 'password' : 'text'}
                 placeholder={field.description || field.default || ''}
-                style={inputStyle}
+                className="field-input"
               />
             )}
             {field.description && <small style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{field.description}</small>}
@@ -659,22 +660,6 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   );
 }
 
-const inputStyle = {
-  width: '100%',
-  height: 34,
-  border: '1px solid var(--border-01)',
-  borderRadius: 7,
-  padding: '0 10px',
-  fontSize: 13,
-  outline: 'none',
-  background: 'var(--surface-0)',
-  color: 'var(--ink)',
-};
-
-// Native <select> paints its own chevron in the right padding area;
-// the chevron looked flush with the right border at `padding: 10px`.
-// Bumping right padding gives the indicator some air.
-const selectStyle = { ...inputStyle, paddingRight: 28 };
 
 // Editor and viewer share the same fixed min-height + typography so
 // flipping between read and edit doesn't shift the layout. `--ink`
@@ -682,18 +667,7 @@ const selectStyle = { ...inputStyle, paddingRight: 28 };
 // before this change was relying on the browser default text color,
 // which rendered black-on-dark in dark mode).
 const memoryEditorStyle = {
-  width: '100%',
   minHeight: 520,
-  border: '1px solid var(--border-01)',
-  borderRadius: 7,
-  padding: 12,
-  fontFamily: 'var(--font-mono)',
-  fontSize: 12.5,
-  lineHeight: 1.55,
-  outline: 'none',
-  background: 'var(--surface-0)',
-  color: 'var(--ink)',
-  resize: 'vertical',
   userSelect: 'text',
 };
 
@@ -706,7 +680,7 @@ const memoryViewerStyle = {
   minHeight: 520,
   padding: '12px 14px',
   border: '1px solid var(--border-01)',
-  borderRadius: 7,
+  borderRadius: 6,
   background: 'var(--surface-0)',
   userSelect: 'text',
   overflowY: 'auto',

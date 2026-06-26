@@ -42,7 +42,7 @@ import { host } from '../../../platform/host';
 import { ANTON_VAULT_KEEP } from '../../api';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 const FONT_MONO    = 'var(--font-mono)';
 
 function FormLogo({ logo, logoUrl, color }) {
@@ -71,17 +71,8 @@ function FormLogo({ logo, logoUrl, color }) {
 }
 
 function FieldInput({ field, value, onChange, disabled }) {
-  const baseStyle = {
-    width: '100%', boxSizing: 'border-box',
-    padding: '8px 10px', borderRadius: 7,
-    background: 'var(--surface-2)',
-    border: '1px solid var(--line)',
-    color: 'var(--ink)',
-    fontFamily: field.type === 'password' ? FONT_MONO : FONT_BODY,
-    fontSize: 13,
-    outline: 'none',
-    opacity: disabled ? 0.6 : 1,
-  };
+  const isMono = field.type === 'password';
+  const fieldClass = isMono ? 'field-input mono' : 'field-input';
 
   // Sentinel rendering — when the underlying state still equals
   // `ANTON_VAULT_KEEP`, the field hasn't been touched since the
@@ -106,10 +97,10 @@ function FieldInput({ field, value, onChange, disabled }) {
   if (field.type === 'select') {
     return (
       <select
+        className={fieldClass}
         value={displayValue}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        style={baseStyle}
       >
         {!field.required && <option value="">—</option>}
         {(field.options || []).map((opt) => (
@@ -129,7 +120,7 @@ function FieldInput({ field, value, onChange, disabled }) {
         autoCapitalize="none"
         autoCorrect="off"
         onChange={(e) => onChange(e.target.value)}
-        style={{ ...baseStyle, fontFamily: FONT_MONO, lineHeight: 1.4, resize: 'vertical' }}
+        className="field-textarea mono"
       />
     );
   }
@@ -167,7 +158,7 @@ function FieldInput({ field, value, onChange, disabled }) {
       spellCheck={false}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      style={baseStyle}
+      className={fieldClass}
     />
   );
 }
@@ -370,7 +361,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                 background: 'transparent',
                 border: '1px solid var(--line)',
                 color: 'var(--ink-2)',
-                padding: '7px 12px', borderRadius: 7,
+                padding: '7px 12px', borderRadius: 6,
                 fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
                 cursor: 'pointer',
               }}
@@ -481,7 +472,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
       {/* Form-level banners */}
       {spec.form_error && (
         <div style={{
-          padding: '8px 10px', borderRadius: 7,
+          padding: '8px 10px', borderRadius: 6,
           background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
           border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
           color: 'var(--danger)', fontSize: 12.5,
@@ -489,7 +480,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
       )}
       {spec.form_warning && (
         <div style={{
-          padding: '8px 10px', borderRadius: 7,
+          padding: '8px 10px', borderRadius: 6,
           background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
           border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
           color: 'var(--ink-2)', fontSize: 12.5,
@@ -545,8 +536,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                     style={{
                       cursor: busy ? 'not-allowed' : 'pointer',
                       background: 'transparent', border: 0, padding: 0,
-                      fontFamily: FONT_MONO, fontSize: 10.5,
-                      color: 'var(--ink-4)', letterSpacing: '0.04em',
+                      fontFamily: FONT_BODY, fontSize: 10.5,
+                      color: 'var(--ink-4)', letterSpacing: '0.01em',
                     }}
                   >{isSkipped ? 'unskip' : 'skip'}</button>
                 )}
@@ -561,7 +552,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
               )}
               {isSkipped && (
                 <div style={{
-                  padding: '8px 10px', borderRadius: 7,
+                  padding: '8px 10px', borderRadius: 6,
                   background: 'var(--surface-2)',
                   border: '1px dashed var(--line-2)',
                   color: 'var(--ink-4)', fontSize: 12,
@@ -703,7 +694,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                 border: '1px solid var(--line)',
                 color: a.kind === 'cancel' ? 'var(--ink-3)' : 'var(--ink-2)',
                 padding: '7px 12px',
-                borderRadius: 7,
+                borderRadius: 6,
                 fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
                 cursor: busy ? 'progress' : 'pointer',
                 opacity: busy ? 0.6 : 1,
@@ -849,7 +840,7 @@ function MethodPicker({ methods, onPick, busy }) {
               }}>{m.label || m.id}</span>
               {m.recommended && (
                 <span style={{
-                  fontSize: 10.5, fontFamily: FONT_MONO, letterSpacing: '0.04em',
+                  fontSize: 10.5, fontFamily: FONT_BODY, letterSpacing: '0.04em',
                   color: 'var(--accent)',
                   padding: '2px 7px', borderRadius: 999,
                   background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
@@ -959,7 +950,7 @@ function MethodBreadcrumb({ method, onChange, busy }) {
         display: 'flex', alignItems: 'center',
         gap: 8,
         padding: '6px 10px',
-        borderRadius: 7,
+        borderRadius: 6,
         background: 'transparent',
         border: 'none',
         cursor: busy ? 'not-allowed' : 'pointer',

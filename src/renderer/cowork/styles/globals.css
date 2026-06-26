@@ -1472,19 +1472,27 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   color: #1a1a1a;
 }
 
+/* Customize inputs — extend field-input tokens for consistency */
 .customize-input,
 .customize-search-input input {
   width: 100%;
   height: 40px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
-  color: #1a1a1a;
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
   padding: 0 12px;
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  letter-spacing: -0.005em;
   outline: 0;
+  transition: border-color .12s ease, box-shadow .15s ease;
 }
 
+.customize-input:hover,
+.customize-search-input input:hover {
+  border-color: var(--line-2);
+}
 .customize-input:focus,
 .customize-search-input input:focus {
   border-color: var(--accent);
@@ -3425,15 +3433,26 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   margin-bottom: 10px; font-size: 13.5px; color: var(--text-strong);
 }
 .inline-dialog-head strong { flex: 1; }
+/* Dialog / schedule form inputs — aligned with field-input tokens */
 .dialog-input,
 .dialog-textarea,
 .schedule-form input,
 .schedule-form textarea,
 .schedule-form select {
-  width: 100%; border: 1px solid var(--border-01);
-  border-radius: 8px; background: var(--surface-0);
-  color: var(--text-strong); outline: 0; font-size: 13px;
-  padding: 8px 10px;
+  width: 100%; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface);
+  color: var(--ink); outline: 0;
+  font-family: var(--font-sans); font-size: 13.5px;
+  letter-spacing: -0.005em;
+  padding: 8px 12px;
+  transition: border-color .12s ease, box-shadow .15s ease;
+}
+.dialog-input:hover,
+.dialog-textarea:hover,
+.schedule-form input:hover,
+.schedule-form textarea:hover,
+.schedule-form select:hover {
+  border-color: var(--line-2);
 }
 .dialog-input:focus,
 .dialog-textarea:focus,

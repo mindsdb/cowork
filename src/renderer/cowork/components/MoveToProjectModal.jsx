@@ -75,16 +75,12 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
       <ModalBody>
         <input
           ref={inputRef}
+          className="field-input"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setSelected(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder="Search projects or type a new name…"
-          style={{
-            width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
-            border: '1px solid var(--line, rgba(128,128,128,0.3))',
-            background: 'var(--surface-2, transparent)', color: 'inherit', outline: 'none',
-            marginBottom: 10,
-          }}
+          style={{ marginBottom: 10 }}
         />
 
         <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>

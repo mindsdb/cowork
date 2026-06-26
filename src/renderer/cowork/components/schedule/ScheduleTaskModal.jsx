@@ -30,24 +30,10 @@ const fieldLabel = {
   marginBottom: 6,
 };
 
-const fieldInput = {
-  width: '100%', boxSizing: 'border-box',
-  padding: '8px 10px', borderRadius: 7,
-  background: 'var(--surface-2)',
-  border: '1px solid var(--line)',
-  color: 'var(--ink)',
-  fontFamily: FONT_BODY, fontSize: 13.5,
-  outline: 'none',
-};
-
 // Native <select> elements paint their own chevron inside the right
-// padding area, so the same `padding: 10px` that's fine on a text
-// input feels cramped here — the chevron ends up flush with the
-// border. Bumping the right padding gives the indicator some air.
-const fieldSelect = {
-  ...fieldInput,
-  paddingRight: 28,
-};
+// padding area, so the same padding that's fine on a text input feels
+// cramped here — bumping right padding gives the indicator some air.
+const fieldSelectStyle = { paddingRight: 28 };
 
 function Field({ label, children }) {
   return (
@@ -182,7 +168,7 @@ export default function ScheduleTaskModal({
               onChange={(e) => update('title', e.target.value)}
               placeholder="Weekly metrics summary"
               autoFocus
-              style={fieldInput}
+              className="field-input"
             />
           </Field>
 
@@ -191,7 +177,8 @@ export default function ScheduleTaskModal({
               <select
                 value={form.cadence}
                 onChange={(e) => update('cadence', e.target.value)}
-                style={fieldSelect}
+                className="field-input"
+                style={fieldSelectStyle}
               >
                 <option value="once">Once</option>
                 <option value="hourly">Hourly</option>
@@ -204,16 +191,17 @@ export default function ScheduleTaskModal({
                 type="datetime-local"
                 value={form.nextRunAt}
                 onChange={(e) => update('nextRunAt', e.target.value)}
-                style={fieldInput}
+                className="field-input"
               />
             </Field>
           </div>
 
           <Field label="Project">
             <select
+              className="field-input"
               value={form.projectPath}
               onChange={(e) => update('projectPath', e.target.value)}
-              style={fieldSelect}
+              style={fieldSelectStyle}
             >
               <option value="">No project</option>
               {projects.map((p) => (
@@ -228,13 +216,13 @@ export default function ScheduleTaskModal({
               onChange={(e) => update('prompt', e.target.value)}
               placeholder={`Ask ${agentLabel} to…`}
               rows={6}
-              style={{ ...fieldInput, resize: 'vertical', lineHeight: 1.45 }}
+              className="field-textarea"
             />
           </Field>
 
           {error && (
             <div style={{
-              padding: '8px 10px', borderRadius: 7,
+              padding: '8px 10px', borderRadius: 6,
               background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
               border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
               color: 'var(--danger)', fontSize: 12.5,
@@ -268,7 +256,7 @@ export default function ScheduleTaskModal({
               disabled={busy}
             >
               {Ico.trash ? Ico.trash(13) : null}
-              <span style={{ marginLeft: Ico.trash ? 6 : 0 }}>Delete</span>
+              Delete
             </button>
           )
         )}
