@@ -2,6 +2,7 @@ import { saveTokens, getRefreshToken } from './token-store';
 import { stopServer, startServer } from './server-process';
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
+import { getInstallationId } from './installation-id';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -24,10 +25,20 @@ const AUTH_SERVICE_URL = 'https://auth.mindshub.ai/v1';
 // api.mindshub.ai when the desktop app moves to prod.
 const MINDS_LLM_BASE_URL = 'https://api.mindshub.ai/v1';
 
-// Stable name we register the API key under. Listing + deleting any
-// pre-existing entry with this name before creating a new one keeps
-// re-onboarding from leaking ghost keys in the user's account.
+// Base label for the MindsHub API key. ENG-440: keys are minted per
+// device — the full name is `hub:anton:<installation_id>` (see
+// antonKeyName). A single fixed name meant whoever logged in last deleted
+// everyone else's key, silently 401-ing the other devices; per-device
+// names let each install own its own key.
 const ANTON_KEY_NAME = 'hub:anton';
+
+// Per-device key name. Keeping the device id in the name (rather than
+// tracking sessions server-side) fixes the displaced-device bug purely
+// client-side. A cleanup/expiry policy for stale device keys is a
+// deferred follow-up (ENG-440).
+function antonKeyName(): string {
+  return `${ANTON_KEY_NAME}:${getInstallationId()}`;
+}
 
 // Every auth-service / Keycloak request gets a hard deadline. Node's
 // fetch has none by default, so a black-holed connection would hang
@@ -309,11 +320,14 @@ export async function ensureActiveOrg(accessToken: string): Promise<EnsureActive
 // ── API key provisioning ──────────────────────────────────────────
 //
 // Calls the auth-service `/v1/api-keys/` endpoint with the JWT as a
-// Bearer credential, removes any existing key registered under the
-// same name (so re-onboarding doesn't pile up dead keys), then mints a
-// fresh one. The returned `key` is the actual `mdb_*` string the LLM
-// gateway expects. Returns null on any error so callers can surface a
-// user-visible message instead of writing a bad credential to env.
+// Bearer credential. ENG-440: the key is minted under a per-device name
+// (`hub:anton:<installation_id>`), and we remove only a prior key with
+// that exact per-device name before re-minting — so re-onboarding on this
+// machine doesn't pile up dead keys, while a login on a *different* device
+// never revokes this one. The returned `key` is the actual `mdb_*` string
+// the LLM gateway expects. Returns null on any error so callers can
+// surface a user-visible message instead of writing a bad credential to
+// env.
 
 interface ApiKeyRecord {
   key?: string;
@@ -536,12 +550,16 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     }
   }
 
-  // Step 1: drop any prior `hub:anton` key so the user's account stays
-  // tidy across re-onboards. Best-effort — listing/deleting failures
-  // shouldn't block creation of a new key.
+  // Step 1: drop only THIS device's prior key so re-onboarding on the same
+  // machine stays tidy. ENG-440: match the exact per-device name and never
+  // the legacy fixed `hub:anton` — deleting a key another (not-yet-upgraded)
+  // device still relies on is precisely the silent-revocation bug we're
+  // fixing. Best-effort — listing/deleting failures shouldn't block creation
+  // of the new key.
+  const keyName = antonKeyName();
   const existing = await listExistingKeys(provisionToken);
   for (const entry of existing) {
-    if (entry?.name === ANTON_KEY_NAME && entry.prefix) {
+    if (entry?.name === keyName && entry.prefix) {
       await deleteKeyByPrefix(provisionToken, entry.prefix);
     }
   }
@@ -558,7 +576,7 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
         Authorization: `Bearer ${provisionToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name: ANTON_KEY_NAME }),
+      body: JSON.stringify({ name: keyName }),
     });
     if (res.ok) {
       const data = await res.json() as ApiKeyRecord;
