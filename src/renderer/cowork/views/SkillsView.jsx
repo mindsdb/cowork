@@ -67,7 +67,7 @@ function SkillCard({ skill, onClick }) {
             fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 500,
             color: '#111115',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{skill.name}</span>
+          }}>{skill.label}</span>
         </div>
         <span style={{
           fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: '24px',
@@ -124,9 +124,6 @@ function Toggle({ checked, onChange }) {
   );
 }
 
-function toLabel(name) {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
 
 const fieldStyle = {
   width: '100%',
@@ -153,15 +150,15 @@ function FieldLabel({ children }) {
 function SkillModal({ open, onClose, onSaved, setStatus, initial = null, projects = [] }) {
   const isEdit = initial !== null;
   const defaultProject = (list) => list.some((p) => p.name === 'general') ? 'general' : (list[0]?.name || 'general');
-  const [draft, setDraft] = useState({ name: '', description: '', declarative: '', project: 'general' });
+  const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: 'general' });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      setDraft({ name: initial.name || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || defaultProject(projects) });
+      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || defaultProject(projects) });
     } else {
-      setDraft({ name: '', description: '', declarative: '', project: defaultProject(projects) });
+      setDraft({ label: '', description: '', declarative: '', project: defaultProject(projects) });
     }
   }, [open]);
 
@@ -173,12 +170,12 @@ function SkillModal({ open, onClose, onSaved, setStatus, initial = null, project
   };
 
   const submit = async () => {
-    const label = isEdit ? initial.label : toLabel(draft.name);
-    if (!label || !draft.name.trim() || !draft.declarative.trim()) return;
+    const label = isEdit ? initial.label : draft.label.trim();
+    if (!label || !draft.declarative.trim()) return;
     setBusy(true);
     try {
-      const saved = await saveSkill({ label, name: draft.name, description: draft.description, declarative: draft.declarative, projects: [draft.project] }, isEdit);
-      setStatus(`Saved ${draft.name}.`);
+      const saved = await saveSkill({ label, description: draft.description, declarative: draft.declarative, projects: [draft.project] }, isEdit);
+      setStatus(`Saved ${label}.`);
       handleClose();
       await onSaved(saved);
     } catch (err) {
@@ -188,7 +185,7 @@ function SkillModal({ open, onClose, onSaved, setStatus, initial = null, project
     }
   };
 
-  const canSubmit = draft.name.trim() && draft.declarative.trim() && !busy;
+  const canSubmit = draft.label.trim() && draft.declarative.trim() && !busy;
 
   return (
     <Modal open={open} onClose={handleClose} width="549px" labelledBy="skill-modal-title">
@@ -201,14 +198,15 @@ function SkillModal({ open, onClose, onSaved, setStatus, initial = null, project
       <ModalBody padding="20px">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <FieldLabel>Skill name</FieldLabel>
+            <FieldLabel>Label</FieldLabel>
             <input
-              aria-label="Skill name"
-              value={draft.name}
-              onChange={(e) => setField('name', e.target.value)}
+              aria-label="Label"
+              value={draft.label}
+              onChange={(e) => setField('label', e.target.value)}
               placeholder="weekly-status-report"
-              style={{ ...fieldStyle, height: 34, resize: 'none' }}
-              autoFocus
+              readOnly={isEdit}
+              style={{ ...fieldStyle, height: 34, resize: 'none', ...(isEdit && { opacity: 0.5, cursor: 'default' }) }}
+              autoFocus={!isEdit}
             />
           </div>
           <div>
@@ -311,12 +309,12 @@ export default function SkillsView() {
   };
 
   const remove = async (skill) => {
-    if (!window.confirm(`Remove skill "${skill.name}"?`)) return;
+    if (!window.confirm(`Remove skill "${skill.label}"?`)) return;
     try {
       await deleteSkill(skill.label);
       setSkills((prev) => prev.filter((s) => s.label !== skill.label));
       setSelected(null);
-      setStatus(`Removed ${skill.name}.`);
+      setStatus(`Removed ${skill.label}.`);
     } catch (err) {
       setStatus(err.message || 'Could not remove skill.');
     }
@@ -330,7 +328,7 @@ export default function SkillsView() {
   const filtered = (skills ?? []).filter((s) => {
     if (search) {
       const q = search.toLowerCase();
-      if (!s.name?.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q)) return false;
+      if (!s.label?.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q)) return false;
     }
     if (filterProject) {
       const proj = s.projects?.[0];
@@ -340,7 +338,7 @@ export default function SkillsView() {
   });
 
   const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
+    if (sortBy === 'name') return (a.label || '').localeCompare(b.label || '');
     if (sortBy === 'recent') {
       return (b.updatedAt ? Date.parse(b.updatedAt) : 0) - (a.updatedAt ? Date.parse(a.updatedAt) : 0);
     }
