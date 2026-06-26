@@ -30,7 +30,7 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import { ArtifactIcon, isWebAppArtifact, splitArtifactName } from '../components/artifacts/ArtifactIcon';
+import { ArtifactIcon, splitArtifactName } from '../components/artifacts/ArtifactIcon';
 import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
 import {
   PageHeader,
@@ -235,9 +235,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     onMenuOpen?.(artifact, kebabRef.current.getBoundingClientRect());
   };
 
-  // Only web apps are publishable (everything else is a static Draft); the
-  // name renders base-truncated with the extension always visible.
-  const publishable = isWebAppArtifact(artifact);
+  // Publishable = HTML + Markdown (isPublishableArtifact — the same predicate
+  // the Publish action + backend use); those show "Unpublished", everything
+  // else "Draft". Distinct from isWebAppArtifact (icon / name-only), so a .md
+  // is a "file" (shows its extension) yet still publishable. The name renders
+  // base-truncated with the extension always visible.
+  const publishable = isPublishableArtifact(artifact);
   const { base, ext: nameExt } = splitArtifactName(artifact);
   // ↗ — open the live thing: published URL, else served URL, else local file.
   const onOpenExternal = (e) => {
@@ -450,7 +453,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 
   const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
-  const publishable = isWebAppArtifact(artifact);
+  const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
   const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
   const { base, ext: nameExt } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
