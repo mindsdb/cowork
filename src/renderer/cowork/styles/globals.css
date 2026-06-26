@@ -5066,3 +5066,27 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
 .channels-btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* ─── Artifacts grid — responsive columns (pure CSS, container-query) ───────
+   Column count tracks the ARTIFACTS PANEL width (the .scroll-clean query
+   container), not the viewport — so a narrow panel on a wide screen still
+   gets 2 (or 1) columns. 2 by default, 3 when the panel is wide, 1 when tight.
+   The mobile padding override lives in the max-width:640 block above. */
+.artifacts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+@container (min-width: 1024px) {
+  .artifacts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 600px) {
+  .artifacts-grid { grid-template-columns: 1fr; }
+}
+
+/* Card is itself a query container so the access chip can drop its text label
+   (Public / Password / Restricted) to icon-only when the card gets narrow. */
+.artifact-card { container-type: inline-size; }
+@container (max-width: 230px) {
+  .cw-access-label { display: none; }
+}
