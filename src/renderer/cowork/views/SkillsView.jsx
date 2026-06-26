@@ -328,7 +328,6 @@ export default function SkillsView() {
   const [skills, setSkills]           = useState(null);
   const [projects, setProjects]       = useState([]);
   const [selected, setSelected]       = useState(null);
-  const [enabled, setEnabled]         = useState(true);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
   const [toast, setToast]             = useState(null); // { message, type }
   const [search, setSearch]           = useState('');
@@ -422,7 +421,18 @@ export default function SkillsView() {
               {selected.label}
             </span>
             <div style={{ flex: 1 }} />
-            <Toggle checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <Toggle checked={selected.enabled ?? true} onChange={async (e) => {
+              const next = e.target.checked;
+              setSelected((prev) => ({ ...prev, enabled: next }));
+              try {
+                const saved = await saveSkill({ label: selected.label, enabled: next }, true);
+                setSelected(saved);
+                setSkills((prev) => prev?.map((s) => s.label === saved.label ? saved : s) ?? prev);
+              } catch (err) {
+                setSelected((prev) => ({ ...prev, enabled: !next }));
+                showToast(err.message || 'Could not update skill.');
+              }
+            }} />
             <OverflowMenu
               items={[
                 { id: 'try',       label: 'Try in chat', onClick: () => {} },
