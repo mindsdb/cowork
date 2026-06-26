@@ -1,8 +1,10 @@
 # Cowork web image — cowork-server backend + cowork SPA on the same port.
 #
 # Build:
+#     docker build -f cowork/Dockerfile -t cowork:dev .
+#     # Pin a specific version:
 #     docker build -f cowork/Dockerfile -t cowork:dev \
-#       --build-arg COWORK_SERVER_VERSION=0.1.1 .
+#       --build-arg COWORK_SERVER_VERSION=0.2.25.6.20.1 .
 #
 # Run:
 #     docker run -p 26866:26866 \
@@ -20,7 +22,7 @@
 #   py-builder    Python + uv — installs cowork-server from PyPI into /opt/venv
 #   runtime       Python — copies /opt/venv + SPA + wrapper.
 
-ARG COWORK_SERVER_VERSION=0.1.10
+ARG COWORK_SERVER_VERSION=
 
 # ── Stage 1: build the cowork SPA ────────────────────────────────────────
 FROM node:22-slim AS spa-builder

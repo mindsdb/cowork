@@ -3,19 +3,22 @@
 #
 # Installs cowork-server from PyPI into /opt/venv.
 #
-# COWORK_SERVER_VERSION: package version to install. Defaults to the
-#   pinned version below. Override to test a different release.
+# COWORK_SERVER_VERSION: package version to install. When empty (the
+#   default), installs the latest release from PyPI.
 
 set -euo pipefail
 
-DEFAULT_VERSION="0.1.10"
-VERSION="${COWORK_SERVER_VERSION:-$DEFAULT_VERSION}"
-
-echo "→ Installing cowork-server==${VERSION} from PyPI" >&2
+VERSION="${COWORK_SERVER_VERSION:-}"
 
 # Create the target venv and install into it.
 uv venv /opt/venv
-uv pip install --python /opt/venv/bin/python "cowork-server==${VERSION}"
+if [ -n "$VERSION" ]; then
+    echo "→ Installing cowork-server==${VERSION} from PyPI" >&2
+    uv pip install --python /opt/venv/bin/python "cowork-server==${VERSION}"
+else
+    echo "→ Installing latest cowork-server from PyPI" >&2
+    uv pip install --python /opt/venv/bin/python "cowork-server"
+fi
 
 # Sanity-check: confirm the cowork server app can be imported.
 /opt/venv/bin/python -c "from cowork.server import app; print('✓ cowork-server installed.')"
