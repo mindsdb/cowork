@@ -945,6 +945,14 @@ export default function SettingsView({
     setTested(false);
     try {
       await onSave(withResolvedRoles(settings));
+      // Record the harness swap only now that it's persisted (ENG-385). Compare
+      // against the pre-save snapshot — settingsRef holds the latest value since
+      // the closure `settings` is stale after the await.
+      try {
+        const prevHarness = lastSavedJson ? (JSON.parse(lastSavedJson).harness || 'anton') : null;
+        const savedHarness = settingsRef.current?.harness || 'anton';
+        if (prevHarness && savedHarness !== prevHarness) trackHarnessSwapped(prevHarness, savedHarness);
+      } catch { /* analytics must never break Save */ }
       const tasks = [validateSettings()];
       if (shouldTestLlm) tasks.push(runProviderTests());
       const [result] = await Promise.all(tasks);
@@ -1593,12 +1601,7 @@ export default function SettingsView({
         <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
           <ToggleGroup
             value={settings.harness || 'anton'}
-            onValueChange={(v) => {
-              const from = settings.harness || 'anton';
-              setSetting('harness', v);
-              setLlmDirty(true);
-              if (v !== from) trackHarnessSwapped(from, v);
-            }}
+            onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
             aria-label="Agent harness"
             options={[
               { value: 'anton',  label: 'Anton',  'aria-label': 'Use Anton agent',  title: 'Anton — the default AI agent.' },

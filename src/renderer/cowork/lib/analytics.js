@@ -15,11 +15,11 @@
 //   harness_swapped        — { from, to, surface }
 //   app_installed          — { surface }            desktop, once per install
 //
-// Every event also carries cohort-hygiene flags so internal traffic can be
-// filtered out of the funnel (ENG-385): `is_ci` (CI/QA builds or `?ci=1`) and
-// `is_internal` (a signed-in mindsdb.com user). The actual exclusion is a
-// PostHog-side cohort/filter on these properties — stamping them here only
-// makes that possible.
+// Internal traffic is kept out of the funnel (ENG-385): CI/QA sessions
+// (VITE_POSTHOG_ANTON_CI or `?ci=1`) are dropped entirely in capture(), and
+// events from a signed-in mindsdb.com user carry `is_internal: true` for a
+// PostHog-side cohort filter (the Anton project has no reliable person email
+// to filter on, so the flag is derived client-side).
 
 import { host } from '../../platform/host';
 
@@ -95,10 +95,16 @@ async function getDistinctId() {
 }
 
 // Fire-and-forget POST to PostHog Capture API. Never throws, never blocks.
+// Returns a promise that resolves true only when the POST actually succeeded —
+// one-shot callers (trackAppInstalled) rely on this so they don't mark
+// themselves done before the event is delivered. Other callers ignore it.
 function capture(event, properties = {}) {
-  if (!POSTHOG_KEY) return;
-  getDistinctId().then((distinctId) => {
-    if (!distinctId) return;
+  if (!POSTHOG_KEY) return Promise.resolve(false);
+  // CI/QA traffic never reaches PostHog — keeps the funnel cohort clean without
+  // every query having to remember an exclusion filter.
+  if (isCi()) return Promise.resolve(false);
+  return getDistinctId().then((distinctId) => {
+    if (!distinctId) return false;
     const body = JSON.stringify({
       api_key: POSTHOG_KEY,
       event,
@@ -106,18 +112,17 @@ function capture(event, properties = {}) {
       properties: {
         ...properties,
         surface: SURFACE,
-        is_ci: isCi(),
         is_internal: _cachedIsInternal,
         $lib: 'cowork-desktop',
       },
       timestamp: new Date().toISOString(),
     });
-    fetch(`${POSTHOG_HOST}/capture/`, {
+    return fetch(`${POSTHOG_HOST}/capture/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
-    }).catch(() => {});
-  }).catch(() => {});
+    }).then((res) => res.ok).catch(() => false);
+  }).catch(() => false);
 }
 
 // ── Public event helpers ───────────────────────────────────────────
@@ -167,8 +172,10 @@ export async function trackAppInstalled() {
     // localStorage unavailable — skip rather than risk repeat sends.
     return;
   }
-  const distinctId = await getDistinctId();
-  if (!distinctId) return;
+  // Mark only after the event is actually delivered — capture() self-gates on
+  // identity/CI and resolves false on a transient network failure, so a failed
+  // first-launch send won't permanently suppress the install event.
+  const sent = await capture('app_installed');
+  if (!sent) return;
   try { window.localStorage.setItem(APP_INSTALLED_KEY, '1'); } catch { /* best effort */ }
-  capture('app_installed');
 }
