@@ -12,7 +12,7 @@ import { useState } from 'react';
 import Ico from '../Icons';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 
 // Format an ISO timestamp into a relative phrase ("in 3 hours", "5
 // minutes ago"). Fall back to a clean date if it's far away. Keep it
@@ -139,6 +139,7 @@ export default function ScheduleCard({
     <div
       role="button"
       tabIndex={0}
+      className="cw-card"
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
@@ -150,15 +151,6 @@ export default function ScheduleCard({
         display: 'flex', flexDirection: 'column', gap: 10,
         padding: '14px 16px',
         minHeight: 220,
-        background: 'var(--surface)',
-        border: `1px solid ${hover ? 'var(--accent)' : 'var(--line)'}`,
-        borderRadius: 12,
-        cursor: 'pointer',
-        font: 'inherit', color: 'inherit', textAlign: 'left',
-        outline: 'none',
-        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
-        transform: hover ? 'translateY(-1px)' : 'translateY(0)',
-        boxShadow: hover ? '0 6px 22px rgba(15,16,17,0.06)' : 'none',
       }}
     >
       {/* Top row — cadence pill (left) + status pill (right). */}
@@ -333,32 +325,12 @@ function ActionButton({ icon, label, onClick, busy }) {
   return (
     <button
       type="button"
+      className="btn btn--xs"
       onClick={onClick}
       disabled={busy}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '5px 9px', borderRadius: 6,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        color: 'var(--ink-2)',
-        fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-        cursor: busy ? 'not-allowed' : 'pointer',
-        opacity: busy ? 0.6 : 1,
-        transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.background = 'var(--surface)';
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.color = 'var(--ink)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.background = 'var(--surface-2)';
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.color = 'var(--ink-2)';
-      }}
+      style={busy ? { opacity: 0.6 } : undefined}
     >
-      <span style={{ display: 'inline-flex', color: 'currentColor' }}>{icon}</span>
-      {label}
+      {icon}{label}
     </button>
   );
 }

@@ -14,7 +14,7 @@ import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 
 // ── time helpers ──
 
@@ -65,23 +65,10 @@ function CrumbButton({ label, onClick, title, maxWidth }) {
   return (
     <button
       type="button"
+      className="crumb-btn"
       onClick={onClick}
       title={title || label}
-      style={{
-        // outline:0 removed for WCAG 2.4.7 — keyboard focus relies on
-        // the global `button:focus:not(:focus-visible) { outline:none }`
-        // rule, which keeps the ring for true keyboard nav.
-        cursor: 'pointer', background: 'transparent', border: 0,
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e)  => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+      style={{ maxWidth, flexShrink: 1, WebkitAppRegion: 'no-drag' }}
     >{label}</button>
   );
 }
@@ -360,9 +347,7 @@ export default function ScheduleDetailView({
       <div className="scroll-clean" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ fontFamily: FONT_BODY, color: 'var(--ink-3)' }}>
           Schedule not found.{' '}
-          <button onClick={onBack} style={{
-            background: 'transparent', border: 0, color: 'var(--accent)', cursor: 'pointer',
-          }}>Back to scheduled tasks</button>
+          <button className="btn btn--subtle" onClick={onBack} style={{ color: 'var(--accent)' }}>Back to scheduled tasks</button>
         </div>
       </div>
     );
@@ -393,7 +378,7 @@ export default function ScheduleDetailView({
         <span style={{
           padding: '2px 6px',
           fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-          letterSpacing: '0.04em', color: 'var(--ink)',
+          letterSpacing: '-0.005em', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360,
         }}>{task.title || 'Untitled schedule'}</span>
       </div>
@@ -402,7 +387,7 @@ export default function ScheduleDetailView({
 
         {error && (
           <div style={{
-            padding: '8px 10px', borderRadius: 7,
+            padding: '8px 10px', borderRadius: 6,
             background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
             border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
             color: 'var(--danger)', fontSize: 12.5,
@@ -414,7 +399,7 @@ export default function ScheduleDetailView({
           padding: '18px 22px',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
+          borderRadius: 16,
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
           <div className="sched-hero-top" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -511,7 +496,7 @@ export default function ScheduleDetailView({
           padding: '18px 22px',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
+          borderRadius: 16,
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
           <div className="sched-health-top" style={{

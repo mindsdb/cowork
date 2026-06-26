@@ -23,7 +23,7 @@ import {
 } from '../../api';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 function FileList({ files, onRemove }) {
@@ -47,7 +47,7 @@ function FileList({ files, onRemove }) {
             flex: 1, minWidth: 0,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{f.name}</span>
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)' }}>
+          <span style={{ fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)' }}>
             {Math.ceil(f.size / 1024)} KB
           </span>
           <button
@@ -55,14 +55,8 @@ function FileList({ files, onRemove }) {
             onClick={() => onRemove(i)}
             title="Remove"
             aria-label="Remove"
-            style={{
-              background: 'transparent', border: 0, padding: 0,
-              color: 'var(--ink-4)', cursor: 'pointer',
-              display: 'inline-grid', placeItems: 'center',
-              width: 20, height: 20, borderRadius: 4,
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--danger)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; }}
+            className="icon-btn"
+            style={{ width: 20, height: 20, color: 'var(--ink-4)' }}
           >×</button>
         </div>
       ))}
@@ -195,8 +189,8 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           maxHeight: 'min(680px, 88vh)',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+          borderRadius: 16,
+          boxShadow: 'var(--sh-modal)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           fontFamily: FONT_BODY,
         }}
@@ -235,11 +229,12 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
+              fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Project name</span>
             <input
               ref={nameRef}
+              className="field-input"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -251,42 +246,26 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') { e.preventDefault(); create(); }
               }}
-              style={{
-                padding: '9px 11px', borderRadius: 7,
-                background: 'var(--surface-2)',
-                border: '1px solid var(--line)',
-                color: 'var(--ink)',
-                fontFamily: FONT_BODY, fontSize: 13.5,
-                outline: 'none',
-              }}
             />
           </label>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
+              fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Instructions <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
             <textarea
+              className="field-textarea"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder="Tell the agent how to work in this project — codebase conventions, output preferences, things to avoid…"
               rows={5}
               disabled={busy}
               spellCheck={false}
-              style={{
-                padding: '9px 11px', borderRadius: 7,
-                background: 'var(--surface-2)',
-                border: '1px solid var(--line)',
-                color: 'var(--ink)',
-                fontFamily: FONT_BODY, fontSize: 13, lineHeight: 1.5,
-                outline: 'none',
-                resize: 'vertical',
-                minHeight: 80, maxHeight: 220,
-              }}
+              style={{ maxHeight: 220 }}
             />
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+              fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)',
             }}>
               Saved as <code style={{
                 fontFamily: FONT_MONO,
@@ -298,7 +277,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.06em',
+              fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.06em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
             }}>Files <span style={{ textTransform: 'none', letterSpacing: 0, color: 'var(--ink-4)', fontFamily: FONT_BODY, fontWeight: 400 }}>(optional)</span></span>
             <div
@@ -349,7 +328,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
 
           {error && (
             <div style={{
-              padding: '10px 12px', borderRadius: 7,
+              padding: '10px 12px', borderRadius: 6,
               background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
               border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
               color: 'var(--danger)', fontSize: 13,
@@ -375,7 +354,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               cursor: busy ? 'not-allowed' : 'pointer',
               background: 'transparent', border: 0,
               color: 'var(--ink-3)',
-              padding: '7px 14px', borderRadius: 7,
+              padding: '7px 14px', borderRadius: 6,
               fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
               opacity: busy ? 0.5 : 1,
             }}

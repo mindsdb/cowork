@@ -17,9 +17,9 @@ function timeAgo(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (secs < 60)     return 'just now';
-  if (secs < 3600)   return `${Math.floor(secs / 60)} min ago`;
-  if (secs < 86400)  return `${Math.floor(secs / 3600)} h ago`;
+  if (secs < 60) return 'just now';
+  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)} h ago`;
   if (secs < 172800) return 'Yesterday';
   if (secs < 604800) return `${Math.floor(secs / 86400)} d ago`;
   return `${Math.floor(secs / 604800)} w ago`;
@@ -138,20 +138,13 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             role="button"
             aria-label="Task menu"
             onClick={openMenu}
+            className="icon-btn icon-btn--sm"
             style={{
               position: 'absolute', right: 0, top: '50%',
               transform: 'translateY(-50%)',
-              display: 'inline-flex',
-              width: 22, height: 22,
-              alignItems: 'center', justifyContent: 'center',
-              color: 'var(--ink-3)', borderRadius: 5,
-              cursor: 'pointer',
               opacity: showKebab ? 1 : 0,
               pointerEvents: showKebab ? 'auto' : 'none',
-              transition: 'opacity 120ms ease, background 120ms ease, color 120ms ease',
             }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
           >
             {Ico.moreVert(13)}
           </span>
@@ -325,8 +318,8 @@ export default function Sidebar({
   // scroll area on mount + on window resize, then divide by an
   // average row height to pick how many to render inline. Min 5 so
   // the section never collapses to a single row, max all-of-them.
-  const RECENT_ROW_HEIGHT  = 30;   // single recent-item incl. 1px gap
-  const RECENT_FOOTER_PAD  = 36;   // reserved for the Show-more row
+  const RECENT_ROW_HEIGHT = 30;   // single recent-item incl. 1px gap
+  const RECENT_FOOTER_PAD = 36;   // reserved for the Show-more row
   const recentsRef = useRef(null);
   const [recentsHeight, setRecentsHeight] = useState(0);
   // Strict hover state for the Recents heading row only. CSS
@@ -377,7 +370,7 @@ export default function Sidebar({
         flexShrink: 0, height: '100%',
         background: 'var(--sidebar-bg, var(--surface))',
         border: '1px solid var(--line)',
-        borderRadius: 14,
+        borderRadius: 16,
         boxShadow: 'var(--sh-2)',
         width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
         opacity: collapsed ? 0 : 1,
@@ -510,9 +503,9 @@ export default function Sidebar({
           pointerEvents: collapsed ? 'none' : 'auto',
           transition:
             'opacity 240ms cubic-bezier(0.32, 0.72, 0, 1) ' +
-              `${collapsed ? '0ms' : '80ms'}, ` +
+            `${collapsed ? '0ms' : '80ms'}, ` +
             'transform 320ms cubic-bezier(0.22, 1, 0.36, 1) ' +
-              `${collapsed ? '0ms' : '80ms'}`,
+            `${collapsed ? '0ms' : '80ms'}`,
         }}
       >
         {/* New task CTA — outlined neon button */}
@@ -530,9 +523,9 @@ export default function Sidebar({
 
         {/* Primary nav */}
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
-          <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
-          <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
+          <NavItem icon={Ico.folder(15)} label="Projects" onClick={() => onNavigate('projects')} active={activeRoute === 'projects'} badge={showCounters ? (projectsCount || null) : null} />
+          <NavItem icon={Ico.clock(15)} label="Schedules" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
+          <NavItem icon={Ico.sparkle(15)} label="Artifacts" onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in
@@ -542,27 +535,13 @@ export default function Sidebar({
               live "you have N connections" indicator. */}
           <NavItem
             icon={Ico.link(15)}
-            label={connectorsCount > 0 ? 'Connected Apps and Data' : 'Connect Apps and Data'}
+            label="Connections"
             onClick={() => onNavigate('customize')}
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
-        </div>
-
-        {/* Brain-style nav — visually grouped panel.
-            Order: Memories → Skills library → Settings. Labels read
-            as the things the user OWNS (plural collections) rather
-            than the abstract concepts the engine names them after.
-            No heading: the agent name (e.g. "Anton") read as
-            inconsistent branding here, and the bordered panel already
-            sets the group apart on its own. marginTop gives the group
-            a deliberate top gap (matching the breathing room below it,
-            before the Pinned label) in place of the removed heading —
-            a touch tighter than the heading's own footprint, which
-            avoids leaving an empty heading-sized void. */}
-        <div className="anton-group" style={{ marginTop: 18 }}>
-          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} compact />
-          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} compact />
+          <NavItem icon={Ico.brain(15)} label="Memories" onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+          <NavItem icon={Ico.cube(15)} label="Skills" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty
@@ -673,7 +652,7 @@ export default function Sidebar({
                 padding: '7px 10px',
                 background: 'transparent',
                 border: '1px dashed var(--line-2)',
-                borderRadius: 7,
+                borderRadius: 6,
                 color: 'var(--ink-3)',
                 fontFamily: 'var(--font-body)', fontSize: 12,
                 cursor: 'pointer',
@@ -749,54 +728,54 @@ export default function Sidebar({
             FastAPI process IS the host, so start/stop/diagnostics have
             no meaning and we drop the entire pill + power button. */}
         {!host.isWeb && (
-        <div className="anton-sidebar__footer">
-          {/* The whole "backend · <status>" pill is the help affordance
+          <div className="anton-sidebar__footer">
+            {/* The whole "backend · <status>" pill is the help affordance
               now — click anywhere on it to open the server-state modal.
               Replaces the previous standalone "?" icon, which only
               appeared when offline and read as visual clutter. */}
-          <button
-            type="button"
-            className={
-              'status-pill is-clickable' +
-              (serverBusy ? ' is-busy' : serverOnline ? ' is-on' : '')
-            }
-            onClick={onShowServerHelp}
-            title="Backend status — click for details"
-            aria-label="Backend status — click for details"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            <span
-              className={
-                'status-dot' +
-                (serverBusy ? ' busy' : serverOnline ? '' : ' offline')
-              }
-            />
-            <span className="status-text">
-              <span className="status-text__faded">backend ·</span>{' '}
-              {serverBusy ? (
-                <>
-                  <span className="status-text__live">{serverBusyKind}</span>{' '}
-                  <Spinner />
-                </>
-              ) : (
-                <span className={serverOnline ? 'status-text__live' : 'status-text__faded'}>
-                  {serverOnline ? 'connected' : 'offline'}
-                </span>
-              )}
-            </span>
-          </button>
-          <div className="anton-sidebar__footer-actions">
             <button
-              className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
-              onClick={() => onNavigate('settings')}
-              title="Settings"
-              aria-label="Settings"
+              type="button"
+              className={
+                'status-pill is-clickable' +
+                (serverBusy ? ' is-busy' : serverOnline ? ' is-on' : '')
+              }
+              onClick={onShowServerHelp}
+              title="Backend status — click for details"
+              aria-label="Backend status — click for details"
               style={{ WebkitAppRegion: 'no-drag' }}
             >
-              {Ico.settings(13)}
+              <span
+                className={
+                  'status-dot' +
+                  (serverBusy ? ' busy' : serverOnline ? '' : ' offline')
+                }
+              />
+              <span className="status-text">
+                <span className="status-text__faded">backend ·</span>{' '}
+                {serverBusy ? (
+                  <>
+                    <span className="status-text__live">{serverBusyKind}</span>{' '}
+                    <Spinner />
+                  </>
+                ) : (
+                  <span className={serverOnline ? 'status-text__live' : 'status-text__faded'}>
+                    {serverOnline ? 'connected' : 'offline'}
+                  </span>
+                )}
+              </span>
             </button>
+            <div className="anton-sidebar__footer-actions">
+              <button
+                className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                onClick={() => onNavigate('settings')}
+                title="Settings"
+                aria-label="Settings"
+                style={{ WebkitAppRegion: 'no-drag' }}
+              >
+                {Ico.settings(13)}
+              </button>
+            </div>
           </div>
-        </div>
         )}
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

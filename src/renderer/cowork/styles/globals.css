@@ -2385,6 +2385,109 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 .btn--primary .kbd, .btn-primary .kbd { background: rgba(255,255,255,0.18); }
 
+/* ─── Interactive card ────────────────────────────────────────────────
+   Clickable surface with a consistent hover treatment. Standardises the
+   border → accent, shadow → sh-2 pattern across TaskCard, ScheduleCard,
+   ArtifactBubble, and ProjectCard.
+   Use `.cw-card` on the outermost interactive element (<button> or
+   <div role="button">). Layout (grid/flex, padding, gap, minHeight)
+   stays on the component — the class only owns visual treatment. */
+.cw-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  outline: none;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+.cw-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--sh-2);
+}
+.cw-card:active {
+  box-shadow: var(--sh-1);
+}
+.cw-card:focus-visible {
+  outline: 0;
+  box-shadow: var(--ring), var(--sh-1);
+}
+/* Static variant — no hover lift, only subtle border change.
+   For cards that display info but aren't primary navigation targets
+   (e.g. RailCard, info panels). */
+.cw-card--static {
+  cursor: default;
+}
+.cw-card--static:hover {
+  border-color: var(--line-2);
+  box-shadow: var(--sh-1);
+  transform: none;
+}
+
+/* ─── Icon button ─────────────────────────────────────────────────────
+   Small square button for toolbar-style actions (kebab menus, clear
+   field, reveal/hide toggles). Pure CSS hover — no onMouseOver needed.
+   Sizes: default 28×28, .icon-btn--sm 24×24, .icon-btn--lg 32×32. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.icon-btn:active {
+  background: var(--surface-3);
+}
+.icon-btn:focus-visible {
+  outline: 0;
+  box-shadow: var(--ring);
+}
+.icon-btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.4;
+  pointer-events: none;
+}
+.icon-btn--sm { width: 24px; height: 24px; }
+.icon-btn--lg { width: 32px; height: 32px; }
+
+/* ─── Breadcrumb button ─────────────────────────────────────────────────
+   Inline text button used in breadcrumb navigation chrome. Transparent
+   bg that tints on hover; text dims to --ink-3 resting, --ink on hover. */
+.crumb-btn {
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  transition: color 120ms ease, background 120ms ease;
+}
+.crumb-btn:hover { color: var(--ink); background: var(--surface-2); }
+
 /* ─── Type scale (per guideline) ─────────────────────────────────────── */
 .s-display     { font-family: var(--font-sans); font-size: 44px;   line-height: 1.05; letter-spacing: -0.025em; font-weight: 600; color: var(--ink); }
 .s-h1          { font-family: var(--font-sans); font-size: 28px;   line-height: 1.15; letter-spacing: -0.02em;  font-weight: 600; color: var(--ink); }

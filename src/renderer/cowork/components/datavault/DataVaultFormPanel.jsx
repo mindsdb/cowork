@@ -663,17 +663,12 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           onClick={handleClose}
           title="Close form"
           aria-label="Close form"
+          className="icon-btn"
           style={{
             flexShrink: 0,
             width: 38, alignSelf: 'stretch',
-            background: 'transparent', border: 0,
-            color: 'var(--ink-4)',
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer',
-            transition: 'color 140ms ease, background 140ms ease',
+            borderRadius: 0,
           }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
         >
           {Ico.close ? Ico.close(13) : <span style={{ fontSize: 16, lineHeight: 1 }}>×</span>}
         </button>
@@ -754,16 +749,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   ...(Object.keys(methodsPatch).length ? { methods: methodsPatch } : {}),
                 });
               }}
-              style={{
-                alignSelf: 'flex-start',
-                padding: '6px 14px', borderRadius: 7,
-                background: 'var(--accent)', border: 0,
-                color: '#fff', fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', fontFamily: FONT_BODY,
-                transition: 'opacity 140ms ease',
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.opacity = '0.85'; }}
-              onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
+              className="btn-primary"
+              style={{ alignSelf: 'flex-start' }}
             >
               Try again
             </button>
@@ -802,16 +789,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                   onClick={() => setDismissedStatus(spec.status_text)}
                   title="Dismiss"
                   aria-label="Dismiss status"
-                  style={{
-                    width: 20, height: 20, borderRadius: 5,
-                    background: 'transparent', border: 0, padding: 0,
-                    color: 'var(--ink-4)',
-                    display: 'inline-grid', placeItems: 'center',
-                    cursor: 'pointer', flex: '0 0 20px',
-                    transition: 'color 120ms ease, background 120ms ease',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-4)'; e.currentTarget.style.background = 'transparent'; }}
+                  className="icon-btn"
+                  style={{ width: 20, height: 20, flex: '0 0 20px' }}
                 >
                   {Ico.close ? Ico.close(11) : <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>}
                 </button>
@@ -857,7 +836,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             />
             {error && (
               <div style={{
-                marginTop: 10, padding: '8px 10px', borderRadius: 7,
+                marginTop: 10, padding: '8px 10px', borderRadius: 6,
                 background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
                 border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
                 color: 'var(--danger)', fontSize: 12,

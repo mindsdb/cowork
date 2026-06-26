@@ -49,7 +49,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "'Inter', system-ui, sans-serif";
 const FONT_MONO    = "'JetBrains Mono', monospace";
 const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
@@ -72,7 +72,7 @@ function Divider({ label }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
-      fontFamily: FONT_DISPLAY, fontWeight: 600, letterSpacing: '0.18em',
+      fontFamily: FONT_BODY, fontWeight: 500, letterSpacing: '0.06em',
       fontSize: 10.5, color: T.ink4, textTransform: 'uppercase',
       marginTop: 8,
     }}>
@@ -206,7 +206,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             <span style={{
-              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+              fontFamily: FONT_BODY, fontWeight: 600, fontSize: 14,
               color: T.ink, letterSpacing: '-0.005em',
             }}>{title}</span>
             <span style={{
@@ -396,12 +396,12 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
             />
           ) : null}
           <span style={{
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-            letterSpacing: '0.14em', textTransform: 'uppercase', color: T.ink,
+            fontFamily: FONT_BODY, fontWeight: 600, fontSize: 11,
+            letterSpacing: '0.06em', textTransform: 'uppercase', color: T.ink3,
           }}>{agentLabel || 'Anton'}</span>
         </div>
         {time && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
+          <span style={{ fontFamily: FONT_BODY, fontSize: 10.5, color: T.ink4, letterSpacing: '0.01em' }}>
             {state === 'thinking' ? `${time} · drafting` : time}
           </span>
         )}
@@ -589,25 +589,10 @@ function ArtifactCard({ artifact, onOpen }) {
         if (!canAct) return;
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen(); }
       }}
+      className={canAct ? 'cw-card' : 'cw-card cw-card--static'}
       style={{
         display: 'grid', gridTemplateColumns: '64px 1fr auto', alignItems: 'center', gap: 16,
-        background: T.surface, border: `1px solid ${T.line}`,
-        borderRadius: 14, padding: '14px 16px',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)',
-        cursor: canAct ? 'pointer' : 'default',
-        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
-        outline: 'none',
-      }}
-      onMouseOver={(e) => {
-        if (!canAct) return;
-        e.currentTarget.style.borderColor = T.accent;
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 26px rgba(15,16,17,0.06)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = T.line;
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)';
+        padding: '14px 16px',
       }}
     >
       <div style={{
@@ -630,8 +615,8 @@ function ArtifactCard({ artifact, onOpen }) {
           style={{
             all: 'unset',
             cursor: canAct ? 'pointer' : 'not-allowed',
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0.01em',
+            fontFamily: FONT_BODY, fontWeight: 600, fontSize: 16, color: T.ink,
+            letterSpacing: '-0.01em',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block', minWidth: 0,
             transition: 'color 120ms ease',
@@ -645,8 +630,8 @@ function ArtifactCard({ artifact, onOpen }) {
         </span>
         {previewText && (
           <span title={previewText} style={{
-            fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4,
-            marginTop: 2, letterSpacing: '0.04em',
+            fontFamily: FONT_BODY, fontSize: 10.5, color: T.ink4,
+            marginTop: 2, letterSpacing: '0.01em',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {previewText}
@@ -683,7 +668,7 @@ function ArtifactCard({ artifact, onOpen }) {
                 style={{
                   position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
                   background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  boxShadow: 'var(--sh-popup)', padding: 4, minWidth: 140,
                   display: 'flex', flexDirection: 'column', gap: 2,
                 }}
               >
@@ -694,7 +679,7 @@ function ArtifactCard({ artifact, onOpen }) {
                     role="menuitem"
                     onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
                     style={{
-                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
+                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 6,
                       fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
                     }}
                     onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
@@ -730,7 +715,7 @@ function SmallBtn({ primary, children, onClick, title, disabled }) {
       style={{
         all: 'unset', cursor: disabled ? 'not-allowed' : 'pointer',
         display: 'inline-flex', alignItems: 'center', gap: 6,
-        padding: '6px 10px', borderRadius: 7,
+        padding: '6px 10px', borderRadius: 6,
         background: primary ? T.accent : T.surface,
         color: primary ? '#fff' : T.ink,
         border: `1px solid ${primary ? T.accent : T.line2}`,
@@ -768,7 +753,7 @@ function CrumbSep() {
     <span
       aria-hidden="true"
       style={{
-        color: T.ink4, fontFamily: FONT_DISPLAY, fontWeight: 400,
+        color: T.ink4, fontFamily: FONT_BODY, fontWeight: 400,
         fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
         userSelect: 'none',
       }}
@@ -795,8 +780,8 @@ function CrumbButton({ label, onClick, title, maxWidth }) {
         // suppresses the mouse-click ring while preserving the
         // keyboard-focus ring for WCAG 2.4.7.
         font: 'inherit',
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: T.ink3,
+        fontFamily: FONT_BODY, fontWeight: 500, fontSize: 13,
+        letterSpacing: '0.01em', color: T.ink3,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         maxWidth, flexShrink: 1,
         padding: '2px 6px', borderRadius: 5,
@@ -1069,17 +1054,11 @@ export default function ChatView({
           onClick={() => isNarrow ? setRailNarrowOpen(true) : setRailOpen(true)}
           title="Expand panel"
           aria-label="Expand panel"
+          className="icon-btn"
           style={{
             position: 'absolute',
             top: 14, right: 14,
             zIndex: 10,
-            width: 28, height: 28,
-            borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer',
-            background: 'transparent',
-            border: 0,
-            color: T.ink3,
             opacity: (effectiveRailOpen || railOverlayOpen) ? 0 : 1,
             transform: (effectiveRailOpen || railOverlayOpen) ? 'translateX(8px)' : 'translateX(0)',
             pointerEvents: (effectiveRailOpen || railOverlayOpen) ? 'none' : 'auto',
@@ -1088,8 +1067,6 @@ export default function ChatView({
               `transform 360ms cubic-bezier(0.32,0.72,0,1) ${(effectiveRailOpen || railOverlayOpen) ? '0ms' : '80ms'}`,
             WebkitAppRegion: 'no-drag',
           }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
         >
           {Ico.panelExpandLeft(15)}
         </button>
@@ -1198,8 +1175,8 @@ export default function ChatView({
                   autoCorrect="off"
                   style={{
                     flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    fontFamily: FONT_BODY, fontWeight: 600, fontSize: 14,
+                    letterSpacing: '-0.005em', color: T.ink,
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
@@ -1226,8 +1203,8 @@ export default function ChatView({
                     }
                   }}
                   style={{
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    fontFamily: FONT_BODY, fontWeight: 600, fontSize: 14,
+                    letterSpacing: '-0.005em', color: T.ink,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     overflowWrap: 'anywhere',
                     minWidth: 0, flex: '0 1 auto',
@@ -1256,21 +1233,13 @@ export default function ChatView({
                     setSettingsAnchor(rect || null);
                     setSettingsOpen(true);
                   }}
+                  className="icon-btn icon-btn--sm"
                   style={{
-                    width: 22, height: 22, borderRadius: 5,
-                    background: settingsOpen ? 'var(--surface-2)' : 'transparent',
-                    border: 0,
-                    color: 'var(--ink-3)',
-                    display: 'inline-grid', placeItems: 'center',
-                    flexShrink: 0,
+                    WebkitAppRegion: 'no-drag',
                     opacity: titleControlsShown ? 1 : 0,
                     pointerEvents: titleControlsShown ? 'auto' : 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-                    WebkitAppRegion: 'no-drag',
+                    ...(settingsOpen ? { background: 'var(--surface-2)' } : {}),
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = settingsOpen ? 'var(--surface-2)' : 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -1415,7 +1384,7 @@ export default function ChatView({
                     <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
                       <div style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
-                        fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                        fontFamily: FONT_BODY, fontSize: 11, color: T.ink4,
                       }}>
                         <StreamCursor />
                         <span>{m._label || 'Thinking…'}</span>
@@ -1477,7 +1446,7 @@ export default function ChatView({
                         maxWidth: 520,
                         display: 'flex', flexDirection: 'column', gap: 10,
                       }}>
-                        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+                        <div style={{ fontFamily: FONT_BODY, fontSize: 15, fontWeight: 600, letterSpacing: '-0.005em', color: T.ink }}>
                           You're out of credits
                         </div>
                         <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
@@ -1525,9 +1494,10 @@ export default function ChatView({
                       display: 'flex', flexDirection: 'column', gap: 10,
                     }}>
                       <div style={{
-                        fontFamily: FONT_DISPLAY,
+                        fontFamily: FONT_BODY,
                         fontSize: 15,
-                        letterSpacing: '0.02em',
+                        fontWeight: 600,
+                        letterSpacing: '-0.005em',
                         color: T.ink,
                       }}>Connect a provider to start chatting</div>
                       <div style={{
@@ -1642,7 +1612,7 @@ export default function ChatView({
                 {!streamingMsg.steps?.length && !streamingMsg.content && (
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
-                    fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                    fontFamily: FONT_BODY, fontSize: 11, color: T.ink4,
                   }}>
                     <StreamCursor />
                     {/* `_placeholderLabel` is set by the pre-first-
@@ -1666,7 +1636,7 @@ export default function ChatView({
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
+                  fontFamily: FONT_BODY, fontSize: 11, color: T.ink4,
                 }}>
                   <StreamCursor />
                   <span>streaming…</span>
@@ -1698,10 +1668,10 @@ export default function ChatView({
               display: 'flex', flexDirection: 'column',
               gap: 6,
               padding: '10px 12px',
-              borderRadius: 14,
+              borderRadius: 16,
               background: 'color-mix(in srgb, var(--accent) 8%, var(--surface))',
               border: '1px solid color-mix(in srgb, var(--accent) 22%, var(--line))',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+              boxShadow: 'var(--sh-popup)',
               animation: 'queue-pop-in 220ms cubic-bezier(0.32, 0.72, 0, 1)',
             }}>
               <div style={{
@@ -1815,7 +1785,7 @@ export default function ChatView({
         zIndex: 51,
         background: 'var(--surface)',
         border: '1px solid var(--line)',
-        borderRadius: 14,
+        borderRadius: 16,
         boxShadow: 'var(--sh-2)',
         transform: railOverlayOpen ? 'translateX(0)' : 'translateX(calc(100% + 18px))',
         transition: 'transform 380ms cubic-bezier(0.22, 1, 0.36, 1)',
@@ -1851,14 +1821,7 @@ export default function ChatView({
             onClick={() => isNarrow ? setRailNarrowOpen(false) : setRailOpen(false)}
             title="Collapse panel"
             aria-label="Collapse panel"
-            style={{
-              all: 'unset', cursor: 'pointer',
-              width: 26, height: 26, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              color: T.ink3,
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+            className="icon-btn icon-btn--sm"
           >
             {Ico.panelCollapseRight(15)}
           </button>

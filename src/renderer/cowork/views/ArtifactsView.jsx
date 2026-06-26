@@ -38,7 +38,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const FONT_BODY = "var(--font-body)";
-const FONT_DISPLAY = "var(--font-display)";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO = "var(--font-mono)";
 
 const EMPTY_ARTIFACTS = [];
@@ -347,16 +347,12 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
               marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
             }}>Allowed emails</label>
             <textarea
+              className="field-textarea mono"
               value={emailsText}
               onChange={(e) => setEmailsText(e.target.value)}
               autoFocus
               rows={3}
               placeholder="alice@acme.com, bob@acme.com"
-              style={{
-                width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8,
-                color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
-              }}
             />
             <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
               {parsedEmails.length} recipient{parsedEmails.length === 1 ? '' : 's'}
@@ -507,7 +503,7 @@ function LocalPathRow({ path }) {
       </span>
       <span style={{
         flex: 1, minWidth: 0,
-        fontFamily: FONT_MONO, fontSize: 11.5,
+        fontFamily: FONT_BODY, fontSize: 11.5,
         color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         direction: 'rtl', textAlign: 'left',
@@ -576,33 +572,15 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     <div
       role="button"
       tabIndex={0}
+      className="cw-card"
       {...hoverProps}
       onClick={() => canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)}
       onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
       style={{
         position: 'relative',
-        cursor: 'pointer',
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        // Card geometry matches ProjectCard so the two grids feel
-        // like the same family: 10px radius, 14/16 padding, 120 min
-        // height, 10px column gap.
-        borderRadius: 10,
         padding: '14px 16px',
         display: 'flex', flexDirection: 'column', gap: 10,
-        transition: 'border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
         minHeight: 120,
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 28px rgba(15,16,17,0.08)';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02)';
-        e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
       {/* Top-right kebab — hover-revealed, absolute so it sits in the
@@ -628,23 +606,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           // visibility was just transitioning).
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); openMenu(e); }}
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            color: 'var(--ink-3)',
-            background: 'transparent', border: 0, padding: 0,
-            cursor: 'pointer',
-            visibility: showControls ? 'visible' : 'hidden',
-            transition: 'background 120ms ease, color 120ms ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'var(--surface-2)';
-            e.currentTarget.style.color = 'var(--ink)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--ink-3)';
-          }}
+          className="icon-btn icon-btn--sm"
+          style={{ visibility: showControls ? 'visible' : 'hidden' }}
         >
           {Ico.moreVert(14)}
         </button>
@@ -729,8 +692,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         <span
           title={projectLabel}
           style={{
-            fontFamily: FONT_MONO, fontSize: 11,
-            color: 'var(--ink-4)', letterSpacing: '0.04em',
+            fontFamily: FONT_BODY, fontSize: 11,
+            color: 'var(--ink-4)', letterSpacing: '0.01em',
             display: 'flex', alignItems: 'baseline', gap: 4,
             minWidth: 0,
           }}
@@ -783,8 +746,8 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             file-count chip surfaces multi-file artifacts at a glance
             without competing with the title for space. */}
         <span style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 11,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
           display: 'flex', alignItems: 'baseline', gap: 8,
           minWidth: 0,
         }}>
@@ -825,7 +788,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       <div style={{ flex: 1 }} />
 
       <div style={{
-        fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11, letterSpacing: '0.01em',
         color: 'var(--ink-4)',
       }}>
         {artifact.updated || '—'}
@@ -849,8 +812,8 @@ const LIST_GRID = '24px 2fr 100px 60px 70px 1fr 110px 36px';
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+      color: 'var(--ink-4)', letterSpacing: '0.06em',
       textTransform: 'uppercase',
       textAlign: align || 'left',
     }}>{children}</div>
@@ -1042,7 +1005,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
               Live
             </span>
           ) : (
-            <span style={{ color: 'var(--ink-5)', fontFamily: FONT_MONO, fontSize: 11 }}>—</span>
+            <span style={{ color: 'var(--ink-5)', fontFamily: FONT_BODY, fontSize: 11 }}>—</span>
           )}
         </div>
 
@@ -1053,14 +1016,14 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         <div
           title={artifact.type || extensionOf(artifact)}
           style={{
-            fontFamily: FONT_MONO, fontSize: 11,
+            fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
             color: 'var(--ink-4)', letterSpacing: '0.06em', textTransform: 'uppercase',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
         >{artifact.type || extensionOf(artifact)}</div>
 
         <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
+          fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
           color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{kindOf(artifact)}</div>
@@ -1113,8 +1076,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         </div>
 
         <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 11,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>{artifact.updated || '—'}</div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1127,17 +1090,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
               setMenuOpen(true);
             }}
             aria-label="Artifact menu"
+            className="icon-btn icon-btn--sm"
             style={{
-              width: 26, height: 26, borderRadius: 6,
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)',
               opacity: showKebab ? 1 : 0,
-              display: 'inline-grid', placeItems: 'center',
-              cursor: 'pointer',
               transition: 'opacity .15s ease, color .15s ease, background .15s ease',
             }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
           >
             {Ico.moreVert(15)}
           </button>
@@ -1518,7 +1475,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(14) }, { value: 'list', label: 'List', icon: Ico.list(14) }]} /></span>}
           counts={
             <ArtifactsCounts
               search={search}

@@ -35,7 +35,7 @@ import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 const FONT_MONO    = 'var(--font-mono)';
 
 // ─── Pin persistence (localStorage) ──────────────────────────────────────
@@ -332,8 +332,8 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
           />
         </div>
         <div style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>
           {busy ? 'Creating…' : '↵ create · esc cancel'}
         </div>
@@ -380,8 +380,8 @@ const LIST_GRID = '3fr 1.2fr 64px 64px 64px 64px 64px 36px';
 function ListHeader() {
   const Cell = ({ children, align }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+      color: 'var(--ink-4)', letterSpacing: '0.06em',
       textTransform: 'uppercase',
       textAlign: align || 'left',
     }}>{children}</div>
@@ -408,7 +408,7 @@ function D1Num({ value }) {
   const isZero = !value;
   return (
     <span style={{
-      fontFamily: FONT_MONO, fontSize: 12,
+      fontFamily: FONT_BODY, fontSize: 12,
       color: isZero ? 'var(--ink-5)' : 'var(--ink)',
       textAlign: 'right',
       fontVariantNumeric: 'tabular-nums',
@@ -425,7 +425,7 @@ function ActiveNum({ value }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
       gap: 6,
-      fontFamily: FONT_MONO, fontSize: 12,
+      fontFamily: FONT_BODY, fontSize: 12,
       color: isZero ? 'var(--ink-5)' : 'var(--accent)',
       textAlign: 'right',
       fontVariantNumeric: 'tabular-nums',
@@ -599,18 +599,11 @@ function ListRow({
             onMenuOpen?.(project, rect);
           }}
           aria-label="Project menu"
+          className="icon-btn icon-btn--sm"
           style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
             opacity: revealed || isReserved ? 1 : 0,
-            display: isReserved ? 'none' : 'inline-grid',
-            placeItems: 'center',
-            cursor: 'pointer',
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
+            display: isReserved ? 'none' : undefined,
           }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
         >
           {Ico.moreVert(15)}
         </button>
@@ -669,23 +662,10 @@ function Crumb({ label, onClick, title, maxWidth }) {
   return (
     <button
       type="button"
+      className="crumb-btn"
       onClick={onClick}
       title={title}
-      style={{
-        // outline:0 removed for WCAG 2.4.7 — keyboard focus relies on
-        // the global `button:focus:not(:focus-visible) { outline:none }`
-        // rule, which keeps the ring for true keyboard nav.
-        cursor: 'pointer', background: 'transparent', border: 0,
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+      style={{ maxWidth, flexShrink: 1, WebkitAppRegion: 'no-drag' }}
     >
       {label}
     </button>
@@ -784,12 +764,9 @@ function ProjectDetail({
           onClick={() => setRailOpen(true)}
           title="Expand panel"
           aria-label="Expand panel"
+          className="icon-btn"
           style={{
             position: 'absolute', top: 14, right: 14, zIndex: 10,
-            width: 28, height: 28, borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer', background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
             opacity: railOpen ? 0 : 1,
             transform: railOpen ? 'translateX(8px)' : 'translateX(0)',
             pointerEvents: railOpen ? 'none' : 'auto',
@@ -798,8 +775,6 @@ function ProjectDetail({
               `transform 360ms cubic-bezier(0.32,0.72,0,1) ${railOpen ? '0ms' : '80ms'}`,
             WebkitAppRegion: 'no-drag',
           }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
         >
           {Ico.panelExpandLeft(15)}
         </button>
@@ -851,7 +826,7 @@ function ProjectDetail({
                   style={{
                     flex: '1 1 0', minWidth: 0,
                     fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
+                    letterSpacing: '-0.005em', color: 'var(--ink)',
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
@@ -862,7 +837,7 @@ function ProjectDetail({
                   title={project.name}
                   style={{
                     fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
+                    letterSpacing: '-0.005em', color: 'var(--ink)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     minWidth: 0, flex: '0 1 auto',
                   }}
@@ -879,19 +854,11 @@ function ProjectDetail({
                     setMenuRect(rect || null);
                   }}
                   style={{
-                    width: 22, height: 22, borderRadius: 5,
-                    background: 'transparent', border: 0,
-                    color: 'var(--ink-3)',
-                    display: 'inline-grid', placeItems: 'center',
-                    flexShrink: 0,
+                    WebkitAppRegion: 'no-drag',
                     opacity: showKebab ? 1 : 0,
                     pointerEvents: showKebab ? 'auto' : 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-                    WebkitAppRegion: 'no-drag',
                   }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                  className="icon-btn icon-btn--sm"
                 >
                   {Ico.moreVert(13)}
                 </button>
@@ -979,15 +946,8 @@ function ProjectDetail({
             onClick={() => setRailOpen(false)}
             title="Collapse panel"
             aria-label="Collapse panel"
-            style={{
-              cursor: 'pointer', background: 'transparent', border: 0,
-              width: 26, height: 26, borderRadius: 6,
-              display: 'inline-grid', placeItems: 'center',
-              color: 'var(--ink-3)',
-              WebkitAppRegion: 'no-drag',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
+            className="icon-btn icon-btn--sm"
+            style={{ WebkitAppRegion: 'no-drag' }}
           >
             {Ico.panelCollapseRight(15)}
           </button>
@@ -1224,7 +1184,7 @@ export default function ProjectsView({
           />
         }
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(14) }, { value: 'list', label: 'List', icon: Ico.list(14) }]} /></span>}
         counts={
           <ProjectsCounts
             search={search}

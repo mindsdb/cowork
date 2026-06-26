@@ -10,7 +10,7 @@ import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 const FONT_MONO    = 'var(--font-mono)';
 
 function relativeAge(input) {
@@ -102,7 +102,7 @@ function D1Stat({ label, value }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'baseline', gap: 5,
-      fontFamily: FONT_MONO,
+      fontFamily: FONT_BODY,
     }}>
       <span style={{
         fontSize: 12, fontWeight: 500,
@@ -176,21 +176,17 @@ export function ProjectCard({
     <div
       role="button"
       tabIndex={0}
+      className="cw-card"
       onClick={handleCardClick}
       onKeyDown={handleCardKey}
       {...hoverProps}
       style={{
-        cursor: editing ? 'default' : 'pointer',
-        background: hovered && !editing ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${editing ? 'var(--accent)' : (isSelected ? 'var(--accent)' : (hovered ? 'var(--line-2)' : 'var(--line)'))}`,
-        borderRadius: 10,
         padding: '14px 16px',
         minHeight: 120,
         display: 'flex', flexDirection: 'column', gap: 10,
-        transition: 'background .15s ease, border-color .15s ease',
         position: 'relative',
-        outline: 'none',
-        font: 'inherit', color: 'inherit',
+        ...(editing ? { cursor: 'default', borderColor: 'var(--accent)' } : {}),
+        ...(isSelected && !editing ? { borderColor: 'var(--accent)' } : {}),
       }}
     >
       {/* Top row — folder + name + pin + ⋯ */}
@@ -248,22 +244,16 @@ export function ProjectCard({
         {/* Pin button — visible on hover for unpinned, always for pinned */}
         <button
           type="button"
+          className="icon-btn icon-btn--sm"
           onClick={(e) => { e.stopPropagation(); onTogglePin?.(project, !pinned); }}
           title={pinned ? 'Unpin project' : 'Pin project'}
           aria-label={pinned ? 'Unpin project' : 'Pin project'}
           aria-pressed={pinned}
           style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
             color: pinned ? 'var(--accent)' : 'var(--ink-4)',
             opacity: pinned || showHoverActions ? 1 : 0,
-            display: 'inline-grid', placeItems: 'center',
-            cursor: 'pointer', flexShrink: 0,
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-            font: 'inherit',
+            flexShrink: 0,
           }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
         >
           {Ico.pin(13)}
         </button>
@@ -272,6 +262,7 @@ export function ProjectCard({
         <button
           ref={triggerRef}
           type="button"
+          className="icon-btn icon-btn--sm"
           onClick={(e) => {
             e.stopPropagation();
             const rect = triggerRef.current?.getBoundingClientRect();
@@ -280,18 +271,10 @@ export function ProjectCard({
           title="Project menu"
           aria-label="Project menu"
           style={{
-            width: 26, height: 26, borderRadius: 6,
-            background: 'transparent', border: 0,
-            color: 'var(--ink-3)',
             opacity: showHoverActions ? 1 : 0,
-            display: isReserved ? 'none' : 'inline-grid',
-            placeItems: 'center',
-            cursor: 'pointer', flexShrink: 0,
-            transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-            font: 'inherit',
+            display: isReserved ? 'none' : undefined,
+            flexShrink: 0,
           }}
-          onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
         >
           {Ico.moreVert(15)}
         </button>
@@ -325,8 +308,8 @@ export function ProjectCard({
 
         <span style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 6,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>
           {active && (
             <span aria-hidden style={{
