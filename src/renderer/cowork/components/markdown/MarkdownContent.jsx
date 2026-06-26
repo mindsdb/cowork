@@ -207,9 +207,9 @@ const _SIZES = {
   default: {
     root: 'markdown-content space-y-4 break-words text-body text-ink-2',
     p: 'font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[20px] font-semibold text-ink mt-6 mb-3',
-    h2: 'font-display text-[17px] font-semibold text-ink mt-5 mb-2',
-    h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-4 mb-1.5',
+    h1: 'font-body text-[20px] font-semibold text-ink mt-6 mb-3 tracking-[-0.01em]',
+    h2: 'font-body text-[17px] font-semibold text-ink mt-5 mb-2 tracking-[-0.005em]',
+    h3: 'font-body text-[13px] font-medium text-ink-3 mt-4 mb-1.5',
     ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-2.5',
     ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-2.5',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-3',
@@ -220,9 +220,9 @@ const _SIZES = {
   dense: {
     root: 'markdown-content space-y-2 break-words text-[12.5px] leading-[1.65] text-ink-2',
     p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[16px] font-semibold text-ink mt-3.5 mb-1.5 tracking-[-0.005em]',
-    h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5 tracking-[-0.005em]',
-    h3: 'font-display text-[12px] font-semibold uppercase tracking-wider text-ink-3 mt-2.5 mb-1',
+    h1: 'font-body text-[16px] font-semibold text-ink mt-3.5 mb-1.5 tracking-[-0.005em]',
+    h2: 'font-body text-[14px] font-semibold text-ink mt-3 mb-1.5 tracking-[-0.005em]',
+    h3: 'font-body text-[12px] font-medium text-ink-3 mt-2.5 mb-1',
     ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2 text-[12.5px]',
@@ -445,7 +445,7 @@ export function MarkdownContent({
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
-    hr: () => <hr className="my-5 border-t border-line opacity-25" />,
+    hr: () => <hr className="my-5 border-t border-line" />,
     pre: (props) => {
       // Fenced code blocks with a language are handled by MarkdownCode,
       // which renders its own anton-code-block wrapper. We drop the outer

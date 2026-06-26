@@ -25,7 +25,7 @@ function Choice({ active, onClick, children }) {
         cursor: 'pointer',
         fontSize: 13,
         fontWeight: 600,
-        letterSpacing: '0.02em',
+        letterSpacing: '-0.005em',
         border: active
           ? '1px solid var(--gf-accent, #1F9CB0)'
           : '1px solid var(--gf-line, rgba(128,128,128,0.3))',

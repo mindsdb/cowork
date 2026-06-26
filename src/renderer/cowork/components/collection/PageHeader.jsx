@@ -19,7 +19,7 @@
 //   />
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 const FONT_MONO    = 'var(--font-mono)';
 
 export function PageHeader({ title, subtitle, eyebrow, actions, subtitleBottom }) {
@@ -35,7 +35,7 @@ export function PageHeader({ title, subtitle, eyebrow, actions, subtitleBottom }
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {eyebrow && (
             <div style={{
-              fontFamily: FONT_MONO, fontSize: 10.5, letterSpacing: '0.14em',
+              fontFamily: FONT_BODY, fontSize: 10.5, letterSpacing: '0.14em',
               textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
               marginBottom: 2,
             }}>{eyebrow}</div>

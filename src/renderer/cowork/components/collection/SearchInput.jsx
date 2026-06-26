@@ -19,7 +19,7 @@ export function SearchInput({
     <div style={{
       flex: '0 1 320px', minWidth: 220,
       display: 'inline-flex', alignItems: 'center', gap: 8,
-      padding: '7px 11px', borderRadius: 7,
+      padding: '7px 11px', borderRadius: 6,
       background: 'var(--surface-2)',
       border: '1px solid var(--line)',
     }}>

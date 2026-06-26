@@ -208,8 +208,8 @@ export default function ServerOfflineHelpModal({
           maxHeight: 'min(640px, 88vh)',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+          borderRadius: 16,
+          boxShadow: 'var(--sh-modal)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           fontFamily: FONT_BODY,
         }}
@@ -266,7 +266,7 @@ export default function ServerOfflineHelpModal({
             fontFamily: FONT_MONO, fontSize: 11,
           }}>
             <div style={{
-              padding: '8px 10px', borderRadius: 7,
+              padding: '8px 10px', borderRadius: 6,
               background: 'var(--surface-2)', border: '1px solid var(--line)',
             }}>
               <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Port</div>
@@ -274,7 +274,7 @@ export default function ServerOfflineHelpModal({
             </div>
             {state === 'offline' && (
               <div style={{
-                padding: '8px 10px', borderRadius: 7,
+                padding: '8px 10px', borderRadius: 6,
                 background: 'var(--surface-2)', border: '1px solid var(--line)',
               }}>
                 <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Exit code</div>
@@ -282,7 +282,7 @@ export default function ServerOfflineHelpModal({
               </div>
             )}
             <div style={{
-              padding: '8px 10px', borderRadius: 7,
+              padding: '8px 10px', borderRadius: 6,
               background: 'var(--surface-2)', border: '1px solid var(--line)',
             }}>
               <div style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 10 }}>Last attempt</div>

@@ -477,7 +477,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       {project?.name && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="font-body text-[11px] font-semibold text-ink-4">
               Project files{projectFiles.length > 1 ? ` · ${projectFiles.length}` : ''}
             </span>
             <button
@@ -566,7 +566,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
       {sessionRelevant && (
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
+            <span className="font-body text-[11px] font-semibold text-ink-4">
               Task uploads{sessionAttachments.length > 1 ? ` · ${sessionAttachments.length}` : ''}
             </span>
             <button
@@ -725,7 +725,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         if (visible.length === 0) return null;
         return (
           <div key={section.scope} className="flex flex-col gap-0.5">
-            <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4 px-1 mb-1">
+            <span className="font-body text-[11px] font-semibold text-ink-4 px-1 mb-1">
               {/* Display label spelled out — "Project" / "Global" on
                   their own read as project metadata, not memory. The
                   vault scope (`section.scope`) is still the canonical

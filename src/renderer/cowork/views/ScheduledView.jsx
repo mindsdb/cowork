@@ -29,8 +29,8 @@ const SORT_OPTIONS = [
 ];
 
 const VIEW_OPTIONS = [
-  { value: 'grid', label: 'Grid', icon: Ico.grid(12) },
-  { value: 'list', label: 'List', icon: Ico.list(12) }
+  { value: 'grid', label: 'Grid', icon: Ico.grid(14) },
+  { value: 'list', label: 'List', icon: Ico.list(14) }
 ];
 
 // Match the storage-key convention used by ArtifactsView /
@@ -170,7 +170,7 @@ export default function ScheduledView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} size="sm" aria-label="View" options={VIEW_OPTIONS} />}
+          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} aria-label="View" options={VIEW_OPTIONS} />}
           counts={
             <>
               {(search || '').trim().length > 0
@@ -191,7 +191,7 @@ export default function ScheduledView({
 
       {error && (
         <div style={{
-          margin: '0 28px 12px', padding: '8px 10px', borderRadius: 7,
+          margin: '0 28px 12px', padding: '8px 10px', borderRadius: 6,
           background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
           border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
           color: 'var(--danger)', fontSize: 12.5,
@@ -273,7 +273,7 @@ export default function ScheduledView({
 //   • Last run
 //   • action menu (hover-revealed)
 
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 const FONT_MONO = 'var(--font-mono)';
 
 // 24px dot · 2.2fr title · 90px cadence · 1.1fr project · 130px next ·
@@ -290,8 +290,8 @@ const LIST_GRID = '24px minmax(0, 2.2fr) 90px minmax(0, 1.1fr) 130px 110px 190px
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
+      fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+      color: 'var(--ink-4)', letterSpacing: '0.06em',
       textTransform: 'uppercase',
       textAlign: align || 'left',
     }}>{children}</div>
@@ -382,8 +382,8 @@ function ScheduleListRow({
               app was off. Cleared on the next successful run. */}
           {missedRuns > 0 && (
             <span style={{
-              fontFamily: FONT_MONO, fontSize: 10.5,
-              color: 'var(--ink-4)', letterSpacing: '0.04em',
+              fontFamily: FONT_BODY, fontSize: 10.5,
+              color: 'var(--ink-4)', letterSpacing: '0.01em',
               flexShrink: 0,
             }}>
               missed {missedRuns}
@@ -400,7 +400,7 @@ function ScheduleListRow({
       </div>
 
       <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
+        fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
         color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
       }}>{cadenceLabel}</div>
 
@@ -438,14 +438,14 @@ function ScheduleListRow({
       </div>
 
       <div title={absoluteFull(task.nextRunAt)} style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-3)', letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11,
+        color: 'var(--ink-3)', letterSpacing: '0.01em',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{task.enabled ? formatAbsolute(task.nextRunAt) : 'Paused'}</div>
 
       <div title={task.lastRunAt ? absoluteFull(task.lastRunAt) : ''} style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
+        fontFamily: FONT_BODY, fontSize: 11,
+        color: 'var(--ink-4)', letterSpacing: '0.01em',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{task.lastRunAt ? formatAbsolute(task.lastRunAt) : '—'}</div>
 
@@ -492,19 +492,11 @@ function RowAction({ icon, label, onClick, busy }) {
   return (
     <button
       type="button"
+      className="btn btn--xs"
       onClick={onClick}
       disabled={busy}
       title={label}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        padding: '4px 8px', borderRadius: 6,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        color: 'var(--ink-2)',
-        fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-        cursor: busy ? 'not-allowed' : 'pointer',
-        opacity: busy ? 0.6 : 1,
-      }}
+      style={busy ? { opacity: 0.6 } : undefined}
     >{icon}{label}</button>
   );
 }
@@ -517,7 +509,7 @@ function EmptyState({ onCreate, agentLabel }) {
     <div style={{
       margin: '40px 28px',
       padding: '40px 28px',
-      borderRadius: 14,
+      borderRadius: 16,
       border: '1px dashed var(--line-2)',
       background: 'var(--surface)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
@@ -532,7 +524,7 @@ function EmptyState({ onCreate, agentLabel }) {
         {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
       </span>
       <div style={{
-        fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600,
+        fontFamily: 'var(--font-body)', fontSize: 18, fontWeight: 600,
         color: 'var(--ink)',
       }}>No scheduled tasks yet</div>
       <div style={{

@@ -37,7 +37,7 @@ export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
         onClick={() => setOpen((v) => !v)}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '7px 11px', borderRadius: 7,
+          padding: '7px 11px', borderRadius: 6,
           background: 'var(--surface-2)',
           border: '1px solid var(--line)',
           color: 'var(--ink-2)',
@@ -58,7 +58,7 @@ export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
           background: 'var(--surface)',
           border: '1px solid var(--line)',
           borderRadius: 8,
-          boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+          boxShadow: 'var(--sh-popup)',
           padding: '4px 0',
         }}>
           {options.map((opt) => (

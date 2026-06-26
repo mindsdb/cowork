@@ -156,7 +156,7 @@ function _csvRowsToGfmTable(rows) {
 }
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Single-row "label: value [copy]" — used twice in the header (local
@@ -693,7 +693,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
               <span
                 title={`Artifact type: ${artifact.type}`}
                 style={{
-                  fontFamily: FONT_MONO, fontSize: 10,
+                  fontFamily: FONT_BODY, fontSize: 10,
                   color: 'var(--ink-4)', letterSpacing: '0.08em',
                   textTransform: 'uppercase',
                   background: 'var(--surface-2)',
@@ -705,7 +705,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
             )}
             {typeof artifact.fileCount === 'number' && artifact.fileCount > 1 && (
               <span style={{
-                fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+                fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)',
                 flexShrink: 0,
               }}>· {artifact.fileCount} files</span>
             )}
@@ -798,17 +798,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete, on
                 type="button"
                 aria-label="More actions"
                 title="More actions"
-                style={{
-                  cursor: 'pointer',
-                  background: 'transparent',
-                  border: '1px solid var(--line)',
-                  color: 'var(--ink-2)',
-                  width: 32, height: 30, borderRadius: 8,
-                  display: 'inline-grid', placeItems: 'center',
-                  transition: 'background .12s ease, color .12s ease',
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
+                className="btn btn--icon"
               >
                 {Ico.moreVert(15)}
               </button>

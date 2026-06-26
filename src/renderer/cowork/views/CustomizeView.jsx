@@ -20,7 +20,7 @@ import {
 } from '../components/collection';
 
 const FONT_BODY    = "var(--font-body)";
-const FONT_DISPLAY = "var(--font-display)";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO    = "var(--font-mono)";
 
 // ─── Header ──────────────────────────────────────────────────────────────
@@ -152,8 +152,8 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         }}>{name}</span>
         <span style={{
           flexShrink: 0,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5, fontWeight: 600,
+          color: 'var(--ink-4)', letterSpacing: '0.06em',
           textTransform: 'uppercase',
           padding: '2px 7px', borderRadius: 99,
           background: 'var(--surface-3)',
@@ -170,25 +170,18 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       }}>
         <span style={{
           flex: 1,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: FONT_BODY, fontSize: 10.5,
+          color: 'var(--ink-4)', letterSpacing: '0.01em',
         }}>
           {updated ? `updated ${updated}` : 'connected'}
         </span>
         <button
           type="button"
+          className="btn btn--danger btn--xs"
           onClick={handleRemove}
           disabled={busy}
           title="Disconnect"
-          style={{
-            background: 'transparent',
-            border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-            color: 'var(--danger)',
-            padding: '4px 10px', borderRadius: 7,
-            fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-            cursor: busy ? 'progress' : 'pointer',
-            opacity: busy ? 0.6 : 1,
-          }}
+          style={busy ? { cursor: 'progress', opacity: 0.6 } : undefined}
         >
           {busy ? 'Removing…' : 'Disconnect'}
         </button>
@@ -333,7 +326,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           width: 'min(400px, 92vw)',
           background: 'var(--surface)',
           borderLeft: '1px solid var(--line)',
-          boxShadow: '-12px 0 40px rgba(0,0,0,0.12)',
+          boxShadow: 'var(--sh-3)',
           display: 'flex', flexDirection: 'column',
           fontFamily: FONT_BODY,
         }}
@@ -363,7 +356,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             }}>
               {spec?.label || connection.engine}
             </div>
-            <div style={{ fontFamily: FONT_MONO, fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>
+            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 1 }}>
               {connection.name}
             </div>
           </div>
@@ -481,7 +474,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               background: 'transparent',
               border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
               color: 'var(--danger)',
-              padding: '8px 12px', borderRadius: 7,
+              padding: '8px 12px', borderRadius: 6,
               fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
               cursor: 'pointer',
             }}

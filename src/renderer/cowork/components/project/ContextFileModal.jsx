@@ -42,7 +42,7 @@ import { MarkdownContent } from '../markdown/MarkdownContent';
 import { host } from '../../../platform/host';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-body)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 
@@ -461,8 +461,8 @@ export default function ContextFileModal({
           height: 'min(720px, 88vh)',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+          borderRadius: 16,
+          boxShadow: 'var(--sh-modal)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           fontFamily: FONT_BODY,
         }}
@@ -480,7 +480,7 @@ export default function ContextFileModal({
             }}>{headerTitle}</h2>
             {headerSubtitle && (
               <span style={{
-                fontFamily: FONT_MONO, fontSize: 10.5, color: 'var(--ink-4)',
+                fontFamily: FONT_BODY, fontSize: 10.5, color: 'var(--ink-4)',
                 letterSpacing: '0.06em', textTransform: 'uppercase',
               }}>{headerSubtitle}</span>
             )}
@@ -544,7 +544,7 @@ export default function ContextFileModal({
           )}
           {error && (
             <div style={{
-              padding: '10px 12px', borderRadius: 7,
+              padding: '10px 12px', borderRadius: 6,
               background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
               border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
               color: 'var(--danger)', fontSize: 13,
@@ -677,7 +677,7 @@ export default function ContextFileModal({
                   cursor: busy ? 'not-allowed' : 'pointer',
                   background: 'transparent', border: 0,
                   color: 'var(--danger)',
-                  padding: '7px 14px', borderRadius: 7,
+                  padding: '7px 14px', borderRadius: 6,
                   fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
                   opacity: busy ? 0.5 : 1,
                 }}
@@ -701,7 +701,7 @@ export default function ContextFileModal({
                   cursor: busy ? 'not-allowed' : 'pointer',
                   background: 'transparent', border: 0,
                   color: 'var(--ink-3)',
-                  padding: '7px 14px', borderRadius: 7,
+                  padding: '7px 14px', borderRadius: 6,
                   fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
                 }}
               >Cancel</button>
@@ -725,7 +725,7 @@ export default function ContextFileModal({
                   cursor: 'pointer',
                   background: 'transparent', border: 0,
                   color: 'var(--ink-3)',
-                  padding: '7px 14px', borderRadius: 7,
+                  padding: '7px 14px', borderRadius: 6,
                   fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
                 }}
               >Close</button>

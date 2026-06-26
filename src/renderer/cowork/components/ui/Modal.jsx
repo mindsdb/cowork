@@ -26,7 +26,7 @@ import { createPortal } from 'react-dom';
 import Ico from '../Icons';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
+const FONT_DISPLAY = 'var(--font-body)';
 
 // Width × max-height. Heights are caps; modals shrink to content.
 // All three stay inside the viewport on the smallest target screen
@@ -199,8 +199,8 @@ export function Modal({
           ...(height ? { height } : { maxHeight: maxHeight || sz.maxHeight }),
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+          borderRadius: 16,
+          boxShadow: 'var(--sh-modal)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
           animation: 'modal-appear 180ms ease-out both',

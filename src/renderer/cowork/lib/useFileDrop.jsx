@@ -155,7 +155,7 @@ export function FileDropOverlay({ active, label, busy = false, error = '' }) {
           borderRadius: 10,
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          boxShadow: '0 8px 28px rgba(0,0,0,0.18)',
+          boxShadow: 'var(--sh-popup)',
           fontFamily: FONT_BODY,
           fontSize: 14,
           fontWeight: 600,
