@@ -5,6 +5,7 @@ import {
   startConnectorOAuth,
   pollConnectorOAuth,
 } from '../api';
+import { trackDataSourceConnected } from '../lib/analytics';
 
 const PAGE_HOME = 'home';
 const PAGE_CONNECTORS = 'connectors';
@@ -994,6 +995,10 @@ export default function ConnectWorkflowView({ onClose }) {
           if (!cancelled) {
             setDriveAuthPending(false);
             setDriveStatus('Google Drive connected.');
+            // OAuth-proxy connector connected — emit the same data_source_connected
+            // ("Connected to Data") signal the vault-save path already fires
+            // (ENG-376 / ENG-385).
+            trackDataSourceConnected('google_drive');
             refresh().catch(() => {});
           }
           return;

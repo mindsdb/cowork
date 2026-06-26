@@ -45,7 +45,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -1219,6 +1219,13 @@ function AppCore() {
   // serverOnline starts true (the web shell), before fetchHealth has
   // even returned.
   const [health, setHealth] = useState({ status: 'offline', anton_available: false });
+
+  // Desktop "app installed" — fire once per install, after the backend is up
+  // (health 'ok') and an identity is available. trackAppInstalled self-guards
+  // (localStorage marker + waits for a distinct_id), so re-running is safe.
+  useEffect(() => {
+    if (host.isElectron && health.status === 'ok') trackAppInstalled();
+  }, [health.status]);
 
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }

@@ -3,6 +3,7 @@ import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
+import { trackHarnessSwapped } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
@@ -944,6 +945,14 @@ export default function SettingsView({
     setTested(false);
     try {
       await onSave(withResolvedRoles(settings));
+      // Record the harness swap only now that it's persisted (ENG-385). Compare
+      // against the pre-save snapshot — settingsRef holds the latest value since
+      // the closure `settings` is stale after the await.
+      try {
+        const prevHarness = lastSavedJson ? (JSON.parse(lastSavedJson).harness || 'anton') : null;
+        const savedHarness = settingsRef.current?.harness || 'anton';
+        if (prevHarness && savedHarness !== prevHarness) trackHarnessSwapped(prevHarness, savedHarness);
+      } catch { /* analytics must never break Save */ }
       const tasks = [validateSettings()];
       if (shouldTestLlm) tasks.push(runProviderTests());
       const [result] = await Promise.all(tasks);
