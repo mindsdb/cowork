@@ -36,6 +36,7 @@ export const SETTINGS_KEY_MAP = {
   providers_json: 'providers',
   auto_pin: 'autoPin',
   show_dots: 'showDots',
+  show_token_usage: 'showTokenUsage',
   show_counters: 'showCounters',
   accent_variant: 'accentVariant',
   memory_enabled: 'memoryEnabled',

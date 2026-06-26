@@ -50,6 +50,8 @@ export function initialStreamState() {
     error: null,
     /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
     errorCode: null,
+    /** Per-turn token counts from `response.usage_summary`, null until received. */
+    usage: null,
   };
 }
 
@@ -234,6 +236,18 @@ export function reduceStream(state, event, now = Date.now) {
 
   if (type === 'response.completed') {
     return { ...state, steps: closeOpenInspectableSteps(state.steps, eventTs), status: 'done' };
+  }
+
+  if (type === 'response.usage_summary') {
+    return {
+      ...state,
+      usage: {
+        inputTokens: event.input_tokens ?? 0,
+        outputTokens: event.output_tokens ?? 0,
+        cacheReadInputTokens: event.cache_read_input_tokens ?? 0,
+        cacheCreationInputTokens: event.cache_creation_input_tokens ?? 0,
+      },
+    };
   }
 
   if (type === 'response.failed') {

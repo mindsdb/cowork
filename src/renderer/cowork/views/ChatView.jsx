@@ -89,7 +89,14 @@ function Divider({ label }) {
 // is true (matching Claude's pattern where the most recent exchange
 // always shows its toolbar).
 const ICON_SZ = 15;
-function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
+
+function _fmtTokens(n) {
+  if (!n) return '0';
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return String(n);
+}
+
+function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left', usage, showTokenUsage }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     const text = typeof getText === 'function' ? getText() : '';
@@ -136,6 +143,23 @@ function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left'
         >
           {Ico.trash(ICON_SZ)}
         </button>
+      )}
+      {showTokenUsage && usage && (
+        <span style={{
+          fontSize: 10,
+          fontFamily: 'var(--font-mono, monospace)',
+          color: 'var(--ink-4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          marginLeft: 2,
+          userSelect: 'none',
+          letterSpacing: '0.02em',
+        }}>
+          <span title={`${usage.inputTokens ?? 0} input tokens`}>↑{_fmtTokens(usage.inputTokens)}</span>
+          <span style={{ opacity: 0.4 }}>·</span>
+          <span title={`${usage.outputTokens ?? 0} output tokens`}>↓{_fmtTokens(usage.outputTokens)}</span>
+        </span>
       )}
     </div>
   );
@@ -373,7 +397,7 @@ const CHAT_ORB_SIZE = 22;
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // `slotIdHeader` lets the parent register an orb anchor beside the label
 // (while the request is in flight with no step row / body caret yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel, isLast }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel, isLast, usage, showTokenUsage }) {
   // Stable id: never use Math.random() here (would churn register every render).
   const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
   return (
@@ -408,7 +432,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       </div>
       {children}
       {showActions && state !== 'thinking' && (
-        <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+        <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} usage={usage} showTokenUsage={showTokenUsage} />
       )}
     </div>
   );
@@ -852,6 +876,7 @@ export default function ChatView({
   queuedMessages = [],
   onRemoveFromQueue,
   agentLabel,
+  showTokenUsage = false,
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
@@ -1595,6 +1620,8 @@ export default function ChatView({
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
                   isLast={i === lastTurnIdx}
+                  usage={m.usage}
+                  showTokenUsage={showTokenUsage}
                 >
                   {m.steps?.length > 0 && (
                     <ThinkingBlock

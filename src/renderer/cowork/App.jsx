@@ -1644,6 +1644,7 @@ function AppCore() {
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
         const finalHarness = streamState.harness;
+        const finalUsage = streamState.usage;
         const configErrorInBody = finalContent && isAntonConfigError(finalContent, null);
         let assistantTurnIndex = 0;
         setTasks((prev) => prev.map((t) => {
@@ -1660,6 +1661,7 @@ function AppCore() {
                 steps: finalSteps,
                 startedAt: finalStartedAt,
                 harness: finalHarness,
+                usage: finalUsage,
               }] }
             : { ...t, status: 'idle', messages: msgs };
         }));
@@ -3498,6 +3500,7 @@ function AppCore() {
             projects={projects}
             sidebarCollapsed={isNarrow || sidebarCollapsedEffective}
             agentLabel={agentLabel}
+            showTokenUsage={settings.showTokenUsage === true}
           />
         )}
 

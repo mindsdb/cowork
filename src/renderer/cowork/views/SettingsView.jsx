@@ -1763,6 +1763,14 @@ export default function SettingsView({
             aria-label="Animated background"
           />
         </Section>
+        <Section title="Show token usage" subtitle="Display estimated input and output token counts on each assistant message.">
+          <Switch
+            checked={settings.showTokenUsage === true}
+            onCheckedChange={(v) => setSetting('showTokenUsage', v)}
+            title="Show token counts per message."
+            aria-label="Show token usage"
+          />
+        </Section>
         <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
           <Switch
             checked={settings.showCounters !== false}
