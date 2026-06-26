@@ -26,8 +26,8 @@ function EmptyState({ children }) {
 }
 
 const TOAST_THEMES = {
-  error:   { bg: '#2a1a1a', color: '#f5c6c6', accent: '#f87171' },
-  success: { bg: '#162114', color: '#bbf7d0', accent: '#4ade80' },
+  error:   { bg: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',  border: 'color-mix(in srgb, var(--danger) 40%, transparent)',  color: 'var(--danger)',  accent: 'var(--danger)' },
+  success: { bg: 'color-mix(in srgb, var(--success) 12%, var(--surface))', border: 'color-mix(in srgb, var(--success) 40%, transparent)', color: 'var(--ink-2)', accent: 'var(--success)' },
 };
 
 function Toast({ message, type = 'error', onClose }) {
@@ -47,10 +47,11 @@ function Toast({ message, type = 'error', onClose }) {
       padding: '10px 16px',
       borderRadius: 10,
       background: theme.bg,
+      border: `1px solid ${theme.border}`,
       color: theme.color,
       fontSize: 13,
       fontFamily: 'var(--font-body)',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
       maxWidth: 480,
       pointerEvents: 'auto',
     }}>
@@ -84,7 +85,8 @@ function SkillCard({ skill, onClick }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(skill); } }}
       style={{
         cursor: 'pointer',
-        background: hovered ? '#f9f9f9' : '#fff',
+        background: hovered ? 'var(--surface-2)' : 'var(--surface)',
+        border: `1px solid ${hovered ? 'var(--line-2)' : 'var(--line)'}`,
         boxShadow: CARD_SHADOW,
         borderRadius: 8,
         padding: '12px 0 0',
@@ -104,18 +106,18 @@ function SkillCard({ skill, onClick }) {
             flexShrink: 0, width: 20, height: 20, borderRadius: 4,
             boxShadow: CARD_SHADOW,
             fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 500,
-            color: '#828285',
+            color: 'var(--ink-3)',
           }}>/</span>
           <span style={{
             flex: 1, minWidth: 0,
             fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 500,
-            color: '#111115',
+            color: 'var(--ink)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{skill.label}</span>
         </div>
         <span style={{
           fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: '24px',
-          color: '#69696B',
+          color: 'var(--ink-3)',
           display: '-webkit-box',
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
@@ -129,10 +131,10 @@ function SkillCard({ skill, onClick }) {
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '8px 12px',
-        background: '#FCFCFC',
+        background: 'var(--bg)',
         boxShadow: 'inset 0px 0.5px 0px rgba(39,39,42,0.06), inset 0px 1px 1px -0.5px rgba(39,39,42,0.06), inset 0px 2px 2px -1px rgba(39,39,42,0.06)',
         fontFamily: 'var(--font-body)', fontSize: 12,
-        color: '#69696B',
+        color: 'var(--ink-3)',
       }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           {Ico.folder(14)}
@@ -397,7 +399,7 @@ export default function SkillsView() {
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
         <div style={{ padding: 32 }}>
-          {status && <div style={{ marginBottom: 12, color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
+          {status && <div style={{ marginBottom: 12, color: 'var(--danger)', fontSize: 12.5 }}>{status}</div>}
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
@@ -434,10 +436,10 @@ export default function SkillsView() {
 
           {/* Scope */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 500, color: '#828285', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
               Scope
             </div>
-            <p style={{ margin: 0, fontSize: 13.5, color: '#111115', lineHeight: 1.5, userSelect: 'text' }}>
+            <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
               {selected.projects?.[0]}
             </p>
           </div>
@@ -445,10 +447,10 @@ export default function SkillsView() {
           {/* Description */}
           {selected.description && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 500, color: '#828285', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--ink-3)', marginBottom: 4, fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
                 Description
               </div>
-              <p style={{ margin: 0, fontSize: 13.5, color: '#111115', lineHeight: 1.5, userSelect: 'text' }}>
+              <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink)', lineHeight: 1.5, userSelect: 'text' }}>
                 {selected.description}
               </p>
             </div>
@@ -479,7 +481,7 @@ export default function SkillsView() {
             subtitle="Extend Cowork's capabilities with task-specific skills"
             actions={<CreateSkillDropdown onWrite={startNew} />}
           />
-          {status && <div style={{ margin: '12px 32px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
+          {status && <div style={{ margin: '12px 32px 0', color: 'var(--danger)', fontSize: 12.5 }}>{status}</div>}
           <div style={{ padding: '20px 0 0' }}>
             <FilterRow
               search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
