@@ -94,6 +94,13 @@ const Ico = {
   // toggle between hidden and revealed value.
   eye:      (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>,
   eyeOff:   (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18"/><path d="M10.6 6.1A11 11 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.6"/><path d="M6.6 6.6A18 18 0 0 0 2 12s3.5 6 10 6c1.7 0 3.2-.3 4.5-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>,
+  // ── Artifact-viewer top-bar icons (design-supplied, 20-grid) ──────────
+  // Folder with an export arrow — "open the artifact's local folder".
+  openFolder:   (s = 16) => <svg width={s} height={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 8.33325C17.5 6.95254 16.3807 5.83325 15 5.83325H11.338C10.5021 5.83325 9.7215 5.4155 9.25783 4.72L9.0755 4.4465C8.61183 3.751 7.83126 3.33325 6.99538 3.33325H5C3.61929 3.33325 2.5 4.45254 2.5 5.83325V13.3333C2.5 14.714 3.61929 15.8333 5 15.8333H9.16667"/><path d="M13.3545 16.229L16.89 12.6935"/><path d="M13.9434 12.1042H17.4789V15.6398"/></svg>,
+  // Circular arrows — manual reload of the preview.
+  reload:       (s = 16) => <svg width={s} height={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.6667 4.66675V7.33341H12"/><path d="M5.3252 15.3334V12.6667H7.99186"/><path d="M15.3332 10C15.3332 12.9455 12.9454 15.3333 9.99984 15.3333C8.24236 15.3333 6.6463 14.4833 5.6665 13.1719"/><path d="M4.6665 10.0001C4.6665 7.05456 7.05432 4.66675 9.99984 4.66675C11.7362 4.66675 13.3149 5.49646 14.2975 6.78103"/></svg>,
+  // Diagonal arrow — "open in the default browser".
+  arrowUpRight: (s = 16) => <svg width={s} height={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7.99984 6H13.9998V12M13.9998 6L6.1665 13.8333"/></svg>,
 };
 
 export default Ico;

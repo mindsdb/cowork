@@ -858,6 +858,20 @@ export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
 
+// Fresh published/modified/access status for one artifact — the cheap read
+// the preview viewer polls on window focus to light up "Update" when the
+// artifact changes underneath an open preview. Best-effort: returns null on
+// any failure (e.g. an older server without the endpoint) so callers degrade
+// to the prior reopen-to-refresh behaviour rather than throwing.
+export async function fetchArtifactStatus(path) {
+  if (!path) return null;
+  try {
+    return await req(`/artifacts/status?path=${encodeURIComponent(path)}`);
+  } catch {
+    return null;
+  }
+}
+
 // Mount an artifact for iframe preview. Two response shapes:
 //   - kind="static" (HTML artifacts): server returns `relUrl` under
 //     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
