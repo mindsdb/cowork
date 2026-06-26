@@ -47,7 +47,6 @@ import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const FONT_BODY = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
-const FONT_MONO = "var(--font-mono)";
 
 const EMPTY_ARTIFACTS = [];
 
@@ -60,24 +59,6 @@ const SORT_OPTIONS = [
   { id: 'title', label: 'Title (A–Z)' },
   { id: 'type', label: 'Type' },
 ];
-
-function ArtifactsCounts({ search, total, filtered, publishedCount }) {
-  const filterActive = (search || '').trim().length > 0;
-  const countText = filterActive
-    ? `Showing ${filtered} of ${total}`
-    : `${total} ${total === 1 ? 'artifact' : 'artifacts'}`;
-  return (
-    <>
-      {countText}
-      {publishedCount > 0 && (
-        <>
-          {' · '}
-          <span style={{ color: 'var(--accent)' }}>{publishedCount} published</span>
-        </>
-      )}
-    </>
-  );
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -145,117 +126,6 @@ function kindOf(a) {
   return ext || 'file';
 }
 
-// Bare extension (no leading dot) — used for the type subtitle on the
-// card, where we want `type: html` rather than the broader "kind".
-function extensionOf(a) {
-  const fromExt = (a.ext || '').replace(/^\./, '').toLowerCase();
-  if (fromExt) return fromExt;
-  const m = (a.path || '').match(/\.([a-z0-9]+)$/i);
-  return (m?.[1] || 'file').toLowerCase();
-}
-
-// Pick a representative icon for the artifact based on its extension.
-// Mirrors the rough kind buckets server-side: dashboards (HTML), docs
-// (md/txt/pdf), code (py/js/css/etc), data (csv/json), images.
-function iconForArtifact(a) {
-  const ext = extensionOf(a);
-  if (ext === 'html' || ext === 'htm') return Ico.globe;
-  if (['md', 'txt', 'pdf', 'rtf', 'doc', 'docx'].includes(ext)) return Ico.doc;
-  if (['py', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sh', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h'].includes(ext)) return Ico.code;
-  if (['csv', 'json', 'jsonl', 'tsv', 'parquet', 'sqlite', 'db'].includes(ext)) return Ico.database;
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'bmp', 'ico'].includes(ext)) return Ico.image;
-  return Ico.doc;
-}
-
-// ─── Action button (used by the bubble's bottom row) ─────────────────────
-
-function ActionButton({ children, onClick, danger, primary, title }) {
-  const styleBase = {
-    cursor: 'pointer',
-    fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-    padding: '6px 10px', borderRadius: 7,
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-  };
-  if (primary) Object.assign(styleBase, {
-    background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)',
-  });
-  else if (danger) Object.assign(styleBase, {
-    background: 'transparent', color: 'var(--danger)',
-    border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-  });
-  else Object.assign(styleBase, {
-    background: 'transparent', color: 'var(--ink-2)', border: '1px solid var(--line)',
-  });
-  return (
-    <button type="button" onClick={(e) => { e.stopPropagation(); onClick?.(); }} title={title} style={styleBase}>
-      {children}
-    </button>
-  );
-}
-
-// ─── Published pill + URL row (shared between grid + list) ───────────────
-
-// `mode` adds a glyph + tooltip so a password-protected or restricted publish
-// is distinguishable from a public one everywhere the pill shows. Falls back to
-// the legacy `protected` boolean for artifacts without an explicit accessMode.
-function PublishedPill({ mode, protected: isProtected = false }) {
-  const effectiveMode = mode && mode !== 'public' ? mode : (isProtected ? 'password' : 'public');
-  const isRestricted = effectiveMode === 'restricted';
-  const isPwd = effectiveMode === 'password';
-  return (
-    <span
-      title={isRestricted ? 'Published — restricted to selected people'
-        : isPwd ? 'Published — password protected' : 'Published'}
-      style={{
-        background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-        color: 'var(--accent)',
-        padding: '1px 6px', borderRadius: 999,
-        fontSize: 9, fontWeight: 700,
-        lineHeight: 1.2,
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        flexShrink: 0,
-        letterSpacing: '0.05em', textTransform: 'uppercase',
-        fontFamily: FONT_BODY,
-      }}
-    >
-      {isRestricted
-        ? <span style={{ display: 'inline-flex' }}>{Ico.people(9)}</span>
-        : isPwd
-          ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
-          : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
-      Published
-    </span>
-  );
-}
-
-// Shown next to PublishedPill when a published artifact's files changed after
-// publish (server-computed `artifact.modified`). Amber, so it reads as
-// "published version is stale" — distinct from the cyan Published pill.
-function ModifiedPill() {
-  return (
-    <span
-      title="Edited since publish — use Update to push the latest version"
-      style={{
-        background: 'color-mix(in srgb, #f5a623 16%, transparent)',
-        border: '1px solid color-mix(in srgb, #f5a623 40%, transparent)',
-        color: '#f5a623',
-        padding: '1px 6px', borderRadius: 999,
-        fontSize: 9, fontWeight: 700,
-        lineHeight: 1.2,
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        flexShrink: 0,
-        letterSpacing: '0.05em', textTransform: 'uppercase',
-        fontFamily: FONT_BODY,
-      }}
-    >
-      <span style={{ width: 4, height: 4, borderRadius: 99, background: '#f5a623' }} />
-      Modified
-    </span>
-  );
-}
-
 // Publish visibility chooser — a thin wrapper over the shared
 // <AccessChooser>. Owns only the draft + dialog chrome; the Public /
 // Password / Restricted UI and its validation live in one place now.
@@ -299,133 +169,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
   );
 }
 
-function PublishedUrlRow({ url, onOpen, onCopy }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async (e) => {
-    e.stopPropagation();
-    // The parent's onCopy returns a boolean indicating whether the
-    // copy actually landed in the clipboard. Only flip the icon on
-    // success — otherwise we were lying to the user about it working.
-    const ok = await onCopy?.();
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    }
-  };
-  const display = url.replace(/^https?:\/\//, '');
-  return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 0,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        borderRadius: 8,
-        overflow: 'hidden',
-        minWidth: 0,
-      }}
-    >
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
-        title={`Open in browser: ${url}`}
-        style={{
-          flex: 1, minWidth: 0,
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '7px 10px',
-          background: 'transparent', border: 0, cursor: 'pointer',
-          fontFamily: FONT_BODY, fontSize: 12,
-          color: 'var(--ink-2)', textAlign: 'left',
-          transition: 'color 120ms ease, background 120ms ease',
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.color = 'var(--accent)';
-          e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 8%, transparent)';
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.color = 'var(--ink-2)';
-          e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--accent)' }}>
-          {Ico.externalLink(13)}
-        </span>
-        <span style={{
-          minWidth: 0, flex: 1,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {display}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={handleCopy}
-        title={copied ? 'Copied' : 'Copy URL'}
-        style={{
-          flexShrink: 0,
-          padding: '7px 10px',
-          background: 'transparent',
-          border: 0, borderLeft: '1px solid var(--line)',
-          cursor: 'pointer',
-          color: copied ? 'var(--accent)' : 'var(--ink-3)',
-          display: 'inline-flex', alignItems: 'center',
-          transition: 'color 120ms ease, background 120ms ease',
-        }}
-        onMouseOver={(e) => {
-          if (!copied) e.currentTarget.style.color = 'var(--ink)';
-          e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 8%, transparent)';
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.color = copied ? 'var(--accent)' : 'var(--ink-3)';
-          e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        {copied ? Ico.check(13) : Ico.copy(13)}
-      </button>
-    </div>
-  );
-}
-
 // ─── Card / Bubble (grid view) ───────────────────────────────────────────
-
-// Static path row used in place of the published URL pill when the
-// artifact is local-only. Mirrors the URL pill's surface so the card
-// keeps a consistent slot height as state flips between published
-// and not. Ellipsis-truncates a long path; full path lives in the
-// `title` attribute for hover. RTL trick on the path span keeps the
-// filename visible (truncates the front, not the back).
-//
-// Left-to-right mark (U+200E). The `direction: rtl` trick below would
-// otherwise let the bidi algorithm relocate an absolute path's leading
-// "/" to the visual end, rendering a bogus trailing slash. Prefixing the
-// path with a strong-LTR mark pins the leading slash in place.
-const LTR_MARK = String.fromCharCode(0x200e);
-
-function LocalPathRow({ path }) {
-  if (!path) return null;
-  return (
-    <div
-      title={path}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '7px 10px', borderRadius: 8,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        minWidth: 0,
-      }}
-    >
-      <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>
-        {Ico.folder(12)}
-      </span>
-      <span style={{
-        flex: 1, minWidth: 0,
-        fontFamily: FONT_MONO, fontSize: 11.5,
-        color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        direction: 'rtl', textAlign: 'left',
-      }}>{LTR_MARK + path}</span>
-    </div>
-  );
-}
 
 // Ghost icon button for the card header (open ↗ / ⋯). forwardRef so the
 // kebab can be the anchor for the page-level HoverMenu.
@@ -505,7 +249,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 
   return (
     <div
-      className="artifact-card"
+      className="cw-artifact-card"
       role="button"
       tabIndex={0}
       {...hoverProps}
@@ -628,36 +372,6 @@ function ListHeaderRow() {
       <Cell>Status</Cell>
       <Cell />
     </div>
-  );
-}
-
-function StatusDot({ artifact }) {
-  const published = !!artifact.publishedUrl;
-  if (published) {
-    return (
-      <span aria-label="Published" title="Published" style={{
-        width: 8, height: 8, borderRadius: 99,
-        background: 'var(--accent)',
-        boxShadow: '0 0 6px var(--accent-glow)',
-        flexShrink: 0,
-      }} />
-    );
-  }
-  if (artifact.live) {
-    return (
-      <span aria-label="Live preview" title="Live preview" className="pulse-dot" style={{
-        width: 8, height: 8, borderRadius: 99,
-        background: 'var(--success)',
-        boxShadow: '0 0 6px var(--success-glow)',
-        flexShrink: 0,
-      }} />
-    );
-  }
-  return (
-    <span style={{
-      width: 8, height: 8, borderRadius: 99,
-      background: 'var(--ink-5)', flexShrink: 0,
-    }} />
   );
 }
 
@@ -1175,11 +889,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   }, [list, search, sort]);
 
   const total = (list || []).length;
-  // Published count reflects the *visible* set so it tracks the filter
-  // (e.g. "Showing 5 of 12 · 2 published" surfaces what's in the view,
-  // not the global count). The numerator stays accurate while the
-  // denominator changes with the search.
-  const publishedCount = visible.filter((a) => a.publishedUrl).length;
 
   return (
     // Background intentionally omitted so the gravity-field canvas

@@ -5085,8 +5085,10 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 
 /* Card is itself a query container so the access chip can drop its text label
-   (Public / Password / Restricted) to icon-only when the card gets narrow. */
-.artifact-card { container-type: inline-size; }
+   (Public / Password / Restricted) to icon-only when the card gets narrow.
+   Class is `cw-artifact-card` (not `artifact-card`) to avoid a legacy
+   `.artifact-card` rule elsewhere in this file. */
+.cw-artifact-card { container-type: inline-size; }
 @container (max-width: 230px) {
   .cw-access-label { display: none; }
 }
