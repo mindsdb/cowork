@@ -5088,10 +5088,11 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
    (Public / Password / Restricted) to icon-only when the card gets narrow.
    Class is `cw-artifact-card` (not `artifact-card`) to avoid a legacy
    `.artifact-card` rule elsewhere in this file. */
-.cw-artifact-card { container-type: inline-size; }
-/* List status cell is also a query container, so the access label collapses
-   to icon-only when the Status column is tight (frees room for the pills). */
-.cw-status-cell { container-type: inline-size; }
-@container (max-width: 230px) {
-  .cw-access-label { display: none; }
-}
+/* Named query containers so the card and the list status-cell can use
+   independent thresholds (the card has padding; the cell is the bare pill
+   area). Below each threshold the access chip drops its text to icon-only
+   (hover keeps it discoverable) so "Unpublished changes" still fits. */
+.cw-artifact-card { container-type: inline-size; container-name: artcard; }
+.cw-status-cell  { container-type: inline-size; container-name: statuscell; }
+@container artcard (max-width: 400px)   { .cw-access-label { display: none; } }
+@container statuscell (max-width: 380px) { .cw-access-label { display: none; } }
