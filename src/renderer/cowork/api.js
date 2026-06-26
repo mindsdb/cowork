@@ -1132,6 +1132,14 @@ export async function saveSkill(payload, isEdit = false) {
   return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export async function uploadSkillFile(file) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const res = await fetch(BASE + '/skills/upload', { method: 'POST', body: form });
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  return res.json();
+}
+
 export async function deleteSkill(label) {
   return req(`/skills/${encodeURIComponent(label)}`, { method: 'DELETE' });
 }

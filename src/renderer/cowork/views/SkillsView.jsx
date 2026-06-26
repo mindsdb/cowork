@@ -6,7 +6,7 @@ import { Menu } from '../components/ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
-import { deleteSkill, fetchProjects, fetchSkills, saveSkill } from '../api';
+import { deleteSkill, fetchProjects, fetchSkills, saveSkill, uploadSkillFile } from '../api';
 
 
 function relativeAge(input) {
@@ -299,10 +299,119 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
   );
 }
 
-function CreateSkillDropdown({ onWrite }) {
+function UploadSkillModal({ open, onClose, onSaved, onError }) {
+  const [dragging, setDragging] = useState(false);
+  const [file, setFile]         = useState(null);
+  const [busy, setBusy]         = useState(false);
+  const inputRef                = useRef(null);
+
+  useEffect(() => { if (!open) { setFile(null); setBusy(false); } }, [open]);
+
+  const pickFile = (f) => { if (f) setFile(f); };
+
+  const upload = async () => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const saved = await uploadSkillFile(file);
+      onClose();
+      await onSaved(saved);
+    } catch (err) {
+      onError?.(err.message || 'Could not upload skill.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    pickFile(e.dataTransfer.files[0]);
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} width="549px" labelledBy="upload-skill-title">
+      <ModalHeader id="upload-skill-title" title="Upload Skill Files" subtitle="Upload a .md or .skill file to import a skill." onClose={onClose} />
+      <ModalBody padding="20px">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Drop zone */}
+          <div
+            onClick={() => !file && !busy && inputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            style={{
+              height: 160, borderRadius: 12,
+              border: `1px dashed ${dragging ? 'var(--accent)' : file ? 'var(--accent)' : 'var(--line-2)'}`,
+              background: dragging ? 'var(--accent-bg)' : file ? 'var(--accent-bg)' : 'var(--surface-2)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 12, padding: '24px 0',
+              cursor: file ? 'default' : 'pointer',
+              transition: 'border-color .15s ease, background .15s ease',
+            }}
+          >
+            {file ? (
+              <>
+                <span style={{ color: 'var(--accent)' }}>{Ico.upload(32)}</span>
+                <span style={{ fontSize: 13.5, fontFamily: 'var(--font-body)', color: 'var(--ink-2)', fontWeight: 500 }}>
+                  {file.name}
+                </span>
+                <span style={{ fontSize: 12, fontFamily: 'var(--font-body)', color: 'var(--ink-4)' }}>
+                  {(file.size / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setFile(null); }}
+                  style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-body)' }}
+                >
+                  Remove
+                </button>
+              </>
+            ) : (
+              <>
+                <span style={{ color: 'var(--ink-4)' }}>{Ico.upload(32)}</span>
+                <span style={{ fontSize: 13.5, fontFamily: 'var(--font-body)', color: 'var(--ink-3)' }}>
+                  Drag and drop or click to upload
+                </span>
+              </>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".md,.skill,.zip"
+              style={{ display: 'none' }}
+              onChange={(e) => { pickFile(e.target.files[0]); e.target.value = ''; }}
+            />
+          </div>
+
+          {/* File requirements */}
+          <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-3)', fontFamily: 'var(--font-body)' }}>
+            <div style={{ fontWeight: 500, marginBottom: 4 }}>File requirements</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <li>.md file must contain skill name and description formatted in YAML</li>
+              <li>.zip or .skill file must include a SKILL.md file</li>
+            </ul>
+          </div>
+
+        </div>
+      </ModalBody>
+      <ModalFooter align="space-between">
+        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        {file && (
+          <button type="button" className="btn-primary" disabled={busy} onClick={upload}>
+            {busy ? 'Uploading…' : 'Upload'}
+          </button>
+        )}
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+function CreateSkillDropdown({ onWrite, onUpload }) {
   const items = [
     { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(13), onClick: () => {} },
-    { id: 'upload', label: 'Upload a skill',           icon: Ico.upload(13),  onClick: () => {} },
+    { id: 'upload', label: 'Upload a skill',           icon: Ico.upload(13),  onClick: onUpload },
     { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(13),    onClick: onWrite },
   ];
   const trigger = (
@@ -329,6 +438,7 @@ export default function SkillsView() {
   const [projects, setProjects]       = useState([]);
   const [selected, setSelected]       = useState(null);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
+  const [uploadOpen, setUploadOpen]   = useState(false);
   const [toast, setToast]             = useState(null); // { message, type }
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
@@ -488,7 +598,7 @@ export default function SkillsView() {
           <PageHeader
             title="Skills"
             subtitle="Extend Cowork's capabilities with task-specific skills"
-            actions={<CreateSkillDropdown onWrite={startNew} />}
+            actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} />}
           />
 
           <div style={{ padding: '20px 0 0' }}>
@@ -520,6 +630,12 @@ export default function SkillsView() {
           )}
         </>
       )}
+      <UploadSkillModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSaved={onSkillSaved}
+        onError={showToast}
+      />
       <SkillModal
         open={modalSkill !== null}
         onClose={closeModal}
