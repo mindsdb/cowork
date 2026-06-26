@@ -6,19 +6,13 @@ import { execSync } from 'child_process';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
-// Resolve the app version. Priority:
-//   1. COWORK_APP_VERSION env var (set by Docker build-arg or CI)
-//   2. Latest git tag (local dev / Electron builds)
-//   3. package.json fallback
-let appVersion = process.env.COWORK_APP_VERSION || '';
-if (!appVersion) {
-  try {
-    appVersion = execSync('git describe --tags --abbrev=0', { cwd: __dirname, encoding: 'utf-8' }).trim().replace(/^v/, '');
-  } catch { /* no tags or not a git repo */ }
-}
-if (!appVersion) {
-  appVersion = pkg.version;
-}
+// Resolve the app version from the latest git tag (CalVer), falling back
+// to package.json when tags aren't available (e.g. Docker builds stamp
+// package.json before building).
+let appVersion = pkg.version;
+try {
+  appVersion = execSync('git describe --tags --abbrev=0', { cwd: __dirname, encoding: 'utf-8' }).trim().replace(/^v/, '');
+} catch { /* no tags or not a git repo — use package.json */ }
 
 // Bake the git commit hash into the bundle so it's available at runtime
 // for diagnostics. Falls back gracefully outside a git repo.

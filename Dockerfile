@@ -26,8 +26,6 @@ ARG COWORK_SERVER_VERSION=
 
 # ── Stage 1: build the cowork SPA ────────────────────────────────────────
 FROM node:22-slim AS spa-builder
-ARG COWORK_APP_VERSION=
-ENV COWORK_APP_VERSION=${COWORK_APP_VERSION}
 WORKDIR /build
 # Lockfile-only install first → cached layer when only source changes.
 COPY cowork/package.json cowork/package-lock.json ./
