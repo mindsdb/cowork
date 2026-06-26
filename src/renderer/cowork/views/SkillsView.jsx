@@ -98,7 +98,7 @@ function SkillCard({ skill, onClick }) {
       }}
     >
       {/* Top content */}
-      <div style={{ padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ flex: 1, padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           {/* Slash badge */}
           <span style={{
