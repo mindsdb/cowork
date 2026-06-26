@@ -114,6 +114,17 @@ function SkillCard({ skill, onClick }) {
             color: 'var(--ink)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{skill.label}</span>
+          {skill.enabled === false && (
+            <span style={{
+              flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center',
+              height: 20, padding: '0 6px', borderRadius: 4,
+              background: 'color-mix(in srgb, var(--ink) 6%, transparent)',
+              border: '1px solid var(--line)',
+              color: 'var(--ink-3)',
+              fontFamily: 'var(--font-body)', fontSize: 11, fontWeight: 500,
+            }}>Disabled</span>
+          )}
         </div>
         <span style={{
           fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: '24px',
