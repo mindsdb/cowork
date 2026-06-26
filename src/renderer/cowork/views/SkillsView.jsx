@@ -330,7 +330,6 @@ export default function SkillsView() {
   const [selected, setSelected]       = useState(null);
   const [enabled, setEnabled]         = useState(true);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
-  const [status, setStatus]           = useState('');
   const [toast, setToast]             = useState(null); // { message, type }
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
@@ -342,14 +341,14 @@ export default function SkillsView() {
   useEffect(() => {
     fetchSkills()
       .then((data) => setSkills(data.skills || []))
-      .catch((err) => setStatus(err.message || 'Could not load skills.'));
+      .catch((err) => showToast(err.message || 'Could not load skills.'));
     fetchProjects().then(setProjects);
   }, []);
 
   const reload = () =>
     fetchSkills()
       .then((data) => setSkills(data.skills || []))
-      .catch((err) => setStatus(err.message || 'Could not load skills.'));
+      .catch((err) => showToast(err.message || 'Could not load skills.'));
 
   const onSkillSaved = (saved) => {
     setSelected((prev) => prev?.label === saved?.label ? saved : prev);
@@ -363,9 +362,9 @@ export default function SkillsView() {
       await deleteSkill(skill.label);
       setSkills((prev) => prev.filter((s) => s.label !== skill.label));
       setSelected(null);
-      setStatus(`Removed ${skill.label}.`);
+      showToast(`Removed ${skill.label}.`, 'success');
     } catch (err) {
-      setStatus(err.message || 'Could not remove skill.');
+      showToast(err.message || 'Could not remove skill.');
     }
   };
 
@@ -399,7 +398,7 @@ export default function SkillsView() {
       {selected ? (
         // ── Detail view ────────────────────────────────────────────────────
         <div style={{ padding: 32 }}>
-          {status && <div style={{ marginBottom: 12, color: 'var(--danger)', fontSize: 12.5 }}>{status}</div>}
+
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
@@ -481,7 +480,7 @@ export default function SkillsView() {
             subtitle="Extend Cowork's capabilities with task-specific skills"
             actions={<CreateSkillDropdown onWrite={startNew} />}
           />
-          {status && <div style={{ margin: '12px 32px 0', color: 'var(--danger)', fontSize: 12.5 }}>{status}</div>}
+
           <div style={{ padding: '20px 0 0' }}>
             <FilterRow
               search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
