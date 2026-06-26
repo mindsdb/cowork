@@ -96,10 +96,17 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry })
   }
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0, flexWrap: 'wrap' }}>
+    // Fills the status area: Published + access on the left, the
+    // "Unpublished changes" warning pushed to the right (margin-left:auto).
+    // On a tight card it wraps to its own line, still right-aligned there.
+    <span style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
       <Pill tone="green" dot label="Published" />
       <AccessChip mode={mode} />
-      {artifact.modified && <Pill tone="amber" dot label="Unpublished changes" />}
+      {artifact.modified && (
+        <span style={{ marginLeft: 'auto', display: 'inline-flex' }}>
+          <Pill tone="amber" dot label="Unpublished changes" />
+        </span>
+      )}
     </span>
   );
 }
