@@ -7,7 +7,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
-import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
+import { maybeUpdateServer, checkForServerUpdate, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
@@ -972,17 +972,32 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
-    console.log('[ui-updater] apply requested via IPC');
+    console.log('[updater] apply requested via IPC');
     try {
+      // Apply server update first (if available), then UI update.
+      // Server must be updated before the UI reload so the new renderer
+      // talks to a compatible server version.
+      const serverCheck = await checkForServerUpdate();
+      if (serverCheck.updateAvailable) {
+        console.log(`[updater] applying server update: ${serverCheck.currentVersion} → ${serverCheck.latestVersion}`);
+        await maybeUpdateServer();
+      }
+
       const applied = await applyUIUpdate();
-      console.log(`[ui-updater] apply result: ${applied}`);
+      console.log(`[updater] UI apply result: ${applied}`);
       if (applied && mainWindow) {
-        console.log('[ui-updater] reloading window with new bundle');
+        console.log('[updater] reloading window with new bundle');
+        mainWindow.loadFile(getRendererPath());
+      } else if (serverCheck.updateAvailable && mainWindow) {
+        // Server was updated but no UI update — reload to pick up any
+        // API changes the new server version exposes.
+        console.log('[updater] server updated, reloading window');
+        mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
         mainWindow.loadFile(getRendererPath());
       }
-      return applied;
+      return applied || serverCheck.updateAvailable;
     } catch (err) {
-      console.error('[ui-updater] apply failed:', err);
+      console.error('[updater] apply failed:', err);
       throw err;
     }
   });
@@ -1194,6 +1209,11 @@ app.whenReady().then(async () => {
       // OTA UI update check — only in packaged builds and not in DEV_MODE.
       // Waits for both the server update AND the renderer to finish loading
       // so the React app has time to mount its IPC listener.
+      //
+      // After the initial boot check, a periodic poll runs every 4 hours so
+      // long-running sessions surface new versions without a restart.
+      // Periodic checks always notify (show the banner) — they never
+      // auto-apply mid-session to avoid disrupting in-progress work.
       const devMode = getDevMode();
       if (app.isPackaged && !devMode) {
         const rendererReady = new Promise<void>((resolve) => {
@@ -1202,47 +1222,79 @@ app.whenReady().then(async () => {
           });
         });
 
-        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
+        /** Check for UI and server updates. On boot (`isBootCheck=true`),
+         *  auto mode downloads and applies UI immediately; server updates
+         *  are already handled by maybeUpdateServer() above. Periodic checks
+         *  only notify — they never auto-apply mid-session. */
+        const runUpdateCheck = async (isBootCheck = false) => {
           try {
             const updateMode = getUpdateMode();
-            console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
-            mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
+            const label = isBootCheck ? 'boot' : 'periodic';
+            console.log(`[updater] ${label} check (mode: ${updateMode})...`);
 
             const online = await hasInternet();
             if (!online) {
-              console.log('[ui-updater] offline — skipping update check');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
+              console.log('[updater] offline — skipping update check');
+              if (isBootCheck) {
+                mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
+              }
               return;
             }
 
-            const result = await checkForUIUpdate();
-            if (!result.updateAvailable) {
-              console.log('[ui-updater] up to date');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
+            // Check UI and server in parallel. On boot, skip the server
+            // check — maybeUpdateServer() already handled it above.
+            const [uiResult, serverResult] = await Promise.all([
+              checkForUIUpdate(),
+              isBootCheck
+                ? Promise.resolve({ updateAvailable: false } as import('./server-updater').ServerUpdateCheckResult)
+                : checkForServerUpdate(),
+            ]);
+
+            const anyUpdate = uiResult.updateAvailable || serverResult.updateAvailable;
+
+            if (!anyUpdate) {
+              console.log('[updater] everything up to date');
+              if (isBootCheck) {
+                mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
+              }
               return;
             }
 
-            console.log(`[ui-updater] new version available: ${result.newVersion}`);
+            if (uiResult.updateAvailable) console.log(`[updater] UI update available: ${uiResult.newVersion}`);
+            if (serverResult.updateAvailable) console.log(`[updater] server update available: ${serverResult.currentVersion} → ${serverResult.latestVersion}`);
 
-            if (updateMode === 'auto') {
-              console.log('[ui-updater] auto mode — downloading and applying...');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
-              const applied = await applyUIUpdate();
-              if (applied && mainWindow) {
-                console.log('[ui-updater] update applied — reloading window');
-                mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-                mainWindow.loadFile(getRendererPath());
+            if (isBootCheck && updateMode === 'auto') {
+              // Boot + auto: apply UI immediately (server already handled by maybeUpdateServer)
+              if (uiResult.updateAvailable) {
+                console.log('[updater] auto mode — downloading and applying UI...');
+                mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: uiResult.newVersion });
+                const applied = await applyUIUpdate();
+                if (applied && mainWindow) {
+                  console.log('[updater] UI update applied — reloading window');
+                  mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+                  mainWindow.loadFile(getRendererPath());
+                }
               }
             } else {
-              console.log('[ui-updater] manual mode — notifying renderer');
+              // Periodic or manual mode: notify, let user decide when to apply
+              console.log('[updater] notifying renderer of available update');
               mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
                 phase: 'available',
-                version: result.newVersion,
+                version: uiResult.newVersion,
+                serverUpdate: serverResult.updateAvailable,
+                serverVersion: serverResult.latestVersion,
               });
             }
           } catch (err) {
-            console.error('[ui-updater] startup check failed:', err);
+            console.error('[updater] check failed:', err);
           }
+        };
+
+        const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
+          await runUpdateCheck(true);
+          setInterval(() => runUpdateCheck(false), UPDATE_POLL_MS);
         });
       } else if (!app.isPackaged) {
         console.log('[ui-updater] skipped — not a packaged build');

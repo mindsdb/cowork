@@ -242,6 +242,57 @@ export function setUpdateNotifier(fn: (payload: Record<string, unknown>) => void
   _notify = fn;
 }
 
+export interface ServerUpdateCheckResult {
+  updateAvailable: boolean;
+  currentVersion?: string;
+  latestVersion?: string;
+}
+
+/** Check whether a server update is available WITHOUT applying it. */
+export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return { updateAvailable: false };
+
+    const uv = findUv();
+    if (!uv) return { updateAvailable: false };
+
+    const coworkVcs = readVcsInfo('cowork_server');
+    if (coworkVcs) {
+      // Git channel: compare remote SHA vs installed SHA
+      const coworkRef = getCoworkRef();
+      const antonRef = getAntonRef();
+      const antonVcs = readVcsInfo('anton_agent');
+      const [coworkRemote, antonRemote] = await Promise.all([
+        lsRemote(COWORK_SERVER_REPO, coworkRef),
+        lsRemote(ANTON_REPO, antonRef),
+      ]);
+      const coworkChanged = !!coworkRemote && coworkRemote !== coworkVcs.commit.toLowerCase();
+      const antonChanged = !!antonRemote && !!antonVcs && antonRemote !== antonVcs.commit.toLowerCase();
+      return {
+        updateAvailable: coworkChanged || antonChanged,
+        currentVersion: coworkVcs.commit.slice(0, 7),
+        latestVersion: coworkChanged ? coworkRemote!.slice(0, 7) : coworkVcs.commit.slice(0, 7),
+      };
+    }
+
+    // PyPI channel: compare version numbers
+    const [currentVersion, latestVersion] = await Promise.all([
+      getInstalledVersion(uv),
+      fetchLatestVersion(),
+    ]);
+    if (!currentVersion || !latestVersion) return { updateAvailable: false };
+    return {
+      updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
+      currentVersion,
+      latestVersion,
+    };
+  } catch (err: any) {
+    console.error('[server-updater] check failed:', err);
+    return { updateAvailable: false };
+  }
+}
+
 export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
   try {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
