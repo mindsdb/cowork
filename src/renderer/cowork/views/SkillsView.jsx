@@ -421,9 +421,9 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
 
 function CreateSkillDropdown({ onWrite, onUpload }) {
   const items = [
-    { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(13), onClick: () => {} },
-    { id: 'upload', label: 'Upload a skill',           icon: Ico.upload(13),  onClick: onUpload },
-    { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(13),    onClick: onWrite },
+    { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(14), onClick: () => {} },
+    { id: 'upload', label: 'Upload a skill',           icon: Ico.upload(14),  onClick: onUpload },
+    { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
   ];
   const trigger = (
     <button
@@ -556,10 +556,10 @@ export default function SkillsView() {
             }} />
             <OverflowMenu
               items={[
-                { id: 'try',       label: 'Try in chat', onClick: () => {} },
-                { id: 'edit',      label: 'Edit',        onClick: () => startEdit(selected) },
+                { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => {} },
+                { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
                 { divider: true },
-                { id: 'uninstall', label: 'Uninstall',   danger: true, onClick: () => remove(selected) },
+                { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },
               ]}
             />
           </div>
