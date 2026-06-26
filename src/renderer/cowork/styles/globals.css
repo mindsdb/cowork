@@ -100,6 +100,28 @@
   --sage-500: #5D9287;
   --sage-600: #4D7A70;
   --sage-700: #3D6159;
+
+  /* ─── Type scale ─────────────────────────────────────────────────────── */
+  --text-2xs:  10px;   /* timestamps, mono badges, kbd labels */
+  --text-xs:   11px;   /* section labels (UPPERCASE), eyebrows */
+  --text-sm:   12.5px; /* secondary body, captions, helper text */
+  --text-base: 14px;   /* primary body, buttons, form inputs */
+  --text-md:   15px;   /* slightly emphasized body, composer */
+  --text-lg:   17px;   /* subheadings, card titles */
+  --text-xl:   22px;   /* pane titles, modal headings */
+  --text-2xl:  28px;   /* page-level headings */
+  --text-3xl:  36px;   /* home greeting, hero text */
+
+  /* ─── Spacing scale (4px base) ───────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
 }
 
 /* ─── Light mode (default) ────────────────────────────────────────────────
@@ -280,6 +302,14 @@ body[data-theme="dark"] {
   --sh-3:         0 1px 0 rgba(0,0,0,0.4), 0 18px 40px rgba(0,0,0,0.6);
   --ring:         0 0 0 3px rgba(34, 211, 238, 0.35);
 
+  /* Frost — remap to dark ink tones so sidebar text, nav items,
+     composer placeholder, and section labels stay readable. */
+  --frost-800: var(--ink);
+  --frost-700: var(--ink-2);
+  --frost-600: var(--ink-3);
+  --frost-500: var(--ink-4);
+  --frost-400: var(--ink-4);
+
   /* Legacy/cowork aliases — onto the same surfaces as the guideline */
   --surface-0:      var(--surface);
   --surface-01:     var(--surface-2);
@@ -450,6 +480,34 @@ a[href],
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ─── Streaming text fade-in ─────────────────────────────────────────────── */
+/* Word-level: individual words fade in as they stream. React reconciliation
+   preserves existing <span> elements (keyed by index) so only newly
+   appended words play the animation. */
+@keyframes stream-word-fade {
+  from { opacity: 0; filter: blur(2px); }
+  to   { opacity: 1; filter: blur(0px); }
+}
+.stream-word {
+  animation: stream-word-fade 0.32s ease-out both;
+}
+
+/* Block-level: non-text elements (code blocks, tables, blockquotes, hrs)
+   slide + fade in when they first appear during streaming. Text-bearing
+   elements (p, h1-h3, li) use word-level animation instead. */
+@keyframes stream-block-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.markdown-content.is-streaming > *:not(p):not(h1):not(h2):not(h3):not(ul):not(ol) {
+  animation: stream-block-fade 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-word { animation: none !important; }
+  .markdown-content.is-streaming > * { animation: none !important; }
 }
 
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
@@ -1412,14 +1470,14 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .customize-input:focus,
 .customize-search-input input:focus {
   border-color: #cfcac0;
-  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.08);
+  box-shadow: var(--ring);
 }
 /* WCAG 2.4.7 / 2.4.11 — the 8% alpha glow above is too faint for a
    focus indicator. Keyboard users get a solid ring; mouse focus keeps
    the subtle glow. */
 .customize-input:focus-visible,
 .customize-search-input input:focus-visible {
-  outline: 2px solid var(--accent, #2f6fed);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -3861,19 +3919,19 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
    (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: 18px;
   /* 10px horizontal + textarea side padding = same 18px text inset as
      .composer-textarea on home; toolbar is flush on the bottom so the card
      doesn't pick up a double band (toolbar pb + wrap pb). */
-  padding: 14px 10px 12px;
+  padding: 16px 14px 12px;
   /* Subtle all-around lift — replaces the heavier downward shadow we
      used to pair with the bottom gradient mask. With the mask gone, a
      soft even glow reads as "floating panel" without darkening the
      gravity field below. */
   box-shadow:
-    0 1px 2px rgba(15, 16, 17, 0.04),
-    0 4px 14px rgba(15, 16, 17, 0.06);
+    0 2px 4px rgba(15, 16, 17, 0.05),
+    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 /* Override the shared metrics on the shell so the textarea and overlay
    stay coupled. Font-family still ships on each child because it's not
@@ -3883,9 +3941,9 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   /* 10px (wrap) + 8px = 18px body inset — matches home .composer-textarea.
      Tighter bottom than default textarea: toolbar supplies top spacing so we
      don't stack 12px + 10px and leave a tall band under the input line. */
-  --composer-font-size: 14px;
-  --composer-line-height: 1.45;
-  --composer-padding: 2px 8px 6px;
+  --composer-font-size: 15px;
+  --composer-line-height: 1.5;
+  --composer-padding: 4px 8px 8px;
 }
 .chat-floating-composer .composer-textarea {
   font-family: var(--font-body);
@@ -4663,39 +4721,42 @@ body[data-theme="dark"] .mshell__drawer-title {
   box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
   user-select: text;
 }
-/* Action toolbar — always present, subtle at rest, brightens on bubble-
-   or self-hover. The previous opacity:0 + pointer-events:none default
-   broke clickability: buttons sit at right:-32px, outside `.user-turn`'s
-   bounding box, so the cursor couldn't reach them without losing the
-   parent's :hover. Keeping them always interactive (with a low-opacity
-   resting state) sidesteps that entirely. `has-meta` lifts the button
-   above the "you · time" line; `is-stacked` adds another row when both
-   Edit and Trash are visible. */
-.user-turn-action {
-  position: absolute;
-  right: -32px;
-  bottom: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 0;
-  background: transparent;
+/* ─── Shared turn-action toolbar ──────────────────────────────────────────
+   Horizontal row of icon buttons below both user and assistant messages.
+   Hidden at rest, revealed on hover of the parent turn. `.is-last` keeps
+   the most recent exchange's toolbar always visible (Claude pattern). */
+.turn-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
   color: var(--ink-4);
-  display: inline-grid;
-  place-items: center;
-  cursor: pointer;
-  opacity: 0.55;
-  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+  opacity: 0;
+  transition: opacity 140ms ease;
 }
-.user-turn:hover .user-turn-action,
-.user-turn-action:hover,
-.user-turn-action:focus-visible {
+.turn-actions.is-last { opacity: 1; }
+.user-turn:hover .turn-actions,
+.answer-turn:hover .turn-actions,
+.turn-actions:focus-within {
   opacity: 1;
 }
-.user-turn-action:hover { color: var(--accent); }
-.user-turn-action--danger:hover { color: var(--danger); }
-.user-turn-action.has-meta { bottom: 18px; }
-.user-turn-action.is-stacked { bottom: 48px; }
+.turn-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.turn-action-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--accent);
+}
+.turn-action-btn--danger:hover { color: var(--danger); }
 
 .user-turn-attachment {
   display: flex;
@@ -4718,12 +4779,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--ink-4);
-}
-.user-turn-meta {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-4);
-  letter-spacing: 0.04em;
 }
 
 /* Heading scale inside user-message bubbles — MarkdownContent's defaults
@@ -5066,3 +5121,9 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
 .channels-btn-sm { padding: 5px 10px; font-size: 12px; }
+
+@keyframes step-error-dot-fade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}

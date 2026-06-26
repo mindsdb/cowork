@@ -9,10 +9,15 @@
 // feature branch / tag / commit via env vars while iterating; a release
 // flips the channel to the published PyPI wheel.
 //
-//   COWORK_SERVER_CHANNEL   git | pypi         (default: git)
-//   COWORK_SERVER_REF       branch|tag|sha     (default: main)  — git channel
-//   ANTON_REF               branch|tag|sha     (default: main)  — git channel
-//   COWORK_SERVER_PACKAGE   literal uv spec    (escape hatch; wins over all)
+//   COWORK_SERVER_CHANNEL   git | pypi            (default: git)
+//   COWORK_SERVER_REF       branch|tag|sha        (default: main)  — git channel
+//   ANTON_REF               branch|tag|sha        (default: main)  — git channel
+//   COWORK_SERVER_PACKAGE   literal uv spec       (escape hatch; wins over all)
+//   ANTON_PACKAGE           literal uv spec       (local path / spec for anton;
+//                           only honoured when COWORK_SERVER_PACKAGE is also set.
+//                           Requires backend/core_api/pyproject.toml [tool.uv.sources]
+//                           to be updated to { path = "../../core_agent" } first —
+//                           otherwise uv aborts with "conflicting URLs".)
 //
 // On the `pypi` channel anton comes from the published wheel's pinned
 // dependency, so ANTON_REF is ignored there.
@@ -67,7 +72,9 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   // Explicit escape hatch wins over everything (local path, custom URL, …).
   const explicit = process.env.COWORK_SERVER_PACKAGE;
   if (explicit) {
-    return { package: explicit, withArgs: [], channel: getChannel() };
+    const antonPackage = process.env.ANTON_PACKAGE;
+    const withArgs = antonPackage ? ['--with', `${ANTON_PACKAGE} @ ${antonPackage}`] : [];
+    return { package: explicit, withArgs, channel: getChannel() };
   }
 
   if (getChannel() === 'pypi') {

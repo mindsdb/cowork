@@ -1150,7 +1150,9 @@ export default function SettingsView({
           const label = typeLabels[p.type] || p.type;
           const reveal = p.type === 'anthropic' ? 'anthropic'
             : p.type === 'minds-cloud' ? 'minds'
-            : (p.type === 'openai' || p.type === 'gemini' || p.type === 'openai-compatible') ? 'openai'
+            : p.type === 'gemini' ? 'gemini'
+            : p.type === 'openai-compatible' ? 'openai-compatible'
+            : p.type === 'openai' ? 'openai'
             : null;
           const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
           const status = isActive ? rawStatus : 'untested';

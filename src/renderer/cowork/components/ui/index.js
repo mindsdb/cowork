@@ -11,3 +11,4 @@ export { default as Message } from './Message.jsx';
 export { default as Spinner } from './Spinner.jsx';
 export { default as OrbitMorph } from './OrbitMorph.jsx';
 export { default as Menu } from './Menu.jsx';
+export { default as Tooltip } from './Tooltip.tsx';
