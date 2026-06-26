@@ -100,6 +100,28 @@
   --sage-500: #5D9287;
   --sage-600: #4D7A70;
   --sage-700: #3D6159;
+
+  /* ─── Type scale ─────────────────────────────────────────────────────── */
+  --text-2xs:  10px;   /* timestamps, mono badges, kbd labels */
+  --text-xs:   11px;   /* section labels (UPPERCASE), eyebrows */
+  --text-sm:   12.5px; /* secondary body, captions, helper text */
+  --text-base: 14px;   /* primary body, buttons, form inputs */
+  --text-md:   15px;   /* slightly emphasized body, composer */
+  --text-lg:   17px;   /* subheadings, card titles */
+  --text-xl:   22px;   /* pane titles, modal headings */
+  --text-2xl:  28px;   /* page-level headings */
+  --text-3xl:  36px;   /* home greeting, hero text */
+
+  /* ─── Spacing scale (4px base) ───────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
 }
 
 /* ─── Light mode (default) ────────────────────────────────────────────────
@@ -279,6 +301,14 @@ body[data-theme="dark"] {
   --sh-2:         0 1px 0 rgba(0,0,0,0.4), 0 6px 18px rgba(0,0,0,0.5);
   --sh-3:         0 1px 0 rgba(0,0,0,0.4), 0 18px 40px rgba(0,0,0,0.6);
   --ring:         0 0 0 3px rgba(34, 211, 238, 0.35);
+
+  /* Frost — remap to dark ink tones so sidebar text, nav items,
+     composer placeholder, and section labels stay readable. */
+  --frost-800: var(--ink);
+  --frost-700: var(--ink-2);
+  --frost-600: var(--ink-3);
+  --frost-500: var(--ink-4);
+  --frost-400: var(--ink-4);
 
   /* Legacy/cowork aliases — onto the same surfaces as the guideline */
   --surface-0:      var(--surface);
@@ -1440,14 +1470,14 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .customize-input:focus,
 .customize-search-input input:focus {
   border-color: #cfcac0;
-  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.08);
+  box-shadow: var(--ring);
 }
 /* WCAG 2.4.7 / 2.4.11 — the 8% alpha glow above is too faint for a
    focus indicator. Keyboard users get a solid ring; mouse focus keeps
    the subtle glow. */
 .customize-input:focus-visible,
 .customize-search-input input:focus-visible {
-  outline: 2px solid var(--accent, #2f6fed);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
