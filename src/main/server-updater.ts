@@ -31,54 +31,24 @@ import {
   COWORK_SERVER_REPO,
   ANTON_REPO,
 } from './server-source';
+import {
+  PYTHON_RANGE,
+  getEnvPath,
+  findUv,
+  compareVersions,
+  getInstalledVersion,
+} from './uv-paths';
 
 const PACKAGE_NAME = 'cowork-server';
 const PYPI_JSON_URL = `https://pypi.org/pypi/${PACKAGE_NAME}/json`;
 const PYPI_TIMEOUT_MS = 5000;
 const DISABLE_VAR = 'COWORK_SERVER_DISABLE_AUTOUPDATE';
 
-// PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
-// Keep in sync with installer.ts PYTHON_RANGE and cowork-server requires-python.
-const PYTHON_RANGE = '>=3.12,<3.14';
-
 export interface ServerUpdateResult {
   updated: boolean;
   previousVersion?: string;
   newVersion?: string;
   error?: string;
-}
-
-// ---------------------------------------------------------------------------
-// uv / path helpers
-// ---------------------------------------------------------------------------
-
-function getLocalBin(): string {
-  return path.join(os.homedir(), '.local', 'bin');
-}
-
-function getUvBinary(): string {
-  const localBin = getLocalBin();
-  return path.join(localBin, process.platform === 'win32' ? 'uv.exe' : 'uv');
-}
-
-function findUv(): string | null {
-  const explicit = getUvBinary();
-  if (fs.existsSync(explicit)) return explicit;
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', 'uv');
-  if (fs.existsSync(cargoBin)) return cargoBin;
-  if (process.platform === 'darwin') {
-    for (const p of ['/opt/homebrew/bin/uv', '/usr/local/bin/uv']) {
-      if (fs.existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
-function getEnvPath(): string {
-  const localBin = getLocalBin();
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
-  const currentPath = process.env.PATH || '';
-  return [localBin, cargoBin, currentPath].join(path.delimiter);
 }
 
 /** uv tools directory (mirrors server-deps.getUvToolsDir). */
@@ -200,36 +170,6 @@ function fetchLatestVersion(): Promise<string | null> {
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
-}
-
-function getInstalledVersion(uv: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    // Force plain output: a forced-color environment makes `uv tool list`
-    // emit ANSI codes that break the start-anchored regex below. NO_COLOR
-    // overrides FORCE_COLOR. (Mirror of installer.ts getInstalledVersion.)
-    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
-    execFile(uv, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
-      if (err) { resolve(null); return; }
-      // eslint-disable-next-line no-control-regex
-      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
-      for (const line of clean.split('\n')) {
-        const match = line.match(/^cowork-server\s+v?([\d.]+)/);
-        if (match) { resolve(match[1]); return; }
-      }
-      resolve(null);
-    });
-  });
-}
-
-/** Compare simple X.Y.Z versions. >0 if a>b. (No pre-release handling.) */
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
 }
 
 // ---------------------------------------------------------------------------
