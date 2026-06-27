@@ -27,24 +27,43 @@ export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
 // Cached bearer token for authenticating to the local server when
-// COWORK_REQUIRE_AUTH=true.  Null means auth is disabled (default).
-// Populated lazily on the first request so we don't block module init.
-let _serverAuthToken = undefined; // undefined = not yet fetched
+// COWORK_REQUIRE_AUTH=true.  Null means no token found yet; a non-null
+// string is cached forever (the token is stable for the server's lifetime).
+// We never cache null permanently so the token is picked up if the server
+// is restarted with auth enabled while the renderer is already running.
+let _serverAuthToken = null;
+
+async function _fetchToken() {
+  return host.getServerAuthToken().catch(() => null);
+}
 
 async function _getAuthHeaders() {
-  if (_serverAuthToken === undefined) {
-    _serverAuthToken = await host.getServerAuthToken().catch(() => null);
+  if (!_serverAuthToken) {
+    _serverAuthToken = await _fetchToken();
   }
   return _serverAuthToken ? { Authorization: `Bearer ${_serverAuthToken}` } : {};
 }
 
 // Drop-in replacement for fetch() that injects the server auth token.
+// On a 401 it clears the cached token and retries once — handles the case
+// where the server was restarted with auth enabled while the app was open.
 async function authFetch(url, options = {}) {
   const authHeaders = await _getAuthHeaders();
-  return fetch(url, {
+  const res = await fetch(url, {
     ...options,
     headers: { ...authHeaders, ...options.headers },
   });
+  if (res.status === 401) {
+    // Token was missing or stale — re-read from disk and retry once.
+    _serverAuthToken = await _fetchToken();
+    if (_serverAuthToken) {
+      return fetch(url, {
+        ...options,
+        headers: { Authorization: `Bearer ${_serverAuthToken}`, ...options.headers },
+      });
+    }
+  }
+  return res;
 }
 
 async function req(path, options = {}) {
