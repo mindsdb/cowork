@@ -26,10 +26,31 @@ const API_ORIGIN = (() => {
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
-async function req(path, options = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+// Cached bearer token for authenticating to the local server when
+// COWORK_REQUIRE_AUTH=true.  Null means auth is disabled (default).
+// Populated lazily on the first request so we don't block module init.
+let _serverAuthToken = undefined; // undefined = not yet fetched
+
+async function _getAuthHeaders() {
+  if (_serverAuthToken === undefined) {
+    _serverAuthToken = await host.getServerAuthToken().catch(() => null);
+  }
+  return _serverAuthToken ? { Authorization: `Bearer ${_serverAuthToken}` } : {};
+}
+
+// Drop-in replacement for fetch() that injects the server auth token.
+async function authFetch(url, options = {}) {
+  const authHeaders = await _getAuthHeaders();
+  return fetch(url, {
     ...options,
+    headers: { ...authHeaders, ...options.headers },
+  });
+}
+
+async function req(path, options = {}) {
+  const res = await authFetch(BASE + path, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!res.ok) {
     let detail = '';
@@ -51,9 +72,9 @@ async function req(path, options = {}) {
 }
 
 async function rootReq(path, options = {}) {
-  const res = await fetch(ROOT_BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+  const res = await authFetch(ROOT_BASE + path, {
     ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!res.ok) {
     throw new Error(`API ${path} returned ${res.status}`);
@@ -295,7 +316,7 @@ function _streamResponse(text, { conversationId, projectName, projectPath, model
   const ctrl = new AbortController();
   (async () => {
     try {
-      const res = await fetch(`${BASE}/responses`, {
+      const res = await authFetch(`${BASE}/responses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -430,7 +451,7 @@ export function tailInFlight(conversationId, {
   (async () => {
     try {
       const url = `${BASE}/responses/tail?conversation_id=${encodeURIComponent(conversationId)}&from_seq=${fromSeq}&model=${encodeURIComponent(model)}`;
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method: 'GET',
         headers: { Accept: 'text/event-stream' },
         signal: ctrl.signal,
@@ -616,7 +637,7 @@ export async function cancelResponse(conversationId) {
 export async function unpublishArtifact(path) {
   // Idempotent — server 404 means "no record" which is the desired
   // end state.
-  const res = await fetch(BASE + `/publish?path=${encodeURIComponent(path)}`, {
+  const res = await authFetch(BASE + `/publish?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -630,7 +651,7 @@ export async function unpublishArtifact(path) {
 }
 
 export async function deleteArtifact(path) {
-  const res = await fetch(BASE + `/artifacts/?path=${encodeURIComponent(path)}`, {
+  const res = await authFetch(BASE + `/artifacts/?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
   });
   if (!res.ok) {
@@ -652,7 +673,7 @@ export async function deleteProject(projectOrName) {
     id = match.id;
   }
   // Idempotent: 404 = "already gone" = success.
-  const res = await fetch(BASE + `/projects/${encodeURIComponent(id)}`, {
+  const res = await authFetch(BASE + `/projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -750,7 +771,7 @@ export function projectFileDownloadUrl(projectName, path) {
 
 export async function writeProjectFile(projectName, path, content) {
   const safe = path.split('/').map(enc).join('/');
-  const res = await fetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content || '' }),
@@ -769,7 +790,7 @@ export async function uploadProjectFiles(projectName, files) {
   // field — same shape FastAPI's `list[UploadFile]` consumes.
   const form = new FormData();
   for (const f of files) form.append('files', f, f.name);
-  const res = await fetch(BASE + `/projects/${enc(projectName)}/files/upload`, {
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/upload`, {
     method: 'POST',
     body: form,
   });
@@ -783,7 +804,7 @@ export async function uploadProjectFiles(projectName, files) {
 
 export async function deleteProjectFile(projectName, path) {
   const safe = path.split('/').map(enc).join('/');
-  const res = await fetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
     method: 'DELETE',
   });
   if (res.status === 404) return { status: 'gone', path };
@@ -1309,7 +1330,7 @@ export function streamDataVaultSubmission({
   const ctrl = new AbortController();
   (async () => {
     try {
-      const res = await fetch(`${BASE}/connectors/submissions`, {
+      const res = await authFetch(`${BASE}/connectors/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1397,7 +1418,7 @@ export function streamDataVaultSubmission({
 export async function submitDataVaultForm({ formId, conversationId, values, skipped, formSpec, name, method }) {
   // Fire the streaming endpoint but only consume the JSON body of
   // the response — useful for tests/probes that don't want SSE.
-  const res = await fetch(`${BASE}/connectors/submissions`, {
+  const res = await authFetch(`${BASE}/connectors/submissions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1561,7 +1582,7 @@ export async function uploadAttachments(files, { projectName, sessionId } = {}) 
   const enc = encodeURIComponent;
   const form = new FormData();
   Array.from(files).forEach((file) => form.append('files', file));
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
     { method: 'POST', body: form },
   );
@@ -1676,7 +1697,7 @@ export async function patchConversation(id, body) {
 // displayable bubble index — same value used to look up events
 // in the per-turn sidecar.
 export async function deleteConversationTurn(id, turnIndex) {
-  const res = await fetch(
+  const res = await authFetch(
     BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
     {
       method: 'DELETE',
@@ -1697,7 +1718,7 @@ export async function deleteConversation(id) {
   // success. The conversation may have been removed by a previous
   // attempt or a concurrent client; either way the desired end state
   // ("gone from server") is achieved.
-  const res = await fetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
+  const res = await authFetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });

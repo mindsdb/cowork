@@ -67,6 +67,15 @@ uv run cowork-server
 
 FastAPI runs loopback-only at `127.0.0.1:26866`. CORS defaults to localhost origins only; override with `COWORK_ALLOWED_ORIGINS='["*"]'` for cloud/VPC deployments or an ingress-controlled environment.
 
+**Optional bearer-token authentication** — off by default. Set in `~/.cowork/.env`:
+
+```
+COWORK_REQUIRE_AUTH=true
+COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
+```
+
+When `COWORK_REQUIRE_AUTH=true` and `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. The `/api/v1/health/` endpoint is always exempt.
+
 #### Install source & channel
 
 Where cowork-server **and** its `anton-agent` dependency are installed from is centralized in [src/main/server-source.ts](src/main/server-source.ts) — shared by the installer and the auto-updater so they can't disagree (a PyPI updater must never clobber a git install, and vice-versa).

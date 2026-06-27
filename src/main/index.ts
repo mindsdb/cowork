@@ -703,6 +703,16 @@ function setupIPC() {
     return readEnvFile();
   });
 
+  // Return the COWORK_AUTH_TOKEN from ~/.cowork/.env so the renderer can
+  // attach it as a bearer token on API requests when the server requires auth.
+  ipcMain.handle(IPC.SERVER_GET_AUTH_TOKEN, () => {
+    const envPath = coworkEnvPath();
+    if (!fs.existsSync(envPath)) return null;
+    const text = fs.readFileSync(envPath, 'utf-8');
+    const match = text.match(/^COWORK_AUTH_TOKEN\s*=\s*(.+)$/m);
+    return match ? match[1].trim().replace(/^["']|["']$/g, '') : null;
+  });
+
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
     console.log('[server] restart requested (post-onboarding)');
     await stopServer();
