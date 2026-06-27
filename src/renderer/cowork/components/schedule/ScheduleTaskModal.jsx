@@ -249,23 +249,23 @@ export default function ScheduleTaskModal({
               <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Delete this schedule?</span>
               <button
                 type="button"
+                className="btn btn--sm"
                 onClick={() => setConfirmingDelete(false)}
                 disabled={busy}
-                style={btnSecondary}
               >Cancel</button>
               <button
                 type="button"
+                className="btn btn--danger btn--sm"
                 onClick={handleDelete}
                 disabled={busy}
-                style={btnDanger}
               >Delete</button>
             </div>
           ) : (
             <button
               type="button"
+              className="btn btn--danger btn--sm"
               onClick={() => setConfirmingDelete(true)}
               disabled={busy}
-              style={{ ...btnSecondary, color: 'var(--danger)' }}
             >
               {Ico.trash ? Ico.trash(13) : null}
               <span style={{ marginLeft: Ico.trash ? 6 : 0 }}>Delete</span>
@@ -274,7 +274,7 @@ export default function ScheduleTaskModal({
         )}
         {!isEdit && <span />}
         <div style={{ display: 'inline-flex', gap: 8 }}>
-          <button type="button" onClick={onClose} disabled={busy} style={btnSecondary}>
+          <button type="button" className="btn btn--sm" onClick={onClose} disabled={busy}>
             Cancel
           </button>
           <button
@@ -304,22 +304,3 @@ function emptyForm({ defaultProjectPath }) {
   };
 }
 
-const btnSecondary = {
-  display: 'inline-flex', alignItems: 'center',
-  background: 'transparent',
-  border: '1px solid var(--line)',
-  color: 'var(--ink-2)',
-  padding: '7px 12px', borderRadius: 7,
-  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-  cursor: 'pointer',
-};
-
-const btnDanger = {
-  display: 'inline-flex', alignItems: 'center',
-  background: 'var(--danger)',
-  border: '1px solid var(--danger)',
-  color: '#fff',
-  padding: '7px 12px', borderRadius: 7,
-  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-  cursor: 'pointer',
-};

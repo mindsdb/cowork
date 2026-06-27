@@ -1894,18 +1894,14 @@ export default function SettingsView({
 
     const backendFooter = (
       <>
-        <button type="button" onClick={refreshDiag} title="Refresh diagnostics"
-          style={{ cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500 }}
-        >Refresh</button>
+        <button type="button" className="btn btn--sm" onClick={refreshDiag} title="Refresh diagnostics">Refresh</button>
         {(onStartServer || onStopServer) && state !== 'offline' && (
-          <button type="button" onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}
-            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
+          <button type="button" className="btn btn--sm" onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}
           >{(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}</button>
         )}
         {(onStartServer || onStopServer) && (
-          <button type="button" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
+          <button type="button" className="btn-primary btn--sm" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
             disabled={diagBusy || serverBusy || (state === 'offline' ? !onStartServer : !(onStartServer && onStopServer))}
-            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
           >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</button>
         )}
       </>

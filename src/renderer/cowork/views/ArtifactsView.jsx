@@ -162,25 +162,11 @@ function iconForArtifact(a) {
 // ─── Action button (used by the bubble's bottom row) ─────────────────────
 
 function ActionButton({ children, onClick, danger, primary, title }) {
-  const styleBase = {
-    cursor: 'pointer',
-    fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-    padding: '6px 10px', borderRadius: 7,
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-  };
-  if (primary) Object.assign(styleBase, {
-    background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)',
-  });
-  else if (danger) Object.assign(styleBase, {
-    background: 'transparent', color: 'var(--danger)',
-    border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-  });
-  else Object.assign(styleBase, {
-    background: 'transparent', color: 'var(--ink-2)', border: '1px solid var(--line)',
-  });
+  const cls = primary ? 'btn btn--primary btn--sm'
+    : danger ? 'btn btn--danger btn--sm'
+    : 'btn btn--sm';
   return (
-    <button type="button" onClick={(e) => { e.stopPropagation(); onClick?.(); }} title={title} style={styleBase}>
+    <button type="button" className={cls} onClick={(e) => { e.stopPropagation(); onClick?.(); }} title={title}>
       {children}
     </button>
   );
@@ -393,16 +379,8 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         )}
       </ModalBody>
       <ModalFooter>
-        <button type="button" onClick={onCancel} style={{
-          cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)',
-          color: 'var(--ink-2)', padding: '8px 14px', borderRadius: 8, fontFamily: FONT_BODY, fontSize: 13,
-        }}>Cancel</button>
-        <button type="button" onClick={submit} disabled={!canConfirm} style={{
-          cursor: canConfirm ? 'pointer' : 'not-allowed',
-          background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff',
-          padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
-          opacity: canConfirm ? 1 : 0.5,
-        }}>
+        <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn-primary" onClick={submit} disabled={!canConfirm}>
           {mode === 'password' ? 'Publish protected' : mode === 'restricted' ? 'Publish restricted' : 'Publish'}
         </button>
       </ModalFooter>

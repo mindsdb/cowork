@@ -83,36 +83,18 @@ export function ConfirmModal({
         }}>
           <button
             type="button"
+            className="btn"
             onClick={onClose}
             disabled={busy}
-            style={{
-              all: 'unset', cursor: busy ? 'default' : 'pointer',
-              padding: '8px 14px', borderRadius: 8,
-              border: '1px solid var(--line)',
-              fontSize: 13, fontWeight: 500, color: 'var(--ink-2)',
-              background: 'transparent',
-              opacity: busy ? 0.45 : 1,
-            }}
-            onMouseOver={(e) => { if (busy) return; e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { if (busy) return; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
           >
             {cancelLabel}
           </button>
           <button
             type="button"
+            className={destructive ? 'btn btn--danger' : 'btn-primary'}
             onClick={() => { if (!busy) onConfirm?.(); }}
             disabled={busy}
             autoFocus
-            style={{
-              all: 'unset', cursor: busy ? 'progress' : 'pointer',
-              padding: '8px 14px', borderRadius: 8,
-              fontSize: 13, fontWeight: 600,
-              color: '#fff',
-              background: destructive ? 'var(--danger)' : 'var(--accent)',
-              border: `1px solid ${destructive ? 'var(--danger)' : 'var(--accent)'}`,
-              opacity: busy ? 0.8 : 1,
-              display: 'inline-flex', alignItems: 'center', gap: 7,
-            }}
           >
             {busy && (
               <span

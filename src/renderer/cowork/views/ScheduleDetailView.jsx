@@ -298,16 +298,8 @@ function RunRow({ run, onOpen }) {
       {run.sessionId ? (
         <button
           type="button"
+          className="btn btn--xs"
           onClick={() => onOpen?.(run)}
-          style={{
-            background: 'transparent', border: '1px solid var(--line)',
-            color: 'var(--ink-2)',
-            padding: '4px 9px', borderRadius: 6,
-            fontFamily: FONT_BODY, fontSize: 11.5, fontWeight: 500,
-            cursor: 'pointer',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--ink)'; }}
-          onMouseOut={(e)  => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.color = 'var(--ink-2)'; }}
         >Open task</button>
       ) : <span />}
     </div>
@@ -453,17 +445,9 @@ export default function ScheduleDetailView({
               />
               <button
                 type="button"
+                className="btn btn--sm"
                 onClick={() => setEditOpen(true)}
                 disabled={busy}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '7px 12px', borderRadius: 7,
-                  background: 'transparent',
-                  border: '1px solid var(--line)',
-                  color: 'var(--ink-2)',
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                }}
               >
                 {Ico.edit ? Ico.edit(13) : null} Edit
               </button>

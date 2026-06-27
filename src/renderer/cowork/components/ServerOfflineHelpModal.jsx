@@ -352,17 +352,7 @@ export default function ServerOfflineHelpModal({
           borderTop: '1px solid var(--line)',
           background: 'var(--surface)',
         }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              cursor: 'pointer',
-              background: 'transparent', border: '1px solid var(--line)',
-              color: 'var(--ink-2)',
-              padding: '7px 14px', borderRadius: 7,
-              fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-            }}
-          >Close</button>
+          <button type="button" className="btn btn--sm" onClick={onClose}>Close</button>
           {/* Action buttons — split by intent so the user can stop
               the backend without it immediately restarting:
                 * online   → [Stop] [Restart]   (Restart = stop + start)
@@ -376,34 +366,18 @@ export default function ServerOfflineHelpModal({
               {state !== 'offline' && (
                 <button
                   type="button"
+                  className="btn btn--sm"
                   onClick={handleStop}
                   disabled={busy || serverBusy || !onStop}
-                  style={{
-                    cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                    background: 'transparent',
-                    border: '1px solid var(--line)',
-                    color: 'var(--ink-2)',
-                    padding: '7px 14px', borderRadius: 7,
-                    fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-                    opacity: (busy || serverBusy) ? 0.7 : 1,
-                  }}
                 >
                   {(busy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
                 </button>
               )}
               <button
                 type="button"
+                className="btn-primary btn--sm"
                 onClick={state === 'offline' ? handleStart : handleRestart}
                 disabled={busy || serverBusy || (state === 'offline' ? !onStart : !(onStart && onStop))}
-                style={{
-                  cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                  background: 'var(--accent)',
-                  border: '1px solid var(--accent)',
-                  color: '#fff',
-                  padding: '7px 14px', borderRadius: 7,
-                  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                  opacity: (busy || serverBusy) ? 0.7 : 1,
-                }}
               >
                 {busy
                   ? (state === 'offline' ? 'Starting…' : 'Restarting…')
@@ -413,17 +387,9 @@ export default function ServerOfflineHelpModal({
           ) : (
             <button
               type="button"
+              className="btn-primary btn--sm"
               onClick={handleRetry}
               disabled={busy || serverBusy}
-              style={{
-                cursor: (busy || serverBusy) ? 'progress' : 'pointer',
-                background: 'var(--accent)',
-                border: '1px solid var(--accent)',
-                color: '#fff',
-                padding: '7px 14px', borderRadius: 7,
-                fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 600,
-                opacity: (busy || serverBusy) ? 0.7 : 1,
-              }}
             >
               {busy
                 ? (state === 'offline' ? 'Starting…' : 'Restarting…')
