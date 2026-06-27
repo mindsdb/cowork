@@ -47,6 +47,11 @@ async function _getAuthHeaders() {
 // Drop-in replacement for fetch() that injects the server auth token.
 // On a 401 it clears the cached token and retries once — handles the case
 // where the server was restarted with auth enabled while the app was open.
+//
+// Chromium (Electron) strips the Authorization header when automatically
+// following a 307 redirect (even same-origin). We detect this via
+// res.redirected / res.url and retry against the final URL so the header
+// reaches the server on the retry instead of getting stripped mid-redirect.
 async function authFetch(url, options = {}) {
   const authHeaders = await _getAuthHeaders();
   const res = await fetch(url, {
@@ -54,10 +59,15 @@ async function authFetch(url, options = {}) {
     headers: { ...authHeaders, ...options.headers },
   });
   if (res.status === 401) {
-    // Token was missing or stale — re-read from disk and retry once.
+    // Re-read the token in case it was just generated (e.g. auth was
+    // enabled while the app was open).
     _serverAuthToken = await _fetchToken();
     if (_serverAuthToken) {
-      return fetch(url, {
+      // If a redirect was followed, use the final URL so we send the
+      // auth header directly to the destination (Chromium strips it
+      // when following a redirect automatically).
+      const retryUrl = res.redirected ? res.url : url;
+      return fetch(retryUrl, {
         ...options,
         headers: { Authorization: `Bearer ${_serverAuthToken}`, ...options.headers },
       });
@@ -267,7 +277,7 @@ export async function fetchSessions() {
     // created in project A vanishes from `tasks` the moment we
     // refresh while the user is "in" project B (because the server
     // defaults to the active project's episodes/ dir).
-    const list = await req('/conversations?project=all&limit=200');
+    const list = await req('/conversations/?project=all&limit=200');
     const conversations = Array.isArray(list?.conversations) ? list.conversations : [];
     if (conversations.length === 0) return [];
     // Fan out for the most recent N — full message history isn't
@@ -566,7 +576,7 @@ export function streamMessage(sessionId, text, opts = {}) {
 // is_active). Older servers wrapped in { projects: [...] } — handle both.
 export async function fetchProjects() {
   try {
-    const data = await req('/projects');
+    const data = await req('/projects/');
     if (Array.isArray(data)) return data;
     return Array.isArray(data?.projects) ? data.projects : [];
   } catch {
@@ -575,7 +585,7 @@ export async function fetchProjects() {
 }
 
 export async function createProject(name) {
-  return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
+  return req('/projects/', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
 // Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
@@ -1178,7 +1188,7 @@ export async function fetchMemory(projectRef) {
   // listing at the same moment; this collapses the duplicates.
   return dedupe(`memory${suffix}`, async () => {
     const [items, projects] = await Promise.all([
-      req(`/memory${suffix}`),
+      req(`/memory/${suffix}`),
       fetchProjects(),
     ]);
     const list = Array.isArray(items) ? items : [];
@@ -1188,20 +1198,20 @@ export async function fetchMemory(projectRef) {
 
 export async function saveMemory(payload) {
   const body = buildMemoryWritePayload(payload);
-  return req('/memory', { method: 'PUT', body: JSON.stringify(body) });
+  return req('/memory/', { method: 'PUT', body: JSON.stringify(body) });
 }
 
 export async function deleteMemory(payload) {
   const body = buildMemoryDeletePayload(payload);
-  return req('/memory', { method: 'DELETE', body: JSON.stringify(body) });
+  return req('/memory/', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
 export async function fetchSkills() {
-  return req('/skills');
+  return req('/skills/');
 }
 
 export async function saveSkill(payload) {
-  return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
+  return req('/skills/', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 export async function deleteSkill(label) {
@@ -1209,7 +1219,7 @@ export async function deleteSkill(label) {
 }
 
 export async function fetchDatasources() {
-  const data = await req('/connectors/connections');
+  const data = await req('/connectors/connections/');
   return { connections: Array.isArray(data) ? data : [] };
 }
 
@@ -1677,7 +1687,7 @@ export async function searchCowork(query) {
 
 export async function fetchPins() {
   try {
-    return await req('/pins');
+    return await req('/pins/');
   } catch {
     return { pins: [] };
   }
@@ -1777,14 +1787,14 @@ export async function recordTaskVisit(task, autoPin = false) {
 
 export async function fetchSchedules() {
   try {
-    return await req('/schedules');
+    return await req('/schedules/');
   } catch {
     return { schedules: [] };
   }
 }
 
 export async function createSchedule(payload) {
-  return req('/schedules', { method: 'POST', body: JSON.stringify(payload) });
+  return req('/schedules/', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 export async function updateSchedule(id, payload) {
