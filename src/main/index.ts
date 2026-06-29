@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -862,10 +862,41 @@ function setupIPC() {
   });
 }
 
+// One-time purge of the on-disk HTTP cache, gated by app version. Older builds
+// let Electron cache settings/stream responses to Cache_Data, leaving plaintext
+// API keys (incl. rotated ones) on disk (ENG-462). Secret-bearing responses now
+// send Cache-Control: no-store, but keys already cached must be cleared — so do
+// it once per version (on upgrade / first install), not on every launch.
+async function purgeHttpCacheOnUpgrade(): Promise<void> {
+  try {
+    const markerPath = path.join(app.getPath('userData'), 'cache-purge.json');
+    const current = app.getVersion();
+    let last = '';
+    if (fs.existsSync(markerPath)) {
+      try {
+        last = (JSON.parse(fs.readFileSync(markerPath, 'utf-8')) as { version?: string }).version || '';
+      } catch {
+        // Corrupt marker → treat as not-yet-purged and rewrite below.
+      }
+    }
+    if (last === current) return;
+    await session.defaultSession.clearCache();
+    fs.writeFileSync(markerPath, JSON.stringify({ version: current }) + '\n', 'utf-8');
+    console.log(`[cache] purged HTTP cache on upgrade (${last || 'none'} → ${current})`);
+  } catch (err) {
+    console.warn('[cache] HTTP cache purge failed (non-fatal)', err);
+  }
+}
+
 app.whenReady().then(() => {
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
+
+  // Purge any plaintext API keys older builds cached to disk (ENG-462).
+  // Fire-and-forget: version-gated + idempotent, and current responses send
+  // no-store so nothing new re-caches while this runs.
+  void purgeHttpCacheOnUpgrade();
 
   const isMac = process.platform === 'darwin';
 
