@@ -21,6 +21,7 @@ import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import SkillCard from '../components/SkillCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -482,6 +483,21 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       {artifacts.map((s) => (
         <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
+      ))}
+    </div>
+  );
+}
+
+// Renders any badge='Skill' steps as inline SkillCards — a skill the agent
+// BUILT this turn. Sibling of StepArtifacts, but explicitly NOT the artifact
+// system: a skill is a draft the user saves or downloads from the card.
+function StepSkills({ steps }) {
+  const skills = steps?.filter((s) => s.badge === 'Skill') || [];
+  if (skills.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+      {skills.map((s) => (
+        <SkillCard key={s.id} skill={s.data || {}} />
       ))}
     </div>
   );
@@ -1637,6 +1653,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepSkills steps={m.steps} />
                 </AnswerTurn>
               );
               });
@@ -1686,6 +1703,7 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <StepSkills steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>

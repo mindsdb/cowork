@@ -295,6 +295,44 @@ export function reduceStream(state, event, now = Date.now) {
     return { ...state, steps: [...state.steps, step] };
   }
 
+  // Inline skill-draft card. The harness emits this at turn end for a skill the
+  // agent BUILT this turn (via skill-creator), detected via the skill-drafts
+  // dir diff. A skill is NOT an artifact and is NOT auto-saved — this card lets
+  // the user Save or Download it. Self-contained payload (full SKILL.md +
+  // sibling files) so it renders + downloads identically on reload. Deduped by
+  // slug so a replay can't double a card.
+  if (type === 'response.skill_created') {
+    const sk = (event.skill && typeof event.skill === 'object') ? event.skill : {};
+    const key = sk.slug || sk.label || sk.name || '';
+    if (key && state.steps.some((s) => s.badge === 'Skill' && s._skillKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `skill-${sk.slug || state.steps.length + 1}`,
+      label: sk.name || sk.slug || 'Skill',
+      badge: 'Skill',
+      icon: 'cube',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: {
+        slug: sk.slug || '',
+        label: sk.label || sk.slug || '',
+        name: sk.name || sk.slug || 'Skill',
+        description: sk.description || '',
+        instructions: sk.instructions || '',
+        skill_md: sk.skill_md || '',
+        files: Array.isArray(sk.files) ? sk.files : [],
+      },
+      output: null,
+      result: null,
+      _skillKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
   // ── thought.* sub-events live under response.in_progress ──────────
   if (type !== 'response.in_progress') return state;
 

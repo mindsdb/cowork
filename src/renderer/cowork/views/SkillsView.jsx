@@ -6,7 +6,8 @@ import { Menu } from '../components/ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
-import { deleteSkill, fetchProjects, fetchSkills, saveSkill, uploadSkillFile } from '../api';
+import { fetchProjects, saveSkill, uploadSkillFile } from '../api';
+import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
 
 
 function relativeAge(input) {
@@ -447,7 +448,9 @@ const SORT_OPTIONS = [
 ];
 
 export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
-  const [skills, setSkills]           = useState(null);
+  // Skills come from the shared store so saves/deletes here sync the composer
+  // "/" menu (and skill-card saves sync back to this page) with no reload.
+  const { skills, reload }            = useSkills();
   const [projects, setProjects]       = useState([]);
   const [selected, setSelected]       = useState(null);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
@@ -460,17 +463,11 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
   const showToast = (msg, type = 'error') => setToast({ message: msg, type });
 
+  // The skills list loads itself via the shared store (useSkills); we only need
+  // the projects list here. reload() (from the store) refreshes every surface.
   useEffect(() => {
-    fetchSkills()
-      .then((data) => setSkills(data.skills || []))
-      .catch((err) => showToast(err.message || 'Could not load skills.'));
     fetchProjects().then(setProjects);
   }, []);
-
-  const reload = () =>
-    fetchSkills()
-      .then((data) => setSkills(data.skills || []))
-      .catch((err) => showToast(err.message || 'Could not load skills.'));
 
   const onSkillSaved = (saved) => {
     setSelected((prev) => prev?.label === saved?.label ? saved : prev);
@@ -481,8 +478,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const remove = async (skill) => {
     if (!window.confirm(`Remove skill "${skill.label}"?`)) return;
     try {
-      await deleteSkill(skill.label);
-      setSkills((prev) => prev.filter((s) => s.label !== skill.label));
+      await deleteSkillAndSync(skill.label);
       setSelected(null);
       showToast(`Removed ${skill.label}.`, 'success');
     } catch (err) {
@@ -548,9 +544,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
               const next = e.target.checked;
               setSelected((prev) => ({ ...prev, enabled: next }));
               try {
-                const saved = await saveSkill({ label: selected.label, enabled: next }, true);
+                const saved = await saveSkillAndSync({ label: selected.label, enabled: next }, true);
                 setSelected(saved);
-                setSkills((prev) => prev?.map((s) => s.label === saved.label ? saved : s) ?? prev);
               } catch (err) {
                 setSelected((prev) => ({ ...prev, enabled: !next }));
                 showToast(err.message || 'Could not update skill.');
