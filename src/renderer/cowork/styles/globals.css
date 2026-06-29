@@ -5140,3 +5140,31 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   70%  { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* ─── Artifacts grid — responsive columns (pure CSS, container-query) ───────
+   Column count tracks the ARTIFACTS PANEL width (the .scroll-clean query
+   container), not the viewport — so a narrow panel on a wide screen still
+   gets 2 (or 1) columns. 2 by default, 3 when the panel is wide, 1 when tight.
+   The mobile padding override lives in the max-width:640 block above. */
+.artifacts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+@container (min-width: 1024px) {
+  .artifacts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 600px) {
+  .artifacts-grid { grid-template-columns: 1fr; }
+}
+
+/* Card and list status-cell are each their own query container, with
+   independent thresholds (the card has padding; the cell is the bare pill
+   area). Below each threshold the access chip drops its text label to
+   icon-only (hover keeps it discoverable) so "Unpublished changes" still fits.
+   Class is `cw-artifact-card` (not `artifact-card`) to avoid a legacy
+   `.artifact-card` rule elsewhere in this file. */
+.cw-artifact-card { container-type: inline-size; container-name: artcard; }
+.cw-status-cell  { container-type: inline-size; container-name: statuscell; }
+@container artcard (max-width: 400px)   { .cw-access-label { display: none; } }
+@container statuscell (max-width: 380px) { .cw-access-label { display: none; } }
