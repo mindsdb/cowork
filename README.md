@@ -1,9 +1,4 @@
-```
-   █▀▄▀█ █ █▄ █ █▀▄ █▀   █▀▀ █▀█ █ █ █ █▀█ █▀█ █▄▀
-   █ ▀ █ █ █ ▀█ █▄▀ ▄█   █▄▄ █▄█ ▀▄▀▄▀ █▄█ █▀▄ █ █
-```
-
-# MindsHub Cowork - FRONTEND
+# MindsHub Cowork - Frontend
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mindsdb/cowork)
 
