@@ -634,19 +634,42 @@ function setupIPC() {
     // source for config_ready). The dedicated logout endpoint wipes all
     // sensitive keys in a single transaction and knows which fields are
     // credentials — the Electron side doesn't need to mirror that list.
+    //
+    // If the endpoint is missing (older server) or fails, fall back to
+    // individual DELETEs for the credential keys that gate config_ready.
     if (isServerRunning()) {
+      const port = getServerPort();
+      let dbCleared = false;
       try {
-        await Promise.race([
-          httpRequest(`http://127.0.0.1:${getServerPort()}/api/v1/settings/logout`, {
+        const res = await Promise.race([
+          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
           }),
-          new Promise<void>((_, reject) =>
+          new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('logout endpoint timed out')), 5000),
           ),
         ]);
+        dbCleared = res.status >= 200 && res.status < 300;
       } catch (error) {
-        console.warn('[logout] server credential clear failed', error);
+        console.warn('[logout] POST /settings/logout failed', error);
+      }
+      if (!dbCleared) {
+        console.warn('[logout] falling back to individual DELETE calls');
+        const CREDENTIAL_KEYS = [
+          'minds_api_key', 'anthropic_api_key', 'openai_api_key',
+          'gemini_api_key', 'openai_compatible_api_key',
+          'providers_json', 'provider_status', 'provider_status_details',
+          'minds_url', 'openai_base_url',
+        ];
+        await Promise.allSettled(
+          CREDENTIAL_KEYS.map((key) =>
+            httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+        );
       }
     }
 
