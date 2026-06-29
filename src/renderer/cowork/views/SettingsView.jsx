@@ -876,30 +876,29 @@ export default function SettingsView({
     updateProviders(next);
   };
 
-  // Tests only the providers currently driving the planning + coding
-  // roles. Each role contributes its driver (its custom override, or
-  // the canonical role setting), so if planning picks Anthropic and
-  // coding picks OpenAI, both get pinged. Inactive registered
-  // providers keep their previous status (no point hammering OpenAI
-  // when the user isn't using it). Sends the active providers' live
-  // state so Test works on un-committed edits; the server merges
-  // results into the persisted status map so dots survive a reload.
-  const runProviderTests = async () => {
-    const activeProviders = providers.filter((p) => activeProviderTypes.has(p.type));
-    if (activeProviders.length === 0) return null;
+  // Re-verify provider connectivity and persist the result. By default tests
+  // only the providers driving the planning + coding roles (each role
+  // contributes its driver — a custom override or the canonical role setting),
+  // so a planning/coding split pings both. Pass an explicit list to test others
+  // — the mount-time background verify passes every configured provider. The
+  // server merges results into the persisted status map, so dots survive a
+  // reload.
+  const runProviderTests = async (targetProviders = null) => {
+    const toTest = targetProviders || providers.filter((p) => activeProviderTypes.has(p.type));
+    if (toTest.length === 0) return null;
 
-    // Flip only the active providers' dots to the transient
-    // "testing" state — preserve everyone else's persisted color.
+    // Flip the tested providers' dots to the transient "testing" state —
+    // preserve everyone else's persisted color.
     const pendingStatuses = { ...(settings.providerStatus || {}) };
     const pendingDetails  = { ...(settings.providerStatusDetails || {}) };
-    for (const p of activeProviders) {
+    for (const p of toTest) {
       pendingStatuses[p.type] = 'testing';
       delete pendingDetails[p.type];
     }
     setSetting('providerStatus', pendingStatuses);
     setSetting('providerStatusDetails', pendingDetails);
 
-    const result = await testProviders(activeProviders);
+    const result = await testProviders(toTest);
     if (result && result.providerStatus) {
       setSetting('providerStatus', { ...pendingStatuses, ...result.providerStatus });
     }
@@ -908,6 +907,20 @@ export default function SettingsView({
     }
     return result;
   };
+
+  // On first mount (once settings have loaded so providers is populated),
+  // re-verify every configured provider in the background so the seeded
+  // connected-from-credentials dots converge to real connectivity. Ref-guarded
+  // to fire a single time per mount.
+  const didMountVerify = useRef(false);
+  useEffect(() => {
+    if (didMountVerify.current) return;
+    const configured = providers.filter(providerConfigured);
+    if (configured.length === 0) return;
+    didMountVerify.current = true;
+    runProviderTests(configured).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers]);
 
   // In default model mode the role provider/model fields are never edited
   // directly — only the custom-mode controls call setRoleDriver — so the
@@ -1155,7 +1168,7 @@ export default function SettingsView({
       {renderBanner()}
       <CollapsibleGroup title="LLM Providers">
         {providers.map((p) => {
-          const isActive = activeProviderTypes.has(p.type);
+          const configured = providerConfigured(p);
           const label = typeLabels[p.type] || p.type;
           const reveal = p.type === 'anthropic' ? 'anthropic'
             : p.type === 'minds-cloud' ? 'minds'
@@ -1163,9 +1176,12 @@ export default function SettingsView({
             : p.type === 'openai-compatible' ? 'openai-compatible'
             : p.type === 'openai' ? 'openai'
             : null;
+          // Show the persisted/seeded status for any configured provider — a
+          // configured provider reads as connected at startup, not just the one
+          // currently driving a role. Unconfigured rows have nothing to show.
           const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
-          const status = isActive ? rawStatus : 'untested';
-          const detail = isActive ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
+          const status = configured ? rawStatus : 'untested';
+          const detail = configured ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
           const friendlyError = (() => {
             if (!detail) return '';
             if (detail === 'missing API key') return 'Add an API key on the right.';
