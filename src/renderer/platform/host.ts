@@ -249,17 +249,6 @@ export async function restartServer(): Promise<void> {
   // each request in that context.
 }
 
-// Return the COWORK_AUTH_TOKEN the local server requires, or null when
-// authentication is disabled.  Electron: reads from ~/.cowork/.env via IPC.
-// Web: the browser talks to the same origin, so no separate token is needed
-// (the Keycloak session cookie already gates access).
-export async function getServerAuthToken(): Promise<string | null> {
-  if (isElectron && typeof bridge.getServerAuthToken === 'function') {
-    return bridge.getServerAuthToken();
-  }
-  return null;
-}
-
 export interface InstallStatus {
   antonInstalled: boolean;
   serverDepsReady: boolean;
@@ -549,7 +538,6 @@ export const host = {
   getKeychainPref,
   setKeychainPref,
   getAccessToken,
-  getServerAuthToken,
   logout,
 };
 

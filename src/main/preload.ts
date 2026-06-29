@@ -80,9 +80,6 @@ contextBridge.exposeInMainWorld('antontron', {
 
   // Server
   restartServer: () => ipcRenderer.invoke(IPC.SERVER_RESTART),
-  // Returns COWORK_AUTH_TOKEN from ~/.cowork/.env when COWORK_REQUIRE_AUTH is
-  // enabled, or null when the server runs without authentication.
-  getServerAuthToken: () => ipcRenderer.invoke(IPC.SERVER_GET_AUTH_TOKEN),
 
   // UI Updates
   checkForUpdate: () => ipcRenderer.invoke(IPC.UI_UPDATE_CHECK),
