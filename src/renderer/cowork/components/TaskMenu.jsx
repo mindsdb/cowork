@@ -35,11 +35,6 @@ export function TaskMenu({
 }) {
   const hasPinItem = !!(onPin || onUnpin);
 
-  // Projects this task isn't already in — the destinations for "Move to".
-  const moveCandidates = projects.filter(
-    (p) => p.name !== task?.projectName && p.path !== task?.projectPath,
-  );
-
   // Declarative item list — each row is conditional, falsy entries are
   // dropped by `.filter(Boolean)`. Dividers are sectioned the same way
   // so they only render when the section they separate is present.
@@ -49,31 +44,15 @@ export function TaskMenu({
     showHeaderActions && { id: 'skill', icon: Ico.brain(14), label: 'Turn into skill', onClick: onTurnIntoSkill },
     showHeaderActions && { divider: true },
 
-    // Move to project — a fly-out of destinations, or disabled with the
-    // reason in a tooltip when there's nowhere to move it (the legacy
-    // menu spelled it out in a sub-panel; a title keeps the row clean).
-    !hideMoveToProject && (
-      moveCandidates.length
-        ? {
-            id: 'move',
-            icon: Ico.moveTo(14),
-            label: 'Move to project',
-            submenu: moveCandidates.map((p) => ({
-              id: p.name,
-              label: p.name,
-              onClick: () => onMoveToProject?.(p),
-            })),
-          }
-        : {
-            id: 'move',
-            icon: Ico.moveTo(14),
-            label: 'Move to project',
-            disabled: true,
-            title: projects.length === 0
-              ? `No projects available — ${agentLabel} is still loading them.`
-              : 'Create another project first to move this task.',
-          }
-    ),
+    // Move to project — opens a picker modal (search existing projects,
+    // type a new name to create one, and choose whether to bring the
+    // task's files + artifacts along).
+    !hideMoveToProject && {
+      id: 'move',
+      icon: Ico.moveTo(14),
+      label: 'Move to project…',
+      onClick: () => onMoveToProject?.(),
+    },
     !hideMoveToProject && { divider: true },
 
     hasPinItem && {

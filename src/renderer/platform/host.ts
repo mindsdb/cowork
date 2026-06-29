@@ -265,7 +265,10 @@ export async function checkConfigured(): Promise<{ configured: boolean; provider
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
   }
-  return fetchJson('/api/v1/settings/configured');
+  // Web: read config_ready from /health — the SAME signal the in-app chat gate
+  // uses — so onboarding-vs-app routing can't disagree with the chat gate.
+  const h = await fetchJson('/api/v1/health/') as { config_ready?: boolean; provider?: string };
+  return { configured: Boolean(h.config_ready), provider: h.provider ?? '' };
 }
 
 export async function validateProvider(
@@ -457,6 +460,23 @@ export async function mindshubGetCachedToken(): Promise<string | null> {
   return null;
 }
 
+// Where the refresh token is stored: macOS keychain (true) or a plaintext
+// file under ~/.cowork (false). Electron-only — the web shell has no local
+// token store, so both wrappers no-op to a safe default.
+export async function getKeychainPref(): Promise<boolean> {
+  if (isElectron && typeof bridge.getKeychainPref === 'function') {
+    return (await bridge.getKeychainPref()).enabled;
+  }
+  return false;
+}
+
+export async function setKeychainPref(enabled: boolean): Promise<boolean> {
+  if (isElectron && typeof bridge.setKeychainPref === 'function') {
+    return (await bridge.setKeychainPref(enabled)).ok;
+  }
+  return false;
+}
+
 export async function getAccessToken(): Promise<string | null> {
   if (isElectron && typeof bridge.getAccessToken === 'function') {
     return bridge.getAccessToken();
@@ -515,6 +535,8 @@ export const host = {
   mindshubRefresh,
   mindshubFinalize,
   mindshubGetCachedToken,
+  getKeychainPref,
+  setKeychainPref,
   getAccessToken,
   logout,
 };

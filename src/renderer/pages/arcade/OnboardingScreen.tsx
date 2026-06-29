@@ -5,10 +5,10 @@
 // host calls, same .env lines, same backend sync — re-skinned as the
 // stage where you plug a power source into the coworker you just chose.
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { host } from '../../platform/host';
 import { BASE, fetchRecommendedModels } from '../../cowork/api';
-import { PROVIDER_MODELS } from '../../cowork/lib/settingsTransform';
+import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { syncSettingsToDb } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
@@ -18,10 +18,6 @@ import { LegalViewer } from './TermsScreen';
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
 type Phase = 'choose' | 'validating' | 'minds-no-llm' | 'success' | 'error';
-
-const ANTHROPIC_MODELS = PROVIDER_MODELS.anthropic;
-const OPENAI_MODELS = PROVIDER_MODELS.openai;
-const GEMINI_MODELS = PROVIDER_MODELS.gemini;
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
@@ -121,7 +117,8 @@ export default function OnboardingScreen({
 }) {
   const [provider, setProvider] = useState<Provider>('minds');
   const [byokProvider, setByokProvider] = useState<ByokProvider>('anthropic');
-  const [selectedModel, setSelectedModel] = useState(ANTHROPIC_MODELS[0].id);
+  // Seeded once the backend's recommended-model lists load (see effect below).
+  const [selectedModel, setSelectedModel] = useState('');
   const [customModel, setCustomModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [llmApiKey, setLlmApiKey] = useState('');
@@ -141,6 +138,24 @@ export default function OnboardingScreen({
   // Inline Terms/Privacy viewer for the "by continuing you agree" line.
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
 
+  // Per-provider model lists, owned by cowork-server and fetched at runtime
+  // (same source minds-cloud already uses) — no model names are hardcoded
+  // here. Empty until the fetch resolves; the picker degrades to a free-text
+  // input in that window (and if the backend is unreachable).
+  const [recModels, setRecModels] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetchRecommendedModels().then((rec) => {
+      const map = (rec?.recommendedModels as Record<string, string[]> | undefined);
+      if (!cancelled && map) setRecModels(map);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const ANTHROPIC_MODELS = useMemo(() => recommendedModelOptions(recModels, 'anthropic'), [recModels]);
+  const OPENAI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'openai'), [recModels]);
+  const GEMINI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'gemini'), [recModels]);
+
   const models = byokProvider === 'anthropic'
     ? ANTHROPIC_MODELS
     : byokProvider === 'gemini'
@@ -148,6 +163,21 @@ export default function OnboardingScreen({
       : byokProvider === 'openai'
         ? OPENAI_MODELS
         : [];
+
+  // A provider's default model id: its first recommended entry, or the
+  // free-text sentinel when the list is empty (so resolvedModel reads from
+  // the custom field rather than a stale id).
+  const firstModelId = (list: ProviderModel[]) => list[0]?.id ?? CUSTOM_MODEL;
+
+  // Seed the model field once lists load (or after a provider switch left it
+  // blank). Skips when the user has already picked something, including
+  // Custom… — so we never clobber a manual choice.
+  useEffect(() => {
+    if (selectedModel) return;
+    if (byokProvider === 'openai-compatible') return;
+    if (models.length) setSelectedModel(firstModelId(models));
+  }, [models, byokProvider, selectedModel]);
+
   const resolvedModel = selectedModel === CUSTOM_MODEL ? customModel.trim() : selectedModel;
 
   const canConnect =
@@ -164,9 +194,9 @@ export default function OnboardingScreen({
 
   const handleSwitchByokProvider = (bp: ByokProvider) => {
     setByokProvider(bp);
-    if (bp === 'anthropic') setSelectedModel(ANTHROPIC_MODELS[0].id);
-    else if (bp === 'openai') setSelectedModel(OPENAI_MODELS[0].id);
-    else if (bp === 'gemini') setSelectedModel(GEMINI_MODELS[0].id);
+    if (bp === 'anthropic') setSelectedModel(firstModelId(ANTHROPIC_MODELS));
+    else if (bp === 'openai') setSelectedModel(firstModelId(OPENAI_MODELS));
+    else if (bp === 'gemini') setSelectedModel(firstModelId(GEMINI_MODELS));
     else setSelectedModel(CUSTOM_MODEL);
     setCustomModel('');
     setCustomBaseUrl('');
@@ -335,7 +365,14 @@ export default function OnboardingScreen({
       }
       return;
     }
-    const finalizeResult = await host.mindshubFinalize();
+    let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string };
+    try {
+      finalizeResult = await host.mindshubFinalize();
+    } catch (e: any) {
+      setPhase('error');
+      setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
+      return;
+    }
     if (!finalizeResult.ok) {
       setPhase('error');
       setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');
@@ -350,9 +387,11 @@ export default function OnboardingScreen({
       'ANTON_CODING_PROVIDER=minds-cloud',
     ];
     if (finalizeResult.apiKey) {
+      // ENG-436: write ONLY the dedicated minds slot. minds-cloud
+      // resolves from minds_api_key/minds_url everywhere (main agent +
+      // scratchpad), so we no longer copy the minds key into the OpenAI
+      // slot — that left a user's own OpenAI key clobbered.
       lines.push(`ANTON_MINDS_API_KEY=${finalizeResult.apiKey}`);
-      lines.push(`ANTON_OPENAI_API_KEY=${finalizeResult.apiKey}`);
-      lines.push(`ANTON_OPENAI_BASE_URL=https://api.mindshub.ai/v1`);
     }
     await saveFinal(lines);
   };

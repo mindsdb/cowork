@@ -19,6 +19,22 @@ export function isHtmlArtifact(a) {
 }
 
 /**
+ * Backend (fullstack) artifact types. For these the artifact's "thing" the
+ * user points at is the artifact folder (the slug dir) — the backend,
+ * requirements.txt and the static frontend all live there — not the entry
+ * HTML file (which for fullstack apps sits one level down in `static/`).
+ */
+export const BACKEND_ARTIFACT_TYPES = new Set([
+  'fullstack-stateless-app',
+  'fullstack-stateful-app',
+]);
+
+/** True for fullstack apps, whose displayed path should be the slug folder. */
+export function isBackendArtifact(a) {
+  return !!a && BACKEND_ARTIFACT_TYPES.has(a.type);
+}
+
+/**
  * Artifact types the user can publish to a 4nton.ai page. HTML is served
  * as-is; Markdown is rendered to a styled HTML page server-side (see
  * cowork-server PUBLISHABLE_STATIC_SUFFIXES). Broader than isHtmlArtifact()

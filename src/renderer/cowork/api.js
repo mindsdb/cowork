@@ -6,6 +6,12 @@
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
+import {
+  buildMemoryDeletePayload,
+  buildMemoryWritePayload,
+  groupMemoryItems,
+  resolveProjectId,
+} from './lib/memoryTransform';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -126,6 +132,13 @@ function _humanTime(iso) {
   return `${Math.floor(secs / 604800)} weeks ago`;
 }
 
+function _failedEventMeta(events) {
+  if (!Array.isArray(events)) return null;
+  const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
+  if (!ev) return null;
+  return { code: ev.code || null, message: ev.error || ev.message || '' };
+}
+
 // Replay the server-persisted SSE event log through the live stream
 // reducer to reconstruct `steps` + `startedAt` for each assistant
 // turn. The server saves raw events in a sidecar file and returns
@@ -133,22 +146,36 @@ function _humanTime(iso) {
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
-  return messages.map((m) => {
-    if (m?.role !== 'assistant') return m;
-    const events = m.events;
-    if (!Array.isArray(events) || events.length === 0) return m;
+  const out = [];
+  for (const m of messages) {
+    if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
+      out.push(m);
+      continue;
+    }
     let state = initialStreamState();
-    for (const ev of events) {
+    for (const ev of m.events) {
       try { state = reduceStream(state, ev); } catch {}
     }
     const { events: _drop, ...rest } = m;
-    if (!state.steps || state.steps.length === 0) return rest;
-    return {
+    const turnComplete = state.status === 'done' || state.status === 'error';
+    const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    out.push({
       ...rest,
-      steps: state.steps,
-      startedAt: rest.startedAt || state.startedAt || null,
-    };
-  });
+      ...(state.steps?.length > 0
+        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
+        : {}),
+      ...completeFlag,
+    });
+    if (state.status === 'error') {
+      const failed = _failedEventMeta(m.events);
+      out.push({
+        role: 'error',
+        content: failed?.message || 'An unexpected error occurred.',
+        code: failed?.code || null,
+      });
+    }
+  }
+  return out;
 }
 
 function _conversationToTask(conv, messages = []) {
@@ -831,6 +858,20 @@ export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
 
+// Fresh published/modified/access status for one artifact — the cheap read
+// the preview viewer polls on window focus to light up "Update" when the
+// artifact changes underneath an open preview. Best-effort: returns null on
+// any failure (e.g. an older server without the endpoint) so callers degrade
+// to the prior reopen-to-refresh behaviour rather than throwing.
+export async function fetchArtifactStatus(path) {
+  if (!path) return null;
+  try {
+    return await req(`/artifacts/status?path=${encodeURIComponent(path)}`);
+  } catch {
+    return null;
+  }
+}
+
 // Mount an artifact for iframe preview. Two response shapes:
 //   - kind="static" (HTML artifacts): server returns `relUrl` under
 //     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
@@ -879,6 +920,12 @@ export async function mountArtifactPreview(path) {
 
 export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
+// writes the result into the same artifact folder and returns its path.
+export async function exportArtifact(path, format) {
+  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
 }
 
 // Absolute "private" URL for an artifact's primary file: the
@@ -1080,23 +1127,33 @@ export async function startGcpAuth() {
   return req('/integrations/gcp/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
-export async function fetchMemory(projectPath) {
-  const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
+export async function fetchMemory(projectRef) {
+  const projectId = await resolveProjectId(projectRef, fetchProjects);
+  const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
   // view's row-stats hook can all ask for the same project's memory
   // listing at the same moment; this collapses the duplicates.
-  return dedupe(`memory${suffix}`, () => req(`/memory${suffix}`));
+  return dedupe(`memory${suffix}`, async () => {
+    const [items, projects] = await Promise.all([
+      req(`/memory${suffix}`),
+      fetchProjects(),
+    ]);
+    const list = Array.isArray(items) ? items : [];
+    return groupMemoryItems(list, projects);
+  });
 }
 
 export async function saveMemory(payload) {
-  return req('/memory', { method: 'POST', body: JSON.stringify(payload) });
+  const body = buildMemoryWritePayload(payload);
+  return req('/memory', { method: 'PUT', body: JSON.stringify(body) });
 }
 
-export async function deleteMemory({ scope, relativePath, projectPath }) {
-  const params = new URLSearchParams({ scope, relative_path: relativePath });
-  if (projectPath) params.set('project_path', projectPath);
-  return req(`/memory?${params.toString()}`, { method: 'DELETE' });
+export async function deleteMemory(payload) {
+  const body = buildMemoryDeletePayload(payload);
+  return req('/memory', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
 export async function fetchSkills() {
@@ -1210,7 +1267,7 @@ export async function saveConnector(connectorId, payload) {
 //   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
 // The SPA never handles the code or tokens directly.
 
-export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
+export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret, extraFields } = {}) {
   return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
     method: 'POST',
     body: JSON.stringify({
@@ -1218,6 +1275,7 @@ export async function startConnectorOAuth(connectorId, { method, name, clientId,
       name: name || '',
       client_id: clientId || '',
       client_secret: clientSecret || '',
+      extra_fields: extraFields || {},
     }),
   });
 }
@@ -1367,6 +1425,13 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Re-publish an already-published artifact: pushes current files to the same
+// URL with the same access settings (server reuses report_id). Clears the
+// "Modified" badge on success.
+export async function updateArtifact(path) {
+  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the
@@ -1653,6 +1718,17 @@ export async function moveConversation(id, projectName) {
   });
 }
 
+// Move a task to another project and (when moveObjects) relocate the
+// artifacts the task created + re-tag its files. Backed by
+// POST /conversations/{id}/move. The destination project must exist —
+// the caller creates a new one first, then moves to it.
+export async function moveTaskToProject(id, projectName, moveObjects = true) {
+  return req(`/conversations/${encodeURIComponent(id)}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ project: projectName, moveObjects }),
+  });
+}
+
 export async function recordTaskVisit(task, autoPin = false) {
   const params = new URLSearchParams({ auto_pin: autoPin ? 'true' : 'false' });
   if (task?.title) params.set('title', task.title);
@@ -1771,12 +1847,6 @@ export const MOCK_DATA = {
     { id: 's1', title: 'Daily — pull GitHub PR digest', cadence: 'Every weekday at 9:00', nextRun: 'tomorrow 9:00', enabled: true },
     { id: 's2', title: 'Weekly — sales pipeline summary', cadence: 'Mondays at 8:30', nextRun: 'Mon 8:30', enabled: true },
     { id: 's3', title: 'Hourly — monitor Lightsail spend', cadence: 'Every hour', nextRun: 'in 24m', enabled: false },
-  ],
-
-  models: [
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', desc: 'Balanced — fastest for daily work' },
-    { id: 'claude-opus-4-7',   name: 'Claude Opus 4.7',   desc: 'Best for deep reasoning and long tasks' },
-    { id: 'claude-haiku-4-5',  name: 'Claude Haiku 4.5',  desc: 'Quickest, lightweight responses' },
   ],
 
   settings: {

@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph } from '../components/ui';
+import { OrbitMorph, Message } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
@@ -24,7 +24,7 @@ import { ArtifactViewer } from '../components/artifact';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact } from '../api';
+import { revealArtifact, exportArtifact } from '../api';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -83,9 +83,13 @@ function Divider({ label }) {
   );
 }
 
-function MessageActions({ getText, onDelete }) {
-  // Copy + delete for now — refresh / thumbs up / thumbs down hidden
-  // until the underlying actions are wired.
+// ─── Shared turn-action toolbar ──────────────────────────────────────────
+// Used by both user and assistant turns for consistent styling. Actions
+// fade in on hover of the parent turn, but stay visible when `isLast`
+// is true (matching Claude's pattern where the most recent exchange
+// always shows its toolbar).
+const ICON_SZ = 15;
+function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     const text = typeof getText === 'function' ? getText() : '';
@@ -97,43 +101,40 @@ function MessageActions({ getText, onDelete }) {
     }
   };
   return (
-    <div style={{ display: 'flex', gap: 4, marginTop: 4, color: T.ink4 }}>
+    <div
+      className={`turn-actions${isLast ? ' is-last' : ''}`}
+      style={{ justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}
+    >
+      {onEdit && (
+        <button
+          type="button"
+          className="turn-action-btn"
+          onClick={onEdit}
+          title="Edit and resend"
+          aria-label="Edit and resend this message"
+        >
+          {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
+        </button>
+      )}
       <button
         type="button"
-        className="hover-tint"
-        title={copied ? 'Copied' : 'Copy response'}
-        aria-label={copied ? 'Copied' : 'Copy response'}
+        className="turn-action-btn"
+        title={copied ? 'Copied' : 'Copy'}
+        aria-label={copied ? 'Copied' : 'Copy'}
         onClick={onCopy}
-        style={{
-          cursor: 'pointer',
-          background: 'transparent',
-          border: 0,
-          padding: 0,
-          width: 26, height: 26, borderRadius: 6,
-          display: 'grid', placeItems: 'center',
-          color: copied ? 'var(--accent)' : 'inherit',
-        }}
+        style={copied ? { color: 'var(--accent)' } : undefined}
       >
-        {copied ? Ico.check(13) : Ico.copy(13)}
+        {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
       </button>
       {onDelete && (
         <button
           type="button"
-          className="hover-tint hover-tint-danger"
-          title="Delete this question and response"
-          aria-label="Delete this question and response"
+          className="turn-action-btn turn-action-btn--danger"
+          title="Delete"
+          aria-label="Delete"
           onClick={onDelete}
-          style={{
-            cursor: 'pointer',
-            background: 'transparent',
-            border: 0,
-            padding: 0,
-            width: 26, height: 26, borderRadius: 6,
-            display: 'grid', placeItems: 'center',
-            color: 'inherit',
-          }}
         >
-          {Ico.trash(13)}
+          {Ico.trash(ICON_SZ)}
         </button>
       )}
     </div>
@@ -146,9 +147,8 @@ function MessageActions({ getText, onDelete }) {
 // "orphan" — no assistant response followed it (e.g. the stream was
 // stopped before anton produced anything). For paired user→answer
 // cycles, the delete affordance lives on the assistant bubble's
-// MessageActions and removes both halves. The orphan case has no
-// assistant bubble, so we surface the delete here instead — a
-// hover-revealed trash glyph just outside the bubble's bottom-left.
+// TurnActions and removes both halves. The orphan case has no
+// assistant bubble, so we surface the delete here instead.
 // Connect-intro bubble — synthesized assistant turn shown after the
 // user picks a connector. Reads as a small card with the connector
 // logo + label and a "Fill out the form on the side panel →" prompt.
@@ -328,44 +328,10 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-function UserTurn({ content, attachments, time, onDelete, onEdit }) {
-  // Hover affordances are CSS now (`.user-turn:hover .user-turn-action`),
-  // so no useState flags here. Edit/Trash stack just outside the bubble's
-  // right edge — user messages are right-aligned, so the toolbar belongs
-  // on the same side as the speaker (Linear / Slack DM pattern). The
-  // `has-meta` / `is-stacked` modifiers raise the buttons over the meta
-  // line and over each other when both are present.
-  const editClass =
-    'user-turn-action'
-    + (onDelete ? ' is-stacked' : (time ? ' has-meta' : ''));
-  const trashClass =
-    'user-turn-action user-turn-action--danger'
-    + (time ? ' has-meta' : '');
+function UserTurn({ content, attachments, time, onDelete, onEdit, isLast }) {
   return (
     <div className="user-turn">
       <div className="user-turn-inner">
-        {onEdit && (
-          <button
-            type="button"
-            className={editClass}
-            onClick={() => onEdit(content)}
-            title="Edit and resend"
-            aria-label="Edit and resend this message"
-          >
-            {Ico.edit ? Ico.edit(13) : Ico.pencil ? Ico.pencil(13) : Ico.code(13)}
-          </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            className={trashClass}
-            onClick={onDelete}
-            title="Delete this message"
-            aria-label="Delete this message"
-          >
-            {Ico.trash(13)}
-          </button>
-        )}
         <div className="user-turn-bubble">
           {/* User messages flow through the same markdown pipeline as
               assistant turns so fenced code blocks, bold/italic, lists,
@@ -389,9 +355,13 @@ function UserTurn({ content, attachments, time, onDelete, onEdit }) {
             <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
           </div>
         ))}
-        {time && (
-          <span className="user-turn-meta">you · {time}</span>
-        )}
+        <TurnActions
+          getText={() => content || ''}
+          onEdit={onEdit ? () => onEdit(content) : null}
+          onDelete={onDelete}
+          isLast={isLast}
+          align="right"
+        />
       </div>
     </div>
   );
@@ -403,11 +373,11 @@ const CHAT_ORB_SIZE = 22;
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // `slotIdHeader` lets the parent register an orb anchor beside the label
 // (while the request is in flight with no step row / body caret yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel, isLast }) {
   // Stable id: never use Math.random() here (would churn register every render).
   const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
+    <div className="answer-turn" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {/* Empty box only — orb centers here so it never stacks against glyphs. */}
@@ -438,7 +408,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       </div>
       {children}
       {showActions && state !== 'thinking' && (
-        <MessageActions getText={() => copyText || ''} onDelete={onDelete} />
+        <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
       )}
     </div>
   );
@@ -489,10 +459,20 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
 
 function ArtifactCard({ artifact, onOpen }) {
   const [status, setStatus] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
+  // Close the export menu on any outside click. Clicks on the menu/toggle
+  // stopPropagation, so this only fires for clicks elsewhere.
+  useEffect(() => {
+    if (!exportOpen) return undefined;
+    const close = () => setExportOpen(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -518,6 +498,34 @@ function ArtifactCard({ artifact, onOpen }) {
   const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
     || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
   const canPreviewInline = isHtml || isInlineText;
+  // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
+  const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
+  const canExport = canAct
+    && (_EXPORTABLE_EXTS.includes(lcExt) || _EXPORTABLE_EXTS.some((e) => lcPath.endsWith(e)));
+  const handleExport = async (fmt) => {
+    setExportOpen(false);
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
+    setExporting(true);
+    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
+    try {
+      const res = await exportArtifact(path, fmt);
+      showStatus('ok', `Exported ${res.filename}`);
+      // Desktop: open the result in the OS. Web: it's saved in the artifact
+      // folder and shows in the Artifacts panel.
+      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
+    }
+    catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[artifact-export] failed', e);
+      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
+    }
+    finally {
+      setExporting(false);
+    }
+  };
   const handleOpen = async () => {
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
@@ -659,6 +667,43 @@ function ArtifactCard({ artifact, onOpen }) {
           }}>
             {status.text}
           </span>
+        )}
+        {canExport && (
+          <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+            <SmallBtn
+              disabled={!canAct || exporting}
+              onClick={() => setExportOpen((v) => !v)}
+              title="Export to another format"
+            >
+              Export ▾
+            </SmallBtn>
+            {exportOpen && (
+              <div
+                role="menu"
+                style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
+                  background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  display: 'flex', flexDirection: 'column', gap: 2,
+                }}
+              >
+                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
+                    style={{
+                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
+                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >{label}</button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {!host.isWeb && (
           <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
@@ -881,6 +926,14 @@ export default function ChatView({
 
   const isStreaming = task.messages.some((m) => m.role === '_streaming');
   const visibleMessages = task.messages.filter((m) => m.role !== '_streaming');
+  // Bumps when a turn finishes (assistant message committed) — not only
+  // when messages.length changes. Replacing `_streaming` with `assistant`
+  // often leaves length unchanged, which previously skipped memory refresh.
+  const contextRefreshKey = useMemo(() => {
+    const msgs = task?.messages ?? [];
+    const assistants = msgs.filter((m) => m.role === 'assistant').length;
+    return `${task?.status ?? 'idle'}:${assistants}:${msgs.length}`;
+  }, [task?.status, task?.messages]);
   const dialogMessageCount = visibleMessages.filter((m) => ['user', 'assistant', 'error', 'provider_required'].includes(m.role)).length;
   const streamingMsg = task.messages.find((m) => m.role === '_streaming');
   const artifactProjectPath = task.projectPath || project?.path || '';
@@ -1246,13 +1299,13 @@ export default function ChatView({
           open={settingsOpen}
           anchorRect={settingsAnchor}
           hideRename={false}
-          hideMoveToProject
+          hideMoveToProject={!onMoveTaskToProject}
           onClose={() => setSettingsOpen(false)}
           onPin={() => onPinTask?.(task)}
           onUnpin={() => onUnpinTask?.(task.id)}
           onRename={() => setTitleEditing(true)}
           onDelete={() => onDeleteTask?.(task.id)}
-          onMoveToProject={(p) => onMoveTaskToProject?.(task.id, p.name)}
+          onMoveToProject={() => onMoveTaskToProject?.(task)}
           onSchedule={() => {
             // Placeholder — schedule UX is WIP. Drop a hint into the
             // composer-friendly inbox by sending a message that asks
@@ -1291,7 +1344,7 @@ export default function ChatView({
             <Divider label={dividerLabel(new Date())} />
 
             {(() => {
-              // Track the assistant turn index inline so MessageActions
+              // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
               // mirrors the server's `_count_displayable_assistant_bubbles`
               // contract: each assistant entry counts once. We also
@@ -1311,6 +1364,17 @@ export default function ChatView({
                 }
                 return true;
               };
+              // Index of the last user or assistant message — its actions
+              // stay always-visible (Claude pattern: most recent exchange
+              // shows its toolbar). When streaming, nothing needs isLast
+              // since the streaming turn has no actions yet.
+              let lastTurnIdx = -1;
+              if (!streamingMsg) {
+                for (let j = visibleMessages.length - 1; j >= 0; j--) {
+                  const r = visibleMessages[j]?.role;
+                  if (r === 'user' || r === 'assistant') { lastTurnIdx = j; break; }
+                }
+              }
               return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -1323,6 +1387,7 @@ export default function ChatView({
                     attachments={m.attachments}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
@@ -1396,17 +1461,55 @@ export default function ChatView({
                 );
               }
               if (m.role === 'error') {
+                // Out-of-credits: render an actionable card (Add credits /
+                // Bring your own keys) instead of a plain error. Reused for
+                // ANY turn that fails with the `token_limit` code — the
+                // first message on a fresh account that's spent its free
+                // tokens, or a mid-session exhaustion.
+                if (m.code === 'token_limit') {
+                  return (
+                    <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                      <div style={{
+                        border: `1px solid ${T.line}`,
+                        background: T.surface,
+                        borderRadius: 12,
+                        padding: '16px 18px',
+                        maxWidth: 520,
+                        display: 'flex', flexDirection: 'column', gap: 10,
+                      }}>
+                        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+                          You're out of credits
+                        </div>
+                        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+                          {m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                          <button
+                            type="button"
+                            onClick={() => host.openExternal(MINDS_BILLING_URL)}
+                            style={{
+                              border: 'none', background: T.ink, color: 'var(--bg)',
+                              borderRadius: 8, padding: '8px 14px',
+                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            }}
+                          >Add credits</button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenSettings?.('agent')}
+                            style={{
+                              border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+                              borderRadius: 8, padding: '8px 14px',
+                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            }}
+                          >Bring your own keys</button>
+                        </div>
+                      </div>
+                    </AnswerTurn>
+                  );
+                }
                 return (
                   <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <div style={{
-                      border: '1px solid #F0C2B5',
-                      background: '#FFF7F4',
-                      color: '#8F321A',
-                      borderRadius: 10,
-                      padding: '10px 12px',
-                      fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.5,
-                      userSelect: 'text',
-                    }}>{m.content}</div>
+                    <Message>{m.content}</Message>
                   </AnswerTurn>
                 );
               }
@@ -1458,7 +1561,7 @@ export default function ChatView({
                         >Subscribe with MindsHub</button>
                         <button
                           type="button"
-                          onClick={() => onOpenSettings?.()}
+                          onClick={() => onOpenSettings?.('agent')}
                           style={{
                             border: `1px solid ${T.line}`,
                             background: 'transparent',
@@ -1491,6 +1594,7 @@ export default function ChatView({
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
+                  isLast={i === lastTurnIdx}
                 >
                   {m.steps?.length > 0 && (
                     <ThinkingBlock
@@ -1774,7 +1878,7 @@ export default function ChatView({
         <ContextBox
           project={project}
           conversationId={task?.id}
-          refreshKey={task?.messages?.length ?? 0}
+          refreshKey={contextRefreshKey}
         />
       </aside>
 

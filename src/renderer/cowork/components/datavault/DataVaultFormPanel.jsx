@@ -79,6 +79,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // the same form_id should NOT — it'd be jarring to re-fade on
   // every status update.
   const animatedFormIdRef = useRef(null);
+  const oauthPollRef = useRef(null);
   const [appearKey, setAppearKey] = useState(0);
   // Status toast: shown when spec.status_text is set; user can
   // dismiss with × . Once dismissed for a given text, it stays
@@ -96,6 +97,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   );
 
   useEffect(() => { _ensureKeyframes(); }, []);
+  useEffect(() => () => { if (oauthPollRef.current) clearInterval(oauthPollRef.current); }, []);
 
   useEffect(() => {
     setSpec(getForm(conversationId));
@@ -133,6 +135,47 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
   // `dismissedStatus` state untouched in case we want a different
   // in-form indicator in the future.
   const showStatusToast = false;
+
+  const startBrowserOAuthPoll = (state, successTitle, formId) => {
+    const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
+    oauthPollRef.current = setInterval(async () => {
+      try {
+        if (Date.now() > deadline) {
+          clearInterval(oauthPollRef.current);
+          setBusy(false);
+          patchForm(conversationId, {
+            form_id: formId,
+            _is_probing: false,
+            form_error: 'Sign-in timed out. Please try again.',
+            _is_success: false,
+          });
+          return;
+        }
+        const outcome = await pollConnectorOAuth(state);
+        if (outcome?.status === 'success') {
+          clearInterval(oauthPollRef.current);
+          setBusy(false);
+          try { await fetchDatasources(); } catch { /* best effort */ }
+          patchForm(conversationId, {
+            form_id: formId,
+            _is_probing: false,
+            _is_success: true,
+            title: successTitle,
+            subtitle: "Saved to the data vault. Cowork can now use this connection in tasks.",
+          });
+        } else if (outcome?.status === 'error') {
+          clearInterval(oauthPollRef.current);
+          setBusy(false);
+          patchForm(conversationId, {
+            form_id: formId,
+            _is_probing: false,
+            form_error: outcome.error || 'Google sign-in failed. Please try again.',
+            _is_success: false,
+          });
+        }
+      } catch { /* keep polling */ }
+    }, BROWSER_OAUTH_POLL_MS);
+  };
 
   const handleAction = async ({ id, kind, values, skipped, authMethod }) => {
     if (!spec) return;
@@ -193,7 +236,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       setBusy(true);
       setError('');
       try {
-        const result = await startConnectorOAuth(serviceId);
+        const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
         if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
         window.open(result.authUrl, '_blank');
         patchForm(conversationId, {
@@ -202,45 +245,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           status_text: 'Waiting for Google sign-in…',
           form_error: null,
         });
-        const state = result.state;
-        const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
-        const poll = setInterval(async () => {
-          try {
-            if (Date.now() > deadline) {
-              clearInterval(poll);
-              setBusy(false);
-              patchForm(conversationId, {
-                form_id: spec.form_id,
-                _is_probing: false,
-                form_error: 'Sign-in timed out. Please try again.',
-                _is_success: false,
-              });
-              return;
-            }
-            const outcome = await pollConnectorOAuth(state);
-            if (outcome?.status === 'success') {
-              clearInterval(poll);
-              setBusy(false);
-              try { await fetchDatasources(); } catch { /* best effort */ }
-              patchForm(conversationId, {
-                form_id: spec.form_id,
-                _is_probing: false,
-                _is_success: true,
-                title: successTitle,
-                subtitle: "Saved to the data vault. Cowork can now use this connection in tasks.",
-              });
-            } else if (outcome?.status === 'error') {
-              clearInterval(poll);
-              setBusy(false);
-              patchForm(conversationId, {
-                form_id: spec.form_id,
-                _is_probing: false,
-                form_error: outcome.error || 'Google sign-in failed. Please try again.',
-                _is_success: false,
-              });
-            }
-          } catch { /* keep polling */ }
-        }, BROWSER_OAUTH_POLL_MS);
+        startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
       } catch (e) {
         patchForm(conversationId, {
           form_id: spec.form_id,
@@ -400,9 +405,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           setBusy(false);
           return;
         }
-        // Build the credentials payload. Keep the user-entered
-        // client_id / client_secret too — they're needed later for
-        // refresh-token exchanges.
+        // Build the credentials payload. client_id / client_secret are kept
+        // for BYOK flows — the engine needs them for refresh-token exchanges.
         const oauthValues = {
           ...(values || {}),
           client_id: clientId,
@@ -840,45 +844,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                     status_text: 'Waiting for Google sign-in…',
                     form_error: null,
                   });
-                  const state = result.state;
-                  const deadline = Date.now() + BROWSER_OAUTH_TIMEOUT_MS;
-                  const poll = setInterval(async () => {
-                    try {
-                      if (Date.now() > deadline) {
-                        clearInterval(poll);
-                        setBusy(false);
-                        patchForm(conversationId, {
-                          form_id: spec.form_id,
-                          _is_probing: false,
-                          form_error: 'Sign-in timed out. Please try again.',
-                          _is_success: false,
-                        });
-                        return;
-                      }
-                      const outcome = await pollConnectorOAuth(state);
-                      if (outcome?.status === 'success') {
-                        clearInterval(poll);
-                        setBusy(false);
-                        try { await fetchDatasources(); } catch { /* best effort */ }
-                        patchForm(conversationId, {
-                          form_id: spec.form_id,
-                          _is_probing: false,
-                          _is_success: true,
-                          title: successTitle,
-                          subtitle: "Saved to the data vault. The agent can now use this connection in tasks.",
-                        });
-                      } else if (outcome?.status === 'error') {
-                        clearInterval(poll);
-                        setBusy(false);
-                        patchForm(conversationId, {
-                          form_id: spec.form_id,
-                          _is_probing: false,
-                          form_error: outcome.error || 'Google sign-in failed. Please try again.',
-                          _is_success: false,
-                        });
-                      }
-                    } catch { /* keep polling */ }
-                  }, BROWSER_OAUTH_POLL_MS);
+                  startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
                 } catch (e) {
                   patchForm(conversationId, {
                     form_id: spec.form_id,

@@ -153,6 +153,18 @@ export function WorkingFolderLive({ project, isStreaming }) {
   }, [isStreaming, effectiveProject?.name, effectiveProject?.path]);
 
   const [previewArt, setPreviewArt] = useState(null);
+  // Keep the open viewer in sync with the 3s poll: when the artifact being
+  // previewed is rebuilt, its row's `mtime` changes — propagate that into
+  // `previewArt` so ArtifactViewer re-mounts and reloads the iframe instead
+  // of showing the stale first load (ENG-375). No-op (same reference) when
+  // nothing changed, so it doesn't churn renders.
+  useEffect(() => {
+    setPreviewArt((cur) => {
+      if (!cur) return cur;
+      const fresh = rows.find((r) => r.path === cur.path);
+      return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
+    });
+  }, [rows]);
   // Per-row kebab menu state (single-open) + portal coords.
   //
   // Why a portal: the rail-card body wraps this component with

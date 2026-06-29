@@ -21,14 +21,14 @@ import {
   FilterRow,
   SearchInput,
   SortPill,
-  ViewToggle,
   useCollectionShortcut,
 } from '../components/collection';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import {
   createProject as createProjectApi,
   renameProject,
   revealProjectInFinder,
-  fetchMemory, fetchArtifacts,
+  fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
 import { Menu } from '../components/ui';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -450,12 +450,11 @@ function useRowStats(project) {
   const [mem, setMem] = useState(0);
   const [art, setArt] = useState(0);
   useEffect(() => {
-    if (!project?.path) return;
+    if (!project?.id && !project?.path) return;
     let cancelled = false;
-    fetchMemory(project.path).then((data) => {
+    fetchMemory(project).then((data) => {
       if (cancelled) return;
-      const total = (data?.sections || []).reduce((n, s) => n + (s.files?.length || 0), 0);
-      setMem(total);
+      setMem(countNonEmptyMemory(data));
     }).catch(() => {});
     fetchArtifacts().then((data) => {
       if (cancelled || !Array.isArray(data)) return;
@@ -463,7 +462,7 @@ function useRowStats(project) {
       setArt(data.filter((a) => a.path?.startsWith(prefix)).length);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [project?.path]);
+  }, [project?.id, project?.path]);
   return { mem, art };
 }
 
@@ -705,7 +704,7 @@ function CrumbSep() {
 
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
-  onDeleteTask, onShowAll,
+  onDeleteTask, onMoveTaskToProject, onShowAll,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -953,6 +952,7 @@ function ProjectDetail({
               onSelectTask={onSelectTask}
               onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
+              onMoveTaskToProject={onMoveTaskToProject}
             />
           </div>
         </div>
@@ -1019,6 +1019,7 @@ export default function ProjectsView({
   onSendInProject,
   onSelectTask,
   onDeleteTask,
+  onMoveTaskToProject,
   attachments = [],
   connectors = [],
   onAttachFiles,
@@ -1166,6 +1167,7 @@ export default function ProjectsView({
         onSend={onSendInProject}
         onSelectTask={onSelectTask}
         onDeleteTask={onDeleteTask}
+        onMoveTaskToProject={onMoveTaskToProject}
         attachments={attachments}
         connectors={connectors}
         onAttachFiles={onAttachFiles}
@@ -1222,7 +1224,7 @@ export default function ProjectsView({
           />
         }
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<span className="proj-view-toggle"><ViewToggle value={view} onChange={setView} /></span>}
+        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
         counts={
           <ProjectsCounts
             search={search}
