@@ -300,15 +300,23 @@ export default function Composer({
       { id: 'add-files', label: 'add-files', hint: 'Open file picker', kind: 'action',
         run: () => fileRef.current?.click() },
     ];
-    const skillRows = (allSkills || []).map((s) => ({
-      id: `skill:${s.label}`, label: s.label, hint: s.description || '', kind: 'skill', name: s.label,
-    }));
+    const currentProject = project?.name;
+    const skillRows = (allSkills || [])
+      .filter((s) => {
+        if (s.enabled === false) return false;
+        const skillProject = s.projects?.[0] || s.project;
+        if (!skillProject) return false;
+        return skillProject === currentProject;
+      })
+      .map((s) => ({
+        id: `skill:${s.label}`, label: s.label, hint: s.description || '', kind: 'skill', name: s.label,
+      }));
     const all = [...builtins, ...skillRows];
     if (!slashQuery) return all;
     return all.filter(
       (i) => i.label.toLowerCase().includes(slashQuery) || (i.hint || '').toLowerCase().includes(slashQuery),
     );
-  }, [slashOpen, slashQuery, allSkills]);
+  }, [slashOpen, slashQuery, allSkills, project]);
 
   const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
 
