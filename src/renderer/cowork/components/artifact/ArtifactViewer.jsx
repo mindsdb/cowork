@@ -18,6 +18,7 @@ import {
   unpublishArtifact,
   deleteArtifact,
 } from '../../api';
+import { copyText } from '../../lib/clipboard';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
@@ -43,6 +44,11 @@ function _withVersion(url, version) {
   if (!url || version == null || version === '') return url;
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${encodeURIComponent(version)}`;
+}
+
+function collaborationUrlFor(artifact) {
+  const explicit = artifact?.collabUrl || artifact?.collab_url || artifact?.editUrl || artifact?.publishedEditUrl || artifact?.collaborationUrl || artifact?.edit_url || '';
+  return explicit || '';
 }
 
 function _extOfPath(p) {
@@ -325,7 +331,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     const baseVersion = artifact?.mtime ?? (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
     mountArtifactPreview(actionPath)
-      .then(async ({ kind, url, artifactDir, port, proxyUrl, publishedUrl: serverPublishedUrl, backendRunning, launchError }) => {
+      .then(async ({ kind, url, artifactDir, port, proxyUrl, publishedUrl: serverPublishedUrl, editUrl: serverEditUrl, backendRunning, launchError }) => {
         if (kind === 'proxy') {
           if (!artifactDir) throw new Error('Preview mount returned no artifact dir');
           if (backendRunning === false) {
@@ -342,6 +348,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           if (cancelled) return;
           setPreviewUrl(_withVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
+          if ((serverPublishedUrl && !pub.publishedUrl) || serverEditUrl) {
+            onChange?.({
+              ...artifact,
+              ...(serverPublishedUrl ? { publishedUrl: serverPublishedUrl } : {}),
+              ...(serverEditUrl ? { editUrl: serverEditUrl, collabUrl: serverEditUrl } : {}),
+            });
+          }
           return;
         }
         if (!url) throw new Error('Preview mount returned no URL');
@@ -350,7 +363,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         // Adopt the server's known published URL when the artifact object
         // (e.g. a chat-bubble preview) didn't carry one. Don't blank a
         // locally-known value when the server returns "".
-        if (serverPublishedUrl && !pub.publishedUrl) onChange?.({ ...artifact, publishedUrl: serverPublishedUrl });
+        if ((serverPublishedUrl && !pub.publishedUrl) || serverEditUrl) {
+          onChange?.({
+            ...artifact,
+            ...(serverPublishedUrl ? { publishedUrl: serverPublishedUrl } : {}),
+            ...(serverEditUrl ? { editUrl: serverEditUrl, collabUrl: serverEditUrl } : {}),
+          });
+        }
       })
       .catch((e) => { if (!cancelled) setErr(e?.message || 'Could not load artifact'); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -380,6 +399,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
   const title = artifact.title || artifact.path?.split('/').pop();
   const isPublished = !!pub.publishedUrl;
+  const collaborationUrl = collaborationUrlFor(artifact);
 
   // Open the local file only when the file is actually on this machine
   // (Electron + loopback server). When the desktop app points at a REMOTE
@@ -412,6 +432,17 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     if (!pub.publishedUrl) return;
     try { await host.openExternal(pub.publishedUrl); }
     catch { window.open(pub.publishedUrl, '_blank', 'noreferrer'); }
+  };
+
+  const onOpenCollaboration = async () => {
+    if (!collaborationUrl) return;
+    try { await host.openExternal(collaborationUrl); }
+    catch { window.open(collaborationUrl, '_blank', 'noreferrer'); }
+  };
+
+  const onCopyCollaboration = () => {
+    if (!collaborationUrl) return false;
+    return copyText(collaborationUrl);
   };
 
   // Open the local file / served preview (HTML → default browser, other
@@ -594,6 +625,18 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
                 icon: Ico.download(13),
                 onClick: onDownload,
               }] : []),
+              ...(isPublished && collaborationUrl ? [
+                {
+                  label: 'Open collaborative view',
+                  icon: Ico.message?.(13) || Ico.comment?.(13) || Ico.link(13),
+                  onClick: onOpenCollaboration,
+                },
+                {
+                  label: 'Copy collaboration link',
+                  icon: Ico.copy(13),
+                  onClick: onCopyCollaboration,
+                },
+              ] : []),
               { divider: true },
               {
                 label: 'Delete',

@@ -911,6 +911,8 @@ export async function mountArtifactPreview(path) {
     // when opened from a chat bubble — those carry no publishedUrl on
     // the artifact object since they're built from streamed payloads.
     publishedUrl: data?.publishedUrl || '',
+    editUrl: data?.editUrl || '',
+    collabUrl: data?.collabUrl || data?.collab_url || '',
     // Backend launch status for proxy previews. When false, launchError
     // carries the reason — the viewer surfaces it instead of an empty iframe.
     backendRunning: data?.backendRunning !== false,

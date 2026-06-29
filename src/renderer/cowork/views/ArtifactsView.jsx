@@ -126,6 +126,11 @@ function kindOf(a) {
   return ext || 'file';
 }
 
+function collaborationUrlFor(artifact) {
+  const explicit = artifact?.collabUrl || artifact?.collab_url || artifact?.editUrl || artifact?.publishedEditUrl || artifact?.collaborationUrl || artifact?.edit_url || '';
+  return explicit || '';
+}
+
 // Publish visibility chooser — a thin wrapper over the shared
 // <AccessChooser>. Owns only the draft + dialog chrome; the Public /
 // Password / Restricted UI and its validation live in one place now.
@@ -378,9 +383,10 @@ function ListHeaderRow() {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onOpenCollaboration, onCopyCollaboration, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
+  const collaborationUrl = collaborationUrlFor(artifact);
   const items = [
     {
       id: 'open',
@@ -405,6 +411,18 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       label: 'Copy URL',
       icon: Ico.copy(13),
       onClick: onCopyUrl,
+    },
+    published && collaborationUrl && {
+      id: 'open-collaboration',
+      label: 'Open collaborative view',
+      icon: Ico.link(13),
+      onClick: onOpenCollaboration,
+    },
+    published && collaborationUrl && {
+      id: 'copy-collaboration',
+      label: 'Copy collaboration link',
+      icon: Ico.copy(13),
+      onClick: onCopyCollaboration,
     },
     published && artifact.modified && {
       id: 'update',
@@ -463,6 +481,18 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   const onCopyUrl = async () => {
     if (!published) return false;
     return copyText(artifact.publishedUrl);
+  };
+  const onOpenCollaboration = async () => {
+    const url = collaborationUrlFor(artifact);
+    if (!url) return;
+    try { await host.openExternal(url); } catch {
+      window.open(url, '_blank', 'noreferrer');
+    }
+  };
+  const onCopyCollaboration = async () => {
+    const url = collaborationUrlFor(artifact);
+    if (!url) return false;
+    return copyText(url);
   };
   const onRowOpen = () => {
     if (canPreview) onOpenViewer?.(artifact);
@@ -566,6 +596,8 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
         onDownload={() => downloadArtifactFile(artifact)}
         onCopyUrl={onCopyUrl}
+        onOpenCollaboration={onOpenCollaboration}
+        onCopyCollaboration={onCopyCollaboration}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
         onUpdate={() => doUpdate?.(artifact)}
@@ -775,9 +807,12 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         // Server is authoritative (it degrades an empty restricted/password
         // selection back to public); fall back to the requested access.
         const m = r.accessMode || access?.mode || 'public';
+        const editUrl = r.collabUrl || r.editUrl || collaborationUrlFor({ publishedUrl: r.url });
         updateOne({
           ...artifact,
           publishedUrl: r.url,
+          editUrl,
+          collabUrl: editUrl,
           accessMode: m,
           accessProtected: m === 'password',
           accessPassword: m === 'password' ? (access?.password || '') : '',
@@ -815,7 +850,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     setPhase(artifact.path, 'unpublishing');
     try {
       await unpublishArtifact(publishTargetPath(artifact));
-      updateOne({ ...artifact, publishedUrl: '' });
+      updateOne({ ...artifact, publishedUrl: '', editUrl: '', collabUrl: '' });
       setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
@@ -833,7 +868,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       const r = await updateArtifact(publishTargetPath(artifact));
       // Server refreshed last_md5 + published_mtime, so the artifact is no
       // longer "modified". Reflect it locally without a refetch.
-      updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
+      const publishedUrl = r?.url || artifact.publishedUrl;
+      const editUrl = r?.collabUrl || r?.editUrl || artifact.collabUrl || artifact.editUrl || collaborationUrlFor({ publishedUrl });
+      updateOne({ ...artifact, modified: false, publishedUrl, editUrl, collabUrl: editUrl });
       setToast({ kind: 'ok', message: 'Updated published version.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
@@ -1033,6 +1070,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const isHtml = isHtmlArtifact(a);
           const isBackend = isBackendArtifact(a);
           const published = !!a.publishedUrl;
+          const collaborationUrl = collaborationUrlFor(a);
           const busyA = busyPaths.has(a.path);
           const items = [];
           if (published) {
@@ -1091,6 +1129,23 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
               icon: Ico.folder(13),
               onClick: () => { try { revealArtifact(a.path); } catch { } },
+            });
+          }
+          if (published && collaborationUrl) {
+            items.push({
+              id: 'open-collaboration',
+              label: 'Open collaborative view',
+              icon: Ico.link(13),
+              onClick: () => {
+                try { host.openExternal(collaborationUrl); }
+                catch { window.open(collaborationUrl, '_blank', 'noreferrer'); }
+              },
+            });
+            items.push({
+              id: 'copy-collaboration',
+              label: 'Copy collaboration link',
+              icon: Ico.copy(13),
+              onClick: () => copyText(collaborationUrl),
             });
           }
           items.push({ separator: true });
