@@ -446,7 +446,7 @@ const SORT_OPTIONS = [
   { id: 'recent', label: 'Recent' },
 ];
 
-export default function SkillsView({ onCreateWithCowork }) {
+export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [skills, setSkills]           = useState(null);
   const [projects, setProjects]       = useState([]);
   const [selected, setSelected]       = useState(null);
@@ -558,7 +558,7 @@ export default function SkillsView({ onCreateWithCowork }) {
             }} />
             <OverflowMenu
               items={[
-                { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => {} },
+                { id: 'try',       label: 'Try in chat', icon: Ico.chats(14),  onClick: () => onTryInChat?.(`/${selected.label}`, selected.projects?.[0]) },
                 { id: 'edit',      label: 'Edit',        icon: Ico.edit(14),   onClick: () => startEdit(selected) },
                 { divider: true },
                 { id: 'uninstall', label: 'Uninstall',   icon: Ico.trash(14),  danger: true, onClick: () => remove(selected) },

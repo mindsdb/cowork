@@ -1750,10 +1750,14 @@ function AppCore() {
     setRoute('home');
   };
 
-  const handleNavigateHomeWithPrefill = (text) => {
+  const handleNavigateHomeWithPrefill = (text, projectName) => {
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill({ text, bump: Date.now() });
+    if (projectName) {
+      const proj = projects.find((p) => p.name === projectName);
+      if (proj) setSelectedProject(proj);
+    }
     setRoute('home');
   };
 
@@ -3679,7 +3683,7 @@ function AppCore() {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} />}
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}
