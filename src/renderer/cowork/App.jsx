@@ -726,6 +726,7 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
@@ -1746,6 +1747,13 @@ function AppCore() {
     if (isNarrow) setMobileSidebarOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
+    setRoute('home');
+  };
+
+  const handleNavigateHomeWithPrefill = (text) => {
+    setActiveTaskId(null);
+    setComposerAttachments([]);
+    setComposerPrefill({ text, bump: Date.now() });
     setRoute('home');
   };
 
@@ -3459,6 +3467,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onShowServerHelp={() => setServerHelpOpen(true)}
             skipIntro={bootIntroDone}
+            prefill={composerPrefill}
           />
         )}
 
@@ -3670,7 +3679,7 @@ function AppCore() {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {route === 'skills' && <SkillsView />}
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} />}
         {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}

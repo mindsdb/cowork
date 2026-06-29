@@ -419,9 +419,11 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
   );
 }
 
-function CreateSkillDropdown({ onWrite, onUpload }) {
+const COWORK_PREFILL = "Let's create a skill together using your /skill-creator skill. First ask me what the skill should do.";
+
+function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
   const items = [
-    { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(14), onClick: () => {} },
+    { id: 'cowork', label: 'Create With Cowork',      icon: Ico.sparkle(14), onClick: () => onCowork?.(COWORK_PREFILL) },
     { id: 'upload', label: 'Upload a skill',           icon: Ico.upload(14),  onClick: onUpload },
     { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
   ];
@@ -444,7 +446,7 @@ const SORT_OPTIONS = [
   { id: 'recent', label: 'Recent' },
 ];
 
-export default function SkillsView() {
+export default function SkillsView({ onCreateWithCowork }) {
   const [skills, setSkills]           = useState(null);
   const [projects, setProjects]       = useState([]);
   const [selected, setSelected]       = useState(null);
@@ -609,7 +611,7 @@ export default function SkillsView() {
           <PageHeader
             title="Skills"
             subtitle="Extend Cowork's capabilities with task-specific skills"
-            actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} />}
+            actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
           />
 
           <div style={{ padding: '20px 0 0' }}>
