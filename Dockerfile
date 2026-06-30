@@ -5,6 +5,9 @@
 #     # Pin a specific version:
 #     docker build -f cowork/Dockerfile -t cowork:dev \
 #       --build-arg COWORK_SERVER_VERSION=0.2.25.6.20.1 .
+#     # Install cowork-server from a git ref instead of PyPI (staging builds):
+#     docker build -f cowork/Dockerfile -t cowork:dev \
+#       --build-arg COWORK_SERVER_REF=staging .
 #
 # Run:
 #     docker run -p 26866:26866 \
@@ -19,7 +22,8 @@
 # what's needed to serve traffic:
 #
 #   spa-builder   Node + npm — builds the renderer; produces /build/dist/
-#   py-builder    Python + uv — installs cowork-server from PyPI into /opt/venv
+#   py-builder    Python + uv — installs cowork-server (PyPI version, or a git
+#                 ref when COWORK_SERVER_REF is set) into /opt/venv
 #   runtime       Python — copies /opt/venv + SPA + wrapper.
 
 ARG COWORK_SERVER_VERSION=
@@ -37,12 +41,16 @@ RUN npm run build:web
 # Output lives at /build/dist/renderer-web/
 
 # ── Stage 2: install Python deps into an isolated venv ─────────────────
-# Dependencies (anton-agent, cowork-server) are pulled from PyPI — no
-# git needed. Only /opt/venv is copied to the runtime image.
+# cowork-server (and its anton-agent dep) are installed from PyPI by default,
+# or from a git ref when COWORK_SERVER_REF is set (staging builds) — the latter
+# needs git, installed below. Only /opt/venv is copied to the runtime image.
 FROM python:3.12-slim AS py-builder
 
+# git is needed when COWORK_SERVER_REF is set (install cowork-server from the
+# git repo instead of PyPI). Harmless for the PyPI path.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 # uv for fast installs.
@@ -53,7 +61,9 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 COPY cowork/scripts/install-cowork-server.sh /tmp/install-cowork-server.sh
 ARG COWORK_SERVER_VERSION
-ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION}
+ARG COWORK_SERVER_REF=
+ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION} \
+    COWORK_SERVER_REF=${COWORK_SERVER_REF}
 RUN chmod +x /tmp/install-cowork-server.sh && /tmp/install-cowork-server.sh
 
 # ── Stage 3: runtime — minimal, no compilers, no git, no source tree ─────
