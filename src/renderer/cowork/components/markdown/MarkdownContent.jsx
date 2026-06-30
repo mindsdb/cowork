@@ -5,7 +5,7 @@
 // Scoped Tailwind classes pick up our token colours so it follows the
 // active theme automatically.
 
-import { cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
+import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
@@ -253,14 +253,14 @@ function _renderEngramComments(text) {
 // reading column is narrower and we want more lessons on screen.
 const _SIZES = {
   default: {
-    root: 'markdown-content space-y-2 break-words text-body text-ink-2',
+    root: 'markdown-content space-y-4 break-words text-body text-ink-2',
     p: 'font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[20px] font-semibold text-ink mt-4 mb-2',
-    h2: 'font-display text-[17px] font-semibold text-ink mt-4 mb-2',
-    h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-3 mb-1',
-    ul: 'list-disc pl-5 my-2 text-body text-ink-2 space-y-1',
-    ol: 'list-decimal pl-5 my-2 text-body text-ink-2 space-y-1',
-    blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-2',
+    h1: 'font-display text-[20px] font-semibold text-ink mt-6 mb-3',
+    h2: 'font-display text-[17px] font-semibold text-ink mt-5 mb-2',
+    h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-4 mb-1.5',
+    ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-2.5',
+    ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-2.5',
+    blockquote: 'border-l-2 border-line pl-3 italic text-ink-3 my-3',
   },
   // `dense` is the memory-preview density. Trimmed one notch off
   // chat defaults (and a comfortable line-height) for an elegant
@@ -379,7 +379,29 @@ export function MarkdownContent({
     return () => root.removeEventListener('click', onClick);
   }, []);
 
-  const components = useMemo(() => ({
+  const streaming = !complete;
+
+  const components = useMemo(() => {
+    // During streaming, wrap text children in individual <span> elements
+    // so each new word fades in via CSS animation. Defined inside useMemo
+    // so the component overrides stay referentially stable across renders —
+    // if the function reference changed every render, react-markdown would
+    // unmount/remount every element, re-triggering all animations.
+    // React's reconciliation preserves existing spans (by index key) and
+    // only creates new DOM nodes for newly appended words.
+    const _animate = !complete ? (children) => {
+      let wordKey = 0;
+      return Children.map(children, (child) => {
+        if (typeof child !== 'string') return child;
+        const words = child.match(/\s*\S+\s*/g);
+        if (!words) return child;
+        return words.map((word) => (
+          <span key={wordKey++} className="stream-word">{word}</span>
+        ));
+      });
+    } : null;
+
+    return {
     code: (props) => (
       <MarkdownCode
         id={id}
@@ -398,14 +420,25 @@ export function MarkdownContent({
     th: TableHead,
     td: TableCell,
     // Inline body styling — keep paragraphs compact and consistent
-    // with the rest of the chat column.
-    p: (props) => <p className={sz.p} {...props} />,
-    h1: (props) => <h1 className={sz.h1} {...props} />,
-    h2: (props) => <h2 className={sz.h2} {...props} />,
-    h3: (props) => <h3 className={sz.h3} {...props} />,
+    // with the rest of the chat column. During streaming, words are
+    // individually wrapped so each new word fades in.
+    p: ({ children, node, ...rest }) => (
+      <p className={sz.p} {...rest}>{_animate ? _animate(children) : children}</p>
+    ),
+    h1: ({ children, node, ...rest }) => (
+      <h1 className={sz.h1} {...rest}>{_animate ? _animate(children) : children}</h1>
+    ),
+    h2: ({ children, node, ...rest }) => (
+      <h2 className={sz.h2} {...rest}>{_animate ? _animate(children) : children}</h2>
+    ),
+    h3: ({ children, node, ...rest }) => (
+      <h3 className={sz.h3} {...rest}>{_animate ? _animate(children) : children}</h3>
+    ),
     ul: (props) => <ul className={sz.ul} {...props} />,
     ol: (props) => <ol className={sz.ol} {...props} />,
-    li: (props) => <li className="text-ink-2 marker:text-ink-4" {...props} />,
+    li: ({ children, node, ...rest }) => (
+      <li className="text-ink-2 marker:text-ink-4" {...rest}>{_animate ? _animate(children) : children}</li>
+    ),
     a: (props) => {
       const href = props.href || '';
       // Engram metadata chip — see _renderEngramComments above. We
@@ -469,7 +502,7 @@ export function MarkdownContent({
     blockquote: (props) => <blockquote className={sz.blockquote} {...props} />,
     strong: (props) => <strong className="font-semibold text-ink" {...props} />,
     em: (props) => <em className="italic text-ink-2" {...props} />,
-    hr: () => <hr className="my-3 border-t border-line" />,
+    hr: () => <hr className="my-5 border-t border-line opacity-25" />,
     pre: (props) => {
       // Fenced code blocks with a language are handled by MarkdownCode,
       // which renders its own anton-code-block wrapper. We drop the outer
@@ -492,11 +525,12 @@ export function MarkdownContent({
 
       return <pre className="my-2 overflow-x-auto" {...props} />;
     },
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [id, complete, conversationId, dense, variant, enableForms, enableCharts]);
+  }, [id, complete, conversationId, dense, variant, enableForms, enableCharts]);
 
   return (
-    <div ref={rootRef} className={sz.root}>
+    <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}

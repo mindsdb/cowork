@@ -5,8 +5,8 @@
 //
 // Each slot accepts a ReactNode so views can drop in customised
 // pieces without re-implementing the spacing rhythm. The kit's
-// own `<SearchInput>`, `<SortPill>`, and `<ViewToggle>` plug in
-// directly, but a view can pass any node it wants.
+// own `<SearchInput>`, `<SortPill>` plug in directly, but a 
+// view can pass any node it wants.
 //
 // `counts` is also a ReactNode (not a string) so views can mix
 // values + accents however they like — e.g. Projects highlights

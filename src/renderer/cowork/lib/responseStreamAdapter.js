@@ -1,4 +1,4 @@
-import { trackArtifactBuilt as _trackArtifactBuilt } from './analytics';
+import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -237,6 +237,12 @@ export function reduceStream(state, event, now = Date.now) {
   }
 
   if (type === 'response.failed') {
+    // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
+    // on receipt — not in the render path (ChatView), which re-runs every paint.
+    if (event.code === 'token_limit') {
+      try { _trackTokenCapHit(); }
+      catch { /* analytics must never break streaming */ }
+    }
     return {
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),

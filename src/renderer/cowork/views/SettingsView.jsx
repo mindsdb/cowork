@@ -1,12 +1,25 @@
-import { useState, useEffect, useRef, useId } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
+import { trackHarnessSwapped } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
-import { getUIVersion, isElectron } from '../../platform/host';
+import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
+import ChannelsView from './ChannelsView';
+
+function decodeJwtPayload(token) {
+  try {
+    let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4) payload += '=';
+    return JSON.parse(atob(payload));
+  } catch { return null; }
+}
 
 function Section({ title, subtitle, children }) {
   return (
@@ -76,53 +89,35 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   );
 }
 
-function Segmented({ value, onChange, options, style, groupLabel }) {
-  // Use radiogroup semantics when a label is supplied — AT announces the
-  // group and reads each option's checked state. Without a label, fall
-  // back to a plain group so AT users at least hear the boundary.
-  const groupRole = groupLabel ? 'radiogroup' : 'group';
+// Shared layout shell for every settings section: scrollable content area
+// on top, optional sticky footer with action buttons on the bottom.
+// Pass `footer` as JSX — buttons, status text, whatever the section needs.
+function SettingsSectionPanel({ children, footer }) {
   return (
-    <div
-      className="segmented"
-      role={groupRole}
-      aria-label={groupLabel}
-      style={style}
-    >
-      {options.map((o) => {
-        const selected = value === o.value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            className={selected ? 'active' : ''}
-            onClick={() => onChange(o.value)}
-            title={o.title}
-            aria-label={o.ariaLabel || o.title}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      <div
+        className="scroll-clean settings-scroll"
+        style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}
+      >
+        <div style={{ maxWidth: 820 }}>{children}</div>
+      </div>
+      {footer && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '12px 22px',
+          background: 'var(--surface-glass)',
+          WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
+          backdropFilter: 'blur(var(--surface-glass-blur))',
+          borderTop: '1px solid var(--border-subtle)',
+          flexShrink: 0,
+        }}>
+          {footer}
+        </div>
+      )}
     </div>
   );
 }
 
-function Toggle({ value, onChange, title, ariaLabel }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={value}
-      aria-label={ariaLabel}
-      title={title}
-      className={`toggle${value ? ' on' : ''}`}
-      onClick={() => onChange(!value)}
-    >
-      <span className="toggle-thumb" />
-    </button>
-  );
-}
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
@@ -513,7 +508,105 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
   );
 }
 
-export default function SettingsView({ settings, setSetting, onSave, theme, onThemeChange, skin, onSkinChange, customTheme, onCustomThemeChange, agentLabel }) {
+// ───────────────────────── Nav sidebar ─────────────────────────
+
+const NAV_ITEMS = [
+  { id: 'agent',      label: 'Agent',      icon: 'sparkle'   },
+  { id: 'appearance', label: 'Appearance', icon: 'palette'   },
+  { id: 'channels',   label: 'Channels',   icon: 'chats'     },
+  { id: 'updates',    label: 'Updates',    icon: 'refresh'   },
+  { id: 'backend',    label: 'Backend',    icon: 'database'  },
+  { id: 'account',    label: 'Account',    icon: 'people'    },
+];
+
+function SettingsNav({ section, onSectionChange }) {
+  return (
+    <nav
+      role="navigation"
+      aria-label="Settings sections"
+      style={{
+        width: 180,
+        flexShrink: 0,
+        borderRight: '1px solid var(--line)',
+        padding: '20px 10px 20px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+      }}
+    >
+      <div style={{
+        fontSize: 10,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: 'var(--ink-4)',
+        padding: '0 10px 6px',
+        fontWeight: 600,
+      }}>Settings</div>
+      {NAV_ITEMS.map((item) => {
+        const active = section === item.id;
+        const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSectionChange?.(item.id)}
+            aria-current={active ? 'page' : undefined}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 10px',
+              borderRadius: 7,
+              border: 0,
+              background: active ? 'var(--surface-2)' : 'transparent',
+              color: active ? 'var(--ink)' : 'var(--ink-3)',
+              fontWeight: active ? 600 : 400,
+              fontSize: 13,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'background 120ms ease, color 120ms ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!active) {
+                e.currentTarget.style.background = 'var(--surface-2, rgba(127,127,127,0.07))';
+                e.currentTarget.style.color = 'var(--ink)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!active) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--ink-3)';
+              }
+            }}
+          >
+            {icon && (
+              <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'inherit' }}>
+                {icon}
+              </span>
+            )}
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+export default function SettingsView({
+  settings, setSetting, onSave,
+  theme, onThemeChange,
+  skin, onSkinChange, customTheme, onCustomThemeChange,
+  agentLabel,
+  serverOnline = false,
+  serverBusy = false,
+  serverBusyKind = 'starting',
+  onStartServer,
+  onStopServer,
+  section = 'agent',
+  onSectionChange,
+}) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -530,9 +623,49 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
+  // Backend section diagnostics state
+  const [diag, setDiag] = useState(null);
+  const [diagBusy, setDiagBusy] = useState(false);
+  // Account section — decoded from the JWT, null until loaded
+  const [accountUser, setAccountUser] = useState(null);
+
   useEffect(() => { getUIVersion().then(setUiVersion).catch(() => {}); }, []);
   useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => {}); }, []);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => {}); }, []);
+  useEffect(() => {
+    if (section !== 'account') return;
+    getAccessToken().then((token) => {
+      if (!token) return;
+      const payload = decodeJwtPayload(token);
+      if (!payload) return;
+      setAccountUser({
+        name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
+        email: payload.email || null,
+        username: payload.preferred_username || null,
+        sub: payload.sub || null,
+        org: (() => {
+          let org = payload.active_organization ?? payload.organization;
+          if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
+          return org?.displayName || org?.name || null;
+        })(),
+      });
+    }).catch(() => {});
+  }, [section]);
+
+  // Load diagnostics when Backend section is active
+  useEffect(() => {
+    if (section !== 'backend') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await host.serverDiagnostics();
+        if (!cancelled) setDiag(data || null);
+      } catch {
+        if (!cancelled) setDiag(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [section]);
 
   // Optimistically flip the keychain toggle, then persist via main. Revert
   // the local state if the migration/write fails.
@@ -743,30 +876,29 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     updateProviders(next);
   };
 
-  // Tests only the providers currently driving the planning + coding
-  // roles. Each role contributes its driver (its custom override, or
-  // the canonical role setting), so if planning picks Anthropic and
-  // coding picks OpenAI, both get pinged. Inactive registered
-  // providers keep their previous status (no point hammering OpenAI
-  // when the user isn't using it). Sends the active providers' live
-  // state so Test works on un-committed edits; the server merges
-  // results into the persisted status map so dots survive a reload.
-  const runProviderTests = async () => {
-    const activeProviders = providers.filter((p) => activeProviderTypes.has(p.type));
-    if (activeProviders.length === 0) return null;
+  // Re-verify provider connectivity and persist the result. By default tests
+  // only the providers driving the planning + coding roles (each role
+  // contributes its driver — a custom override or the canonical role setting),
+  // so a planning/coding split pings both. Pass an explicit list to test others
+  // — the mount-time background verify passes every configured provider. The
+  // server merges results into the persisted status map, so dots survive a
+  // reload.
+  const runProviderTests = async (targetProviders = null) => {
+    const toTest = targetProviders || providers.filter((p) => activeProviderTypes.has(p.type));
+    if (toTest.length === 0) return null;
 
-    // Flip only the active providers' dots to the transient
-    // "testing" state — preserve everyone else's persisted color.
+    // Flip the tested providers' dots to the transient "testing" state —
+    // preserve everyone else's persisted color.
     const pendingStatuses = { ...(settings.providerStatus || {}) };
     const pendingDetails  = { ...(settings.providerStatusDetails || {}) };
-    for (const p of activeProviders) {
+    for (const p of toTest) {
       pendingStatuses[p.type] = 'testing';
       delete pendingDetails[p.type];
     }
     setSetting('providerStatus', pendingStatuses);
     setSetting('providerStatusDetails', pendingDetails);
 
-    const result = await testProviders(activeProviders);
+    const result = await testProviders(toTest);
     if (result && result.providerStatus) {
       setSetting('providerStatus', { ...pendingStatuses, ...result.providerStatus });
     }
@@ -775,6 +907,20 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     }
     return result;
   };
+
+  // On first mount (once settings have loaded so providers is populated),
+  // re-verify every configured provider in the background so the seeded
+  // connected-from-credentials dots converge to real connectivity. Ref-guarded
+  // to fire a single time per mount.
+  const didMountVerify = useRef(false);
+  useEffect(() => {
+    if (didMountVerify.current) return;
+    const configured = providers.filter(providerConfigured);
+    if (configured.length === 0) return;
+    didMountVerify.current = true;
+    runProviderTests(configured).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers]);
 
   // In default model mode the role provider/model fields are never edited
   // directly — only the custom-mode controls call setRoleDriver — so the
@@ -812,6 +958,14 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     setTested(false);
     try {
       await onSave(withResolvedRoles(settings));
+      // Record the harness swap only now that it's persisted (ENG-385). Compare
+      // against the pre-save snapshot — settingsRef holds the latest value since
+      // the closure `settings` is stale after the await.
+      try {
+        const prevHarness = lastSavedJson ? (JSON.parse(lastSavedJson).harness || 'anton') : null;
+        const savedHarness = settingsRef.current?.harness || 'anton';
+        if (prevHarness && savedHarness !== prevHarness) trackHarnessSwapped(prevHarness, savedHarness);
+      } catch { /* analytics must never break Save */ }
       const tasks = [validateSettings()];
       if (shouldTestLlm) tasks.push(runProviderTests());
       const [result] = await Promise.all(tasks);
@@ -894,933 +1048,1144 @@ export default function SettingsView({ settings, setSetting, onSave, theme, onTh
     }
   };
 
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      <div style={{
-        flex: 1, display: 'flex', flexDirection: 'column',
-        position: 'relative', minHeight: 0,
-      }}>
-        <div className="scroll-clean settings-scroll" style={{
-          flex: 1, overflowY: 'auto',
-          padding: '28px 28px 96px',
-        }}>
-          <div style={{ maxWidth: 820 }}>
-            <h1 className="page-title" style={{ marginTop: 0, marginBottom: 6 }}>Settings</h1>
-            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 22 }}>
-              {`${agentLabel || 'Anton'} configuration and local desktop preferences.`}
-            </div>
+  // ───────────────────────── Backend section helpers ─────────────────────────
 
-            {/* Status banner — only shown after Save or Test. While
-                `testing` is true the banner enters a neutral "checking"
-                state with a spinner; on success/failure it flips to the
-                configured/needs-config palette and briefly pulses. The
-                X button on the right dismisses the banner; the next
-                Save or Test will re-open it. */}
-            {bannerVisible && (() => {
-              // Banner reflects only the providers actually driving
-              // planning + coding (computed once at the component level).
-              const activeTypes = Array.from(activeProviderTypes);
-              const activeStatuses = activeTypes.map((t) => (settings.providerStatus || {})[t] || 'untested');
-              const anyActiveFail = activeStatuses.some((s) => s === 'fail');
-              const allActiveOk  = activeStatuses.length > 0 && activeStatuses.every((s) => s === 'ok');
+  const refreshDiag = async () => {
+    try {
+      const data = await host.serverDiagnostics();
+      setDiag(data || null);
+    } catch {}
+  };
 
-              const effectiveReady = configReady && !anyActiveFail;
+  const handleBackendStart = async () => {
+    if (!onStartServer) return;
+    setDiagBusy(true);
+    try {
+      await onStartServer();
+      await refreshDiag();
+    } finally {
+      setDiagBusy(false);
+    }
+  };
 
-              const tone = testing
-                ? { border: 'rgba(127,127,127,0.40)', bg: 'rgba(127,127,127,0.10)',
-                    icoFg: 'var(--text-muted)', icoBg: 'rgba(127,127,127,0.16)' }
-                : effectiveReady
-                  ? { border: 'rgba(93,146,135,0.45)', bg: 'rgba(93,146,135,0.10)',
-                      icoFg: 'var(--sage-500)', icoBg: 'rgba(93,146,135,0.16)' }
-                  : { border: 'rgba(211,80,80,0.40)', bg: 'rgba(211,80,80,0.08)',
-                      icoFg: '#E07060', icoBg: 'rgba(211,80,80,0.14)' };
-              const title = testing
-                ? 'Testing configuration…'
-                : anyActiveFail
-                  ? `${agentLabel || 'Anton'} needs a valid LLM provider and API key to work`
-                  : tested
-                    ? (effectiveReady ? `${agentLabel || 'Anton'} setup correctly` : 'Test failed')
-                    : effectiveReady ? `${agentLabel || 'Anton'} setup correctly` : `${agentLabel || 'Anton'} needs configuration`;
-              const subtitle = testing
-                ? 'Talking to the active provider — hold on.'
-                : anyActiveFail
-                  ? 'The provider driving your planning or coding role failed its last test. Check the red row below.'
-                  : (allActiveOk ? 'Active provider passed the test.' : (configError || 'Provider, model, and credentials are ready.'));
-              const icon = testing
-                ? (<span className="spinner" style={{ width: 15, height: 15 }} />)
-                : effectiveReady ? Ico.check(15) : Ico.key(15);
-              // Failure states use role="alert" (assertive) so AT users hear
-              // them immediately; success/progress use role="status"
-              // (polite) so they queue behind in-progress speech.
-              const bannerRole = anyActiveFail || (tested && !effectiveReady) ? 'alert' : 'status';
-              return (
-                <div
-                  role={bannerRole}
-                  aria-live={bannerRole === 'alert' ? 'assertive' : 'polite'}
-                  aria-atomic="true"
-                  style={{
-                    padding: 14, marginBottom: 22,
-                    border: `1px solid ${tone.border}`,
-                    background: tone.bg,
-                    borderRadius: 10,
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    animation: tested && !testing ? 'set-badge-pulse 1.6s ease-out 1' : 'none',
-                    transition: 'background .2s ease, border-color .2s ease',
-                  }}
-                >
-                  <span aria-hidden="true" style={{
-                    width: 30, height: 30, borderRadius: 8,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    color: tone.icoFg, background: tone.icoBg,
-                    transition: 'background .2s ease, color .2s ease',
-                  }}>{icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--text-strong)' }}>{title}</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</div>
-                  </div>
-                  <button
-                    className="btn-secondary"
-                    onClick={validate}
-                    disabled={testing}
-                    aria-busy={testing}
-                    title="Re-run the configuration and active-provider tests."
-                    style={testing ? { opacity: 0.7, cursor: 'progress' } : undefined}
-                  >{testButtonLabel}</button>
-                  <button
-                    type="button"
-                    onClick={() => setBannerVisible(false)}
-                    disabled={testing}
-                    title="Dismiss"
-                    aria-label="Dismiss banner"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 28, height: 28, borderRadius: 8,
-                      border: 0, background: 'transparent',
-                      color: 'var(--text-muted)',
-                      cursor: testing ? 'not-allowed' : 'pointer',
-                      opacity: testing ? 0.4 : 1,
-                    }}
-                  >{Ico.close(13)}</button>
-                </div>
-              );
-            })()}
+  const handleBackendStop = async () => {
+    if (!onStopServer) return;
+    setDiagBusy(true);
+    try {
+      await onStopServer();
+      await refreshDiag();
+    } finally {
+      setDiagBusy(false);
+    }
+  };
 
-            <CollapsibleGroup title="Providers">
-              {providers.map((p) => {
-                const isActive = activeProviderTypes.has(p.type);
-                const label = typeLabels[p.type] || p.type;
-                const reveal = p.type === 'anthropic' ? 'anthropic'
-                  : p.type === 'minds-cloud' ? 'minds'
-                  : (p.type === 'openai' || p.type === 'gemini' || p.type === 'openai-compatible') ? 'openai'
-                  : null;
-                const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
-                const status = isActive ? rawStatus : 'untested';
-                const detail = isActive ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
-                const friendlyError = (() => {
-                  if (!detail) return '';
-                  if (detail === 'missing API key') return 'Add an API key on the right.';
-                  if (detail === 'missing base URL') return 'Add a base URL on the right.';
-                  const m = detail.match(/HTTP (\d{3})/);
-                  if (m) {
-                    const code = parseInt(m[1], 10);
-                    if (code === 401) return 'Unauthorized — the API key was rejected.';
-                    if (code === 403) return 'Forbidden — the API key does not have access.';
-                    if (code === 404) return 'Endpoint not found — check the base URL.';
-                    if (code === 429) return 'Rate limited — try again in a moment.';
-                    if (code >= 500) return `Provider is currently unreachable (HTTP ${code}).`;
-                    return `Provider rejected the request (HTTP ${code}).`;
-                  }
-                  if (detail.startsWith('ConnectError') || detail.startsWith('ConnectTimeout')) {
-                    return 'Could not reach the provider — network or DNS problem.';
-                  }
-                  if (detail.startsWith('ReadTimeout') || detail.startsWith('TimeoutException')) {
-                    return 'Provider did not respond in time.';
-                  }
-                  if (detail.startsWith('SSLError') || detail.includes('certificate')) {
-                    return 'TLS / certificate problem reaching the provider.';
-                  }
-                  return detail;
-                })();
-                const dotColor = status === 'ok' ? '#7CC4B6'
-                  : status === 'fail' ? '#E07060'
-                  : status === 'testing' ? '#E5B57A'
-                  : 'rgba(127,127,127,0.6)';
-                // Glow for active states (ok/fail/testing); untested rows get
-                // a subtle 1px ring instead so the dot still reads as an
-                // intentional indicator rather than a blob of grey.
-                const dotGlow = status === 'ok' ? '0 0 6px rgba(124,196,182,0.7)'
-                  : status === 'fail' ? '0 0 6px rgba(224,112,96,0.6)'
-                  : status === 'testing' ? '0 0 6px rgba(229,181,122,0.7)'
-                  : 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 0 0 1px var(--border-subtle)';
-                const dotTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
-                  : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
-                  : status === 'testing' ? 'Testing…'
-                  : 'Not tested yet';
-                const dot = (
-                  <span
-                    title={dotTitle}
-                    aria-label={dotTitle}
-                    style={{
-                      display: 'inline-block',
-                      width: 10, height: 10, borderRadius: 999,
-                      background: dotColor,
-                      boxShadow: dotGlow,
-                      flexShrink: 0,
-                      animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
-                    }}
-                  />
-                );
-                // Each provider row is a sub-section in the Providers group,
-                // so every row gets an <h3> for SR heading navigation. Known
-                // types render the label visibly; the openai-compatible row
-                // already shows an editable name input as its title, so the
-                // <h3> uses the `.sr-only` utility (its text is the current
-                // name or a sensible fallback) — keeps the visual unchanged
-                // while making the row reachable by H/4 navigation.
-                const headingBaseStyle = {
-                  margin: 0, padding: 0, fontFamily: 'inherit', lineHeight: 1.3,
-                  fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
-                };
-                const customHeadingText = p.type === 'openai-compatible'
-                  ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
-                  : null;
-                const titleNode = (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                    {dot}
-                    {p.type === 'openai-compatible' ? (() => {
-                      const nameEmpty = !(p.name || '').trim();
-                      const errorId = `provider-name-error-${p.type}`;
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          <h3 className="sr-only">{customHeadingText}</h3>
-                          <input
-                            className="field-input"
-                            value={p.name ?? ''}
-                            onChange={(e) => updateProviderField('openai-compatible', 'name', e.target.value)}
-                            placeholder="Custom provider name"
-                            title="Display name for this custom provider — shown in the model dropdowns below."
-                            aria-label="Custom provider name"
-                            aria-invalid={nameEmpty || undefined}
-                            aria-describedby={nameEmpty ? errorId : undefined}
-                            aria-required="true"
-                            style={{
-                              width: 220, fontSize: 13.5, fontWeight: 600,
-                              borderColor: nameEmpty ? 'rgba(224,112,96,0.55)' : undefined,
-                            }}
-                          />
-                          {nameEmpty && (
-                            <span id={errorId} style={{ fontSize: 10.5, color: '#E07060' }}>Name required</span>
-                          )}
-                        </div>
-                      );
-                    })() : (
-                      <h3 style={headingBaseStyle}>{label}</h3>
-                    )}
-                  </span>
-                );
-                return (
-                  <div key={p.type} className="settings-provider-row" style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 380px auto',
-                    gap: 24,
-                    padding: '16px 0',
-                    alignItems: 'flex-start',
-                  }}>
-                    <div>
-                      {titleNode}
-                      {PROVIDER_TYPE_DESC[p.type] && (
-                        <div style={{
-                          fontSize: 12, color: 'var(--text-muted)',
-                          marginTop: 6, maxWidth: 380, lineHeight: 1.45,
-                        }}>
-                          <div>{PROVIDER_TYPE_DESC[p.type]}</div>
-                          {p.type === 'minds-cloud' && (
-                            <div>Required to publish artifacts to the web.</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <ApiKeyInput
-                        value={p.apiKey ?? ''}
-                        onChange={(v) => updateProviderField(p.type, 'apiKey', v)}
-                        placeholder={
-                          p.type === 'anthropic' ? 'sk-ant-••••••••' :
-                          p.type === 'minds-cloud' ? 'mdb_••••••••' :
-                          p.type === 'gemini' ? 'AIza••••••••' :
-                          'sk-••••••••'
-                        }
-                        revealName={reveal}
-                      />
-                      {p.type === 'openai-compatible' && (
-                        <ClearableTextInput
-                          value={p.baseUrl ?? ''}
-                          onChange={(v) => updateProviderField('openai-compatible', 'baseUrl', v)}
-                          placeholder="https://example.com/v1"
-                          ariaLabel="Base URL"
-                        />
-                      )}
-                      {GET_KEY_URL[p.type] && (
-                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          Get your API key at{' '}
-                          <a
-                            href={GET_KEY_URL[p.type]}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                            style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                          >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
-                        </div>
-                      )}
-                      {p.type === 'minds-cloud' && (
-                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                          Don't have an account?{' '}
-                          <a
-                            href={MINDS_REGISTER_URL}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            title="Open the MindsHub sign-up page in your browser."
-                            style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                          >Sign up →</a>
-                        </div>
-                      )}
-                      {status === 'fail' && friendlyError && (
-                        <div style={{
-                          fontSize: 11.5,
-                          color: '#E07060',
-                          display: 'flex', alignItems: 'flex-start', gap: 6,
-                        }}>
-                          <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
-                          <span>{friendlyError}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ width: 30, height: 30 }}>
-                      {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
-                        <button
-                          type="button"
-                          onClick={() => removeProvider(p.type)}
-                          title="Remove this provider"
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            width: 30, height: 30, borderRadius: 8,
-                            background: 'transparent',
-                            border: '1px solid var(--border-subtle)',
-                            color: '#E07060',
-                            cursor: 'pointer',
-                          }}
-                        >{Ico.trash(13)}</button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{
-                position: 'relative',
-                padding: '14px 0 4px',
-                minHeight: 50,
-              }}>
-                {/* Idle: + Add provider button. Fades + slides down when
-                    the picker opens. */}
-                <button
-                  className="btn-secondary"
-                  onClick={() => setAddPickerOpen(true)}
-                  disabled={availableTypesForAdd.length === 0}
-                  title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
-                  style={{
-                    position: 'absolute', top: 14, left: 0,
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
-                    transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
-                    transition: 'opacity 200ms ease, transform 200ms ease',
-                    pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
-                    cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
-                  }}
-                >{Ico.plus(13)} Add provider</button>
+  const handleBackendRestart = async () => {
+    setDiagBusy(true);
+    try {
+      if (onStopServer && onStartServer) {
+        await onStopServer();
+        await onStartServer();
+      }
+      await refreshDiag();
+    } finally {
+      setDiagBusy(false);
+    }
+  };
 
-                {/* Open: Choose Provider: <chip> <chip> · Cancel.
-                    Fades + slides up from below as it appears. */}
-                <div style={{
-                  display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-                  opacity: addPickerOpen ? 1 : 0,
-                  transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
-                  transition: 'opacity 220ms ease, transform 220ms ease',
-                  pointerEvents: addPickerOpen ? 'auto' : 'none',
-                  position: 'absolute', top: 14, left: 0, right: 0,
-                }}>
-                  <strong style={{
-                    fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
-                  }}>Choose Provider:</strong>
-                  {availableTypesForAdd.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => addProviderOfType(t)}
-                      className="btn-secondary"
-                      title={PROVIDER_TYPE_DESC[t]}
-                      style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                    >{typeLabels[t] || t}</button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setAddPickerOpen(false)}
-                    title="Hide the provider picker."
-                    aria-label="Close provider picker"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 26, height: 26, marginLeft: 4, borderRadius: 6,
-                      background: 'transparent', border: 0,
-                      color: 'var(--text-muted)', cursor: 'pointer',
-                    }}
-                  >{Ico.close(13)}</button>
-                </div>
-              </div>
-            </CollapsibleGroup>
+  // ───────────────────────── Shared footer/banner helpers ─────────────────────────
 
-            <CollapsibleGroup title="Agent">
-              <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-                <Segmented
-                  value={settings.harness || 'anton'}
-                  onChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-                  groupLabel="Agent harness"
-                  options={[
-                    { value: 'anton',  label: 'Anton',  ariaLabel: 'Use Anton agent',  title: 'Anton — the default AI agent.' },
-                    { value: 'hermes', label: 'Hermes', ariaLabel: 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
-                  ]}
-                />
-              </Section>
-            </CollapsibleGroup>
+  const renderSaveFooter = () => (
+    <>
+      <div
+        role="status" aria-live="polite" aria-atomic="true"
+        style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      >
+        {testing && <span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />}
+        {!testing && tested && configReady && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
+        {!testing && saved && !tested && <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>}
+        <span>
+          {testing ? 'Testing configuration…'
+            : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
+            : saved ? 'Settings saved.'
+            : configError ? configError
+            : 'Changes apply on save.'}
+        </span>
+      </div>
+      <button className="btn-secondary" onClick={validate} title="Re-run the configuration and active-provider tests.">Test</button>
+      <button
+        className="btn-primary" onClick={save}
+        disabled={!settingsDirty || testing || missingCustomNames}
+        title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : !settingsDirty ? 'No unsaved changes' : 'Save changes and re-run provider tests.'}
+        style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: (!settingsDirty || testing || missingCustomNames) ? 0.55 : 1, cursor: (!settingsDirty || testing || missingCustomNames) ? 'default' : 'pointer' }}
+      >
+        {testing ? 'Saving…' : settingsDirty ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+      </button>
+    </>
+  );
 
-            <CollapsibleGroup title="Agent Models">
-              {(() => {
-                // The default-mode provider is the implicit fallback for
-                // any role that hasn't been explicitly assigned an
-                // override (keyed MindsHub, else first configured).
-                const defaultProvider =
-                  providers.find((p) => p.type === defaultModeProviderType) ||
-                  providers.find((p) => p.type === 'minds-cloud') ||
-                  providers[0];
-                const multipleProviders = providers.length > 1;
-
-                // For each role: render provider selector (when N>1) +
-                // model field. When the user picks a new provider, auto-
-                // fill the role with that provider's recommended default
-                // for the role. Empty overrides fall back to the default
-                // provider's recommended pair.
-                const RoleRow = ({ role, label }) => {
-                  const cur = roleOverride(role) || {};
-                  const curType = roleProviderType(role) || (defaultProvider?.type || '');
-                  const fallbackPair = recommendedPair[curType] || ['', ''];
-                  const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
-                  const curModel = roleModelValue(role, fallbackModel);
-                  const provider = providers.find((p) => p.type === curType);
-                  const modelList = recommendedModels[curType] || [];
-                  const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
-                  const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
-                  const providerUnusable = providerUnconfigured || providerFailed;
-                  const providerWarnId = `agent-model-${role}-provider`;
-
-                  // Reasoning effort — a per-role setting shown beside the model
-                  // dropdown, only for models that advertise effort levels
-                  // (settings.modelEfforts, sourced from MindsHub /v1/models + the
-                  // static direct-provider catalog). Suppressed for the Hermes
-                  // harness, which has no effort knob.
-                  const effortKey = role === 'planning' ? 'planningReasoningEffort' : 'codingReasoningEffort';
-                  const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
-                  const effortEntry = (settings.modelEfforts || {})[curModel];
-                  const effortOptions = effortEntry?.efforts || [];
-                  const savedEffort = settings[effortKey];
-                  const effortValue = effortOptions.includes(savedEffort)
-                    ? savedEffort
-                    : (effortEntry?.default || effortOptions[0] || '');
-                  const showEffort = harnessSupportsEffort && effortOptions.length > 0;
-
-                  const writeOverride = (next) => {
-                    const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
-                    const model = next.model || '';
-                    const normalized = { providerType, model };
-                    setLlmDirty(true);
-                    setRoleDriver(role, providerType, model);
-                    setSetting('modelOverrides', { ...overrides, [role]: normalized });
-                    setSetting('modelMode', 'custom');
-                    // Effort is model-specific — drop any stale level so we never
-                    // send an effort the newly-selected model doesn't accept.
-                    setSetting(effortKey, '');
-                  };
-
-                  return (
-                    <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`}>
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        {multipleProviders && (
-                          <select
-                            className="settings-select"
-                            value={curType}
-                            onChange={(e) => {
-                              const t = e.target.value;
-                              const pair = recommendedPair[t] || ['', ''];
-                              const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
-                              setModelInputMode((m) => ({ ...m, [role]: false }));
-                              writeOverride({ providerType: t, model: newModel });
-                            }}
-                            aria-invalid={providerUnusable || undefined}
-                            aria-describedby={providerUnusable ? providerWarnId : undefined}
-                            title={`Choose which provider powers the ${role} role.`}
-                            style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
-                          >
-                            {providers.map((p) => (
-                              <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
-                            ))}
-                          </select>
-                        )}
-                        {modelList.length > 0 ? (
-                          (() => {
-                            // The "Other…" option lets the user type a
-                            // free-form model id. MindsHub's list is
-                            // comprehensive enough that we hide the
-                            // Other escape hatch there. Sticky flag
-                            // keeps the text input visible after
-                            // selecting Other even when the value is
-                            // still empty.
-                            const allowOther = curType !== 'minds-cloud';
-                            const savedIsCustom = !!curModel && !modelList.includes(curModel);
-                            const inputMode = modelInputMode[role] || savedIsCustom;
-                            const selectValue = inputMode ? '__custom__' : curModel;
-                            return (
-                              <>
-                                <select
-                                  className="settings-select"
-                                  value={selectValue || (modelList[0] || '')}
-                                  onChange={(e) => {
-                                    if (e.target.value === '__custom__') {
-                                      setModelInputMode((m) => ({ ...m, [role]: true }));
-                                      // Keep whatever curModel already
-                                      // had so the user can refine it,
-                                      // instead of blanking it.
-                                      writeOverride({ providerType: curType, model: curModel || '' });
-                                    } else {
-                                      setModelInputMode((m) => ({ ...m, [role]: false }));
-                                      writeOverride({ providerType: curType, model: e.target.value });
-                                    }
-                                  }}
-                                  title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
-                                  style={{ width: '100%' }}
-                                >
-                                  {modelList.map((m) => <option key={m} value={m}>{modelLabel(m)}</option>)}
-                                  {allowOther && <option value="__custom__">Other…</option>}
-                                </select>
-                                {inputMode && allowOther && (
-                                  <TextInput
-                                    value={curModel}
-                                    onChange={(v) => writeOverride({ providerType: curType, model: v })}
-                                    placeholder="Type a model id"
-                                    title="Free-form model id sent verbatim to the provider."
-                                  />
-                                )}
-                              </>
-                            );
-                          })()
-                        ) : (
-                          <TextInput
-                            value={curModel}
-                            onChange={(v) => writeOverride({ providerType: curType, model: v })}
-                            placeholder="model-id"
-                            title="Model id sent verbatim to this provider."
-                          />
-                        )}
-                        {showEffort && (
-                          <label style={{ display: 'grid', gap: 4 }}>
-                            <span style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>Reasoning effort</span>
-                            <select
-                              className="settings-select"
-                              value={effortValue}
-                              onChange={(e) => { setLlmDirty(true); setSetting(effortKey, e.target.value); }}
-                              title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
-                              style={{ width: '100%', textTransform: 'capitalize' }}
-                            >
-                              {effortOptions.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
-                            </select>
-                          </label>
-                        )}
-                        {providerUnusable && (
-                          <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
-                            {providerUnconfigured
-                              ? (provider
-                                  ? `${providerDisplayName(provider)} isn't configured — add its credentials under Providers above, or pick another provider.`
-                                  : 'This provider is not configured. Add it under Providers above.')
-                              : `${providerDisplayName(provider)} failed its last test — check it under Providers above, or pick another provider.`}
-                          </div>
-                        )}
-                      </div>
-                    </Section>
-                  );
-                };
-                return (
-                  <>
-                    {RoleRow({ role: 'planning', label: 'Planning model' })}
-                    {RoleRow({ role: 'coding',   label: 'Coding model' })}
-                  </>
-                );
-              })()}
-            </CollapsibleGroup>
-
-            <CollapsibleGroup title="Appearance">
-              <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
-                <Segmented
-                  value={theme || 'dark'}
-                  onChange={(v) => onThemeChange?.(v)}
-                  groupLabel="Theme"
-                  options={[
-                    {
-                      value: 'light',
-                      label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
-                      ariaLabel: 'Light theme',
-                      title: 'Use the light theme.',
-                    },
-                    {
-                      value: 'dark',
-                      label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
-                      ariaLabel: 'Dark theme',
-                      title: 'Use the dark theme.',
-                    },
-                  ]}
-                />
-              </Section>
-              <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-                <Segmented
-                  value={normalizeSkin(skin)}
-                  onChange={(v) => onSkinChange?.(v)}
-                  groupLabel="Style"
-                  options={SKINS.map((s) => ({
-                    value: s.id,
-                    label: s.icon && Ico[s.icon]
-                      ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
-                      : s.label,
-                    ariaLabel: `${s.label} style`,
-                    title: s.title,
-                  }))}
-                />
-              </Section>
-              {normalizeSkin(skin) === 'custom' && customTheme && (
-                <>
-                  <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
-                    <input
-                      type="color"
-                      value={customTheme.accent}
-                      onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
-                      aria-label="Custom accent color"
-                      style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer' }}
-                    />
-                  </Section>
-                  <Section title="Background" subtitle="Pick a base color — surfaces and text shades derive from it — or follow the Light/Dark theme.">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <input
-                        type="color"
-                        value={customTheme.bg || (theme === 'light' ? '#fafafa' : '#080d18')}
-                        onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.value })}
-                        disabled={customTheme.bg === null}
-                        aria-label="Custom background color"
-                        style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
-                      />
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={customTheme.bg === null}
-                          onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
-                        />
-                        Follow Light/Dark
-                      </label>
-                    </div>
-                  </Section>
-                  <Section title="Corners" subtitle="How sharp the surfaces feel.">
-                    <Segmented
-                      value={String(customTheme.radius)}
-                      onChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
-                      groupLabel="Corner radius"
-                      options={[
-                        { value: '0', label: 'Square', ariaLabel: 'Square corners', title: 'Sharp pixel corners.' },
-                        { value: '6', label: 'Soft', ariaLabel: 'Soft corners', title: 'Gently rounded.' },
-                        { value: '12', label: 'Round', ariaLabel: 'Round corners', title: 'Fully rounded.' },
-                      ]}
-                    />
-                  </Section>
-                  <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
-                    <Segmented
-                      value={customTheme.font}
-                      onChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
-                      groupLabel="Custom typeface"
-                      options={[
-                        { value: 'standard', label: 'Standard', ariaLabel: 'Standard font', title: 'Inter for UI text.' },
-                        { value: 'mono', label: 'Mono', ariaLabel: 'Mono font', title: 'JetBrains Mono everywhere.' },
-                      ]}
-                    />
-                  </Section>
-                  <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
-                    <Toggle
-                      value={customTheme.scanlines}
-                      onChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
-                      title="Toggle the CRT scanline overlay."
-                      ariaLabel="Scanline overlay"
-                    />
-                  </Section>
-                </>
-              )}
-              <Section title="Greeting" subtitle="The line shown when you start a new task.">
-                <TextInput
-                  value={settings.greeting}
-                  onChange={(v) => setSetting('greeting', v)}
-                  title="Shown above the task input when you start a new task."
-                  ariaLabel="Greeting text"
-                />
-              </Section>
-              <div className="settings-hide-mobile">
-                <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
-                  <Toggle
-                    value={settings.showDots}
-                    onChange={(v) => setSetting('showDots', v)}
-                    title="Toggle the animated grid background."
-                    ariaLabel="Animated background"
-                  />
-                </Section>
-                <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-                  <Toggle
-                    value={settings.showCounters !== false}
-                    onChange={(v) => setSetting('showCounters', v)}
-                    title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
-                    ariaLabel="Nav-panel counters"
-                  />
-                </Section>
-              </div>
-            </CollapsibleGroup>
-
-            <CollapsibleGroup title="Memory" defaultOpen={false}>
-              <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
-                <Segmented
-                  value={settings.memoryMode ?? 'autopilot'}
-                  onChange={(v) => setSetting('memoryMode', v)}
-                  groupLabel="Memory mode"
-                  options={[
-                    { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
-                    { value: 'copilot',   label: 'Copilot',   title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
-                    { value: 'off',       label: 'Off',       title: 'Disable long-term memory updates.' },
-                  ]}
-                />
-              </Section>
-              <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
-                <Toggle
-                  value={settings.episodicMemory ?? true}
-                  onChange={(v) => setSetting('episodicMemory', v)}
-                  title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
-                  ariaLabel="Episodic memory"
-                />
-              </Section>
-              <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
-                <Toggle
-                  value={settings.proactiveDashboards ?? false}
-                  onChange={(v) => setSetting('proactiveDashboards', v)}
-                  title="Auto-generate HTML reports from scratchpad output."
-                  ariaLabel="Proactive dashboards"
-                />
-              </Section>
-              <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
-                <Toggle
-                  value={settings.actFirst ?? true}
-                  onChange={(v) => setSetting('actFirst', v)}
-                  title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
-                  ariaLabel="Act first, ask later"
-                />
-              </Section>
-            </CollapsibleGroup>
-
-            <CollapsibleGroup title="Updates" defaultOpen={false}>
-              <Section
-                title="Current version"
-                subtitle="The app, UI bundle, and server versions currently running."
-              >
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 6,
-                  fontFamily: 'var(--font-mono)', fontSize: 12.5,
-                  color: 'var(--text-strong)',
-                }}>
-                  <span>
-                    <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>App</span>
-                    {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '—'}
-                  </span>
-                  {isElectron && uiVersion && uiVersion !== 'bundled' && uiVersion !== 'web' && (
-                    <span>
-                      <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                      {uiVersion}
-                      {uiVersion !== (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '') && (
-                        <span style={{ color: 'var(--text-warning, #c49000)', marginLeft: 6, fontSize: 11 }}>
-                          (differs from app)
-                        </span>
-                      )}
-                    </span>
-                  )}
-                  {isElectron && uiVersion === 'bundled' && (
-                    <span>
-                      <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                      bundled
-                    </span>
-                  )}
-                  {serverVersion && (
-                    <span>
-                      <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>Server</span>
-                      {serverVersion}
-                    </span>
-                  )}
-                </div>
-              </Section>
-              <Section
-                title="UI updates"
-                subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
-              >
-                <Segmented
-                  value={settings.uiUpdateMode ?? 'auto'}
-                  onChange={(v) => setSetting('uiUpdateMode', v)}
-                  groupLabel="UI update mode"
-                  options={[
-                    { value: 'auto',   label: 'Auto',   title: 'Download and apply UI updates automatically.' },
-                    { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
-                  ]}
-                />
-              </Section>
-            </CollapsibleGroup>
-
-            {host.isElectron && (
-              <CollapsibleGroup title="Account" defaultOpen={false}>
-                {host.isMac() && (
-                  <Section
-                    title="Store login in macOS keychain"
-                    subtitle="More secure, but macOS may ask for keychain access on launch. When off, your login is saved in ~/.cowork instead."
-                  >
-                    <Toggle
-                      value={keychainPref}
-                      onChange={handleKeychainToggle}
-                      title="Store your login refresh token in the macOS keychain instead of a file under ~/.cowork."
-                      ariaLabel="Store login in macOS keychain"
-                    />
-                  </Section>
-                )}
-                <Section
-                  title="Sign out"
-                  subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch."
-                >
-                  <button
-                    type="button"
-                    onClick={() => setLogoutConfirmOpen(true)}
-                    disabled={loggingOut}
-                    title="Sign out and clear stored credentials"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8,
-                      padding: '8px 14px', borderRadius: 8,
-                      fontSize: 13, fontWeight: 600,
-                      color: '#E07060',
-                      background: 'rgba(224,112,96,0.08)',
-                      border: '1px solid rgba(224,112,96,0.35)',
-                      cursor: loggingOut ? 'progress' : 'pointer',
-                      fontFamily: 'inherit',
-                      opacity: loggingOut ? 0.7 : 1,
-                    }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2"
-                      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                      <polyline points="16 17 21 12 16 7" />
-                      <line x1="21" y1="12" x2="9" y2="12" />
-                    </svg>
-                    {loggingOut ? 'Signing out…' : 'Sign out'}
-                  </button>
-                </Section>
-              </CollapsibleGroup>
-            )}
-          </div>
+  const renderBanner = () => {
+    if (!bannerVisible) return null;
+    const activeTypes = Array.from(activeProviderTypes);
+    const activeStatuses = activeTypes.map((t) => (settings.providerStatus || {})[t] || 'untested');
+    const anyActiveFail = activeStatuses.some((s) => s === 'fail');
+    const allActiveOk = activeStatuses.length > 0 && activeStatuses.every((s) => s === 'ok');
+    const effectiveReady = configReady && !anyActiveFail;
+    const tone = testing
+      ? { border: 'rgba(127,127,127,0.40)', bg: 'rgba(127,127,127,0.10)', icoFg: 'var(--text-muted)', icoBg: 'rgba(127,127,127,0.16)' }
+      : effectiveReady
+        ? { border: 'rgba(93,146,135,0.45)', bg: 'rgba(93,146,135,0.10)', icoFg: 'var(--sage-500)', icoBg: 'rgba(93,146,135,0.16)' }
+        : { border: 'rgba(211,80,80,0.40)', bg: 'rgba(211,80,80,0.08)', icoFg: '#E07060', icoBg: 'rgba(211,80,80,0.14)' };
+    const title = testing ? 'Testing configuration…'
+      : anyActiveFail ? `${agentLabel || 'Anton'} needs a valid LLM provider and API key to work`
+      : tested ? (effectiveReady ? `${agentLabel || 'Anton'} setup correctly` : 'Test failed')
+      : effectiveReady ? `${agentLabel || 'Anton'} setup correctly` : `${agentLabel || 'Anton'} needs configuration`;
+    const subtitle = testing ? 'Talking to the active provider — hold on.'
+      : anyActiveFail ? 'The provider driving your planning or coding role failed its last test. Check the red row below.'
+      : (allActiveOk ? 'Active provider passed the test.' : (configError || 'Provider, model, and credentials are ready.'));
+    const icon = testing ? <span className="spinner" style={{ width: 15, height: 15 }} /> : effectiveReady ? Ico.check(15) : Ico.key(15);
+    const bannerRole = anyActiveFail || (tested && !effectiveReady) ? 'alert' : 'status';
+    return (
+      <div role={bannerRole} aria-live={bannerRole === 'alert' ? 'assertive' : 'polite'} aria-atomic="true"
+        style={{ padding: 14, marginBottom: 20, border: `1px solid ${tone.border}`, background: tone.bg, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, animation: tested && !testing ? 'set-badge-pulse 1.6s ease-out 1' : 'none', transition: 'background .2s ease, border-color .2s ease' }}
+      >
+        <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tone.icoFg, background: tone.icoBg, transition: 'background .2s ease, color .2s ease' }}>{icon}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--text-strong)' }}>{title}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</div>
         </div>
+        <button className="btn-secondary" onClick={validate} disabled={testing} aria-busy={testing} title="Re-run the configuration and active-provider tests." style={testing ? { opacity: 0.7, cursor: 'progress' } : undefined}>{testButtonLabel}</button>
+        <button type="button" onClick={() => setBannerVisible(false)} disabled={testing} title="Dismiss" aria-label="Dismiss banner"
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 0, background: 'transparent', color: 'var(--text-muted)', cursor: testing ? 'not-allowed' : 'pointer', opacity: testing ? 0.4 : 1 }}
+        >{Ico.close(13)}</button>
+      </div>
+    );
+  };
 
-        <ConfirmModal
-          open={logoutConfirmOpen}
-          title="Sign out of Cowork?"
-          message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
-          confirmLabel="Sign out"
-          cancelLabel="Cancel"
-          destructive
-          busy={loggingOut}
-          busyLabel="Signing out…"
-          onConfirm={handleLogout}
-          onClose={() => setLogoutConfirmOpen(false)}
-        />
+  // ───────────────────────── Section renderers ─────────────────────────
 
-        {/* Sticky save bar — sits at the bottom of the panel, glassy
-            translucent backdrop so the gravity field hints through it.
-            Primary button glows in dark mode (token-driven). */}
-        <div style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0,
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '14px 28px',
-          background: 'var(--surface-glass)',
-          WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
-          backdropFilter: 'blur(var(--surface-glass-blur))',
-          borderTop: '1px solid var(--border-subtle)',
-        }}>
-          <div
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            style={{
-              flex: 1, fontSize: 13, fontWeight: 500,
-              color: 'var(--text-muted)',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            {testing && (<span aria-hidden="true" className="spinner" style={{ width: 12, height: 12 }} />)}
-            {!testing && tested && configReady && (
-              <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>
-            )}
-            {!testing && saved && !tested && (
-              <span aria-hidden="true" style={{ color: 'var(--sage-500, #5d9287)', display: 'inline-flex' }}>{Ico.check(13)}</span>
-            )}
-            <span>
-              {testing
-                ? 'Testing configuration…'
-                : tested
-                  ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
-                  : saved
-                    ? 'Settings saved.'
-                    : configError
-                      ? configError
-                      : 'Changes apply on save.'}
+  const renderAgentSection = () => (
+    <SettingsSectionPanel footer={renderSaveFooter()}>
+      {renderBanner()}
+      <CollapsibleGroup title="LLM Providers">
+        {providers.map((p) => {
+          const configured = providerConfigured(p);
+          const label = typeLabels[p.type] || p.type;
+          const reveal = p.type === 'anthropic' ? 'anthropic'
+            : p.type === 'minds-cloud' ? 'minds'
+            : p.type === 'gemini' ? 'gemini'
+            : p.type === 'openai-compatible' ? 'openai-compatible'
+            : p.type === 'openai' ? 'openai'
+            : null;
+          // Show the persisted/seeded status for any configured provider — a
+          // configured provider reads as connected at startup, not just the one
+          // currently driving a role. Unconfigured rows have nothing to show.
+          const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
+          const status = configured ? rawStatus : 'untested';
+          const detail = configured ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
+          const friendlyError = (() => {
+            if (!detail) return '';
+            if (detail === 'missing API key') return 'Add an API key on the right.';
+            if (detail === 'missing base URL') return 'Add a base URL on the right.';
+            const m = detail.match(/HTTP (\d{3})/);
+            if (m) {
+              const code = parseInt(m[1], 10);
+              if (code === 401) return 'Unauthorized — the API key was rejected.';
+              if (code === 403) return 'Forbidden — the API key does not have access.';
+              if (code === 404) return 'Endpoint not found — check the base URL.';
+              if (code === 429) return 'Rate limited — try again in a moment.';
+              if (code >= 500) return `Provider is currently unreachable (HTTP ${code}).`;
+              return `Provider rejected the request (HTTP ${code}).`;
+            }
+            if (detail.startsWith('ConnectError') || detail.startsWith('ConnectTimeout')) {
+              return 'Could not reach the provider — network or DNS problem.';
+            }
+            if (detail.startsWith('ReadTimeout') || detail.startsWith('TimeoutException')) {
+              return 'Provider did not respond in time.';
+            }
+            if (detail.startsWith('SSLError') || detail.includes('certificate')) {
+              return 'TLS / certificate problem reaching the provider.';
+            }
+            return detail;
+          })();
+          const dotColor = status === 'ok' ? '#7CC4B6'
+            : status === 'fail' ? '#E07060'
+            : status === 'testing' ? '#E5B57A'
+            : 'rgba(127,127,127,0.6)';
+          // Glow for active states (ok/fail/testing); untested rows get
+          // a subtle 1px ring instead so the dot still reads as an
+          // intentional indicator rather than a blob of grey.
+          const dotGlow = status === 'ok' ? '0 0 6px rgba(124,196,182,0.7)'
+            : status === 'fail' ? '0 0 6px rgba(224,112,96,0.6)'
+            : status === 'testing' ? '0 0 6px rgba(229,181,122,0.7)'
+            : 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 0 0 1px var(--border-subtle)';
+          const dotTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
+            : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
+            : status === 'testing' ? 'Testing…'
+            : 'Not tested yet';
+          const dot = (
+            <span
+              title={dotTitle}
+              aria-label={dotTitle}
+              style={{
+                display: 'inline-block',
+                width: 10, height: 10, borderRadius: 999,
+                background: dotColor,
+                boxShadow: dotGlow,
+                flexShrink: 0,
+                animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
+              }}
+            />
+          );
+          // Each provider row is a sub-section in the Providers group,
+          // so every row gets an <h3> for SR heading navigation. Known
+          // types render the label visibly; the openai-compatible row
+          // already shows an editable name input as its title, so the
+          // <h3> uses the `.sr-only` utility (its text is the current
+          // name or a sensible fallback) — keeps the visual unchanged
+          // while making the row reachable by H/4 navigation.
+          const headingBaseStyle = {
+            margin: 0, padding: 0, fontFamily: 'inherit', lineHeight: 1.3,
+            fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
+          };
+          const customHeadingText = p.type === 'openai-compatible'
+            ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
+            : null;
+          const titleNode = (
+            <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              {dot}
+              {p.type === 'openai-compatible' ? (() => {
+                const nameEmpty = !(p.name || '').trim();
+                const errorId = `provider-name-error-${p.type}`;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <h3 className="sr-only">{customHeadingText}</h3>
+                    <input
+                      className="field-input"
+                      value={p.name ?? ''}
+                      onChange={(e) => updateProviderField('openai-compatible', 'name', e.target.value)}
+                      placeholder="Custom provider name"
+                      title="Display name for this custom provider — shown in the model dropdowns below."
+                      aria-label="Custom provider name"
+                      aria-invalid={nameEmpty || undefined}
+                      aria-describedby={nameEmpty ? errorId : undefined}
+                      aria-required="true"
+                      style={{
+                        width: 220, fontSize: 13.5, fontWeight: 600,
+                        borderColor: nameEmpty ? 'rgba(224,112,96,0.55)' : undefined,
+                      }}
+                    />
+                    {nameEmpty && (
+                      <span id={errorId} style={{ fontSize: 10.5, color: '#E07060' }}>Name required</span>
+                    )}
+                  </div>
+                );
+              })() : (
+                <h3 style={headingBaseStyle}>{label}</h3>
+              )}
             </span>
-          </div>
+          );
+          return (
+            <div key={p.type} className="settings-provider-row" style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 380px auto',
+              gap: 24,
+              padding: '16px 0',
+              alignItems: 'flex-start',
+            }}>
+              <div>
+                {titleNode}
+                {PROVIDER_TYPE_DESC[p.type] && (
+                  <div style={{
+                    fontSize: 12, color: 'var(--text-muted)',
+                    marginTop: 6, maxWidth: 380, lineHeight: 1.45,
+                  }}>
+                    <div>{PROVIDER_TYPE_DESC[p.type]}</div>
+                    {p.type === 'minds-cloud' && (
+                      <div>Required to publish artifacts to the web.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <ApiKeyInput
+                  value={p.apiKey ?? ''}
+                  onChange={(v) => updateProviderField(p.type, 'apiKey', v)}
+                  placeholder={
+                    p.type === 'anthropic' ? 'sk-ant-••••••••' :
+                    p.type === 'minds-cloud' ? 'mdb_••••••••' :
+                    p.type === 'gemini' ? 'AIza••••••••' :
+                    'sk-••••••••'
+                  }
+                  revealName={reveal}
+                />
+                {p.type === 'openai-compatible' && (
+                  <ClearableTextInput
+                    value={p.baseUrl ?? ''}
+                    onChange={(v) => updateProviderField('openai-compatible', 'baseUrl', v)}
+                    placeholder="https://example.com/v1"
+                    ariaLabel="Base URL"
+                  />
+                )}
+                {GET_KEY_URL[p.type] && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                    Get your API key at{' '}
+                    <a
+                      href={GET_KEY_URL[p.type]}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
+                      style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                    >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                  </div>
+                )}
+                {p.type === 'minds-cloud' && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                    Don't have an account?{' '}
+                    <a
+                      href={MINDS_REGISTER_URL}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      title="Open the MindsHub sign-up page in your browser."
+                      style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                    >Sign up →</a>
+                  </div>
+                )}
+                {status === 'fail' && friendlyError && (
+                  <div style={{
+                    fontSize: 11.5,
+                    color: '#E07060',
+                    display: 'flex', alignItems: 'flex-start', gap: 6,
+                  }}>
+                    <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
+                    <span>{friendlyError}</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ width: 30, height: 30 }}>
+                {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
+                  <button
+                    type="button"
+                    onClick={() => removeProvider(p.type)}
+                    title="Remove this provider"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 30, height: 30, borderRadius: 8,
+                      background: 'transparent',
+                      border: '1px solid var(--border-subtle)',
+                      color: '#E07060',
+                      cursor: 'pointer',
+                    }}
+                  >{Ico.trash(13)}</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{
+          position: 'relative',
+          padding: '14px 0 4px',
+          minHeight: 50,
+        }}>
+          {/* Idle: + Add provider button. Fades + slides down when
+              the picker opens. */}
           <button
             className="btn-secondary"
-            onClick={validate}
-            title="Re-run the configuration and active-provider tests."
-          >Test</button>
-          <button
-            className="btn-primary"
-            onClick={save}
-            disabled={!settingsDirty || testing || missingCustomNames}
-            title={
-              missingCustomNames ? 'Each custom provider needs a name'
-              : testing ? 'Saving…'
-              : !settingsDirty ? 'No unsaved changes'
-              : 'Save changes and re-run provider tests.'
-            }
+            onClick={() => setAddPickerOpen(true)}
+            disabled={availableTypesForAdd.length === 0}
+            title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
             style={{
-              width: 140,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              opacity: (!settingsDirty || testing || missingCustomNames) ? 0.55 : 1,
-              cursor: (!settingsDirty || testing || missingCustomNames) ? 'default' : 'pointer',
+              position: 'absolute', top: 14, left: 0,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
+              transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
+              transition: 'opacity 200ms ease, transform 200ms ease',
+              pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
+              cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
             }}
-          >
-            {testing
-              ? 'Saving…'
-              : settingsDirty
-                ? 'Save settings'
-                : (<>{Ico.check(14)} Saved</>)}
-          </button>
+          >{Ico.plus(13)} Add provider</button>
+
+          {/* Open: Choose Provider: <chip> <chip> · Cancel.
+              Fades + slides up from below as it appears. */}
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+            opacity: addPickerOpen ? 1 : 0,
+            transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
+            transition: 'opacity 220ms ease, transform 220ms ease',
+            pointerEvents: addPickerOpen ? 'auto' : 'none',
+            position: 'absolute', top: 14, left: 0, right: 0,
+          }}>
+            <strong style={{
+              fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
+            }}>Choose Provider:</strong>
+            {availableTypesForAdd.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => addProviderOfType(t)}
+                className="btn-secondary"
+                title={PROVIDER_TYPE_DESC[t]}
+                style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
+              >{typeLabels[t] || t}</button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setAddPickerOpen(false)}
+              title="Hide the provider picker."
+              aria-label="Close provider picker"
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 26, height: 26, marginLeft: 4, borderRadius: 6,
+                background: 'transparent', border: 0,
+                color: 'var(--text-muted)', cursor: 'pointer',
+              }}
+            >{Ico.close(13)}</button>
+          </div>
         </div>
+      </CollapsibleGroup>
+
+      <CollapsibleGroup title="Agent Models">
+        {(() => {
+          // The default-mode provider is the implicit fallback for
+          // any role that hasn't been explicitly assigned an
+          // override (keyed MindsHub, else first configured).
+          const defaultProvider =
+            providers.find((p) => p.type === defaultModeProviderType) ||
+            providers.find((p) => p.type === 'minds-cloud') ||
+            providers[0];
+          const multipleProviders = providers.length > 1;
+
+          // For each role: render provider selector (when N>1) +
+          // model field. When the user picks a new provider, auto-
+          // fill the role with that provider's recommended default
+          // for the role. Empty overrides fall back to the default
+          // provider's recommended pair.
+          const RoleRow = ({ role, label }) => {
+            const cur = roleOverride(role) || {};
+            const curType = roleProviderType(role) || (defaultProvider?.type || '');
+            const fallbackPair = recommendedPair[curType] || ['', ''];
+            const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
+            const curModel = roleModelValue(role, fallbackModel);
+            const provider = providers.find((p) => p.type === curType);
+            const modelList = recommendedModels[curType] || [];
+            const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
+            const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
+            const providerUnusable = providerUnconfigured || providerFailed;
+            const providerWarnId = `agent-model-${role}-provider`;
+
+            // Reasoning effort — a per-role setting shown beside the model
+            // dropdown, only for models that advertise effort levels
+            // (settings.modelEfforts, sourced from MindsHub /v1/models + the
+            // static direct-provider catalog). Suppressed for the Hermes
+            // harness, which has no effort knob.
+            const effortKey = role === 'planning' ? 'planningReasoningEffort' : 'codingReasoningEffort';
+            const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
+            const effortEntry = (settings.modelEfforts || {})[curModel];
+            const effortOptions = effortEntry?.efforts || [];
+            const savedEffort = settings[effortKey];
+            const effortValue = effortOptions.includes(savedEffort)
+              ? savedEffort
+              : (effortEntry?.default || effortOptions[0] || '');
+            const showEffort = harnessSupportsEffort && effortOptions.length > 0;
+
+            const writeOverride = (next) => {
+              const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
+              const model = next.model || '';
+              const normalized = { providerType, model };
+              setLlmDirty(true);
+              setRoleDriver(role, providerType, model);
+              setSetting('modelOverrides', { ...overrides, [role]: normalized });
+              setSetting('modelMode', 'custom');
+              // Effort is model-specific — drop any stale level so we never
+              // send an effort the newly-selected model doesn't accept.
+              setSetting(effortKey, '');
+            };
+
+            return (
+              <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`}>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {multipleProviders && (
+                    <select
+                      className="settings-select"
+                      value={curType}
+                      onChange={(e) => {
+                        const t = e.target.value;
+                        const pair = recommendedPair[t] || ['', ''];
+                        const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
+                        setModelInputMode((m) => ({ ...m, [role]: false }));
+                        writeOverride({ providerType: t, model: newModel });
+                      }}
+                      aria-invalid={providerUnusable || undefined}
+                      aria-describedby={providerUnusable ? providerWarnId : undefined}
+                      title={`Choose which provider powers the ${role} role.`}
+                      style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
+                    >
+                      {providers.map((p) => (
+                        <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
+                      ))}
+                    </select>
+                  )}
+                  {modelList.length > 0 ? (
+                    (() => {
+                      // The "Other…" option lets the user type a
+                      // free-form model id. MindsHub's list is
+                      // comprehensive enough that we hide the
+                      // Other escape hatch there. Sticky flag
+                      // keeps the text input visible after
+                      // selecting Other even when the value is
+                      // still empty.
+                      const allowOther = curType !== 'minds-cloud';
+                      const savedIsCustom = !!curModel && !modelList.includes(curModel);
+                      const inputMode = modelInputMode[role] || savedIsCustom;
+                      const selectValue = inputMode ? '__custom__' : curModel;
+                      return (
+                        <>
+                          <select
+                            className="settings-select"
+                            value={selectValue || (modelList[0] || '')}
+                            onChange={(e) => {
+                              if (e.target.value === '__custom__') {
+                                setModelInputMode((m) => ({ ...m, [role]: true }));
+                                // Keep whatever curModel already
+                                // had so the user can refine it,
+                                // instead of blanking it.
+                                writeOverride({ providerType: curType, model: curModel || '' });
+                              } else {
+                                setModelInputMode((m) => ({ ...m, [role]: false }));
+                                writeOverride({ providerType: curType, model: e.target.value });
+                              }
+                            }}
+                            title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
+                            style={{ width: '100%' }}
+                          >
+                            {modelList.map((m) => <option key={m} value={m}>{modelLabel(m)}</option>)}
+                            {allowOther && <option value="__custom__">Other…</option>}
+                          </select>
+                          {inputMode && allowOther && (
+                            <TextInput
+                              value={curModel}
+                              onChange={(v) => writeOverride({ providerType: curType, model: v })}
+                              placeholder="Type a model id"
+                              title="Free-form model id sent verbatim to the provider."
+                            />
+                          )}
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <TextInput
+                      value={curModel}
+                      onChange={(v) => writeOverride({ providerType: curType, model: v })}
+                      placeholder="model-id"
+                      title="Model id sent verbatim to this provider."
+                    />
+                  )}
+                  {showEffort && (
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>Reasoning effort</span>
+                      <select
+                        className="settings-select"
+                        value={effortValue}
+                        onChange={(e) => { setLlmDirty(true); setSetting(effortKey, e.target.value); }}
+                        title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
+                        style={{ width: '100%', textTransform: 'capitalize' }}
+                      >
+                        {effortOptions.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {providerUnusable && (
+                    <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
+                      {providerUnconfigured
+                        ? (provider
+                            ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
+                            : 'This provider is not configured. Add it under LLM Providers above.')
+                        : `${providerDisplayName(provider)} failed its last test — check it under LLM Providers above, or pick another provider.`}
+                    </div>
+                  )}
+                </div>
+              </Section>
+            );
+          };
+          return (
+            <>
+              {RoleRow({ role: 'planning', label: 'Planning model' })}
+              {RoleRow({ role: 'coding',   label: 'Coding model' })}
+            </>
+          );
+        })()}
+      </CollapsibleGroup>
+
+      <CollapsibleGroup title="Agent Harness">
+        <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
+          <ToggleGroup
+            value={settings.harness || 'anton'}
+            onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+            aria-label="Agent harness"
+            options={[
+              { value: 'anton',  label: 'Anton',  'aria-label': 'Use Anton agent',  title: 'Anton — the default AI agent.' },
+              { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+            ]}
+          />
+        </Section>
+      </CollapsibleGroup>
+
+      <CollapsibleGroup title="Memory" defaultOpen={false}>
+        <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
+          <ToggleGroup
+            value={settings.memoryMode ?? 'autopilot'}
+            onValueChange={(v) => setSetting('memoryMode', v)}
+            aria-label="Memory mode"
+            options={[
+              { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
+              { value: 'copilot',   label: 'Copilot',   title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
+              { value: 'off',       label: 'Off',       title: 'Disable long-term memory updates.' },
+            ]}
+          />
+        </Section>
+        <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
+          <Switch
+            checked={settings.episodicMemory ?? true}
+            onCheckedChange={(v) => setSetting('episodicMemory', v)}
+            title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
+            aria-label="Episodic memory"
+          />
+        </Section>
+        <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
+          <Switch
+            checked={settings.proactiveDashboards ?? false}
+            onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
+            title="Auto-generate HTML reports from scratchpad output."
+            aria-label="Proactive dashboards"
+          />
+        </Section>
+        <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
+          <Switch
+            checked={settings.actFirst ?? true}
+            onCheckedChange={(v) => setSetting('actFirst', v)}
+            title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
+            aria-label="Act first, ask later"
+          />
+        </Section>
+      </CollapsibleGroup>
+    </SettingsSectionPanel>
+  );
+
+  const renderAppearanceSection = () => (
+    <SettingsSectionPanel footer={renderSaveFooter()}>
+      <CollapsibleGroup title="Appearance">
+      <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
+        <ToggleGroup
+          value={theme || 'dark'}
+          onValueChange={(v) => onThemeChange?.(v)}
+          aria-label="Theme"
+          options={[
+            {
+              value: 'light',
+              label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
+              'aria-label': 'Light theme',
+              title: 'Use the light theme.',
+            },
+            {
+              value: 'dark',
+              label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
+              'aria-label': 'Dark theme',
+              title: 'Use the dark theme.',
+            },
+          ]}
+        />
+      </Section>
+      <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+        <ToggleGroup
+          value={normalizeSkin(skin)}
+          onValueChange={(v) => onSkinChange?.(v)}
+          aria-label="Style"
+          options={SKINS.map((s) => ({
+            value: s.id,
+            label: s.icon && Ico[s.icon]
+              ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
+              : s.label,
+            'aria-label': `${s.label} style`,
+            title: s.title,
+          }))}
+        />
+      </Section>
+      {normalizeSkin(skin) === 'custom' && customTheme && (
+        <>
+          <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
+            <input
+              type="color"
+              value={customTheme.accent}
+              onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
+              aria-label="Custom accent color"
+              style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer' }}
+            />
+          </Section>
+          <Section title="Background" subtitle="Pick a base color — surfaces and text shades derive from it — or follow the Light/Dark theme.">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <input
+                type="color"
+                value={customTheme.bg || (theme === 'light' ? '#fafafa' : '#080d18')}
+                onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.value })}
+                disabled={customTheme.bg === null}
+                aria-label="Custom background color"
+                style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
+              />
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={customTheme.bg === null}
+                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                />
+                Follow Light/Dark
+              </label>
+            </div>
+          </Section>
+          <Section title="Corners" subtitle="How sharp the surfaces feel.">
+            <ToggleGroup
+              value={String(customTheme.radius)}
+              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+              aria-label="Corner radius"
+              options={[
+                { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
+                { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
+                { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
+              ]}
+            />
+          </Section>
+          <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
+            <ToggleGroup
+              value={customTheme.font}
+              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+              aria-label="Custom typeface"
+              options={[
+                { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
+                { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
+              ]}
+            />
+          </Section>
+          <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
+            <Switch
+              checked={customTheme.scanlines}
+              onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+              title="Toggle the CRT scanline overlay."
+              aria-label="Scanline overlay"
+            />
+          </Section>
+        </>
+      )}
+      <Section title="Greeting" subtitle="The line shown when you start a new task.">
+        <TextInput
+          value={settings.greeting}
+          onChange={(v) => setSetting('greeting', v)}
+          title="Shown above the task input when you start a new task."
+          ariaLabel="Greeting text"
+        />
+      </Section>
+      <div className="settings-hide-mobile">
+        <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
+          <Switch
+            checked={settings.showDots}
+            onCheckedChange={(v) => setSetting('showDots', v)}
+            title="Toggle the animated grid background."
+            aria-label="Animated background"
+          />
+        </Section>
+        <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
+          <Switch
+            checked={settings.showCounters !== false}
+            onCheckedChange={(v) => setSetting('showCounters', v)}
+            title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
+            aria-label="Nav-panel counters"
+          />
+        </Section>
       </div>
+    </CollapsibleGroup>
+    </SettingsSectionPanel>
+  );
+
+  const renderChannelsSection = () => (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      <ChannelsView />
+    </div>
+  );
+
+  const renderUpdatesSection = () => (
+    <SettingsSectionPanel footer={renderSaveFooter()}>
+      <div style={{
+        border: '1px solid var(--border-subtle)', borderRadius: 10,
+        background: 'var(--surface-glass)',
+        WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
+        backdropFilter: 'blur(var(--surface-glass-blur))',
+        marginBottom: 14, overflow: 'hidden', padding: '0 18px 8px',
+      }}>
+        <Section
+          title="Current version"
+          subtitle="The app, UI bundle, and server versions currently running."
+        >
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 6,
+            fontFamily: 'var(--font-mono)', fontSize: 12.5,
+            color: 'var(--text-strong)',
+          }}>
+            <span>
+              <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>App</span>
+              {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '—'}
+            </span>
+            {isElectron && uiVersion && uiVersion !== 'bundled' && uiVersion !== 'web' && (
+              <span>
+                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
+                {uiVersion}
+                {uiVersion !== (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '') && (
+                  <span style={{ color: 'var(--text-warning, #c49000)', marginLeft: 6, fontSize: 11 }}>
+                    (differs from app)
+                  </span>
+                )}
+              </span>
+            )}
+            {isElectron && uiVersion === 'bundled' && (
+              <span>
+                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
+                bundled
+              </span>
+            )}
+            {serverVersion && (
+              <span>
+                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>Server</span>
+                {serverVersion}
+              </span>
+            )}
+          </div>
+        </Section>
+        <Section
+          title="UI updates"
+          subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
+        >
+          <ToggleGroup
+            value={settings.uiUpdateMode ?? 'auto'}
+            onValueChange={(v) => setSetting('uiUpdateMode', v)}
+            aria-label="UI update mode"
+            options={[
+              { value: 'auto',   label: 'Auto',   title: 'Download and apply UI updates automatically.' },
+              { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
+            ]}
+          />
+        </Section>
+      </div>
+    </SettingsSectionPanel>
+  );
+
+  const renderBackendSection = () => {
+    if (host.isWeb) {
+      return (
+        <SettingsSectionPanel>
+          <div style={{
+            padding: '32px 0',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 10, textAlign: 'center',
+            color: 'var(--text-muted)', fontSize: 13,
+          }}>
+            <span style={{ fontSize: 32, lineHeight: 1 }}>☁</span>
+            <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Backend is managed server-side</div>
+            <div style={{ maxWidth: 320 }}>The Python backend runs on the server — it isn't controllable from this interface.</div>
+          </div>
+        </SettingsSectionPanel>
+      );
+    }
+
+    const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
+    const error = diag?.lastError;
+    const log = (diag?.recentLog || '').trim();
+    const port = diag?.port;
+    const exitCode = diag?.lastExitCode;
+    const startedAt = diag?.lastStartAt
+      ? new Date(diag.lastStartAt).toLocaleTimeString()
+      : null;
+
+    const state = serverBusy
+      ? (serverBusyKind === 'stopping' ? 'stopping' : 'starting')
+      : serverOnline ? 'online' : 'offline';
+    const offlineKind = state === 'offline'
+      && !error
+      && diag?.lastStopIntentional === true
+      ? 'stopped'
+      : 'failed';
+
+    const STATUS_META = {
+      online:   { title: 'MindsHub backend is running',   subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success, #1F8F5F)', iconBgMix: 'var(--success, #1F8F5F)' },
+      starting: { title: 'MindsHub backend is starting…', subtitle: 'Spawning the local Python server. This usually takes a few seconds.',         iconColor: 'var(--accent)',             iconBgMix: 'var(--accent)'             },
+      stopping: { title: 'MindsHub backend is stopping…', subtitle: 'Waiting for the local Python server to terminate.',                            iconColor: 'var(--ink-3)',              iconBgMix: 'var(--ink-3)'              },
+      offline: offlineKind === 'stopped'
+        ? { title: 'MindsHub backend is stopped',     subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.',                              iconColor: 'var(--ink-3)',   iconBgMix: 'var(--ink-3)'   }
+        : { title: 'MindsHub backend isn\'t running', subtitle: "The local Python server didn't start. The most recent error and log tail are captured below.", iconColor: 'var(--danger)', iconBgMix: 'var(--danger)' },
+    }[state];
+
+    const backendFooter = (
+      <>
+        <button type="button" onClick={refreshDiag} title="Refresh diagnostics"
+          style={{ cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500 }}
+        >Refresh</button>
+        {(onStartServer || onStopServer) && state !== 'offline' && (
+          <button type="button" onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}
+            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
+          >{(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}</button>
+        )}
+        {(onStartServer || onStopServer) && (
+          <button type="button" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
+            disabled={diagBusy || serverBusy || (state === 'offline' ? !onStartServer : !(onStartServer && onStopServer))}
+            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
+          >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</button>
+        )}
+      </>
+    );
+
+    return (
+      <SettingsSectionPanel footer={backendFooter}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Status card — status header + port + logs */}
+          <div style={{
+            border: '1px solid var(--border-subtle)', borderRadius: 10,
+            background: 'var(--surface-glass)',
+            WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
+            backdropFilter: 'blur(var(--surface-glass-blur))',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '10px 16px',
+              borderBottom: '1px solid var(--line)',
+              fontSize: 10.5, fontWeight: 600, letterSpacing: '0.07em',
+              textTransform: 'uppercase', color: 'var(--ink-4)',
+            }}>Status</div>
+
+            {/* Status summary row */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px' }}>
+              <span style={{
+                display: 'inline-grid', placeItems: 'center',
+                width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+                background: `color-mix(in srgb, ${STATUS_META.iconBgMix} 14%, var(--surface))`,
+                color: STATUS_META.iconColor,
+                border: `1px solid color-mix(in srgb, ${STATUS_META.iconBgMix} 35%, transparent)`,
+              }}>
+                {Ico.power ? Ico.power(16) : '⏻'}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--ink)' }}>{STATUS_META.title}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>{STATUS_META.subtitle}</div>
+              </div>
+            </div>
+
+            {/* Port + exit code + last attempt chips */}
+            <div style={{
+              display: 'flex', gap: 8, padding: '0 16px 14px',
+              fontFamily: FONT_MONO, fontSize: 11,
+            }}>
+              <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
+                <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Port</span>
+                <span style={{ color: 'var(--ink)' }}>{port ?? '—'}</span>
+              </div>
+              {state === 'offline' && (
+                <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Exit</span>
+                  <span style={{ color: 'var(--ink)' }}>{exitCode ?? '—'}</span>
+                </div>
+              )}
+              {startedAt && (
+                <div style={{ padding: '6px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
+                  <span style={{ color: 'var(--ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9.5, marginRight: 6 }}>Started</span>
+                  <span style={{ color: 'var(--ink)' }}>{startedAt}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Headline error inside card — offline + start-failure */}
+            {state === 'offline' && offlineKind === 'failed' && (
+              <div style={{ padding: '0 16px 14px' }}>
+                {error ? (
+                  <div style={{
+                    padding: '10px 12px', borderRadius: 8,
+                    background: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',
+                    border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+                    color: 'var(--danger)', fontSize: 12.5, lineHeight: 1.5,
+                    fontFamily: FONT_MONO, wordBreak: 'break-word',
+                  }}>{error}</div>
+                ) : (
+                  <div style={{
+                    padding: '10px 12px', borderRadius: 8,
+                    background: 'var(--surface-2)', border: '1px solid var(--line)',
+                    color: 'var(--ink-3)', fontSize: 12.5, lineHeight: 1.5,
+                  }}>No specific start error was captured. Check the log tail — the process may have died after starting.</div>
+                )}
+              </div>
+            )}
+
+            {/* Recent log */}
+            <div style={{ borderTop: '1px solid var(--line)', padding: '10px 16px 14px' }}>
+              <div style={{
+                fontFamily: FONT_MONO, fontSize: 10, color: 'var(--ink-4)',
+                letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6,
+              }}>Log</div>
+              <pre style={{
+                margin: 0, padding: '10px 12px',
+                background: 'var(--surface-2)', border: '1px solid var(--line)',
+                borderRadius: 8, fontFamily: FONT_MONO, fontSize: 11.5, lineHeight: 1.55,
+                color: 'var(--ink-2)', maxHeight: 200, overflow: 'auto',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word', userSelect: 'text',
+              }}>{log || '(no log captured yet)'}</pre>
+            </div>
+          </div>
+
+          {state === 'offline' && (
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
+              Common causes: a stale process holding port {port ?? 26866}, a missing Python interpreter (re-run the installer), or a crash in a route handler. Restart the backend below — if it keeps failing, copy the log and share it for support.
+            </div>
+          )}
+
+
+        </div>
+      </SettingsSectionPanel>
+    );
+  };
+
+  const renderAccountSection = () => {
+    const CARD = {
+      border: '1px solid var(--border-subtle)', borderRadius: 10,
+      background: 'var(--surface-glass)',
+      WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
+      backdropFilter: 'blur(var(--surface-glass-blur))',
+      marginBottom: 14, overflow: 'hidden',
+    };
+
+    // User info card — shown on both Electron and web if we have a token
+    const userCard = accountUser && (
+      <div style={{ ...CARD }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14,
+          padding: '16px 18px',
+        }}>
+          {/* Avatar circle with initials */}
+          <div style={{
+            width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+            background: 'color-mix(in srgb, var(--accent, #5d9287) 18%, var(--surface))',
+            border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 35%, transparent)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, fontWeight: 700, color: 'var(--accent, #5d9287)',
+            userSelect: 'none',
+          }} aria-hidden="true">
+            {accountUser.name
+              ? accountUser.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+              : accountUser.email
+                ? accountUser.email[0].toUpperCase()
+                : '?'}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {accountUser.name && (
+              <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--ink)', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {accountUser.name}
+              </div>
+            )}
+            {accountUser.email && (
+              <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: accountUser.name ? 2 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {accountUser.email}
+              </div>
+            )}
+            {!accountUser.name && !accountUser.email && accountUser.username && (
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{accountUser.username}</div>
+            )}
+          </div>
+          <a
+            href="https://console.mindshub.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              flexShrink: 0, fontSize: 12, fontWeight: 500,
+              color: 'var(--accent, #5d9287)', textDecoration: 'none',
+              padding: '5px 10px', borderRadius: 6,
+              border: '1px solid color-mix(in srgb, var(--accent, #5d9287) 40%, transparent)',
+              background: 'color-mix(in srgb, var(--accent, #5d9287) 8%, transparent)',
+            }}
+          >MindsHub ↗</a>
+        </div>
+        {/* Extra rows for username / org if present */}
+        {(accountUser.username || accountUser.org) && (
+          <div style={{
+            borderTop: '1px solid var(--line)',
+            padding: '10px 18px',
+            display: 'flex', gap: 20,
+          }}>
+            {accountUser.username && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Username</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--font-mono)' }}>{accountUser.username}</div>
+              </div>
+            )}
+            {accountUser.org && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 2 }}>Organization</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>{accountUser.org}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+
+    if (!host.isElectron) {
+      return (
+        <SettingsSectionPanel>
+          {userCard || (
+            <div style={{ padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              <div style={{ fontWeight: 600, color: 'var(--text-strong)', fontSize: 14 }}>Managed via MindsHub</div>
+              <div style={{ maxWidth: 320 }}>Account management is handled through MindsHub for the web version.</div>
+            </div>
+          )}
+        </SettingsSectionPanel>
+      );
+    }
+
+    return (
+      <SettingsSectionPanel>
+        {userCard}
+        <div style={{ ...CARD, padding: '0 18px 8px' }}>
+          <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
+            <button type="button" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#E07060', background: 'rgba(224,112,96,0.08)', border: '1px solid rgba(224,112,96,0.35)', cursor: loggingOut ? 'progress' : 'pointer', fontFamily: 'inherit', opacity: loggingOut ? 0.7 : 1 }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              {loggingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          </Section>
+        </div>
+      </SettingsSectionPanel>
+    );
+  };
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
+      <SettingsNav section={section} onSectionChange={onSectionChange} />
+
+      {section === 'agent'      && renderAgentSection()}
+      {section === 'appearance' && renderAppearanceSection()}
+      {section === 'channels'   && renderChannelsSection()}
+      {section === 'updates'    && renderUpdatesSection()}
+      {section === 'backend'    && renderBackendSection()}
+      {section === 'account'    && renderAccountSection()}
+
+      <ConfirmModal
+        open={logoutConfirmOpen}
+        title="Sign out of Cowork?"
+        message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
+        confirmLabel="Sign out"
+        cancelLabel="Cancel"
+        destructive
+        busy={loggingOut}
+        busyLabel="Signing out…"
+        onConfirm={handleLogout}
+        onClose={() => setLogoutConfirmOpen(false)}
+      />
     </div>
   );
 }

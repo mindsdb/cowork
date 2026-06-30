@@ -28,7 +28,13 @@ export function OverflowMenu({
       title={title}
       disabled={disabled}
       className={clsx(
-        'inline-flex items-center justify-center rounded border-0 bg-transparent p-0',
+        // No `justify-*` in the base so callers can right/left-align the
+        // icon via `triggerClassName` (Tailwind can't resolve a base
+        // `justify-center` vs a passed `justify-end` — both land in the
+        // class list). The single icon child stays centered by default
+        // because the trigger box is icon-sized unless a caller stretches
+        // it (e.g. ContextCard's `absolute inset-0 justify-end`).
+        'inline-flex items-center rounded border-0 bg-transparent p-0',
         'text-ink-4 hover:text-ink focus-visible:text-ink',
         'cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50',
         triggerClassName,

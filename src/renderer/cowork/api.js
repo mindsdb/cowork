@@ -132,6 +132,13 @@ function _humanTime(iso) {
   return `${Math.floor(secs / 604800)} weeks ago`;
 }
 
+function _failedEventMeta(events) {
+  if (!Array.isArray(events)) return null;
+  const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
+  if (!ev) return null;
+  return { code: ev.code || null, message: ev.error || ev.message || '' };
+}
+
 // Replay the server-persisted SSE event log through the live stream
 // reducer to reconstruct `steps` + `startedAt` for each assistant
 // turn. The server saves raw events in a sidecar file and returns
@@ -139,22 +146,36 @@ function _humanTime(iso) {
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
-  return messages.map((m) => {
-    if (m?.role !== 'assistant') return m;
-    const events = m.events;
-    if (!Array.isArray(events) || events.length === 0) return m;
+  const out = [];
+  for (const m of messages) {
+    if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
+      out.push(m);
+      continue;
+    }
     let state = initialStreamState();
-    for (const ev of events) {
+    for (const ev of m.events) {
       try { state = reduceStream(state, ev); } catch {}
     }
     const { events: _drop, ...rest } = m;
-    if (!state.steps || state.steps.length === 0) return rest;
-    return {
+    const turnComplete = state.status === 'done' || state.status === 'error';
+    const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    out.push({
       ...rest,
-      steps: state.steps,
-      startedAt: rest.startedAt || state.startedAt || null,
-    };
-  });
+      ...(state.steps?.length > 0
+        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
+        : {}),
+      ...completeFlag,
+    });
+    if (state.status === 'error') {
+      const failed = _failedEventMeta(m.events);
+      out.push({
+        role: 'error',
+        content: failed?.message || 'An unexpected error occurred.',
+        code: failed?.code || null,
+      });
+    }
+  }
+  return out;
 }
 
 function _conversationToTask(conv, messages = []) {
@@ -837,6 +858,20 @@ export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
 
+// Fresh published/modified/access status for one artifact — the cheap read
+// the preview viewer polls on window focus to light up "Update" when the
+// artifact changes underneath an open preview. Best-effort: returns null on
+// any failure (e.g. an older server without the endpoint) so callers degrade
+// to the prior reopen-to-refresh behaviour rather than throwing.
+export async function fetchArtifactStatus(path) {
+  if (!path) return null;
+  try {
+    return await req(`/artifacts/status?path=${encodeURIComponent(path)}`);
+  } catch {
+    return null;
+  }
+}
+
 // Mount an artifact for iframe preview. Two response shapes:
 //   - kind="static" (HTML artifacts): server returns `relUrl` under
 //     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
@@ -1401,6 +1436,13 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 export async function publishArtifact(path, access) {
   const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Re-publish an already-published artifact: pushes current files to the same
+// URL with the same access settings (server reuses report_id). Clears the
+// "Modified" badge on success.
+export async function updateArtifact(path) {
+  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the
