@@ -1,7 +1,8 @@
 // API client — talks to the FastAPI backend at /v1/*.
-// Port matches antontron's server-process default (26866 = ANTON on T9
-// keypad). Vite dev would proxy /v1 → backend; packaged Electron runs
-// from file:// or app:// and must address the loopback server directly.
+// The origin comes from the host abstraction: packaged Electron addresses
+// the loopback server on the per-OS-user port main resolved (ENG-439); Vite
+// dev / web are same-origin (proxied), so getApiOrigin() returns the page
+// origin. Routing through host keeps the port in one place.
 
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
@@ -13,15 +14,7 @@ import {
   resolveProjectId,
 } from './lib/memoryTransform';
 
-const ANTON_SERVER_PORT = 26866;
-
-const API_ORIGIN = (() => {
-  if (typeof window === 'undefined') return '';
-  const protocol = window.location?.protocol;
-  return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${ANTON_SERVER_PORT}`
-    : '';
-})();
+const API_ORIGIN = host.getApiOrigin();
 
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;

@@ -6,7 +6,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
+import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
@@ -335,6 +335,10 @@ function createWindow() {
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // ENG-439: hand the resolved (per-OS-user) server port to the renderer
+      // synchronously, so getApiOrigin() addresses our own sidecar instead of
+      // a hardcoded 26866 that could belong to another OS user.
+      additionalArguments: [`--cowork-server-port=${getServerPort()}`],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
@@ -862,7 +866,7 @@ function setupIPC() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
@@ -967,6 +971,10 @@ app.whenReady().then(() => {
 
   ensureDefaultProject();
   setupIPC();
+  // ENG-439: decide the (per-OS-user) server port before the window exists so
+  // the renderer can be handed the resolved port via additionalArguments,
+  // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
+  await resolveServerPort();
   createWindow();
 
   // Boot-time server start. If cowork-server is installed, start it
