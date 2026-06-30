@@ -15,7 +15,7 @@ import { host } from '../../platform/host';
 const POSTHOG_HOST = 'https://us.i.posthog.com';
 const POSTHOG_KEY =
   typeof import.meta !== 'undefined'
-    ? import.meta.env.VITE_POSTHOG_ANTON_PROJECT_TOKEN || ''
+    ? import.meta.env.VITE_POSTHOG_PROJECT_TOKEN || ''
     : '';
 
 const SURFACE = host.isElectron ? 'desktop' : 'web';
