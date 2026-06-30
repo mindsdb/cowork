@@ -463,10 +463,9 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
   const showToast = (msg, type = 'error') => setToast({ message: msg, type });
 
-  // The skills list loads itself via the shared store (useSkills); we only need
-  // the projects list here. reload() (from the store) refreshes every surface.
   useEffect(() => {
     fetchProjects().then(setProjects);
+    reload();
   }, []);
 
   const onSkillSaved = (saved) => {
