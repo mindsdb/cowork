@@ -6,7 +6,8 @@
 //
 //   not published → "Publish to the Web" (access chooser + Publish)
 //   publishing    → button shows a spinner
-//   published     → URL + current access + Unpublish + Update / Up to date
+//   published     → URL + current access + Unpublish + Update button, or an
+//                    "Up to date" status when there is nothing to publish
 //     ├─ Change          → edit access in place (no unpublish→publish)
 //     └─ Change password → focused password change (password mode only)
 //
@@ -45,9 +46,9 @@ function draftFromController(pub) {
   };
 }
 
-// Has the editable draft diverged from what's currently live? Drives the
-// "Update" (enabled) vs "Up to date" (disabled) split in the change-access
-// view, matching the Figma states.
+// Has the editable draft diverged from what's currently live? Decides whether
+// the change-access view shows the "Update" button (changes to publish) or the
+// "Up to date" status (nothing to publish).
 function draftDiffers(draft, current) {
   if (draft.mode !== current.mode) return true;
   if (draft.mode === 'password') return (draft.password || '') !== (current.password || '');
@@ -107,6 +108,22 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, children })
       {busy && <Spinner style={{ color: 'currentColor' }} />}
       {busy ? busyLabel : children}
     </button>
+  );
+}
+
+// Calm, non-interactive "synced" status shown in the footer when there is
+// nothing to publish — deliberately not styled as a control, so status reads
+// as status and the action button only appears when there is something to do
+// (ENG-500).
+function UpToDateTag() {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px',
+      fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink-3)',
+    }}>
+      <span style={{ display: 'inline-flex', color: 'var(--ok)' }}>{Ico.check(15)}</span>
+      Up to date
+    </span>
   );
 }
 
@@ -339,16 +356,22 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       Save
                     </FooterButton>
                   ) : view === 'access' ? (
-                    <FooterButton primary onClick={doApplyAccess}
-                      disabled={pub.busy || !isAccessDraftValid(draft) || !(draftDiffers(draft, current) || pub.modified)}
-                      busy={pub.phase === 'publishing'} busyLabel="Updating…">
-                      {draftDiffers(draft, current) || pub.modified ? 'Update' : 'Up to date'}
+                    (draftDiffers(draft, current) || pub.modified) ? (
+                      <FooterButton primary onClick={doApplyAccess}
+                        disabled={pub.busy || !isAccessDraftValid(draft)}
+                        busy={pub.phase === 'publishing'} busyLabel="Updating…">
+                        Update
+                      </FooterButton>
+                    ) : (
+                      <UpToDateTag />
+                    )
+                  ) : pub.modified ? (
+                    <FooterButton primary onClick={pub.update} disabled={pub.busy}
+                      busy={pub.phase === 'updating'} busyLabel="Updating…">
+                      Update
                     </FooterButton>
                   ) : (
-                    <FooterButton primary onClick={pub.update} disabled={pub.busy || !pub.modified}
-                      busy={pub.phase === 'updating'} busyLabel="Updating…">
-                      {pub.modified ? 'Update' : 'Up to date'}
-                    </FooterButton>
+                    <UpToDateTag />
                   )}
                 </div>
               </>

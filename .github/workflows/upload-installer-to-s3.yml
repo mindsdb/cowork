@@ -107,7 +107,7 @@ jobs:
               ;;
             stable)
               upload "$SRC" "${PREFIX}/snapshots/${NAME}"
-              upload "$SRC" "${PREFIX}/mindshub-cowork-latest.${EXT}"
+              upload "$SRC" "${PREFIX}/mindshub-cowork-staging.${EXT}"
               ;;
             prod)
               upload "$SRC" "${PREFIX}/${NAME}"
