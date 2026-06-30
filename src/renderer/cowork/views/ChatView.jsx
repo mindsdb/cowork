@@ -837,6 +837,86 @@ function CrumbButton({ label, onClick, title, maxWidth }) {
   );
 }
 
+// Mid-conversation provider auth failure (`provider_auth`): the MindsHub key
+// the gateway sees is invalid (revoked / rotated / never provisioned / org
+// drift), so chat calls 401. The fix is to re-provision the key in place via
+// mindshubFinalize (the same step login runs) — no logout. Falls back to a full
+// sign-in when there's no usable session, and to the real Subscribe upsell when
+// finalize reports the account isn't entitled.
+function ReconnectCard({ content, time, agentLabel, onOpenSettings }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const reconnect = async () => {
+    if (busy) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      let res = await host.mindshubFinalize();
+      if (res?.upgradeRequired) {
+        host.openExternal(MINDS_BILLING_URL);
+        return;
+      }
+      if (!res?.ok) {
+        // No usable session to re-provision from → full sign-in.
+        res = await host.mindshubLogin();
+      }
+      if (res?.ok || res?.apiKey) {
+        setDone(true);
+      } else {
+        setErr(res?.reason || 'Could not reconnect. Try signing out and back in.');
+      }
+    } catch (e) {
+      setErr(e?.message || 'Reconnect failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+      <div style={{
+        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
+        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+          {done ? 'Reconnected' : 'Reconnect to continue'}
+        </div>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+          {done
+            ? 'Your MindsHub session was refreshed. Send your message again to continue.'
+            : (err || content || "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation.")}
+        </div>
+        {!done && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={reconnect}
+              disabled={busy}
+              style={{
+                border: 'none', background: T.ink, color: 'var(--bg)',
+                borderRadius: 8, padding: '8px 14px',
+                fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
+                cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1,
+              }}
+            >{busy ? 'Reconnecting…' : 'Reconnect'}</button>
+            <button
+              type="button"
+              onClick={() => onOpenSettings?.('agent')}
+              style={{
+                border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+                borderRadius: 8, padding: '8px 14px',
+                fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+              }}
+            >Open Settings</button>
+          </div>
+        )}
+      </div>
+    </AnswerTurn>
+  );
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1527,6 +1607,19 @@ export default function ChatView({
                         </div>
                       </div>
                     </AnswerTurn>
+                  );
+                }
+                // Provider auth failure mid-conversation → offer Reconnect
+                // (re-provision the key in place), not "Subscribe".
+                if (m.code === 'provider_auth') {
+                  return (
+                    <ReconnectCard
+                      key={i}
+                      content={m.content}
+                      time={formatTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                    />
                   );
                 }
                 return (
