@@ -862,7 +862,7 @@ async function waitForServerReady(timeoutMs = 8000) {
 // Settings instead of dragging them into a MindsHub login. Reconnect is also
 // desktop-only (finalize/login are Electron IPC), so on web we fall back to
 // Settings too.
-function ReconnectCard({ content, time, agentLabel, onOpenSettings, reconnectable, providerLabel }) {
+function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
@@ -898,15 +898,24 @@ function ReconnectCard({ content, time, agentLabel, onOpenSettings, reconnectabl
     }
   };
 
+  // title + body are derived from what this card can actually offer (web-aware),
+  // so they never contradict the buttons shown. We deliberately don't reuse the
+  // server's copy here: it's provider-aware but not web-aware (it can't know the
+  // desktop-only Reconnect is unavailable on web).
   const title = done
     ? 'Reconnected'
-    : canReconnect ? 'Reconnect to continue' : 'Update your API key';
-  const fallbackBody = canReconnect
-    ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
-    : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`;
+    : canReconnect ? 'Reconnect to continue'
+    : reconnectable ? 'Sign in again'
+    : 'Update your API key';
   const body = done
     ? 'Your MindsHub session was refreshed. Send your message again to continue.'
-    : (err || content || fallbackBody);
+    : err || (
+        canReconnect
+          ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
+          : reconnectable
+            ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
+            : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
+      );
 
   const primaryStyle = {
     border: 'none', background: T.ink, color: 'var(--bg)',
@@ -1651,7 +1660,6 @@ export default function ChatView({
                   return (
                     <ReconnectCard
                       key={i}
-                      content={m.content}
                       time={formatTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
