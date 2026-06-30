@@ -186,6 +186,8 @@ function _renderEngramComments(text) {
     out += text.slice(cursor, start);
     const end = text.indexOf('-->', start + 4);
     if (end === -1) {
+      // Unclosed comment — preserve the rest as literal text.
+      out += text.slice(start);
       break;
     }
 
@@ -198,6 +200,23 @@ function _renderEngramComments(text) {
   }
 
   return out;
+}
+
+// Remark plugin applied to user messages: converts raw HTML MDAST nodes
+// into text nodes so that user-typed angle-bracket content (e.g. <MyTag>)
+// renders as literal characters instead of being silently dropped by
+// react-markdown's default HTML-stripping behaviour.
+function _remarkLiteralHtml() {
+  return (tree) => {
+    function walk(node) {
+      if (node.type === 'html') {
+        node.type = 'text';
+        return;
+      }
+      if (Array.isArray(node.children)) node.children.forEach(walk);
+    }
+    walk(tree);
+  };
 }
 
 // Density-scoped class strings. `dense` halves the rhythm and shaves
@@ -262,6 +281,12 @@ export function MarkdownContent({
       return _renderEngramComments(formNormalized);
     },
     [text, enableForms, isAssistant],
+  );
+  // User messages get an extra remark pass that preserves raw HTML as
+  // literal text rather than letting react-markdown drop it silently.
+  const remarkPlugins = useMemo(
+    () => (variant === 'user' ? [remarkGfm, _remarkLiteralHtml] : [remarkGfm]),
+    [variant],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
 
@@ -475,7 +500,7 @@ export function MarkdownContent({
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
         components={components}
       >
