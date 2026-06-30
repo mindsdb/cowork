@@ -422,7 +422,7 @@ function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
   for (const ev of events) {
-    try { state = reduceStream(state, ev); } catch {}
+    try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
   }
   return {
     steps: state.steps || [],

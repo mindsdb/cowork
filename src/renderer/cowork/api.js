@@ -154,7 +154,7 @@ function _hydrateAssistantEvents(messages) {
     }
     let state = initialStreamState();
     for (const ev of m.events) {
-      try { state = reduceStream(state, ev); } catch {}
+      try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
     }
     const { events: _drop, ...rest } = m;
     const turnComplete = state.status === 'done' || state.status === 'error';
