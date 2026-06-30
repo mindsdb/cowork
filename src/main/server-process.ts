@@ -330,6 +330,9 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
+      // Use a separate DB for this preview build so it doesn't conflict
+      // with production migrations. Remove once testing is done.
+      DATABASE_URI: `sqlite:///${path.join(os.homedir(), '.cowork', 'cowork-preview.db')}`,
     };
 
     // detached: true on POSIX puts the child in its own process group so
