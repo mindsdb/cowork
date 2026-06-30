@@ -438,7 +438,12 @@ function failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
   const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
   if (!ev) return null;
-  return { code: ev.code || null, message: ev.error || ev.message || '' };
+  return {
+    code: ev.code || null,
+    message: ev.error || ev.message || '',
+    reconnectable: ev.reconnectable ?? null,
+    providerLabel: ev.provider_label ?? null,
+  };
 }
 
 // Walk a messages payload from the server and, for any assistant
@@ -480,6 +485,8 @@ function hydrateMessagesFromServerEvents(messages) {
           role: 'error',
           content: normalizeAntonError(errText, { code }),
           code,
+          reconnectable: failed?.reconnectable ?? null,
+          providerLabel: failed?.providerLabel ?? null,
         });
       }
     }
@@ -979,7 +986,13 @@ function AppCore() {
       const displayError = normalizeAntonError(message, event);
       const trailer = configError
         ? { role: 'provider_required' }
-        : { role: 'error', content: displayError, code: event?.code };
+        : {
+            role: 'error',
+            content: displayError,
+            code: event?.code,
+            reconnectable: event?.reconnectable ?? null,
+            providerLabel: event?.provider_label ?? null,
+          };
       return {
         ...t,
         status: configError ? 'idle' : 'error',
