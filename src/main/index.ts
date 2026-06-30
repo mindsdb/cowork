@@ -629,50 +629,58 @@ function setupIPC() {
     // timeout regardless, so worst case it tidies up in background.
     endKeycloakSession();
     clearTokens();
+
+    // Clear credentials from the server's SQLite DB (the authoritative
+    // source for config_ready). Individual DELETEs for each credential
+    // key that gates config_ready.
+    if (isServerRunning() || isServerStarting()) {
+      const port = getServerPort();
+      const CREDENTIAL_KEYS = [
+        'minds_api_key', 'anthropic_api_key', 'openai_api_key',
+        'gemini_api_key', 'openai_compatible_api_key',
+        'providers_json', 'provider_status', 'provider_status_details',
+        'minds_url', 'openai_base_url',
+      ];
+      await Promise.allSettled(
+        CREDENTIAL_KEYS.map((key) =>
+          Promise.race([
+            httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`DELETE ${key} timed out`)), 5000),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    // Strip .env (for the standalone anton CLI and next-boot migration).
+    const LOGOUT_ENV_KEYS = [
+      'ANTON_MINDS_API_KEY',
+      'ANTON_MINDS_URL',
+      'ANTON_MINDS_ENABLED',
+      'ANTON_OPENAI_API_KEY',
+      'ANTON_OPENAI_BASE_URL',
+      'ANTON_OPENAI_API_KEY_CUSTOM',
+      'ANTON_ANTHROPIC_API_KEY',
+      'ANTON_GEMINI_API_KEY',
+      'ANTON_PLANNING_PROVIDER',
+      'ANTON_CODING_PROVIDER',
+      'ANTON_PLANNING_MODEL',
+      'ANTON_CODING_MODEL',
+    ];
     const envPath = getAntonEnvPath();
     if (fs.existsSync(envPath)) {
-      const LOGOUT_KEYS = [
-        'ANTON_MINDS_API_KEY',
-        'ANTON_MINDS_URL',
-        'ANTON_MINDS_ENABLED',
-        'ANTON_OPENAI_API_KEY',
-        'ANTON_OPENAI_BASE_URL',
-        'ANTON_ANTHROPIC_API_KEY',
-        'ANTON_PLANNING_PROVIDER',
-        'ANTON_CODING_PROVIDER',
-        'ANTON_PLANNING_MODEL',
-        'ANTON_CODING_MODEL',
-      ];
       const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
-        .filter((l) => !LOGOUT_KEYS.some((k) => l.startsWith(k + '=')));
+        .filter((l) => !LOGOUT_ENV_KEYS.some((k) => l.startsWith(k + '=')));
       fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
-      for (const key of LOGOUT_KEYS) {
+      for (const key of LOGOUT_ENV_KEYS) {
         delete process.env[key];
       }
     }
     clearStoredProviderState();
-    if (isServerRunning() || isServerStarting()) {
-      try {
-        // Cap the reset at 3s. httpRequest() has no timeout of its own,
-        // so a hung (vs. crashed) python server would otherwise block
-        // this await forever — the deferred reload below would never
-        // fire and the confirm modal would sit on "Signing out…". The
-        // runtime reset is best-effort cleanup; the reload re-routes to
-        // onboarding regardless of whether it succeeded.
-        await Promise.race([
-          httpRequest(`http://127.0.0.1:${getServerPort()}/v1/settings/runtime-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}',
-          }),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('runtime-reset timed out')), 3000),
-          ),
-        ]);
-      } catch (error) {
-        console.warn('[logout] failed to reset live runtimes', error);
-      }
-    }
     // Force-reload the renderer from main. The renderer's own
     // `window.location.reload()` was unreliable here (page stayed on
     // the stuck confirm modal); driving the reload from the main
