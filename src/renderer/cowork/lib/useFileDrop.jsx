@@ -66,6 +66,39 @@ function extractFiles(e) {
   return out;
 }
 
+// Pull real File objects out of a paste event's clipboard. Sibling of
+// extractFiles (drops): reads ClipboardData rather than DataTransfer and
+// drops the directory check — the clipboard never carries entries. Lets
+// the composer treat a pasted image/gif the same as a drag-drop or a
+// file-picker pick. Dedupe by name+size because pasted screenshots all
+// share a generic name ("image.png"), so a name-only key would collapse
+// two distinct images while still needing to fold an item that surfaces
+// via both items[] and files[].
+export function extractClipboardFiles(clipboardData) {
+  if (!clipboardData) return [];
+  const out = [];
+  const seen = new Set();
+  const push = (file) => {
+    if (!file) return;
+    const key = `${file.name}\t${file.size}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(file);
+  };
+  const items = clipboardData.items;
+  if (items && items.length) {
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (!item || item.kind !== 'file') continue;
+      push(item.getAsFile());
+    }
+    return out;
+  }
+  const files = clipboardData.files ? Array.from(clipboardData.files) : [];
+  for (const file of files) push(file);
+  return out;
+}
+
 export function useFileDrop({ onFiles, disabled = false } = {}) {
   const [isDragging, setIsDragging] = useState(false);
   // Counter, not boolean: dragenter/dragleave fire for every child the
