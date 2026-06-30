@@ -28,8 +28,12 @@ const ENV_TO_SETTING: Record<string, string> = {
  *
  * Handles the provider-enum translation (hyphens → underscores, detection of
  * minds_cloud vs openai_compatible).
+ *
+ * Returns true if every mapped PUT succeeded (2xx), false if any failed or
+ * the server was unreachable. Callers may use this to decide whether to retry
+ * or fall back to another recovery path.
  */
-export async function syncSettingsToDb(lines: string[]): Promise<void> {
+export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
   const envMap: Record<string, string> = {};
   for (const line of lines) {
     const eq = line.indexOf('=');
@@ -38,6 +42,7 @@ export async function syncSettingsToDb(lines: string[]): Promise<void> {
   }
   const hasMindKey = Boolean(envMap.ANTON_MINDS_API_KEY);
 
+  let allOk = true;
   for (const [envKey, value] of Object.entries(envMap)) {
     const settingKey = ENV_TO_SETTING[envKey];
     if (!settingKey) continue;
@@ -50,14 +55,15 @@ export async function syncSettingsToDb(lines: string[]): Promise<void> {
       }
     }
     try {
-      await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
+      const res = await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: dbValue }),
       });
+      if (!res.ok) allOk = false;
     } catch {
-      // Best-effort — .env is the fallback; the backend will pick it
-      // up on next restart even if this call fails.
+      allOk = false;
     }
   }
+  return allOk;
 }

@@ -1,5 +1,6 @@
 import { saveTokens, getRefreshToken } from './token-store';
 import { stopServer, startServer } from './server-process';
+import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -641,28 +642,34 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   );
   fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n', 'utf-8');
 
-  // Also clean up old provider entries from state.json so they don't show as green in Settings
+  // Ensure state.json has minds-cloud as the active provider so the server
+  // doesn't default to Anthropic on first boot (state.json may not exist yet
+  // after a flush).
   const statePath = coworkStatePath();
   try {
+    let state: any = { preferences: {} };
     if (fs.existsSync(statePath)) {
-      const raw = fs.readFileSync(statePath, 'utf-8');
-      const state = JSON.parse(raw) as any;
-      if (state?.preferences?.providers && Array.isArray(state.preferences.providers)) {
-        // Keep only minds-cloud provider; remove anthropic, openai, gemini, openai-compatible
-        state.preferences.providers = state.preferences.providers.filter(
-          (p: any) => p?.type === 'minds-cloud'
-        );
-        // Ensure minds-cloud is marked as default
-        for (const p of state.preferences.providers) {
-          if (p?.type === 'minds-cloud') {
-            p.isDefault = true;
-          }
-        }
-        fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-      }
+      try { state = JSON.parse(fs.readFileSync(statePath, 'utf-8')); } catch { state = { preferences: {} }; }
     }
+    if (!state.preferences) state.preferences = {};
+    // Keep only minds-cloud; remove any other provider entries.
+    const existing: any[] = Array.isArray(state.preferences.providers) ? state.preferences.providers : [];
+    const mindsEntry = existing.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
+    mindsEntry.isDefault = true;
+    state.preferences.providers = [mindsEntry];
+    fs.mkdirSync(coworkHome(), { recursive: true });
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
   } catch (error) {
-    console.warn('[minds-auth] failed to clean up provider state', error);
+    console.warn('[minds-auth] failed to set provider state', error);
+  }
+
+  // Only restart the server if it's already installed. On a fresh install the
+  // server isn't available yet — the setup wizard will start it after install
+  // completes, at which point handleInstallComplete syncs the credentials.
+  const { antonInstalled } = await checkInstallStatus();
+  if (!antonInstalled) {
+    console.log('[minds-auth] server not installed yet — skipping restart; setup will sync creds after install');
+    return;
   }
 
   await stopServer();

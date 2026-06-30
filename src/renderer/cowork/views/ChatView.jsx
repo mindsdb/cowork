@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph } from '../components/ui';
+import { OrbitMorph, Message } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
@@ -83,9 +83,13 @@ function Divider({ label }) {
   );
 }
 
-function MessageActions({ getText, onDelete }) {
-  // Copy + delete for now — refresh / thumbs up / thumbs down hidden
-  // until the underlying actions are wired.
+// ─── Shared turn-action toolbar ──────────────────────────────────────────
+// Used by both user and assistant turns for consistent styling. Actions
+// fade in on hover of the parent turn, but stay visible when `isLast`
+// is true (matching Claude's pattern where the most recent exchange
+// always shows its toolbar).
+const ICON_SZ = 15;
+function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     const text = typeof getText === 'function' ? getText() : '';
@@ -97,43 +101,40 @@ function MessageActions({ getText, onDelete }) {
     }
   };
   return (
-    <div style={{ display: 'flex', gap: 4, marginTop: 4, color: T.ink4 }}>
+    <div
+      className={`turn-actions${isLast ? ' is-last' : ''}`}
+      style={{ justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}
+    >
+      {onEdit && (
+        <button
+          type="button"
+          className="turn-action-btn"
+          onClick={onEdit}
+          title="Edit and resend"
+          aria-label="Edit and resend this message"
+        >
+          {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
+        </button>
+      )}
       <button
         type="button"
-        className="hover-tint"
-        title={copied ? 'Copied' : 'Copy response'}
-        aria-label={copied ? 'Copied' : 'Copy response'}
+        className="turn-action-btn"
+        title={copied ? 'Copied' : 'Copy'}
+        aria-label={copied ? 'Copied' : 'Copy'}
         onClick={onCopy}
-        style={{
-          cursor: 'pointer',
-          background: 'transparent',
-          border: 0,
-          padding: 0,
-          width: 26, height: 26, borderRadius: 6,
-          display: 'grid', placeItems: 'center',
-          color: copied ? 'var(--accent)' : 'inherit',
-        }}
+        style={copied ? { color: 'var(--accent)' } : undefined}
       >
-        {copied ? Ico.check(13) : Ico.copy(13)}
+        {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
       </button>
       {onDelete && (
         <button
           type="button"
-          className="hover-tint hover-tint-danger"
-          title="Delete this question and response"
-          aria-label="Delete this question and response"
+          className="turn-action-btn turn-action-btn--danger"
+          title="Delete"
+          aria-label="Delete"
           onClick={onDelete}
-          style={{
-            cursor: 'pointer',
-            background: 'transparent',
-            border: 0,
-            padding: 0,
-            width: 26, height: 26, borderRadius: 6,
-            display: 'grid', placeItems: 'center',
-            color: 'inherit',
-          }}
         >
-          {Ico.trash(13)}
+          {Ico.trash(ICON_SZ)}
         </button>
       )}
     </div>
@@ -146,9 +147,8 @@ function MessageActions({ getText, onDelete }) {
 // "orphan" — no assistant response followed it (e.g. the stream was
 // stopped before anton produced anything). For paired user→answer
 // cycles, the delete affordance lives on the assistant bubble's
-// MessageActions and removes both halves. The orphan case has no
-// assistant bubble, so we surface the delete here instead — a
-// hover-revealed trash glyph just outside the bubble's bottom-left.
+// TurnActions and removes both halves. The orphan case has no
+// assistant bubble, so we surface the delete here instead.
 // Connect-intro bubble — synthesized assistant turn shown after the
 // user picks a connector. Reads as a small card with the connector
 // logo + label and a "Fill out the form on the side panel →" prompt.
@@ -328,44 +328,10 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-function UserTurn({ content, attachments, time, onDelete, onEdit }) {
-  // Hover affordances are CSS now (`.user-turn:hover .user-turn-action`),
-  // so no useState flags here. Edit/Trash stack just outside the bubble's
-  // right edge — user messages are right-aligned, so the toolbar belongs
-  // on the same side as the speaker (Linear / Slack DM pattern). The
-  // `has-meta` / `is-stacked` modifiers raise the buttons over the meta
-  // line and over each other when both are present.
-  const editClass =
-    'user-turn-action'
-    + (onDelete ? ' is-stacked' : (time ? ' has-meta' : ''));
-  const trashClass =
-    'user-turn-action user-turn-action--danger'
-    + (time ? ' has-meta' : '');
+function UserTurn({ content, attachments, time, onDelete, onEdit, isLast }) {
   return (
     <div className="user-turn">
       <div className="user-turn-inner">
-        {onEdit && (
-          <button
-            type="button"
-            className={editClass}
-            onClick={() => onEdit(content)}
-            title="Edit and resend"
-            aria-label="Edit and resend this message"
-          >
-            {Ico.edit ? Ico.edit(13) : Ico.pencil ? Ico.pencil(13) : Ico.code(13)}
-          </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            className={trashClass}
-            onClick={onDelete}
-            title="Delete this message"
-            aria-label="Delete this message"
-          >
-            {Ico.trash(13)}
-          </button>
-        )}
         <div className="user-turn-bubble">
           {/* User messages flow through the same markdown pipeline as
               assistant turns so fenced code blocks, bold/italic, lists,
@@ -389,9 +355,13 @@ function UserTurn({ content, attachments, time, onDelete, onEdit }) {
             <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
           </div>
         ))}
-        {time && (
-          <span className="user-turn-meta">you · {time}</span>
-        )}
+        <TurnActions
+          getText={() => content || ''}
+          onEdit={onEdit ? () => onEdit(content) : null}
+          onDelete={onDelete}
+          isLast={isLast}
+          align="right"
+        />
       </div>
     </div>
   );
@@ -403,11 +373,11 @@ const CHAT_ORB_SIZE = 22;
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // `slotIdHeader` lets the parent register an orb anchor beside the label
 // (while the request is in flight with no step row / body caret yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel, isLast }) {
   // Stable id: never use Math.random() here (would churn register every render).
   const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
+    <div className="answer-turn" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {/* Empty box only — orb centers here so it never stacks against glyphs. */}
@@ -438,7 +408,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       </div>
       {children}
       {showActions && state !== 'thinking' && (
-        <MessageActions getText={() => copyText || ''} onDelete={onDelete} />
+        <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
       )}
     </div>
   );
@@ -1374,7 +1344,7 @@ export default function ChatView({
             <Divider label={dividerLabel(new Date())} />
 
             {(() => {
-              // Track the assistant turn index inline so MessageActions
+              // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
               // mirrors the server's `_count_displayable_assistant_bubbles`
               // contract: each assistant entry counts once. We also
@@ -1394,6 +1364,17 @@ export default function ChatView({
                 }
                 return true;
               };
+              // Index of the last user or assistant message — its actions
+              // stay always-visible (Claude pattern: most recent exchange
+              // shows its toolbar). When streaming, nothing needs isLast
+              // since the streaming turn has no actions yet.
+              let lastTurnIdx = -1;
+              if (!streamingMsg) {
+                for (let j = visibleMessages.length - 1; j >= 0; j--) {
+                  const r = visibleMessages[j]?.role;
+                  if (r === 'user' || r === 'assistant') { lastTurnIdx = j; break; }
+                }
+              }
               return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -1406,6 +1387,7 @@ export default function ChatView({
                     attachments={m.attachments}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
@@ -1513,7 +1495,7 @@ export default function ChatView({
                           >Add credits</button>
                           <button
                             type="button"
-                            onClick={() => onOpenSettings?.()}
+                            onClick={() => onOpenSettings?.('agent')}
                             style={{
                               border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
                               borderRadius: 8, padding: '8px 14px',
@@ -1527,15 +1509,7 @@ export default function ChatView({
                 }
                 return (
                   <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <div style={{
-                      border: '1px solid #F0C2B5',
-                      background: '#FFF7F4',
-                      color: '#8F321A',
-                      borderRadius: 10,
-                      padding: '10px 12px',
-                      fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.5,
-                      userSelect: 'text',
-                    }}>{m.content}</div>
+                    <Message>{m.content}</Message>
                   </AnswerTurn>
                 );
               }
@@ -1587,7 +1561,7 @@ export default function ChatView({
                         >Subscribe with MindsHub</button>
                         <button
                           type="button"
-                          onClick={() => onOpenSettings?.()}
+                          onClick={() => onOpenSettings?.('agent')}
                           style={{
                             border: `1px solid ${T.line}`,
                             background: 'transparent',
@@ -1620,6 +1594,7 @@ export default function ChatView({
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
+                  isLast={i === lastTurnIdx}
                 >
                   {m.steps?.length > 0 && (
                     <ThinkingBlock

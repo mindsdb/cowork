@@ -228,6 +228,11 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   // the row was opened from.
   const [openEntry, setOpenEntry] = useState(null);
   const [openFile, setOpenFile] = useState(null);
+  // A task upload opened in the file modal — same component/UX as
+  // project files, but driven by the attachment's raw URL (no project
+  // file path, so the modal renders images inline and opens others in
+  // the OS shell rather than doing project-file IO).
+  const [openAttachment, setOpenAttachment] = useState(null);
   const [showAll, setShowAll] = useState(false);
   // Row-level delete + header-level upload state.
   // `pendingDeleteFile` drives the ConfirmModal — set when the user
@@ -699,18 +704,14 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
                   menuOpen={openAttachmentMenuId === item.id}
                   menuItems={menuItems}
                   onMenuOpenChange={(next) => setOpenAttachmentMenuId(next ? item.id : null)}
-                  onOpen={rawUrl
-                    ? () => {
-                        // Browser shell + Electron shell both supported
-                        // through host.openExternal — Electron forwards
-                        // to shell.openExternal (OS default app); web
-                        // does window.open in a new tab where the
-                        // server's `inline` Content-Disposition lets
-                        // the browser render images/PDFs natively.
-                        setOpenAttachmentMenuId(null);
-                        host.openExternal(rawUrl);
-                      }
-                    : null}
+                  onOpen={() => {
+                    // Open the shared ContextFileModal — same UX as a
+                    // project file. The modal renders images inline and
+                    // gives non-images an "Open" (OS shell via rawUrl)
+                    // escape hatch.
+                    setOpenAttachmentMenuId(null);
+                    setOpenAttachment(item);
+                  }}
                 />
               );
             })}
@@ -794,6 +795,40 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         isAntonMd={openFile?.path === ANTON_PROJECT_INSTRUCTIONS_PATH}
         onClose={() => setOpenFile(null)}
         onChanged={() => reloadFiles()}
+      />
+      {/* Task upload modal — same component, driven by the attachment's
+          raw URL. No `projectName`/`projectPath` is passed, so the modal
+          does no project-file IO: images render inline from `rawUrl`,
+          non-images land in 'binary' mode with an Open action that uses
+          `rawUrl` via the OS shell. `filePath` is the name only (for the
+          image-extension sniff + header title), NOT a real project path.
+          `remover` reuses the same attachment delete the row's menu and
+          ConfirmModal use, then closes the modal. */}
+      <ContextFileModal
+        open={!!openAttachment}
+        title={openAttachment?.name}
+        filePath={openAttachment?.name}
+        rawUrl={openAttachment
+          ? attachmentRawUrl(project?.name, conversationId, openAttachment.id)
+          : ''}
+        remover={async () => {
+          const target = openAttachment;
+          if (!target?.id) return;
+          setSessionAttachments((prev) => prev.filter((a) => a.id !== target.id));
+          try {
+            await deleteAttachment(target.id, {
+              projectName: project?.name,
+              sessionId: conversationId,
+            });
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[context] delete attachment failed', err);
+            setTaskUploadError(err?.message || 'Could not delete attachment.');
+            bumpAttachments();
+          }
+        }}
+        onClose={() => setOpenAttachment(null)}
+        onChanged={() => setOpenAttachment(null)}
       />
 
       {/* Hover-trash confirm — same in-app pattern as App.jsx's
