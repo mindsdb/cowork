@@ -9,6 +9,7 @@
 //   artifact_built         — { artifact_type, surface }
 //   artifact_published     — { artifact_id, visibility, surface }
 //   agent_session_started  — { surface }
+//   first_query            — { surface }  (once per user, localStorage-gated)
 //
 // Free-tier funnel events (ENG-385):
 //   token_cap_hit          — { surface }            key upgrade-intent signal
@@ -16,9 +17,9 @@
 //   app_installed          — { surface }            desktop, once per install
 //
 // Internal traffic is kept out of the funnel (ENG-385): CI/QA sessions
-// (VITE_POSTHOG_ANTON_CI or `?ci=1`) are dropped entirely in capture(), and
+// (VITE_POSTHOG_MINDSHUB_MAIN_CI or `?ci=1`) are dropped entirely in capture(), and
 // events from a signed-in mindsdb.com user carry `is_internal: true` for a
-// PostHog-side cohort filter (the Anton project has no reliable person email
+// PostHog-side cohort filter (the MindsHub main project has no reliable person email
 // to filter on, so the flag is derived client-side).
 
 import { host } from '../../platform/host';
@@ -26,13 +27,13 @@ import { host } from '../../platform/host';
 const POSTHOG_HOST = 'https://us.i.posthog.com';
 const POSTHOG_KEY =
   typeof import.meta !== 'undefined'
-    ? import.meta.env.VITE_POSTHOG_ANTON_PROJECT_TOKEN || ''
+    ? import.meta.env.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN || ''
     : '';
 
 const SURFACE = host.isElectron ? 'desktop' : 'web';
 
 // Cohort-hygiene flag. CI/QA traffic shouldn't pollute the funnel: a build
-// can opt out via VITE_POSTHOG_ANTON_CI, and a session can opt out at runtime
+// can opt out via VITE_POSTHOG_MINDSHUB_MAIN_CI, and a session can opt out at runtime
 // with `?ci=1` (mirrors the web hub's `VITE_POSTHOG_HUB_CI` / `?ci=1`).
 let _cachedIsCi = null;
 function isCi() {
@@ -41,7 +42,7 @@ function isCi() {
   try {
     if (
       typeof import.meta !== 'undefined' &&
-      import.meta.env?.VITE_POSTHOG_ANTON_CI === 'true'
+      import.meta.env?.VITE_POSTHOG_MINDSHUB_MAIN_CI === 'true'
     ) {
       ci = true;
     }
@@ -144,6 +145,20 @@ export function trackArtifactPublished(artifactId, visibility) {
 
 export function trackAgentSessionStarted() {
   capture('agent_session_started');
+}
+
+// ── Activation event (ENG-501) ──────────────────────────────────────
+
+const FIRST_QUERY_STORAGE_KEY = 'mdb_first_query_sent';
+
+export function trackFirstQuery() {
+  try {
+    if (localStorage.getItem(FIRST_QUERY_STORAGE_KEY)) return;
+    localStorage.setItem(FIRST_QUERY_STORAGE_KEY, '1');
+  } catch {
+    // localStorage unavailable — fire anyway and accept possible duplicates
+  }
+  capture('first_query');
 }
 
 // ── Free-tier funnel events (ENG-385) ──────────────────────────────
