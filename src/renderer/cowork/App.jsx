@@ -1000,7 +1000,7 @@ function AppCore() {
   // cowork-server) — labels derived from ids, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
   const models = useMemo(() => {
-    const providerType = providerValueToType(settings.planningProvider) || 'anthropic';
+    const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType)
       .map((o) => ({ id: o.id, name: o.label, desc: '' }));
   }, [settings.recommendedModels, settings.planningProvider]);

@@ -1461,7 +1461,12 @@ export default function SettingsView({
           // provider's recommended pair.
           const RoleRow = ({ role, label }) => {
             const cur = roleOverride(role) || {};
-            const curType = roleProviderType(role) || (defaultProvider?.type || '');
+            // In default mode the effective provider is defaultModeProviderType
+            // (what withResolvedRoles writes at save time), not the server's
+            // possibly-stale planning_provider / coding_provider value.
+            const curType = modelMode === 'custom'
+              ? (roleProviderType(role) || (defaultProvider?.type || ''))
+              : defaultModeProviderType;
             const fallbackPair = recommendedPair[curType] || ['', ''];
             const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
             const curModel = roleModelValue(role, fallbackModel);
