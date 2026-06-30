@@ -323,6 +323,7 @@ export function reduceStream(state, event, now = Date.now) {
         instructions: sk.instructions || '',
         skill_md: sk.skill_md || '',
         files: Array.isArray(sk.files) ? sk.files : [],
+        projects: Array.isArray(sk.projects) ? sk.projects : undefined,
       },
       output: null,
       result: null,

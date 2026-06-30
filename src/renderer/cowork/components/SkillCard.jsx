@@ -55,7 +55,7 @@ function SkillModal({ skill, open, onClose }) {
   );
 }
 
-export default function SkillCard({ skill }) {
+export default function SkillCard({ skill, projectName }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -77,6 +77,7 @@ export default function SkillCard({ skill }) {
     setStatus(null);
     try {
       // `declarative` is the API's instructions alias (matches SkillsView's save).
+      const projects = projectName ? [projectName] : [];
       await saveSkillAndSync({
         label: skill.label || skill.slug,
         name: skill.name || undefined,
@@ -84,6 +85,7 @@ export default function SkillCard({ skill }) {
         // instructions only — never the raw SKILL.md (its YAML frontmatter
         // would get double-stored inside the body). Download uses skill_md.
         declarative: skill.instructions || '',
+        ...(projects && { projects }),
       });
       setSaved(true);
       setStatus({ kind: 'ok', text: 'Saved to your skills' });
