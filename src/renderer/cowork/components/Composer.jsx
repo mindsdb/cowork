@@ -779,6 +779,7 @@ export default function Composer({
               }
             }}
             rows={1}
+            spellCheck={false}
           />
           </div>
 
