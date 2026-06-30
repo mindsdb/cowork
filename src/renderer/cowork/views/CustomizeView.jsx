@@ -94,6 +94,11 @@ function ConnectionCard({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
+  // Human-facing title (label or derived identity, e.g. "Support" /
+  // "user@gmail.com"); falls back to the slug. `name` stays the identity used
+  // for disconnect/modify.
+  const displayName =
+    connection.display_name || connection.displayName || name;
   const updated = connection.updated_at || connection.updatedAt || null;
 
   const handleRemove = async (e) => {
@@ -149,7 +154,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
           fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
           letterSpacing: '-0.005em', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{name}</span>
+        }} title={displayName !== name ? name : undefined}>{displayName}</span>
         <span style={{
           flexShrink: 0,
           fontFamily: FONT_MONO, fontSize: 10.5,
