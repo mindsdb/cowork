@@ -633,7 +633,7 @@ function setupIPC() {
     // Clear credentials from the server's SQLite DB (the authoritative
     // source for config_ready). Individual DELETEs for each credential
     // key that gates config_ready.
-    if (isServerRunning()) {
+    if (isServerRunning() || isServerStarting()) {
       const port = getServerPort();
       const CREDENTIAL_KEYS = [
         'minds_api_key', 'anthropic_api_key', 'openai_api_key',

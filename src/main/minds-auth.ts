@@ -1,5 +1,5 @@
 import { saveTokens, getRefreshToken } from './token-store';
-import { stopServer, startServer, isServerRunning, getServerPort } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import * as fs from 'fs';
@@ -680,7 +680,7 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   // guarded and won't re-run, so credentials written to .env after
   // initial setup never reach the DB unless we explicitly push them.
   // POST /api/v1/settings/raw merges and calls sync_env_vars_to_db.
-  if (isServerRunning()) {
+  if (isServerRunning() || isServerStarting()) {
     const envContent = fs.readFileSync(coworkEnvPath(), 'utf-8');
     try {
       await timedFetch(`http://127.0.0.1:${getServerPort()}/api/v1/settings/raw`, {
