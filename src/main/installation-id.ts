@@ -24,6 +24,11 @@ function installationIdPath(): string {
 
 let _cached: string | null = null;
 
+// 16 lowercase hex chars (what crypto.randomBytes(8) produces). Used to
+// reject a clobbered/non-hex file rather than silently adopting its first
+// 16 bytes as a "valid" id, which would feed a garbage key name downstream.
+const HEX_ID = /^[0-9a-f]{16}$/;
+
 // Read-or-create the per-device id. 16 hex chars (64 bits), matching the
 // format Anton uses for analytics. If persistence fails (e.g. ~/.cowork is
 // not writable) we still return a usable id for this process — the only
@@ -36,10 +41,11 @@ export function getInstallationId(): string {
   try {
     if (fs.existsSync(idPath)) {
       const existing = fs.readFileSync(idPath, 'utf-8').trim().slice(0, 16);
-      if (existing) {
+      if (HEX_ID.test(existing)) {
         _cached = existing;
         return _cached;
       }
+      // Non-hex/corrupt contents: fall through and regenerate, overwriting it.
     }
   } catch {
     // fall through and (re)create
@@ -49,8 +55,11 @@ export function getInstallationId(): string {
   try {
     fs.mkdirSync(coworkHome(), { recursive: true });
     fs.writeFileSync(idPath, id + '\n', 'utf-8');
-  } catch {
-    // best-effort persistence; keep the id stable for at least this process
+  } catch (err) {
+    // best-effort persistence; keep the id stable for at least this process.
+    // Warn so the orphaned-key-per-launch degradation is diagnosable in the
+    // field instead of silent.
+    console.warn('[installation-id] could not persist device id to %s', idPath, err);
   }
   _cached = id;
   return _cached;

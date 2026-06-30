@@ -348,19 +348,41 @@ export interface ProvisionResult {
   error?: string;
 }
 
+// Lists every API key on the account, following DRF-style `next`
+// pagination so a key is never missed because it fell off the first page.
+// ENG-440: this matters now that we deliberately let keys accumulate per
+// account (the legacy `hub:anton` is kept, per-device keys add up) — a
+// single-page read could miss this device's own prior `hub:anton:<id>`
+// and mint a duplicate under the same name on every re-onboard. A bare
+// array means the endpoint isn't paginated and is already the full list.
+// Best-effort: any failure returns what we have so far so key creation
+// still proceeds.
 async function listExistingKeys(accessToken: string): Promise<{ name?: string; prefix?: string }[]> {
-  try {
-    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return [];
-    const body = await res.json() as { results?: unknown } | unknown[];
-    if (Array.isArray(body)) return body as { name?: string; prefix?: string }[];
-    const results = (body as { results?: unknown }).results;
-    return Array.isArray(results) ? results as { name?: string; prefix?: string }[] : [];
-  } catch {
-    return [];
+  const collected: { name?: string; prefix?: string }[] = [];
+  let url: string | null = `${AUTH_SERVICE_URL}/api-keys/`;
+  // Hard page cap so a malformed `next` chain can't loop forever.
+  for (let page = 0; url && page < 50; page++) {
+    try {
+      const res = await timedFetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) break;
+      const body = await res.json() as { results?: unknown; next?: unknown } | unknown[];
+      if (Array.isArray(body)) {
+        collected.push(...(body as { name?: string; prefix?: string }[]));
+        break;
+      }
+      const results = (body as { results?: unknown }).results;
+      if (Array.isArray(results)) {
+        collected.push(...(results as { name?: string; prefix?: string }[]));
+      }
+      const next = (body as { next?: unknown }).next;
+      url = typeof next === 'string' && next ? next : null;
+    } catch {
+      break;
+    }
   }
+  return collected;
 }
 
 async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<void> {
