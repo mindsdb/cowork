@@ -401,8 +401,8 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
           <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--ink-3)', fontFamily: 'var(--font-body)' }}>
             <div style={{ fontWeight: 500, marginBottom: 4 }}>File requirements</div>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
-              <li>.md file must contain skill name and description formatted in YAML</li>
-              <li>.zip or .skill file must include a SKILL.md file</li>
+              <li>.md or .skill file must contain skill name and description formatted in YAML</li>
+              <li>.zip file must include a SKILL.md file</li>
             </ul>
           </div>
 
