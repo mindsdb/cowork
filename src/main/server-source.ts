@@ -51,7 +51,8 @@ function _buildRef(key: 'BUILD_COWORK_SERVER_REF' | 'BUILD_ANTON_REF'): string {
 }
 
 export function getCoworkRef(): string {
-  return (process.env.COWORK_SERVER_REF || _buildRef('BUILD_COWORK_SERVER_REF') || 'main').trim() || 'main';
+  return 'fix/app-settings-import-crash';
+  // return (process.env.COWORK_SERVER_REF || _buildRef('BUILD_COWORK_SERVER_REF') || 'main').trim() || 'main';
 }
 
 export function getAntonRef(): string {
