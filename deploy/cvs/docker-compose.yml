@@ -1,0 +1,44 @@
+# Cowork against the CVS AIP / LMS gateway (Anthropic protocol).
+#
+# Build the image from the workspace root (the directory containing the
+# `cowork/` checkout):
+#
+#     docker build -f cowork/Dockerfile -t cowork:cvs .
+#
+# Then, from this directory:
+#
+#     docker compose up -d
+#
+# and browse to http://localhost:26866 — the app starts fully
+# configured; no provider onboarding.
+#
+# The LMS API key (`aip_llm_*`) is read at container start from the
+# mounted CVS Code credentials file (field `lmsApiKey` in
+# ~/.cvscode/.lms-credentials.json — run CVS Code once to provision
+# it). To supply the key directly instead, set ANTON_ANTHROPIC_API_KEY
+# under `environment:` and remove the .cvscode volume mount.
+services:
+  cowork:
+    image: cowork:cvs
+    ports:
+      - "26866:26866"
+    environment:
+      # Routes all Anthropic API traffic through the LMS gateway — the
+      # anthropic SDK reads this env var directly.
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-https://hyperion-lms-api.prod.cvshealth.com}
+      ANTON_PLANNING_PROVIDER: anthropic
+      ANTON_CODING_PROVIDER: anthropic
+      ANTON_PLANNING_MODEL: ${COWORK_MODEL:-claude-opus-4-7}
+      ANTON_CODING_MODEL: ${COWORK_MODEL:-claude-opus-4-7}
+      # Uncomment to also skip the first-run terms screen for every
+      # browser (accepting the terms on behalf of your users):
+      # ANTON_TERMS_CONSENT: "true"
+    volumes:
+      # Persistent state: settings DB, projects, vault.
+      - cowork-data:/home/anton/.cowork
+      # CVS Code credentials (read-only) — source of the LMS API key.
+      - ${HOME}/.cvscode:/home/anton/.cvscode:ro
+    restart: unless-stopped
+
+volumes:
+  cowork-data:

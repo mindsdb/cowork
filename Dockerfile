@@ -10,6 +10,16 @@
 #       -v cowork-data:/home/anton/.cowork \
 #       cowork:dev
 #
+# Preconfigured run (skips onboarding — see scripts/docker-entrypoint.sh
+# and deploy/cvs/ for the CVS AIP-gateway deployment):
+#     docker run -p 26866:26866 \
+#       -e ANTHROPIC_BASE_URL=https://<anthropic-protocol-gateway> \
+#       -e ANTON_PLANNING_PROVIDER=anthropic -e ANTON_CODING_PROVIDER=anthropic \
+#       -e ANTON_PLANNING_MODEL=claude-opus-4-7 -e ANTON_CODING_MODEL=claude-opus-4-7 \
+#       -v ~/.cvscode:/home/anton/.cvscode:ro \
+#       -v cowork-data:/home/anton/.cowork \
+#       cowork:dev
+#
 # Then browse to http://localhost:26866 — the SPA wrapper serves
 # both the cowork SPA (at /) and the API (at /api/v1/*) on the same port.
 #
@@ -137,6 +147,7 @@ WORKDIR /app
 # duplicate every file's metadata in a fresh layer).
 COPY --chown=anton:anton --from=spa-builder /build/dist/renderer-web/ /app/dist/renderer-web/
 COPY --chown=anton:anton cowork/scripts/spa_wrapper.py /app/spa_wrapper.py
+COPY --chown=anton:anton --chmod=755 cowork/scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 
 # Persistent state lives under /home/anton/.cowork — operators bind-mount
 # this to keep database/vault/settings across container restarts.
@@ -182,4 +193,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:26866/api/v1/health/',timeout=3).status==200 else 1)" \
     || exit 1
 
+# The entrypoint pre-seeds ~/.anton/.env from ANTON_* env vars on first
+# boot (so the env→DB migration configures the provider and the SPA
+# skips onboarding) and can pull the API key from a mounted CVS Code
+# credentials file. See scripts/docker-entrypoint.sh.
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["uvicorn", "spa_wrapper:app", "--host", "0.0.0.0", "--port", "26866"]
