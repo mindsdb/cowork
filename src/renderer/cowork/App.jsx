@@ -423,7 +423,7 @@ function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
   for (const ev of events) {
-    try { state = reduceStream(state, ev); } catch {}
+    try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
   }
   return {
     steps: state.steps || [],
@@ -2883,7 +2883,7 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
-              trackDataSourceConnected(currentForm._connector_id || currentForm.engine || 'unknown');
+              trackDataSourceConnected(formSpec?._connector_id || formSpec?.engine || currentForm._connector_id || currentForm.engine || name || 'unknown');
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,

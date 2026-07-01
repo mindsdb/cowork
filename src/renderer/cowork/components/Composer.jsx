@@ -7,7 +7,8 @@ import {
   parseOpenerLine,
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
-import { useFileDrop, FileDropOverlay } from '../lib/useFileDrop';
+import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
+import { AttachmentThumbnail } from './AttachmentThumbnail';
 import { useSkills } from '../lib/skillsStore';
 
 // Detect a "/" slash-command token immediately before the caret. Returns the
@@ -30,12 +31,16 @@ function AttachmentChip({ attachment, onRemove }) {
     : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
       ? attachment.extractionStatus.replace('_', ' ')
       : null);
+  // Pending image uploads carry the original File, so preview it straight
+  // from a local object URL (no fetch). Other attachments keep the glyph.
+  const showThumb = isImage && attachment.pendingFile;
   return (
     <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
       <span className="attachment-chip-icon">
-        {src === 'connector' ? Ico.link(13)
-          : isImage ? Ico.image(13)
-            : Ico.doc(13)}
+        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
+          : src === 'connector' ? Ico.link(13)
+            : isImage ? Ico.image(13)
+              : Ico.doc(13)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
@@ -510,6 +515,19 @@ export default function Composer({
     disabled: disabled || busy || !onAttachFiles,
   });
 
+  // Paste (⌘V) an image/gif/file straight into the composer. A <textarea>
+  // can't hold binary clipboard data, so without this the paste is a silent
+  // no-op. Route any file items to the same attach path as drag-drop and the
+  // file picker; a plain-text paste carries no file items and falls through
+  // to the textarea's default handling.
+  const handlePaste = (event) => {
+    if (disabled || busy || !onAttachFiles) return;
+    const files = extractClipboardFiles(event.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    handleAttachFiles(files);
+  };
+
   function pairKey(engine, name) {
     return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
   }
@@ -640,6 +658,7 @@ export default function Composer({
             disabled={disabled}
             value={value}
             onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
+            onPaste={handlePaste}
             onFocus={() => setFocused(true)}
             onBlur={() => { setFocused(false); setTimeout(() => closeSlash(), 120); }}
             onSelect={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}

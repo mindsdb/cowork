@@ -25,7 +25,8 @@ import SkillCard from '../components/SkillCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact } from '../api';
+import { revealArtifact, exportArtifact, attachmentRawUrl } from '../api';
+import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -329,7 +330,7 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-function UserTurn({ content, attachments, time, onDelete, onEdit, isLast }) {
+function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, conversationId }) {
   return (
     <div className="user-turn">
       <div className="user-turn-inner">
@@ -347,15 +348,34 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast }) {
             enableCharts={false}
           />
         </div>
-        {attachments?.map((a) => (
-          <div key={a.id} className="user-turn-attachment">
-            <span className="user-turn-attachment-icon">
-              {userTurnAttachmentIcon(a)}
-            </span>
-            <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
-            <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
-          </div>
-        ))}
+        {attachments?.map((a) => {
+          // Image attachments preview inline as a thumbnail (fetched as a
+          // blob — the CSP blocks a direct loopback <img src>). Clicking
+          // opens the full image via the OS/browser. We can only build the
+          // raw URL when the conversation is project-scoped; without it,
+          // fall back to the icon+name chip.
+          const isImage = a.mime && String(a.mime).startsWith('image/');
+          const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
+          if (rawUrl) {
+            return (
+              <AttachmentThumbnail
+                key={a.id}
+                url={rawUrl}
+                alt={a.name || 'Image'}
+                onOpen={() => host.openExternal(rawUrl)}
+              />
+            );
+          }
+          return (
+            <div key={a.id} className="user-turn-attachment">
+              <span className="user-turn-attachment-icon">
+                {userTurnAttachmentIcon(a)}
+              </span>
+              <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+              <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
+            </div>
+          );
+        })}
         <TurnActions
           getText={() => content || ''}
           onEdit={onEdit ? () => onEdit(content) : null}
@@ -1401,6 +1421,8 @@ export default function ChatView({
                     key={i}
                     content={m.content}
                     attachments={m.attachments}
+                    projectName={project?.name}
+                    conversationId={task?.id}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
                     isLast={i === lastTurnIdx}
