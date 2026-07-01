@@ -9,7 +9,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
-import { setRefreshToken, deleteRefreshToken } from './keychain-service';
+import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections } from './token-refresh';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
@@ -1157,6 +1157,9 @@ app.whenReady().then(() => {
       console.error(`[server] start failed: ${result.reason}`);
     } else {
       console.log(`[server] running on http://127.0.0.1:${result.port}`);
+      // Resume refresh loops for Google OAuth connections already in the
+      // vault from prior sessions — fire-and-forget, failures are per-entry.
+      startOrphanRefreshLoops().catch(() => {});
       // Background update check — runs after the server is already
       // serving so users aren't blocked. If a newer version is found
       // on PyPI, stops the server, upgrades, and restarts. Rolls back
@@ -1251,6 +1254,41 @@ app.whenReady().then(() => {
 });
 
 // Tracks whether we've already drained the python child during this
+const OAUTH_ENGINES = new Set(Object.keys(OAUTH_CREDENTIALS));
+
+async function startOrphanRefreshLoops(): Promise<void> {
+  try {
+    const base = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections`;
+    const listRes = await fetch(`${base}/`);
+    if (!listRes.ok) return;
+    const connections = await listRes.json() as Array<{ engine: string; name: string }>;
+
+    for (const { engine, name } of connections) {
+      if (!OAUTH_ENGINES.has(engine)) continue;
+      try {
+        const detailRes = await fetch(`${base}/${engine}/${name}`);
+        if (!detailRes.ok) continue;
+        const detail = await detailRes.json() as { fields?: Record<string, string> };
+        const fields = detail.fields || {};
+        if (fields.auth_type !== 'oauth') continue;
+        if (fields.status === 'needs_reconnect') continue;
+        const accountEmail = fields.account_email;
+        const expiresAt = fields.expires_at;
+        const tokenUrl = fields.token_url;
+        if (!accountEmail || !expiresAt || !tokenUrl) continue;
+        const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
+        if (!refreshToken) continue;
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl);
+        console.log(`[token-refresh] resumed loop for ${engine}:${accountEmail}`);
+      } catch (err) {
+        console.warn(`[token-refresh] could not resume loop for ${engine}/${name}:`, err);
+      }
+    }
+  } catch (err) {
+    console.warn('[token-refresh] orphan cleanup failed:', err);
+  }
+}
+
 // quit. before-quit can fire multiple times (Cmd+Q, dock quit, force
 // quit menu) — we only want to block on the first occurrence.
 let _quitDrained = false;
