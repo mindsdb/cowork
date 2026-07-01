@@ -20,6 +20,7 @@ import { fetchSkills, saveSkill, deleteSkill } from '../api';
 // `null` = never loaded yet (consumers can show a loading state); an array
 // once a fetch has resolved (success → the skills, failure → kept as-is / []).
 let _skills = null;
+let _skillNames = new Set(); // derived; rebuilt once per reload, not per-consumer
 let _inFlight = null; // de-dupe concurrent reloads
 const _subscribers = new Set();
 
@@ -43,6 +44,7 @@ export async function reloadSkills() {
     try {
       const data = await fetchSkills();
       _skills = Array.isArray(data?.skills) ? data.skills : [];
+      _skillNames = new Set(_skills.map((s) => s.label).filter(Boolean));
     } catch {
       if (_skills === null) _skills = []; // first load failed → empty, not stuck loading
     } finally {
@@ -55,8 +57,11 @@ export async function reloadSkills() {
 
 function _subscribe(notify) {
   _subscribers.add(notify);
-  // Lazily load on first subscriber so the store costs nothing until used.
-  if (_skills === null && !_inFlight) reloadSkills();
+  // Lazily load on first subscriber. Deferred so the fetch starts after the
+  // current render cycle — firing reloadSkills() synchronously here (inside
+  // useSyncExternalStore's subscribe call) can trigger a React "update during
+  // render" warning if _emit() resolves before the tree finishes mounting.
+  if (_skills === null && !_inFlight) queueMicrotask(reloadSkills);
   return () => _subscribers.delete(notify);
 }
 
@@ -68,6 +73,17 @@ function _subscribe(notify) {
 export function useSkills() {
   const skills = useSyncExternalStore(_subscribe, _getSnapshot, _getSnapshot);
   return { skills, reload: reloadSkills };
+}
+
+/**
+ * React hook: stable Set of known skill label strings, rebuilt once per reload.
+ * Prefer this over useSkills() when you only need label membership (e.g. for
+ * mention highlighting) — all consumers share one Set instead of each building
+ * their own inside a useMemo.
+ * @returns {Set<string>}
+ */
+export function useSkillNames() {
+  return useSyncExternalStore(_subscribe, () => _skillNames, () => _skillNames);
 }
 
 /** Create/update a skill, then refresh the shared list so every surface (the

@@ -420,7 +420,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const onSkillSaved = (saved) => {
     setSelected((prev) => prev?.label === saved?.label ? saved : prev);
     showToast(`Saved ${saved?.label}.`, 'success');
-    reload();
   };
 
   const remove = async (skill) => {

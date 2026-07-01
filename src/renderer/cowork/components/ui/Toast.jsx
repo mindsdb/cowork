@@ -14,7 +14,7 @@ export function Toast({ message, type = 'error', onClose, duration = 4000, align
     if (!message || !duration) return;
     const t = setTimeout(onClose, duration);
     return () => clearTimeout(t);
-  }, [message, duration]);
+  }, [message, duration, onClose]);
 
   if (!message) return null;
   const theme = THEMES[type] || THEMES.error;
