@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
+import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 
@@ -57,46 +58,6 @@ function formatDuration(ms) {
 
 // ── breadcrumb ──
 //
-// Mirrors ProjectsView's Crumb / CrumbSep so the navigation rhythm
-// (Josefin Sans, 13px buttons, 14px separator + active label, slightly
-// looser letter-spacing) is identical across drilldown surfaces.
-
-function CrumbButton({ label, onClick, title, maxWidth }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title || label}
-      style={{
-        // outline:0 removed for WCAG 2.4.7 — keyboard focus relies on
-        // the global `button:focus:not(:focus-visible) { outline:none }`
-        // rule, which keeps the ring for true keyboard nav.
-        cursor: 'pointer', background: 'transparent', border: 0,
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e)  => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-    >{label}</button>
-  );
-}
-
-function CrumbSep() {
-  return (
-    <span aria-hidden="true" style={{
-      color: 'var(--ink-4)', fontFamily: FONT_DISPLAY,
-      fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-      userSelect: 'none',
-    }}>›</span>
-  );
-}
-
-
 // ── pills ──
 
 function StatusPill({ task }) {

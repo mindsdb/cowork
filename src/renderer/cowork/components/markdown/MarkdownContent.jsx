@@ -20,6 +20,54 @@ import {
   TableBody,
 } from './MarkdownTable';
 import { host } from '../../../platform/host';
+import { useSkillNames } from '../../lib/skillsStore';
+
+// remark plugin: colour "/skill-name" mentions in the brand accent. Splits
+// text nodes on a "/name" token at a word boundary whose name matches a known
+// skill (so a path like /usr/bin or "and/or" is never tinted), wrapping the
+// match in a <span class="anton-skill-mention"> via mdast data.hName — which
+// mdast-util-to-hast turns into a real span and rehype-sanitize keeps (span +
+// className are already allowlisted for engram chips). Dependency-free: a
+// small recursive walk instead of pulling in unist-util-visit.
+function remarkSkillMentions(names) {
+  const set = names instanceof Set ? names : new Set(names || []);
+  const splitText = (value) => {
+    const re = /(^|\s)\/([\w-]+)/g;
+    let m;
+    let last = 0;
+    let out = null;
+    while ((m = re.exec(value)) !== null) {
+      if (!set.has(m[2])) continue;
+      out = out || [];
+      const tokenStart = m.index + m[1].length; // index of "/"
+      if (tokenStart > last) out.push({ type: 'text', value: value.slice(last, tokenStart) });
+      out.push({
+        type: 'skillMention',
+        data: { hName: 'span', hProperties: { className: ['anton-skill-mention'] } },
+        children: [{ type: 'text', value: `/${m[2]}` }],
+      });
+      last = tokenStart + m[2].length + 1;
+    }
+    if (out && last < value.length) out.push({ type: 'text', value: value.slice(last) });
+    return out;
+  };
+  const walk = (node) => {
+    if (!node || !Array.isArray(node.children)) return;
+    const next = [];
+    for (const child of node.children) {
+      if (child.type === 'text') {
+        const parts = splitText(child.value);
+        if (parts) next.push(...parts);
+        else next.push(child);
+      } else {
+        if (child.type !== 'code' && child.type !== 'inlineCode') walk(child);
+        next.push(child);
+      }
+    }
+    node.children = next;
+  };
+  return (tree) => { if (set.size > 0) walk(tree); };
+}
 
 // Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
 // do NOT include javascript:, file:, data:, or anything that could
@@ -265,6 +313,15 @@ export function MarkdownContent({
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
 
+  // Skill names from the shared store → colour "/mention" tokens. useSkillNames
+  // returns a stable Set rebuilt once per reload in the store, so all instances
+  // share one Set instead of each allocating their own inside useMemo.
+  const skillNames = useSkillNames();
+  const remarkPlugins = useMemo(
+    () => [remarkGfm, [remarkSkillMentions, skillNames]],
+    [skillNames],
+  );
+
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
   // button rendered by MarkdownCode. A single listener at this root survives
   // streaming re-renders (blocks come and go as chunks arrive) without
@@ -475,7 +532,7 @@ export function MarkdownContent({
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
         components={components}
       >

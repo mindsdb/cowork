@@ -8,22 +8,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
+import { timeAgo } from '../lib/formatTime';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_MONO = "var(--font-mono, 'JetBrains Mono', monospace)";
-
-function timeAgo(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (secs < 60)     return 'just now';
-  if (secs < 3600)   return `${Math.floor(secs / 60)} min ago`;
-  if (secs < 86400)  return `${Math.floor(secs / 3600)} h ago`;
-  if (secs < 172800) return 'Yesterday';
-  if (secs < 604800) return `${Math.floor(secs / 86400)} d ago`;
-  return `${Math.floor(secs / 604800)} w ago`;
-}
 
 function Row({ task, onSelect, onDelete }) {
   const [hover, setHover] = useState(false);

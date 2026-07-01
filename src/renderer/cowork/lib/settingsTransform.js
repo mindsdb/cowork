@@ -36,6 +36,8 @@ export const SETTINGS_KEY_MAP = {
   model_mode: 'modelMode',
   model_overrides: 'modelOverrides',
   providers_json: 'providers',
+  provider_status: 'providerStatus',
+  provider_status_details: 'providerStatusDetails',
   auto_pin: 'autoPin',
   show_dots: 'showDots',
   show_counters: 'showCounters',
@@ -58,7 +60,7 @@ export const CLIENT_TO_SERVER = Object.fromEntries(
 );
 
 /** Fields whose server value is a JSON string that the client uses as an object. */
-const JSON_FIELDS = new Set(['modelOverrides', 'providers']);
+const JSON_FIELDS = new Set(['modelOverrides', 'providers', 'providerStatus', 'providerStatusDetails']);
 
 const PROVIDER_TO_CLIENT = {
   openai_compatible: 'openai-compatible',
@@ -268,9 +270,14 @@ function backfillProviders(result) {
  * Skips: masked sentinels ("***"), unchanged values, and keys that don't
  * map to a server setting.  JSON-encodes object values.
  */
+/** Keys that are read from the server but never written back — they are
+ *  transient UI-only state (e.g. provider test results). */
+const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails']);
+
 export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};
   for (const [clientKey, value] of Object.entries(patch)) {
+    if (WRITE_SKIP.has(clientKey)) continue;
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;

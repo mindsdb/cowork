@@ -31,6 +31,7 @@ import {
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
 import { Menu } from '../components/ui';
+import { Crumb, CrumbSep } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 
@@ -91,18 +92,6 @@ function usePinnedProjects() {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
-
-function relativeAge(input) {
-  if (!input) return '—';
-  const ts = typeof input === 'number' ? input : Date.parse(input);
-  if (!Number.isFinite(ts)) return '—';
-  const diff = Date.now() - ts;
-  if (diff < 60_000)        return 'just now';
-  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 function timestampOfProject(project, tasks) {
   const list = (tasks || []).filter((t) =>
@@ -664,43 +653,6 @@ function SkeletonCard() {
 // Working folder + Context + Scheduled. Restored after a brief detour
 // where I'd accidentally folded this into the home route — the user
 // wants the in-page detail view to stay.
-
-function Crumb({ label, onClick, title, maxWidth }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      style={{
-        // outline:0 removed for WCAG 2.4.7 — keyboard focus relies on
-        // the global `button:focus:not(:focus-visible) { outline:none }`
-        // rule, which keeps the ring for true keyboard nav.
-        cursor: 'pointer', background: 'transparent', border: 0,
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function CrumbSep() {
-  return (
-    <span aria-hidden="true" style={{
-      color: 'var(--ink-4)', fontFamily: FONT_DISPLAY,
-      fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-      userSelect: 'none',
-    }}>›</span>
-  );
-}
 
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,

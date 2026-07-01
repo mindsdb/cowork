@@ -22,6 +22,7 @@ import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
+import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
@@ -45,7 +46,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -422,7 +423,7 @@ function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
   for (const ev of events) {
-    try { state = reduceStream(state, ev); } catch {}
+    try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
   }
   return {
     steps: state.steps || [],
@@ -438,7 +439,12 @@ function failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
   const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
   if (!ev) return null;
-  return { code: ev.code || null, message: ev.error || ev.message || '' };
+  return {
+    code: ev.code || null,
+    message: ev.error || ev.message || '',
+    reconnectable: ev.reconnectable ?? null,
+    providerLabel: ev.provider_label ?? null,
+  };
 }
 
 // Walk a messages payload from the server and, for any assistant
@@ -480,6 +486,8 @@ function hydrateMessagesFromServerEvents(messages) {
           role: 'error',
           content: normalizeAntonError(errText, { code }),
           code,
+          reconnectable: failed?.reconnectable ?? null,
+          providerLabel: failed?.providerLabel ?? null,
         });
       }
     }
@@ -708,6 +716,7 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('agent');
@@ -979,7 +988,13 @@ function AppCore() {
       const displayError = normalizeAntonError(message, event);
       const trailer = configError
         ? { role: 'provider_required' }
-        : { role: 'error', content: displayError, code: event?.code };
+        : {
+            role: 'error',
+            content: displayError,
+            code: event?.code,
+            reconnectable: event?.reconnectable ?? null,
+            providerLabel: event?.provider_label ?? null,
+          };
       return {
         ...t,
         status: configError ? 'idle' : 'error',
@@ -1000,7 +1015,7 @@ function AppCore() {
   // cowork-server) — labels derived from ids, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
   const models = useMemo(() => {
-    const providerType = providerValueToType(settings.planningProvider) || 'anthropic';
+    const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType)
       .map((o) => ({ id: o.id, name: o.label, desc: '' }));
   }, [settings.recommendedModels, settings.planningProvider]);
@@ -1762,6 +1777,17 @@ function AppCore() {
     if (isNarrow) setMobileSidebarOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
+    setComposerPrefill(null);
+    setRoute('home');
+  };
+
+  const handleNavigateHomeWithPrefill = (text, projectName) => {
+    setActiveTaskId(null);
+    setComposerAttachments([]);
+    setComposerPrefill({ text, bump: Date.now() });
+    const targetName = projectName || 'general';
+    const proj = projects.find((p) => p.name === targetName);
+    if (proj) setSelectedProject(proj);
     setRoute('home');
   };
 
@@ -2401,6 +2427,7 @@ function AppCore() {
       markInFlight(taskId);
     };
     trackAgentSessionStarted();
+    trackFirstQuery();
     const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(text, {
       conversationId: hasPendingFiles ? taskId : undefined,
@@ -2868,7 +2895,7 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
-              trackDataSourceConnected(currentForm._connector_id || currentForm.engine || 'unknown');
+              trackDataSourceConnected(formSpec?._connector_id || formSpec?.engine || currentForm._connector_id || currentForm.engine || name || 'unknown');
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,
@@ -3456,6 +3483,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
             skipIntro={bootIntroDone}
+            prefill={composerPrefill}
           />
         )}
 
@@ -3681,7 +3709,8 @@ function AppCore() {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {['memory', 'skills', 'publish'].includes(route) && (
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}
             project={selectedProject}
