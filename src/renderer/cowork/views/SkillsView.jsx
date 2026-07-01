@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu } from '../components/ui';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
@@ -458,8 +459,10 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [toast, setToast]             = useState(null); // { message, type }
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
-  const [filterProject, setFilterProject] = useState('');
+  const [view, setView]               = useState(() => localStorage.getItem('anton:skills-view') === 'list' ? 'list' : 'grid');
   const searchRef = useRef(null);
+
+  const handleViewChange = (v) => { setView(v); localStorage.setItem('anton:skills-view', v); };
 
   const showToast = (msg, type = 'error') => setToast({ message: msg, type });
 
@@ -493,11 +496,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const filtered = (skills ?? []).filter((s) => {
     if (search) {
       const q = search.toLowerCase();
-      if (!s.label?.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q)) return false;
-    }
-    if (filterProject) {
-      const proj = s.projects?.[0];
-      if (proj !== filterProject) return false;
+      const project = (s.projects?.[0] || s.project || '').toLowerCase();
+      if (!s.label?.toLowerCase().includes(q) && !s.description?.toLowerCase().includes(q) && !project.includes(q)) return false;
     }
     return true;
   });
@@ -608,32 +608,50 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
             actions={<CreateSkillDropdown onWrite={startNew} onUpload={() => setUploadOpen(true)} onCowork={onCreateWithCowork} />}
           />
 
-          <div style={{ padding: '20px 0 0' }}>
-            <FilterRow
-              search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
-              right={<>
-                {projects.length > 0 && (
-                  <SortPill
-                    value={filterProject}
-                    onChange={(v) => setFilterProject(v === filterProject ? '' : v)}
-                    options={[{ id: '', label: 'All' }, ...projects.map((p) => ({ id: p.name, label: p.name }))]}
-                    label="Filter by"
-                  />
-                )}
-                <SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} label="Sort by" />
-              </>}
-            />
-          </div>
+          <FilterRow
+            search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
+            sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
+            view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={handleViewChange} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+          />
           {skills === null ? (
             <EmptyState>Loading…</EmptyState>
-          ) : sorted.length > 0 ? (
-            <div style={{ padding: '20px 32px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          ) : sorted.length === 0 ? (
+            <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
+          ) : view === 'list' ? (
+            <div style={{ padding: '16px 32px 60px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: '0 16px', borderBottom: '1px solid var(--line)', padding: '0 8px 8px', marginBottom: 4 }}>
+                {['Name', 'Description', 'Project', 'Updated'].map((h) => (
+                  <span key={h} style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-4)', letterSpacing: '0.10em', textTransform: 'uppercase' }}>{h}</span>
+                ))}
+              </div>
+              {sorted.map((skill) => {
+                const project = skill.projects?.[0] || skill.project;
+                const age = relativeAge(skill.updatedAt);
+                return (
+                  <div
+                    key={skill.label}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelected(skill)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(skill); } }}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: '0 16px', padding: '10px 8px', borderBottom: '1px solid var(--line)', cursor: 'pointer', borderRadius: 6, outline: 'none' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+                  >
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{skill.label}</span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{skill.description || '—'}</span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{project || '—'}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>{age || '—'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: '20px 32px 60px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
               {sorted.map((skill) => (
                 <SkillCard key={skill.label} skill={skill} onClick={setSelected} />
               ))}
             </div>
-          ) : (
-            <EmptyState>{search ? 'No skills match your search.' : 'No saved skills yet.'}</EmptyState>
           )}
         </>
       )}
