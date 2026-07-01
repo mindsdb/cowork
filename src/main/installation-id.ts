@@ -53,8 +53,13 @@ export function getInstallationId(): string {
 
   const id = crypto.randomBytes(8).toString('hex');
   try {
-    fs.mkdirSync(coworkHome(), { recursive: true });
-    fs.writeFileSync(idPath, id + '\n', 'utf-8');
+    // Owner-only perms, matching the server owner token (ENG-439 review): the
+    // id lives alongside secrets under ~/.cowork, so keep it readable only by
+    // this OS user (least-privilege hygiene — it's an opaque device id, not a
+    // credential). chmod pins the mode past umask / a pre-existing file.
+    fs.mkdirSync(coworkHome(), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(idPath, id + '\n', { encoding: 'utf-8', mode: 0o600 });
+    fs.chmodSync(idPath, 0o600);
   } catch (err) {
     // best-effort persistence; keep the id stable for at least this process.
     // Warn so the orphaned-key-per-launch degradation is diagnosable in the
