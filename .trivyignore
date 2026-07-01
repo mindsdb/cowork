@@ -12,18 +12,19 @@
 # then re-scan and remove any entry whose CVE is now patched in the
 # new base.
 #
-# Last reviewed: 2026-06-09 against
+# Last reviewed: 2026-07-01 against
 #   registry.access.redhat.com/ubi9-minimal@sha256:
 #     5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362
-# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.1.4 Python
-# closure installed into /opt/venv on python3.12.
+# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.26.6.26.1
+# Python closure installed into /opt/venv on python3.12.
 #
-# Current posture: a TRUE scan (no suppressions) of the shipped image is
-# 0 HIGH / 0 CRITICAL across both the OS layer and the entire Python
-# dependency closure — confirmed by Trivy (linux/amd64 + linux/arm64) and
-# by AWS ECR scan-on-push. This allowlist is therefore currently a no-op
-# against the live scan; the single entry below is retained defensively
-# (see its note), not because a scan presently reports it.
+# Current posture: with the two no-upstream-fix suppressions below
+# (libacl/libattr), Trivy reports 0 HIGH / 0 CRITICAL on both
+# linux/amd64 and linux/arm64 across the OS layer and the entire Python
+# dependency closure. Everything with an available fix is applied at
+# build time: `microdnf update` pulls current Red Hat errata (e.g.
+# openssl-libs 3.5.5-4.el9_8 for CVE-2026-45447) and the Dockerfile
+# pins a PyJWT >= 2.13.0 floor (CVE-2026-48526).
 #
 # Note: the 9.8 base errata fixed the krb5-libs, libcap, and python
 # HIGHs that the previous 9.7 digest carried. The four gnutls HIGHs that
@@ -52,3 +53,19 @@
 # from the network surface; DoS-class (no RCE). Remove this entry once
 # confirmed permanently fixed across the scanners we care about.
 CVE-2026-45186
+
+# libacl / libattr — POSIX ACL and extended-attribute libraries. No
+# upstream fix available as of the 2026-07-01 review (status: affected,
+# no errata). Cannot be removed: libacl.so.1 is a hard runtime
+# dependency of coreutils-single, sed, libarchive, rpm-libs and
+# shadow-utils in the UBI 9 minimal base. Both CVEs are LOCAL symlink-
+# traversal privilege escalations exercised through the ACL/xattr
+# *utilities* (getfattr/setfacl-style tools operating on attacker-
+# controlled paths). The `acl` and `attr` tool packages are NOT
+# installed in this image, the container runs as a single non-root user
+# (uid 1000) with no other local principals, and nothing in cowork's
+# runtime invokes ACL/xattr operations on untrusted paths — the attack
+# preconditions (local multi-user filesystem race) do not exist here.
+# Re-review on every base bump; remove once Red Hat ships errata.
+CVE-2026-54369
+CVE-2026-54371

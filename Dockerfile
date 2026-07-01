@@ -101,6 +101,12 @@ ARG COWORK_SERVER_VERSION
 ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION}
 RUN chmod +x /tmp/install-cowork-server.sh && /tmp/install-cowork-server.sh
 
+# Security floor for transitive Python deps. PyJWT < 2.13.0 (pulled in
+# by the cowork-server closure) accepts forged JWTs (CVE-2026-48526,
+# HIGH). Re-check on every version bump and drop entries once the
+# closure's own pins move past the floor.
+RUN uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"
+
 # ── Stage 3: runtime — minimal, no compilers, no uv, no source tree ──────
 # Same digest-pinned UBI 9 minimal base as py-builder. The runtime stage
 # is what the customer actually pulls, so this digest is the one their
