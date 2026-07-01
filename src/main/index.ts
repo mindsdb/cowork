@@ -40,6 +40,28 @@ function readEnvFile(): Record<string, string> {
   return vars;
 }
 
+// Server bearer token (COWORK_AUTH_TOKEN) for the loopback API when the server
+// runs with COWORK_REQUIRE_AUTH=true. Read once and cached for the server's
+// lifetime; the SERVER_RESTART handler clears it so a token a freshly-restarted
+// server generated is picked up. `undefined` = not yet read, `null` = no token
+// (auth disabled). The token stays in the main process — it's injected into
+// requests by the webRequest hook in createWindow and never handed to the
+// renderer.
+let cachedAuthToken: string | null | undefined;
+
+function getServerAuthToken(): string | null {
+  if (cachedAuthToken === undefined) {
+    const raw = readEnvFile()['COWORK_AUTH_TOKEN'];
+    cachedAuthToken = raw ? raw.trim().replace(/^["']|["']$/g, '') : null;
+  }
+  return cachedAuthToken;
+}
+
+function authHeader(): Record<string, string> {
+  const token = getServerAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function clearStoredProviderState(): void {
   const statePath = getCoworkStatePath();
   if (!fs.existsSync(statePath)) return;
@@ -348,9 +370,34 @@ function createWindow() {
       // loopback python server we spawn ourselves. CSP in index.html still
       // allowlists the exact origins for defense in depth.
       // codeql[js/electron-disable-websecurity]
-      webSecurity: false, 
+      webSecurity: false,
     },
   });
+
+  // Inject the server's bearer token into every request the renderer makes to
+  // the loopback API — including browser-initiated loads (images, iframes and
+  // their relative sub-resources, downloads) that can't carry an Authorization
+  // header from renderer JS, and requests that follow a 307 trailing-slash
+  // redirect (Chromium strips the header on those; this re-adds it on the
+  // redirected request). Done at the network layer so it's uniform and the
+  // token never reaches the renderer. Scoped to our loopback server's origin
+  // so it can't leak elsewhere. No-op when the server runs without auth.
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
+    (details, callback) => {
+      const token = getServerAuthToken();
+      if (token) {
+        try {
+          if (new URL(details.url).port === String(getServerPort())) {
+            details.requestHeaders['Authorization'] = `Bearer ${token}`;
+          }
+        } catch {
+          // Malformed URL — leave the headers untouched.
+        }
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
 
   // Renderer loading priority:
   // 1. DEV_MODE=live → Vite dev server (hot reload without full build)
@@ -718,6 +765,9 @@ function setupIPC() {
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
     console.log('[server] restart requested (post-onboarding)');
     await stopServer();
+    // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
+    // the cache so the webRequest hook re-reads it on the next request.
+    cachedAuthToken = undefined;
     const result = await startServer({});
     if (result.ok) {
       console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
