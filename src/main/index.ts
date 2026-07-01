@@ -1268,14 +1268,21 @@ async function startOrphanRefreshLoops(): Promise<void> {
       try {
         const detailRes = await fetch(`${base}/${engine}/${name}`);
         if (!detailRes.ok) continue;
-        const detail = await detailRes.json() as { fields?: Record<string, string> };
+        const detail = await detailRes.json() as { method?: string; fields?: Record<string, string> };
         const fields = detail.fields || {};
-        if (fields.auth_type !== 'oauth') continue;
+        // Use _method (underscore-prefixed, never masked by the API) rather than
+        // auth_type or token_url which are in secure_keys and come back as sentinels.
+        if (detail.method !== 'browser_oauth_builtin') continue;
         if (fields.status === 'needs_reconnect') continue;
         const accountEmail = fields.account_email;
         const expiresAt = fields.expires_at;
-        const tokenUrl = fields.token_url;
-        if (!accountEmail || !expiresAt || !tokenUrl) continue;
+        if (!accountEmail || !expiresAt) continue;
+        // Fetch token_url from the spec — it's masked in the vault detail response.
+        const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`);
+        if (!specRes.ok) continue;
+        const spec = await specRes.json() as Record<string, any>;
+        const tokenUrl = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin')?.oauth?.token_url;
+        if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
         if (!refreshToken) continue;
         startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl);

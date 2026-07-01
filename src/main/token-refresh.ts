@@ -51,6 +51,9 @@ export function startRefreshLoop(
     intervalId: setInterval(() => { tick(engine, accountEmail, key).catch(() => {}); }, REFRESH_INTERVAL_MS),
   };
   loops.set(key, state);
+  tick(engine, accountEmail, key).catch(() => {});
+  };
+  loops.set(key, state);
 }
 
 export function stopRefreshLoop(engine: string, accountEmail: string): void {
