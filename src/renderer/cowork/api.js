@@ -26,54 +26,15 @@ const API_ORIGIN = (() => {
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
-// Cached bearer token for authenticating to the local server when
-// COWORK_REQUIRE_AUTH=true.  Null means no token found yet; a non-null
-// string is cached forever (the token is stable for the server's lifetime).
-// We never cache null permanently so the token is picked up if the server
-// is restarted with auth enabled while the renderer is already running.
-let _serverAuthToken = null;
-
-async function _fetchToken() {
-  return host.getServerAuthToken().catch(() => null);
-}
-
-async function _getAuthHeaders() {
-  if (!_serverAuthToken) {
-    _serverAuthToken = await _fetchToken();
-  }
-  return _serverAuthToken ? { Authorization: `Bearer ${_serverAuthToken}` } : {};
-}
-
-// Drop-in replacement for fetch() that injects the server auth token.
-// On a 401 it clears the cached token and retries once — handles the case
-// where the server was restarted with auth enabled while the app was open.
-//
-// Chromium (Electron) strips the Authorization header when automatically
-// following a 307 redirect (even same-origin). We detect this via
-// res.redirected / res.url and retry against the final URL so the header
-// reaches the server on the retry instead of getting stripped mid-redirect.
+// Thin wrapper around fetch() for server calls. In the desktop app the Electron
+// main process injects the bearer token (when the server runs with
+// COWORK_REQUIRE_AUTH=true) into every request to the loopback API via a
+// session webRequest hook — see src/main/index.ts. The token never reaches the
+// renderer, and browser-initiated loads (images, iframes, downloads) are
+// covered too, so there's nothing to attach here. In web mode the SPA is
+// same-origin with the server and relies on the session cookie.
 async function authFetch(url, options = {}) {
-  const authHeaders = await _getAuthHeaders();
-  const res = await fetch(url, {
-    ...options,
-    headers: { ...authHeaders, ...options.headers },
-  });
-  if (res.status === 401) {
-    // Re-read the token in case it was just generated (e.g. auth was
-    // enabled while the app was open).
-    _serverAuthToken = await _fetchToken();
-    if (_serverAuthToken) {
-      // If a redirect was followed, use the final URL so we send the
-      // auth header directly to the destination (Chromium strips it
-      // when following a redirect automatically).
-      const retryUrl = res.redirected ? res.url : url;
-      return fetch(retryUrl, {
-        ...options,
-        headers: { Authorization: `Bearer ${_serverAuthToken}`, ...options.headers },
-      });
-    }
-  }
-  return res;
+  return fetch(url, options);
 }
 
 async function req(path, options = {}) {

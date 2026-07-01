@@ -24,7 +24,6 @@ export const IPC = {
   // Server
   SERVER_RESTART: 'server:restart',
   SERVER_UPDATE_STATUS: 'server:update-status',
-  SERVER_GET_AUTH_TOKEN: 'server:get-auth-token',
 
   // Auth
   AUTH_GET_ACCESS_TOKEN: 'auth:get-access-token',
