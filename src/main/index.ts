@@ -638,7 +638,7 @@ function setupIPC() {
       const CREDENTIAL_KEYS = [
         'minds_api_key', 'anthropic_api_key', 'openai_api_key',
         'gemini_api_key', 'openai_compatible_api_key',
-        'providers_json', 'provider_status', 'provider_status_details',
+        'providers_json',
         'minds_url', 'openai_base_url',
       ];
       await Promise.allSettled(
