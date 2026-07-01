@@ -481,13 +481,13 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
 // Renders any badge='Skill' steps as inline SkillCards — a skill the agent
 // BUILT this turn. Sibling of StepArtifacts, but explicitly NOT the artifact
 // system: a skill is a draft the user saves or downloads from the card.
-function StepSkills({ steps, projectName }) {
+function StepSkills({ steps }) {
   const skills = steps?.filter((s) => s.badge === 'Skill') || [];
   if (skills.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       {skills.map((s) => (
-        <SkillCard key={s.id} skill={s.data || {}} projectName={projectName} />
+        <SkillCard key={s.id} skill={s.data || {}} />
       ))}
     </div>
   );
@@ -1650,7 +1650,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
-                  <StepSkills steps={m.steps} projectName={task.projectName} />
+                  <StepSkills steps={m.steps} />
                 </AnswerTurn>
               );
               });
