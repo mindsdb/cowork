@@ -21,6 +21,7 @@ import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import SkillCard from '../components/SkillCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -28,6 +29,7 @@ import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '.
 import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host, isWeb } from '../../platform/host';
+import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
@@ -477,6 +479,21 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
   );
 }
 
+// Renders any badge='Skill' steps as inline SkillCards — a skill the agent
+// BUILT this turn. Sibling of StepArtifacts, but explicitly NOT the artifact
+// system: a skill is a draft the user saves or downloads from the card.
+function StepSkills({ steps }) {
+  const skills = steps?.filter((s) => s.badge === 'Skill') || [];
+  if (skills.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+      {skills.map((s) => (
+        <SkillCard key={s.id} skill={s.data || {}} />
+      ))}
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   const [status, setStatus] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
@@ -782,60 +799,6 @@ function StreamCursor() {
 // (PhaseProgress / WorkingFolderLive / ContextCard) which are
 // composed via ProgressBox / WorkingFolderBox / ContextBox.
 
-// ─── Header crumb helpers ────────────────────────────────────────────────
-function CrumbSep() {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        color: T.ink4, fontFamily: FONT_DISPLAY, fontWeight: 400,
-        fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-        userSelect: 'none',
-      }}
-    >›</span>
-  );
-}
-
-function CrumbButton({ label, onClick, title, maxWidth }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      // Explicit resets instead of `all: unset` — the latter wipes
-      // -webkit-app-region back to its initial which interacts badly
-      // with the chat outer's drag region. With explicit no-drag,
-      // clicks reliably reach the button.
-      style={{
-        cursor: 'pointer',
-        background: 'transparent',
-        border: 0,
-        // `outline: 0` removed — global rule
-        // `button:focus:not(:focus-visible) { outline: none }` already
-        // suppresses the mouse-click ring while preserving the
-        // keyboard-focus ring for WCAG 2.4.7.
-        font: 'inherit',
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: T.ink3,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.color = 'var(--ink)';
-        e.currentTarget.style.background = 'var(--surface-2)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.color = 'var(--ink-3)';
-        e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {label}
-    </button>
-  );
-}
 
 // Wait for the sidecar to come back after mindshubFinalize restarts it, so we
 // don't tell the user to resend into a cold server (any 200 from /health = up).
@@ -1773,6 +1736,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepSkills steps={m.steps} />
                 </AnswerTurn>
               );
               });
@@ -1822,6 +1786,7 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <StepSkills steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>

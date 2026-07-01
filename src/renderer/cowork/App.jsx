@@ -22,6 +22,7 @@ import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
+import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
@@ -715,6 +716,7 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('agent');
@@ -1775,6 +1777,17 @@ function AppCore() {
     if (isNarrow) setMobileSidebarOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
+    setComposerPrefill(null);
+    setRoute('home');
+  };
+
+  const handleNavigateHomeWithPrefill = (text, projectName) => {
+    setActiveTaskId(null);
+    setComposerAttachments([]);
+    setComposerPrefill({ text, bump: Date.now() });
+    const targetName = projectName || 'general';
+    const proj = projects.find((p) => p.name === targetName);
+    if (proj) setSelectedProject(proj);
     setRoute('home');
   };
 
@@ -3470,6 +3483,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
             skipIntro={bootIntroDone}
+            prefill={composerPrefill}
           />
         )}
 
@@ -3695,7 +3709,8 @@ function AppCore() {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {['memory', 'skills', 'publish'].includes(route) && (
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}
             project={selectedProject}

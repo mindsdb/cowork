@@ -671,11 +671,21 @@ a[href],
   font-size: var(--composer-font-size);
   line-height: var(--composer-line-height);
   color: var(--text-strong);
+  /* The pixel-aligned highlight overlay (.composer-textarea-overlay) sits
+     behind this textarea and renders the *visible* text in colour (plain text,
+     inline-code, fence markers, and /skill-name mentions). So the textarea's
+     own glyphs must be invisible — fill transparent — while the caret stays
+     visible via caret-color. Without this the opaque textarea text covers the
+     overlay and every token reads as flat ink. */
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text-strong);
   padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
 }
-.composer-textarea::placeholder { color: var(--frost-500); }
+/* Placeholder must opt back IN to a visible fill (the rule above made all
+   textarea glyphs transparent). */
+.composer-textarea::placeholder { color: var(--frost-500); -webkit-text-fill-color: var(--frost-500); }
 
 /* Source-mode highlight overlay.
    The textarea is the real input — the overlay sits behind it and
@@ -718,7 +728,10 @@ a[href],
   overflow: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  color: transparent;
+  /* The overlay is now the VISIBLE text layer (the textarea's fill is
+     transparent). Plain text renders in the normal ink; segment classes
+     (.overlay-inline-code / -fence-marker / -slash-mention) tint their runs. */
+  color: var(--text-strong);
   background: transparent;
   border: 0;
   user-select: none;
@@ -753,6 +766,13 @@ a[href],
   background: color-mix(in srgb, rgb(232, 132, 110) 16%, transparent);
   color: color-mix(in srgb, rgb(232, 132, 110) 70%, var(--ink));
   border-radius: 3px;
+}
+/* Skill mention (/skill-name) — plain text (no backticks, no chip), coloured a
+   little darker than the brand accent so it reads as a mention. COLOUR ONLY:
+   no padding/weight/border/background (they'd shift char widths and break the
+   overlay's char-for-char alignment with the textarea). */
+.overlay-slash-mention {
+  color: color-mix(in srgb, var(--accent) 82%, #000);
 }
 .composer-textarea-overlay::-webkit-scrollbar { display: none; }
 
@@ -4821,6 +4841,13 @@ body[data-theme="dark"] .mshell__drawer-title {
   border-radius: 4px;
   padding: 1px 5px;
   word-break: break-word;
+}
+/* Skill mention (/skill-name) in a sent message — plain text (no chip),
+   coloured a little darker than the brand accent + medium weight so it reads
+   as a mention. Matches the composer overlay's .overlay-slash-mention. */
+.anton-skill-mention {
+  color: color-mix(in srgb, var(--accent) 82%, #000);
+  font-weight: 500;
 }
 body[data-theme="light"] .anton-inline-code {
   /* Darker coral on light mode keeps AA contrast against the pale
