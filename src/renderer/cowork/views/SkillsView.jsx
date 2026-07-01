@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep } from '../components/ui/Crumb';
+import { Toast } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
-import { fetchProjects, saveSkill, uploadSkillFile } from '../api';
+import { fetchProjects, uploadSkillFile } from '../api';
 import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
 import { relativeAge } from '../lib/formatTime';
 
@@ -16,49 +16,6 @@ function EmptyState({ children }) {
   return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
 }
 
-const TOAST_THEMES = {
-  error:   { bg: 'color-mix(in srgb, var(--danger) 12%, var(--surface))',  border: 'color-mix(in srgb, var(--danger) 40%, transparent)',  color: 'var(--danger)',  accent: 'var(--danger)' },
-  success: { bg: 'color-mix(in srgb, var(--success) 12%, var(--surface))', border: 'color-mix(in srgb, var(--success) 40%, transparent)', color: 'var(--ink-2)', accent: 'var(--success)' },
-};
-
-function Toast({ message, type = 'error', onClose }) {
-  useEffect(() => {
-    if (!message) return;
-    const t = setTimeout(onClose, 4000);
-    return () => clearTimeout(t);
-  }, [message]);
-
-  if (!message) return null;
-  const theme = TOAST_THEMES[type] || TOAST_THEMES.error;
-  return createPortal(
-    <div style={{
-      position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 2000,
-      display: 'inline-flex', alignItems: 'center', gap: 10,
-      padding: '10px 16px',
-      borderRadius: 10,
-      background: theme.bg,
-      border: `1px solid ${theme.border}`,
-      color: theme.color,
-      fontSize: 13,
-      fontFamily: 'var(--font-body)',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-      maxWidth: 480,
-      pointerEvents: 'auto',
-    }}>
-      <span style={{ flexShrink: 0, color: theme.accent }}>{type === 'success' ? '✓' : (Ico.warning ? Ico.warning(14) : '⚠')}</span>
-      <span style={{ flex: 1 }}>{message}</span>
-      <button
-        type="button"
-        onClick={onClose}
-        style={{ background: 'none', border: 0, color: theme.color, cursor: 'pointer', flexShrink: 0, padding: 0, opacity: 0.7 }}
-      >
-        {Ico.close ? Ico.close(12) : '×'}
-      </button>
-    </div>,
-    document.body
-  );
-}
 
 const CARD_SHADOW = '0px 0px 0px 0.5px rgba(39,39,42,0.15), 0px 1px 2px rgba(0,0,0,0.05), 0px 0.5px 0px rgba(0,0,0,0.08)';
 
