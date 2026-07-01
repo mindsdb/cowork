@@ -78,9 +78,26 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
 
   if (Date.now() < state.expiresAt - PRE_REFRESH_WINDOW_MS) return;
 
-  const creds = OAUTH_CREDENTIALS[engine];
-  if (!creds) {
+  if (!OAUTH_CREDENTIALS[engine]) {
     console.error(`[token-refresh] no credentials configured for engine: ${engine}`);
+    return;
+  }
+
+  let clientId: string;
+  let clientSecret: string;
+  try {
+    const credsRes = await fetch(
+      `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+    );
+    if (!credsRes.ok) {
+      console.error(`[token-refresh] credentials endpoint returned ${credsRes.status} for ${engine}`);
+      return;
+    }
+    const credsData = await credsRes.json() as { client_id: string; client_secret: string };
+    clientId = credsData.client_id;
+    clientSecret = credsData.client_secret;
+  } catch (err) {
+    console.error(`[token-refresh] failed to fetch credentials for ${engine}:`, err);
     return;
   }
 
@@ -96,8 +113,8 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
-        client_id: creds.clientId,
-        client_secret: creds.clientSecret,
+        client_id: clientId,
+        client_secret: clientSecret,
         refresh_token: refreshToken,
       }).toString(),
     });

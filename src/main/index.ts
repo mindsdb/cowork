@@ -17,7 +17,7 @@ import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisi
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -25,22 +25,6 @@ function getAntonEnvPath(): string {
 
 function getCoworkStatePath(): string {
   return coworkStatePath();
-}
-
-function readEnvFile(): Record<string, string> {
-  const envPath = getAntonEnvPath();
-  const vars: Record<string, string> = {};
-  if (!fs.existsSync(envPath)) return vars;
-  const content = fs.readFileSync(envPath, 'utf-8');
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx > 0) {
-      vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
-    }
-  }
-  return vars;
 }
 
 function clearStoredProviderState(): void {
@@ -534,17 +518,33 @@ function setupIPC() {
     if (o.engine && !o.authUrl) {
       const engine: string = o.engine;
       const labelName: string = o.name || '';
-      const creds = OAUTH_CREDENTIALS[engine];
-      if (!creds) return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+      if (!OAUTH_CREDENTIALS[engine]) {
+        return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+      }
+      let clientId: string;
+      let clientSecret: string;
+      try {
+        const credsRes = await fetch(
+          `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+        );
+        if (!credsRes.ok) {
+          const err = await credsRes.json().catch(() => ({})) as { detail?: string };
+          return { ok: false, reason: err.detail || `OAuth credentials not configured for "${engine}".` };
+        }
+        const credsData = await credsRes.json() as { client_id: string; client_secret: string };
+        clientId = credsData.client_id;
+        clientSecret = credsData.client_secret;
+      } catch {
+        return { ok: false, reason: `Could not fetch OAuth credentials for "${engine}".` };
+      }
 
-      const specPath = require('path').join(
-        __dirname,
-        '../../../cowork-server/cowork/services/connectors/specs',
-        `${engine}.json`,
-      );
       let oauthBlock: Record<string, any>;
       try {
-        const spec = JSON.parse(require('fs').readFileSync(specPath, 'utf8'));
+        const specRes = await fetch(
+          `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
+        );
+        if (!specRes.ok) throw new Error(`HTTP ${specRes.status}`);
+        const spec = await specRes.json() as Record<string, any>;
         const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
         oauthBlock = builtinMethod?.oauth;
         if (!oauthBlock?.auth_url || !oauthBlock?.token_url || !Array.isArray(oauthBlock?.scopes)) {
@@ -557,8 +557,8 @@ function setupIPC() {
       const pkceResult = await oauthConnect({
         authUrl: oauthBlock.auth_url,
         tokenUrl: oauthBlock.token_url,
-        clientId: creds.clientId,
-        clientSecret: creds.clientSecret,
+        clientId,
+        clientSecret,
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
       });
