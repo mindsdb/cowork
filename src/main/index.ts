@@ -900,7 +900,7 @@ async function purgeHttpCacheOnUpgrade(): Promise<void> {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
