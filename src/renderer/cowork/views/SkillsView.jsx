@@ -62,7 +62,7 @@ function Toast({ message, type = 'error', onClose }) {
 
 const CARD_SHADOW = '0px 0px 0px 0.5px rgba(39,39,42,0.15), 0px 1px 2px rgba(0,0,0,0.05), 0px 0.5px 0px rgba(0,0,0,0.08)';
 
-function SkillCard({ skill, onClick }) {
+function SkillGridCard({ skill, onClick }) {
   const [hovered, setHovered] = useState(false);
   const age = relativeAge(skill.updatedAt);
   const project = skill.projects?.[0] || skill.project;
@@ -221,7 +221,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     if (!label || !draft.declarative.trim()) return;
     setBusy(true);
     try {
-      const saved = await saveSkill({ label, description: draft.description, declarative: draft.declarative, projects: draft.project ? [draft.project] : [] }, isEdit);
+      const saved = await saveSkillAndSync({ label, description: draft.description, declarative: draft.declarative, projects: draft.project ? [draft.project] : [] }, isEdit);
       handleClose();
       await onSaved(saved);
     } catch (err) {
@@ -628,7 +628,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           ) : (
             <div style={{ padding: '20px 32px 60px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
               {sorted.map((skill) => (
-                <SkillCard key={skill.label} skill={skill} onClick={setSelected} />
+                <SkillGridCard key={skill.label} skill={skill} onClick={setSelected} />
               ))}
             </div>
           )}
