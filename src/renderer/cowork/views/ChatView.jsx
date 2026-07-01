@@ -25,10 +25,10 @@ import SkillCard from '../components/SkillCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact, exportArtifact, attachmentRawUrl } from '../api';
+import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '../api';
 import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { host } from '../../platform/host';
+import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -799,7 +799,132 @@ function StreamCursor() {
 // (PhaseProgress / WorkingFolderLive / ContextCard) which are
 // composed via ProgressBox / WorkingFolderBox / ContextBox.
 
-// ─── Header crumb helpers ────────────────────────────────────────────────
+
+// Wait for the sidecar to come back after mindshubFinalize restarts it, so we
+// don't tell the user to resend into a cold server (any 200 from /health = up).
+async function waitForServerReady(timeoutMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      if (await fetchHealth()) return true;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  return false;
+}
+
+// Mid-conversation provider auth failure (`provider_auth`): the credential the
+// gateway sees is invalid (revoked / rotated / never provisioned / org drift),
+// so chat calls 401.
+//
+// For **MindsHub** (`reconnectable`), the fix is to re-provision the key in
+// place via mindshubFinalize (the same step login runs) — no logout. For a
+// **BYOK** provider, only the user can fix their own key, so we point them to
+// Settings instead of dragging them into a MindsHub login. Reconnect is also
+// desktop-only (finalize/login are Electron IPC), so on web we fall back to
+// Settings too.
+function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const canReconnect = Boolean(reconnectable) && !isWeb;
+
+  const reconnect = async () => {
+    if (busy) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      let res = await host.mindshubFinalize();
+      if (res?.upgradeRequired) {
+        host.openExternal(MINDS_BILLING_URL);
+        return;
+      }
+      if (!res?.ok) {
+        // No usable session to re-provision from → full sign-in.
+        res = await host.mindshubLogin();
+      }
+      if (res?.ok || res?.apiKey) {
+        // finalize restarts the sidecar — wait until it's back so the resend
+        // doesn't hit a cold server.
+        await waitForServerReady();
+        setDone(true);
+      } else {
+        setErr(res?.reason || 'Could not reconnect. Try signing out and back in.');
+      }
+    } catch (e) {
+      setErr(e?.message || 'Reconnect failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // title + body are derived from what this card can actually offer (web-aware),
+  // so they never contradict the buttons shown. We deliberately don't reuse the
+  // server's copy here: it's provider-aware but not web-aware (it can't know the
+  // desktop-only Reconnect is unavailable on web).
+  const title = done
+    ? 'Reconnected'
+    : canReconnect ? 'Reconnect to continue'
+    : reconnectable ? 'Sign in again'
+    : 'Update your API key';
+  const body = done
+    ? 'Your MindsHub session was refreshed. Send your message again to continue.'
+    : err || (
+        canReconnect
+          ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
+          : reconnectable
+            ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
+            : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
+      );
+
+  const primaryStyle = {
+    border: 'none', background: T.ink, color: 'var(--bg)',
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
+  };
+  const secondaryStyle = {
+    border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  };
+
+  return (
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+      <div style={{
+        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
+        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+          {title}
+        </div>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+          {body}
+        </div>
+        {!done && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            {canReconnect && (
+              <button
+                type="button"
+                onClick={reconnect}
+                disabled={busy}
+                style={{ ...primaryStyle, cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 }}
+              >{busy ? 'Reconnecting…' : 'Reconnect'}</button>
+            )}
+            <button
+              type="button"
+              onClick={() => onOpenSettings?.('agent')}
+              style={canReconnect ? secondaryStyle : { ...primaryStyle, cursor: 'pointer' }}
+            >Open Settings</button>
+          </div>
+        )}
+      </div>
+    </AnswerTurn>
+  );
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1490,6 +1615,20 @@ export default function ChatView({
                         </div>
                       </div>
                     </AnswerTurn>
+                  );
+                }
+                // Provider auth failure mid-conversation → offer Reconnect
+                // (re-provision the key in place), not "Subscribe".
+                if (m.code === 'provider_auth') {
+                  return (
+                    <ReconnectCard
+                      key={i}
+                      time={formatTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                      reconnectable={m.reconnectable}
+                      providerLabel={m.providerLabel}
+                    />
                   );
                 }
                 return (
