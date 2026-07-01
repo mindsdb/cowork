@@ -52,8 +52,6 @@ export function startRefreshLoop(
   };
   loops.set(key, state);
   tick(engine, accountEmail, key).catch(() => {});
-  };
-  loops.set(key, state);
 }
 
 export function stopRefreshLoop(engine: string, accountEmail: string): void {
