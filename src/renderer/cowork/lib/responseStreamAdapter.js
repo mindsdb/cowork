@@ -206,7 +206,7 @@ function deriveCellStatus(serverStatus, parsedCell) {
  * @param {() => number} [now] — clock injection for tests
  * @returns {object} new state
  */
-export function reduceStream(state, event, now = Date.now) {
+export function reduceStream(state, event, now = Date.now, { replay = false } = {}) {
   if (!event || typeof event !== 'object') return state;
   const type = event.type;
 
@@ -239,7 +239,7 @@ export function reduceStream(state, event, now = Date.now) {
   if (type === 'response.failed') {
     // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
     // on receipt — not in the render path (ChatView), which re-runs every paint.
-    if (event.code === 'token_limit') {
+    if (!replay && event.code === 'token_limit') {
       try { _trackTokenCapHit(); }
       catch { /* analytics must never break streaming */ }
     }
@@ -296,8 +296,10 @@ export function reduceStream(state, event, now = Date.now) {
       _isScratchpad: false,
       _scratchpadTabId: null,
     };
-    try { _trackArtifactBuilt(art.type || 'unknown'); }
-    catch { /* analytics must never break streaming */ }
+    if (!replay) {
+      try { _trackArtifactBuilt(art.type || 'unknown'); }
+      catch { /* analytics must never break streaming */ }
+    }
     return { ...state, steps: [...state.steps, step] };
   }
 
