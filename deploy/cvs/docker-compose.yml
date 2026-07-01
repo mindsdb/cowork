@@ -3,7 +3,8 @@
 # Build the image from the workspace root (the directory containing the
 # `cowork/` checkout):
 #
-#     docker build -f cowork/Dockerfile -t cowork:cvs .
+#     docker build -f cowork/Dockerfile -t cowork:cvs \
+#       --build-arg COWORK_SERVER_VERSION=0.26.6.26.1 .
 #
 # Then, from this directory:
 #

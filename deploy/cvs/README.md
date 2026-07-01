@@ -8,8 +8,10 @@ Anthropic Messages protocol and authenticates with LMS-issued
 ## Quick start
 
 ```sh
-# 1. Build the image (from the workspace root, one level above cowork/)
-docker build -f cowork/Dockerfile -t cowork:cvs .
+# 1. Build the image (from the workspace root, one level above cowork/).
+#    Pin the backend release for a reproducible, scannable artifact:
+docker build -f cowork/Dockerfile -t cowork:cvs \
+  --build-arg COWORK_SERVER_VERSION=0.26.6.26.1 .
 
 # 2. Make sure the LMS key exists (provisioned by running CVS Code once)
 jq -r .lmsApiKey ~/.cvscode/.lms-credentials.json   # should print aip_llm_...
