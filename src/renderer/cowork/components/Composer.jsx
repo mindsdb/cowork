@@ -124,6 +124,7 @@ export default function Composer({
       `slashTokenStartRef` records the index of the "/" so accept can replace
       the whole "/<frag>" token. Mirrors the project-menu pattern but the
       filter is the composer text itself (no separate search input). */
+  const [slashMenuBelow, setSlashMenuBelow] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
   const [slashIndex, setSlashIndex] = useState(0);
@@ -285,6 +286,10 @@ export default function Composer({
       slashTokenStartRef.current = tok.start;
       setSlashQuery(tok.query);
       setSlashIndex(0);
+      if (wrapRef.current) {
+        const r = wrapRef.current.getBoundingClientRect();
+        setSlashMenuBelow(r.top < 340);
+      }
       setSlashOpen(true);
     } else {
       setSlashOpen((prev) => (prev ? false : prev));
@@ -564,51 +569,54 @@ export default function Composer({
         onChange={(event) => handleAttachFiles(event.target.files)}
       />
 
-      {/* "/" slash-command menu — floats above the input; the composer text
-          after "/" is the live filter (no separate search box). */}
-      {slashOpen && slashItems.length > 0 && (
-        <div
-          className="menu"
-          role="listbox"
-          aria-label="Skills and actions"
-          onMouseDown={(e) => e.preventDefault()}
-          style={{
-            position: 'absolute', left: 0, right: 0, top: 'auto', bottom: 'calc(100% + 8px)',
-            maxHeight: 'min(50vh, 320px)', overflowY: 'auto', padding: '4px 0', zIndex: 40,
-          }}
-        >
-          {slashItems.map((item, i) => {
-            const active = i === Math.min(slashIndex, slashItems.length - 1);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="option"
-                aria-selected={active}
-                className="menu-item"
-                onMouseEnter={() => setSlashIndex(i)}
-                onClick={() => acceptSlash(item)}
-                style={active ? { background: 'var(--surface-2)' } : undefined}
-              >
-                <span style={{ display: 'inline-flex', color: 'var(--frost-700, var(--ink-3))' }}>
-                  {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
-                </span>
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
-                  {item.label}
-                </span>
-                {item.hint && (
-                  <span style={{ color: 'var(--ink-3)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '46%' }}>
-                    {item.hint}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       <div style={{ width: '100%' }}>
-        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`} style={{ position: 'relative' }}>
+
+          {/* "/" slash-command menu — anchored to composer-wrap so it appears
+              just above/below the textarea, not below the toolbar. */}
+          {slashOpen && slashItems.length > 0 && (
+            <div
+              className="menu"
+              role="listbox"
+              aria-label="Skills and actions"
+              onMouseDown={(e) => e.preventDefault()}
+              style={{
+                position: 'absolute', left: 0, right: 0,
+                ...(slashMenuBelow
+                  ? { top: 'calc(100% + 8px)', bottom: 'auto' }
+                  : { top: 'auto', bottom: 'calc(100% + 8px)' }),
+                maxHeight: 'min(50vh, 320px)', overflowY: 'auto', padding: '4px 0', zIndex: 40,
+              }}
+            >
+              {slashItems.map((item, i) => {
+                const active = i === Math.min(slashIndex, slashItems.length - 1);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className="menu-item"
+                    onMouseEnter={() => setSlashIndex(i)}
+                    onClick={() => acceptSlash(item)}
+                    style={active ? { background: 'var(--surface-2)' } : undefined}
+                  >
+                    <span style={{ display: 'inline-flex', color: 'var(--frost-700, var(--ink-3))' }}>
+                      {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                      {item.label}
+                    </span>
+                    {item.hint && (
+                      <span style={{ color: 'var(--ink-3)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '46%' }}>
+                        {item.hint}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {attachments.length > 0 && (
             <div className="attachment-strip">
               {attachments.map((attachment) => (
