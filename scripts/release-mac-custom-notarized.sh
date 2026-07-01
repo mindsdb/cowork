@@ -5,9 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 VERSION="$(node -p "require('./package.json').version")"
-APP_PATH="release/mac-universal/Minds Cowork.app"
-APP_ZIP="release/Minds Cowork.app.zip"
-DMG_PATH="release/Minds Cowork-${VERSION}-universal-custom.dmg"
+APP_PATH="release/mac-universal/MindsHub Cowork.app"
+APP_ZIP="release/MindsHub Cowork.app.zip"
+DMG_PATH="release/MindsHub Cowork-${VERSION}-universal-custom.dmg"
 IDENTITY_NAME="Developer ID Application: MindsDB Inc (498Y665994)"
 
 if [[ -z "${APPLE_ID:-}" || -z "${APPLE_TEAM_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then

@@ -10,7 +10,7 @@
 //
 // Web fallbacks are intentionally narrow: methods that have a sensible
 // browser equivalent (openExternal → window.open) work; OS-level shell
-// operations (openPath, trashItem) return { ok: false, reason: 'unsupported' }
+// operations (openPath) return { ok: false, reason: 'unsupported' }
 // so call sites can branch / hide affordances.
 
 const ANTON_SERVER_PORT = 26866;
@@ -177,13 +177,6 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
   return { ok: false, reason: 'unsupported' };
 }
 
-export async function trashItem(path: string): Promise<{ ok: boolean; reason?: string }> {
-  if (isElectron && typeof bridge.trashItem === 'function') {
-    return bridge.trashItem(path);
-  }
-  return { ok: false, reason: 'unsupported' };
-}
-
 // ---- File drop / clipboard ---------------------------------------------
 
 // In Electron, dropped files expose an OS path via webUtils. In web, the
@@ -214,8 +207,8 @@ export async function getUIVersion(): Promise<string> {
 
 // ---- Onboarding -------------------------------------------------------
 //
-// The cowork SPA mounts the same onboarding pages (TermsConsent → Setup
-// → Onboarding) under both shells. Electron handlers live in main and
+// The cowork SPA mounts the same arcade onboarding screens (TermsScreen
+// → SetupScreen → OnboardingScreen) under both shells. Electron handlers live in main and
 // touch ~/.anton/.env directly. Web handlers are FastAPI endpoints in
 // `server/routes/settings.py` that mirror the IPC shapes 1:1, so the
 // React pages are shell-agnostic once they go through `host.*`.
@@ -449,7 +442,7 @@ export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string;
   return { ok: false, reason: 'MindsHub refresh bridge is Electron-only.' };
 }
 
-export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean }> {
+export async function mindshubFinalize(): Promise<{ ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string }> {
   if (isElectron && typeof bridge.mindshubFinalize === 'function') {
     return bridge.mindshubFinalize();
   }
@@ -499,7 +492,6 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
-  trashItem,
   getPathForFile,
   getUIVersion,
   readSettings,

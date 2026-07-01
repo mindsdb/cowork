@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
+import { getInstallSpec } from './server-source';
 
 interface InstallStep {
   id: string;
@@ -20,12 +21,16 @@ interface InstallerOptions {
 // cowork release that requires backend changes. The installer will
 // install at least this version (a minimum floor), picking up any
 // newer compatible releases automatically.
-const COWORK_SERVER_MIN_VERSION = '0.1.4';
+const COWORK_SERVER_MIN_VERSION = '0.1.10';
 
-// Package source for cowork-server. Override with COWORK_SERVER_PACKAGE
-// env var (e.g. a local path or alternative git URL during development).
-const COWORK_SERVER_PACKAGE = process.env.COWORK_SERVER_PACKAGE
-  || `cowork-server>=${COWORK_SERVER_MIN_VERSION}`;
+// PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
+// Keep in sync with server-updater.ts PYTHON_RANGE and cowork-server requires-python.
+const PYTHON_RANGE = '>=3.12,<3.14';
+
+// The cowork-server (+ anton) install source is centralized in
+// ./server-source so the installer and auto-updater never disagree.
+// Default: git, branch `main`; overridable via COWORK_SERVER_CHANNEL /
+// COWORK_SERVER_REF / ANTON_REF / COWORK_SERVER_PACKAGE.
 
 
 function getSteps(): InstallStep[] {
@@ -299,9 +304,18 @@ function getInstalledVersion(): Promise<string | null> {
   const uvBin = findUv();
   if (!uvBin) return Promise.resolve(null);
   return new Promise((resolve) => {
-    execFile(uvBin, ['tool', 'list'], { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000 }, (err, stdout) => {
+    // Force plain output. In dev, the launcher (`concurrently`) sets
+    // FORCE_COLOR, which makes `uv tool list` emit ANSI codes — e.g.
+    // `\x1b[1mcowork-server v0.1.6\x1b[0m`. That breaks the start-anchored
+    // regex below, so the version reads as null and verification fails with
+    // a misleading "binary not found". NO_COLOR overrides FORCE_COLOR.
+    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
+    execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      for (const line of stdout.split('\n')) {
+      // Strip any residual ANSI escapes defensively before matching.
+      // eslint-disable-next-line no-control-regex
+      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      for (const line of clean.split('\n')) {
         const match = line.match(/^cowork-server\s+v?([\d.]+)/);
         if (match) { resolve(match[1]); return; }
       }
@@ -472,10 +486,14 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, `\n--- Installing cowork-server v${COWORK_SERVER_MIN_VERSION}+ ---\n`);
 
     const uvBin = fileExists(getUvBinary()) ? getUvBinary() : 'uv';
+    const spec = getInstallSpec();
+    sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.withArgs.length ? ` (${spec.withArgs.join(' ')})` : ''}\n`);
     const installArgs = [
       'tool', 'install',
-      COWORK_SERVER_PACKAGE,
+      spec.package,
+      ...spec.withArgs,
       '--force', '--reinstall',
+      '--python', PYTHON_RANGE,
     ];
 
     /*

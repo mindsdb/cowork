@@ -1,7 +1,7 @@
 {
   "name": "anton",
-  "version": "2.0.6",
-  "description": "Minds Cowork — autonomous AI coworker",
+  "version": "2.0.7",
+  "description": "MindsHub Cowork — autonomous AI coworker",
   "author": "MindsDB",
   "license": "AGPL-3.0-only",
   "main": "dist/main/main/index.js",
@@ -35,7 +35,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.5.0",
-    "concurrently": "^9.0.0",
+    "concurrently": "^9.2.3",
     "electron": "^39.8.10",
     "electron-builder": "^26.8.1",
     "postcss": "^8.5.13",
@@ -47,6 +47,7 @@
     "appdmg": "^0.6.6"
   },
   "dependencies": {
+    "@base-ui/react": "^1.5.0",
     "@react-keycloak/web": "^3.4.0",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",

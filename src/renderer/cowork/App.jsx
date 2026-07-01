@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
+import ThemeModal from './components/ThemeModal';
+import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — antontron's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
@@ -15,15 +17,18 @@ import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
-import DispatchView from './views/DispatchView';
+import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState } from './components/datavault/formStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
+import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host } from '../platform/host';
+import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
+import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
@@ -33,11 +38,13 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          deleteAttachment, searchCowork, fetchPins, pinTask, unpinTask,
          recordTaskVisit, fetchSchedules, createSchedule, updateSchedule, deleteSchedule,
          pauseSchedule, resumeSchedule, runScheduleNow, fetchDatasources, MOCK_DATA,
-         renameConversation, deleteConversation, deleteConversationTurn, moveConversation,
+         renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -65,7 +72,7 @@ const CONNECT_FOLLOWUPS = [
   const hash = typeof __GIT_HASH__ !== 'undefined' && __GIT_HASH__ ? __GIT_HASH__ : '';
   const built = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
   console.log(
-    '%c Anton %c Build Info ',
+    '%c Cowork %c Build Info ',
     'background:#7CC4B6;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px 0 0 3px',
     'background:#334;color:#eee;padding:2px 6px;border-radius:0 3px 3px 0',
   );
@@ -125,7 +132,7 @@ function normalizeAntonError(message, event) {
     return 'No LLM provider is configured for this account. Subscribe with MindsHub or add your own provider in Settings.';
   }
   const text = String(message || '');
-  return text || 'Anton could not complete this task.';
+  return text || 'Could not complete this task.';
 }
 
 async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
@@ -195,6 +202,29 @@ function stripStreaming(messages) {
   return messages.filter((m) => m.role !== '_streaming');
 }
 
+// Open the data-vault side panel for a form the agent just streamed.
+// Called from the stream `onDone` handlers — the deterministic, fires-
+// exactly-once-per-turn place to do this. We can't rely on the
+// in-markdown MarkdownCode path: by the time the streamed block is
+// `complete`, its message has committed to history and mounts
+// already-complete, so MarkdownCode's "historical replay" guard
+// (which exists to stop dismissed forms reappearing on navigation)
+// suppresses the dispatch. onDone only runs for a live turn, so it
+// has no such ambiguity. No-op for the overwhelming majority of turns
+// that carry no form fence.
+function openStreamedForm(conversationId, finalContent) {
+  if (!conversationId || !finalContent) return;
+  let result;
+  try {
+    result = extractFormSpec(finalContent);
+  } catch {
+    return;
+  }
+  if (result.found && result.spec) {
+    setDataVaultForm(conversationId, result.spec);
+  }
+}
+
 // Status values the stream reducer leaves behind for IN-FLIGHT step
 // activity. A clean turn closes everything to 'completed' / 'done' /
 // 'error' / 'cancelled'. Anything else is "this step was running
@@ -221,7 +251,7 @@ const RUNNING_STEP_STATUSES = new Set([
 //      fresh one. This is renderer-side only; it never goes to the
 //      server (anton's history stays clean) and it gets replaced as
 //      soon as the user sends their next message.
-function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
+function reconcileTaskMessages(messages, isLive, isServerInFlight = false, allowContinuation = true) {
   if (!Array.isArray(messages)) return messages;
   if (isLive) return messages; // legitimate in-flight (local), leave alone
   // If the server says this conversation's producer is still running,
@@ -244,7 +274,6 @@ function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
     if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
     return messages;
   }
-  const hadStreaming = messages.some((m) => m && m.role === '_streaming');
   // Pass 1 — strip _streaming + activity placeholders, mark
   // running steps as completed. Each rewritten message gets a flag
   // so we can avoid double-tagging continuation prompts.
@@ -271,14 +300,28 @@ function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
     });
 
   // Decide whether a continuation prompt is warranted.
-  // Triggers:
-  //   • we just stripped a `_streaming` row, OR
-  //   • the last surviving message is a user message with no reply,
-  //     OR an assistant message we just had to clean up.
-  let wantContinuation = hadStreaming;
-  if (!wantContinuation && cleaned.length > 0) {
-    const last = cleaned[cleaned.length - 1];
-    if (last && last.role === 'user') wantContinuation = true;
+  //
+  // In the detached-buffer model a turn that finished writes a terminal
+  // record (response.completed/failed) and a returning client just
+  // re-tails the buffer — a client disconnect or a normal completion is
+  // NOT an interruption. So we nudge ONLY when the last turn is
+  // genuinely incomplete:
+  //   • a trailing user message with no assistant reply (producer died
+  //     before persisting anything), OR
+  //   • an assistant turn with no terminal AND no reply text.
+  // A stripped `_streaming` row on its own is just cleanup, never a
+  // signal of interruption (it was the previous trigger's false
+  // positive). Callers that already know the turn finished — e.g. the
+  // in-flight poll's finished-refetch — pass allowContinuation=false.
+  if (!allowContinuation) return cleaned;
+  const tail = cleaned.length > 0 ? cleaned[cleaned.length - 1] : null;
+  let wantContinuation = false;
+  if (tail && tail.role === 'user') {
+    wantContinuation = true;
+  } else if (tail && tail.role === 'assistant') {
+    const finished = tail._turnComplete
+      || (typeof tail.content === 'string' && tail.content.trim().length > 0);
+    wantContinuation = !finished;
   }
   if (!wantContinuation) return cleaned;
 
@@ -469,6 +512,10 @@ function reduceServerEvents(events, fallbackStartedAt) {
   return {
     steps: state.steps || [],
     startedAt: state.startedAt || fallbackStartedAt || null,
+    // 'done' once the persisted events carried response.completed,
+    // 'error' on response.failed — the authoritative "this turn
+    // finished" signal from the detached stream buffer.
+    status: state.status,
   };
 }
 
@@ -484,11 +531,18 @@ function hydrateMessagesFromServerEvents(messages) {
     if (!Array.isArray(events) || events.length === 0) return m;
     const reduced = reduceServerEvents(events, m.startedAt);
     const { events: _drop, ...rest } = m;
-    if (!reduced || reduced.steps.length === 0) return rest;
+    if (!reduced) return rest;
+    // A turn that reached a terminal record (response.completed/failed)
+    // is finished — used downstream to decide it never needs a
+    // "didn't finish" continuation nudge.
+    const turnComplete = reduced.status === 'done' || reduced.status === 'error';
+    const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    if (reduced.steps.length === 0) return { ...rest, ...completeFlag };
     return {
       ...rest,
       steps: reduced.steps,
       startedAt: rest.startedAt || reduced.startedAt,
+      ...completeFlag,
     };
   });
 }
@@ -658,6 +712,7 @@ function AppCore() {
   // subsequent fetchSessions responses so zombies can't reappear.
   const deletedTaskIdsRef = useRef(new Set());
   const [projects, setProjects] = useState([]);
+  const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.
@@ -700,7 +755,7 @@ function AppCore() {
   // trying to start a parallel turn (anton-core can't handle that
   // gracefully). After the active turn's onDone/onError fires we
   // drain one item from the queue.
-  const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text}] }
+  const [messageQueue, setMessageQueue] = useState({}); // { [taskId]: [{id, text, attachments}] }
   const messageQueueRef = useRef({});
   useEffect(() => { messageQueueRef.current = messageQueue; }, [messageQueue]);
 
@@ -742,7 +797,12 @@ function AppCore() {
                 if (t.id !== cid) return t;
                 const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
                 const enriched = mergeConvTurns(cid, fromServer);
-                return { ...t, messages: reconcileTaskMessages(enriched, false, false), status: 'idle' };
+                // The producer just LEFT the in-flight list → this turn
+                // finished. Never inject a "didn't finish" nudge here
+                // (allowContinuation=false): if it errored, the persisted
+                // response.failed renders normally; a genuine interruption
+                // is caught on open via the terminal-aware path.
+                return { ...t, messages: reconcileTaskMessages(enriched, false, false, false), status: 'idle' };
               }));
             }).catch(() => {});
           });
@@ -794,8 +854,11 @@ function AppCore() {
     return () => clearInterval(timer);
   }, [inFlightSet.size, refreshInFlightSet]);
 
-  const enqueueMessage = (taskId, text) => {
-    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text };
+  const enqueueMessage = (taskId, text, attachments = []) => {
+    // `attachments` rides with the queued item so a message sent while a
+    // turn is in flight keeps its files — the drain re-resolves/uploads
+    // them. Without this the queue stored text only and files were lost.
+    const item = { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, text, attachments };
     setMessageQueue((prev) => ({ ...prev, [taskId]: [...(prev[taskId] || []), item] }));
   };
   const removeFromQueue = (taskId, itemId) => {
@@ -917,7 +980,15 @@ function AppCore() {
   // task object via props). Don't compute it here — `activeTaskId` is
   // declared further down and reading it before initialization throws
   // a TDZ ReferenceError at first render.
-  const [models] = useState(MOCK_DATA.models);
+  // Composer model options for the active (planning) provider. Sourced from
+  // the backend-overlaid recommendedModels map (single source of truth in
+  // cowork-server) — labels derived from ids, never hardcoded. Empty until
+  // settings load; the composer then shows just the configured model.
+  const models = useMemo(() => {
+    const providerType = providerValueToType(settings.planningProvider) || 'anthropic';
+    return recommendedModelOptions(settings.recommendedModels, providerType)
+      .map((o) => ({ id: o.id, name: o.label, desc: '' }));
+  }, [settings.recommendedModels, settings.planningProvider]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -999,6 +1070,18 @@ function AppCore() {
       return saved === 'light' || saved === 'dark' ? saved : 'dark';
     } catch { return 'dark'; }
   });
+  // Skin — a second styling axis, orthogonal to light/dark. Each entry
+  // in the SKINS registry (lib/skins.ts) maps to a token-override
+  // stylesheet keyed on body[data-skin]; both color schemes have a
+  // variant per skin, so the two toggles compose freely.
+  const [skin, setSkin] = useState(loadSkin);
+  // The "design your own" recipe behind the `custom` skin — edited in
+  // Settings → Appearance, applied as inline body token overrides.
+  const [customTheme, setCustomTheme] = useState(loadCustomTheme);
+
+  // Display modal (theme + 8-bit style), opened from the bottom-right
+  // "gamepad" corner button.
+  const [themeModalOpen, setThemeModalOpen] = useState(false);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -1069,6 +1152,19 @@ function AppCore() {
     }
   }, [theme]);
 
+  useEffect(() => {
+    persistSkin(skin);
+    document.body.dataset.skin = skin;
+  }, [skin]);
+
+  // Custom-skin recipe → inline body tokens. Applied only while the
+  // custom skin is active; cleared otherwise so the stylesheet-driven
+  // skins are untouched.
+  useEffect(() => {
+    persistCustomTheme(customTheme);
+    applyCustomTheme(skin === 'custom' ? customTheme : null);
+  }, [skin, customTheme]);
+
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
   // canvas's requestAnimationFrame loop idle when the user has
@@ -1090,7 +1186,8 @@ function AppCore() {
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedModel, setSelectedModel] = useState(MOCK_DATA.models[0]);
+  // Set from the configured planning model once settings load.
+  const [selectedModel, setSelectedModel] = useState(null);
   // In the hosted web shell the FastAPI process IS the host — there
   // is no subprocess to start/stop, and the SPA only loads at all if
   // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
@@ -1134,10 +1231,9 @@ function AppCore() {
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
         const modelId = data.defaultModel || data.planningModel;
-        const m = MOCK_DATA.models.find((x) => x.id === modelId);
-        setSelectedModel(m || {
+        setSelectedModel({
           id: modelId,
-          name: modelId || 'Planning model',
+          name: modelLabel(modelId) || modelId || 'Planning model',
           desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
         });
       }
@@ -1384,8 +1480,7 @@ function AppCore() {
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
       const modelId = latest.defaultModel || latest.planningModel;
-      const m = MOCK_DATA.models.find((x) => x.id === modelId);
-      setSelectedModel(m || { id: modelId, name: modelId || 'Planning model', desc: 'Configured planning model' });
+      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model', desc: 'Configured planning model' });
     }
     return result;
   }, [settings]);
@@ -1527,6 +1622,8 @@ function AppCore() {
         }));
         if (finalContent && !configErrorInBody) {
           persistTurnState(taskId, assistantTurnIndex, finalSteps, finalStartedAt);
+          // Open the side panel if the agent streamed a connect form.
+          openStreamedForm(taskId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
@@ -2254,6 +2351,7 @@ function AppCore() {
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
     };
+    trackAgentSessionStarted();
     const streamNewSessionFn = () => streamNewSession(text, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
@@ -2356,6 +2454,9 @@ function AppCore() {
         // sidecar in localStorage.
         if (finalContent && !configErrorInBody) {
           persistTurnState(finalId, assistantTurnIndex, finalSteps, finalStartedAt);
+          // If the agent streamed a connect form, open the side panel
+          // now (keyed to the resolved conversation id the panel reads).
+          openStreamedForm(finalId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
@@ -2387,7 +2488,7 @@ function AppCore() {
   };
 
   // Send inside an existing task
-  const handleSendInTask = async (text) => {
+  const handleSendInTask = async (text, queuedAttachments = null) => {
     if (!currentTask) return;
     const id = currentTask.id;
 
@@ -2426,7 +2527,12 @@ function AppCore() {
     //      rapid clicks both pass the guard and we'd end up with
     //      two parallel streams, the first one's controller leaked.
     if (activeStreamingTaskIdRef.current === id || activeStreamCtrlRef.current) {
-      enqueueMessage(id, text);
+      // Queue with the files attached so a mid-stream send doesn't drop
+      // them. A fresh send takes the composer's attachments and clears
+      // them (the queued item now owns them); a re-enqueued queued item
+      // reuses its own and leaves the live composer untouched.
+      enqueueMessage(id, text, queuedAttachments ?? composerAttachments);
+      if (queuedAttachments == null) setComposerAttachments([]);
       return;
     }
     // Synchronous reservation so a second invocation that fires
@@ -2453,7 +2559,9 @@ function AppCore() {
       ({ merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
-        composerAttachments,
+        // A drained queued item carries its own attachments; only a
+        // fresh send pulls from the live composer.
+        queuedAttachments ?? composerAttachments,
       ));
     } catch (err) {
       // Attachment resolution failed before we ever started the
@@ -2482,7 +2590,10 @@ function AppCore() {
           }
         : t,
     ));
-    setComposerAttachments([]);
+    // A fresh send just consumed the live composer's attachments; a
+    // drained queued item brought its own, so don't wipe whatever the
+    // user may have started composing since.
+    if (queuedAttachments == null) setComposerAttachments([]);
 
     let assistantContent = '';
     let streamState = initialStreamState();
@@ -2509,6 +2620,18 @@ function AppCore() {
       markInFlightDone(previousId);
       markInFlight(sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+      // Migrate the form store so a success-state panel (e.g. the
+      // OAuth success screen set just before onContinue was called)
+      // survives the ID change and stays visible under the new task id.
+      const existingForm = getDataVaultForm(previousId);
+      if (existingForm) {
+        const existingFormState = getDataVaultFormState(previousId);
+        const existingMethod = getDataVaultSelectedMethod(previousId);
+        setDataVaultForm(sid, existingForm);
+        if (existingFormState) setDataVaultFormState(sid, existingFormState);
+        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
+        clearDataVaultForm(previousId);
+      }
     };
 
     const flushStreaming = () => {
@@ -2593,6 +2716,7 @@ function AppCore() {
         if (finalContent && !configErrorInBody) {
           // Sidecar — see persistTurnState comment for the full schema.
           persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
+          openStreamedForm(resolvedId, finalContent);
         }
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
         // Drain the next queued message for this task (if any) so a
@@ -2601,7 +2725,7 @@ function AppCore() {
         // what enqueueMessage used while the adoption was pending.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text));
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
         }
       },
       onError(message, event) {
@@ -2625,7 +2749,7 @@ function AppCore() {
         // queue. The next item gets its own shot at the LLM.
         const next = popQueueHead(id);
         if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text));
+          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
         }
       },
     });
@@ -2673,7 +2797,11 @@ function AppCore() {
       // the success patch falls through to a bare setForm.
       const existingForm = getDataVaultForm(previousId);
       if (existingForm) {
+        const existingFormState = getDataVaultFormState(previousId);
+        const existingMethod = getDataVaultSelectedMethod(previousId);
         setDataVaultForm(sid, existingForm);
+        if (existingFormState) setDataVaultFormState(sid, existingFormState);
+        if (existingMethod) setDataVaultSelectedMethod(sid, existingMethod);
         clearDataVaultForm(previousId);
       }
     };
@@ -2730,6 +2858,7 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
+              trackDataSourceConnected(currentForm._connector_id || currentForm.engine || 'unknown');
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,
@@ -2745,6 +2874,17 @@ function AppCore() {
       onChunk(chunk, sid) {
         if (sid) adoptServerId(sid);
         assistantContent += chunk;
+        // data-vault-form-patch blocks are delivered as complete deltas —
+        // parse and apply them immediately so the panel can show the
+        // spinner (_is_probing), status updates, and the error card
+        // (form_error) in real-time without waiting for MarkdownCode.
+        const patchMatch = /```data-vault-form-patch\n([\s\S]*?)\n```/.exec(chunk);
+        if (patchMatch) {
+          try {
+            const patch = JSON.parse(patchMatch[1]);
+            patchDataVaultForm(resolvedId || id, patch);
+          } catch {}
+        }
       },
       onDone(sid) {
         if (sid) adoptServerId(sid);
@@ -2771,6 +2911,7 @@ function AppCore() {
         }));
         if (finalContent) {
           persistTurnState(resolvedId, assistantTurnIndex, finalSteps, finalStartedAt);
+          openStreamedForm(resolvedId, finalContent);
         }
         // A successful save changes the connectors list — refetch
         // so the Connect Apps and Data page reflects it immediately.
@@ -2990,27 +3131,45 @@ function AppCore() {
     }).catch(() => {});
   };
 
-  const handleMoveTaskToProject = async (taskId, projectName) => {
-    // eslint-disable-next-line no-console
-    console.log('[handleMoveTaskToProject]', taskId, '→', projectName);
-    if (!projectName) return;
-    setTasks((prev) => prev.map((t) =>
-      t.id === taskId
-        ? { ...t, projectName, projectPath: projects.find((p) => p.name === projectName)?.path || t.projectPath }
-        : t
-    ));
+  // Opening the picker just stashes the task; the modal collects the
+  // destination + "move everything" choice and calls handleConfirmMove.
+  const handleOpenMoveModal = (task) => {
+    if (task?.id) setMoveModalTask(task);
+  };
+
+  const handleConfirmMove = async (destName, { isNew = false, moveEverything = true } = {}) => {
+    const task = moveModalTask;
+    if (!task || !destName) return;
+    let targetName = destName;
+    let targetPath = task.projectPath;
     try {
-      await moveConversation(taskId, projectName);
-      // eslint-disable-next-line no-console
-      console.log('[handleMoveTaskToProject] server move ok');
+      if (isNew) {
+        const created = await createProject(destName);
+        targetName = created?.name || destName;
+        targetPath = created?.path || targetPath;
+        const freshProjects = await fetchProjects();
+        if (Array.isArray(freshProjects)) setProjects(freshProjects);
+      } else {
+        targetPath = projects.find((p) => p.name === targetName)?.path || targetPath;
+      }
+      // Optimistic: show the task under the new project immediately.
+      setTasks((prev) => prev.map((t) =>
+        t.id === task.id
+          ? { ...t, projectName: targetName, projectPath: targetPath }
+          : t
+      ));
+      await moveTaskToProject(task.id, targetName, moveEverything);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[handleMoveTaskToProject] server move failed', e);
+      console.error('[move task] failed', e);
+    } finally {
+      setMoveModalTask(null);
     }
-    // Refresh sessions so the server's canonical project mapping wins
-    // if our optimistic guess was wrong.
+    // Server is canonical — refresh tasks + projects after the move.
     const fresh = await fetchSessions();
     if (Array.isArray(fresh)) setTasks(fresh.filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+    const freshProjects = await fetchProjects();
+    if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
   const refreshSchedules = async () => {
@@ -3193,7 +3352,7 @@ function AppCore() {
           onUnpinTask={handleUnpinTask}
           onRenameTask={handleRenameTask}
           onDeleteTask={handleDeleteTask}
-          onMoveTaskToProject={handleMoveTaskToProject}
+          onMoveTaskToProject={handleOpenMoveModal}
           projects={projects}
           schedules={scheduled}
           scheduleRunsIndex={scheduleRunsIndex}
@@ -3248,6 +3407,14 @@ function AppCore() {
         flex: 1, minWidth: 0, minHeight: 0,
         display: 'flex', flexDirection: 'column',
         background: mainBg,
+        // Opt the whole content column out of the window drag region.
+        // Without this, the empty canvas inherits the root's
+        // `-webkit-app-region: drag` (App container), and Electron then
+        // swallows mouse events over it — so clicking the canvas never
+        // reaches any outside-click handler and dropdowns can't dismiss
+        // (desktop only; the web build has no drag regions). The window
+        // still drags via the sidebar header and the window's top strip.
+        WebkitAppRegion: 'no-drag',
       }}>
         {route === 'home' && (
           <HomeView
@@ -3306,7 +3473,7 @@ function AppCore() {
             onRenameTask={handleRenameTask}
             onDeleteTask={handleDeleteTask}
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
-            onMoveTaskToProject={handleMoveTaskToProject}
+            onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
@@ -3347,6 +3514,7 @@ function AppCore() {
             }}
             onSelectTask={selectTask}
             onDeleteTask={handleDeleteTask}
+            onMoveTaskToProject={handleOpenMoveModal}
             onDeleteProject={handleDeleteProject}
             attachments={composerAttachments}
             connectors={connectors}
@@ -3459,11 +3627,12 @@ function AppCore() {
               setRoute('schedule-detail');
             }}
             onDeleteTask={handleDeleteTask}
+            onMoveTaskToProject={handleOpenMoveModal}
           />
         )}
 
         {route === 'dispatch' && (
-          <DispatchView onSetUpLater={() => setRoute('home')} agentLabel={agentLabel} />
+          <ChannelsView />
         )}
 
         {route === 'customize' && (
@@ -3479,7 +3648,7 @@ function AppCore() {
         )}
 
         {route === 'settings' && (
-          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} agentLabel={agentLabel} />
+          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} agentLabel={agentLabel} />
         )}
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now
@@ -3658,17 +3827,52 @@ function AppCore() {
         }}
       />
 
-      {/* Floating theme toggle (bottom-right). Lives outside the sidebar so
-          it's always reachable, including when the sidebar is collapsed. */}
-      <button
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-        aria-label="Toggle colour theme"
-        className="floating-theme-toggle"
-        style={{ WebkitAppRegion: 'no-drag' }}
-      >
-        {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-      </button>
+      {/* Floating theme + display toggles (bottom-right). Hidden on the
+          Settings page — it has its own theme/style controls, and the
+          floating buttons otherwise overlap the Save button there. */}
+      {route !== 'settings' && (
+        <>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label="Toggle colour theme"
+            className="floating-theme-toggle"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+          </button>
+
+          {/* Style toggle — stacked above the theme toggle. Flips directly
+              between 8-bit arcade and smooth (like the sun/moon theme
+              toggle). The icon shows the destination style. */}
+          <button
+            onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
+            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
+            aria-label="Toggle 8-bit arcade style"
+            className="floating-theme-toggle floating-skin-toggle"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            {Ico.gamepad(15)}
+          </button>
+        </>
+      )}
+
+      <ThemeModal
+        open={themeModalOpen}
+        onClose={() => setThemeModalOpen(false)}
+        theme={theme}
+        onThemeChange={setTheme}
+        skin={skin}
+        onSkinChange={setSkin}
+      />
+
+      <MoveToProjectModal
+        open={!!moveModalTask}
+        task={moveModalTask}
+        projects={projects}
+        onClose={() => setMoveModalTask(null)}
+        onConfirm={handleConfirmMove}
+      />
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (

@@ -1,9 +1,9 @@
-name: Staging - Build installer on main
+name: Staging - Build installer on staging
 
 on:
   push:
     branches:
-      - main
+      - staging
 
 permissions:
   contents: read

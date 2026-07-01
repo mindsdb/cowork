@@ -53,10 +53,14 @@ export interface OAuthConnectResult {
   token_type?: string;
 }
 
-const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes — give the user time to find the right browser tab
+// Long enough to type credentials (or sign up), short enough that a
+// lost callback — e.g. the user authorized a STALE tab from an earlier
+// app launch, whose loopback port is dead — surfaces as an actionable
+// error instead of an endless spinner.
+const CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 
 // Tracks the in-flight OAuth attempt so cancelCurrentOAuth() can tear
-// the loopback server down without waiting for the 5-minute timeout.
+// the loopback server down without waiting for the timeout.
 // The desktop SSO flow uses this so the renderer's "Cancel login"
 // button can abort an OAuth that's stalled (closed browser, blocked
 // popup, user changed their mind) instead of leaving a phantom
@@ -140,7 +144,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         }
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html');
-        res.end(callbackPage("You're authorized!", 'You can close this tab and return to Anton.'));
+        res.end(callbackPage("You're authorized!", 'You can close this tab and return to MindsHub Cowork.'));
         resolve(code);
       } catch (e: any) {
         try { res.statusCode = 500; res.end('Internal callback error'); } catch {}
@@ -152,7 +156,10 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   });
 
   const timeoutPromise = new Promise<string>((_, reject) => {
-    setTimeout(() => reject(new Error('OAuth timed out — no callback received within 5 minutes.')), CALLBACK_TIMEOUT_MS);
+    setTimeout(
+      () => reject(new Error(`OAuth timed out — no callback received within ${Math.round(CALLBACK_TIMEOUT_MS / 60000)} minutes.`)),
+      CALLBACK_TIMEOUT_MS,
+    );
   });
 
   // Register cancellation handle so the renderer can tear the flow

@@ -47,6 +47,7 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   root: __dirname,
+  envDir: path.resolve(__dirname, '../..'),
   base: './',
   build: {
     outDir: path.resolve(
@@ -62,7 +63,9 @@ export default defineConfig({
     port: Number(process.env.VITE_RENDERER_PORT || 5173),
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:26866',
+      // Same override the main process honors (server-process.ts), so a
+      // dev session can run against a sandboxed backend on another port.
+      '/api': `http://127.0.0.1:${process.env.COWORK_SERVER_PORT || 26866}`,
     },
   },
   resolve: {

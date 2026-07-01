@@ -6,7 +6,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics } from './server-process';
+import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
@@ -61,19 +61,14 @@ function clearStoredProviderState(): void {
 
 /** Read DEV_MODE from ~/.anton/.env. Returns 'live', 'full', or null.
  *
- * Defaults to 'full' when the user hasn't set anything — the OTA
- * hot-update path is parked while we stabilize. Bundled renderer is
- * the path of least surprise: every relaunch picks up whatever was
- * shipped in the .app, no async cache fetch in the boot path. Set
- * `DEV_MODE=live` for the Vite dev-server flow, `DEV_MODE=ota` to
- * opt back into the cached-bundle path. `false` / `none` also map
- * to the OTA path for callers that want the previous behaviour.
+ * Defaults to null (OTA enabled). Set `DEV_MODE=live` for the Vite
+ * dev-server flow, `DEV_MODE=full` to force the bundled renderer
+ * and skip OTA updates.
  */
 function getDevMode(): string | null {
   const vars = readEnvFile();
   const val = (vars.DEV_MODE || '').trim().toLowerCase();
-  if (val === 'ota' || val === 'false' || val === 'none') return null;
-  if (!val) return 'full';
+  if (val === 'ota' || val === 'false' || val === 'none' || !val) return null;
   return val; // 'live' or 'full'
 }
 
@@ -160,15 +155,26 @@ async function validateMinds(
   baseUrl: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    // First check the minds API is reachable
+    // Probe the real inference path (a 1-token chat completion) instead
+    // of a listing route. `/v1/minds/` and `/models` are not deployed on
+    // every MindsHub host and 404/401 even for valid keys, which blocked
+    // onboarding with a working key. Mirrors minds_chat_base_url in
+    // cowork-server: mdb.ai needs /api/v1, others need /v1.
     const base = baseUrl.replace(/\/+$/, '');
-    const mindsUrl = base + '/v1/minds/';
-    const res = await httpRequest(mindsUrl, {
-      method: 'GET',
+    const chatBase = base.endsWith('/v1')
+      ? base
+      : base.includes('mdb.ai') ? `${base}/api/v1` : `${base}/v1`;
+    const res = await httpRequest(`${chatBase}/chat/completions`, {
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        model: 'latest:haiku',
+        max_tokens: 20,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
     });
     if (res.status === 401 || res.status === 403) {
       return { ok: false, error: 'Invalid API key' };
@@ -176,7 +182,12 @@ async function validateMinds(
     if (res.status >= 200 && res.status < 300) {
       return { ok: true };
     }
-    return { ok: false, error: `Server returned HTTP ${res.status}` };
+    try {
+      const parsed = JSON.parse(res.body).error?.message || `HTTP ${res.status}`;
+      return { ok: false, error: parsed };
+    } catch {
+      return { ok: false, error: `Server returned HTTP ${res.status}` };
+    }
   } catch (err: any) {
     return { ok: false, error: `Cannot connect: ${err.message}` };
   }
@@ -200,7 +211,7 @@ async function validateOpenAICompatible(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: model || 'gpt-4o',
+        model: model || 'gpt-5.5',
         messages: [{ role: 'user', content: 'ping' }],
       }),
     });
@@ -320,6 +331,27 @@ function createWindow() {
     });
   }
 
+  // Right-click editing menu. Electron ships no default context menu, so
+  // without this, right-click → Cut/Copy/Paste does nothing anywhere
+  // (the app menu only provides the keyboard accelerators). Wire a
+  // minimal editing menu for any editable field or text selection so
+  // pasting an API key by right-click works — the onboarding/settings
+  // screens are the most paste-heavy surface in the app.
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const { isEditable, editFlags, selectionText } = params;
+    if (!isEditable && !selectionText) return;
+    const template: Electron.MenuItemConstructorOptions[] = isEditable
+      ? [
+          { role: 'cut', enabled: editFlags.canCut },
+          { role: 'copy', enabled: editFlags.canCopy },
+          { role: 'paste', enabled: editFlags.canPaste },
+          { type: 'separator' },
+          { role: 'selectAll' },
+        ]
+      : [{ role: 'copy', enabled: editFlags.canCopy }];
+    Menu.buildFromTemplate(template).popup({ window: mainWindow! });
+  });
+
   // Grant the renderer access to the microphone so the Web Speech API
   // (composer voice input) can capture audio. Other permissions stay
   // denied. Pair with NSMicrophoneUsageDescription in Info.plist and
@@ -356,6 +388,19 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+    // Start the boot-veil fade only now that the window is actually visible.
+    // (A parse-time CSS animation would finish while the window is still
+    // hidden behind `show:false`, so the black cover would be gone before the
+    // first frame the user sees.) The welcome orb is already rendered by now,
+    // so we only need a brief mask over the show moment — then fade quickly
+    // into the animated orb. A long black hold reads as a hung/broken screen.
+    setTimeout(() => {
+      mainWindow?.webContents
+        .executeJavaScript(
+          "var v=document.getElementById('boot-veil');if(v)v.classList.add('boot-veil--fade');",
+        )
+        .catch(() => {});
+    }, 140);
   });
 
   mainWindow.on('closed', () => {
@@ -376,7 +421,7 @@ function setupIPC() {
     activeInstall = state;
     try {
       // runInstaller now also spins up the python server as its final
-      // visible step (so the install screen shows "Start Anton server").
+      // visible step (so the install screen shows "Start Cowork server").
       return await runInstaller(mainWindow, { shouldAbort: () => state.cancelled });
     } finally {
       if (activeInstall === state) {
@@ -457,6 +502,18 @@ function setupIPC() {
     if (result.ok && result.access_token) {
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
+      // Pull the desktop app back to the foreground. The SSO flow opens the
+      // OS default browser, which is frontmost after the redirect — without
+      // this the user is left on the "you can close this tab" page and may
+      // not realize the app has signed them in.
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          app.focus({ steal: true }); // macOS: steal focus from the browser
+        }
+      } catch {}
     }
     return result;
   });
@@ -686,19 +743,6 @@ function setupIPC() {
     }
   });
 
-  // Move a local file/folder to the OS Trash. Recoverable from the
-  // user's Trash/Recycle Bin — used by the artifact viewer's Delete
-  // action so an accidental click is undoable.
-  ipcMain.handle('shell:trash-item', async (_event, p: string) => {
-    if (typeof p !== 'string' || !p) return { ok: false, reason: 'empty path' };
-    try {
-      await shell.trashItem(p);
-      return { ok: true };
-    } catch (e: any) {
-      return { ok: false, reason: e?.message || String(e) };
-    }
-  });
-
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
     const uiVersion = getCachedVersion();
     return {
@@ -730,57 +774,103 @@ function setupIPC() {
 }
 
 app.whenReady().then(() => {
-  if (process.platform === 'darwin') {
+  const isMac = process.platform === 'darwin';
+
+  if (isMac) {
     const dockIcon = nativeImage.createFromPath(getIconPath());
     app.dock?.setIcon(dockIcon);
-
-    const template: Electron.MenuItemConstructorOptions[] = [
-      {
-        label: app.name,
-        submenu: [
-          {
-            label: 'About Anton',
-            click: () => {
-              const uiVersion = getCachedVersion();
-              const versionStr = uiVersion
-                ? `${app.getVersion()} (UI: ${uiVersion})`
-                : app.getVersion();
-              app.setAboutPanelOptions({
-                applicationName: 'Anton',
-                applicationVersion: versionStr,
-                copyright: 'By MindsDB',
-                credits: 'Autonomous AI Coworker\nhttps://mindsdb.com',
-              });
-              app.showAboutPanel();
-            },
-          },
-          { type: 'separator' },
-          { role: 'services' },
-          { type: 'separator' },
-          { role: 'hide' },
-          { role: 'hideOthers' },
-          { role: 'unhide' },
-          { type: 'separator' },
-          { role: 'quit' },
-        ],
-      },
-      { role: 'editMenu' },
-      {
-        label: 'View',
-        submenu: [
-          { role: 'reload' },
-          { role: 'forceReload' },
-          { role: 'toggleDevTools' },
-          { role: 'togglefullscreen' },
-          { role: 'zoomIn' },
-          { role: 'zoomOut' },
-          { role: 'resetZoom' },
-        ],
-      },
-      { role: 'windowMenu' },
-    ];
-    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
+
+  /* Wording matches each platform's file manager so the label isn't a
+     lie on Windows/Linux. The action (shell.showItemInFolder) is the
+     same everywhere. */
+  const revealLogsLabel = isMac
+    ? 'Reveal Logs in Finder'
+    : process.platform === 'win32'
+      ? 'Show Logs in Explorer'
+      : 'Show Logs in File Manager';
+
+  /* Built on every platform so Windows/Linux users also get the Help
+     menu (Documentation + log access). The macOS-only app-name submenu
+     leads the bar on Mac; elsewhere a minimal File menu carries Quit,
+     which the app menu would otherwise have owned. */
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [{
+          label: app.name,
+          submenu: [
+            {
+              label: 'About MindsHub Cowork',
+              click: () => {
+                const uiVersion = getCachedVersion();
+                const versionStr = uiVersion
+                  ? `${app.getVersion()} (UI: ${uiVersion})`
+                  : app.getVersion();
+                app.setAboutPanelOptions({
+                  applicationName: 'MindsHub Cowork',
+                  applicationVersion: versionStr,
+                  copyright: 'By MindsDB',
+                  credits: 'Autonomous AI Coworker\nhttps://mindsdb.com',
+                });
+                app.showAboutPanel();
+              },
+            },
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+          ],
+        } as Electron.MenuItemConstructorOptions]
+      : [{ role: 'fileMenu' } as Electron.MenuItemConstructorOptions]),
+    { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { role: 'togglefullscreen' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { role: 'resetZoom' },
+      ],
+    },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Anton Cowork Documentation',
+          click: () => {
+            shell.openExternal('https://docs.mindsdb.com');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: revealLogsLabel,
+          click: () => {
+            /* showItemInFolder needs the file to exist; before the server
+               has ever started there's no log yet, so fall back to opening
+               the logs directory itself. getServerLogPath() is now a pure
+               getter, so ensure the directory exists before opening it. */
+            const logPath = getServerLogPath();
+            if (fs.existsSync(logPath)) {
+              shell.showItemInFolder(logPath);
+            } else {
+              const logDir = path.dirname(logPath);
+              fs.mkdirSync(logDir, { recursive: true });
+              shell.openPath(logDir);
+            }
+          },
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
   ensureDefaultProject();
   setupIPC();
@@ -824,7 +914,12 @@ app.whenReady().then(() => {
       setUpdateNotifier((payload) => {
         mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       });
-      maybeUpdateServer().then((updateResult) => {
+
+      // Update server first, then check for UI updates. This ensures
+      // the renderer and server stay in sync — both track git HEAD on
+      // main, so updating them in sequence (server → UI) avoids any
+      // window where a new renderer talks to an old server.
+      const serverUpdateDone = maybeUpdateServer().then((updateResult) => {
         if (updateResult.updated) {
           console.log(`[server-updater] updated ${updateResult.previousVersion} → ${updateResult.newVersion}`);
         } else if (updateResult.error) {
@@ -833,67 +928,69 @@ app.whenReady().then(() => {
       }).catch((err) => {
         console.error('[server-updater] check failed:', err);
       });
+
+      // OTA UI update check — only in packaged builds and not in DEV_MODE.
+      // Waits for both the server update AND the renderer to finish loading
+      // so the React app has time to mount its IPC listener.
+      const devMode = getDevMode();
+      if (app.isPackaged && !devMode) {
+        const rendererReady = new Promise<void>((resolve) => {
+          mainWindow?.webContents.once('did-finish-load', () => {
+            setTimeout(resolve, 1500);
+          });
+        });
+
+        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
+          try {
+            const updateMode = getUpdateMode();
+            console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
+            mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
+
+            const online = await hasInternet();
+            if (!online) {
+              console.log('[ui-updater] offline — skipping update check');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
+              return;
+            }
+
+            const result = await checkForUIUpdate();
+            if (!result.updateAvailable) {
+              console.log('[ui-updater] up to date');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
+              return;
+            }
+
+            console.log(`[ui-updater] new version available: ${result.newVersion}`);
+
+            if (updateMode === 'auto') {
+              console.log('[ui-updater] auto mode — downloading and applying...');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
+              const applied = await applyUIUpdate();
+              if (applied && mainWindow) {
+                console.log('[ui-updater] update applied — reloading window');
+                mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+                mainWindow.loadFile(getRendererPath());
+              }
+            } else {
+              console.log('[ui-updater] manual mode — notifying renderer');
+              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
+                phase: 'available',
+                version: result.newVersion,
+              });
+            }
+          } catch (err) {
+            console.error('[ui-updater] startup check failed:', err);
+          }
+        });
+      } else if (!app.isPackaged) {
+        console.log('[ui-updater] skipped — not a packaged build');
+      } else if (devMode) {
+        console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
+      }
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
   });
-
-  // OTA UI update check — only in packaged builds and not in DEV_MODE.
-  // Waits for the renderer to finish loading so the React app has time
-  // to mount and register its IPC listener before we push status.
-  const devMode = getDevMode();
-  if (app.isPackaged && !devMode) {
-    const runUpdateCheck = async () => {
-      try {
-        const updateMode = getUpdateMode();
-        console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
-        mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
-
-        const online = await hasInternet();
-        if (!online) {
-          console.log('[ui-updater] offline — skipping update check');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
-          return;
-        }
-
-        const result = await checkForUIUpdate();
-        if (!result.updateAvailable) {
-          console.log('[ui-updater] up to date');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
-          return;
-        }
-
-        console.log(`[ui-updater] new version available: ${result.newVersion}`);
-
-        if (updateMode === 'auto') {
-          console.log('[ui-updater] auto mode — downloading and applying...');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
-          const applied = await applyUIUpdate();
-          if (applied && mainWindow) {
-            console.log('[ui-updater] update applied — reloading window');
-            mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-            mainWindow.loadFile(getRendererPath());
-          }
-        } else {
-          console.log('[ui-updater] manual mode — notifying renderer');
-          mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
-            phase: 'available',
-            version: result.newVersion,
-          });
-        }
-      } catch (err) {
-        console.error('[ui-updater] startup check failed:', err);
-      }
-    };
-    // Delay until the renderer has loaded and React has mounted
-    mainWindow?.webContents.once('did-finish-load', () => {
-      setTimeout(runUpdateCheck, 1500);
-    });
-  } else if (!app.isPackaged) {
-    console.log('[ui-updater] skipped — not a packaged build');
-  } else if (devMode) {
-    console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
-  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

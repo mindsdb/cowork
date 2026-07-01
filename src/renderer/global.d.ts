@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 interface AntonTronAPI {
   checkInstall: () => Promise<{ antonInstalled: boolean; serverDepsReady: boolean }>;
   startInstall: () => Promise<boolean>;
@@ -25,7 +27,6 @@ interface AntonTronAPI {
   openExternal: (url: string) => Promise<void>;
   openPath: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   showItemInFolder: (path: string) => Promise<{ ok: boolean; reason?: string }>;
-  trashItem: (path: string) => Promise<{ ok: boolean; reason?: string }>;
   serverInfo: () => Promise<{ running: boolean; starting: boolean; port: number }>;
   serverStart: () => Promise<{ ok: boolean; port?: number; reason?: string }>;
   serverStop: () => Promise<void>;

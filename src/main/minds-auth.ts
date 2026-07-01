@@ -27,6 +27,15 @@ const MINDS_LLM_BASE_URL = 'https://api.mindshub.ai/v1';
 // re-onboarding from leaking ghost keys in the user's account.
 const ANTON_KEY_NAME = 'hub:anton';
 
+// Every auth-service / Keycloak request gets a hard deadline. Node's
+// fetch has none by default, so a black-holed connection would hang
+// the onboarding "TESTING LINK…" phase forever with no error to show.
+const REQUEST_TIMEOUT_MS = 30_000;
+
+function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...init });
+}
+
 // True iff the user has previously finalized onboarding with Minds as
 // their LLM. Lets the boot-time silent refresh decide whether a new
 // access token is worth pulling — the env file is the source of truth
@@ -47,7 +56,7 @@ export async function refreshTokensOnly(): Promise<string | null> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return null;
   try {
-    const res = await fetch(TOKEN_URL, {
+    const res = await timedFetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -91,7 +100,7 @@ export async function endKeycloakSession(): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3000);
   try {
-    await fetch(`${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/logout`, {
+    await timedFetch(`${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/logout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -116,6 +125,9 @@ export async function endKeycloakSession(): Promise<void> {
 interface OrgRef {
   id: string;
   name?: string;
+  /** Raw Keycloak org name (the slug, e.g. `personal_<userId>`), distinct
+   *  from the human display name — used to spot the user's personal org. */
+  slug?: string;
   source?: string;
 }
 
@@ -141,6 +153,7 @@ function normalizeOrgRef(value: any, source: string): OrgRef | null {
   return {
     id: String(id),
     name: raw.displayName ?? raw.display_name ?? raw.name ?? undefined,
+    slug: raw.name ? String(raw.name) : undefined,
     source,
   };
 }
@@ -175,7 +188,7 @@ function pushUniqueOrg(target: OrgRef[], seen: Set<string>, org: OrgRef | null) 
 
 async function getCurrentActiveOrg(accessToken: string): Promise<OrgRef | null> {
   try {
-    const res = await fetch(
+    const res = await timedFetch(
       `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/users/active-organization`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
@@ -194,7 +207,7 @@ async function getCurrentActiveOrg(accessToken: string): Promise<OrgRef | null> 
 
 async function listUserOrgs(accessToken: string, userId: string): Promise<OrgRef[]> {
   try {
-    const res = await fetch(
+    const res = await timedFetch(
       `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/users/${encodeURIComponent(userId)}/orgs?first=0&max=100`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
@@ -228,7 +241,7 @@ async function listOrgCandidates(
 
 async function switchActiveOrg(accessToken: string, orgId: string): Promise<boolean> {
   try {
-    const res = await fetch(
+    const res = await timedFetch(
       `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/users/switch-organization`,
       {
         method: 'PUT',
@@ -321,7 +334,7 @@ export interface ProvisionResult {
 
 async function listExistingKeys(accessToken: string): Promise<{ name?: string; prefix?: string }[]> {
   try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api-keys/`, {
+    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) return [];
@@ -336,7 +349,7 @@ async function listExistingKeys(accessToken: string): Promise<{ name?: string; p
 
 async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<void> {
   try {
-    await fetch(`${AUTH_SERVICE_URL}/api-keys/${encodeURIComponent(prefix)}/`, {
+    await timedFetch(`${AUTH_SERVICE_URL}/api-keys/${encodeURIComponent(prefix)}/`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -358,7 +371,7 @@ async function fetchAuthContext(accessToken: string): Promise<{
   entitlements?: any;
 }> {
   try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/authenticate/`, {
+    const res = await timedFetch(`${AUTH_SERVICE_URL}/authenticate/`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -370,6 +383,18 @@ async function fetchAuthContext(accessToken: string): Promise<{
     });
     let body: any = null;
     try { body = await res.json(); } catch { /* non-JSON */ }
+    const ent = body?.entitlements;
+    // Diagnostic: the exact HUB-scoped entitlement set the auth-service
+    // returned. This is what the upgrade gate keys off — log it so a
+    // failing machine tells us "no subscription" vs "wrong product/org"
+    // instead of surfacing a generic error.
+    console.log(
+      '[minds-auth] /authenticate/ status=%s agents.use=%s api_keys.create=%s deploy_agents=%s',
+      res.status,
+      ent?.permissions?.agents?.use,
+      ent?.permissions?.api_keys?.create,
+      ent?.allocations?.deploy_agents,
+    );
     return { ok: res.ok, status: res.status, body, entitlements: body?.entitlements };
   } catch (e: any) {
     return { ok: false, status: 0, body: { error: e?.message || String(e) } };
@@ -431,10 +456,10 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     const tried = new Set<string>();
     if (currentOrg?.id) tried.add(currentOrg.id);
 
-    let sawUpgradeableOrg = ctx.ok && (
-      canCreateApiKeys(ctx.entitlements) || requiresHubUpgrade(ctx.entitlements)
-    );
-
+    // Try other orgs to find one where the user is fully entitled, so the
+    // minted key is scoped to the best org. If none qualifies we keep the
+    // active org and proceed anyway — lacking the HUB subscription is NOT
+    // a sign-in blocker.
     for (const candidate of orgResult.candidates || []) {
       if (!candidate?.id || tried.has(candidate.id)) continue;
       tried.add(candidate.id);
@@ -443,22 +468,17 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
       const refreshed = await refreshAfterOrgSwitch();
       if (!refreshed) continue;
       const candidateCtx = await fetchAuthContext(refreshed);
-      if (!candidateCtx.ok) {
-        continue;
-      }
+      if (!candidateCtx.ok) continue;
       if (canUseAntonWithMinds(candidateCtx.entitlements)) {
         provisionToken = refreshed;
         provisionCtx = candidateCtx;
-        sawUpgradeableOrg = false;
         break;
       }
-      sawUpgradeableOrg = true;
     }
 
-    if (!canUseAntonWithMinds(provisionCtx.entitlements)) {
-      if (sawUpgradeableOrg) {
-        return { upgradeRequired: true };
-      }
+    // Genuine auth failure (bad/expired token, service error) — can't
+    // mint a key, so surface it. This is the ONLY hard stop here.
+    if (!provisionCtx.ok) {
       const bodyExcerpt = JSON.stringify(provisionCtx.body || {}).slice(0, 280);
       if (provisionCtx.status === 401 || provisionCtx.status === 403) {
         return {
@@ -470,6 +490,47 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
       return {
         error: `Auth-service /authenticate/ returned HTTP ${provisionCtx.status}.`,
       };
+    }
+
+    // Authenticated but lacking the HUB entitlement (no subscription):
+    // proceed to mint and flow the user in. Quota/upgrade is enforced at
+    // the gateway (point of use) and surfaced post-auth in the app — we no
+    // longer gate sign-in on it.
+    if (!canUseAntonWithMinds(provisionCtx.entitlements)) {
+      const norm = normalizeHubEntitlements(provisionCtx.entitlements);
+      console.warn(
+        '[minds-auth] authenticated without HUB entitlement — minting anyway '
+        + '(quota enforced at the gateway): agents.use=%s api_keys.create=%s deploy_agents=%s',
+        norm.permissions.agents.use,
+        norm.permissions.api_keys.create,
+        norm.allocations.deploy_agents,
+      );
+    }
+
+    // Safeguard: if the active org can't mint a key (the user landed in a
+    // SHARED org where they're only a member), fall back to their PERSONAL
+    // org. The personal-org owner always has create+use (auth-side
+    // owner_roles), so this guarantees an authenticated user can get a key
+    // without weakening shared-org permissions or the paid instance gate.
+    if (!canCreateApiKeys(provisionCtx.entitlements)) {
+      const userId = typeof initialPayload?.sub === 'string' ? initialPayload.sub : '';
+      const personal = userId
+        ? (orgResult.candidates || []).find((o) => o.slug === `personal_${userId}`)
+        : undefined;
+      if (personal && personal.id !== getActiveOrgFromPayload(decodeJwtPayload(provisionToken))?.id) {
+        const switched = await switchActiveOrg(provisionToken, personal.id);
+        if (switched) {
+          const refreshed = await refreshAfterOrgSwitch();
+          if (refreshed) {
+            const personalCtx = await fetchAuthContext(refreshed);
+            if (personalCtx.ok && canCreateApiKeys(personalCtx.entitlements)) {
+              provisionToken = refreshed;
+              provisionCtx = personalCtx;
+              console.log('[minds-auth] minting in personal org (active org lacked api_keys.create)');
+            }
+          }
+        }
+      }
     }
   }
 
@@ -489,7 +550,7 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
   // free tier — surface that distinctly so the renderer can show the
   // paywall instead of a generic error.
   try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api-keys/`, {
+    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${provisionToken}`,
@@ -545,9 +606,16 @@ const MINDS_KEYS = [
 // from the LLM gateway. ANTON_OPENAI_BASE_URL is required because
 // checkConfigured() demands it alongside ANTON_OPENAI_API_KEY. The
 // live MindsHub gateway now expects the `latest:*` alias namespace;
-// the older `_reason_` / `_code_` sentinels 500 with "Mind not found".
+// the older deprecated sentinel aliases 500 with "Mind not found".
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
-  const envPath = path.join(os.homedir(), '.anton', '.env');
+  const antonDir = path.join(os.homedir(), '.anton');
+  // ~/.anton normally exists by the time SSO finalize runs (the server
+  // creates it on boot), but if the server failed to start the finalize
+  // write would ENOENT and the user's freshly-minted key is lost.
+  if (!fs.existsSync(antonDir)) {
+    fs.mkdirSync(antonDir, { recursive: true });
+  }
+  const envPath = path.join(antonDir, '.env');
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   const lines = existing.split('\n')
     .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));

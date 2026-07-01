@@ -11,13 +11,17 @@
 // Status dot: cyan = published, green-pulse = live preview, none = local.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import {
-  openArtifact, revealArtifact,
-  publishArtifact, unpublishArtifact,
-  artifactServeUrl, openArtifactFile,
+  revealArtifact, publishArtifact, unpublishArtifact,
+  deleteArtifact,
+  publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
+import { downloadArtifactFile } from '../lib/artifactDownload';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
+import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import {
@@ -31,21 +35,22 @@ import {
 } from '../components/collection';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
-const FONT_BODY    = "var(--font-body)";
+const FONT_BODY = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
-const FONT_MONO    = "var(--font-mono)";
+const FONT_MONO = "var(--font-mono)";
 
 const EMPTY_ARTIFACTS = [];
 
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
 const SORT_OPTIONS = [
-  { id: 'published',   label: 'Published first' },
-  { id: 'recent',      label: 'Recent' },
-  { id: 'oldest',      label: 'Oldest' },
-  { id: 'title',       label: 'Title (A–Z)' },
-  { id: 'type',        label: 'Type' },
+  { id: 'published', label: 'Published first' },
+  { id: 'recent', label: 'Recent' },
+  { id: 'oldest', label: 'Oldest' },
+  { id: 'title', label: 'Title (A–Z)' },
+  { id: 'type', label: 'Type' },
 ];
 
 function ArtifactsCounts({ search, total, filtered, publishedCount }) {
@@ -96,11 +101,6 @@ function projectOf(artifact, projects = []) {
     const pre = proj.path.replace(/\/+$/, '') + '/';
     return p.startsWith(pre);
   }) || null;
-}
-
-function isHtmlArtifact(a) {
-  return (a.ext || '').toLowerCase() === '.html'
-    || (a.path || '').toLowerCase().endsWith('.html');
 }
 
 // Extensions we can preview inline in the in-app ArtifactViewer (text
@@ -188,12 +188,17 @@ function ActionButton({ children, onClick, danger, primary, title }) {
 
 // ─── Published pill + URL row (shared between grid + list) ───────────────
 
-// `protected` adds a lock glyph + tooltip so a password-protected
-// publish is distinguishable from a public one everywhere the pill shows.
-function PublishedPill({ protected: isProtected = false }) {
+// `mode` adds a glyph + tooltip so a password-protected or restricted publish
+// is distinguishable from a public one everywhere the pill shows. Falls back to
+// the legacy `protected` boolean for artifacts without an explicit accessMode.
+function PublishedPill({ mode, protected: isProtected = false }) {
+  const effectiveMode = mode && mode !== 'public' ? mode : (isProtected ? 'password' : 'public');
+  const isRestricted = effectiveMode === 'restricted';
+  const isPwd = effectiveMode === 'password';
   return (
     <span
-      title={isProtected ? 'Published — password protected' : 'Published'}
+      title={isRestricted ? 'Published — restricted to selected people'
+        : isPwd ? 'Published — password protected' : 'Published'}
       style={{
         background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
         border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
@@ -207,27 +212,54 @@ function PublishedPill({ protected: isProtected = false }) {
         fontFamily: FONT_BODY,
       }}
     >
-      {isProtected
-        ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
-        : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
+      {isRestricted
+        ? <span style={{ display: 'inline-flex' }}>{Ico.people(9)}</span>
+        : isPwd
+          ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
+          : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
       Published
     </span>
   );
 }
 
-// Publish visibility chooser — Public vs Password-protected. On confirm
-// it hands back the password ('' for public). Re-publishing a protected
-// artifact pre-fills the existing password (revealable via the eye).
+// Loose-but-practical email shape check. Splits on whitespace, commas and
+// semicolons; trims, lowercases and de-dupes; partitions into valid/invalid.
+const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function parseEmailList(raw) {
+  const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const seen = new Set();
+  const valid = [];
+  const invalid = [];
+  for (const p of parts) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    (_EMAIL_RE.test(p) ? valid : invalid).push(p);
+  }
+  return { valid, invalid };
+}
+
+// Publish visibility chooser — Public / Password-protected / For selected
+// users (emails + org). On confirm it hands back an access object
+// ({ mode, ... }). Re-publishing pre-fills the existing selection (password is
+// revealable via the eye; emails/org come from the server's owner-side state).
 function PublishDialog({ artifact, onCancel, onConfirm }) {
-  const [mode, setMode] = useState(artifact?.accessProtected ? 'password' : 'public');
+  const [mode, setMode] = useState(artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public'));
   const [password, setPassword] = useState(artifact?.accessPassword || '');
   const [reveal, setReveal] = useState(false);
+  const [emailsText, setEmailsText] = useState((artifact?.accessEmails || []).join(', '));
+  const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
   if (!artifact) return null;
 
-  const canConfirm = mode === 'public' || password.trim().length > 0;
+  const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(emailsText);
+  const canConfirm =
+    mode === 'public'
+    || (mode === 'password' && password.trim().length > 0)
+    || (mode === 'restricted' && (parsedEmails.length > 0 || orgAllowed));
   const submit = () => {
     if (!canConfirm) return;
-    onConfirm(mode === 'password' ? password.trim() : '');
+    if (mode === 'restricted') onConfirm({ mode: 'restricted', emails: parsedEmails, org_allowed: orgAllowed });
+    else if (mode === 'password') onConfirm({ mode: 'password', password: password.trim() });
+    else onConfirm({ mode: 'public' });
   };
 
   const Option = ({ value, icon, title, desc }) => {
@@ -250,7 +282,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
   };
 
   return (
-    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" labelledBy="publish-dialog-title">
+    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
         title="Publish artifact"
@@ -261,6 +293,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Option value="public" icon={Ico.globe(16)} title="Public" desc="Anyone with the link can view it." />
           <Option value="password" icon={Ico.lock(16)} title="Password protected" desc="Visitors must enter a password to view it." />
+          <Option value="restricted" icon={Ico.people(16)} title="For selected users" desc="Only people you list — or your whole org — can view it." />
         </div>
         {mode === 'password' && (
           <div style={{ marginTop: 12 }}>
@@ -295,6 +328,43 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
             </div>
           </div>
         )}
+        {mode === 'restricted' && (
+          <div style={{ marginTop: 12 }}>
+            <label style={{
+              display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)',
+              marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}>Allowed emails</label>
+            <textarea
+              value={emailsText}
+              onChange={(e) => setEmailsText(e.target.value)}
+              autoFocus
+              rows={3}
+              placeholder="alice@acme.com, bob@acme.com"
+              style={{
+                width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8,
+                color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
+              }}
+            />
+            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
+              {parsedEmails.length} recipient{parsedEmails.length === 1 ? '' : 's'}
+              {invalidEmails.length ? ` · ${invalidEmails.length} invalid ignored` : ''}
+              {' '}· comma- or newline-separated.
+            </div>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer',
+              fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink)',
+            }}>
+              <input
+                type="checkbox"
+                checked={orgAllowed}
+                onChange={(e) => setOrgAllowed(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Everyone in my organization
+            </label>
+          </div>
+        )}
       </ModalBody>
       <ModalFooter>
         <button type="button" onClick={onCancel} style={{
@@ -307,7 +377,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
           opacity: canConfirm ? 1 : 0.5,
         }}>
-          {mode === 'password' ? 'Publish protected' : 'Publish'}
+          {mode === 'password' ? 'Publish protected' : mode === 'restricted' ? 'Publish restricted' : 'Publish'}
         </button>
       </ModalFooter>
     </Modal>
@@ -408,6 +478,13 @@ function PublishedUrlRow({ url, onOpen, onCopy }) {
 // and not. Ellipsis-truncates a long path; full path lives in the
 // `title` attribute for hover. RTL trick on the path span keeps the
 // filename visible (truncates the front, not the back).
+//
+// Left-to-right mark (U+200E). The `direction: rtl` trick below would
+// otherwise let the bidi algorithm relocate an absolute path's leading
+// "/" to the visual end, rendering a bogus trailing slash. Prefixing the
+// path with a strong-LTR mark pins the leading slash in place.
+const LTR_MARK = String.fromCharCode(0x200e);
+
 function LocalPathRow({ path }) {
   if (!path) return null;
   return (
@@ -430,7 +507,7 @@ function LocalPathRow({ path }) {
         color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         direction: 'rtl', textAlign: 'left',
-      }}>{path}</span>
+      }}>{LTR_MARK + path}</span>
     </div>
   );
 }
@@ -443,8 +520,12 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // local OS path the user can't reach. Surface that "private" URL in
   // place of the path. Desktop keeps showing the local path.
   const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  // For fullstack apps the artifact "is" its slug folder, not the entry
+  // html — show the folder path on the card. Falls back to the primary
+  // path for everything else (and if `folder` is somehow absent).
+  const localPath = isBackendArtifact(artifact) ? (artifact.folder || artifact.path) : artifact.path;
 
-  const [hover, setHover] = useState(false);
+  const { revealed: showControls, hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
 
   const onCopyUrl = async () => {
@@ -491,8 +572,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     <div
       role="button"
       tabIndex={0}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      {...hoverProps}
       onClick={() => canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)}
       onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
       style={{
@@ -534,7 +614,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
       }}>
         {(published || artifact.live) && (
           <span style={{ pointerEvents: 'none' }}>
-            {published ? <PublishedPill protected={!!artifact.accessProtected} /> : (
+            {published ? <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} /> : (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 fontFamily: FONT_BODY, fontSize: 11,
@@ -569,7 +649,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             color: 'var(--ink-3)',
             background: 'transparent', border: 0, padding: 0,
             cursor: 'pointer',
-            visibility: (hover || isMenuOpen) ? 'visible' : 'hidden',
+            visibility: showControls ? 'visible' : 'hidden',
             transition: 'background 120ms ease, color 120ms ease',
           }}
           onMouseOver={(e) => {
@@ -726,7 +806,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           onCopy={onCopyPrivate}
         />
       ) : (
-        <LocalPathRow path={artifact.path} />
+        <LocalPathRow path={localPath} />
       )}
 
       {/* Spacer pushes the meta + actions to the bottom of the card so
@@ -812,97 +892,72 @@ function StatusDot({ artifact }) {
   );
 }
 
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onCopyUrl, onPublish, onUnpublish, onDelete }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e) => { if (!ref.current?.contains(e.target)) onClose?.(); };
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('mousedown', onClick);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('mousedown', onClick);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open, onClose]);
-  if (!open || !anchorRect) return null;
-
-  const W = 200;
-  const left = Math.min(window.innerWidth - W - 8, Math.max(8, anchorRect.right - W));
-  const top = anchorRect.bottom + 4;
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
-
-  const Item = ({ label, icon, onClick, danger }) => (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onClick?.(); onClose?.(); }}
-      style={{
-        width: 'calc(100% - 8px)', margin: '0 4px',
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '8px 10px', borderRadius: 5,
-        background: 'transparent', border: 0,
-        fontFamily: FONT_BODY, fontSize: 13,
-        color: danger ? 'var(--danger)' : 'var(--ink-2)',
-        textAlign: 'left',
-        cursor: 'pointer',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.background = danger
-          ? 'color-mix(in srgb, var(--danger) 12%, transparent)'
-          : 'var(--surface-2)';
-      }}
-      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      {icon && <span style={{ display: 'inline-flex', flexShrink: 0, color: danger ? 'var(--danger)' : 'var(--ink-3)' }}>{icon}</span>}
-      <span style={{ flex: 1 }}>{label}</span>
-    </button>
-  );
+  const items = [
+    {
+      id: 'open',
+      label: isHtml ? 'Open viewer' : 'Open',
+      icon: Ico.externalLink(13),
+      onClick: onOpen,
+    },
+    onReveal && {
+      id: 'reveal',
+      label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
+      icon: Ico.folder(13),
+      onClick: onReveal,
+    },
+    onDownload && artifact?.serveUrl && {
+      id: 'download',
+      label: 'Download',
+      icon: Ico.download(13),
+      onClick: onDownload,
+    },
+    published && {
+      id: 'copy-url',
+      label: 'Copy URL',
+      icon: Ico.copy(13),
+      onClick: onCopyUrl,
+    },
+    isPublishableArtifact(artifact) && !published && {
+      id: 'publish',
+      label: 'Publish',
+      icon: Ico.upload(13),
+      onClick: onPublish,
+    },
+    published && {
+      id: 'unpublish',
+      label: 'Unpublish',
+      icon: Ico.upload(13),
+      onClick: onUnpublish,
+    },
+    onDelete && { divider: true },
+    onDelete && {
+      id: 'delete',
+      label: 'Delete artifact',
+      icon: Ico.trash(13),
+      danger: true,
+      onClick: onDelete,
+    },
+  ].filter(Boolean);
 
   return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed', top, left, zIndex: 60,
-        width: W,
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 8,
-        boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
-        padding: '4px 0',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Item label={isHtml ? 'Open viewer' : 'Open'} icon={Ico.externalLink(13)} onClick={onOpen} />
-      <Item label="Reveal in Finder" icon={Ico.folder(13)} onClick={onReveal} />
-      {published && <Item label="Copy URL" icon={Ico.copy(13)} onClick={onCopyUrl} />}
-      {isHtml && !published && (
-        <Item label="Publish" icon={Ico.upload(13)} onClick={onPublish} />
-      )}
-      {published && (
-        <Item label="Unpublish" icon={Ico.upload(13)} onClick={onUnpublish} />
-      )}
-      {/* Delete sits at the bottom under a divider so it reads as a
-          terminal / destructive action distinct from the rest of
-          the menu. Routes through the parent's `handleTrash` which
-          uses Electron's `shell.trashItem` — the file goes to the
-          OS Trash, not unlinked, so the action is recoverable. */}
-      {onDelete && (
-        <>
-          <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
-          <Item label="Delete artifact" icon={Ico.trash(13)} danger onClick={onDelete} />
-        </>
-      )}
-    </div>
+    <HoverMenu
+      open={open}
+      anchorRect={anchorRect}
+      onClose={onClose}
+      width={200}
+      items={items}
+    />
   );
 }
 
 function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onOpenProject }) {
-  const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
+  const { hovered, revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
   const isHtml = isHtmlArtifact(artifact);
   const canPreview = isInlinePreviewable(artifact);
@@ -927,12 +982,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         tabIndex={0}
         onClick={onRowOpen}
         onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
+        {...hoverProps}
         style={{
           display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
           padding: '12px 14px',
-          background: hover ? 'var(--surface)' : 'transparent',
+          background: hovered ? 'var(--surface)' : 'transparent',
           borderBottom: '1px solid var(--line)',
           cursor: 'pointer',
           transition: 'background .12s ease',
@@ -955,7 +1009,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             the column width fixed so rows align cleanly. */}
         <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           {published ? (
-            <PublishedPill protected={!!artifact.accessProtected} />
+            <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
           ) : artifact.live ? (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -1057,7 +1111,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
               width: 26, height: 26, borderRadius: 6,
               background: 'transparent', border: 0,
               color: 'var(--ink-3)',
-              opacity: hover || menuOpen ? 1 : 0,
+              opacity: showKebab ? 1 : 0,
               display: 'inline-grid', placeItems: 'center',
               cursor: 'pointer',
               transition: 'opacity .15s ease, color .15s ease, background .15s ease',
@@ -1076,11 +1130,13 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         artifact={artifact}
         onClose={() => setMenuOpen(false)}
         onOpen={onRowOpen}
-        onReveal={() => revealArtifact(artifact.path)}
+        onReveal={host.isWeb ? undefined : () => { try { revealArtifact(artifact.path); } catch { } }}
+        onDownload={() => downloadArtifactFile(artifact)}
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
         onDelete={doDelete ? () => doDelete(artifact) : undefined}
+        isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
     </>
   );
@@ -1248,8 +1304,8 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // a protected artifact pre-fills its existing password.
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
-    if (!isHtmlArtifact(artifact)) {
-      setToast({ kind: 'error', message: 'Only HTML artifacts can be published.' });
+    if (!isPublishableArtifact(artifact)) {
+      setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be published.' });
       return Promise.resolve();
     }
     // Settle any prior unresolved flow before starting a new one so a
@@ -1259,23 +1315,31 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
-  const confirmPublish = async (password) => {
+  const confirmPublish = async (access) => {
     const artifact = publishTarget;
     setPublishTarget(null);
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
     try {
-      const r = await publishArtifact(artifact.path, password || undefined);
+      const r = await publishArtifact(publishTargetPath(artifact), access);
       if (r?.url) {
+        // Server is authoritative (it degrades an empty restricted/password
+        // selection back to public); fall back to the requested access.
+        const m = r.accessMode || access?.mode || 'public';
         updateOne({
           ...artifact,
           publishedUrl: r.url,
-          accessProtected: !!password,
-          accessPassword: password || '',
+          accessMode: m,
+          accessProtected: m === 'password',
+          accessPassword: m === 'password' ? (access?.password || '') : '',
+          accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
+          orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
         });
+        const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
+        trackArtifactPublished(r.report_id || artifact.id || '', m);
         setToast({
           kind: 'ok',
-          message: password ? `Published (password protected) — ${r.url}` : `Published — ${r.url}`,
+          message: label ? `Published (${label}) — ${r.url}` : `Published — ${r.url}`,
         });
       } else {
         setToast({ kind: 'error', message: 'Publish returned no URL.' });
@@ -1297,7 +1361,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
     try {
-      await unpublishArtifact(artifact.path);
+      await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
       setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
     } catch (e) {
@@ -1307,24 +1371,19 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     }
   };
 
-  // Move the file to the OS Trash and drop it from the local list.
-  // Reuses the Electron `shell.trashItem` IPC the artifact viewer
-  // also calls, so the deletion is reversible from the user's
-  // Trash / Recycle Bin (no extra confirm modal needed).
   const handleTrash = async (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
     try {
-      // Trash the entire artifact folder (not just the primary file) so
-      // metadata.json is also removed and the artifact disappears from
-      // the server listing on next fetch.
-      const trashTarget = artifact.folder || artifact.path;
-      const result = await host.trashItem(trashTarget);
-      if (result && result.ok === false) {
-        throw new Error(result.reason || 'Could not move to Trash.');
+      // Unpublish first so deletion never leaves an orphaned public copy.
+      // If this fails we abort and keep the artifact (the server enforces
+      // the same rule as a backstop).
+      if (artifact.publishedUrl) {
+        await unpublishArtifact(artifact.path);
       }
+      await deleteArtifact(artifact.folder || artifact.path);
       removeOne(artifact.path);
-      setToast({ kind: 'ok', message: 'Moved to Trash.' });
+      setToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
     } finally {
@@ -1344,10 +1403,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
 
     out.sort((a, b) => {
       switch (sort) {
-        case 'recent':    return timestampOf(b) - timestampOf(a);
-        case 'oldest':    return timestampOf(a) - timestampOf(b);
-        case 'title':     return (a.title || '').localeCompare(b.title || '');
-        case 'type':      return kindOf(a).localeCompare(kindOf(b));
+        case 'recent': return timestampOf(b) - timestampOf(a);
+        case 'oldest': return timestampOf(a) - timestampOf(b);
+        case 'title': return (a.title || '').localeCompare(b.title || '');
+        case 'type': return kindOf(a).localeCompare(kindOf(b));
         case 'published':
         default: {
           const pa = a.publishedUrl ? 0 : 1;
@@ -1387,19 +1446,23 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         subtitleBottom={20}
       />
 
-      {/* Toast floats over the page so it can't perturb the
-          subtitle → search spacing. */}
-      <div style={{
-        position: 'fixed', top: 24, right: 32, zIndex: 70,
-        pointerEvents: toast?.message ? 'auto' : 'none',
-        maxWidth: 420,
-      }}>
-        <Toast
-          kind={toast?.kind}
-          message={toast?.message}
-          onClose={() => setToast(null)}
-        />
-      </div>
+      {/* Toast is portalled to document.body so it renders after modals
+          in DOM order, which prevents iframes inside modals from
+          compositing on top of it regardless of z-index. */}
+      {createPortal(
+        <div style={{
+          position: 'fixed', top: 24, right: 32, zIndex: 90,
+          pointerEvents: toast?.message ? 'auto' : 'none',
+          maxWidth: 420,
+        }}>
+          <Toast
+            kind={toast?.kind}
+            message={toast?.message}
+            onClose={() => setToast(null)}
+          />
+        </div>,
+        document.body,
+      )}
 
       {/* Subtitle → search-row gap. Set to 20px per the design;
           ProjectsView uses 18px because its header has an anchor
@@ -1446,7 +1509,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               artifact={a}
               projects={projects}
               onOpenViewer={setViewer}
-              onMenuOpen={(art, rect) => setMenuFor({ artifact: art, rect })}
+              onMenuOpen={(art, rect) => setMenuFor((prev) =>
+                prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+              )}
               isMenuOpen={menuFor?.artifact?.path === a.path}
               busy={busyPaths.has(a.path)}
               onOpenProject={onOpenProject}
@@ -1464,10 +1529,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onOpenViewer={setViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
-              // host.trashItem is Electron-only — gate the delete
-              // option to native runs so the web shell doesn't show
-              // a menu item that wouldn't work.
-              onDelete={!host.isWeb ? handleTrash : undefined}
+              onDelete={handleTrash}
               onOpenProject={onOpenProject}
             />
           ))}
@@ -1503,6 +1565,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const a = menuFor?.artifact;
           if (!a) return [];
           const isHtml = isHtmlArtifact(a);
+          const isBackend = isBackendArtifact(a);
           const published = !!a.publishedUrl;
           const busyA = busyPaths.has(a.path);
           const items = [];
@@ -1527,7 +1590,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             icon: (Ico.eye?.(13) || Ico.sparkle(13)),
             onClick: () => setViewer(a),
           });
-          if (isHtml) {
+          // Fullstack apps can't be opened from their static entry html
+          // (it needs the backend), so only offer "Open in browser" for
+          // them once published — then it opens the live public URL.
+          // Unpublished fullstack gets no open/reveal item.
+          if (isHtml && (!isBackend || published)) {
             items.push({
               id: 'open',
               label: 'Open in browser',
@@ -1541,7 +1608,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
                 }
               },
             });
-          } else if (!host.isWeb) {
+          } else if (!isBackend && !host.isWeb) {
             // Reveal hits the server's /artifacts/reveal endpoint which
             // shells out to the OS opener — meaningful only on the
             // desktop where the renderer and server share a filesystem.
@@ -1549,20 +1616,17 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               id: 'reveal',
               label: isMacPlatform ? 'Show in Finder' : 'Show in Explorer',
               icon: Ico.folder(13),
-              onClick: () => { try { revealArtifact(a.path); } catch {} },
+              onClick: () => { try { revealArtifact(a.path); } catch { } },
             });
           }
-          // Delete uses host.trashItem (OS Trash) — no equivalent in web.
-          if (!host.isWeb) {
-            items.push({ separator: true });
-            items.push({
-              id: 'delete',
-              label: 'Delete',
-              icon: Ico.trash(13),
-              danger: true,
-              onClick: () => handleTrash(a),
-            });
-          }
+          items.push({ separator: true });
+          items.push({
+            id: 'delete',
+            label: 'Delete',
+            icon: Ico.trash(13),
+            danger: true,
+            onClick: () => handleTrash(a),
+          });
           return items;
         })()}
       />

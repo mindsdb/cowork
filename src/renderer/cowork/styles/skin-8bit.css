@@ -1,0 +1,228 @@
+/* ─── 8-Bit skin ──────────────────────────────────────────────────────────
+   A second styling axis, orthogonal to light/dark:
+
+     body[data-skin="8bit"]                      → retro flourishes + fonts
+     body[data-skin="8bit"][data-theme="dark"]   → CRT arcade palette
+     body[data-skin="8bit"][data-theme="light"]  → Game Boy paper palette
+
+   The whole app is token-driven (globals.css defines --bg/--surface/--ink/
+   --accent/… and every legacy alias derives from them via var()), so
+   re-declaring the core tokens here re-skins every view without touching
+   component code. The arcade onboarding screens (pages/arcade) carry their
+   own fixed palette and are unaffected.
+
+   Loaded after globals.css; the [data-skin][data-theme] selectors also
+   out-specify the single-attribute theme blocks. */
+
+/* ── Shared 8-bit rules (both color schemes) ──────────────────────────── */
+
+body[data-skin="8bit"] {
+  /* One font, three jobs — the mono IS the aesthetic. */
+  --font-sans:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  --font-body:    var(--font-sans);
+  --font-display: var(--font-sans);
+
+  /* Square the corners. Radii tokens drive most surfaces; inline
+     one-off radii (pills, avatars) intentionally keep their shape. */
+  --r-sm: 0px;
+  --r:    2px;
+  --r-lg: 4px;
+  --r-xl: 6px;
+}
+
+/* The window-level bg is hardcoded blue by .gf-theme-dark (styles.css);
+   override it so the 8-bit skin uses its own neutral dark-grey --bg. */
+body[data-skin="8bit"].gf-theme-light { background: var(--bg); }
+
+/* 8-bit DARK background = the sign-in screen's arcade backdrop (.arc-root):
+   the deep arcade base + a soft top glow, applied app-wide via the body so
+   every transparent surface above it — main app AND welcome/loading — shares
+   the identical color and CRT effect (the scanline + vignette is in ::after). */
+body[data-skin="8bit"].gf-theme-dark {
+  background-color: #0a0a13;
+  background-image: radial-gradient(120% 90% at 50% 10%, rgba(61, 79, 134, 0.10), transparent 60%);
+}
+/* Drop the animated gravity-field dots — the arcade backdrop replaces them. */
+body[data-skin="8bit"][data-theme="dark"] .gravity-field { display: none; }
+
+/* Soften the cyan halo at the top of the sidebar (globals.css default is
+   rgba(34,211,238,0.10)) — fainter + tighter falloff for the 8-bit look. */
+body[data-skin="8bit"][data-theme="dark"] .app-sidebar::before {
+  background: radial-gradient(circle at 50% -10%, rgba(61,214,245,0.035), transparent 38%);
+}
+
+/* CRT scanlines over everything. Static (no flicker — this is a work
+   tool), pointer-transparent, and suppressed while an arcade onboarding
+   screen is mounted (those draw their own scanlines via .arc-root). The
+   welcome/loading screen is excluded from that suppression so it carries
+   the same dot-grid + scanline backdrop as the main app. */
+body[data-skin="8bit"]:not(:has(.arc-root:not(.welcome-loading)))::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+  /* Matches .arc-root::after — the sign-in screen's scanlines + vignette. */
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.16) 0px,
+      rgba(0, 0, 0, 0.16) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    radial-gradient(115% 115% at 50% 50%, transparent 62%, rgba(0, 0, 0, 0.42) 100%);
+}
+
+body[data-skin="8bit"][data-theme="light"]:not(:has(.arc-root:not(.welcome-loading)))::after {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(35, 43, 30, 0.05) 0px,
+    rgba(35, 43, 30, 0.05) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* Custom skin's optional scanlines — same overlay, toggled by the
+   "design your own" recipe (lib/customTheme.ts adds this class). */
+body.custom-scanlines:not(:has(.arc-root))::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.06) 0px,
+    rgba(0, 0, 0, 0.06) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+body[data-skin="8bit"] ::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* Retro dashed keyboard-focus ring — but only on controls that don't
+   already own a focus treatment. Text-entry fields (the composer
+   textarea, inputs, selects, contenteditable) keep their existing
+   focus border, so we don't double up with a clashing dashed box. */
+body[data-skin="8bit"] :focus-visible:not(input):not(textarea):not(select):not([contenteditable]):not([contenteditable] *) {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+/* Chunky square scrollbars. */
+body[data-skin="8bit"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+body[data-skin="8bit"] ::-webkit-scrollbar-track { background: transparent; }
+body[data-skin="8bit"] ::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border: 2px solid var(--bg);
+  border-radius: 0;
+}
+body[data-skin="8bit"] ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+
+/* The floating corner toggles square off with the rest of the skin. */
+body[data-skin="8bit"] .floating-theme-toggle { border-radius: var(--r); }
+
+/* ── 8-Bit DARK — CRT arcade (matches pages/arcade/arcade.css) ────────── */
+
+body[data-skin="8bit"][data-theme="dark"] {
+  --bg:           #0a0a13;
+  --surface:      #14141f;
+  --surface-2:    #181826;
+  --surface-3:    #1f1f30;
+  --line:         #232334;
+  --line-2:       #2e2e44;
+  --sidebar-bg:   #10101a;
+
+  --ink:          #d4d5d9;
+  --ink-2:        #b3b4ba;
+  --ink-3:        #84858d;
+  --ink-4:        #66676f;
+  --ink-5:        #45464d;
+
+  --accent:       #3dd6f5;
+  --accent-2:     #22b8d6;
+  --accent-3:     #1a93ac;
+  --accent-bg:    rgba(61, 214, 245, 0.10);
+  --accent-glow:  rgba(61, 214, 245, 0.45);
+
+  --danger:       #f87168;
+  --danger-bg:    rgba(248, 113, 104, 0.12);
+  --success:      #4ade80;
+  --success-glow: rgba(74, 222, 128, 0.55);
+
+  /* Arcade cartridge family. */
+  --tint-1:       #3dd6f5;  /* cyan */
+  --tint-2:       #4ade80;  /* anton green */
+  --tint-3:       #fbbf24;  /* hermes gold */
+  --tint-4:       #f87168;  /* openclaw red */
+  --tint-5:       #a78bfa;  /* mystery purple */
+  --tint-6:       #f472b6;  /* pink */
+
+  /* Hard offset shadows — pixels don't blur. */
+  --sh-1:         0 2px 0 rgba(0, 0, 0, 0.45);
+  --sh-2:         0 3px 0 rgba(0, 0, 0, 0.50);
+  --sh-3:         0 4px 0 rgba(0, 0, 0, 0.55), 0 14px 28px rgba(0, 0, 0, 0.35);
+  --ring:         0 0 0 3px rgba(61, 214, 245, 0.35);
+}
+
+/* ── 8-Bit LIGHT — Game Boy paper ─────────────────────────────────────── */
+
+body[data-skin="8bit"][data-theme="light"] {
+  --bg:           #e8ead8;
+  --surface:      #f4f5e8;
+  --surface-2:    #e9ebd6;
+  --surface-3:    #dde0c6;
+  --line:         #c2c7a4;
+  --line-2:       #a3aa83;
+  --sidebar-bg:   #e2e5cd;
+
+  --ink:          #232b1e;
+  --ink-2:        #3a4530;
+  --ink-3:        #5f6b4e;
+  --ink-4:        #828e6e;
+  --ink-5:        #aab491;
+
+  --accent:       #2e7d4f;
+  --accent-2:     #205c39;
+  --accent-3:     #17492c;
+  --accent-bg:    rgba(46, 125, 79, 0.12);
+  --accent-glow:  rgba(46, 125, 79, 0.30);
+
+  --danger:       #a8362c;
+  --danger-bg:    rgba(168, 54, 44, 0.12);
+  --success:      #2e7d4f;
+  --success-glow: rgba(46, 125, 79, 0.40);
+
+  /* Muted retro-print tints. */
+  --tint-1:       #2e7d4f;  /* GB green */
+  --tint-2:       #8a6d1f;  /* olive gold */
+  --tint-3:       #a8362c;  /* brick */
+  --tint-4:       #4b5e9e;  /* indigo */
+  --tint-5:       #7a4f8a;  /* plum */
+  --tint-6:       #205c39;  /* deep green */
+
+  --sh-1:         0 2px 0 rgba(35, 43, 30, 0.16);
+  --sh-2:         0 3px 0 rgba(35, 43, 30, 0.18);
+  --sh-3:         0 4px 0 rgba(35, 43, 30, 0.20), 0 14px 28px rgba(35, 43, 30, 0.12);
+  --ring:         0 0 0 3px rgba(46, 125, 79, 0.30);
+
+  /* Light-only neutrals defined on :root (--stone-*) feed list-row and
+     icon-button hovers; remap them onto the paper surfaces the same way
+     the dark theme block does, so hovers don't flash grey-white. */
+  --stone-50:  var(--surface);
+  --stone-100: var(--surface-2);
+  --stone-150: color-mix(in srgb, var(--surface-2) 55%, var(--surface-3) 45%);
+  --stone-200: var(--surface-3);
+  --stone-300: var(--line-2);
+  --stone-400: var(--ink-4);
+  --primary-50: var(--accent-bg);
+
+  /* Glassy sidebar surface follows the paper tone instead of white. */
+  --surface-glass: rgba(244, 245, 232, 0.96);
+}

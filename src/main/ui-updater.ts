@@ -4,6 +4,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
+// Disable OTA UI updates on staging builds so testers always run the
+// renderer bundled from the branch.  Flip to `false` on main / release.
+const OTA_UI_DISABLED = true;
+
 // Where we read latest.json from — GitHub Pages, no API rate limits
 const MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
 
@@ -46,8 +50,10 @@ function getBundledRendererPath(): string {
 }
 
 /** Returns the index.html path to load — cached OTA bundle if available,
- *  otherwise the bundled renderer shipped with the app. */
+ *  otherwise the bundled renderer shipped with the app.
+ *  OTA cache is disabled on staging builds to preserve branch-under-test UI. */
 export function getRendererPath(): string {
+  if (OTA_UI_DISABLED) return getBundledRendererPath();
   const cached = path.join(getCurrentDir(), 'index.html');
   if (fs.existsSync(cached)) return cached;
   return getBundledRendererPath();
@@ -187,6 +193,10 @@ function activateStaged(version: string): void {
  * stages it but does NOT activate (caller decides when to activate).
  */
 export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
+  if (OTA_UI_DISABLED) {
+    console.log('[ui-updater] OTA UI disabled for staging build');
+    return { updateAvailable: false, applied: false };
+  }
   const manifest = await fetchManifest();
   if (!manifest) return { updateAvailable: false, applied: false };
 
@@ -203,6 +213,7 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
  * Returns true if the update was applied successfully.
  */
 export async function applyUIUpdate(): Promise<boolean> {
+  if (OTA_UI_DISABLED) return false;
   const manifest = await fetchManifest();
   if (!manifest) return false;
 

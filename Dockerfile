@@ -1,8 +1,10 @@
 # Cowork web image — cowork-server backend + cowork SPA on the same port.
 #
 # Build:
+#     docker build -f cowork/Dockerfile -t cowork:dev .
+#     # Pin a specific version:
 #     docker build -f cowork/Dockerfile -t cowork:dev \
-#       --build-arg COWORK_SERVER_VERSION=0.1.4 .
+#       --build-arg COWORK_SERVER_VERSION=0.26.6.26.1 .
 #
 # Run:
 #     docker run -p 26866:26866 \
@@ -31,7 +33,7 @@
 #   runtime       UBI9       — copies /opt/venv + SPA + wrapper.
 #                              NO uv, NO compilers, NO source tree.
 
-ARG COWORK_SERVER_VERSION=0.1.4
+ARG COWORK_SERVER_VERSION=
 
 # ── Stage 1: build the cowork SPA ────────────────────────────────────────
 FROM node:22-slim AS spa-builder
@@ -109,7 +111,7 @@ FROM registry.access.redhat.com/ubi9-minimal@sha256:5b74fce9d6e629942a0c6dc0f546
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"
 LABEL org.opencontainers.image.source="https://github.com/mindsdb/cowork"
-LABEL org.opencontainers.image.description="Anton Cowork — cowork-server + SPA (UBI 9 minimal)"
+LABEL org.opencontainers.image.description="MindsHub Cowork — cowork-server + SPA (UBI 9 minimal)"
 LABEL org.opencontainers.image.base.name="registry.access.redhat.com/ubi9-minimal"
 
 # Apply Red Hat security errata published since the base digest was

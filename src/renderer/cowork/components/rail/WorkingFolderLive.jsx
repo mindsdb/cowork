@@ -21,10 +21,13 @@ import {
   fetchProjects,
   publishArtifact,
   unpublishArtifact,
+  publishTargetPath,
+  deleteArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
+import { trackArtifactPublished } from '../../lib/analytics';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -149,6 +152,18 @@ export function WorkingFolderLive({ project, isStreaming }) {
   }, [isStreaming, effectiveProject?.name, effectiveProject?.path]);
 
   const [previewArt, setPreviewArt] = useState(null);
+  // Keep the open viewer in sync with the 3s poll: when the artifact being
+  // previewed is rebuilt, its row's `mtime` changes — propagate that into
+  // `previewArt` so ArtifactViewer re-mounts and reloads the iframe instead
+  // of showing the stale first load (ENG-375). No-op (same reference) when
+  // nothing changed, so it doesn't churn renders.
+  useEffect(() => {
+    setPreviewArt((cur) => {
+      if (!cur) return cur;
+      const fresh = rows.find((r) => r.path === cur.path);
+      return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
+    });
+  }, [rows]);
   // Per-row kebab menu state (single-open) + portal coords.
   //
   // Why a portal: the rail-card body wraps this component with
@@ -260,11 +275,12 @@ export function WorkingFolderLive({ project, isStreaming }) {
     setRowError('');
     try {
       if (a.publishedUrl) {
-        await unpublishArtifact(a.path);
+        await unpublishArtifact(publishTargetPath(a));
         setRows((prev) => prev.map((r) => r.path === a.path ? { ...r, publishedUrl: '' } : r));
       } else {
-        const r = await publishArtifact(a.path);
+        const r = await publishArtifact(publishTargetPath(a));
         const url = r?.url || r?.publishedUrl || '';
+        if (url) trackArtifactPublished(r?.report_id || a.id || '', 'public');
         setRows((prev) => prev.map((row) => row.path === a.path ? { ...row, publishedUrl: url } : row));
       }
     } catch (e) {
@@ -285,16 +301,15 @@ export function WorkingFolderLive({ project, isStreaming }) {
     const previous = a;
     setRows((prev) => prev.filter((r) => r.path !== a.path));
     try {
-      if (host.isWeb) {
-        // Web has no FS access. Surface a clear error instead of
-        // silently failing.
-        throw new Error('Delete is not available in the browser shell.');
+      // Unpublish first so deletion never leaves an orphaned public copy.
+      // The server enforces the same rule as a backstop.
+      if (a.publishedUrl) {
+        await unpublishArtifact(a.path);
       }
-      const trashTarget = a.folder || a.path;
-      const result = await host.trashItem(trashTarget);
-      if (result && result.ok === false) {
-        throw new Error(result.reason || 'Could not move to Trash.');
-      }
+      // Deletion is centralized through cowork-server (not shell.trashItem),
+      // so it works in every shell and the server's unpublish-before-delete
+      // guard always runs.
+      await deleteArtifact(a.folder || a.path);
     } catch (e) {
       setRowError(e?.message || 'Delete failed.');
       // Restore the row on failure.
@@ -510,7 +525,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       <ConfirmModal
         open={!!pendingDeleteArtifact}
         title={`Delete "${pendingDeleteArtifact?.title || pendingDeleteArtifact?.path?.split('/').pop() || 'artifact'}"?`}
-        message="The artifact will be moved to your Trash, so it's recoverable from there. It will disappear from this project's artifacts."
+        message="The artifact will be permanently deleted, and unpublished first if it's currently published. This can't be undone."
         confirmLabel="Delete"
         cancelLabel="Keep"
         destructive

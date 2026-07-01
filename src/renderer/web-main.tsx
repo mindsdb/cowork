@@ -20,10 +20,13 @@ import { createRoot } from 'react-dom/client';
 import { ReactKeycloakProvider } from '@react-keycloak/web';
 import './cowork/styles/tailwind.css';
 import './cowork/styles/globals.css';
+import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import App from './App';
 import { keycloak, scheduleWebTokenRefresh } from './lib/keycloak';
+import { loadSkin } from './lib/skins';
 import { host } from './platform/host';
+import { syncSettingsToDb } from './lib/syncSettings';
 
 // Cloud-hosted instances are accessed via the Cloudflare Worker, which
 // already authenticates users via a session cookie minted from their
@@ -41,17 +44,25 @@ const isCloudHosted = (() => {
     if (saved === 'light' || saved === 'dark') theme = saved;
   } catch {}
   document.body.dataset.theme = theme;
+  document.body.dataset.skin = loadSkin();
   document.body.classList.add(theme === 'light' ? 'gf-theme-light' : 'gf-theme-dark');
 })();
 
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
 const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', checkLoginIframe: false, redirectUri: cleanRedirectUri };
 
-const MINDS_ENV = (token: string) => [
+const MINDS_ENV_LINES = (token: string) => [
   `ANTON_OPENAI_API_KEY=${token}`,
   `ANTON_MINDS_API_KEY=${token}`,
   `ANTON_OPENAI_BASE_URL=https://api.mindshub.ai/v1`,
-].join('\n');
+];
+
+/** Write MindsHub tokens to both .env (legacy) and the backend DB. */
+async function saveMindsToken(token: string): Promise<void> {
+  const lines = MINDS_ENV_LINES(token);
+  await host.saveSettings(lines.join('\n'));
+  await syncSettingsToDb(lines);
+}
 
 let stopRefresh: (() => void) | null = null;
 
@@ -59,14 +70,14 @@ function handleKeycloakEvent(event: string): void {
   if (event === 'onAuthSuccess') {
     stopRefresh?.();
     if (keycloak.token) {
-      host.saveSettings(MINDS_ENV(keycloak.token)).then(() => {
+      saveMindsToken(keycloak.token).then(() => {
         // After MindsHub credentials are saved, reload so App.tsx
         // re-runs its init and detects the now-configured provider.
         window.location.reload();
       }).catch(() => {});
     }
     stopRefresh = scheduleWebTokenRefresh(async (token) => {
-      await host.saveSettings(MINDS_ENV(token));
+      await saveMindsToken(token);
     });
   } else if (event === 'onAuthLogout' || event === 'onAuthError') {
     stopRefresh?.();
