@@ -9,6 +9,9 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import { setRefreshToken, deleteRefreshToken } from './keychain-service';
+import { OAUTH_CREDENTIALS } from './credentials';
+import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections } from './token-refresh';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
 import { sendEvent } from './analytics';
@@ -523,8 +526,115 @@ function setupIPC() {
     return true;
   });
 
-  ipcMain.handle('oauth:connect', async (_event, opts) => {
-    return oauthConnect(opts || {});
+  ipcMain.handle(IPC.OAUTH_CONNECT, async (_event, opts) => {
+    const o = opts || {};
+
+    // Builtin flow: renderer passes { engine, name } only.
+    // Main owns the full flow — credentials never leave this process.
+    if (o.engine && !o.authUrl) {
+      const engine: string = o.engine;
+      const labelName: string = o.name || '';
+      const creds = OAUTH_CREDENTIALS[engine];
+      if (!creds) return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+
+      const specPath = require('path').join(
+        __dirname,
+        '../../../cowork-server/cowork/services/connectors/specs',
+        `${engine}.json`,
+      );
+      let oauthBlock: Record<string, any>;
+      try {
+        const spec = JSON.parse(require('fs').readFileSync(specPath, 'utf8'));
+        const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+        oauthBlock = builtinMethod?.oauth;
+        if (!oauthBlock?.auth_url || !oauthBlock?.token_url || !Array.isArray(oauthBlock?.scopes)) {
+          return { ok: false, reason: `Connector spec for "${engine}" is missing OAuth configuration.` };
+        }
+      } catch {
+        return { ok: false, reason: `Could not load connector spec for "${engine}".` };
+      }
+
+      const pkceResult = await oauthConnect({
+        authUrl: oauthBlock.auth_url,
+        tokenUrl: oauthBlock.token_url,
+        clientId: creds.clientId,
+        clientSecret: creds.clientSecret,
+        scopes: oauthBlock.scopes,
+        extraAuthParams: oauthBlock.extra_auth_params,
+      });
+      if (!pkceResult.ok || !pkceResult.access_token || !pkceResult.refresh_token) {
+        return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
+      }
+
+      // Fetch account email from Google userinfo — needed as keychain key
+      // and for the vault record's display name.
+      let accountEmail = '';
+      try {
+        const uiRes = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
+          headers: { Authorization: `Bearer ${pkceResult.access_token}` },
+        });
+        if (uiRes.ok) {
+          const ui = await uiRes.json() as { email?: string };
+          accountEmail = ui.email || '';
+        }
+      } catch {}
+      if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email from Google.' };
+
+      // Store refresh_token in OS keychain — never sent over the network.
+      await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+
+      const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();
+      const tokenUrl: string = oauthBlock.token_url;
+
+      // Persist to vault — refresh_token intentionally excluded.
+      const saveRes = await fetch(
+        `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/save`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            connector_id: engine,
+            method: 'browser_oauth_builtin',
+            name: labelName,
+            values: {
+              access_token: pkceResult.access_token,
+              expires_at: expiresAt,
+              account_email: accountEmail,
+              token_url: tokenUrl,
+              scope: pkceResult.scope || oauthBlock.scopes.join(' '),
+              auth_type: 'oauth',
+            },
+          }),
+        },
+      );
+      if (!saveRes.ok) {
+        return { ok: false, reason: `Failed to save connection (${saveRes.status}).` };
+      }
+      const saved = await saveRes.json() as { ok: boolean; name?: string };
+      const vaultSlug = saved.name || labelName;
+
+      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl);
+      return { ok: true, name: vaultSlug, account_email: accountEmail };
+    }
+
+    // BYOK passthrough: renderer passes full OAuth opts, gets tokens back.
+    return oauthConnect(o);
+  });
+
+  ipcMain.handle(IPC.KEYCHAIN_REVOKE, async (_event, opts) => {
+    const { engine, name, accountEmail } = opts || {};
+    if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    const key = `${engine}:${accountEmail}`;
+    revokedConnections.add(key);
+    stopRefreshLoop(engine, accountEmail);
+    try { await deleteRefreshToken(engine, accountEmail); } catch {}
+    try {
+      await fetch(
+        `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}`,
+        { method: 'DELETE' },
+      );
+    } catch {}
+    return { ok: true };
   });
 
   // ── MindsHub onboarding ──────────────────────────────────────
@@ -1148,6 +1258,9 @@ let _quitDrained = false;
 async function drainServerForQuit(): Promise<void> {
   if (_quitDrained) return;
   _quitDrained = true;
+  // Stop all OAuth refresh loops before the server shuts down so no
+  // in-flight tick can call PATCH /token against a dead server.
+  stopAllRefreshLoops();
   // Hard ceiling so a wedged python can't pin the quit indefinitely.
   // stopServer's own SIGTERM(3s) + SIGKILL(1.5s) chain stays inside
   // this window, but a misbehaving OS-level process delay could push
