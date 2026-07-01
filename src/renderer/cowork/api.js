@@ -1160,7 +1160,10 @@ export async function fetchSkills() {
   return req('/skills');
 }
 
-export async function saveSkill(payload) {
+export async function saveSkill(payload, isEdit = false) {
+  if (isEdit) {
+    return req(`/skills/${encodeURIComponent(payload.label)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  }
   return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
 }
 

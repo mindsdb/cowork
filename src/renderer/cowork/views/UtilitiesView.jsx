@@ -348,7 +348,7 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
 
 function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus }) {
   const skills = data.skills || [];
-  const emptyDraft = { label: '', name: '', description: '', whenToUse: '', declarative: '' };
+  const emptyDraft = { label: '', name: '', description: '', declarative: '' };
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyDraft);
 
@@ -376,7 +376,6 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
       label: skill.label || '',
       name: skill.name || '',
       description: skill.description || '',
-      whenToUse: skill.whenToUse || '',
       declarative: skill.declarative || '',
     });
     onSelect(skill);
@@ -384,9 +383,10 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
 
   const save = async () => {
     try {
-      await saveSkill(draft);
+      await saveSkill(draft, editing === 'edit');
       setStatus(`Saved skill ${draft.name || draft.label}.`);
       setEditing(null);
+      onSelect(draft);
       await onSaved?.();
     } catch (err) {
       setStatus(err.message || 'Could not save skill.');
@@ -409,11 +409,10 @@ function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus })
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 8 }}>
-              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill_label" style={inputStyle} disabled={editing === 'edit'} />
+              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill-label" style={inputStyle} disabled={editing === 'edit'} />
               <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
             </div>
-            <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" style={inputStyle} />
-            <input aria-label="When the agent should use this skill" value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When the agent should use this skill" style={inputStyle} />
+            <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description: when the agent should use this skill" style={inputStyle} />
             <textarea aria-label="Skill instructions" value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
             <div className="dialog-actions">
               <button className="secondary-btn" onClick={() => setEditing(null)}>Cancel</button>
