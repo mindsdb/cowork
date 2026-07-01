@@ -29,6 +29,7 @@ import { revealArtifact, exportArtifact, attachmentRawUrl } from '../api';
 import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host } from '../../platform/host';
+import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
@@ -799,60 +800,6 @@ function StreamCursor() {
 // composed via ProgressBox / WorkingFolderBox / ContextBox.
 
 // ─── Header crumb helpers ────────────────────────────────────────────────
-function CrumbSep() {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        color: T.ink4, fontFamily: FONT_DISPLAY, fontWeight: 400,
-        fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-        userSelect: 'none',
-      }}
-    >›</span>
-  );
-}
-
-function CrumbButton({ label, onClick, title, maxWidth }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      // Explicit resets instead of `all: unset` — the latter wipes
-      // -webkit-app-region back to its initial which interacts badly
-      // with the chat outer's drag region. With explicit no-drag,
-      // clicks reliably reach the button.
-      style={{
-        cursor: 'pointer',
-        background: 'transparent',
-        border: 0,
-        // `outline: 0` removed — global rule
-        // `button:focus:not(:focus-visible) { outline: none }` already
-        // suppresses the mouse-click ring while preserving the
-        // keyboard-focus ring for WCAG 2.4.7.
-        font: 'inherit',
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: T.ink3,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.color = 'var(--ink)';
-        e.currentTarget.style.background = 'var(--surface-2)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.color = 'var(--ink-3)';
-        e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,

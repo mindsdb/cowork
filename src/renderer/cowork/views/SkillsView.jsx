@@ -4,6 +4,7 @@ import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { Crumb, CrumbSep } from '../components/ui/Crumb';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
@@ -519,23 +520,13 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
 
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              style={{
-                display: 'inline-flex', alignItems: 'center',
-                background: 'transparent', border: 0, padding: 0,
-                color: 'var(--ink-3)', cursor: 'pointer',
-                flexShrink: 0,
-              }}
-              aria-label="Back"
-            >
-              {Ico.chevLeft(16)}
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <Crumb label="Skills" onClick={() => setSelected(null)} />
+            <CrumbSep />
             <span style={{
-              fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+              fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600,
+              color: 'var(--ink)', letterSpacing: '0.04em',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {selected.label}
             </span>
