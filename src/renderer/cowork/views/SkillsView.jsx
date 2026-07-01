@@ -209,14 +209,13 @@ function FieldLabel({ children }) {
 
 function SkillModal({ open, onClose, onSaved, onError, initial = null, projects = [] }) {
   const isEdit = initial !== null;
-  const defaultProject = (list) => list.some((p) => p.name === 'general') ? 'general' : (list[0]?.name || 'general');
   const [draft, setDraft] = useState({ label: '', description: '', declarative: '', project: 'general' });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (initial) {
-      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || defaultProject(projects) });
+      setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || '' });
     } else {
       setDraft({ label: '', description: '', declarative: '', project: '' });
     }
