@@ -1471,9 +1471,10 @@ export default function SettingsView({
             const curType = (rawProvider && providerConfigured(rawProvider))
               ? rawType
               : defaultModeProviderType;
+            const providerWasRepointed = curType !== rawType;
             const fallbackPair = recommendedPair[curType] || ['', ''];
             const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
-            const curModel = roleModelValue(role, fallbackModel);
+            const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
             const provider = providers.find((p) => p.type === curType);
             const modelList = recommendedModels[curType] || [];
             const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));

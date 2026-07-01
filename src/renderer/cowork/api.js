@@ -1860,7 +1860,7 @@ export const MOCK_DATA = {
     planningProvider: 'minds-cloud',
     planningModel: 'latest:sonnet',
     codingProvider: 'minds-cloud',
-    codingModel: 'latest:sonnet',
+    codingModel: 'latest:haiku',
     memoryEnabled: true,
     memoryMode: 'autopilot',
     episodicMemory: true,
