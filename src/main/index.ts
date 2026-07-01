@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -633,50 +633,58 @@ function setupIPC() {
     // timeout regardless, so worst case it tidies up in background.
     endKeycloakSession();
     clearTokens();
+
+    // Clear credentials from the server's SQLite DB (the authoritative
+    // source for config_ready). Individual DELETEs for each credential
+    // key that gates config_ready.
+    if (isServerRunning() || isServerStarting()) {
+      const port = getServerPort();
+      const CREDENTIAL_KEYS = [
+        'minds_api_key', 'anthropic_api_key', 'openai_api_key',
+        'gemini_api_key', 'openai_compatible_api_key',
+        'providers_json',
+        'minds_url', 'openai_base_url',
+      ];
+      await Promise.allSettled(
+        CREDENTIAL_KEYS.map((key) =>
+          Promise.race([
+            httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`DELETE ${key} timed out`)), 5000),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    // Strip .env (for the standalone anton CLI and next-boot migration).
+    const LOGOUT_ENV_KEYS = [
+      'ANTON_MINDS_API_KEY',
+      'ANTON_MINDS_URL',
+      'ANTON_MINDS_ENABLED',
+      'ANTON_OPENAI_API_KEY',
+      'ANTON_OPENAI_BASE_URL',
+      'ANTON_OPENAI_API_KEY_CUSTOM',
+      'ANTON_ANTHROPIC_API_KEY',
+      'ANTON_GEMINI_API_KEY',
+      'ANTON_PLANNING_PROVIDER',
+      'ANTON_CODING_PROVIDER',
+      'ANTON_PLANNING_MODEL',
+      'ANTON_CODING_MODEL',
+    ];
     const envPath = getAntonEnvPath();
     if (fs.existsSync(envPath)) {
-      const LOGOUT_KEYS = [
-        'ANTON_MINDS_API_KEY',
-        'ANTON_MINDS_URL',
-        'ANTON_MINDS_ENABLED',
-        'ANTON_OPENAI_API_KEY',
-        'ANTON_OPENAI_BASE_URL',
-        'ANTON_ANTHROPIC_API_KEY',
-        'ANTON_PLANNING_PROVIDER',
-        'ANTON_CODING_PROVIDER',
-        'ANTON_PLANNING_MODEL',
-        'ANTON_CODING_MODEL',
-      ];
       const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
-        .filter((l) => !LOGOUT_KEYS.some((k) => l.startsWith(k + '=')));
+        .filter((l) => !LOGOUT_ENV_KEYS.some((k) => l.startsWith(k + '=')));
       fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
-      for (const key of LOGOUT_KEYS) {
+      for (const key of LOGOUT_ENV_KEYS) {
         delete process.env[key];
       }
     }
     clearStoredProviderState();
-    if (isServerRunning() || isServerStarting()) {
-      try {
-        // Cap the reset at 3s. httpRequest() has no timeout of its own,
-        // so a hung (vs. crashed) python server would otherwise block
-        // this await forever — the deferred reload below would never
-        // fire and the confirm modal would sit on "Signing out…". The
-        // runtime reset is best-effort cleanup; the reload re-routes to
-        // onboarding regardless of whether it succeeded.
-        await Promise.race([
-          httpRequest(`http://127.0.0.1:${getServerPort()}/v1/settings/runtime-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}',
-          }),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('runtime-reset timed out')), 3000),
-          ),
-        ]);
-      } catch (error) {
-        console.warn('[logout] failed to reset live runtimes', error);
-      }
-    }
     // Force-reload the renderer from main. The renderer's own
     // `window.location.reload()` was unreliable here (page stayed on
     // the stuck confirm modal); driving the reload from the main
@@ -866,10 +874,41 @@ function setupIPC() {
   });
 }
 
-app.whenReady().then(async () => {
+// One-time purge of the on-disk HTTP cache, gated by app version. Older builds
+// let Electron cache settings/stream responses to Cache_Data, leaving plaintext
+// API keys (incl. rotated ones) on disk (ENG-462). Secret-bearing responses now
+// send Cache-Control: no-store, but keys already cached must be cleared — so do
+// it once per version (on upgrade / first install), not on every launch.
+async function purgeHttpCacheOnUpgrade(): Promise<void> {
+  try {
+    const markerPath = path.join(app.getPath('userData'), 'cache-purge.json');
+    const current = app.getVersion();
+    let last = '';
+    if (fs.existsSync(markerPath)) {
+      try {
+        last = (JSON.parse(fs.readFileSync(markerPath, 'utf-8')) as { version?: string }).version || '';
+      } catch {
+        // Corrupt marker → treat as not-yet-purged and rewrite below.
+      }
+    }
+    if (last === current) return;
+    await session.defaultSession.clearCache();
+    fs.writeFileSync(markerPath, JSON.stringify({ version: current }) + '\n', 'utf-8');
+    console.log(`[cache] purged HTTP cache on upgrade (${last || 'none'} → ${current})`);
+  } catch (err) {
+    console.warn('[cache] HTTP cache purge failed (non-fatal)', err);
+  }
+}
+
+app.whenReady().then(() => {
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
+
+  // Purge any plaintext API keys older builds cached to disk (ENG-462).
+  // Fire-and-forget: version-gated + idempotent, and current responses send
+  // no-store so nothing new re-caches while this runs.
+  void purgeHttpCacheOnUpgrade();
 
   const isMac = process.platform === 'darwin';
 

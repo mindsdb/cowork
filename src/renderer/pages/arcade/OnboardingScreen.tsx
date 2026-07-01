@@ -127,6 +127,7 @@ export default function OnboardingScreen({
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');
   const [skippedMinds, setSkippedMinds] = useState(false);
+  const [mindsNoCredits, setMindsNoCredits] = useState(false);
   // Which stage's layout to render. Decoupled from `phase` so the
   // validating spinner shows in the right place without inferring it
   // from whether the API-key field happens to be non-empty.
@@ -373,6 +374,15 @@ export default function OnboardingScreen({
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
       return;
     }
+    // No LLM credits — account authenticated but key wasn't provisioned.
+    // Save terms consent and redirect to BYOK so the user can pick a provider.
+    if (finalizeResult.upgradeRequired) {
+      await host.saveSettings('ANTON_TERMS_CONSENT=true');
+      setMindsNoCredits(true);
+      setStep('byok');
+      setPhase('minds-no-llm');
+      return;
+    }
     if (!finalizeResult.ok) {
       setPhase('error');
       setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');
@@ -467,7 +477,9 @@ export default function OnboardingScreen({
               <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
                 {skippedMinds
                   ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to publish to the web).</>
-                  : <>Your MindsHub key is valid and saved for publishing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
+                  : mindsNoCredits
+                    ? <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>
+                    : <>Your MindsHub key is valid and saved for publishing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
               </div>
 
               <button

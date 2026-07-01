@@ -147,7 +147,7 @@ function _hydrateAssistantEvents(messages) {
     }
     let state = initialStreamState();
     for (const ev of m.events) {
-      try { state = reduceStream(state, ev); } catch {}
+      try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
     }
     const { events: _drop, ...rest } = m;
     const turnComplete = state.status === 'done' || state.status === 'error';
@@ -1153,7 +1153,10 @@ export async function fetchSkills() {
   return req('/skills');
 }
 
-export async function saveSkill(payload) {
+export async function saveSkill(payload, isEdit = false) {
+  if (isEdit) {
+    return req(`/skills/${encodeURIComponent(payload.label)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  }
   return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
 }
 
@@ -1845,15 +1848,15 @@ export const MOCK_DATA = {
   settings: {
     greeting: "Let's knock something off your list",
     tone: 'balanced',
-    defaultModel: 'claude-sonnet-4-6',
+    defaultModel: 'latest:sonnet',
     autoPin: true,
     showDots: true,
     showCounters: true,
     accentVariant: 'aqua',
-    planningProvider: 'anthropic',
-    planningModel: 'claude-sonnet-4-6',
-    codingProvider: 'anthropic',
-    codingModel: 'claude-haiku-4-5-20251001',
+    planningProvider: 'minds-cloud',
+    planningModel: 'latest:sonnet',
+    codingProvider: 'minds-cloud',
+    codingModel: 'latest:haiku',
     memoryEnabled: true,
     memoryMode: 'autopilot',
     episodicMemory: true,
