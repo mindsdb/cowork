@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import { host } from '../../platform/host';
 import ConnectWorkflowView from './ConnectWorkflowView';
 import {
   PageHeader,
@@ -459,6 +460,17 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           display: 'flex', flexDirection: 'column', gap: 8,
           flexShrink: 0,
         }}>
+          {saved?.fields?.status === 'needs_reconnect' && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 7,
+              background: 'color-mix(in srgb, var(--warning, #f5a623) 12%, var(--surface))',
+              border: '1px solid color-mix(in srgb, var(--warning, #f5a623) 35%, transparent)',
+              fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5,
+            }}>
+              <strong style={{ display: 'block', marginBottom: 4 }}>Reconnection required</strong>
+              The refresh token for this connection has expired. Reconnect to restore access, or remove the connection.
+            </div>
+          )}
           {spec && (
             <button
               type="button"
@@ -478,7 +490,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             type="button"
             onClick={() => {
               if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
-              onDisconnect?.(connection);
+              onDisconnect?.(connection, saved);
               onClose();
             }}
             style={{
@@ -491,7 +503,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               cursor: 'pointer',
             }}
           >
-            Disconnect
+            Remove
           </button>
         </div>
       </div>
@@ -596,8 +608,22 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
-  const handleDelete = async (connection) => {
+  const handleDelete = async (connection, savedDetail) => {
     try {
+      // For builtin OAuth connections in Electron, keychain:revoke stops the
+      // refresh loop, removes the keychain entry, and deletes the vault record.
+      if (host.isElectron) {
+        const detail = savedDetail || await fetchSavedConnection(connection.engine, connection.name).catch(() => null);
+        const accountEmail = detail?.fields?.account_email;
+        if (detail?.method === 'browser_oauth_builtin' && accountEmail) {
+          await host.keychainRevoke(connection.engine, connection.name, accountEmail);
+          const fresh = await fetchDatasources();
+          const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+          setList(next);
+          onConnectionsSyncedRef.current?.(next);
+          return;
+        }
+      }
       await deleteDatasource(connection.engine, connection.name);
       const fresh = await fetchDatasources();
       const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
@@ -703,8 +729,8 @@ export default function CustomizeView({
         <ConnectionDetailPanel
           connection={selectedConn}
           onClose={() => setSelectedConn(null)}
-          onDisconnect={async (conn) => {
-            await handleDelete(conn);
+          onDisconnect={async (conn, savedDetail) => {
+            await handleDelete(conn, savedDetail);
             setSelectedConn(null);
           }}
           onReconnect={async (conn, spec) => {

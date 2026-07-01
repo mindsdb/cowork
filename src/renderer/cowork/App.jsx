@@ -1230,6 +1230,7 @@ function AppCore() {
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
+  const [refreshErrors, setRefreshErrors] = useState([]); // { engine, name, accountEmail, permanent }
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1345,6 +1346,13 @@ function AppCore() {
   useEffect(() => {
     return host.onUpdateStatus((status) => {
       setUpdateStatus(status);
+    });
+  }, []);
+
+  // Listen for background OAuth refresh failures pushed from main process.
+  useEffect(() => {
+    return host.onOAuthRefreshError((payload) => {
+      setRefreshErrors((prev) => [...prev, { ...payload, id: Date.now() }]);
     });
   }, []);
 
@@ -3862,6 +3870,34 @@ function AppCore() {
         onClose={() => setMoveModalTask(null)}
         onConfirm={handleConfirmMove}
       />
+
+      {/* OAuth refresh-error toasts — shown when background token refresh fails */}
+      {refreshErrors.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9000, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 340 }}>
+          {refreshErrors.map((err) => (
+            <div key={err.id} style={{
+              padding: '10px 14px', borderRadius: 8,
+              background: 'var(--surface)',
+              border: `1px solid ${err.permanent ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--warning, #f5a623) 40%, transparent)'}`,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              fontSize: 13, color: 'var(--ink)',
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+            }}>
+              <div style={{ flex: 1, lineHeight: 1.5 }}>
+                {err.permanent
+                  ? <><strong>{err.engine}</strong> connection needs to be reconnected — refresh token expired.</>
+                  : <><strong>{err.engine}</strong> connection refresh failed — retrying automatically.</>}
+              </div>
+              <button
+                type="button"
+                onClick={() => setRefreshErrors((prev) => prev.filter((e) => e.id !== err.id))}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-4)', padding: 0, fontSize: 16, lineHeight: 1, flexShrink: 0 }}
+                aria-label="Dismiss"
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (
