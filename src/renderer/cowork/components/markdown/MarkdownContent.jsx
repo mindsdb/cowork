@@ -20,7 +20,7 @@ import {
   TableBody,
 } from './MarkdownTable';
 import { host } from '../../../platform/host';
-import { useSkills } from '../../lib/skillsStore';
+import { useSkillNames } from '../../lib/skillsStore';
 
 // remark plugin: colour "/skill-name" mentions in the brand accent. Splits
 // text nodes on a "/name" token at a word boundary whose name matches a known
@@ -313,14 +313,14 @@ export function MarkdownContent({
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
 
-  // Skill names from the shared store → colour "/mention" tokens. Reading the
-  // store here (rather than prop-threading through every MarkdownContent call
-  // site) keeps the change local; the store is a cheap external subscription.
-  const { skills } = useSkills();
-  const remarkPlugins = useMemo(() => {
-    const names = new Set((skills || []).map((s) => s.label).filter(Boolean));
-    return [remarkGfm, [remarkSkillMentions, names]];
-  }, [skills]);
+  // Skill names from the shared store → colour "/mention" tokens. useSkillNames
+  // returns a stable Set rebuilt once per reload in the store, so all instances
+  // share one Set instead of each allocating their own inside useMemo.
+  const skillNames = useSkillNames();
+  const remarkPlugins = useMemo(
+    () => [remarkGfm, [remarkSkillMentions, skillNames]],
+    [skillNames],
+  );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
   // button rendered by MarkdownCode. A single listener at this root survives
