@@ -525,6 +525,20 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
             `Body: ${bodyExcerpt}.`,
         };
       }
+      // Server errors (5xx) or network failures (status 0) — the auth
+      // service is likely temporarily unavailable. Give the user an
+      // actionable message instead of a raw status code.
+      if (provisionCtx.status >= 500 || provisionCtx.status === 0) {
+        const detail = provisionCtx.status === 0
+          ? 'Could not reach the MindsHub authentication service.'
+          : `The MindsHub authentication service returned an error (HTTP ${provisionCtx.status}).`;
+        return {
+          error:
+            `${detail} ` +
+            'This is usually temporary — please try again in a moment. ' +
+            'If the problem persists, you can continue with your own API key instead.',
+        };
+      }
       return {
         error: `Auth-service /authenticate/ returned HTTP ${provisionCtx.status}.`,
       };

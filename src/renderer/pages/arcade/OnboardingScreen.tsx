@@ -683,6 +683,15 @@ export default function OnboardingScreen({
           </div>
         )}
 
+        {phase === 'error' && provider === 'minds' && (
+          <button
+            type="button"
+            className="arc-btn"
+            style={{ marginTop: 4 }}
+            onClick={handleMindsSSO}
+          >Try again</button>
+        )}
+
         {phase !== 'validating' && (
           <button
             type="button"
