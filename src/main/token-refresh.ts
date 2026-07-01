@@ -1,0 +1,158 @@
+import { BrowserWindow } from 'electron';
+import { getServerPort } from './server-process';
+import { getRefreshToken, setRefreshToken } from './keychain-service';
+import { OAUTH_CREDENTIALS } from './credentials';
+import { IPC } from '../shared/ipc-channels';
+
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const PRE_REFRESH_WINDOW_MS = 30 * 60 * 1000;
+const FAILURE_NOTIFY_THRESHOLD = 3;
+
+interface LoopState {
+  intervalId: ReturnType<typeof setInterval>;
+  name: string;
+  tokenUrl: string;
+  expiresAt: number; // epoch ms
+  failureCount: number;
+  notifiedFailure: boolean;
+}
+
+const loops = new Map<string, LoopState>();
+
+// keychain:revoke adds here before deleting from keychain so an in-flight
+// tick sees the flag and exits without calling the token endpoint.
+export const revokedConnections = new Set<string>();
+
+function loopKey(engine: string, accountEmail: string): string {
+  return `${engine}:${accountEmail}`;
+}
+
+function notifyRenderer(payload: { engine: string; name: string; accountEmail: string; permanent: boolean }): void {
+  BrowserWindow.getAllWindows()[0]?.webContents.send(IPC.OAUTH_REFRESH_ERROR, payload);
+}
+
+export function startRefreshLoop(
+  engine: string,
+  name: string,
+  accountEmail: string,
+  expiresAtIso: string,
+  tokenUrl: string,
+): void {
+  const key = loopKey(engine, accountEmail);
+  stopRefreshLoop(engine, accountEmail);
+  const state: LoopState = {
+    name,
+    tokenUrl,
+    expiresAt: new Date(expiresAtIso).getTime(),
+    failureCount: 0,
+    notifiedFailure: false,
+    intervalId: setInterval(() => { tick(engine, accountEmail, key).catch(() => {}); }, REFRESH_INTERVAL_MS),
+  };
+  loops.set(key, state);
+}
+
+export function stopRefreshLoop(engine: string, accountEmail: string): void {
+  const key = loopKey(engine, accountEmail);
+  const state = loops.get(key);
+  if (state) {
+    clearInterval(state.intervalId);
+    loops.delete(key);
+  }
+}
+
+export function stopAllRefreshLoops(): void {
+  for (const [, state] of loops) {
+    clearInterval(state.intervalId);
+  }
+  loops.clear();
+}
+
+async function tick(engine: string, accountEmail: string, key: string): Promise<void> {
+  if (revokedConnections.has(key)) {
+    stopRefreshLoop(engine, accountEmail);
+    return;
+  }
+
+  const state = loops.get(key);
+  if (!state) return;
+
+  if (Date.now() < state.expiresAt - PRE_REFRESH_WINDOW_MS) return;
+
+  const creds = OAUTH_CREDENTIALS[engine];
+  if (!creds) {
+    console.error(`[token-refresh] no credentials configured for engine: ${engine}`);
+    return;
+  }
+
+  const refreshToken = await getRefreshToken(engine, accountEmail);
+  if (!refreshToken) {
+    console.error(`[token-refresh] no refresh token in keychain for ${key}`);
+    return;
+  }
+
+  try {
+    const res = await fetch(state.tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+        refresh_token: refreshToken,
+      }).toString(),
+    });
+
+    if (res.status === 401) {
+      await patchToken(engine, state.name, { status: 'needs_reconnect' });
+      notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
+      stopRefreshLoop(engine, accountEmail);
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error(`token endpoint returned ${res.status}`);
+    }
+
+    const data = await res.json() as {
+      access_token: string;
+      expires_in: number;
+      refresh_token?: string;
+    };
+
+    const newExpiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
+    state.expiresAt = Date.now() + data.expires_in * 1000;
+    state.failureCount = 0;
+    state.notifiedFailure = false;
+
+    if (data.refresh_token) {
+      await setRefreshToken(engine, accountEmail, data.refresh_token);
+    }
+
+    await patchToken(engine, state.name, {
+      access_token: data.access_token,
+      expires_at: newExpiresAt,
+    });
+
+  } catch (err) {
+    state.failureCount++;
+    console.error(`[token-refresh] refresh failed for ${key} (attempt ${state.failureCount}):`, err);
+
+    if (state.failureCount >= FAILURE_NOTIFY_THRESHOLD && !state.notifiedFailure) {
+      state.notifiedFailure = true;
+      notifyRenderer({ engine, name: state.name, accountEmail, permanent: false });
+    }
+  }
+}
+
+async function patchToken(engine: string, name: string, updates: Record<string, string>): Promise<void> {
+  const url = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}/token`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  // 404 = connection was deleted while we were mid-refresh — discard silently
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`PATCH /token returned ${res.status}`);
+  }
+}

@@ -35,6 +35,9 @@ export const IPC = {
 
   // OAuth — pure PKCE bridge (no MindsHub-specific side effects)
   OAUTH_CANCEL: 'oauth:cancel',
+  // Fired by the background token-refresh loop when consecutive failures hit
+  // threshold (transient) or a 401 makes the refresh token permanently invalid.
+  OAUTH_REFRESH_ERROR: 'oauth:refresh-error',
 
   // MindsHub — split from oauth:connect so env writes only happen
   // after the user has chosen an LLM path (free users may never
