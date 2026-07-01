@@ -10,19 +10,7 @@ import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
 import { fetchProjects, saveSkill, uploadSkillFile } from '../api';
 import { useSkills, saveSkillAndSync, deleteSkillAndSync } from '../lib/skillsStore';
-
-
-function relativeAge(input) {
-  if (!input) return null;
-  const ts = typeof input === 'number' ? input : Date.parse(input);
-  if (!Number.isFinite(ts)) return null;
-  const diff = Date.now() - ts;
-  if (diff < 60_000)         return 'just now';
-  if (diff < 3_600_000)      return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000)     return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
+import { relativeAge } from '../lib/formatTime';
 
 function EmptyState({ children }) {
   return <div style={{ padding: 32, color: 'var(--frost-600)', fontSize: 13 }}>{children}</div>;
