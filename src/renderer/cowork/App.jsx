@@ -1772,10 +1772,9 @@ function AppCore() {
     setActiveTaskId(null);
     setComposerAttachments([]);
     setComposerPrefill({ text, bump: Date.now() });
-    if (projectName) {
-      const proj = projects.find((p) => p.name === projectName);
-      if (proj) setSelectedProject(proj);
-    }
+    const targetName = projectName || 'general';
+    const proj = projects.find((p) => p.name === targetName);
+    if (proj) setSelectedProject(proj);
     setRoute('home');
   };
 
