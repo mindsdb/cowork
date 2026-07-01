@@ -682,29 +682,26 @@ function setupIPC() {
     clearTokens();
 
     // Clear credentials from the server's SQLite DB (the authoritative
-    // source for config_ready). Individual DELETEs for each credential
-    // key that gates config_ready.
+    // source for config_ready). A single POST /settings/logout atomically
+    // clears all credential keys and provider state in one transaction.
+    let dbCleared = false;
     if (isServerRunning() || isServerStarting()) {
       const port = getServerPort();
-      const CREDENTIAL_KEYS = [
-        'minds_api_key', 'anthropic_api_key', 'openai_api_key',
-        'gemini_api_key', 'openai_compatible_api_key',
-        'providers_json',
-        'minds_url', 'openai_base_url',
-      ];
-      await Promise.allSettled(
-        CREDENTIAL_KEYS.map((key) =>
-          Promise.race([
-            httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`DELETE ${key} timed out`)), 5000),
-            ),
-          ]),
-        ),
-      );
+      try {
+        const res = await Promise.race([
+          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('logout request timed out')), 5000),
+          ),
+        ]);
+        dbCleared = res.status >= 200 && res.status < 300;
+        if (!dbCleared) console.warn('[logout] server returned', res.status);
+      } catch (err) {
+        console.warn('[logout] server logout request failed:', err);
+      }
     }
 
     // Strip .env (for the standalone anton CLI and next-boot migration).
@@ -732,6 +729,21 @@ function setupIPC() {
       }
     }
     clearStoredProviderState();
+
+    // Restart the server so in-memory caches (settings, provider objects)
+    // are flushed. If the DB clear failed (server was down, timed out),
+    // the restart re-reads the cleaned .env as the sole credential source.
+    // Without this, the Python process could still hold credentials in
+    // memory and report config_ready: true after the UI says "signed out".
+    if (isServerRunning() || isServerStarting()) {
+      try {
+        await stopServer();
+        await startServer();
+      } catch (err) {
+        console.warn('[logout] server restart failed:', err);
+      }
+    }
+
     // Force-reload the renderer from main. The renderer's own
     // `window.location.reload()` was unreliable here (page stayed on
     // the stuck confirm modal); driving the reload from the main

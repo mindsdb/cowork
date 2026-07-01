@@ -721,15 +721,36 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   // initial setup never reach the DB unless we explicitly push them.
   // POST /api/v1/settings/raw merges and calls sync_env_vars_to_db.
   if (isServerRunning() || isServerStarting()) {
+    const port = getServerPort();
     const envContent = fs.readFileSync(coworkEnvPath(), 'utf-8');
     try {
-      await timedFetch(`http://127.0.0.1:${getServerPort()}/api/v1/settings/raw`, {
+      const syncRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/raw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: envContent }),
       });
+      if (!syncRes.ok) {
+        console.warn('[minds-auth] settings/raw sync returned', syncRes.status);
+      }
     } catch (error) {
       console.warn('[minds-auth] failed to sync .env to server DB', error);
+    }
+
+    // Verify the server is actually configured after the sync.
+    // If the sync failed silently (DB not updated), config_ready will
+    // still be false and the user would appear unconfigured after login.
+    try {
+      const healthRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/health/`);
+      if (healthRes.ok) {
+        const health = await healthRes.json() as Record<string, unknown>;
+        if (!health.config_ready) {
+          console.warn('[minds-auth] config_ready is false after sync — restarting server');
+          await stopServer();
+          await startServer();
+        }
+      }
+    } catch (error) {
+      console.warn('[minds-auth] health check after sync failed:', error);
     }
   }
 }
