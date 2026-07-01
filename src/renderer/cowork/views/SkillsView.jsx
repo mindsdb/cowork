@@ -217,7 +217,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     if (initial) {
       setDraft({ label: initial.label || '', description: initial.description || '', declarative: initial.declarative || '', project: initial.projects?.[0] || defaultProject(projects) });
     } else {
-      setDraft({ label: '', description: '', declarative: '', project: defaultProject(projects) });
+      setDraft({ label: '', description: '', declarative: '', project: '' });
     }
   }, [open]);
 
@@ -233,7 +233,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
     if (!label || !draft.declarative.trim()) return;
     setBusy(true);
     try {
-      const saved = await saveSkill({ label, description: draft.description, declarative: draft.declarative, projects: [draft.project] }, isEdit);
+      const saved = await saveSkill({ label, description: draft.description, declarative: draft.declarative, projects: draft.project ? [draft.project] : [] }, isEdit);
       handleClose();
       await onSaved(saved);
     } catch (err) {
@@ -275,6 +275,7 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
               onChange={(e) => setField('project', e.target.value)}
               style={{ ...fieldStyle, height: 34, resize: 'none', cursor: 'pointer' }}
             >
+              <option value="">All projects</option>
               {projects.map((p) => (
                 <option key={p.id ?? p.name} value={p.name}>{p.name}</option>
               ))}

@@ -315,7 +315,7 @@ export default function Composer({
       .filter((s) => {
         if (s.enabled === false) return false;
         const skillProject = s.projects?.[0] || s.project;
-        if (!skillProject) return false;
+        if (!skillProject) return true;
         return skillProject === currentProject;
       })
       .map((s) => ({
