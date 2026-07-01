@@ -1461,11 +1461,15 @@ export default function SettingsView({
           // provider's recommended pair.
           const RoleRow = ({ role, label }) => {
             const cur = roleOverride(role) || {};
-            // In default mode the effective provider is defaultModeProviderType
-            // (what withResolvedRoles writes at save time), not the server's
-            // possibly-stale planning_provider / coding_provider value.
-            const curType = modelMode === 'custom'
-              ? (roleProviderType(role) || (defaultProvider?.type || ''))
+            // Resolve the effective provider for this role. The server may
+            // store a stale planning_provider (e.g. 'anthropic') that doesn't
+            // match any configured provider card. When that happens, fall back
+            // to defaultModeProviderType (which prefers the actually-configured
+            // provider — MindsHub if available, else first configured).
+            const rawType = roleProviderType(role) || (defaultProvider?.type || '');
+            const rawProvider = providers.find((p) => p.type === rawType);
+            const curType = (rawProvider && providerConfigured(rawProvider))
+              ? rawType
               : defaultModeProviderType;
             const fallbackPair = recommendedPair[curType] || ['', ''];
             const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
