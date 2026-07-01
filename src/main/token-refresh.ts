@@ -40,10 +40,12 @@ export function startRefreshLoop(
 ): void {
   const key = loopKey(engine, accountEmail);
   stopRefreshLoop(engine, accountEmail);
+  const expiresAtMs = new Date(expiresAtIso).getTime();
+  console.log(`[token-refresh] loop started: ${key} expires ${new Date(expiresAtMs).toISOString()} refresh-in ${Math.round((expiresAtMs - PRE_REFRESH_WINDOW_MS - Date.now()) / 60000)}min`);
   const state: LoopState = {
     name,
     tokenUrl,
-    expiresAt: new Date(expiresAtIso).getTime(),
+    expiresAt: expiresAtMs,
     failureCount: 0,
     notifiedFailure: false,
     intervalId: setInterval(() => { tick(engine, accountEmail, key).catch(() => {}); }, REFRESH_INTERVAL_MS),
@@ -76,7 +78,9 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   const state = loops.get(key);
   if (!state) return;
 
-  if (Date.now() < state.expiresAt - PRE_REFRESH_WINDOW_MS) return;
+  const msUntilWindow = state.expiresAt - PRE_REFRESH_WINDOW_MS - Date.now();
+  console.log(`[token-refresh] tick: ${key} window-in ${Math.round(msUntilWindow / 60000)}min`);
+  if (msUntilWindow > 0) return;
 
   if (!OAUTH_CREDENTIALS[engine]) {
     console.error(`[token-refresh] no credentials configured for engine: ${engine}`);
@@ -149,6 +153,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       access_token: data.access_token,
       expires_at: newExpiresAt,
     });
+    console.log(`[token-refresh] refreshed: ${key} new expiry ${newExpiresAt}`);
 
   } catch (err) {
     state.failureCount++;
