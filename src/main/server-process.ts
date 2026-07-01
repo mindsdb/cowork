@@ -47,8 +47,14 @@ function serverOwnerToken(): string {
   }
   const token = crypto.randomBytes(16).toString('hex');
   try {
-    fs.mkdirSync(coworkHome(), { recursive: true });
-    fs.writeFileSync(tokenPath, token + '\n', 'utf-8');
+    // Owner-only perms (0700 dir / 0600 file): the token gates server adoption
+    // (ENG-439). macOS home dirs are commonly traversable, so a readable token
+    // would let another OS user set the same COWORK_SERVER_OWNER and
+    // deliberately adopt our server — defeating the identity check. chmod after
+    // write pins the mode regardless of umask.
+    fs.mkdirSync(coworkHome(), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(tokenPath, token + '\n', { encoding: 'utf-8', mode: 0o600 });
+    fs.chmodSync(tokenPath, 0o600);
   } catch {
     // best-effort persistence; the token stays stable for this process at least
   }
