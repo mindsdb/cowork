@@ -6,12 +6,14 @@ import { execSync } from 'child_process';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
-// Resolve the app version from the latest git tag (CalVer), falling back
-// to package.json when tags aren't available (e.g. Docker builds stamp
-// package.json before building).
+// Resolve the app version from git tags (CalVer). On a tagged commit
+// (prod release) this returns the clean tag (e.g. "2.26.7.1.1"). On an
+// untagged commit (staging / dev) it includes the distance and short SHA
+// (e.g. "2.26.6.30.1-3-g1a2b3c4"). Falls back to package.json when
+// tags aren't available (e.g. Docker builds stamp package.json).
 let appVersion = pkg.version;
 try {
-  appVersion = execSync('git describe --tags --abbrev=0', { cwd: __dirname, encoding: 'utf-8' }).trim().replace(/^v/, '');
+  appVersion = execSync('git describe --tags', { cwd: __dirname, encoding: 'utf-8' }).trim().replace(/^v/, '');
 } catch { /* no tags or not a git repo — use package.json */ }
 
 // Bake the git commit hash into the bundle so it's available at runtime
