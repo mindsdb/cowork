@@ -18,7 +18,7 @@ export default defineConfig({
           name: 'main',
           environment: 'node',
           include: ['src/main/**/*.test.ts', 'src/shared/**/*.test.ts'],
-          setupFiles: ['test/setup-env.ts'],
+          setupFiles: ['tests/setup-env.ts'],
         },
       },
       {
@@ -26,7 +26,7 @@ export default defineConfig({
           name: 'renderer',
           environment: 'happy-dom',
           include: ['src/renderer/**/*.test.{js,jsx,ts,tsx}'],
-          setupFiles: ['test/setup-env.ts', 'test/setup-renderer.ts'],
+          setupFiles: ['tests/setup-env.ts', 'tests/setup-renderer.ts'],
         },
       },
     ],

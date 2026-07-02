@@ -1,9 +1,63 @@
 import { describe, it, expect } from 'vitest';
-import { getInstallSpec } from './server-source';
-import { withEnv } from '../../test/helpers/env';
+import {
+  getChannel,
+  getCoworkRef,
+  getAntonRef,
+  getInstallSpec,
+  COWORK_SERVER_MIN_VERSION,
+} from './server-source';
+import { withEnv } from '../../tests/helpers/env';
 
-// The env is scrubbed before each test (test/setup-env.ts), so "no env set"
-// is the true default install path.
+// The env is scrubbed before each test (tests/setup-env.ts), so "no env set"
+// is the true default install path. The build-ref fallback (_buildRef) is
+// exercised implicitly: ./build-channel.gen does not exist in the test env,
+// so the catch path (→ '') runs on every default-ref assertion below.
+
+describe('getChannel', () => {
+  it('defaults to git when unset', () => {
+    expect(getChannel()).toBe('git');
+  });
+
+  it('returns pypi when COWORK_SERVER_CHANNEL=pypi', () => {
+    withEnv({ COWORK_SERVER_CHANNEL: 'pypi' }, () => {
+      expect(getChannel()).toBe('pypi');
+    });
+  });
+
+  it('is case-insensitive', () => {
+    withEnv({ COWORK_SERVER_CHANNEL: 'PyPI' }, () => {
+      expect(getChannel()).toBe('pypi');
+    });
+  });
+
+  it('falls back to git on a garbage value', () => {
+    withEnv({ COWORK_SERVER_CHANNEL: 'not-a-channel' }, () => {
+      expect(getChannel()).toBe('git');
+    });
+  });
+});
+
+describe('getCoworkRef / getAntonRef', () => {
+  it('default to main', () => {
+    expect(getCoworkRef()).toBe('main');
+    expect(getAntonRef()).toBe('main');
+  });
+
+  it('honour env overrides', () => {
+    withEnv({ COWORK_SERVER_REF: 'v1.2.3', ANTON_REF: 'abc123' }, () => {
+      expect(getCoworkRef()).toBe('v1.2.3');
+      expect(getAntonRef()).toBe('abc123');
+    });
+  });
+
+  it('fall back to main on whitespace-only values', () => {
+    withEnv({ COWORK_SERVER_REF: '   ', ANTON_REF: '\t' }, () => {
+      expect(getCoworkRef()).toBe('main');
+      expect(getAntonRef()).toBe('main');
+    });
+  });
+});
+
 describe('getInstallSpec', () => {
   it('default git install does NOT add a --with arg (regression: the "conflicting URLs" bug)', () => {
     // On the default git channel with anton on `main`, uv must receive NO
@@ -28,12 +82,87 @@ describe('getInstallSpec', () => {
     });
   });
 
+  it('COWORK_SERVER_REF changes the git ref in the package spec', () => {
+    withEnv({ COWORK_SERVER_REF: 'feat/y' }, () => {
+      const spec = getInstallSpec();
+      expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@feat/y');
+      expect(spec.withArgs).toEqual([]); // anton still default → still no --with
+    });
+  });
+
   it('pypi channel pins the min version and adds no --with', () => {
     withEnv({ COWORK_SERVER_CHANNEL: 'pypi' }, () => {
       const spec = getInstallSpec();
       expect(spec.channel).toBe('pypi');
-      expect(spec.package).toMatch(/^cowork-server>=/);
+      expect(spec.package).toBe(`cowork-server>=${COWORK_SERVER_MIN_VERSION}`);
       expect(spec.withArgs).toEqual([]);
+    });
+  });
+
+  it('pypi channel ignores ANTON_REF (wheel pins its own anton dependency)', () => {
+    withEnv({ COWORK_SERVER_CHANNEL: 'pypi', ANTON_REF: 'feat/x' }, () => {
+      const spec = getInstallSpec();
+      expect(spec.channel).toBe('pypi');
+      expect(spec.withArgs).toEqual([]);
+    });
+  });
+
+  describe('COWORK_SERVER_PACKAGE escape hatch', () => {
+    it('wins over the channel and refs', () => {
+      withEnv(
+        {
+          COWORK_SERVER_PACKAGE: '/local/path/cowork-server',
+          COWORK_SERVER_CHANNEL: 'pypi',
+          COWORK_SERVER_REF: 'feat/ignored',
+        },
+        () => {
+          const spec = getInstallSpec();
+          expect(spec.package).toBe('/local/path/cowork-server');
+          // channel still reports what the env says, but the package is literal
+          expect(spec.channel).toBe('pypi');
+        },
+      );
+    });
+
+    it('honours ANTON_PACKAGE only alongside COWORK_SERVER_PACKAGE', () => {
+      withEnv(
+        {
+          COWORK_SERVER_PACKAGE: '/local/cowork-server',
+          ANTON_PACKAGE: '/local/anton',
+        },
+        () => {
+          expect(getInstallSpec().withArgs).toEqual(['--with', 'anton-agent @ /local/anton']);
+        },
+      );
+    });
+
+    it('ignores ANTON_PACKAGE when COWORK_SERVER_PACKAGE is not set', () => {
+      withEnv({ ANTON_PACKAGE: '/local/anton' }, () => {
+        const spec = getInstallSpec();
+        // falls through to the normal git path: no --with, git package
+        expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@main');
+        expect(spec.withArgs).toEqual([]);
+      });
+    });
+  });
+
+  describe('explicit ref opts (rollback path)', () => {
+    it('override env refs', () => {
+      withEnv({ COWORK_SERVER_REF: 'env-ref', ANTON_REF: 'env-anton' }, () => {
+        const spec = getInstallSpec({ coworkRef: 'rollback-sha', antonRef: 'anton-sha' });
+        expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@rollback-sha');
+        expect(spec.withArgs).toEqual([
+          '--with',
+          'anton-agent @ git+https://github.com/mindsdb/anton.git@anton-sha',
+        ]);
+      });
+    });
+
+    it('opts antonRef=main suppresses --with even when env ANTON_REF is set', () => {
+      withEnv({ ANTON_REF: 'feat/x' }, () => {
+        const spec = getInstallSpec({ antonRef: 'main' });
+        expect(spec.withArgs).toEqual([]);
+      });
     });
   });
 });

@@ -5,8 +5,9 @@
 //  - env scrub: clear vars that flip behavior or could reach a real service,
 //    so e.g. a shell with COWORK_SERVER_REF set can't change what the
 //    install-source resolver returns under test.
-//
-// Phase 0.5 will extend this with a hard network-deny (throwing `fetch` stub).
+//  - network deny: fetch/XHR throw unless a test explicitly opts in by
+//    installing its own mock. An accidental real request fails loudly instead
+//    of hitting the wire or hanging.
 import { beforeEach } from 'vitest';
 
 process.env.TZ = 'UTC';
@@ -29,3 +30,25 @@ function scrubEnv(): void {
 }
 
 beforeEach(scrubEnv);
+
+// Network deny. Reassigned before every test, so a test that opts in (by
+// setting its own `globalThis.fetch = vi.fn(...)`) is reset to "denied" for
+// the next test automatically.
+function denyNetwork(): void {
+  const deny = (): never => {
+    throw new Error(
+      'Network access is denied in tests. Mock fetch/XHR explicitly to opt in. (tests/setup-env.ts)',
+    );
+  };
+  globalThis.fetch = deny as unknown as typeof fetch;
+  // happy-dom (renderer project) provides XMLHttpRequest; node does not.
+  if (typeof (globalThis as { XMLHttpRequest?: unknown }).XMLHttpRequest !== 'undefined') {
+    (globalThis as { XMLHttpRequest: unknown }).XMLHttpRequest = class {
+      constructor() {
+        deny();
+      }
+    };
+  }
+}
+
+beforeEach(denyNetwork);

@@ -1,4 +1,4 @@
-name: CI
+name: Tests (unit)
 
 # Fast PR check: typecheck + unit/component tests + a real renderer build.
 
@@ -29,7 +29,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/retry # self-heal transient install flakes
+        with:
+          command: npm ci
       - name: Typecheck (main + renderer)
         run: npm run typecheck
       - name: Unit + component tests + coverage
@@ -49,5 +51,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
       - run: npm run build:renderer

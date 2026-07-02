@@ -2,13 +2,13 @@
   // Typechecks test files + test helpers, which the production configs
   // (tsconfig.main.json / tsconfig.json) deliberately exclude so they never
   // land in dist. Reuses the renderer config's DOM libs + bundler resolution;
-  // no rootDir constraint, so tests may import helpers from test/.
+  // no rootDir constraint, so tests may import helpers from tests/.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true
   },
   "include": [
-    "test/**/*.ts",
+    "tests/**/*.ts",
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
   ]
