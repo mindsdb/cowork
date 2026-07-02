@@ -17,6 +17,10 @@ on:
         required: false
         type: string
         default: ""
+      app_version:
+        description: Optional app display version to bake into the renderer
+        required: false
+        type: string
     outputs:
       artifact_name:
         description: Final exe file name (uploaded as the artifact name)
@@ -116,6 +120,7 @@ jobs:
           COWORK_SERVER_REF: ${{ inputs.server_ref }}
           ANTON_REF: ${{ inputs.server_ref }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
+          VITE_APP_VERSION: ${{ inputs.app_version }}
 
       - name: Resolve installer path
         id: installer
