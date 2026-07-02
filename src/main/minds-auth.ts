@@ -429,8 +429,8 @@ async function fetchAuthContext(accessToken: string): Promise<{
     console.log(
       '[minds-auth] /authenticate/ status=%s agents.use=%s api_keys.create=%s deploy_agents=%s',
       res.status,
-      ent?.permissions?.agents?.use,
-      ent?.permissions?.api_keys?.create,
+      ent?.permissions?.agents?.use ? 'true' : 'false',
+      ent?.permissions?.api_keys?.create ? 'true' : 'false',
       ent?.allocations?.deploy_agents,
     );
     return { ok: res.ok, status: res.status, body, entitlements: body?.entitlements };
@@ -539,8 +539,8 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
       console.warn(
         '[minds-auth] authenticated without HUB entitlement — minting anyway '
         + '(quota enforced at the gateway): agents.use=%s api_keys.create=%s deploy_agents=%s',
-        norm.permissions.agents.use,
-        norm.permissions.api_keys.create,
+        norm.permissions.agents.use ? 'true' : 'false',
+        norm.permissions.api_keys.create ? 'true' : 'false',
         norm.allocations.deploy_agents,
       );
     }
