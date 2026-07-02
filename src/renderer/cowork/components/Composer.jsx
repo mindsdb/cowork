@@ -1234,7 +1234,6 @@ export default function Composer({
                   <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
                   {model?.id === m.id && <span style={{ color: 'var(--link-strong)' }}>{Ico.check(14)}</span>}
                 </div>
-                {m.desc && <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{m.desc}</div>}
               </button>
             );
           })}

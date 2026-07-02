@@ -872,7 +872,7 @@ export default function SettingsView({
       const o = roleOverride(role);
       if (roleProviderType(role) === type) {
         const pair = recommendedPair['minds-cloud'] || ['', ''];
-        const fallback = pair[role === 'planning' ? 0 : 1] || (recommendedModels['minds-cloud']?.[0] || '');
+        const fallback = pair[role === 'planning' ? 0 : 1] || (recommendedModelOptions(recommendedModels, 'minds-cloud')[0]?.id || '');
         adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
         setRoleDriver(role, 'minds-cloud', fallback);
       } else {
@@ -1574,9 +1574,11 @@ export default function SettingsView({
                       // never shows a forbidden model as the active choice.
                       // Display-only: the persisted override is resolved
                       // server-side; it updates here when the user saves a pick.
+                      // savedOpt is always found when selectValue is a real model
+                      // (savedIsCustom would be true otherwise), so a saved model is
+                      // locked iff its gated entry is.
                       const savedOpt = gated.find((o) => o.id === selectValue);
-                      const savedLocked = selectValue && selectValue !== '__custom__'
-                        && (savedOpt ? savedOpt.locked : isModelLocked({ id: selectValue }, tier));
+                      const savedLocked = selectValue !== '__custom__' && !!(savedOpt && savedOpt.locked);
                       const effectiveValue = savedLocked
                         ? (orderedModels[0]?.id || '')
                         : (selectValue || orderedModels[0]?.id || '');

@@ -1299,7 +1299,6 @@ function AppCore() {
         setSelectedModel({
           id: modelId,
           name: modelLabel(modelId) || modelId || 'Planning model',
-          desc: data.providerLabel ? `${data.providerLabel} planning model` : 'Configured planning model',
         });
       }
     });
@@ -1566,7 +1565,7 @@ function AppCore() {
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
       const modelId = latest.defaultModel || latest.planningModel;
-      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model', desc: 'Configured planning model' });
+      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model' });
     }
     return result;
   }, [settings]);
@@ -1594,7 +1593,7 @@ function AppCore() {
     return selectedProject;
   })();
   const currentTaskModel = currentTask?.model
-    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model, desc: 'Configured planning model' })
+    ? (models.find((m) => m.id === currentTask.model) || { id: currentTask.model, name: currentTask.model })
     : selectedModel;
 
   useEffect(() => {
@@ -3306,11 +3305,15 @@ function AppCore() {
   const appStyle = { width: '100vw', height: '100vh', background: 'transparent' };
 
   const mainBg = 'transparent';
-  const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
-    // Carry the entitlement flag onto the prepended selection so it renders
-    // with the correct locked treatment rather than defaulting to unlocked.
-    ? [{ ...selectedModel, locked: isModelLocked(selectedModel, modelTier) }, ...models]
-    : models;
+  // Memoized so it doesn't re-run isModelLocked / reallocate on every render
+  // (AppCore re-renders frequently during a live stream). When the selection
+  // isn't already in the list, prepend it carrying a computed `locked` flag,
+  // then re-order so a locked selection can't sit above the unlocked models.
+  const modelOptions = useMemo(() => {
+    if (!selectedModel || models.some((m) => m.id === selectedModel.id)) return models;
+    const withSelected = [{ ...selectedModel, locked: isModelLocked(selectedModel, modelTier) }, ...models];
+    return orderUnlockedFirst(withSelected);
+  }, [selectedModel, models, modelTier]);
 
   return (
     <div style={{
