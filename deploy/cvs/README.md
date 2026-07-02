@@ -27,7 +27,7 @@ the container boots preconfigured.
 
 ## How it works
 
-- `scripts/docker-entrypoint.sh` runs before the server. If
+- `scripts/docker-entrypoint.py` runs before the server. If
   `ANTON_ANTHROPIC_API_KEY` is not set it reads `lmsApiKey` from the
   mounted `~/.cvscode/.lms-credentials.json`. On first boot it writes
   all `ANTON_*` env vars to `~/.anton/.env`, which cowork-server's
