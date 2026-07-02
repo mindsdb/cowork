@@ -22,6 +22,8 @@
 export const SETTINGS_KEY_MAP = {
   anthropic_api_key: 'anthropicApiKey',
   openai_api_key: 'openaiApiKey',
+  gemini_api_key: 'geminiApiKey',
+  openai_compatible_api_key: 'openaiCompatibleApiKey',
   minds_api_key: 'mindsApiKey',
   minds_url: 'mindsUrl',
   planning_provider: 'planningProvider',
@@ -34,6 +36,8 @@ export const SETTINGS_KEY_MAP = {
   model_mode: 'modelMode',
   model_overrides: 'modelOverrides',
   providers_json: 'providers',
+  provider_status: 'providerStatus',
+  provider_status_details: 'providerStatusDetails',
   auto_pin: 'autoPin',
   show_dots: 'showDots',
   show_counters: 'showCounters',
@@ -56,7 +60,7 @@ export const CLIENT_TO_SERVER = Object.fromEntries(
 );
 
 /** Fields whose server value is a JSON string that the client uses as an object. */
-const JSON_FIELDS = new Set(['modelOverrides', 'providers']);
+const JSON_FIELDS = new Set(['modelOverrides', 'providers', 'providerStatus', 'providerStatusDetails']);
 
 const PROVIDER_TO_CLIENT = {
   openai_compatible: 'openai-compatible',
@@ -241,9 +245,14 @@ function backfillProviders(result) {
   }
 
   // Stamp the masked sentinel on existing entries that have a stored key.
+  // gemini / openai-compatible read their own slot, falling back to the shared
+  // openai slot for display (mirrors the server-side provider_api_key fallback)
+  // so a user on the legacy shared key still shows as configured.
   for (const p of providers) {
     if (p.type === 'anthropic' && result.anthropicApiKey === '***') p.apiKey = '***';
-    if ((p.type === 'openai' || p.type === 'gemini' || p.type === 'openai-compatible') && result.openaiApiKey === '***') p.apiKey = '***';
+    if (p.type === 'openai' && result.openaiApiKey === '***') p.apiKey = '***';
+    if (p.type === 'gemini' && (result.geminiApiKey === '***' || result.openaiApiKey === '***')) p.apiKey = '***';
+    if (p.type === 'openai-compatible' && (result.openaiCompatibleApiKey === '***' || result.openaiApiKey === '***')) p.apiKey = '***';
     if (p.type === 'minds-cloud' && result.mindsApiKey === '***') p.apiKey = '***';
   }
   if (providers.length > 0 && !providers.some((p) => p.isDefault)) {
@@ -261,9 +270,14 @@ function backfillProviders(result) {
  * Skips: masked sentinels ("***"), unchanged values, and keys that don't
  * map to a server setting.  JSON-encodes object values.
  */
+/** Keys that are read from the server but never written back — they are
+ *  transient UI-only state (e.g. provider test results). */
+const WRITE_SKIP = new Set(['providerStatus', 'providerStatusDetails']);
+
 export function diffSettingsForWrite(patch, lastFetched) {
   const writes = {};
   for (const [clientKey, value] of Object.entries(patch)) {
+    if (WRITE_SKIP.has(clientKey)) continue;
     const serverKey = CLIENT_TO_SERVER[clientKey];
     if (!serverKey) continue;
     if (value === '***') continue;
@@ -290,6 +304,8 @@ export function diffSettingsForWrite(patch, lastFetched) {
 export function providerTypeToKeyField(type) {
   if (type === 'anthropic') return 'anthropicApiKey';
   if (type === 'minds-cloud') return 'mindsApiKey';
-  if (type === 'openai' || type === 'gemini' || type === 'openai-compatible') return 'openaiApiKey';
+  if (type === 'openai') return 'openaiApiKey';
+  if (type === 'gemini') return 'geminiApiKey';
+  if (type === 'openai-compatible') return 'openaiCompatibleApiKey';
   return null;
 }

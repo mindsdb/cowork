@@ -3,10 +3,13 @@ import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
+import { trackHarnessSwapped } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
+import { MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
 import ChannelsView from './ChannelsView';
 
@@ -18,22 +21,26 @@ function decodeJwtPayload(token) {
   } catch { return null; }
 }
 
-function Section({ title, subtitle, children }) {
+function Section({ title, subtitle, notice, children }) {
   return (
     <div className="settings-section" style={{
-      display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24,
+      display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
       padding: '16px 0',
       alignItems: 'flex-start',
     }}>
-      <div>
+      <div style={{ paddingRight: 24 }}>
         <h3 style={{
           margin: 0, padding: 0,
           fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
           fontFamily: 'inherit', lineHeight: 1.3,
         }}>{title}</h3>
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
+        {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
       </div>
-      <div>{children}</div>
+      <div style={{
+        paddingLeft: 24,
+        borderLeft: '1px solid var(--border-subtle)',
+      }}>{children}</div>
     </div>
   );
 }
@@ -115,53 +122,6 @@ function SettingsSectionPanel({ children, footer }) {
   );
 }
 
-function Segmented({ value, onChange, options, style, groupLabel }) {
-  // Use radiogroup semantics when a label is supplied — AT announces the
-  // group and reads each option's checked state. Without a label, fall
-  // back to a plain group so AT users at least hear the boundary.
-  const groupRole = groupLabel ? 'radiogroup' : 'group';
-  return (
-    <div
-      className="segmented"
-      role={groupRole}
-      aria-label={groupLabel}
-      style={style}
-    >
-      {options.map((o) => {
-        const selected = value === o.value;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            className={selected ? 'active' : ''}
-            onClick={() => onChange(o.value)}
-            title={o.title}
-            aria-label={o.ariaLabel || o.title}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Toggle({ value, onChange, title, ariaLabel }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={value}
-      aria-label={ariaLabel}
-      title={title}
-      className={`toggle${value ? ' on' : ''}`}
-      onClick={() => onChange(!value)}
-    >
-      <span className="toggle-thumb" />
-    </button>
-  );
-}
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
@@ -466,7 +426,7 @@ function SetBadge({ hasValue, active }) {
 const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
 
 const PROVIDER_TYPE_DESC = {
-  'minds-cloud': 'Routes via MindsHub with smart model selection.',
+  'minds-cloud': 'All frontier models in one place — Claude, GPT, Gemini, and more.',
   anthropic: 'Use Claude models with your Anthropic API key.',
   openai: 'Use GPT models with your OpenAI API key.',
   gemini: 'Use Gemini models through Google\'s OpenAI-compatible endpoint.',
@@ -555,7 +515,7 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 // ───────────────────────── Nav sidebar ─────────────────────────
 
 const NAV_ITEMS = [
-  { id: 'agent',      label: 'Agent',      icon: 'sparkle'   },
+  { id: 'agent',      label: 'Agent',      icon: 'robot'     },
   { id: 'appearance', label: 'Appearance', icon: 'palette'   },
   { id: 'channels',   label: 'Channels',   icon: 'chats'     },
   { id: 'updates',    label: 'Updates',    icon: 'refresh'   },
@@ -563,7 +523,7 @@ const NAV_ITEMS = [
   { id: 'account',    label: 'Account',    icon: 'people'    },
 ];
 
-function SettingsNav({ section, onSectionChange }) {
+function SettingsNav({ section, onSectionChange, serverOnline = true }) {
   return (
     <nav
       role="navigation"
@@ -588,19 +548,24 @@ function SettingsNav({ section, onSectionChange }) {
       }}>Settings</div>
       {NAV_ITEMS.map((item) => {
         const active = section === item.id;
+        const disabled = !serverOnline && item.id !== 'backend';
         const icon = Ico[item.icon] ? Ico[item.icon](15) : null;
         return (
           <button
             key={item.id}
             type="button"
-            onClick={() => onSectionChange?.(item.id)}
+            onClick={disabled ? undefined : () => onSectionChange?.(item.id)}
             aria-current={active ? 'page' : undefined}
+            aria-disabled={disabled ? 'true' : undefined}
             style={{
               width: '100%',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
               padding: '8px 10px',
+              opacity: disabled ? 0.35 : 1,
+              pointerEvents: disabled ? 'none' : 'auto',
+              cursor: disabled ? 'default' : 'pointer',
               borderRadius: 7,
               border: 0,
               background: active ? 'var(--surface-2)' : 'transparent',
@@ -608,18 +573,17 @@ function SettingsNav({ section, onSectionChange }) {
               fontWeight: active ? 600 : 400,
               fontSize: 13,
               fontFamily: 'inherit',
-              cursor: 'pointer',
               textAlign: 'left',
               transition: 'background 120ms ease, color 120ms ease',
             }}
             onMouseEnter={(e) => {
-              if (!active) {
+              if (!active && !disabled) {
                 e.currentTarget.style.background = 'var(--surface-2, rgba(127,127,127,0.07))';
                 e.currentTarget.style.color = 'var(--ink)';
               }
             }}
             onMouseLeave={(e) => {
-              if (!active) {
+              if (!active && !disabled) {
                 e.currentTarget.style.background = 'transparent';
                 e.currentTarget.style.color = 'var(--ink-3)';
               }
@@ -650,13 +614,14 @@ export default function SettingsView({
   onStopServer,
   section = 'agent',
   onSectionChange,
+  isSsoConnected = false,
+  onSsoSignIn,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
   const [addPickerOpen, setAddPickerOpen] = useState(false);
-  const [bannerVisible, setBannerVisible] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   // Per-role "use a typed model id" flag. Sticky so picking Other…
@@ -726,11 +691,19 @@ export default function SettingsView({
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
   const [llmDirty, setLlmDirty] = useState(false);
+  // Providers currently showing the API key input instead of the status pill.
+  // Starts empty — providers flip to key-edit mode when the user clicks Edit.
+  // Cleared automatically after a successful save+test so the pill re-appears.
+  const [editingProviders, setEditingProviders] = useState(new Set());
   // Snapshot of the last-saved settings JSON. While `settings` matches
   // this snapshot the Save button reads "Saved" — flips back to "Save
   // settings" the moment the user changes anything.
   const [lastSavedJson, setLastSavedJson] = useState(null);
-  const currentJson = JSON.stringify(settings);
+  // Exclude transient test-result fields from the dirty check — they're not
+  // user-editable settings and flip during Save itself, causing the button to
+  // re-enable immediately after a successful save+test cycle.
+  const { providerStatus: _ps, providerStatusDetails: _psd, ...settingsForDirty } = settings;
+  const currentJson = JSON.stringify(settingsForDirty);
   const settingsDirty = lastSavedJson !== null && currentJson !== lastSavedJson;
   // Ref-mirror of `settings` so the post-Save snapshot can read the
   // freshly-refetched value (the closure's `settings` is stale after
@@ -808,6 +781,9 @@ export default function SettingsView({
       ? !!(p.baseUrl || '').trim()
       : !!(p.apiKey || '').trim()
   );
+  const anyProviderFailed = providers.some(
+    (p) => providerConfigured(p) && (settings.providerStatus || {})[p.type] === 'fail',
+  );
 
   // The provider that drives roles in default mode. Mirrors the
   // server's _default_provider: prefer MindsHub when it's actually
@@ -860,20 +836,6 @@ export default function SettingsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providers.length, providers.some((p) => p.type === 'minds-cloud')]);
 
-  // Auto-dismiss the status banner ~3s after a clean success. Failures
-  // stay sticky so the user actually sees what's broken. Cancelled on
-  // re-test by the dependency change.
-  useEffect(() => {
-    if (!bannerVisible || testing || !tested) return;
-    const activeStatuses = Array.from(activeProviderTypes)
-      .map((t) => (settings.providerStatus || {})[t] || 'untested');
-    const allActiveOk = activeStatuses.length > 0 && activeStatuses.every((s) => s === 'ok');
-    if (!(configReady && allActiveOk)) return;
-    const t = setTimeout(() => setBannerVisible(false), 3000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bannerVisible, testing, tested, configReady, settings.providerStatus]);
-
   const updateProviderField = (type, key, value) => {
     setLlmDirty(true);
     updateProviders(providers.map((p) => (p.type === type ? { ...p, [key]: value } : p)));
@@ -884,6 +846,12 @@ export default function SettingsView({
     if (key === 'apiKey' && value !== '***') {
       const settingKey = providerTypeToKeyField(type);
       if (settingKey) setSetting(settingKey, value);
+      const nextStatus = { ...(settings.providerStatus || {}) };
+      const nextDetails = { ...(settings.providerStatusDetails || {}) };
+      delete nextStatus[type];
+      delete nextDetails[type];
+      setSetting('providerStatus', nextStatus);
+      setSetting('providerStatusDetails', nextDetails);
     }
     if (key === 'baseUrl' && (type === 'openai-compatible' || type === 'gemini')) {
       setSetting('openaiBaseUrl', value);
@@ -901,6 +869,10 @@ export default function SettingsView({
     if (PROTECTED_PROVIDER_TYPES.has(type)) return;
     setLlmDirty(true);
     const next = providers.filter((p) => p.type !== type);
+    // Clear the individual API key so backfillProviders doesn't re-add
+    // this provider on the next settings fetch.
+    const keyField = providerTypeToKeyField(type);
+    if (keyField) setSetting(keyField, '');
 
     // Role settings referencing the removed provider get re-pointed
     // at MindsHub with its recommended pair for the role.
@@ -920,38 +892,44 @@ export default function SettingsView({
     updateProviders(next);
   };
 
-  // Tests only the providers currently driving the planning + coding
-  // roles. Each role contributes its driver (its custom override, or
-  // the canonical role setting), so if planning picks Anthropic and
-  // coding picks OpenAI, both get pinged. Inactive registered
-  // providers keep their previous status (no point hammering OpenAI
-  // when the user isn't using it). Sends the active providers' live
-  // state so Test works on un-committed edits; the server merges
-  // results into the persisted status map so dots survive a reload.
-  const runProviderTests = async () => {
-    const activeProviders = providers.filter((p) => activeProviderTypes.has(p.type));
-    if (activeProviders.length === 0) return null;
+  // Re-verify provider connectivity and persist the result. By default tests
+  // only the providers driving the planning + coding roles (each role
+  // contributes its driver — a custom override or the canonical role setting),
+  // so a planning/coding split pings both. Pass an explicit list to test others
+  // — the mount-time background verify passes every configured provider. The
+  // server merges results into the persisted status map, so dots survive a
+  // reload.
+  const runProviderTests = async (targetProviders = null) => {
+    const toTest = targetProviders || providers.filter((p) => activeProviderTypes.has(p.type));
+    if (toTest.length === 0) return null;
 
-    // Flip only the active providers' dots to the transient
-    // "testing" state — preserve everyone else's persisted color.
-    const pendingStatuses = { ...(settings.providerStatus || {}) };
-    const pendingDetails  = { ...(settings.providerStatusDetails || {}) };
-    for (const p of activeProviders) {
-      pendingStatuses[p.type] = 'testing';
-      delete pendingDetails[p.type];
-    }
-    setSetting('providerStatus', pendingStatuses);
-    setSetting('providerStatusDetails', pendingDetails);
-
-    const result = await testProviders(activeProviders);
+    const result = await testProviders(toTest);
     if (result && result.providerStatus) {
-      setSetting('providerStatus', { ...pendingStatuses, ...result.providerStatus });
+      const current = settingsRef.current?.providerStatus || {};
+      const next = { ...current, ...result.providerStatus };
+      const changed = Object.keys(result.providerStatus).some((k) => current[k] !== result.providerStatus[k]);
+      if (changed) setSetting('providerStatus', next);
     }
     if (result && result.providerStatusDetails) {
-      setSetting('providerStatusDetails', { ...pendingDetails, ...result.providerStatusDetails });
+      const currentDetails = settingsRef.current?.providerStatusDetails || {};
+      setSetting('providerStatusDetails', { ...currentDetails, ...result.providerStatusDetails });
     }
     return result;
   };
+
+  // On first mount (once settings have loaded so providers is populated),
+  // re-verify every configured provider in the background so the seeded
+  // connected-from-credentials dots converge to real connectivity. Ref-guarded
+  // to fire a single time per mount.
+  const didMountVerify = useRef(false);
+  useEffect(() => {
+    if (didMountVerify.current) return;
+    const configured = providers.filter(providerConfigured);
+    if (configured.length === 0) return;
+    didMountVerify.current = true;
+    runProviderTests(configured).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers]);
 
   // In default model mode the role provider/model fields are never edited
   // directly — only the custom-mode controls call setRoleDriver — so the
@@ -983,23 +961,39 @@ export default function SettingsView({
     // new config is usable. Provider tests only fire when the LLM
     // settings actually changed since the last Save — no point hitting
     // the network when the user just toggled the dot grid.
-    const shouldTestLlm = llmDirty;
-    setBannerVisible(true);
+    const shouldTestLlm = llmDirty || anyProviderFailed;
     setTesting(true);
     setTested(false);
     try {
       await onSave(withResolvedRoles(settings));
-      const tasks = [validateSettings()];
-      if (shouldTestLlm) tasks.push(runProviderTests());
-      const [result] = await Promise.all(tasks);
+      // Record the harness swap only now that it's persisted (ENG-385). Compare
+      // against the pre-save snapshot — settingsRef holds the latest value since
+      // the closure `settings` is stale after the await.
+      try {
+        const prevHarness = lastSavedJson ? (JSON.parse(lastSavedJson).harness || 'anton') : null;
+        const savedHarness = settingsRef.current?.harness || 'anton';
+        if (prevHarness && savedHarness !== prevHarness) trackHarnessSwapped(prevHarness, savedHarness);
+      } catch { /* analytics must never break Save */ }
+      const result = await validateSettings();
       setValidation(result);
+      if (shouldTestLlm) {
+        // Use settingsRef.current.providers (post-save, fresh) instead of the
+        // stale closure so newly-added providers with masked keys ('***') are
+        // included — the backend resolves '***' from storage. Running this
+        // after validateSettings (not concurrently) ensures the snapshot below
+        // captures the final 'ok'/'fail' state, not the transient 'testing' state.
+        const freshProviders = settingsRef.current?.providers || [];
+        await runProviderTests(freshProviders.filter(providerConfigured));
+        setLlmDirty(false);
+        setEditingProviders(new Set());
+      }
       setTested(true);
-      if (shouldTestLlm) setLlmDirty(false);
       // Snapshot the now-current settings so the Save button flips to
       // "Saved" until the user makes another edit. settingsRef tracks
       // the latest re-rendered value (the closure's `settings` is the
       // pre-save copy and stale by now).
-      setLastSavedJson(JSON.stringify(settingsRef.current));
+      const { providerStatus: _ps2, providerStatusDetails: _psd2, ...savedForDirty } = settingsRef.current || {};
+      setLastSavedJson(JSON.stringify(savedForDirty));
       setSaved(true);
       setTimeout(() => setTested(false), 2400);
     } catch (err) {
@@ -1014,13 +1008,8 @@ export default function SettingsView({
     }
   };
 
-  // Re-validate config against the server. Without explicit progress +
-  // success states the button looks dead when the config was already
-  // green (the banner has nothing to flip to), so we drive a brief
-  // "Testing…" → "Tested" sequence on the button itself.
   const validate = async () => {
     if (testing) return;
-    setBannerVisible(true);
     setTesting(true);
     setTested(false);
     try {
@@ -1134,72 +1123,41 @@ export default function SettingsView({
             : 'Changes apply on save.'}
         </span>
       </div>
-      <button className="btn-secondary" onClick={validate} title="Re-run the configuration and active-provider tests.">Test</button>
       <button
         className="btn-primary" onClick={save}
-        disabled={!settingsDirty || testing || missingCustomNames}
-        title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : !settingsDirty ? 'No unsaved changes' : 'Save changes and re-run provider tests.'}
-        style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: (!settingsDirty || testing || missingCustomNames) ? 0.55 : 1, cursor: (!settingsDirty || testing || missingCustomNames) ? 'default' : 'pointer' }}
+        disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
+        title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}
+        style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
       >
-        {testing ? 'Saving…' : settingsDirty ? 'Save settings' : <>{Ico.check(14)} Saved</>}
+        {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
       </button>
     </>
   );
 
-  const renderBanner = () => {
-    if (!bannerVisible) return null;
-    const activeTypes = Array.from(activeProviderTypes);
-    const activeStatuses = activeTypes.map((t) => (settings.providerStatus || {})[t] || 'untested');
-    const anyActiveFail = activeStatuses.some((s) => s === 'fail');
-    const allActiveOk = activeStatuses.length > 0 && activeStatuses.every((s) => s === 'ok');
-    const effectiveReady = configReady && !anyActiveFail;
-    const tone = testing
-      ? { border: 'rgba(127,127,127,0.40)', bg: 'rgba(127,127,127,0.10)', icoFg: 'var(--text-muted)', icoBg: 'rgba(127,127,127,0.16)' }
-      : effectiveReady
-        ? { border: 'rgba(93,146,135,0.45)', bg: 'rgba(93,146,135,0.10)', icoFg: 'var(--sage-500)', icoBg: 'rgba(93,146,135,0.16)' }
-        : { border: 'rgba(211,80,80,0.40)', bg: 'rgba(211,80,80,0.08)', icoFg: '#E07060', icoBg: 'rgba(211,80,80,0.14)' };
-    const title = testing ? 'Testing configuration…'
-      : anyActiveFail ? `${agentLabel || 'Anton'} needs a valid LLM provider and API key to work`
-      : tested ? (effectiveReady ? `${agentLabel || 'Anton'} setup correctly` : 'Test failed')
-      : effectiveReady ? `${agentLabel || 'Anton'} setup correctly` : `${agentLabel || 'Anton'} needs configuration`;
-    const subtitle = testing ? 'Talking to the active provider — hold on.'
-      : anyActiveFail ? 'The provider driving your planning or coding role failed its last test. Check the red row below.'
-      : (allActiveOk ? 'Active provider passed the test.' : (configError || 'Provider, model, and credentials are ready.'));
-    const icon = testing ? <span className="spinner" style={{ width: 15, height: 15 }} /> : effectiveReady ? Ico.check(15) : Ico.key(15);
-    const bannerRole = anyActiveFail || (tested && !effectiveReady) ? 'alert' : 'status';
-    return (
-      <div role={bannerRole} aria-live={bannerRole === 'alert' ? 'assertive' : 'polite'} aria-atomic="true"
-        style={{ padding: 14, marginBottom: 20, border: `1px solid ${tone.border}`, background: tone.bg, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, animation: tested && !testing ? 'set-badge-pulse 1.6s ease-out 1' : 'none', transition: 'background .2s ease, border-color .2s ease' }}
-      >
-        <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tone.icoFg, background: tone.icoBg, transition: 'background .2s ease, color .2s ease' }}>{icon}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 650, color: 'var(--text-strong)' }}>{title}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</div>
-        </div>
-        <button className="btn-secondary" onClick={validate} disabled={testing} aria-busy={testing} title="Re-run the configuration and active-provider tests." style={testing ? { opacity: 0.7, cursor: 'progress' } : undefined}>{testButtonLabel}</button>
-        <button type="button" onClick={() => setBannerVisible(false)} disabled={testing} title="Dismiss" aria-label="Dismiss banner"
-          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 0, background: 'transparent', color: 'var(--text-muted)', cursor: testing ? 'not-allowed' : 'pointer', opacity: testing ? 0.4 : 1 }}
-        >{Ico.close(13)}</button>
-      </div>
-    );
-  };
-
   // ───────────────────────── Section renderers ─────────────────────────
 
-  const renderAgentSection = () => (
+  const renderAgentSection = () => {
+    const anyProviderConfigured = providers.some(providerConfigured);
+    return (
     <SettingsSectionPanel footer={renderSaveFooter()}>
-      {renderBanner()}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ order: anyProviderConfigured ? 2 : 0 }}>
       <CollapsibleGroup title="LLM Providers">
         {providers.map((p) => {
-          const isActive = activeProviderTypes.has(p.type);
+          const configured = providerConfigured(p);
           const label = typeLabels[p.type] || p.type;
           const reveal = p.type === 'anthropic' ? 'anthropic'
             : p.type === 'minds-cloud' ? 'minds'
-            : (p.type === 'openai' || p.type === 'gemini' || p.type === 'openai-compatible') ? 'openai'
+            : p.type === 'gemini' ? 'gemini'
+            : p.type === 'openai-compatible' ? 'openai-compatible'
+            : p.type === 'openai' ? 'openai'
             : null;
+          // Show the persisted/seeded status for any configured provider — a
+          // configured provider reads as connected at startup, not just the one
+          // currently driving a role. Unconfigured rows have nothing to show.
           const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
-          const status = isActive ? rawStatus : 'untested';
-          const detail = isActive ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
+          const status = (p.type === 'minds-cloud' && isSsoConnected) ? 'ok' : configured ? rawStatus : 'untested';
+          const detail = configured ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
           const friendlyError = (() => {
             if (!detail) return '';
             if (detail === 'missing API key') return 'Add an API key on the right.';
@@ -1225,35 +1183,40 @@ export default function SettingsView({
             }
             return detail;
           })();
-          const dotColor = status === 'ok' ? '#7CC4B6'
-            : status === 'fail' ? '#E07060'
-            : status === 'testing' ? '#E5B57A'
-            : 'rgba(127,127,127,0.6)';
-          // Glow for active states (ok/fail/testing); untested rows get
-          // a subtle 1px ring instead so the dot still reads as an
-          // intentional indicator rather than a blob of grey.
-          const dotGlow = status === 'ok' ? '0 0 6px rgba(124,196,182,0.7)'
-            : status === 'fail' ? '0 0 6px rgba(224,112,96,0.6)'
-            : status === 'testing' ? '0 0 6px rgba(229,181,122,0.7)'
-            : 'inset 0 0 0 1px rgba(255,255,255,0.08), 0 0 0 1px var(--border-subtle)';
-          const dotTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
+          const statusPillLabel = status === 'ok' ? 'connected'
+            : status === 'fail' ? 'unable to connect'
+            : status === 'testing' ? 'testing…'
+            : configured ? 'not tested'
+            : null;
+          const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
             : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
             : status === 'testing' ? 'Testing…'
-            : 'Not tested yet';
-          const dot = (
+            : 'Not tested yet — save settings and run a test to verify.';
+          const statusPillColor = status === 'ok'
+            ? { bg: 'rgba(124,196,182,0.15)', border: 'rgba(124,196,182,0.4)', color: '#7CC4B6' }
+            : status === 'fail'
+            ? { bg: 'rgba(224,112,96,0.15)', border: 'rgba(224,112,96,0.4)', color: '#E07060' }
+            : status === 'testing'
+            ? { bg: 'rgba(229,181,122,0.12)', border: 'rgba(229,181,122,0.35)', color: '#E5B57A' }
+            : configured
+            ? { bg: 'rgba(127,127,127,0.08)', border: 'rgba(127,127,127,0.2)', color: 'var(--text-muted)' }
+            : null;
+          const statusPill = statusPillColor ? (
             <span
-              title={dotTitle}
-              aria-label={dotTitle}
+              title={statusPillTitle}
+              aria-label={statusPillTitle}
               style={{
-                display: 'inline-block',
-                width: 10, height: 10, borderRadius: 999,
-                background: dotColor,
-                boxShadow: dotGlow,
+                display: 'inline-flex', alignItems: 'center',
+                padding: '2px 8px', borderRadius: 999,
+                fontSize: 11, fontWeight: 500, letterSpacing: '0.01em',
+                background: statusPillColor.bg,
+                border: `1px solid ${statusPillColor.border}`,
+                color: statusPillColor.color,
                 flexShrink: 0,
                 animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
               }}
-            />
-          );
+            >{statusPillLabel}</span>
+          ) : null;
           // Each provider row is a sub-section in the Providers group,
           // so every row gets an <h3> for SR heading navigation. Known
           // types render the label visibly; the openai-compatible row
@@ -1270,7 +1233,6 @@ export default function SettingsView({
             : null;
           const titleNode = (
             <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              {dot}
               {p.type === 'openai-compatible' ? (() => {
                 const nameEmpty = !(p.name || '').trim();
                 const errorId = `provider-name-error-${p.type}`;
@@ -1302,6 +1264,17 @@ export default function SettingsView({
               )}
             </span>
           );
+          // Show the key input when: unconfigured, never tested, or user clicked Edit.
+          // Otherwise the middle column shows the status pill and an Edit button appears.
+          const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
+          const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
+          const iconBtnStyle = {
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 30, height: 30, borderRadius: 8,
+            background: 'transparent',
+            border: '1px solid var(--border-subtle)',
+            cursor: 'pointer',
+          };
           return (
             <div key={p.type} className="settings-provider-row" style={{
               display: 'grid',
@@ -1310,6 +1283,7 @@ export default function SettingsView({
               padding: '16px 0',
               alignItems: 'flex-start',
             }}>
+              {/* Left: name + description */}
               <div>
                 {titleNode}
                 {PROVIDER_TYPE_DESC[p.type] && (
@@ -1317,83 +1291,97 @@ export default function SettingsView({
                     fontSize: 12, color: 'var(--text-muted)',
                     marginTop: 6, maxWidth: 380, lineHeight: 1.45,
                   }}>
-                    <div>{PROVIDER_TYPE_DESC[p.type]}</div>
-                    {p.type === 'minds-cloud' && (
-                      <div>Required to publish artifacts to the web.</div>
-                    )}
+                    {PROVIDER_TYPE_DESC[p.type]}
                   </div>
                 )}
               </div>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <ApiKeyInput
-                  value={p.apiKey ?? ''}
-                  onChange={(v) => updateProviderField(p.type, 'apiKey', v)}
-                  placeholder={
-                    p.type === 'anthropic' ? 'sk-ant-••••••••' :
-                    p.type === 'minds-cloud' ? 'mdb_••••••••' :
-                    p.type === 'gemini' ? 'AIza••••••••' :
-                    'sk-••••••••'
-                  }
-                  revealName={reveal}
-                />
-                {p.type === 'openai-compatible' && (
-                  <ClearableTextInput
-                    value={p.baseUrl ?? ''}
-                    onChange={(v) => updateProviderField('openai-compatible', 'baseUrl', v)}
-                    placeholder="https://example.com/v1"
-                    ariaLabel="Base URL"
-                  />
-                )}
-                {GET_KEY_URL[p.type] && (
-                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                    Get your API key at{' '}
-                    <a
-                      href={GET_KEY_URL[p.type]}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                      style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                    >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
-                  </div>
-                )}
-                {p.type === 'minds-cloud' && (
-                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                    Don't have an account?{' '}
-                    <a
-                      href={MINDS_REGISTER_URL}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      title="Open the MindsHub sign-up page in your browser."
-                      style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                    >Sign up →</a>
-                  </div>
-                )}
-                {status === 'fail' && friendlyError && (
-                  <div style={{
-                    fontSize: 11.5,
-                    color: '#E07060',
-                    display: 'flex', alignItems: 'flex-start', gap: 6,
-                  }}>
-                    <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
-                    <span>{friendlyError}</span>
-                  </div>
-                )}
-              </div>
-              <div style={{ width: 30, height: 30 }}>
+
+              {/* Middle: status pill (tested) OR key input (editing / untested) */}
+              {showKeyInput ? (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {ssoMindsHub ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0' }}>
+                      {statusPill}
+                    </div>
+                  ) : (
+                    <ApiKeyInput
+                      value={p.apiKey ?? ''}
+                      onChange={(v) => updateProviderField(p.type, 'apiKey', v)}
+                      placeholder={
+                        p.type === 'anthropic' ? 'sk-ant-••••••••' :
+                        p.type === 'minds-cloud' ? 'mdb_••••••••' :
+                        p.type === 'gemini' ? 'AIza••••••••' :
+                        'sk-••••••••'
+                      }
+                      revealName={reveal}
+                    />
+                  )}
+                  {p.type === 'openai-compatible' && (
+                    <ClearableTextInput
+                      value={p.baseUrl ?? ''}
+                      onChange={(v) => updateProviderField('openai-compatible', 'baseUrl', v)}
+                      placeholder="https://example.com/v1"
+                      ariaLabel="Base URL"
+                    />
+                  )}
+                  {GET_KEY_URL[p.type] && !ssoMindsHub && (
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                      Get your API key at{' '}
+                      <a
+                        href={GET_KEY_URL[p.type]}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
+                        style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                      >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                    </div>
+                  )}
+                  {p.type === 'minds-cloud' && !isSsoConnected && (
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                      Don't have an account?{' '}
+                      <a
+                        href={MINDS_REGISTER_URL}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title="Open the MindsHub sign-up page in your browser."
+                        style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                      >Sign up →</a>
+                    </div>
+                  )}
+                  {status === 'fail' && friendlyError && (
+                    <div style={{ fontSize: 11.5, color: '#E07060', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                      <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
+                      <span>{friendlyError}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Status pill replaces the key input after a test result
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0', gap: 10 }}>
+                  {status === 'fail' && friendlyError && (
+                    <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
+                  )}
+                  {statusPill}
+                </div>
+              )}
+
+              {/* Right: trash + edit buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 30 }}>
                 {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
                   <button
                     type="button"
                     onClick={() => removeProvider(p.type)}
                     title="Remove this provider"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 30, height: 30, borderRadius: 8,
-                      background: 'transparent',
-                      border: '1px solid var(--border-subtle)',
-                      color: '#E07060',
-                      cursor: 'pointer',
-                    }}
+                    style={{ ...iconBtnStyle, color: '#E07060' }}
                   >{Ico.trash(13)}</button>
+                )}
+                {!showKeyInput && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
+                    title="Edit API key"
+                    style={{ ...iconBtnStyle, color: 'var(--ink-3)' }}
+                  >{Ico.edit(13)}</button>
                 )}
               </div>
             </div>
@@ -1460,7 +1448,8 @@ export default function SettingsView({
           </div>
         </div>
       </CollapsibleGroup>
-
+      </div>
+      <div style={{ order: anyProviderConfigured ? 1 : 0 }}>
       <CollapsibleGroup title="Agent Models">
         {(() => {
           // The default-mode provider is the implicit fallback for
@@ -1479,15 +1468,39 @@ export default function SettingsView({
           // provider's recommended pair.
           const RoleRow = ({ role, label }) => {
             const cur = roleOverride(role) || {};
-            const curType = roleProviderType(role) || (defaultProvider?.type || '');
+            // Resolve the effective provider for this role. The server may
+            // store a stale planning_provider (e.g. 'anthropic') that doesn't
+            // match any configured provider card. When that happens, fall back
+            // to defaultModeProviderType (which prefers the actually-configured
+            // provider — MindsHub if available, else first configured).
+            const rawType = roleProviderType(role) || (defaultProvider?.type || '');
+            const rawProvider = providers.find((p) => p.type === rawType);
+            const curType = (rawProvider && providerConfigured(rawProvider))
+              ? rawType
+              : defaultModeProviderType;
+            const providerWasRepointed = curType !== rawType;
             const fallbackPair = recommendedPair[curType] || ['', ''];
             const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
-            const curModel = roleModelValue(role, fallbackModel);
+            const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
             const provider = providers.find((p) => p.type === curType);
             const modelList = recommendedModels[curType] || [];
+            // Per-model availability (settings.modelEnabled, sourced from MindsHub
+            // /v1/models). A model the user's tier can't use is listed here as
+            // false so we render it greyed + non-selectable — an upgrade prompt.
+            // Absent id ⇒ available (backwards compatible; direct providers have
+            // no such flag).
+            const modelEnabled = settings.modelEnabled || {};
+            const isLocked = (m) => modelEnabled[m] === false;
+            const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
             const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
             const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
-            const providerUnusable = providerUnconfigured || providerFailed;
+            const providerFailDetail = (settings.providerStatusDetails || {})[curType] || '';
+            const isNoCredits = providerFailed && curType === 'minds-cloud'
+              && (providerFailDetail.includes('402')
+                || providerFailDetail.includes('429')
+                || providerFailDetail.toLowerCase().includes('credit')
+                || providerFailDetail.toLowerCase().includes('quota'));
+            const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits;
             const providerWarnId = `agent-model-${role}-provider`;
 
             // Reasoning effort — a per-role setting shown beside the model
@@ -1518,54 +1531,69 @@ export default function SettingsView({
               setSetting(effortKey, '');
             };
 
+            const fieldLabel = (text) => (
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: 'var(--text-strong)',
+                textDecoration: 'underline', textDecorationStyle: 'dotted',
+                textDecorationColor: 'rgba(127,127,127,0.45)', textUnderlineOffset: '3px',
+                letterSpacing: '0.02em',
+              }}>{text}:</span>
+            );
+
+            const noCreditsNotice = isNoCredits ? (
+              <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                <span style={{ color: '#E07060', fontWeight: 600 }}>No credits available. </span>
+                <button
+                  type="button"
+                  onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent, #7CC4B6)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                >Top up credits →</button>
+                <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
+              </div>
+            ) : null;
+
             return (
-              <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`}>
+              <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`} notice={noCreditsNotice}>
                 <div style={{ display: 'grid', gap: 6 }}>
                   {multipleProviders && (
-                    <select
-                      className="settings-select"
-                      value={curType}
-                      onChange={(e) => {
-                        const t = e.target.value;
-                        const pair = recommendedPair[t] || ['', ''];
-                        const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
-                        setModelInputMode((m) => ({ ...m, [role]: false }));
-                        writeOverride({ providerType: t, model: newModel });
-                      }}
-                      aria-invalid={providerUnusable || undefined}
-                      aria-describedby={providerUnusable ? providerWarnId : undefined}
-                      title={`Choose which provider powers the ${role} role.`}
-                      style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
-                    >
-                      {providers.map((p) => (
-                        <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
-                      ))}
-                    </select>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      {fieldLabel('Provider')}
+                      <select
+                        className="settings-select"
+                        value={curType}
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          const pair = recommendedPair[t] || ['', ''];
+                          const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
+                          setModelInputMode((m) => ({ ...m, [role]: false }));
+                          writeOverride({ providerType: t, model: newModel });
+                        }}
+                        aria-invalid={providerUnusable || undefined}
+                        aria-describedby={providerUnusable ? providerWarnId : undefined}
+                        title={`Choose which provider powers the ${role} role.`}
+                        style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
+                      >
+                        {providers.map((p) => (
+                          <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
+                        ))}
+                      </select>
+                    </label>
                   )}
                   {modelList.length > 0 ? (
                     (() => {
-                      // The "Other…" option lets the user type a
-                      // free-form model id. MindsHub's list is
-                      // comprehensive enough that we hide the
-                      // Other escape hatch there. Sticky flag
-                      // keeps the text input visible after
-                      // selecting Other even when the value is
-                      // still empty.
                       const allowOther = curType !== 'minds-cloud';
                       const savedIsCustom = !!curModel && !modelList.includes(curModel);
                       const inputMode = modelInputMode[role] || savedIsCustom;
                       const selectValue = inputMode ? '__custom__' : curModel;
                       return (
-                        <>
+                        <label style={{ display: 'grid', gap: 4 }}>
+                          {fieldLabel('Model')}
                           <select
                             className="settings-select"
-                            value={selectValue || (modelList[0] || '')}
+                            value={selectValue || firstEnabledModel}
                             onChange={(e) => {
                               if (e.target.value === '__custom__') {
                                 setModelInputMode((m) => ({ ...m, [role]: true }));
-                                // Keep whatever curModel already
-                                // had so the user can refine it,
-                                // instead of blanking it.
                                 writeOverride({ providerType: curType, model: curModel || '' });
                               } else {
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
@@ -1575,7 +1603,11 @@ export default function SettingsView({
                             title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                             style={{ width: '100%' }}
                           >
-                            {modelList.map((m) => <option key={m} value={m}>{modelLabel(m)}</option>)}
+                            {modelList.map((m) => (
+                              <option key={m} value={m} disabled={isLocked(m)}>
+                                {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
+                              </option>
+                            ))}
                             {allowOther && <option value="__custom__">Other…</option>}
                           </select>
                           {inputMode && allowOther && (
@@ -1586,20 +1618,23 @@ export default function SettingsView({
                               title="Free-form model id sent verbatim to the provider."
                             />
                           )}
-                        </>
+                        </label>
                       );
                     })()
                   ) : (
-                    <TextInput
-                      value={curModel}
-                      onChange={(v) => writeOverride({ providerType: curType, model: v })}
-                      placeholder="model-id"
-                      title="Model id sent verbatim to this provider."
-                    />
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      {fieldLabel('Model')}
+                      <TextInput
+                        value={curModel}
+                        onChange={(v) => writeOverride({ providerType: curType, model: v })}
+                        placeholder="model-id"
+                        title="Model id sent verbatim to this provider."
+                      />
+                    </label>
                   )}
                   {showEffort && (
                     <label style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>Reasoning effort</span>
+                      {fieldLabel('Reasoning effort')}
                       <select
                         className="settings-select"
                         value={effortValue}
@@ -1632,16 +1667,18 @@ export default function SettingsView({
           );
         })()}
       </CollapsibleGroup>
+      </div>
+      </div>
 
       <CollapsibleGroup title="Agent Harness">
         <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-          <Segmented
+          <ToggleGroup
             value={settings.harness || 'anton'}
-            onChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-            groupLabel="Agent harness"
+            onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+            aria-label="Agent harness"
             options={[
-              { value: 'anton',  label: 'Anton',  ariaLabel: 'Use Anton agent',  title: 'Anton — the default AI agent.' },
-              { value: 'hermes', label: 'Hermes', ariaLabel: 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+              { value: 'anton',  label: 'Anton',  'aria-label': 'Use Anton agent',  title: 'Anton — the default AI agent.' },
+              { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
             ]}
           />
         </Section>
@@ -1649,10 +1686,10 @@ export default function SettingsView({
 
       <CollapsibleGroup title="Memory" defaultOpen={false}>
         <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
-          <Segmented
+          <ToggleGroup
             value={settings.memoryMode ?? 'autopilot'}
-            onChange={(v) => setSetting('memoryMode', v)}
-            groupLabel="Memory mode"
+            onValueChange={(v) => setSetting('memoryMode', v)}
+            aria-label="Memory mode"
             options={[
               { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
               { value: 'copilot',   label: 'Copilot',   title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
@@ -1661,68 +1698,69 @@ export default function SettingsView({
           />
         </Section>
         <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
-          <Toggle
-            value={settings.episodicMemory ?? true}
-            onChange={(v) => setSetting('episodicMemory', v)}
+          <Switch
+            checked={settings.episodicMemory ?? true}
+            onCheckedChange={(v) => setSetting('episodicMemory', v)}
             title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
-            ariaLabel="Episodic memory"
+            aria-label="Episodic memory"
           />
         </Section>
         <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
-          <Toggle
-            value={settings.proactiveDashboards ?? false}
-            onChange={(v) => setSetting('proactiveDashboards', v)}
+          <Switch
+            checked={settings.proactiveDashboards ?? false}
+            onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
             title="Auto-generate HTML reports from scratchpad output."
-            ariaLabel="Proactive dashboards"
+            aria-label="Proactive dashboards"
           />
         </Section>
         <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
-          <Toggle
-            value={settings.actFirst ?? true}
-            onChange={(v) => setSetting('actFirst', v)}
+          <Switch
+            checked={settings.actFirst ?? true}
+            onCheckedChange={(v) => setSetting('actFirst', v)}
             title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
-            ariaLabel="Act first, ask later"
+            aria-label="Act first, ask later"
           />
         </Section>
       </CollapsibleGroup>
     </SettingsSectionPanel>
   );
+  };
 
   const renderAppearanceSection = () => (
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <CollapsibleGroup title="Appearance">
       <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
-        <Segmented
+        <ToggleGroup
           value={theme || 'dark'}
-          onChange={(v) => onThemeChange?.(v)}
-          groupLabel="Theme"
+          onValueChange={(v) => onThemeChange?.(v)}
+          aria-label="Theme"
           options={[
             {
               value: 'light',
               label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
-              ariaLabel: 'Light theme',
+              'aria-label': 'Light theme',
               title: 'Use the light theme.',
             },
             {
               value: 'dark',
               label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
-              ariaLabel: 'Dark theme',
+              'aria-label': 'Dark theme',
               title: 'Use the dark theme.',
             },
           ]}
         />
       </Section>
       <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-        <Segmented
+        <ToggleGroup
           value={normalizeSkin(skin)}
-          onChange={(v) => onSkinChange?.(v)}
-          groupLabel="Style"
+          onValueChange={(v) => onSkinChange?.(v)}
+          aria-label="Style"
           options={SKINS.map((s) => ({
             value: s.id,
             label: s.icon && Ico[s.icon]
               ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
               : s.label,
-            ariaLabel: `${s.label} style`,
+            'aria-label': `${s.label} style`,
             title: s.title,
           }))}
         />
@@ -1759,34 +1797,34 @@ export default function SettingsView({
             </div>
           </Section>
           <Section title="Corners" subtitle="How sharp the surfaces feel.">
-            <Segmented
+            <ToggleGroup
               value={String(customTheme.radius)}
-              onChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
-              groupLabel="Corner radius"
+              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+              aria-label="Corner radius"
               options={[
-                { value: '0', label: 'Square', ariaLabel: 'Square corners', title: 'Sharp pixel corners.' },
-                { value: '6', label: 'Soft', ariaLabel: 'Soft corners', title: 'Gently rounded.' },
-                { value: '12', label: 'Round', ariaLabel: 'Round corners', title: 'Fully rounded.' },
+                { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
+                { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
+                { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
               ]}
             />
           </Section>
           <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
-            <Segmented
+            <ToggleGroup
               value={customTheme.font}
-              onChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
-              groupLabel="Custom typeface"
+              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+              aria-label="Custom typeface"
               options={[
-                { value: 'standard', label: 'Standard', ariaLabel: 'Standard font', title: 'Inter for UI text.' },
-                { value: 'mono', label: 'Mono', ariaLabel: 'Mono font', title: 'JetBrains Mono everywhere.' },
+                { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
+                { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
               ]}
             />
           </Section>
           <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
-            <Toggle
-              value={customTheme.scanlines}
-              onChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+            <Switch
+              checked={customTheme.scanlines}
+              onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
               title="Toggle the CRT scanline overlay."
-              ariaLabel="Scanline overlay"
+              aria-label="Scanline overlay"
             />
           </Section>
         </>
@@ -1801,19 +1839,19 @@ export default function SettingsView({
       </Section>
       <div className="settings-hide-mobile">
         <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
-          <Toggle
-            value={settings.showDots}
-            onChange={(v) => setSetting('showDots', v)}
+          <Switch
+            checked={settings.showDots}
+            onCheckedChange={(v) => setSetting('showDots', v)}
             title="Toggle the animated grid background."
-            ariaLabel="Animated background"
+            aria-label="Animated background"
           />
         </Section>
         <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-          <Toggle
-            value={settings.showCounters !== false}
-            onChange={(v) => setSetting('showCounters', v)}
+          <Switch
+            checked={settings.showCounters !== false}
+            onCheckedChange={(v) => setSetting('showCounters', v)}
             title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
-            ariaLabel="Nav-panel counters"
+            aria-label="Nav-panel counters"
           />
         </Section>
       </div>
@@ -1878,10 +1916,10 @@ export default function SettingsView({
           title="UI updates"
           subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
         >
-          <Segmented
+          <ToggleGroup
             value={settings.uiUpdateMode ?? 'auto'}
-            onChange={(v) => setSetting('uiUpdateMode', v)}
-            groupLabel="UI update mode"
+            onValueChange={(v) => setSetting('uiUpdateMode', v)}
+            aria-label="UI update mode"
             options={[
               { value: 'auto',   label: 'Auto',   title: 'Download and apply UI updates automatically.' },
               { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
@@ -2147,6 +2185,84 @@ export default function SettingsView({
       </div>
     );
 
+    const signInCard = !accountUser && onSsoSignIn && (
+      <div style={{
+        ...CARD,
+        padding: '32px 28px 28px',
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 24,
+        background: 'color-mix(in srgb, var(--accent, #5d9287) 5%, var(--surface-glass))',
+        borderColor: 'color-mix(in srgb, var(--accent, #5d9287) 28%, transparent)',
+      }}>
+        {/* Header */}
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-strong)', lineHeight: 1.25, marginBottom: 6 }}>
+            Enable cloud capabilities
+          </div>
+          <div style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: 440 }}>
+            Sign in with MindsHub to access every model, cloud execution, and publishing — all in one place.
+          </div>
+        </div>
+
+        {/* Feature grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', width: '100%' }}>
+          {[
+            { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
+            { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
+            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z"/></svg>, label: 'Publish & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
+            { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
+          ].map(({ icon, label, desc, soon }) => (
+            <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{
+                fontSize: 16, lineHeight: 1,
+                color: 'var(--accent, #5d9287)',
+                marginTop: 2, flexShrink: 0,
+                display: 'inline-flex', alignItems: 'center',
+              }}>{icon}</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {label}
+                  {soon && (
+                    <span style={{
+                      fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
+                      padding: '1px 5px', borderRadius: 99,
+                      background: 'rgba(127,127,127,0.1)', border: '1px solid rgba(127,127,127,0.2)',
+                      color: 'var(--text-muted)',
+                    }}>coming soon</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>{desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <button
+          type="button"
+          onClick={onSsoSignIn}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '10px 20px', borderRadius: 9, border: 'none',
+            background: 'var(--accent, #5d9287)',
+            color: '#fff',
+            fontSize: 14, fontWeight: 650, fontFamily: 'inherit',
+            cursor: 'pointer',
+            boxShadow: '0 2px 12px color-mix(in srgb, var(--accent, #5d9287) 40%, transparent)',
+            transition: 'opacity 120ms ease, box-shadow 120ms ease',
+          }}
+          onMouseOver={(e) => { e.currentTarget.style.opacity = '0.88'; }}
+          onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <polyline points="10 17 15 12 10 7" />
+            <line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+          Sign in / Sign up to MindsHub
+        </button>
+      </div>
+    );
+
     if (!host.isElectron) {
       return (
         <SettingsSectionPanel>
@@ -2162,9 +2278,11 @@ export default function SettingsView({
 
     return (
       <SettingsSectionPanel>
+        {signInCard}
         {userCard}
-        <div style={{ ...CARD, padding: '0 18px 8px' }}>
+        {accountUser && <div style={{ ...CARD, padding: '0 18px 8px' }}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button type="button" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#E07060', background: 'rgba(224,112,96,0.08)', border: '1px solid rgba(224,112,96,0.35)', cursor: loggingOut ? 'progress' : 'pointer', fontFamily: 'inherit', opacity: loggingOut ? 0.7 : 1 }}
             >
@@ -2175,15 +2293,16 @@ export default function SettingsView({
               </svg>
               {loggingOut ? 'Signing out…' : 'Sign out'}
             </button>
+            </div>
           </Section>
-        </div>
+        </div>}
       </SettingsSectionPanel>
     );
   };
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
-      <SettingsNav section={section} onSectionChange={onSectionChange} />
+      <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
       {section === 'agent'      && renderAgentSection()}
       {section === 'appearance' && renderAppearanceSection()}

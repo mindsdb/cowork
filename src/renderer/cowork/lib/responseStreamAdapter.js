@@ -1,4 +1,4 @@
-import { trackArtifactBuilt as _trackArtifactBuilt } from './analytics';
+import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -211,7 +211,7 @@ function deriveCellStatus(serverStatus, parsedCell) {
  * @param {() => number} [now] — clock injection for tests
  * @returns {object} new state
  */
-export function reduceStream(state, event, now = Date.now) {
+export function reduceStream(state, event, now = Date.now, { replay = false } = {}) {
   if (!event || typeof event !== 'object') return state;
   const type = event.type;
 
@@ -247,6 +247,12 @@ export function reduceStream(state, event, now = Date.now) {
   }
 
   if (type === 'response.failed') {
+    // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
+    // on receipt — not in the render path (ChatView), which re-runs every paint.
+    if (!replay && event.code === 'token_limit') {
+      try { _trackTokenCapHit(); }
+      catch { /* analytics must never break streaming */ }
+    }
     return {
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
@@ -319,8 +325,49 @@ export function reduceStream(state, event, now = Date.now) {
       _isScratchpad: false,
       _scratchpadTabId: null,
     };
-    try { _trackArtifactBuilt(art.type || 'unknown'); }
-    catch { /* analytics must never break streaming */ }
+    if (!replay) {
+      try { _trackArtifactBuilt(art.type || 'unknown'); }
+      catch { /* analytics must never break streaming */ }
+    }
+    return { ...state, steps: [...state.steps, step] };
+  }
+
+  // Inline skill-draft card. The harness emits this at turn end for a skill the
+  // agent BUILT this turn (via skill-creator), detected via the skill-drafts
+  // dir diff. A skill is NOT an artifact and is NOT auto-saved — this card lets
+  // the user Save or Download it. Self-contained payload (full SKILL.md +
+  // sibling files) so it renders + downloads identically on reload. Deduped by
+  // slug so a replay can't double a card.
+  if (type === 'response.skill_created') {
+    const sk = (event.skill && typeof event.skill === 'object') ? event.skill : {};
+    const key = sk.slug || sk.label || sk.name || '';
+    if (key && state.steps.some((s) => s.badge === 'Skill' && s._skillKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `skill-${sk.slug || state.steps.length + 1}`,
+      label: sk.name || sk.slug || 'Skill',
+      badge: 'Skill',
+      icon: 'cube',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: {
+        slug: sk.slug || '',
+        label: sk.label || sk.slug || '',
+        name: sk.name || sk.slug || 'Skill',
+        description: sk.description || '',
+        instructions: sk.instructions || '',
+        skill_md: sk.skill_md || '',
+        files: Array.isArray(sk.files) ? sk.files : [],
+        projects: Array.isArray(sk.projects) ? sk.projects : undefined,
+      },
+      output: null,
+      result: null,
+      _skillKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
     return { ...state, steps: [...state.steps, step] };
   }
 

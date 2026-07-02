@@ -1,32 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
+import { Message } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
   deleteDatasource,
   deleteMemory,
-  deleteSkill,
   fetchDatasources,
   fetchMemory,
   fetchPublishable,
-  fetchSkills,
   findMemoryEntry,
   labelCategory,
   publishArtifact,
   saveDatasource,
   saveMemory,
-  saveSkill,
   validateDatasource,
 } from '../api';
 import { trackArtifactPublished } from '../lib/analytics';
 
 const TITLES = {
-  memory: ['Memory', 'Profile, rules, and lessons the agent can reuse across tasks.'],
-  skills: ['Skill Library', 'Saved agent skills and recall guidance.'],
-  // 'connect' (legacy datasources page) is gone — Connect Apps and
-  // Data is the canonical surface. Kept the import paths for
-  // fetchDatasources / validateDatasource because they're still
-  // used by other call sites (the agent etc.).
+  memory:  ['Memory',  'Profile, rules, and lessons the agent can reuse across tasks.'],
   publish: ['Publish', 'HTML artifacts the agent can publish with Minds credentials.'],
 };
 
@@ -85,8 +78,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
     // grouped in the sidebar. We don't pass project?.path here so the
     // page shows the full picture regardless of which project is
     // active in the rail.
-    if (kind === 'memory') fetchMemory().then(setData).catch((err) => setStatus(err.message));
-    if (kind === 'skills') fetchSkills().then(setData).catch((err) => setStatus(err.message));
+    if (kind === 'memory')  fetchMemory().then(setData).catch((err) => setStatus(err.message));
     if (kind === 'publish') fetchPublishable().then(setData).catch((err) => setStatus(err.message));
   }, [kind, project?.path]);
 
@@ -106,7 +98,7 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
       {/* MemoryView renders its own header. For the legacy kinds we
           keep the plain header here. */}
       {!isMemoryKind && <PageHeader title={title} subtitle={subtitle} />}
-      {status && <div style={{ margin: '16px 28px 0', color: '#8F321A', fontSize: 12.5 }}>{status}</div>}
+      {status && <Message style={{ margin: '16px 28px 0', fontSize: 12.5 }}>{status}</Message>}
       {!data ? <EmptyState>Loading…</EmptyState> : null}
       {data && kind === 'memory' && (
         <MemoryView
@@ -115,16 +107,6 @@ export default function UtilitiesView({ kind, project, onRefreshArtifacts }) {
           onSelect={setSelected}
           project={project}
           setData={setData}
-          setStatus={setStatus}
-        />
-      )}
-      {data && kind === 'skills' && (
-        <SkillsView
-          data={data}
-          selected={selected}
-          onSelect={setSelected}
-          onSaved={() => fetchSkills().then(setData)}
-          onDeleted={(label) => setData((prev) => ({ ...prev, skills: (prev.skills || []).filter((s) => s.label !== label) }))}
           setStatus={setStatus}
         />
       )}
@@ -345,100 +327,6 @@ function MemorySectionList({ heading, files, selected, onSelect, isActive }) {
   );
 }
 
-function SkillsView({ data, selected, onSelect, onSaved, onDeleted, setStatus }) {
-  const skills = data.skills || [];
-  const emptyDraft = { label: '', name: '', description: '', whenToUse: '', declarative: '' };
-  const [editing, setEditing] = useState(null);
-  const [draft, setDraft] = useState(emptyDraft);
-
-  const remove = async (skill) => {
-    if (!window.confirm(`Remove skill "${skill.name}"?`)) return;
-    try {
-      await deleteSkill(skill.label);
-      onDeleted(skill.label);
-      onSelect(null);
-      setStatus(`Removed ${skill.name}.`);
-    } catch (err) {
-      setStatus(err.message || 'Could not remove skill.');
-    }
-  };
-
-  const startNew = () => {
-    setEditing('new');
-    setDraft(emptyDraft);
-    onSelect(null);
-  };
-
-  const startEdit = (skill) => {
-    setEditing('edit');
-    setDraft({
-      label: skill.label || '',
-      name: skill.name || '',
-      description: skill.description || '',
-      whenToUse: skill.whenToUse || '',
-      declarative: skill.declarative || '',
-    });
-    onSelect(skill);
-  };
-
-  const save = async () => {
-    try {
-      await saveSkill(draft);
-      setStatus(`Saved skill ${draft.name || draft.label}.`);
-      setEditing(null);
-      await onSaved?.();
-    } catch (err) {
-      setStatus(err.message || 'Could not save skill.');
-    }
-  };
-
-  return (
-    <div className="util-split" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', minHeight: 0 }}>
-      <div style={{ padding: 20, borderRight: '1px solid var(--border-0)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <button className="btn-primary" onClick={startNew} style={{ marginBottom: 8 }}>{Ico.plus(14)} New skill</button>
-        {skills.map((skill) => (
-          <button key={skill.label} className={`recent-item${selected?.label === skill.label ? ' active' : ''}`} onClick={() => onSelect(skill)} style={{ height: 'auto', minHeight: 38, padding: '8px 10px' }}>
-            <span style={{ color: 'var(--primary-700)', display: 'inline-flex' }}>{Ico.brain(14)}</span>
-            <span style={{ flex: 1, whiteSpace: 'normal' }}>{skill.name}</span>
-          </button>
-        ))}
-        {!skills.length && <EmptyState>No saved skills found.</EmptyState>}
-      </div>
-      <div style={{ padding: 24 }}>
-        {editing ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 8 }}>
-              <input aria-label="Skill identifier" value={draft.label} onChange={(e) => setDraft((prev) => ({ ...prev, label: e.target.value }))} placeholder="skill_label" style={inputStyle} disabled={editing === 'edit'} />
-              <input aria-label="Skill name" value={draft.name} onChange={(e) => setDraft((prev) => ({ ...prev, name: e.target.value }))} placeholder="Skill name" style={inputStyle} />
-            </div>
-            <input aria-label="Skill short description" value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} placeholder="Short description" style={inputStyle} />
-            <input aria-label="When the agent should use this skill" value={draft.whenToUse} onChange={(e) => setDraft((prev) => ({ ...prev, whenToUse: e.target.value }))} placeholder="When the agent should use this skill" style={inputStyle} />
-            <textarea aria-label="Skill instructions" value={draft.declarative} onChange={(e) => setDraft((prev) => ({ ...prev, declarative: e.target.value }))} rows={16} placeholder="Skill instructions..." style={{ ...inputStyle, height: 'auto', padding: 10, fontFamily: 'var(--font-mono)', userSelect: 'text' }} />
-            <div className="dialog-actions">
-              <button className="secondary-btn" onClick={() => setEditing(null)}>Cancel</button>
-              <button className="primary-btn" disabled={!draft.label.trim() || !draft.name.trim() || !draft.declarative.trim()} onClick={save}>Save skill</button>
-            </div>
-          </div>
-        ) : selected ? (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 650, color: 'var(--text-strong)' }}>{selected.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--frost-600)' }}>{selected.label}</div>
-              </div>
-              <button className="btn-secondary" onClick={() => startEdit(selected)}>Edit</button>
-              <button className="btn-secondary" onClick={() => remove(selected)}>Remove</button>
-            </div>
-            {selected.description && <p style={{ margin: '0 0 12px', fontSize: 13.5, color: 'var(--frost-700)' }}>{selected.description}</p>}
-            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', userSelect: 'text', fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.55 }}>{selected.declarative}</pre>
-          </>
-        ) : (
-          <EmptyState>Select a skill to inspect it.</EmptyState>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function ConnectView({ data, setData, setStatus }) {
   const firstEngine = data.engines?.[0]?.engine || '';
@@ -626,9 +514,9 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   return (
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
-        <div style={{ padding: 12, border: '1px solid #F0C2B5', borderRadius: 9, background: '#FFF7F4', color: '#8F321A', fontSize: 13 }}>
+        <Message variant="warning">
           Configure a Minds API key in Settings before publishing.
-        </div>
+        </Message>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
         <div key={artifact.path} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, border: '1px solid var(--border-01)', borderRadius: 9 }}>
