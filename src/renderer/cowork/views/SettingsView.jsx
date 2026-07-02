@@ -9,7 +9,7 @@ import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
+import { MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
 import ChannelsView from './ChannelsView';
 
@@ -21,7 +21,7 @@ function decodeJwtPayload(token) {
   } catch { return null; }
 }
 
-function Section({ title, subtitle, children }) {
+function Section({ title, subtitle, notice, children }) {
   return (
     <div className="settings-section" style={{
       display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
@@ -35,6 +35,7 @@ function Section({ title, subtitle, children }) {
           fontFamily: 'inherit', lineHeight: 1.3,
         }}>{title}</h3>
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
+        {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
       </div>
       <div style={{
         paddingLeft: 24,
@@ -1485,7 +1486,13 @@ export default function SettingsView({
             const modelList = recommendedModels[curType] || [];
             const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
             const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
-            const providerUnusable = providerUnconfigured || providerFailed;
+            const providerFailDetail = (settings.providerStatusDetails || {})[curType] || '';
+            const isNoCredits = providerFailed && curType === 'minds-cloud'
+              && (providerFailDetail.includes('402')
+                || providerFailDetail.includes('429')
+                || providerFailDetail.toLowerCase().includes('credit')
+                || providerFailDetail.toLowerCase().includes('quota'));
+            const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits;
             const providerWarnId = `agent-model-${role}-provider`;
 
             // Reasoning effort — a per-role setting shown beside the model
@@ -1525,8 +1532,20 @@ export default function SettingsView({
               }}>{text}:</span>
             );
 
+            const noCreditsNotice = isNoCredits ? (
+              <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                <span style={{ color: '#E07060', fontWeight: 600 }}>No credits available. </span>
+                <button
+                  type="button"
+                  onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent, #7CC4B6)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                >Top up credits →</button>
+                <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
+              </div>
+            ) : null;
+
             return (
-              <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`}>
+              <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`} notice={noCreditsNotice}>
                 <div style={{ display: 'grid', gap: 6 }}>
                   {multipleProviders && (
                     <label style={{ display: 'grid', gap: 4 }}>
