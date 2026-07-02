@@ -1449,6 +1449,21 @@ export async function updateArtifact(path) {
   return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
+// Version history of a live artifact:
+//   { reportId, currentMd5, artifactType, versions: [{ md5, publishedAt, title, isCurrent }] }
+// Versions are newest-first. Throws on 404 — which is also what an older server
+// (no /versions route) returns, so callers feature-detect by treating any error
+// as "no history available" and hiding the UI.
+export async function listArtifactVersions(path) {
+  return req(`/publish/versions?path=${encodeURIComponent(path)}`);
+}
+
+// Roll the live URL back to an existing version (flips current_md5 — the public
+// URL is stable). Static artifacts only; the server rejects fullstack apps.
+export async function activateArtifactVersion(path, md5) {
+  return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
+}
+
 // The path to send to publish/unpublish for an artifact. Prefer the
 // artifact *folder* so folder-based artifacts publish as a unit — the
 // server resolves the primary file for static artifacts and treats
