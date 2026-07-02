@@ -6,6 +6,7 @@ import * as os from 'os';
 import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
 import { getInstallSpec } from './server-source';
+import { meetsMinVersion, parseInstalledVersion } from './update-logic';
 
 interface InstallStep {
   id: string;
@@ -290,7 +291,7 @@ export async function checkCoworkServerInstalled(): Promise<boolean> {
     console.log('[installer] cowork-server version could not be determined, reinstall needed');
     return false;
   }
-  if (compareVersions(installedVersion, COWORK_SERVER_MIN_VERSION) < 0) {
+  if (!meetsMinVersion(installedVersion, COWORK_SERVER_MIN_VERSION)) {
     console.log(
       `[installer] cowork-server ${installedVersion} is below minimum ${COWORK_SERVER_MIN_VERSION}, needs upgrade`,
     );
@@ -312,28 +313,9 @@ function getInstalledVersion(): Promise<string | null> {
     const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
     execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      // Strip any residual ANSI escapes defensively before matching.
-      // eslint-disable-next-line no-control-regex
-      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
-      for (const line of clean.split('\n')) {
-        const match = line.match(/^cowork-server\s+v?([\d.]+)/);
-        if (match) { resolve(match[1]); return; }
-      }
-      resolve(null);
+      resolve(parseInstalledVersion(stdout));
     });
   });
-}
-
-/** Compare two X.Y.Z version strings. Returns <0 if a < b, 0 if equal, >0 if a > b. */
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
 }
 
 // Convenience wrapper used by the boot flow IPC. Returns the full
