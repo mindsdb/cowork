@@ -1635,7 +1635,11 @@ export default function SettingsView({
                     />
                   )}
                   {showEffort && (
-                    <label style={{ display: 'grid', gap: 4 }}>
+                    // 12px above the effort control (on top of the 6px grid gap)
+                    // so it reads as a distinct sub-control — applied here rather
+                    // than on the upsell link so Planning and Coding match whether
+                    // or not the link is present.
+                    <label style={{ display: 'grid', gap: 4, marginTop: 12 }}>
                       <span style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>Reasoning effort</span>
                       <select
                         className="settings-select"
