@@ -22,12 +22,13 @@ import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
+import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { host } from '../platform/host';
+import { host, getAccessToken } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
@@ -438,7 +439,12 @@ function failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
   const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
   if (!ev) return null;
-  return { code: ev.code || null, message: ev.error || ev.message || '' };
+  return {
+    code: ev.code || null,
+    message: ev.error || ev.message || '',
+    reconnectable: ev.reconnectable ?? null,
+    providerLabel: ev.provider_label ?? null,
+  };
 }
 
 // Walk a messages payload from the server and, for any assistant
@@ -480,6 +486,8 @@ function hydrateMessagesFromServerEvents(messages) {
           role: 'error',
           content: normalizeAntonError(errText, { code }),
           code,
+          reconnectable: failed?.reconnectable ?? null,
+          providerLabel: failed?.providerLabel ?? null,
         });
       }
     }
@@ -708,9 +716,11 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('agent');
+  const [ssoConnected, setSsoConnected] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -979,7 +989,13 @@ function AppCore() {
       const displayError = normalizeAntonError(message, event);
       const trailer = configError
         ? { role: 'provider_required' }
-        : { role: 'error', content: displayError, code: event?.code };
+        : {
+            role: 'error',
+            content: displayError,
+            code: event?.code,
+            reconnectable: event?.reconnectable ?? null,
+            providerLabel: event?.provider_label ?? null,
+          };
       return {
         ...t,
         status: configError ? 'idle' : 'error',
@@ -1770,6 +1786,17 @@ function AppCore() {
     if (isNarrow) setMobileSidebarOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
+    setComposerPrefill(null);
+    setRoute('home');
+  };
+
+  const handleNavigateHomeWithPrefill = (text, projectName) => {
+    setActiveTaskId(null);
+    setComposerAttachments([]);
+    setComposerPrefill({ text, bump: Date.now() });
+    const targetName = projectName || 'general';
+    const proj = projects.find((p) => p.name === targetName);
+    if (proj) setSelectedProject(proj);
     setRoute('home');
   };
 
@@ -2148,8 +2175,27 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
   }, []);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
+  }, [settingsOpen]);
+
+  const handleSsoSignIn = async () => {
+    if (!host.isElectron) return;
+    const loginResult = await host.mindshubLogin();
+    if (!loginResult?.ok) return;
+    await host.mindshubFinalize().catch(() => {});
+    setSsoConnected(true);
+    refreshData();
+  };
+
   const navigate = (key) => {
-    if (key === 'settings') { setSettingsOpen(true); return; }
+    if (key === 'settings' || key.startsWith('settings:')) {
+      const section = key.includes(':') ? key.split(':')[1] : null;
+      if (section) setSettingsSection(section);
+      setSettingsOpen(true);
+      return;
+    }
     if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -3465,6 +3511,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
             skipIntro={bootIntroDone}
+            prefill={composerPrefill}
           />
         )}
 
@@ -3667,7 +3714,30 @@ function AppCore() {
 
         {/* Settings modal — rendered over whatever route is active */}
         <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
-          <ModalHeader id="settings-modal-title" title="Settings" onClose={() => setSettingsOpen(false)} />
+          <ModalHeader
+            id="settings-modal-title"
+            title="Settings"
+            onClose={() => setSettingsOpen(false)}
+            right={!ssoConnected && host.isElectron ? (
+              <button
+                type="button"
+                onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
+                title="Sign in with MindsHub to use managed models"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '5px 11px', borderRadius: 7,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'transparent',
+                  color: 'var(--ink-3)',
+                  fontFamily: 'var(--font-body)', fontSize: 12.5,
+                  cursor: 'pointer', flexShrink: 0,
+                  transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+              >Sign in</button>
+            ) : undefined}
+          />
           <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <SettingsView
               settings={settings} setSetting={setSetting} onSave={saveSettings}
@@ -3682,6 +3752,8 @@ function AppCore() {
               serverBusyKind={serverBusyKind}
               onStartServer={handleServerStart}
               onStopServer={handleServerStop}
+              isSsoConnected={ssoConnected}
+              onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
             />
           </ModalBody>
         </Modal>
@@ -3690,7 +3762,8 @@ function AppCore() {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {['memory', 'skills', 'publish'].includes(route) && (
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}
             project={selectedProject}

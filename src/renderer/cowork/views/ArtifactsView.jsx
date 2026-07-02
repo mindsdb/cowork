@@ -11,8 +11,8 @@
 // Status dot: cyan = published, green-pulse = live preview, none = local.
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import { Toast } from '../components/ui/Toast';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -596,50 +596,6 @@ function EmptyState({ agentLabel = 'the agent' }) {
   );
 }
 
-// ─── Toast ───────────────────────────────────────────────────────────────
-//
-// Inline banner that surfaces publish / unpublish results so failures
-// (most commonly a missing ANTON_MINDS_API_KEY) don't disappear into
-// the console. Auto-dismisses after a few seconds; success and error
-// share the layout but have distinct accent / danger tints.
-
-function Toast({ kind, message, onClose }) {
-  if (!message) return null;
-  const isError = kind === 'error';
-  return (
-    <div style={{
-      // Position is owned by the parent wrapper now (fixed overlay),
-      // so this card carries no outer margin.
-      padding: '10px 14px',
-      borderRadius: 8,
-      background: isError
-        ? 'color-mix(in srgb, var(--danger) 12%, var(--surface))'
-        : 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
-      border: `1px solid ${isError ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--accent) 40%, transparent)'}`,
-      color: isError ? 'var(--danger)' : 'var(--ink-2)',
-      display: 'flex', alignItems: 'center', gap: 10,
-      fontFamily: FONT_BODY, fontSize: 12.5,
-    }}>
-      <span style={{ display: 'inline-flex', flexShrink: 0, color: isError ? 'var(--danger)' : 'var(--accent)' }}>
-        {isError ? Ico.alert?.(14) || Ico.trash(14) : Ico.check(14)}
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>{message}</span>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Dismiss"
-        style={{
-          background: 'transparent', border: 0,
-          color: 'var(--ink-3)', cursor: 'pointer',
-          padding: 4, display: 'inline-grid', placeItems: 'center',
-        }}
-      >
-        {Ico.close ? Ico.close(12) : '×'}
-      </button>
-    </div>
-  );
-}
-
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, agentLabel = 'the agent' }) {
@@ -700,13 +656,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Auto-dismiss the toast after 5s — long enough to read, short enough
-  // not to linger across navigations.
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(id);
-  }, [toast]);
 
   const updateOne = (updated) => {
     setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
@@ -916,23 +865,13 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         subtitleBottom={20}
       />
 
-      {/* Toast is portalled to document.body so it renders after modals
-          in DOM order, which prevents iframes inside modals from
-          compositing on top of it regardless of z-index. */}
-      {createPortal(
-        <div style={{
-          position: 'fixed', top: 24, right: 32, zIndex: 90,
-          pointerEvents: toast?.message ? 'auto' : 'none',
-          maxWidth: 420,
-        }}>
-          <Toast
-            kind={toast?.kind}
-            message={toast?.message}
-            onClose={() => setToast(null)}
-          />
-        </div>,
-        document.body,
-      )}
+      <Toast
+        type={toast?.kind === 'ok' ? 'success' : 'error'}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+        duration={5000}
+        align="right"
+      />
 
       {/* Subtitle → search-row gap. Set to 20px per the design;
           ProjectsView uses 18px because its header has an anchor
