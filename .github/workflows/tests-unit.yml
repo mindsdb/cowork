@@ -1,0 +1,53 @@
+name: CI
+
+# Fast PR check: typecheck + unit/component tests + a real renderer build.
+
+on:
+  pull_request:
+    paths-ignore: ['**/*.md', 'docs/**'] # docs-only PRs skip CI
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency: # cancel superseded PR runs; never cancel main
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest # unit/component only — no native/Electron dep
+    timeout-minutes: 10
+    env:
+      COWORK_SERVER_CHANNEL: ''
+      ANTHROPIC_API_KEY: ''
+      OPENAI_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (main + renderer)
+        run: npm run typecheck
+      - name: Unit + component tests + coverage
+        run: npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:renderer

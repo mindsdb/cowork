@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+coverage/
 .vite/
 *.js.map
 .DS_Store
