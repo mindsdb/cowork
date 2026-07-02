@@ -1477,6 +1477,14 @@ export default function SettingsView({
             const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
             const provider = providers.find((p) => p.type === curType);
             const modelList = recommendedModels[curType] || [];
+            // Per-model availability (settings.modelEnabled, sourced from MindsHub
+            // /v1/models). A model the user's tier can't use is listed here as
+            // false so we render it greyed + non-selectable — an upgrade prompt.
+            // Absent id ⇒ available (backwards compatible; direct providers have
+            // no such flag).
+            const modelEnabled = settings.modelEnabled || {};
+            const isLocked = (m) => modelEnabled[m] === false;
+            const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
             const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
             const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
             const providerUnusable = providerUnconfigured || providerFailed;
@@ -1551,7 +1559,7 @@ export default function SettingsView({
                         <>
                           <select
                             className="settings-select"
-                            value={selectValue || (modelList[0] || '')}
+                            value={selectValue || firstEnabledModel}
                             onChange={(e) => {
                               if (e.target.value === '__custom__') {
                                 setModelInputMode((m) => ({ ...m, [role]: true }));
@@ -1567,7 +1575,11 @@ export default function SettingsView({
                             title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                             style={{ width: '100%' }}
                           >
-                            {modelList.map((m) => <option key={m} value={m}>{modelLabel(m)}</option>)}
+                            {modelList.map((m) => (
+                              <option key={m} value={m} disabled={isLocked(m)}>
+                                {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
+                              </option>
+                            ))}
                             {allowOther && <option value="__custom__">Other…</option>}
                           </select>
                           {inputMode && allowOther && (
