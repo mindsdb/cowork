@@ -1613,10 +1613,7 @@ export default function SettingsView({
                             {allowOther && <option value="__custom__">Other…</option>}
                           </select>
                           {anyLocked && (
-                            <UpgradeToProLink
-                              label="Upgrade to Pro to unlock frontier models"
-                              style={{ marginBottom: 12 }}
-                            />
+                            <UpgradeToProLink label="Upgrade to Pro to unlock frontier models" />
                           )}
                           {inputMode && allowOther && (
                             <TextInput
