@@ -2822,12 +2822,10 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
 /* Footer status bar */
 .anton-sidebar__footer {
   border-top: 1px solid var(--line);
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  /* Footer inherits the sidebar surface so the pill reads as part of the
-     panel rather than sitting on a darker tray. */
+  gap: 6px;
   background: transparent;
 }
 .status-pill {
@@ -2927,6 +2925,31 @@ body[data-theme="dark"] .status-pill.is-busy .status-text__live {
   50%      { opacity: 0.45; }
 }
 .anton-sidebar__footer-actions { display: flex; gap: 4px; }
+
+.anton-sidebar__footer-settings {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  text-align: left;
+}
+.anton-sidebar__footer-settings:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.anton-sidebar__footer-settings.is-on {
+  color: var(--ink);
+  background: var(--surface-2);
+}
 
 /* Small chrome button (used in footer + sidebar header where 22px is tight) */
 .chrome-btn--small {
