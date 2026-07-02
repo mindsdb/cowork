@@ -28,7 +28,7 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { host } from '../platform/host';
+import { host, getAccessToken } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
@@ -720,6 +720,7 @@ function AppCore() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('agent');
+  const [ssoConnected, setSsoConnected] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -2166,8 +2167,27 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
   }, []);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
+  }, [settingsOpen]);
+
+  const handleSsoSignIn = async () => {
+    if (!host.isElectron) return;
+    const loginResult = await host.mindshubLogin();
+    if (!loginResult?.ok) return;
+    await host.mindshubFinalize().catch(() => {});
+    setSsoConnected(true);
+    refreshData();
+  };
+
   const navigate = (key) => {
-    if (key === 'settings') { setSettingsOpen(true); return; }
+    if (key === 'settings' || key.startsWith('settings:')) {
+      const section = key.includes(':') ? key.split(':')[1] : null;
+      if (section) setSettingsSection(section);
+      setSettingsOpen(true);
+      return;
+    }
     if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -3686,7 +3706,30 @@ function AppCore() {
 
         {/* Settings modal — rendered over whatever route is active */}
         <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
-          <ModalHeader id="settings-modal-title" title="Settings" onClose={() => setSettingsOpen(false)} />
+          <ModalHeader
+            id="settings-modal-title"
+            title="Settings"
+            onClose={() => setSettingsOpen(false)}
+            right={!ssoConnected && host.isElectron ? (
+              <button
+                type="button"
+                onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
+                title="Sign in with MindsHub to use managed models"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '5px 11px', borderRadius: 7,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'transparent',
+                  color: 'var(--ink-3)',
+                  fontFamily: 'var(--font-body)', fontSize: 12.5,
+                  cursor: 'pointer', flexShrink: 0,
+                  transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+              >Sign in</button>
+            ) : undefined}
+          />
           <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <SettingsView
               settings={settings} setSetting={setSetting} onSave={saveSettings}
@@ -3701,6 +3744,8 @@ function AppCore() {
               serverBusyKind={serverBusyKind}
               onStartServer={handleServerStart}
               onStopServer={handleServerStop}
+              isSsoConnected={ssoConnected}
+              onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
             />
           </ModalBody>
         </Modal>
