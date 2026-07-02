@@ -868,6 +868,10 @@ export default function SettingsView({
     if (PROTECTED_PROVIDER_TYPES.has(type)) return;
     setLlmDirty(true);
     const next = providers.filter((p) => p.type !== type);
+    // Clear the individual API key so backfillProviders doesn't re-add
+    // this provider on the next settings fetch.
+    const keyField = providerTypeToKeyField(type);
+    if (keyField) setSetting(keyField, '');
 
     // Role settings referencing the removed provider get re-pointed
     // at MindsHub with its recommended pair for the role.
