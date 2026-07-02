@@ -18,7 +18,10 @@ on:
         type: string
         default: ""
       app_version:
-        description: Optional app display version to bake into the renderer
+        description: >-
+          App display version baked into the renderer as __APP_VERSION__.
+          Prod builds pass the CalVer release tag (e.g. v2.26.7.1.1).
+          Staging/dev builds omit this and fall back to git describe.
         required: false
         type: string
     outputs:
@@ -75,6 +78,9 @@ jobs:
     outputs:
       artifact_name: ${{ steps.name.outputs.artifact_name }}
     steps:
+      # Full clone so git describe can walk history to the nearest CalVer
+      # tag. Staging builds (untagged commits) need the distance calculation
+      # (e.g. "2.26.6.30.1-3-g1a2b3c4"); a shallow clone can't do this.
       - name: Checkout
         uses: actions/checkout@v4
         with:
