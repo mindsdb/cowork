@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
-import { isModelLocked } from '../lib/modelEntitlement';
+import { providerTypeToKeyField, providerValueToType, recommendedModelOptions } from '../lib/settingsTransform';
+import { isModelLocked, orderUnlockedFirst, effectiveTier } from '../lib/modelEntitlement';
+import UpgradeToProLink from '../components/UpgradeToProLink';
 import { useDevTier } from '../lib/useDevTier';
 import { trackHarnessSwapped } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -11,7 +12,7 @@ import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
 import ChannelsView from './ChannelsView';
 
@@ -1482,7 +1483,10 @@ export default function SettingsView({
             const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
             const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
             const provider = providers.find((p) => p.type === curType);
-            const modelList = recommendedModels[curType] || [];
+            // Normalize through recommendedModelOptions so both today's id-string
+            // list and the future {id, locked} object shape (ENG-531) yield
+            // uniform {id, label, locked?} entries — same path App uses.
+            const modelList = recommendedModelOptions(recommendedModels, curType);
             const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
             const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
             const providerUnusable = providerUnconfigured || providerFailed;
@@ -1526,7 +1530,7 @@ export default function SettingsView({
                       onChange={(e) => {
                         const t = e.target.value;
                         const pair = recommendedPair[t] || ['', ''];
-                        const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
+                        const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModelOptions(recommendedModels, t)[0]?.id || '');
                         setModelInputMode((m) => ({ ...m, [role]: false }));
                         writeOverride({ providerType: t, model: newModel });
                       }}
@@ -1550,26 +1554,37 @@ export default function SettingsView({
                       // selecting Other even when the value is
                       // still empty.
                       const allowOther = curType !== 'minds-cloud';
-                      const savedIsCustom = !!curModel && !modelList.includes(curModel);
+                      const savedIsCustom = !!curModel && !modelList.some((o) => o.id === curModel);
                       const inputMode = modelInputMode[role] || savedIsCustom;
                       const selectValue = inputMode ? '__custom__' : curModel;
-                      // Free-tier model gating (ENG-531). Only MindsHub-provided
-                      // models are tier-gated; a user's own direct-provider key
-                      // is outside the tier system. Locked models stay listed but
-                      // disabled, with an upgrade link below.
-                      const tier = curType === 'minds-cloud' ? devTier : null;
-                      const anyLocked = modelList.some((m) => isModelLocked({ id: m }, tier));
+                      // Free-tier model gating (ENG-531). Resolve the tier that
+                      // applies to this provider, then compute each model's lock
+                      // once (reused by anyLocked / ordering / options / the saved
+                      // selection) instead of re-deriving it per use. Locked models
+                      // stay listed but disabled, with an upgrade link below.
+                      const tier = effectiveTier(curType, devTier);
+                      const gated = modelList.map((o) => ({ ...o, locked: isModelLocked(o, tier) }));
+                      const anyLocked = gated.some((o) => o.locked);
                       // Selectable models first so the free user's model sits at
-                      // the top, not below the locked frontier ones. Stable — a
-                      // no-op when nothing is locked.
-                      const orderedModels = [...modelList].sort(
-                        (a, b) => (isModelLocked({ id: a }, tier) ? 1 : 0) - (isModelLocked({ id: b }, tier) ? 1 : 0),
-                      );
+                      // the top, not below the locked frontier ones (shared helper).
+                      const orderedModels = orderUnlockedFirst(gated);
+                      // If the saved model is locked on this tier, present the
+                      // first unlocked model (MindsHub Air) as the effective
+                      // selection — mirrors the composer fallback so Settings
+                      // never shows a forbidden model as the active choice.
+                      // Display-only: the persisted override is resolved
+                      // server-side; it updates here when the user saves a pick.
+                      const savedOpt = gated.find((o) => o.id === selectValue);
+                      const savedLocked = selectValue && selectValue !== '__custom__'
+                        && (savedOpt ? savedOpt.locked : isModelLocked({ id: selectValue }, tier));
+                      const effectiveValue = savedLocked
+                        ? (orderedModels[0]?.id || '')
+                        : (selectValue || orderedModels[0]?.id || '');
                       return (
                         <>
                           <select
                             className="settings-select"
-                            value={selectValue || (orderedModels[0] || '')}
+                            value={effectiveValue}
                             onChange={(e) => {
                               if (e.target.value === '__custom__') {
                                 setModelInputMode((m) => ({ ...m, [role]: true }));
@@ -1585,33 +1600,21 @@ export default function SettingsView({
                             title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                             style={{ width: '100%' }}
                           >
-                            {orderedModels.map((m) => (
+                            {orderedModels.map((o) => (
                               // Locked models stay listed but disabled; the single
                               // upgrade line below the select carries the message
                               // (no per-option suffix), mirroring the composer picker.
-                              <option key={m} value={m} disabled={isModelLocked({ id: m }, tier)}>
-                                {modelLabel(m)}
+                              <option key={o.id} value={o.id} disabled={o.locked}>
+                                {o.label}
                               </option>
                             ))}
                             {allowOther && <option value="__custom__">Other…</option>}
                           </select>
                           {anyLocked && (
-                            <button
-                              type="button"
-                              onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                              title="Upgrade to Pro Hub to unlock"
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 6,
-                                background: 'none', border: 0, padding: 0, cursor: 'pointer',
-                                fontSize: 11.5, color: 'var(--link-strong)', width: 'fit-content',
-                                marginBottom: 12,
-                              }}
-                            >
-                              {Ico.lock(12)}
-                              {/* Underline like a text link (matching the API-key
-                                  link), but keep the teal color for contrast. */}
-                              <span style={{ textDecoration: 'underline' }}>Upgrade to Pro to unlock frontier models</span>
-                            </button>
+                            <UpgradeToProLink
+                              label="Upgrade to Pro to unlock frontier models"
+                              style={{ marginBottom: 12 }}
+                            />
                           )}
                           {inputMode && allowOther && (
                             <TextInput

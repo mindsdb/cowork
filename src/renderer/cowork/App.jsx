@@ -46,7 +46,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { isModelLocked, orderUnlockedFirst } from './lib/modelEntitlement';
+import { isModelLocked, orderUnlockedFirst, effectiveTier } from './lib/modelEntitlement';
 import { useDevTier } from './lib/useDevTier';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
@@ -1020,18 +1020,18 @@ function AppCore() {
   // locked-model treatment until the backend serves a per-model `locked`
   // flag; null in production, so nothing locks there.
   const devTier = useDevTier();
+  // Tier gating applies to MindsHub-provided models; a user's own direct
+  // provider key is outside the free/Pro tier system. The server `locked`
+  // flag (when present) still wins for any provider via isModelLocked.
+  const planningProviderType = providerValueToType(settings.planningProvider) || 'minds-cloud';
+  const modelTier = effectiveTier(planningProviderType, devTier);
   const models = useMemo(() => {
-    const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
-    // Tier gating applies to MindsHub-provided models; a user's own direct
-    // provider key is outside the free/Pro tier system. The server `locked`
-    // flag (when present) still wins for any provider via isModelLocked.
-    const tier = providerType === 'minds-cloud' ? devTier : null;
-    const mapped = recommendedModelOptions(settings.recommendedModels, providerType)
-      .map((o) => ({ id: o.id, name: o.label, desc: '', locked: isModelLocked(o, tier) }));
+    const mapped = recommendedModelOptions(settings.recommendedModels, planningProviderType)
+      .map((o) => ({ id: o.id, name: o.label, locked: isModelLocked(o, modelTier) }));
     // Surface selectable (unlocked) models first so a free user reaches their
     // model without scrolling past the locked frontier ones.
     return orderUnlockedFirst(mapped);
-  }, [settings.recommendedModels, settings.planningProvider, devTier]);
+  }, [settings.recommendedModels, planningProviderType, modelTier]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -1231,6 +1231,20 @@ function AppCore() {
   const [selectedProject, setSelectedProject] = useState(null);
   // Set from the configured planning model once settings load.
   const [selectedModel, setSelectedModel] = useState(null);
+  // Free tier can't run a locked (frontier) model. If the active selection is
+  // locked — e.g. a carried-over Pro/account default — fall back to the first
+  // unlocked model (MindsHub Air) so the pill and every send path stay on an
+  // allowed model without gating each call site. The saved default lives in
+  // settings and is untouched, so it re-applies on the next load once entitled.
+  // The server `locked` flag remains authoritative; this is the client's half.
+  useEffect(() => {
+    if (!selectedModel) return;
+    const inList = models.find((m) => m.id === selectedModel.id);
+    const locked = inList ? inList.locked : isModelLocked(selectedModel, modelTier);
+    if (!locked) return;
+    const firstUnlocked = models.find((m) => !m.locked);
+    if (firstUnlocked && firstUnlocked.id !== selectedModel.id) setSelectedModel(firstUnlocked);
+  }, [models, selectedModel, modelTier]);
   // In the hosted web shell the FastAPI process IS the host — there
   // is no subprocess to start/stop, and the SPA only loads at all if
   // the server is up. Seed online so downstream gates (`if (!serverOnline) return;`)
@@ -3293,7 +3307,9 @@ function AppCore() {
 
   const mainBg = 'transparent';
   const modelOptions = selectedModel && !models.some((m) => m.id === selectedModel.id)
-    ? [selectedModel, ...models]
+    // Carry the entitlement flag onto the prepended selection so it renders
+    // with the correct locked treatment rather than defaulting to unlocked.
+    ? [{ ...selectedModel, locked: isModelLocked(selectedModel, modelTier) }, ...models]
     : models;
 
   return (

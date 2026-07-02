@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Ico from './Icons';
-import { host } from '../../platform/host';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import UpgradeToProLink from './UpgradeToProLink';
 import {
   parseFences,
   fenceCtxAtParsed,
@@ -78,8 +77,9 @@ export default function Composer({
   metaReadOnly = false,
   hideMeta = false,
   // When true, suppress the model picker but keep the project picker.
-  // Used on the home (new task) composer where we want the user to
-  // pick a project but not fuss with model selection.
+  // Used on the projects-list quick-launch composer. The home (new task)
+  // composer intentionally shows the model picker so a free user can pick
+  // their model and see the locked-frontier upsell (ENG-531).
   hideModel = false,
   // When true, the send button is replaced with a stop button that
   // calls onStop (cancel the in-flight stream + scratchpad).
@@ -1196,19 +1196,7 @@ export default function Composer({
           <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px' }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</span>
             {models.some((m) => m.locked) && (
-              <button
-                type="button"
-                onClick={() => { host.openExternal(MINDS_BILLING_URL); setOpenMenu(null); }}
-                title="Upgrade to Pro Hub to unlock"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: 'none', border: 0, padding: 0, cursor: 'pointer',
-                  fontSize: 11.5, color: 'var(--link-strong)',
-                }}
-              >
-                <span style={{ textDecoration: 'underline' }}>Upgrade to Pro</span>
-                <span style={{ display: 'inline-flex' }}>{Ico.lock(12)}</span>
-              </button>
+              <UpgradeToProLink onActivate={() => setOpenMenu(null)} />
             )}
           </div>
           {/* Scrollable model list — the menu is height-capped and this

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFrontierModel, isModelLocked, orderUnlockedFirst } from './modelEntitlement';
+import { isFrontierModel, isModelLocked, orderUnlockedFirst, effectiveTier } from './modelEntitlement';
 
 describe('isFrontierModel', () => {
   it('treats the free model (Kimi / Minds Air) as not frontier', () => {
@@ -40,6 +40,22 @@ describe('isModelLocked', () => {
     expect(isModelLocked({ id: 'claude-opus-4-8', locked: false }, 'free')).toBe(false);
     // Server says locked even for the free model / on the pro tier.
     expect(isModelLocked({ id: 'latest:kimi', locked: true }, 'pro')).toBe(true);
+  });
+});
+
+describe('effectiveTier', () => {
+  it('passes the tier through only for the gated minds-cloud provider', () => {
+    expect(effectiveTier('minds-cloud', 'free')).toBe('free');
+    expect(effectiveTier('minds-cloud', 'pro')).toBe('pro');
+  });
+
+  it('returns null for direct providers (outside the tier system)', () => {
+    expect(effectiveTier('anthropic', 'free')).toBe(null);
+    expect(effectiveTier('openai', 'pro')).toBe(null);
+  });
+
+  it('returns null when the provider is gated but there is no tier', () => {
+    expect(effectiveTier('minds-cloud', null)).toBe(null);
   });
 });
 

@@ -530,6 +530,9 @@ export default function HomeView({
               </div>
             </div>
           ) : (
+            // Model picker is intentionally shown here (no `hideModel`): the
+            // home composer is where a free user picks their model and sees the
+            // locked-frontier upsell (ENG-531).
             <Composer
               onSend={onSend}
               prefill={prefill}

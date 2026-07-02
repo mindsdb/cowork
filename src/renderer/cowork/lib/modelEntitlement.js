@@ -30,6 +30,14 @@ export function isModelLocked(model, tier) {
   return isFrontierModel(model && model.id);
 }
 
+// Only MindsHub-provided models are tier-gated; a user's own direct-provider
+// key (Anthropic/OpenAI/etc.) is outside the free/Pro tier system. Resolves the
+// tier that actually applies to a provider — null means "not gated", so nothing
+// locks. Keeps the `minds-cloud` policy in one place across call sites.
+export function effectiveTier(providerType, tier) {
+  return providerType === 'minds-cloud' ? tier : null;
+}
+
 // Order models so selectable (unlocked) ones come first, preserving relative
 // order within each group (stable). A no-op when nothing is locked, so it only
 // reorders the free-tier list — a free user reaches their model without
