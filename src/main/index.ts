@@ -682,29 +682,53 @@ function setupIPC() {
     clearTokens();
 
     // Clear credentials from the server's SQLite DB (the authoritative
-    // source for config_ready). Individual DELETEs for each credential
-    // key that gates config_ready.
+    // source for config_ready). A single POST /settings/logout atomically
+    // clears all credential keys and provider state in one transaction.
+    // If the endpoint isn't available (404/405 — older server version),
+    // fall back to individual DELETE requests for each credential key.
+    let dbCleared = false;
     if (isServerRunning() || isServerStarting()) {
       const port = getServerPort();
-      const CREDENTIAL_KEYS = [
-        'minds_api_key', 'anthropic_api_key', 'openai_api_key',
-        'gemini_api_key', 'openai_compatible_api_key',
-        'providers_json',
-        'minds_url', 'openai_base_url',
-      ];
-      await Promise.allSettled(
-        CREDENTIAL_KEYS.map((key) =>
-          Promise.race([
-            httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`DELETE ${key} timed out`)), 5000),
-            ),
-          ]),
-        ),
-      );
+      try {
+        const res = await Promise.race([
+          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('logout request timed out')), 5000),
+          ),
+        ]);
+        dbCleared = res.status >= 200 && res.status < 300;
+        if (!dbCleared) console.warn('[logout] POST /settings/logout returned', res.status);
+      } catch (err) {
+        console.warn('[logout] POST /settings/logout failed:', err);
+      }
+
+      // Fallback: if POST /settings/logout isn't available (404/405 on
+      // older server versions that don't have the endpoint yet), clear
+      // each credential key individually via DELETE. Without this, the
+      // DB retains credentials and config_ready stays true after logout.
+      if (!dbCleared) {
+        console.log('[logout] falling back to individual DELETE requests');
+        const DB_CREDENTIAL_KEYS = [
+          'minds_api_key', 'anthropic_api_key', 'openai_api_key',
+          'gemini_api_key', 'openai_compatible_api_key',
+          'minds_url', 'openai_base_url',
+          'providers_json', 'provider_status', 'provider_status_details',
+        ];
+        const deletes = DB_CREDENTIAL_KEYS.map((key) =>
+          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+          }).catch(() => { /* best effort */ }),
+        );
+        await Promise.race([
+          Promise.allSettled(deletes),
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+        ]);
+        dbCleared = true;
+      }
     }
 
     // Strip .env (for the standalone anton CLI and next-boot migration).
@@ -732,6 +756,45 @@ function setupIPC() {
       }
     }
     clearStoredProviderState();
+
+    // Restart the server so in-memory caches (settings, provider objects)
+    // are flushed. If the DB clear failed (server was down, timed out),
+    // the restart re-reads the cleaned .env as the sole credential source.
+    // Without this, the Python process could still hold credentials in
+    // memory and report config_ready: true after the UI says "signed out".
+    if (isServerRunning() || isServerStarting()) {
+      try {
+        await stopServer();
+        await startServer();
+
+        // Verify the restart actually cleared config_ready. If it didn't,
+        // credentials survived in the DB — log loudly so we can diagnose.
+        const healthPort = getServerPort();
+        try {
+          const healthRes = await Promise.race([
+            fetch(`http://127.0.0.1:${healthPort}/api/v1/health/`, {
+              signal: AbortSignal.timeout(3000),
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('health check timed out')), 3500),
+            ),
+          ]);
+          if (healthRes.ok) {
+            const health = await healthRes.json() as Record<string, unknown>;
+            if (health.config_ready) {
+              console.error('[logout] BUG: config_ready is still true after logout — credentials survived in DB');
+            } else {
+              console.log('[logout] verified: config_ready is false after restart');
+            }
+          }
+        } catch {
+          // Health check failed — server may still be starting, not fatal
+        }
+      } catch (err) {
+        console.warn('[logout] server restart failed:', err);
+      }
+    }
+
     // Force-reload the renderer from main. The renderer's own
     // `window.location.reload()` was unreliable here (page stayed on
     // the stuck confirm modal); driving the reload from the main
