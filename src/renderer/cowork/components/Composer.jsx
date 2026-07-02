@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Ico from './Icons';
+import { host } from '../../platform/host';
+import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import {
   parseFences,
   fenceCtxAtParsed,
@@ -1112,7 +1114,7 @@ export default function Composer({
                         >
                           <span style={{ display: 'inline-flex', color: 'var(--frost-700)' }}>{Ico.folder(14)}</span>
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                          {project?.name === p.name && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
+                          {project?.name === p.name && <span style={{ color: 'var(--link-strong)' }}>{Ico.check(14)}</span>}
                         </button>
                       ))}
                     </div>
@@ -1143,9 +1145,9 @@ export default function Composer({
                               projectSearchRef.current?.focus();
                             }
                           }}
-                          style={{ color: 'var(--primary-700)' }}
+                          style={{ color: 'var(--link-strong)' }}
                         >
-                          <span style={{ display: 'inline-flex', color: 'var(--primary-700)' }}>{Ico.plus(14)}</span>
+                          <span style={{ display: 'inline-flex', color: 'var(--link-strong)' }}>{Ico.plus(14)}</span>
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {projectMenuBusy
                               ? 'Creating…'
@@ -1185,22 +1187,70 @@ export default function Composer({
       )}
 
       {openMenu === 'model' && !metaReadOnly && (
-        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260 }}>
-          <div style={{ padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</div>
-          {models.map((m) => (
-            <button
-              key={m.id}
-              className={`menu-item${model?.id === m.id ? ' checked' : ''}`}
-              onClick={() => { onModelChange(m); setOpenMenu(null); }}
-              style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
-                <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
-                {model?.id === m.id && <span style={{ color: 'var(--primary-700)' }}>{Ico.check(14)}</span>}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{m.desc}</div>
-            </button>
-          ))}
+        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260, maxHeight: 'min(360px, 60vh)', display: 'flex', flexDirection: 'column' }}>
+          {/* Header row: "MODEL" label with a compact upsell CTA right-aligned
+              on the same line. The CTA shows only when the list has locked
+              (frontier) rows on the free tier, carrying the one lock + message
+              so it isn't repeated per row (ENG-531). Pinned above the scroll
+              area so it stays put while the model list scrolls internally. */}
+          <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</span>
+            {models.some((m) => m.locked) && (
+              <button
+                type="button"
+                onClick={() => { host.openExternal(MINDS_BILLING_URL); setOpenMenu(null); }}
+                title="Upgrade to Pro Hub to unlock"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: 'none', border: 0, padding: 0, cursor: 'pointer',
+                  fontSize: 11.5, color: 'var(--link-strong)',
+                }}
+              >
+                <span style={{ textDecoration: 'underline' }}>Upgrade to Pro</span>
+                <span style={{ display: 'inline-flex' }}>{Ico.lock(12)}</span>
+              </button>
+            )}
+          </div>
+          {/* Scrollable model list — the menu is height-capped and this
+              container scrolls internally so the page/composer no longer
+              scrolls when the list is long. `minHeight: 0` lets the flex
+              child shrink below its content height so overflow kicks in. */}
+          <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
+          {models.map((m) => {
+            if (m.locked) {
+              // Locked models are inert, like a disabled <option> in Settings:
+              // dimmed, no hover, no click, no tooltip. The single underlined
+              // "Upgrade to Pro" CTA in the header is the only redirect (ENG-531).
+              return (
+                <div
+                  key={m.id}
+                  aria-disabled="true"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '8px 10px', borderRadius: 6, fontSize: 13, cursor: 'default',
+                  }}
+                >
+                  <span style={{ flex: 1, fontWeight: 500, color: 'var(--text-primary)', opacity: 0.55 }}>{m.name}</span>
+                  <span style={{ display: 'inline-flex', color: 'var(--frost-500)' }}>{Ico.lock(13)}</span>
+                </div>
+              );
+            }
+            return (
+              <button
+                key={m.id}
+                className={`menu-item${model?.id === m.id ? ' checked' : ''}`}
+                onClick={() => { onModelChange(m); setOpenMenu(null); }}
+                style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                  <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
+                  {model?.id === m.id && <span style={{ color: 'var(--link-strong)' }}>{Ico.check(14)}</span>}
+                </div>
+                {m.desc && <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{m.desc}</div>}
+              </button>
+            );
+          })}
+          </div>
         </div>
       )}
     </div>

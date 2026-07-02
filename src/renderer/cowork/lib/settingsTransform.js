@@ -133,6 +133,9 @@ export function modelLabel(id) {
   if (!id) return '';
   // Drop a trailing date snapshot suffix (e.g. -20251001).
   const s = String(id).replace(/-\d{6,}$/, '');
+  // MindsHub's free-tier model (Kimi K2, served as the `latest:kimi` alias)
+  // is presented to users as "MindsHub Air".
+  if (s === 'latest:kimi') return 'MindsHub Air';
   if (s.startsWith('claude-')) {
     const [, family, ...ver] = s.split('-');
     const version = ver.join('.');
@@ -154,8 +157,18 @@ export function modelLabel(id) {
  * dropdowns. `recommendedModels` is the backend-overlaid map from settings.
  */
 export function recommendedModelOptions(recommendedModels, providerType) {
-  const ids = (recommendedModels && recommendedModels[providerType]) || [];
-  return ids.map((id) => ({ id, label: modelLabel(id) }));
+  const entries = (recommendedModels && recommendedModels[providerType]) || [];
+  // Entries are model-id strings today. Forward-compat: once the backend
+  // serves per-model entitlement (ENG-531), an entry may be an object
+  // `{ id, locked }`; pass a boolean `locked` through when present.
+  return entries.map((entry) => {
+    const id = typeof entry === 'string' ? entry : entry.id;
+    const opt = { id, label: modelLabel(id) };
+    if (entry && typeof entry === 'object' && typeof entry.locked === 'boolean') {
+      opt.locked = entry.locked;
+    }
+    return opt;
+  });
 }
 
 // ─── Row → client transform ─────────────────────────────────────────

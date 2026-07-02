@@ -3,13 +3,15 @@ import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
+import { isModelLocked } from '../lib/modelEntitlement';
+import { useDevTier } from '../lib/useDevTier';
 import { trackHarnessSwapped } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
+import { MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
 import ChannelsView from './ChannelsView';
 
@@ -607,6 +609,10 @@ export default function SettingsView({
   section = 'agent',
   onSectionChange,
 }) {
+  // Dev-only tier simulation (see lib/useDevTier), shared with the composer
+  // model picker. Null in production, so nothing locks there until the
+  // backend serves a per-model `locked` flag.
+  const devTier = useDevTier();
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
   const [testing, setTesting] = useState(false);
@@ -1334,7 +1340,7 @@ export default function SettingsView({
                       target="_blank"
                       rel="noreferrer noopener"
                       title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                      style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                      style={{ color: 'var(--link-strong)' }}
                     >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
                   </div>
                 )}
@@ -1346,7 +1352,7 @@ export default function SettingsView({
                       target="_blank"
                       rel="noreferrer noopener"
                       title="Open the MindsHub sign-up page in your browser."
-                      style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                      style={{ color: 'var(--link-strong)' }}
                     >Sign up →</a>
                   </div>
                 )}
@@ -1547,11 +1553,23 @@ export default function SettingsView({
                       const savedIsCustom = !!curModel && !modelList.includes(curModel);
                       const inputMode = modelInputMode[role] || savedIsCustom;
                       const selectValue = inputMode ? '__custom__' : curModel;
+                      // Free-tier model gating (ENG-531). Only MindsHub-provided
+                      // models are tier-gated; a user's own direct-provider key
+                      // is outside the tier system. Locked models stay listed but
+                      // disabled, with an upgrade link below.
+                      const tier = curType === 'minds-cloud' ? devTier : null;
+                      const anyLocked = modelList.some((m) => isModelLocked({ id: m }, tier));
+                      // Selectable models first so the free user's model sits at
+                      // the top, not below the locked frontier ones. Stable — a
+                      // no-op when nothing is locked.
+                      const orderedModels = [...modelList].sort(
+                        (a, b) => (isModelLocked({ id: a }, tier) ? 1 : 0) - (isModelLocked({ id: b }, tier) ? 1 : 0),
+                      );
                       return (
                         <>
                           <select
                             className="settings-select"
-                            value={selectValue || (modelList[0] || '')}
+                            value={selectValue || (orderedModels[0] || '')}
                             onChange={(e) => {
                               if (e.target.value === '__custom__') {
                                 setModelInputMode((m) => ({ ...m, [role]: true }));
@@ -1567,9 +1585,34 @@ export default function SettingsView({
                             title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                             style={{ width: '100%' }}
                           >
-                            {modelList.map((m) => <option key={m} value={m}>{modelLabel(m)}</option>)}
+                            {orderedModels.map((m) => (
+                              // Locked models stay listed but disabled; the single
+                              // upgrade line below the select carries the message
+                              // (no per-option suffix), mirroring the composer picker.
+                              <option key={m} value={m} disabled={isModelLocked({ id: m }, tier)}>
+                                {modelLabel(m)}
+                              </option>
+                            ))}
                             {allowOther && <option value="__custom__">Other…</option>}
                           </select>
+                          {anyLocked && (
+                            <button
+                              type="button"
+                              onClick={() => host.openExternal(MINDS_BILLING_URL)}
+                              title="Upgrade to Pro Hub to unlock"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                background: 'none', border: 0, padding: 0, cursor: 'pointer',
+                                fontSize: 11.5, color: 'var(--link-strong)', width: 'fit-content',
+                                marginBottom: 12,
+                              }}
+                            >
+                              {Ico.lock(12)}
+                              {/* Underline like a text link (matching the API-key
+                                  link), but keep the teal color for contrast. */}
+                              <span style={{ textDecoration: 'underline' }}>Upgrade to Pro to unlock frontier models</span>
+                            </button>
+                          )}
                           {inputMode && allowOther && (
                             <TextInput
                               value={curModel}

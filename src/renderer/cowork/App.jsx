@@ -46,6 +46,8 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
+import { isModelLocked, orderUnlockedFirst } from './lib/modelEntitlement';
+import { useDevTier } from './lib/useDevTier';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
@@ -1014,11 +1016,22 @@ function AppCore() {
   // the backend-overlaid recommendedModels map (single source of truth in
   // cowork-server) — labels derived from ids, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
+  // Dev-only tier simulation (see lib/useDevTier). Drives the free-tier
+  // locked-model treatment until the backend serves a per-model `locked`
+  // flag; null in production, so nothing locks there.
+  const devTier = useDevTier();
   const models = useMemo(() => {
     const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
-    return recommendedModelOptions(settings.recommendedModels, providerType)
-      .map((o) => ({ id: o.id, name: o.label, desc: '' }));
-  }, [settings.recommendedModels, settings.planningProvider]);
+    // Tier gating applies to MindsHub-provided models; a user's own direct
+    // provider key is outside the free/Pro tier system. The server `locked`
+    // flag (when present) still wins for any provider via isModelLocked.
+    const tier = providerType === 'minds-cloud' ? devTier : null;
+    const mapped = recommendedModelOptions(settings.recommendedModels, providerType)
+      .map((o) => ({ id: o.id, name: o.label, desc: '', locked: isModelLocked(o, tier) }));
+    // Surface selectable (unlocked) models first so a free user reaches their
+    // model without scrolling past the locked frontier ones.
+    return orderUnlockedFirst(mapped);
+  }, [settings.recommendedModels, settings.planningProvider, devTier]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,

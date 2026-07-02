@@ -1668,7 +1668,9 @@ body[data-theme="dark"] .legal-viewer-overlay {
   height: 38px;
   padding: 0 12px;
   background: var(--bg-primary);
-  border: 1px solid var(--border);
+  /* Match the border weight of `.field-input` (text inputs) so selects and
+     inputs read as one control family; `--border` was too faint (ENG-531). */
+  border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--text-primary);
   font-family: inherit;
@@ -1684,7 +1686,7 @@ body[data-theme="dark"] .legal-viewer-overlay {
 }
 
 .settings-select:hover {
-  border-color: var(--text-muted);
+  border-color: var(--line-2);
 }
 
 .settings-select:focus {

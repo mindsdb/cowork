@@ -72,6 +72,11 @@
   --primary-700: #115562;
   --primary-800: #0E4651;
 
+  /* Text-link / upsell color. Deliberately theme-aware: a dark teal on the
+     light background here, overridden to a lighter green in the dark theme so
+     links keep high contrast in both modes (ENG-531). */
+  --link-strong: var(--primary-700);
+
   /* Frost */
   --frost-50:  #EBF2F5;
   --frost-100: #DDE9EE;
@@ -267,6 +272,10 @@ body[data-theme="dark"] {
   --accent-2:     rgb(8, 178, 207);
   --accent-3:     rgb(6, 145, 170);
   --accent-bg:    rgba(34, 211, 238, 0.10);
+
+  /* Lighter green for links in dark mode — the light-theme dark teal
+     (--primary-700) is too low-contrast on the dark surface (ENG-531). */
+  --link-strong:  #7CC4B6;
   --accent-glow:  rgba(34, 211, 238, 0.45);
 
   --danger:       #F87171;
@@ -2080,7 +2089,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   border: 0; background: transparent; width: 100%; text-align: left;
 }
 .menu-item:hover { background: var(--stone-100); color: var(--text-strong); }
-.menu-item.checked { color: var(--primary-700); font-weight: 500; }
+.menu-item.checked { color: var(--link-strong); font-weight: 500; }
 
 /* ─── Task row ───────────────────────────────────────────────────────────── */
 .task-row {
