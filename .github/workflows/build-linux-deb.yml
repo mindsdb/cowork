@@ -1,0 +1,137 @@
+name: Build Linux deb
+
+on:
+  workflow_call:
+    inputs:
+      build_kind:
+        description: preview | stable | prod
+        required: true
+        type: string
+    outputs:
+      artifact_name_amd64:
+        description: Final amd64 deb file name (uploaded as the artifact name)
+        value: ${{ jobs.build.outputs.artifact_name_amd64 }}
+      artifact_name_arm64:
+        description: Final arm64 deb file name (uploaded as the artifact name)
+        value: ${{ jobs.build.outputs.artifact_name_arm64 }}
+    secrets:
+      GOOGLE_DRIVE_CLIENT_ID:
+        required: false
+      GOOGLE_DRIVE_CLIENT_SECRET:
+        required: false
+      GOOGLE_CALENDAR_CLIENT_ID:
+        required: false
+      GOOGLE_CALENDAR_CLIENT_SECRET:
+        required: false
+      GMAIL_CLIENT_ID:
+        required: false
+      GMAIL_CLIENT_SECRET:
+        required: false
+      GOOGLE_ADS_CLIENT_ID:
+        required: false
+      GOOGLE_ADS_CLIENT_SECRET:
+        required: false
+      GOOGLE_ANALYTICS_CLIENT_ID:
+        required: false
+      GOOGLE_ANALYTICS_CLIENT_SECRET:
+        required: false
+
+      VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_name_amd64: ${{ steps.name.outputs.artifact_name_amd64 }}
+      artifact_name_arm64: ${{ steps.name.outputs.artifact_name_arm64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Write server credentials
+        env:
+          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
+          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
+          GOOGLE_CALENDAR_CLIENT_ID: ${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}
+          GOOGLE_CALENDAR_CLIENT_SECRET: ${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ANALYTICS_CLIENT_ID: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_ID }}
+          GOOGLE_ANALYTICS_CLIENT_SECRET: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_SECRET }}
+        run: |
+          python3 -c "
+          import os, json
+          creds = {k: os.environ.get(k, '') for k in [
+            'GOOGLE_DRIVE_CLIENT_ID', 'GOOGLE_DRIVE_CLIENT_SECRET',
+            'GOOGLE_CALENDAR_CLIENT_ID', 'GOOGLE_CALENDAR_CLIENT_SECRET',
+            'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
+            'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET',
+            'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
+          ]}
+          with open('server-credentials.json', 'w') as f:
+              json.dump(creds, f)
+          "
+
+      # Unsigned, matching the Windows posture pre-signing. The debs MUST be
+      # built on a Linux runner — cross-building from macOS silently produces
+      # corrupt archives (see docs/linux-deb-package.md).
+      - name: Build Linux debs
+        run: npm run dist:linux
+        env:
+          VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
+
+      - name: Compute artifact names
+        id: name
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          SHA="${GITHUB_SHA::7}"
+          case "${{ inputs.build_kind }}" in
+            preview) BASE="mindshub-cowork-${VERSION}-preview-${SHA}" ;;
+            stable)  BASE="mindshub-cowork-${VERSION}-stable-${SHA}"  ;;
+            prod)    BASE="mindshub-cowork-${VERSION}" ;;
+            *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
+          esac
+          echo "artifact_name_amd64=${BASE}-amd64.deb" >> "$GITHUB_OUTPUT"
+          echo "artifact_name_arm64=${BASE}-arm64.deb" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Computed artifact names: ${BASE}-amd64.deb ${BASE}-arm64.deb"
+
+      # One directory per arch: the S3 upload workflow expects an artifact
+      # whose name equals the single file it contains.
+      - name: Stage debs for upload
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.name.outputs.version }}"
+          mkdir -p out-amd64 out-arm64
+          mv "release/mindshub-cowork_${VERSION}_amd64.deb" "out-amd64/${{ steps.name.outputs.artifact_name_amd64 }}"
+          mv "release/mindshub-cowork_${VERSION}_arm64.deb" "out-arm64/${{ steps.name.outputs.artifact_name_arm64 }}"
+
+      - name: Upload amd64 deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.artifact_name_amd64 }}
+          path: out-amd64/
+          if-no-files-found: error
+
+      - name: Upload arm64 deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.artifact_name_arm64 }}
+          path: out-arm64/
+          if-no-files-found: error

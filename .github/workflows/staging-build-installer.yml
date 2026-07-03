@@ -36,3 +36,25 @@ jobs:
       platform: windows
       build_kind: stable
       artifact_name: ${{ needs.build-windows.outputs.artifact_name }}
+
+  build-linux:
+    uses: ./.github/workflows/build-linux-deb.yml
+    with:
+      build_kind: stable
+    secrets: inherit
+
+  upload-linux-amd64:
+    needs: build-linux
+    uses: ./.github/workflows/upload-installer-to-s3.yml
+    with:
+      platform: linux-amd64
+      build_kind: stable
+      artifact_name: ${{ needs.build-linux.outputs.artifact_name_amd64 }}
+
+  upload-linux-arm64:
+    needs: build-linux
+    uses: ./.github/workflows/upload-installer-to-s3.yml
+    with:
+      platform: linux-arm64
+      build_kind: stable
+      artifact_name: ${{ needs.build-linux.outputs.artifact_name_arm64 }}
