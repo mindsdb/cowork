@@ -37,10 +37,7 @@ function Section({ title, subtitle, notice, children }) {
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
         {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
       </div>
-      <div style={{
-        paddingLeft: 24,
-        borderLeft: '1px solid var(--border-subtle)',
-      }}>{children}</div>
+      <div style={{ paddingLeft: 24 }}>{children}</div>
     </div>
   );
 }
@@ -1531,11 +1528,11 @@ export default function SettingsView({
               setSetting(effortKey, '');
             };
 
+            // Plain bold field label. Note: no dotted underline — that reads as
+            // a "hover for a tooltip" affordance, and none is wired here.
             const fieldLabel = (text) => (
               <span style={{
                 fontSize: 11, fontWeight: 700, color: 'var(--text-strong)',
-                textDecoration: 'underline', textDecorationStyle: 'dotted',
-                textDecorationColor: 'rgba(127,127,127,0.45)', textUnderlineOffset: '3px',
                 letterSpacing: '0.02em',
               }}>{text}:</span>
             );
