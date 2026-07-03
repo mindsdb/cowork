@@ -47,7 +47,7 @@ const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 
 // Join a project root + relative path into a forward-slash absolute
-// path so `window.antontron.openPath(...)` resolves correctly even
+// path so `host.openPath(...)` resolves correctly even
 // when the relative side carries embedded slashes.
 function joinAbs(root, rel) {
   if (!root || !rel) return '';
@@ -97,7 +97,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
       {hasProjectFile && (
         <button
           type="button"
-          onClick={() => abs && window.antontron?.showItemInFolder?.(abs)}
+          onClick={() => abs && host.showItemInFolder(abs)}
           title="Reveal in Finder"
           style={{
             cursor: 'pointer',
@@ -116,7 +116,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           // via the OS shell; fall back to opening the local project
           // file in the default app.
           if (rawUrl) host.openExternal(rawUrl);
-          else if (abs) window.antontron?.openPath?.(abs);
+          else if (abs) host.openPath(abs);
         }}
         title="Open in default app"
         style={{

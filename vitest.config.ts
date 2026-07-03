@@ -14,6 +14,7 @@ export default defineConfig({
     coverage: { provider: 'v8', reporter: ['text', 'html'] }, // root-only option
     projects: [
       {
+        extends: true, // inherit root plugins (react) + settings
         test: {
           name: 'main',
           environment: 'node',
@@ -22,6 +23,7 @@ export default defineConfig({
         },
       },
       {
+        extends: true, // inline projects do NOT inherit root plugins by default
         test: {
           name: 'renderer',
           environment: 'happy-dom',

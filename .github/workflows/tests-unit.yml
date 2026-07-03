@@ -34,6 +34,8 @@ jobs:
           command: npm ci
       - name: Typecheck (main + renderer)
         run: npm run typecheck
+      - name: Cowork purity guard (no direct bridge access)
+        run: npm run check:cowork-purity
       - name: Unit + component tests + coverage
         run: npm run test:coverage
       - uses: actions/upload-artifact@v4
