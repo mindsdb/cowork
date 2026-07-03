@@ -42,6 +42,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [accessPassword, setAccessPassword] = useState(artifact?.accessPassword || '');
   const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
   const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
+  const [artifactKey, setArtifactKey] = useState(artifact?.artifactKey || '');
   const [modified, setModified] = useState(!!artifact?.modified);
   const [phase, setPhase] = useState('idle'); // idle | publishing | updating | unpublishing | activating
   const [error, setError] = useState('');
@@ -59,6 +60,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setAccessPassword(artifact?.accessPassword || '');
     setAccessEmails(artifact?.accessEmails || []);
     setOrgAllowed(!!artifact?.orgAllowed);
+    setArtifactKey(artifact?.artifactKey || '');
     setModified(!!artifact?.modified);
     setError('');
     setVersions([]);  // stale history must never carry across artifacts
@@ -85,6 +87,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessPassword: m === 'password' ? (access?.password || '') : '',
         accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
         orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
+        artifactKey: r.artifactKey || artifact?.artifactKey || '',
         modified: false,
       };
       setPublishedUrl(next.publishedUrl);
@@ -92,6 +95,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessPassword(next.accessPassword);
       setAccessEmails(next.accessEmails);
       setOrgAllowed(next.orgAllowed);
+      setArtifactKey(next.artifactKey);
       setModified(false);
       // Only count the analytics event on the transition to published,
       // not on every in-place access change.
@@ -152,6 +156,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     if (!s) return;
     const nextModified = !!s.modified;
     const nextUrl = s.publishedUrl || '';
+    if (s.artifactKey) setArtifactKey(s.artifactKey);
     if (nextModified === modified && nextUrl === publishedUrl) return;
     setModified(nextModified);
     setPublishedUrl(nextUrl);
@@ -218,7 +223,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   }, [enabled, targetPath]);
 
   return {
-    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, modified,
+    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, artifactKey, modified,
     phase, busy, error, setError,
     versions, versionsLoading,
     publish, update, unpublish, refresh, loadVersions, activate,

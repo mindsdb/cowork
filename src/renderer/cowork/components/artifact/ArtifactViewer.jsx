@@ -27,6 +27,7 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { usePublish } from './publish/usePublish';
 import { PublishMenu } from './publish/PublishMenu';
+import { CommentsPanel } from './CommentsPanel';
 
 // Extensions we render inline with the lightweight text preview path
 // (server `/v1/artifacts/preview` → text body). `.md` gets the full
@@ -254,6 +255,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // Manual-reload counter — bumped by the link-pill reload button to
   // force a fresh mount/fetch even when the artifact's mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [showComments, setShowComments] = useState(false);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -380,6 +382,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
   const title = artifact.title || artifact.path?.split('/').pop();
   const isPublished = !!pub.publishedUrl;
+  // Comments are enabled only for a published, restricted artifact whose composite
+  // key ({user_dir}/{report_id}) the server has surfaced (Plan 5).
+  const commentsEnabled = isPublished && pub.accessMode === 'restricted' && !!pub.artifactKey;
+  const _akParts = (pub.artifactKey || '').split('/');
+  const commentUserDir = _akParts[0] || '';
+  const commentReportId = _akParts.slice(1).join('/') || '';
 
   // Open the local file only when the file is actually on this machine
   // (Electron + loopback server). When the desktop app points at a REMOTE
@@ -569,6 +577,18 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
         {/* Right — publish · more · close */}
         <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+          {commentsEnabled && (
+            <Tooltip label="Comments">
+              <IconButton
+                aria-label="Comments"
+                title="Comments"
+                onClick={() => setShowComments((v) => !v)}
+                style={showComments ? { color: 'var(--accent)' } : undefined}
+              >
+                {Ico.chat(18)}
+              </IconButton>
+            </Tooltip>
+          )}
           {publishable && (
             <PublishMenu controller={pub} disabled={!hasActionPath} disabledReason={disabledReason} />
           )}
@@ -609,7 +629,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       </div>
 
       {/* Body — text (.md/.txt/.csv) renders inline; everything else is a
-          sandboxed iframe with a "Preview" placeholder until it paints. */}
+          sandboxed iframe with a "Preview" placeholder until it paints.
+          Wrapped in a row so the comments panel can dock on the right. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
       <div style={{ flex: 1, minHeight: 0, position: 'relative', background: 'var(--surface-2)', overflow: isText ? 'auto' : 'hidden' }}>
         {err ? (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
@@ -680,6 +702,14 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             )}
             {(loading || !previewUrl || !iframeReady) && <PreviewPlaceholder />}
           </>
+        )}
+      </div>
+        {showComments && commentsEnabled && commentUserDir && commentReportId && (
+          <CommentsPanel
+            userDir={commentUserDir}
+            reportId={commentReportId}
+            onClose={() => setShowComments(false)}
+          />
         )}
       </div>
 
