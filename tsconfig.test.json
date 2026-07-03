@@ -9,6 +9,8 @@
   },
   "include": [
     "tests/**/*.ts",
+    "e2e/**/*.ts",
+    "playwright.config.ts",
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
   ]
