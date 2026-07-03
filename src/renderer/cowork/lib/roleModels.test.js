@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { settingKeyForRole, buildRoleModels, withSelectionFirst } from './roleModels';
+import { settingKeyForRole, buildRoleModels, withSelectionFirst, isRoleModelLocked } from './roleModels';
+
+describe('isRoleModelLocked', () => {
+  it('locks when the server availability map marks the id unavailable', () => {
+    expect(isRoleModelLocked({ id: 'latest:opus' }, null, { 'latest:opus': false })).toBe(true);
+  });
+
+  it('unlocks when the server marks it available, overriding the tier heuristic', () => {
+    // Frontier id would be locked by the free-tier heuristic, but the server
+    // says it is available for this user, so the server wins.
+    expect(isRoleModelLocked({ id: 'latest:opus' }, 'free', { 'latest:opus': true })).toBe(false);
+  });
+
+  it('falls back to the tier heuristic when the server has no entry for the id', () => {
+    expect(isRoleModelLocked({ id: 'latest:opus' }, 'free', {})).toBe(true);
+    expect(isRoleModelLocked({ id: 'latest:kimi' }, 'free', {})).toBe(false);
+  });
+});
 
 describe('settingKeyForRole', () => {
   it('maps coding to codingModel and everything else to planningModel', () => {
@@ -41,6 +58,18 @@ describe('buildRoleModels', () => {
     expect(buildRoleModels(recLabelled, 'minds-cloud', 'free')).toEqual([
       { id: 'latest:kimi', name: 'MindsHub Air', locked: false },
     ]);
+  });
+
+  it('uses the server availability map over the tier heuristic', () => {
+    // Server says opus is available (unlocked) and kimi is NOT, inverting the
+    // free-tier heuristic. kimi becomes locked, opus unlocked and hoisted.
+    const modelEnabled = { 'latest:opus': true, 'latest:kimi': false };
+    const out = buildRoleModels(rec, 'minds-cloud', 'free', modelEnabled);
+    const byId = Object.fromEntries(out.map((m) => [m.id, m.locked]));
+    expect(byId['latest:opus']).toBe(false);
+    expect(byId['latest:kimi']).toBe(true);
+    // Unlocked (opus, sonnet-via-heuristic-locked?) ordering: opus leads.
+    expect(out[0].id).toBe('latest:opus');
   });
 
   it('returns [] for an unknown provider', () => {

@@ -19,6 +19,8 @@ import {
   updateArtifact,
   publishTargetPath,
   fetchArtifactStatus,
+  listArtifactVersions,
+  activateArtifactVersion,
 } from '../../../api';
 import { trackArtifactPublished } from '../../../lib/analytics';
 
@@ -41,8 +43,13 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
   const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
   const [modified, setModified] = useState(!!artifact?.modified);
-  const [phase, setPhase] = useState('idle'); // idle | publishing | updating | unpublishing
+  const [phase, setPhase] = useState('idle'); // idle | publishing | updating | unpublishing | activating
   const [error, setError] = useState('');
+  // Publish history for the version-rollback UI. Empty until loadVersions()
+  // runs (lazily, when the publish panel opens) — and on any failure (404 /
+  // older server / not published), so the UI degrades to "no history".
+  const [versions, setVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
 
   // Re-sync when the artifact identity changes (opening a different one
   // without unmounting) or the server pushed fresh state via the parent.
@@ -54,6 +61,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setOrgAllowed(!!artifact?.orgAllowed);
     setModified(!!artifact?.modified);
     setError('');
+    setVersions([]);  // stale history must never carry across artifacts
   }, [artifact?.path, artifact?.publishedUrl, artifact?.accessMode, artifact?.accessProtected, artifact?.modified]);
 
   const targetPath = publishTargetPath(artifact);
@@ -150,6 +158,43 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     onChange?.({ ...artifact, modified: nextModified, publishedUrl: nextUrl });
   }, [phase, targetPath, modified, publishedUrl, artifact, onChange]);
 
+  // Fetch the publish history for the rollback UI. Lazy: the panel calls this
+  // when it opens, not on every render. Any error (404 / older server / not
+  // published) clears the list so the UI hides the version section.
+  const loadVersions = useCallback(async () => {
+    if (!targetPath || !publishedUrl) { setVersions([]); return; }
+    setVersionsLoading(true);
+    try {
+      const r = await listArtifactVersions(targetPath);
+      setVersions(Array.isArray(r?.versions) ? r.versions : []);
+    } catch {
+      setVersions([]);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [targetPath, publishedUrl]);
+
+  // Roll the live URL back to an older version. The public URL is stable, so
+  // afterwards we just re-sync status (the `modified` badge lights up — the
+  // on-disk workspace now differs from the older live version) and the list.
+  const activate = useCallback(async (md5) => {
+    if (phase !== 'idle' || !targetPath || !md5) return false;
+    setPhase('activating');
+    setError('');
+    try {
+      await activateArtifactVersion(targetPath, md5);
+      return true;
+    } catch (e) {
+      setError(`Roll back failed: ${e?.message || e}`);
+      return false;
+    } finally {
+      setPhase('idle');
+      // Re-sync after the phase clears so refresh() (a no-op while busy) runs.
+      refresh();
+      loadVersions();
+    }
+  }, [phase, targetPath, refresh, loadVersions]);
+
   // Hold the latest `refresh` in a ref so the listener effect below doesn't
   // re-subscribe every time `refresh`'s identity changes (it depends on
   // `artifact`, which the parent re-creates on every sync). Subscribe once
@@ -175,7 +220,8 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   return {
     publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, modified,
     phase, busy, error, setError,
-    publish, update, unpublish, refresh,
+    versions, versionsLoading,
+    publish, update, unpublish, refresh, loadVersions, activate,
   };
 }
 

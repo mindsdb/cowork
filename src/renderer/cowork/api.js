@@ -1021,6 +1021,10 @@ export async function fetchSettings() {
         result.recommendedModels = overlayLists(result.recommendedModels, rec.recommendedModels);
         result.recommendedPair = overlayLists(result.recommendedPair, rec.recommendedPair);
         result.modelEfforts = rec.modelEfforts || {};
+        // Per-model availability: MindsHub lists models the user's tier can't
+        // use (marked enabled:false) so the picker shows them greyed as
+        // upgrade prompts. Absent id ⇒ available (backwards compatible).
+        result.modelEnabled = rec.modelEnabled || {};
       }
       _lastFetchedSettings = result;
       return result;
@@ -1447,6 +1451,21 @@ export async function publishArtifact(path, access) {
 // "Modified" badge on success.
 export async function updateArtifact(path) {
   return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// Version history of a live artifact:
+//   { reportId, currentMd5, artifactType, versions: [{ md5, publishedAt, title, isCurrent }] }
+// Versions are newest-first. Throws on 404 — which is also what an older server
+// (no /versions route) returns, so callers feature-detect by treating any error
+// as "no history available" and hiding the UI.
+export async function listArtifactVersions(path) {
+  return req(`/publish/versions?path=${encodeURIComponent(path)}`);
+}
+
+// Roll the live URL back to an existing version (flips current_md5 — the public
+// URL is stable). Static artifacts only; the server rejects fullstack apps.
+export async function activateArtifactVersion(path, md5) {
+  return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the

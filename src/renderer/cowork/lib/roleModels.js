@@ -11,13 +11,31 @@ export function settingKeyForRole(role) {
   return role === 'coding' ? 'codingModel' : 'planningModel';
 }
 
+// Resolve a model's locked state: the server's per-model availability map
+// (`modelEnabled`, id → bool; `false` = tier can't use it) is the source of
+// truth, with the client tier heuristic as the fallback when the server has no
+// entry for that id. Absent id ⇒ defer to the heuristic (direct providers have
+// no availability flag).
+export function isRoleModelLocked(model, tier, modelEnabled = {}) {
+  const id = model && model.id;
+  // When the server has an opinion on this id (present in the map), it is
+  // authoritative both ways: false = locked, true = unlocked (overrides the
+  // heuristic). Only fall back to the tier heuristic when the id is absent
+  // (no server availability info, e.g. dev simulation or direct providers).
+  if (id != null && Object.prototype.hasOwnProperty.call(modelEnabled, id)) {
+    return modelEnabled[id] === false;
+  }
+  return isModelLocked(model, tier);
+}
+
 // Build the ordered option list for a role from the server's recommended-models
-// map: `label` becomes the display `name`, each model gets a per-tier `locked`
-// flag, and unlocked models are surfaced first so a free user reaches a
-// selectable model without scrolling past locked frontier ones.
-export function buildRoleModels(recommendedModels, providerType, tier) {
+// map: `label` becomes the display `name`, each model gets a `locked` flag
+// (server availability first, tier heuristic fallback), and unlocked models are
+// surfaced first so a free user reaches a selectable model without scrolling
+// past locked frontier ones.
+export function buildRoleModels(recommendedModels, providerType, tier, modelEnabled = {}) {
   const mapped = recommendedModelOptions(recommendedModels, providerType)
-    .map((o) => ({ id: o.id, name: o.label, locked: isModelLocked(o, tier) }));
+    .map((o) => ({ id: o.id, name: o.label, locked: isRoleModelLocked(o, tier, modelEnabled) }));
   return orderUnlockedFirst(mapped);
 }
 
@@ -25,8 +43,8 @@ export function buildRoleModels(recommendedModels, providerType, tier) {
 // the selection isn't in the live list, prepend it carrying a computed `locked`
 // flag, then re-order so a locked selection can't sit above unlocked models.
 // Returns the original list unchanged when the selection is already present.
-export function withSelectionFirst(selected, list, tier) {
+export function withSelectionFirst(selected, list, tier, modelEnabled = {}) {
   if (!selected || list.some((m) => m.id === selected.id)) return list;
-  const withSelected = [{ ...selected, locked: isModelLocked(selected, tier) }, ...list];
+  const withSelected = [{ ...selected, locked: isRoleModelLocked(selected, tier, modelEnabled) }, ...list];
   return orderUnlockedFirst(withSelected);
 }
