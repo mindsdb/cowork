@@ -133,9 +133,6 @@ export function modelLabel(id) {
   if (!id) return '';
   // Drop a trailing date snapshot suffix (e.g. -20251001).
   const s = String(id).replace(/-\d{6,}$/, '');
-  // MindsHub's free-tier model (Kimi K2, served as the `latest:kimi` alias)
-  // is presented to users as "MindsHub Air".
-  if (s === 'latest:kimi') return 'MindsHub Air';
   if (s.startsWith('claude-')) {
     const [, family, ...ver] = s.split('-');
     const version = ver.join('.');
@@ -158,13 +155,17 @@ export function modelLabel(id) {
  */
 export function recommendedModelOptions(recommendedModels, providerType) {
   const entries = (recommendedModels && recommendedModels[providerType]) || [];
-  // Entries are model-id strings today. Forward-compat: once the backend
-  // serves per-model entitlement (ENG-531), an entry may be an object
-  // `{ id, locked }`; pass a boolean `locked` through when present.
+  // Entries are model-id strings today. Forward-compat: the backend may serve
+  // an object `{ id, label?, locked? }`. When a `label` is present it is the
+  // source of truth for the display name (e.g. the free model's "MindsHub Air"
+  // lives in the backend model config, not hardcoded here); otherwise fall back
+  // to the id-derived label. A boolean `locked` is passed through for ENG-531.
   return entries.map((entry) => {
-    const id = typeof entry === 'string' ? entry : entry.id;
-    const opt = { id, label: modelLabel(id) };
-    if (entry && typeof entry === 'object' && typeof entry.locked === 'boolean') {
+    const isObj = entry && typeof entry === 'object';
+    const id = isObj ? entry.id : entry;
+    const label = (isObj && typeof entry.label === 'string' && entry.label) || modelLabel(id);
+    const opt = { id, label };
+    if (isObj && typeof entry.locked === 'boolean') {
       opt.locked = entry.locked;
     }
     return opt;

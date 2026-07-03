@@ -245,7 +245,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
 export default function HomeView({
   greeting, showDots,
   activeTasks, onSelectTask, onClearActive,
-  onSend, project, onProjectChange, model, onModelChange, projects, models,
+  onSend, project, onProjectChange, model, onModelChange, roles, projects, models,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -540,6 +540,7 @@ export default function HomeView({
               onProjectChange={onProjectChange}
               model={model}
               onModelChange={onModelChange}
+              roles={roles}
               projects={projects}
               models={models}
               attachments={attachments}

@@ -62,6 +62,12 @@ export default function Composer({
   onProjectChange,
   model,
   onModelChange,
+  // Optional two-role model picker (ENG-531). When provided, the model menu
+  // shows a Planning | Coding segmented toggle and each tab drives its own
+  // role: `{ planning: {label, model, models, onChange}, coding: {...} }`.
+  // When omitted, the menu falls back to the single `model`/`models`/
+  // `onModelChange` API so other Composer call sites are unaffected.
+  roles = null,
   projects,
   models,
   attachments = [],
@@ -104,6 +110,9 @@ export default function Composer({
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  /** Active tab of the two-role model menu ('planning' | 'coding').
+      Only meaningful when `roles` is supplied; harmless otherwise. */
+  const [modelRole, setModelRole] = useState('planning');
   /** Project-picker menu state. The menu is a search-first picker:
       one input at the top filters the project list AND doubles as
       the "+ Create '<typed>'" entry when no results match — same
@@ -1186,16 +1195,63 @@ export default function Composer({
         </div>
       )}
 
-      {openMenu === 'model' && !metaReadOnly && (
-        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260, maxHeight: 'min(360px, 60vh)', display: 'flex', flexDirection: 'column' }}>
-          {/* Header row: "MODEL" label with a compact upsell CTA right-aligned
-              on the same line. The CTA shows only when the list has locked
-              (frontier) rows on the free tier, carrying the one lock + message
-              so it isn't repeated per row (ENG-531). Pinned above the scroll
-              area so it stays put while the model list scrolls internally. */}
+      {openMenu === 'model' && !metaReadOnly && (() => {
+        // Resolve which model set the menu drives. Two-role mode (ENG-531)
+        // routes through the active tab; otherwise fall back to the single
+        // `model`/`models`/`onModelChange` API so nothing else changes.
+        const activeRole = roles ? (roles[modelRole] || roles.planning) : null;
+        const menuModels = activeRole ? (activeRole.models || []) : models;
+        const menuModel = activeRole ? activeRole.model : model;
+        const menuOnChange = activeRole ? activeRole.onChange : onModelChange;
+        const roleKeys = roles ? Object.keys(roles) : [];
+        return (
+        <div className="menu" style={{ right: 8, top: 'calc(100% + 6px)', minWidth: 260, maxHeight: 'min(400px, 62vh)', display: 'flex', flexDirection: 'column' }}>
+          {/* Planning | Coding segmented toggle — only in two-role mode. An
+              iOS-style recessed track (surface-2) with a raised active pill
+              (surface-0). Pinned above the scroll area; switching tabs swaps
+              the list below without closing the menu. */}
+          {roles && roleKeys.length > 1 && (
+            <div style={{ flex: '0 0 auto', padding: '6px 8px 12px' }}>
+              <div
+                role="tablist"
+                aria-label="Model role"
+                style={{ display: 'flex', gap: 2, padding: 2, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8 }}
+              >
+                {roleKeys.map((key) => {
+                  const active = modelRole === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setModelRole(key)}
+                      style={{
+                        flex: 1, padding: '4px 8px', fontSize: 12,
+                        fontWeight: active ? 600 : 500,
+                        border: 0, borderRadius: 6, cursor: 'pointer',
+                        background: active ? 'var(--surface-0)' : 'transparent',
+                        color: active ? 'var(--text-primary)' : 'var(--frost-600)',
+                        boxShadow: active ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                      }}
+                    >
+                      {roles[key].label || key}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {/* Header row: role/"MODEL" label with a compact upsell CTA
+              right-aligned on the same line. The CTA shows only when the
+              active list has locked (frontier) rows, carrying the one lock +
+              message so it isn't repeated per row (ENG-531). Pinned above the
+              scroll area so it stays put while the model list scrolls. */}
           <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px' }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Model</span>
-            {models.some((m) => m.locked) && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--frost-600)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {activeRole ? `${activeRole.label} model` : 'Model'}
+            </span>
+            {menuModels.some((m) => m.locked) && (
               <UpgradeToProLink onActivate={() => setOpenMenu(null)} />
             )}
           </div>
@@ -1204,7 +1260,7 @@ export default function Composer({
               scrolls when the list is long. `minHeight: 0` lets the flex
               child shrink below its content height so overflow kicks in. */}
           <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
-          {models.map((m) => {
+          {menuModels.map((m) => {
             if (m.locked) {
               // Locked models are inert, like a disabled <option> in Settings:
               // dimmed, no hover, no click, no tooltip. The single underlined
@@ -1226,20 +1282,21 @@ export default function Composer({
             return (
               <button
                 key={m.id}
-                className={`menu-item${model?.id === m.id ? ' checked' : ''}`}
-                onClick={() => { onModelChange(m); setOpenMenu(null); }}
+                className={`menu-item${menuModel?.id === m.id ? ' checked' : ''}`}
+                onClick={() => { menuOnChange?.(m); setOpenMenu(null); }}
                 style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
                   <span style={{ flex: 1, fontWeight: 500 }}>{m.name}</span>
-                  {model?.id === m.id && <span style={{ color: 'var(--link-strong)' }}>{Ico.check(14)}</span>}
+                  {menuModel?.id === m.id && <span style={{ color: 'var(--link-strong)' }}>{Ico.check(14)}</span>}
                 </div>
               </button>
             );
           })}
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

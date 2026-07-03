@@ -1032,6 +1032,16 @@ function AppCore() {
     // model without scrolling past the locked frontier ones.
     return orderUnlockedFirst(mapped);
   }, [settings.recommendedModels, planningProviderType, modelTier]);
+  // Coding role runs its own model + provider (can differ from planning). The
+  // composer's two-role picker (ENG-531) reads this list for the Coding tab;
+  // lock treatment keys off the coding provider's tier independently.
+  const codingProviderType = providerValueToType(settings.codingProvider) || 'minds-cloud';
+  const codingModelTier = effectiveTier(codingProviderType, devTier);
+  const codingModels = useMemo(() => {
+    const mapped = recommendedModelOptions(settings.recommendedModels, codingProviderType)
+      .map((o) => ({ id: o.id, name: o.label, locked: isModelLocked(o, codingModelTier) }));
+    return orderUnlockedFirst(mapped);
+  }, [settings.recommendedModels, codingProviderType, codingModelTier]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -1569,6 +1579,26 @@ function AppCore() {
     }
     return result;
   }, [settings]);
+
+  // Composer two-role model picker (ENG-531). Choosing a Planning or Coding
+  // model writes through to the SAME global agent config Settings > Agent uses
+  // (planning_model / coding_model) and persists immediately to the local
+  // backend — the per-message /responses API carries only one model, so a true
+  // per-task override is deferred to ENG-554. Planning also drives the
+  // per-request `model`, so we keep `selectedModel` in sync with it.
+  const handleRoleModelChange = useCallback(async (role, model) => {
+    if (!model?.id) return;
+    const key = role === 'coding' ? 'codingModel' : 'planningModel';
+    const next = { ...settings, [key]: model.id };
+    setSettings(next);
+    if (role !== 'coding') setSelectedModel(model);
+    try {
+      await saveSettings(next);
+    } catch {
+      // saveSettings surfaces its own failure state; local optimistic value
+      // stays until the next settings fetch reconciles it.
+    }
+  }, [settings, saveSettings]);
 
   const activeTasks = tasks.filter((t) => t.status === 'active');
   const currentTask = tasks.find((t) => t.id === activeTaskId) || (route === 'task' ? tasks[0] : null);
@@ -3315,6 +3345,40 @@ function AppCore() {
     return orderUnlockedFirst(withSelected);
   }, [selectedModel, models, modelTier]);
 
+  // Coding-role selection + options, mirroring the planning `selectedModel` /
+  // `modelOptions` pair above so the composer's Coding tab shows the saved
+  // coding model (prepended if the live list doesn't carry it) with the same
+  // unlocked-first ordering.
+  const codingSelected = useMemo(() => {
+    const id = settings.codingModel;
+    if (!id) return null;
+    return { id, name: modelLabel(id) || id };
+  }, [settings.codingModel]);
+  const codingModelOptions = useMemo(() => {
+    if (!codingSelected || codingModels.some((m) => m.id === codingSelected.id)) return codingModels;
+    const withSelected = [{ ...codingSelected, locked: isModelLocked(codingSelected, codingModelTier) }, ...codingModels];
+    return orderUnlockedFirst(withSelected);
+  }, [codingSelected, codingModels, codingModelTier]);
+
+  // Two-role model picker payload for the composer. Planning maps to the
+  // per-request model (`selectedModel`); both write through to global settings
+  // via handleRoleModelChange. Passed only to the home composer — the sole
+  // interactive picker — so other Composer call sites keep the single-model API.
+  const composerRoles = useMemo(() => ({
+    planning: {
+      label: 'Planning',
+      model: selectedModel,
+      models: modelOptions,
+      onChange: (m) => handleRoleModelChange('planning', m),
+    },
+    coding: {
+      label: 'Coding',
+      model: codingSelected,
+      models: codingModelOptions,
+      onChange: (m) => handleRoleModelChange('coding', m),
+    },
+  }), [selectedModel, modelOptions, codingSelected, codingModelOptions, handleRoleModelChange]);
+
   return (
     <div style={{
       ...appStyle, ...accentCss,
@@ -3499,6 +3563,7 @@ function AppCore() {
             onProjectChange={setSelectedProject}
             model={selectedModel}
             onModelChange={setSelectedModel}
+            roles={composerRoles}
             projects={projects}
             models={modelOptions}
             attachments={composerAttachments}

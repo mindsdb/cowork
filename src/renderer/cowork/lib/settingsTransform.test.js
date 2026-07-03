@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { modelLabel, recommendedModelOptions } from './settingsTransform';
 
 describe('modelLabel', () => {
-  it('presents the free model (latest:kimi) as "MindsHub Air"', () => {
-    expect(modelLabel('latest:kimi')).toBe('MindsHub Air');
+  it('derives from the id with no per-model special-casing (display name comes from config)', () => {
+    expect(modelLabel('latest:kimi')).toBe('latest:kimi');
   });
 
   it('still derives family-aware labels for other models', () => {
@@ -20,11 +20,18 @@ describe('modelLabel', () => {
 });
 
 describe('recommendedModelOptions', () => {
-  it('maps a provider id-string list to {id, label} options', () => {
+  it('maps a provider id-string list to {id, label} options (label derived from id)', () => {
     const rec = { 'minds-cloud': ['latest:kimi', 'latest:opus'] };
     expect(recommendedModelOptions(rec, 'minds-cloud')).toEqual([
-      { id: 'latest:kimi', label: 'MindsHub Air' },
+      { id: 'latest:kimi', label: 'latest:kimi' },
       { id: 'latest:opus', label: 'latest:opus' },
+    ]);
+  });
+
+  it('prefers a config-provided label over the id-derived one', () => {
+    const rec = { 'minds-cloud': [{ id: 'latest:kimi', label: 'MindsHub Air' }] };
+    expect(recommendedModelOptions(rec, 'minds-cloud')).toEqual([
+      { id: 'latest:kimi', label: 'MindsHub Air' },
     ]);
   });
 
@@ -41,7 +48,7 @@ describe('recommendedModelOptions', () => {
       ],
     };
     expect(recommendedModelOptions(rec, 'minds-cloud')).toEqual([
-      { id: 'latest:kimi', label: 'MindsHub Air', locked: false },
+      { id: 'latest:kimi', label: 'latest:kimi', locked: false },
       { id: 'latest:opus', label: 'latest:opus', locked: true },
     ]);
   });
