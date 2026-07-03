@@ -40,6 +40,10 @@ export function startRefreshLoop(
 ): void {
   const key = loopKey(engine, accountEmail);
   stopRefreshLoop(engine, accountEmail);
+  // A stale flag from a previous disconnect of this same (engine, account)
+  // pair would otherwise make the very first tick of this fresh loop kill
+  // itself immediately.
+  revokedConnections.delete(key);
   const expiresAtMs = new Date(expiresAtIso).getTime();
   console.log(`[token-refresh] loop started: ${key} expires ${new Date(expiresAtMs).toISOString()} refresh-in ${Math.round((expiresAtMs - PRE_REFRESH_WINDOW_MS - Date.now()) / 60000)}min`);
   const state: LoopState = {
@@ -148,6 +152,11 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       expires_in: number;
       refresh_token?: string;
     };
+
+    // Re-check: a disconnect can land after the Google round-trip above but
+    // before we write anything — without this, we could resurrect a keychain
+    // entry (or vault token) for a connection the user just removed.
+    if (revokedConnections.has(key)) return;
 
     const newExpiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
     state.expiresAt = Date.now() + data.expires_in * 1000;

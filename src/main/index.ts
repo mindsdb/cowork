@@ -618,17 +618,22 @@ function setupIPC() {
       }
 
       // Fetch account email from Google userinfo — needed as keychain key
-      // and for the vault record's display name.
+      // and for the vault record's display name. The token exchange already
+      // succeeded at this point, so retry once on a transient failure rather
+      // than forcing the user to redo the whole consent flow.
       let accountEmail = '';
-      try {
-        const uiRes = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
-          headers: { Authorization: `Bearer ${pkceResult.access_token}` },
-        });
-        if (uiRes.ok) {
-          const ui = await uiRes.json() as { email?: string };
-          accountEmail = ui.email || '';
-        }
-      } catch {}
+      for (let attempt = 0; attempt < 2 && !accountEmail; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
+        try {
+          const uiRes = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
+            headers: { Authorization: `Bearer ${pkceResult.access_token}` },
+          });
+          if (uiRes.ok) {
+            const ui = await uiRes.json() as { email?: string };
+            accountEmail = ui.email || '';
+          }
+        } catch {}
+      }
       if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email from Google.' };
 
       // Store refresh_token in OS keychain — never sent over the network.
@@ -659,6 +664,10 @@ function setupIPC() {
         },
       );
       if (!saveRes.ok) {
+        // Roll back the keychain write from above — otherwise a live Google
+        // refresh token is orphaned in the OS keychain with no vault record
+        // ever pointing at it.
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
         return { ok: false, reason: `Failed to save connection (${saveRes.status}).` };
       }
       const saved = await saveRes.json() as { ok: boolean; name?: string };
