@@ -424,7 +424,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
         sendLog(win, 'Install it with: xcode-select --install\n');
         sendInstallError(win, 'git is required but not found.');
         return false;
-      } else {
+      } else if (process.platform === 'win32') {
         sendLog(win, 'git not found. Installing via winget...\n');
         const result = await runCommand(
           'winget',
@@ -465,6 +465,15 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           return false;
         }
         sendLog(win, 'git installed successfully.\n');
+      } else {
+        // Linux. The deb declares git as a package dependency, so this only
+        // triggers if git was removed after install — don't try to install
+        // it ourselves, just point at the system package manager.
+        setStep('git', 'error');
+        sendLog(win, '\nERROR: git is not installed.\n');
+        sendLog(win, 'Install it with your package manager, e.g.: sudo apt install git\n');
+        sendInstallError(win, 'git is required but not found.');
+        return false;
       }
     } else {
       sendLog(win, 'git found.\n');

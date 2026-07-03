@@ -29,7 +29,8 @@
     "release:mac:pkg:notarized": "bash ./scripts/release-mac-pkg-notarized.sh",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never",
     "dist:win:all": "npm run build && electron-builder --win --publish never",
-    "release:win:local": "npm run dist:win"
+    "release:win:local": "npm run dist:win",
+    "dist:linux": "npm run build && electron-builder --linux --publish never --config.npmRebuild=false"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

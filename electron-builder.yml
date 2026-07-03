@@ -55,6 +55,36 @@ nsis:
   allowToChangeInstallationDirectory: true
   perMachine: false
 
+linux:
+  icon: icon.png
+  category: Development
+  maintainer: MindsDB <hello@mindsdb.com>
+  # Avoid the legacy package.json name ("anton") leaking into the package
+  # name, /opt path, and binary.
+  executableName: mindshub-cowork
+  target:
+    - target: deb
+      arch: [x64, arm64]
+
+deb:
+  packageName: mindshub-cowork
+  artifactName: "mindshub-cowork_${version}_${arch}.${ext}"
+  # Overriding depends replaces electron-builder's defaults, so the default
+  # runtime libs are repeated here. git and curl are required by the
+  # first-run cowork-server installer (uv bootstrap + git-based install).
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - git
+    - curl
+
 extraResources:
   - from: assets/
     to: assets/
