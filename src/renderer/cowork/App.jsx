@@ -45,8 +45,9 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
-import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { isModelLocked, orderUnlockedFirst, effectiveTier } from './lib/modelEntitlement';
+import { modelLabel, providerValueToType } from './lib/settingsTransform';
+import { isModelLocked, effectiveTier } from './lib/modelEntitlement';
+import { settingKeyForRole, buildRoleModels, withSelectionFirst } from './lib/roleModels';
 import { useDevTier } from './lib/useDevTier';
 import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
@@ -1025,23 +1026,19 @@ function AppCore() {
   // flag (when present) still wins for any provider via isModelLocked.
   const planningProviderType = providerValueToType(settings.planningProvider) || 'minds-cloud';
   const modelTier = effectiveTier(planningProviderType, devTier);
-  const models = useMemo(() => {
-    const mapped = recommendedModelOptions(settings.recommendedModels, planningProviderType)
-      .map((o) => ({ id: o.id, name: o.label, locked: isModelLocked(o, modelTier) }));
-    // Surface selectable (unlocked) models first so a free user reaches their
-    // model without scrolling past the locked frontier ones.
-    return orderUnlockedFirst(mapped);
-  }, [settings.recommendedModels, planningProviderType, modelTier]);
+  const models = useMemo(
+    () => buildRoleModels(settings.recommendedModels, planningProviderType, modelTier),
+    [settings.recommendedModels, planningProviderType, modelTier],
+  );
   // Coding role runs its own model + provider (can differ from planning). The
   // composer's two-role picker (ENG-531) reads this list for the Coding tab;
   // lock treatment keys off the coding provider's tier independently.
   const codingProviderType = providerValueToType(settings.codingProvider) || 'minds-cloud';
   const codingModelTier = effectiveTier(codingProviderType, devTier);
-  const codingModels = useMemo(() => {
-    const mapped = recommendedModelOptions(settings.recommendedModels, codingProviderType)
-      .map((o) => ({ id: o.id, name: o.label, locked: isModelLocked(o, codingModelTier) }));
-    return orderUnlockedFirst(mapped);
-  }, [settings.recommendedModels, codingProviderType, codingModelTier]);
+  const codingModels = useMemo(
+    () => buildRoleModels(settings.recommendedModels, codingProviderType, codingModelTier),
+    [settings.recommendedModels, codingProviderType, codingModelTier],
+  );
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -1588,7 +1585,7 @@ function AppCore() {
   // per-request `model`, so we keep `selectedModel` in sync with it.
   const handleRoleModelChange = useCallback(async (role, model) => {
     if (!model?.id) return;
-    const key = role === 'coding' ? 'codingModel' : 'planningModel';
+    const key = settingKeyForRole(role);
     const next = { ...settings, [key]: model.id };
     setSettings(next);
     if (role !== 'coding') setSelectedModel(model);
@@ -3339,11 +3336,10 @@ function AppCore() {
   // (AppCore re-renders frequently during a live stream). When the selection
   // isn't already in the list, prepend it carrying a computed `locked` flag,
   // then re-order so a locked selection can't sit above the unlocked models.
-  const modelOptions = useMemo(() => {
-    if (!selectedModel || models.some((m) => m.id === selectedModel.id)) return models;
-    const withSelected = [{ ...selectedModel, locked: isModelLocked(selectedModel, modelTier) }, ...models];
-    return orderUnlockedFirst(withSelected);
-  }, [selectedModel, models, modelTier]);
+  const modelOptions = useMemo(
+    () => withSelectionFirst(selectedModel, models, modelTier),
+    [selectedModel, models, modelTier],
+  );
 
   // Coding-role selection + options, mirroring the planning `selectedModel` /
   // `modelOptions` pair above so the composer's Coding tab shows the saved
@@ -3354,11 +3350,10 @@ function AppCore() {
     if (!id) return null;
     return { id, name: modelLabel(id) || id };
   }, [settings.codingModel]);
-  const codingModelOptions = useMemo(() => {
-    if (!codingSelected || codingModels.some((m) => m.id === codingSelected.id)) return codingModels;
-    const withSelected = [{ ...codingSelected, locked: isModelLocked(codingSelected, codingModelTier) }, ...codingModels];
-    return orderUnlockedFirst(withSelected);
-  }, [codingSelected, codingModels, codingModelTier]);
+  const codingModelOptions = useMemo(
+    () => withSelectionFirst(codingSelected, codingModels, codingModelTier),
+    [codingSelected, codingModels, codingModelTier],
+  );
 
   // Two-role model picker payload for the composer. Planning maps to the
   // per-request model (`selectedModel`); both write through to global settings
