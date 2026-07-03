@@ -101,6 +101,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
   const displayName =
     connection.display_name || connection.displayName || name;
   const updated = connection.updated_at || connection.updatedAt || null;
+  const needsReconnect = connection.status === 'needs_reconnect';
 
   const handleRemove = async (e) => {
     e.stopPropagation();
@@ -131,8 +132,12 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background: hover ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${hover ? 'var(--line-2)' : 'var(--line)'}`,
+        background: needsReconnect
+          ? 'color-mix(in srgb, var(--warning, #f5a623) 8%, var(--surface))'
+          : (hover ? 'var(--surface-2)' : 'var(--surface)'),
+        border: needsReconnect
+          ? `1px solid color-mix(in srgb, var(--warning, #f5a623) 45%, transparent)`
+          : `1px solid ${hover ? 'var(--line-2)' : 'var(--line)'}`,
         borderRadius: 10,
         padding: '14px 16px',
         minHeight: 120,
@@ -146,9 +151,11 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{
           display: 'inline-flex', flexShrink: 0,
-          color: 'var(--ink-3)',
-        }}>
-          {Ico.database(14)}
+          color: needsReconnect ? 'var(--warning, #f5a623)' : 'var(--ink-3)',
+        }} title={needsReconnect ? 'Reconnection required' : undefined}>
+          {needsReconnect
+            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>
+            : Ico.database(14)}
         </span>
         <span style={{
           flex: 1, minWidth: 0,
@@ -168,6 +175,15 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      {needsReconnect && (
+        <div style={{
+          fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
+          color: 'var(--warning, #f5a623)',
+        }}>
+          Reconnection required — click to fix
+        </div>
+      )}
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,

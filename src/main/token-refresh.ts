@@ -124,7 +124,15 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
       }).toString(),
     });
 
-    if (res.status === 401) {
+    // Google's token endpoint returns 400 { error: "invalid_grant" } for a
+    // revoked/expired refresh token (RFC 6749) — 401 is what its resource
+    // APIs return for a bad access token, not what this endpoint returns.
+    const isRevoked = res.status === 401 || (
+      res.status === 400 &&
+      (await res.json().catch(() => null) as { error?: string } | null)?.error === 'invalid_grant'
+    );
+
+    if (isRevoked) {
       await patchToken(engine, state.name, { status: 'needs_reconnect' });
       notifyRenderer({ engine, name: state.name, accountEmail, permanent: true });
       stopRefreshLoop(engine, accountEmail);
