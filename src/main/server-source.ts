@@ -9,21 +9,27 @@
 // feature branch / tag / commit via env vars while iterating; a release
 // flips the channel to the published PyPI wheel.
 //
-//   COWORK_SERVER_CHANNEL   git | pypi         (default: git)
-//   COWORK_SERVER_REF       branch|tag|sha     (default: main)  — git channel
-//   ANTON_REF               branch|tag|sha     (default: main)  — git channel
-//   COWORK_SERVER_PACKAGE   literal uv spec    (escape hatch; wins over all)
+//   COWORK_SERVER_CHANNEL   git | pypi            (default: git)
+//   COWORK_SERVER_REF       branch|tag|sha        (default: main)  — git channel
+//   ANTON_REF               branch|tag|sha        (default: main)  — git channel
+//   COWORK_SERVER_PACKAGE   literal uv spec       (escape hatch; wins over all)
+//   ANTON_PACKAGE           literal uv spec       (local path / spec for anton;
+//                           only honoured when COWORK_SERVER_PACKAGE is also set.
+//                           Requires backend/core_api/pyproject.toml [tool.uv.sources]
+//                           to be updated to { path = "../../core_agent" } first —
+//                           otherwise uv aborts with "conflicting URLs".)
 //
 // On the `pypi` channel anton comes from the published wheel's pinned
 // dependency, so ANTON_REF is ignored there.
 
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
+// export const COWORK_SERVER_BRANCH = 'main';
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
 export const ANTON_PACKAGE = 'anton-agent';
 
 // Minimum version for the PyPI channel (a floor; newer compatible
 // releases are picked up automatically). Keep in sync with installer.ts.
-export const COWORK_SERVER_MIN_VERSION = '0.1.5';
+export const COWORK_SERVER_MIN_VERSION = '0.1.10';
 
 export type Channel = 'git' | 'pypi';
 
@@ -31,12 +37,25 @@ export function getChannel(): Channel {
   return (process.env.COWORK_SERVER_CHANNEL || 'git').toLowerCase() === 'pypi' ? 'pypi' : 'git';
 }
 
+// Build-time baked refs (written by scripts/gen-build-channel.mjs via
+// prebuild:main). The file is gitignored and only exists after a build — in
+// dev mode the Makefile-exported env vars take priority anyway.
+function _buildRef(key: 'BUILD_COWORK_SERVER_REF' | 'BUILD_ANTON_REF'): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('./build-channel.gen') as Record<string, string>;
+    return typeof mod[key] === 'string' ? mod[key] : '';
+  } catch {
+    return '';
+  }
+}
+
 export function getCoworkRef(): string {
-  return (process.env.COWORK_SERVER_REF || 'main').trim() || 'main';
+  return (process.env.COWORK_SERVER_REF || _buildRef('BUILD_COWORK_SERVER_REF') || 'main').trim() || 'main';
 }
 
 export function getAntonRef(): string {
-  return (process.env.ANTON_REF || 'main').trim() || 'main';
+  return (process.env.ANTON_REF || _buildRef('BUILD_ANTON_REF') || 'main').trim() || 'main';
 }
 
 export interface InstallSpec {
@@ -53,7 +72,9 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   // Explicit escape hatch wins over everything (local path, custom URL, …).
   const explicit = process.env.COWORK_SERVER_PACKAGE;
   if (explicit) {
-    return { package: explicit, withArgs: [], channel: getChannel() };
+    const antonPackage = process.env.ANTON_PACKAGE;
+    const withArgs = antonPackage ? ['--with', `${ANTON_PACKAGE} @ ${antonPackage}`] : [];
+    return { package: explicit, withArgs, channel: getChannel() };
   }
 
   if (getChannel() === 'pypi') {
@@ -63,12 +84,25 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   // git channel (default)
   const coworkRef = opts?.coworkRef || getCoworkRef();
   const antonRef = opts?.antonRef || getAntonRef();
+
+  // By default, let cowork-server's own `[tool.uv.sources]` pin decide which
+  // anton-agent to pull (currently branch `main`). That is the version
+  // cowork-server actually requires, which is what we want installed.
+  //
+  // Do NOT pass `--with anton-agent @ git+...` on the default path: it is not
+  // an override. uv treats it as a *second* URL requirement for the same
+  // package and aborts with "Requirements contain conflicting URLs for package
+  // `anton-agent`" — even when the two URLs are textually identical — which
+  // broke every fresh git install. Only inject `--with` when a developer asks
+  // for a non-default ANTON_REF while iterating.
+  const withArgs =
+    antonRef === 'main'
+      ? []
+      : ['--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`];
+
   return {
     package: `git+${COWORK_SERVER_REPO}@${coworkRef}`,
-    // Force anton to the requested ref, overriding cowork-server's own
-    // tool.uv.sources pin. Verified `--with` takes precedence over the
-    // source declared in the installed project's pyproject.
-    withArgs: ['--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`],
+    withArgs,
     channel: 'git',
   };
 }

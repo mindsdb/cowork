@@ -1,29 +1,39 @@
 // API client — talks to the FastAPI backend at /v1/*.
-// Port matches antontron's server-process default (26866 = ANTON on T9
-// keypad). Vite dev would proxy /v1 → backend; packaged Electron runs
-// from file:// or app:// and must address the loopback server directly.
+// The origin comes from the host abstraction: packaged Electron addresses
+// the loopback server on the per-OS-user port main resolved (ENG-439); Vite
+// dev / web are same-origin (proxied), so getApiOrigin() returns the page
+// origin. Routing through host keeps the port in one place.
 
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
+import {
+  buildMemoryDeletePayload,
+  buildMemoryWritePayload,
+  groupMemoryItems,
+  resolveProjectId,
+} from './lib/memoryTransform';
 
-const ANTON_SERVER_PORT = 26866;
-
-const API_ORIGIN = (() => {
-  if (typeof window === 'undefined') return '';
-  const protocol = window.location?.protocol;
-  return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${ANTON_SERVER_PORT}`
-    : '';
-})();
+const API_ORIGIN = host.getApiOrigin();
 
 export const BASE = `${API_ORIGIN}/api/v1`;
 const ROOT_BASE = `${API_ORIGIN}`;
 
+// Thin wrapper around fetch() for server calls. In the desktop app the Electron
+// main process injects the bearer token (when the server runs with
+// COWORK_REQUIRE_AUTH=true) into every request to the loopback API via a
+// session webRequest hook — see src/main/index.ts. The token never reaches the
+// renderer, and browser-initiated loads (images, iframes, downloads) are
+// covered too, so there's nothing to attach here. In web mode the SPA is
+// same-origin with the server and relies on the session cookie.
+async function authFetch(url, options = {}) {
+  return fetch(url, options);
+}
+
 async function req(path, options = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+  const res = await authFetch(BASE + path, {
     ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!res.ok) {
     let detail = '';
@@ -45,9 +55,9 @@ async function req(path, options = {}) {
 }
 
 async function rootReq(path, options = {}) {
-  const res = await fetch(ROOT_BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+  const res = await authFetch(ROOT_BASE + path, {
     ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!res.ok) {
     throw new Error(`API ${path} returned ${res.status}`);
@@ -126,6 +136,13 @@ function _humanTime(iso) {
   return `${Math.floor(secs / 604800)} weeks ago`;
 }
 
+function _failedEventMeta(events) {
+  if (!Array.isArray(events)) return null;
+  const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
+  if (!ev) return null;
+  return { code: ev.code || null, message: ev.error || ev.message || '' };
+}
+
 // Replay the server-persisted SSE event log through the live stream
 // reducer to reconstruct `steps` + `startedAt` for each assistant
 // turn. The server saves raw events in a sidecar file and returns
@@ -133,22 +150,36 @@ function _humanTime(iso) {
 // here keeps reducer logic single-source (lib/responseStreamAdapter).
 function _hydrateAssistantEvents(messages) {
   if (!Array.isArray(messages)) return messages || [];
-  return messages.map((m) => {
-    if (m?.role !== 'assistant') return m;
-    const events = m.events;
-    if (!Array.isArray(events) || events.length === 0) return m;
+  const out = [];
+  for (const m of messages) {
+    if (m?.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
+      out.push(m);
+      continue;
+    }
     let state = initialStreamState();
-    for (const ev of events) {
-      try { state = reduceStream(state, ev); } catch {}
+    for (const ev of m.events) {
+      try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
     }
     const { events: _drop, ...rest } = m;
-    if (!state.steps || state.steps.length === 0) return rest;
-    return {
+    const turnComplete = state.status === 'done' || state.status === 'error';
+    const completeFlag = turnComplete ? { _turnComplete: true } : {};
+    out.push({
       ...rest,
-      steps: state.steps,
-      startedAt: rest.startedAt || state.startedAt || null,
-    };
-  });
+      ...(state.steps?.length > 0
+        ? { steps: state.steps, startedAt: rest.startedAt || state.startedAt || null }
+        : {}),
+      ...completeFlag,
+    });
+    if (state.status === 'error') {
+      const failed = _failedEventMeta(m.events);
+      out.push({
+        role: 'error',
+        content: failed?.message || 'An unexpected error occurred.',
+        code: failed?.code || null,
+      });
+    }
+  }
+  return out;
 }
 
 function _conversationToTask(conv, messages = []) {
@@ -200,7 +231,7 @@ export async function fetchSessions() {
     // created in project A vanishes from `tasks` the moment we
     // refresh while the user is "in" project B (because the server
     // defaults to the active project's episodes/ dir).
-    const list = await req('/conversations?project=all&limit=200');
+    const list = await req('/conversations/?project=all&limit=200');
     const conversations = Array.isArray(list?.conversations) ? list.conversations : [];
     if (conversations.length === 0) return [];
     // Fan out for the most recent N — full message history isn't
@@ -268,7 +299,7 @@ function _streamResponse(text, { conversationId, projectName, projectPath, model
   const ctrl = new AbortController();
   (async () => {
     try {
-      const res = await fetch(`${BASE}/responses`, {
+      const res = await authFetch(`${BASE}/responses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -403,7 +434,7 @@ export function tailInFlight(conversationId, {
   (async () => {
     try {
       const url = `${BASE}/responses/tail?conversation_id=${encodeURIComponent(conversationId)}&from_seq=${fromSeq}&model=${encodeURIComponent(model)}`;
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method: 'GET',
         headers: { Accept: 'text/event-stream' },
         signal: ctrl.signal,
@@ -499,7 +530,7 @@ export function streamMessage(sessionId, text, opts = {}) {
 // is_active). Older servers wrapped in { projects: [...] } — handle both.
 export async function fetchProjects() {
   try {
-    const data = await req('/projects');
+    const data = await req('/projects/');
     if (Array.isArray(data)) return data;
     return Array.isArray(data?.projects) ? data.projects : [];
   } catch {
@@ -508,7 +539,7 @@ export async function fetchProjects() {
 }
 
 export async function createProject(name) {
-  return req('/projects', { method: 'POST', body: JSON.stringify({ name }) });
+  return req('/projects/', { method: 'POST', body: JSON.stringify({ name }) });
 }
 
 // Rename — backed by PATCH /api/v1/projects/{id}. Server moves the
@@ -589,7 +620,7 @@ export async function cancelResponse(conversationId) {
 export async function unpublishArtifact(path) {
   // Idempotent — server 404 means "no record" which is the desired
   // end state.
-  const res = await fetch(BASE + `/publish?path=${encodeURIComponent(path)}`, {
+  const res = await authFetch(BASE + `/publish?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -603,7 +634,7 @@ export async function unpublishArtifact(path) {
 }
 
 export async function deleteArtifact(path) {
-  const res = await fetch(BASE + `/artifacts/?path=${encodeURIComponent(path)}`, {
+  const res = await authFetch(BASE + `/artifacts/?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
   });
   if (!res.ok) {
@@ -625,7 +656,7 @@ export async function deleteProject(projectOrName) {
     id = match.id;
   }
   // Idempotent: 404 = "already gone" = success.
-  const res = await fetch(BASE + `/projects/${encodeURIComponent(id)}`, {
+  const res = await authFetch(BASE + `/projects/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -723,7 +754,7 @@ export function projectFileDownloadUrl(projectName, path) {
 
 export async function writeProjectFile(projectName, path, content) {
   const safe = path.split('/').map(enc).join('/');
-  const res = await fetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content || '' }),
@@ -742,7 +773,7 @@ export async function uploadProjectFiles(projectName, files) {
   // field — same shape FastAPI's `list[UploadFile]` consumes.
   const form = new FormData();
   for (const f of files) form.append('files', f, f.name);
-  const res = await fetch(BASE + `/projects/${enc(projectName)}/files/upload`, {
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/upload`, {
     method: 'POST',
     body: form,
   });
@@ -756,7 +787,7 @@ export async function uploadProjectFiles(projectName, files) {
 
 export async function deleteProjectFile(projectName, path) {
   const safe = path.split('/').map(enc).join('/');
-  const res = await fetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
+  const res = await authFetch(BASE + `/projects/${enc(projectName)}/files/${safe}`, {
     method: 'DELETE',
   });
   if (res.status === 404) return { status: 'gone', path };
@@ -831,6 +862,20 @@ export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
 
+// Fresh published/modified/access status for one artifact — the cheap read
+// the preview viewer polls on window focus to light up "Update" when the
+// artifact changes underneath an open preview. Best-effort: returns null on
+// any failure (e.g. an older server without the endpoint) so callers degrade
+// to the prior reopen-to-refresh behaviour rather than throwing.
+export async function fetchArtifactStatus(path) {
+  if (!path) return null;
+  try {
+    return await req(`/artifacts/status?path=${encodeURIComponent(path)}`);
+  } catch {
+    return null;
+  }
+}
+
 // Mount an artifact for iframe preview. Two response shapes:
 //   - kind="static" (HTML artifacts): server returns `relUrl` under
 //     /artifacts/preview-asset/<token>/…; the iframe loads it directly.
@@ -881,6 +926,12 @@ export async function openArtifact(path) {
   return req('/artifacts/open', { method: 'POST', body: JSON.stringify({ path }) });
 }
 
+// Convert a document artifact (markdown/HTML) to pdf|docx|html. The server
+// writes the result into the same artifact folder and returns its path.
+export async function exportArtifact(path, format) {
+  return req('/artifacts/export', { method: 'POST', body: JSON.stringify({ path, format }) });
+}
+
 // Absolute "private" URL for an artifact's primary file: the
 // origin-relative `/v1/artifacts/serve/...` endpoint made absolute
 // against the current API origin. In the web build this is the
@@ -929,17 +980,17 @@ let _lastFetchedSettings = {};
 // updateSettings can't race on _lastFetchedSettings.
 let _settingsLock = Promise.resolve();
 
-// Per-provider model picker options + recommended (planning, coding) pair,
-// owned by the backend (cowork-server). For minds-cloud the list is the live
-// MindsHub `/v1/models` set. Returns null on failure so callers fall back to
-// whatever static seed they already have. Model names are NOT maintained in
-// this repo — this is the single source.
+/* Live per-provider model picker options + effort capability. The server
+   overlays minds-cloud with MindsHub's `/v1/models` (live ids and, per model,
+   the `reasoning_efforts`/`default_reasoning_effort` it advertises) and merges a
+   static effort catalog for direct providers. Returns null on any failure so the
+   caller keeps the static lists baked into transformSettingsRows. */
 export async function fetchRecommendedModels() {
   try {
-    return await req('/settings/recommended-models');
-  } catch {
-    return null;
-  }
+    const data = await req('/settings/recommended-models');
+    if (data && typeof data === 'object') return data;
+  } catch { /* fall back to static lists */ }
+  return null;
 }
 
 export async function fetchSettings() {
@@ -953,15 +1004,27 @@ export async function fetchSettings() {
         result.configError = v.configError;
         result.providerLabel = v.provider;
       } catch { /* leave defaults */ }
-      // Overlay the server's recommended-models (MindsHub's live `/v1/models`
-      // list for minds-cloud). Falls back to the static lists seeded by
-      // transformSettingsRows when the endpoint is absent or unreachable.
+      /* Overlay the live model list + effort capability. modelEfforts is the
+         single source of truth for the effort picker — a model accepts effort
+         iff it has an entry here. Only non-empty server lists override the static
+         fallback, so an unconfigured provider (e.g. minds-cloud with no key →
+         server returns []) doesn't wipe the baked-in picks. */
       const rec = await fetchRecommendedModels();
-      if (rec?.recommendedModels) {
-        result.recommendedModels = { ...result.recommendedModels, ...rec.recommendedModels };
-      }
-      if (rec?.recommendedPair) {
-        result.recommendedPair = { ...result.recommendedPair, ...rec.recommendedPair };
+      if (rec) {
+        const overlayLists = (base, live) => {
+          const merged = { ...base };
+          for (const [k, v] of Object.entries(live || {})) {
+            if (Array.isArray(v) && v.length) merged[k] = v;
+          }
+          return merged;
+        };
+        result.recommendedModels = overlayLists(result.recommendedModels, rec.recommendedModels);
+        result.recommendedPair = overlayLists(result.recommendedPair, rec.recommendedPair);
+        result.modelEfforts = rec.modelEfforts || {};
+        // Per-model availability: MindsHub lists models the user's tier can't
+        // use (marked enabled:false) so the picker shows them greyed as
+        // upgrade prompts. Absent id ⇒ available (backwards compatible).
+        result.modelEnabled = rec.modelEnabled || {};
       }
       _lastFetchedSettings = result;
       return result;
@@ -1042,7 +1105,7 @@ export async function revealSettingKey(name) {
 
 export async function fetchIntegrations() {
   try {
-    return await req('/integrations');
+    return await req('/connectors/oauth/catalogue');
   } catch {
     return { items: MOCK_DATA.integrations };
   }
@@ -1072,31 +1135,52 @@ export async function startGcpAuth() {
   return req('/integrations/gcp/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
+export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
+
 // ─── Anton Utilities ────────────────────────────────────────────────────────
-export async function fetchMemory(projectPath) {
-  const suffix = projectPath ? `?project_path=${encodeURIComponent(projectPath)}` : '';
+export async function fetchMemory(projectRef) {
+  const projectId = await resolveProjectId(projectRef, fetchProjects);
+  const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
   // Coalesced per project. ContextCard, ProjectCard, and the list
   // view's row-stats hook can all ask for the same project's memory
   // listing at the same moment; this collapses the duplicates.
-  return dedupe(`memory${suffix}`, () => req(`/memory${suffix}`));
+  return dedupe(`memory${suffix}`, async () => {
+    const [items, projects] = await Promise.all([
+      req(`/memory/${suffix}`),
+      fetchProjects(),
+    ]);
+    const list = Array.isArray(items) ? items : [];
+    return groupMemoryItems(list, projects);
+  });
 }
 
 export async function saveMemory(payload) {
-  return req('/memory', { method: 'POST', body: JSON.stringify(payload) });
+  const body = buildMemoryWritePayload(payload);
+  return req('/memory/', { method: 'PUT', body: JSON.stringify(body) });
 }
 
-export async function deleteMemory({ scope, relativePath, projectPath }) {
-  const params = new URLSearchParams({ scope, relative_path: relativePath });
-  if (projectPath) params.set('project_path', projectPath);
-  return req(`/memory?${params.toString()}`, { method: 'DELETE' });
+export async function deleteMemory(payload) {
+  const body = buildMemoryDeletePayload(payload);
+  return req('/memory/', { method: 'DELETE', body: JSON.stringify(body) });
 }
 
 export async function fetchSkills() {
-  return req('/skills');
+  return req('/skills/');
 }
 
-export async function saveSkill(payload) {
+export async function saveSkill(payload, isEdit = false) {
+  if (isEdit) {
+    return req(`/skills/${encodeURIComponent(payload.label)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  }
   return req('/skills', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function uploadSkillFile(file) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const res = await fetch(BASE + '/skills/upload', { method: 'POST', body: form });
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  return res.json();
 }
 
 export async function deleteSkill(label) {
@@ -1104,7 +1188,7 @@ export async function deleteSkill(label) {
 }
 
 export async function fetchDatasources() {
-  const data = await req('/connectors/connections');
+  const data = await req('/connectors/connections/');
   return { connections: Array.isArray(data) ? data : [] };
 }
 
@@ -1188,20 +1272,7 @@ export async function matchConnector(query, maxCandidates = 3) {
 // engine would reject the credential shape).
 export async function saveConnector(connectorId, payload) {
   const body = JSON.stringify({ connector_id: connectorId, ...(payload || {}) });
-  try {
-    return await req('/connectors/submissions', { method: 'POST', body });
-  } catch (err) {
-    // TODO: remove this fallback once cowork-server is the only backend.
-    // The new cowork-server serves POST /connectors/submissions; the
-    // legacy local server/main.py only has POST /connectors/{id}/save
-    // with the SAME payload shape (method / name / values). Fall back
-    // ONLY on a 404 (route absent on this backend) — a 400/422/500
-    // means the endpoint exists and rejected us, so surface that as-is
-    // rather than masking it or risking a double-write.
-    if (err?.status !== 404) throw err;
-    console.warn('saveConnector: /connectors/submissions 404 — falling back to legacy /connectors/{id}/save');
-    return req(`/connectors/${encodeURIComponent(connectorId)}/save`, { method: 'POST', body });
-  }
+  return req('/connectors/connections/save', { method: 'POST', body });
 }
 
 // ─── Web (redirect-based) connector OAuth ──────────────────────────────────
@@ -1215,14 +1286,15 @@ export async function saveConnector(connectorId, payload) {
 //   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
 // The SPA never handles the code or tokens directly.
 
-export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret } = {}) {
-  return req(`/connectors/${encodeURIComponent(connectorId)}/oauth/start`, {
+export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret, extraFields } = {}) {
+  return req(`/connectors/oauth/${encodeURIComponent(connectorId)}/start`, {
     method: 'POST',
     body: JSON.stringify({
       method: method || null,
       name: name || '',
       client_id: clientId || '',
       client_secret: clientSecret || '',
+      extra_fields: extraFields || {},
     }),
   });
 }
@@ -1256,7 +1328,7 @@ export function streamDataVaultSubmission({
   const ctrl = new AbortController();
   (async () => {
     try {
-      const res = await fetch(`${BASE}/connectors/submissions`, {
+      const res = await authFetch(`${BASE}/connectors/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1344,7 +1416,7 @@ export function streamDataVaultSubmission({
 export async function submitDataVaultForm({ formId, conversationId, values, skipped, formSpec, name, method }) {
   // Fire the streaming endpoint but only consume the JSON body of
   // the response — useful for tests/probes that don't want SSE.
-  const res = await fetch(`${BASE}/connectors/submissions`, {
+  const res = await authFetch(`${BASE}/connectors/submissions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1363,11 +1435,37 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
   return { status: 'streamed', body: text };
 }
 
-// `password` (optional): when a non-empty string, the artifact is
-// published password-protected; omit / empty publishes it public.
-export async function publishArtifact(path, password) {
-  const body = password ? { path, password } : { path };
+// `access` (optional): a publish-mode object, one of
+//   { mode: 'public' }
+//   { mode: 'password', password: '...' }
+//   { mode: 'restricted', emails: [...], org_allowed: bool }
+// Public (or a falsy access) sends just `{ path }`, which clears any prior
+// protection on re-publish.
+export async function publishArtifact(path, access) {
+  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
   return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+}
+
+// Re-publish an already-published artifact: pushes current files to the same
+// URL with the same access settings (server reuses report_id). Clears the
+// "Modified" badge on success.
+export async function updateArtifact(path) {
+  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
+}
+
+// Version history of a live artifact:
+//   { reportId, currentMd5, artifactType, versions: [{ md5, publishedAt, title, isCurrent }] }
+// Versions are newest-first. Throws on 404 — which is also what an older server
+// (no /versions route) returns, so callers feature-detect by treating any error
+// as "no history available" and hiding the UI.
+export async function listArtifactVersions(path) {
+  return req(`/publish/versions?path=${encodeURIComponent(path)}`);
+}
+
+// Roll the live URL back to an existing version (flips current_md5 — the public
+// URL is stable). Static artifacts only; the server rejects fullstack apps.
+export async function activateArtifactVersion(path, md5) {
+  return req('/publish/activate', { method: 'POST', body: JSON.stringify({ path, md5 }) });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the
@@ -1497,7 +1595,7 @@ export async function uploadAttachments(files, { projectName, sessionId } = {}) 
   const enc = encodeURIComponent;
   const form = new FormData();
   Array.from(files).forEach((file) => form.append('files', file));
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
     { method: 'POST', body: form },
   );
@@ -1573,7 +1671,7 @@ export async function searchCowork(query) {
 
 export async function fetchPins() {
   try {
-    return await req('/pins');
+    return await req('/pins/');
   } catch {
     return { pins: [] };
   }
@@ -1612,7 +1710,7 @@ export async function patchConversation(id, body) {
 // displayable bubble index — same value used to look up events
 // in the per-turn sidecar.
 export async function deleteConversationTurn(id, turnIndex) {
-  const res = await fetch(
+  const res = await authFetch(
     BASE + `/conversations/${encodeURIComponent(id)}/turns/${turnIndex}`,
     {
       method: 'DELETE',
@@ -1633,7 +1731,7 @@ export async function deleteConversation(id) {
   // success. The conversation may have been removed by a previous
   // attempt or a concurrent client; either way the desired end state
   // ("gone from server") is achieved.
-  const res = await fetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
+  const res = await authFetch(BASE + `/conversations/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -1654,6 +1752,17 @@ export async function moveConversation(id, projectName) {
   });
 }
 
+// Move a task to another project and (when moveObjects) relocate the
+// artifacts the task created + re-tag its files. Backed by
+// POST /conversations/{id}/move. The destination project must exist —
+// the caller creates a new one first, then moves to it.
+export async function moveTaskToProject(id, projectName, moveObjects = true) {
+  return req(`/conversations/${encodeURIComponent(id)}/move`, {
+    method: 'POST',
+    body: JSON.stringify({ project: projectName, moveObjects }),
+  });
+}
+
 export async function recordTaskVisit(task, autoPin = false) {
   const params = new URLSearchParams({ auto_pin: autoPin ? 'true' : 'false' });
   if (task?.title) params.set('title', task.title);
@@ -1662,14 +1771,14 @@ export async function recordTaskVisit(task, autoPin = false) {
 
 export async function fetchSchedules() {
   try {
-    return await req('/schedules');
+    return await req('/schedules/');
   } catch {
     return { schedules: [] };
   }
 }
 
 export async function createSchedule(payload) {
-  return req('/schedules', { method: 'POST', body: JSON.stringify(payload) });
+  return req('/schedules/', { method: 'POST', body: JSON.stringify(payload) });
 }
 
 export async function updateSchedule(id, payload) {
@@ -1774,28 +1883,23 @@ export const MOCK_DATA = {
     { id: 's3', title: 'Hourly — monitor Lightsail spend', cadence: 'Every hour', nextRun: 'in 24m', enabled: false },
   ],
 
-  models: [
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', desc: 'Balanced — fastest for daily work' },
-    { id: 'claude-opus-4-7',   name: 'Claude Opus 4.7',   desc: 'Best for deep reasoning and long tasks' },
-    { id: 'claude-haiku-4-5',  name: 'Claude Haiku 4.5',  desc: 'Quickest, lightweight responses' },
-  ],
-
   settings: {
     greeting: "Let's knock something off your list",
     tone: 'balanced',
-    defaultModel: 'claude-sonnet-4-6',
+    defaultModel: 'latest:sonnet',
     autoPin: true,
     showDots: true,
     showCounters: true,
     accentVariant: 'aqua',
-    planningProvider: 'anthropic',
-    planningModel: 'claude-sonnet-4-6',
-    codingProvider: 'anthropic',
-    codingModel: 'claude-haiku-4-5-20251001',
+    planningProvider: 'minds-cloud',
+    planningModel: 'latest:sonnet',
+    codingProvider: 'minds-cloud',
+    codingModel: 'latest:haiku',
     memoryEnabled: true,
     memoryMode: 'autopilot',
     episodicMemory: true,
     proactiveDashboards: false,
+    actFirst: true,
     anthropicApiKey: '',
     openaiApiKey: '',
     providers: [],

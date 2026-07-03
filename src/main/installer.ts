@@ -21,7 +21,7 @@ interface InstallerOptions {
 // cowork release that requires backend changes. The installer will
 // install at least this version (a minimum floor), picking up any
 // newer compatible releases automatically.
-const COWORK_SERVER_MIN_VERSION = '0.1.5';
+const COWORK_SERVER_MIN_VERSION = '0.1.10';
 
 // PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
 // Keep in sync with server-updater.ts PYTHON_RANGE and cowork-server requires-python.
@@ -39,7 +39,7 @@ function getSteps(): InstallStep[] {
     steps.push({ id: 'xcode', label: 'Xcode Command Line Tools', status: 'pending' });
   }
   steps.push(
-    { id: 'git', label: 'Check for git (required)', status: 'pending' },
+    { id: 'git', label: 'Check / install git', status: 'pending' },
     { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
     { id: 'cowork-server', label: 'Install cowork-server', status: 'pending' },
     { id: 'verify', label: 'Verify installation', status: 'pending' },
@@ -304,9 +304,18 @@ function getInstalledVersion(): Promise<string | null> {
   const uvBin = findUv();
   if (!uvBin) return Promise.resolve(null);
   return new Promise((resolve) => {
-    execFile(uvBin, ['tool', 'list'], { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000 }, (err, stdout) => {
+    // Force plain output. In dev, the launcher (`concurrently`) sets
+    // FORCE_COLOR, which makes `uv tool list` emit ANSI codes — e.g.
+    // `\x1b[1mcowork-server v0.1.6\x1b[0m`. That breaks the start-anchored
+    // regex below, so the version reads as null and verification fails with
+    // a misleading "binary not found". NO_COLOR overrides FORCE_COLOR.
+    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
+    execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      for (const line of stdout.split('\n')) {
+      // Strip any residual ANSI escapes defensively before matching.
+      // eslint-disable-next-line no-control-regex
+      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      for (const line of clean.split('\n')) {
         const match = line.match(/^cowork-server\s+v?([\d.]+)/);
         if (match) { resolve(match[1]); return; }
       }
@@ -409,17 +418,57 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, '--- Checking for git ---\n');
     const hasGit = await commandExists('git');
     if (!hasGit) {
-      setStep('git', 'error');
-      sendLog(win, '\nERROR: git is not installed.\n');
       if (process.platform === 'darwin') {
+        setStep('git', 'error');
+        sendLog(win, '\nERROR: git is not installed.\n');
         sendLog(win, 'Install it with: xcode-select --install\n');
+        sendInstallError(win, 'git is required but not found.');
+        return false;
       } else {
-        sendLog(win, 'Install it from: https://git-scm.com/downloads/win\n');
+        sendLog(win, 'git not found. Installing via winget...\n');
+        const result = await runCommand(
+          'winget',
+          ['install', '--id', 'Git.Git', '-e', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements'],
+          win,
+          { shouldAbort }
+        );
+        if (abortIfRequested()) return false;
+        if (result.code !== 0) {
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: Failed to install git via winget.\n');
+          sendLog(win, 'Install it manually from: https://git-scm.com/downloads/win\n');
+          sendInstallError(win, 'Failed to install git.');
+          return false;
+        }
+        // winget can install git machine-wide (C:\Program Files\Git\cmd) or
+        // per-user (%LOCALAPPDATA%\Programs\Git\cmd) depending on elevation.
+        // Probe both since winget updates the registry PATH but not the running
+        // process's inherited env — we must inject the real path ourselves.
+        const gitCandidates = [
+          'C:\\Program Files\\Git\\cmd',
+          path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Git', 'cmd'),
+        ];
+        const gitCmdPath = gitCandidates.find(p => fileExists(path.join(p, 'git.exe')));
+        if (!gitCmdPath) {
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: git was installed but its path could not be located.\n');
+          sendInstallError(win, 'git installed but path not found.');
+          return false;
+        }
+        if (!process.env.PATH?.includes(gitCmdPath)) {
+          process.env.PATH = `${gitCmdPath}${path.delimiter}${process.env.PATH ?? ''}`;
+        }
+        if (!(await commandExists('git'))) {
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: git was installed but is still not resolvable on PATH.\n');
+          sendInstallError(win, 'git not resolvable after install.');
+          return false;
+        }
+        sendLog(win, 'git installed successfully.\n');
       }
-      sendInstallError(win, 'git is required but not found.');
-      return false;
+    } else {
+      sendLog(win, 'git found.\n');
     }
-    sendLog(win, 'git found.\n');
     setStep('git', 'done');
 
     // Step 2: Check/install uv

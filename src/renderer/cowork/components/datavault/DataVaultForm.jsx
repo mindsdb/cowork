@@ -331,6 +331,19 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
             )}
           </div>
         </div>
+        {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
+          <div style={{
+            padding: '10px 12px', borderRadius: 8,
+            background: 'color-mix(in srgb, #f59e0b 10%, var(--surface))',
+            border: '1px solid color-mix(in srgb, #f59e0b 35%, transparent)',
+            display: 'flex', gap: 8, alignItems: 'flex-start',
+          }}>
+            <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>⚠️</span>
+            <span style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
+              <strong>Limited file access:</strong> This connector can only access files created by Cowork within your Google Drive — not your existing files. Full Google Drive access is coming soon.
+            </span>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           {/* On success we always offer two routes:
                  • secondary "Close" — just dismiss the panel

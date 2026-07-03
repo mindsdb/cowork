@@ -16,7 +16,7 @@ type View = 'main' | 'terms' | 'privacy';
  * close, restore focus to the trigger on close) so the consent screen
  * stays simple and rule-of-hooks-safe.
  */
-function LegalViewer({ doc, onClose }: { doc: 'terms' | 'privacy'; onClose: () => void }) {
+export function LegalViewer({ doc, onClose }: { doc: 'terms' | 'privacy'; onClose: () => void }) {
   const isTerms = doc === 'terms';
   const dialogRef = useRef<HTMLDivElement>(null);
   const backBtnRef = useRef<HTMLButtonElement>(null);

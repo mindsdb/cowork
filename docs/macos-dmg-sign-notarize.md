@@ -89,6 +89,18 @@ Expected result:
 
 ## 5. Troubleshooting
 
+## `resource fork, Finder information, or similar detritus not allowed` during codesign
+
+Happens when the repo lives in an iCloud-synced folder (e.g. `~/Documents`). The `scripts/strip-xattrs.js` `afterPack` hook clears `com.apple.provenance` and `com.apple.FinderInfo` from every file, but iCloud's file provider re-tags binaries (especially the GPU Helper) in the race window before `codesign` runs.
+
+**Fix:** build to `/tmp` (outside iCloud's watch path) and copy back:
+
+```bash
+PATH="/opt/homebrew/opt/node@20/bin:$PATH" \
+  npx electron-builder --mac --arm64 --config.directories.output=/tmp/minds-build
+cp -R /tmp/minds-build/mac-arm64 release/
+```
+
 ## `status: Invalid` during notarization
 
 1. Fetch notarization log:

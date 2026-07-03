@@ -15,8 +15,28 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss: http: https:; frame-src 'self' http://127.0.0.1:* http://localhost:*; child-src 'self' http://127.0.0.1:* http://localhost:*" />
     <title>MindsHub Cowork</title>
     <link rel="stylesheet" href="./gravity-field/gravity-field.css" />
+    <!-- Boot veil: solid-black first paint that fades out so the window
+         never flashes the half-initialized canvas / pre-skin theme. -->
+    <style>
+      #boot-veil {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        z-index: 2147483647;
+        pointer-events: none;
+        animation: boot-veil-fade 600ms ease-out 320ms both;
+      }
+      @keyframes boot-veil-fade {
+        0%   { opacity: 1; }
+        100% { opacity: 0; visibility: hidden; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-veil { animation-delay: 0ms; animation-duration: 1ms; }
+      }
+    </style>
   </head>
   <body class="gf-theme-dark">
+    <div id="boot-veil"></div>
     <canvas id="gravity-field-bg" class="gravity-field" aria-hidden="true"></canvas>
     <div id="root"></div>
     <script src="./gravity-field/gravity-field.js"></script>

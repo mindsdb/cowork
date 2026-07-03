@@ -27,6 +27,7 @@ import {
 import { ArtifactViewer } from '../artifact';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
+import { trackArtifactPublished } from '../../lib/analytics';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -151,6 +152,18 @@ export function WorkingFolderLive({ project, isStreaming }) {
   }, [isStreaming, effectiveProject?.name, effectiveProject?.path]);
 
   const [previewArt, setPreviewArt] = useState(null);
+  // Keep the open viewer in sync with the 3s poll: when the artifact being
+  // previewed is rebuilt, its row's `mtime` changes — propagate that into
+  // `previewArt` so ArtifactViewer re-mounts and reloads the iframe instead
+  // of showing the stale first load (ENG-375). No-op (same reference) when
+  // nothing changed, so it doesn't churn renders.
+  useEffect(() => {
+    setPreviewArt((cur) => {
+      if (!cur) return cur;
+      const fresh = rows.find((r) => r.path === cur.path);
+      return fresh && fresh.mtime !== cur.mtime ? { ...cur, ...fresh } : cur;
+    });
+  }, [rows]);
   // Per-row kebab menu state (single-open) + portal coords.
   //
   // Why a portal: the rail-card body wraps this component with
@@ -267,6 +280,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       } else {
         const r = await publishArtifact(publishTargetPath(a));
         const url = r?.url || r?.publishedUrl || '';
+        if (url) trackArtifactPublished(r?.report_id || a.id || '', 'public');
         setRows((prev) => prev.map((row) => row.path === a.path ? { ...row, publishedUrl: url } : row));
       }
     } catch (e) {

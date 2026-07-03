@@ -90,6 +90,21 @@ export function ThinkingStep({
           {!isInProgress && duration && (
             <span className="w-10 text-right text-[11px] text-ink-4">{duration}</span>
           )}
+          {step.cellStatus === 'timeout' && (
+            <span
+              className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-danger"
+              title="This cell was stopped — it timed out or went silent. The next cell should be smaller, or split the work across cells."
+            >
+              timed out
+            </span>
+          )}
+          {step.cellStatus === 'error' && (
+            <span
+              className="h-1.5 w-1.5 flex-none rounded-full bg-yellow-400"
+              style={{ animation: 'step-error-dot-fade 4s ease-out forwards' }}
+              title="This cell ended with an error."
+            />
+          )}
           {step.badge === 'Artifact' && (
             <span className="rounded-md border border-line bg-surface-2 px-1.5 py-px text-[10px] uppercase tracking-wider text-ink-4">
               artifact
