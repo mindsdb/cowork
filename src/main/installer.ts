@@ -39,7 +39,7 @@ function getSteps(): InstallStep[] {
     steps.push({ id: 'xcode', label: 'Xcode Command Line Tools', status: 'pending' });
   }
   steps.push(
-    { id: 'git', label: 'Check for git (required)', status: 'pending' },
+    { id: 'git', label: 'Check / install git', status: 'pending' },
     { id: 'uv', label: 'Install uv (Python package manager)', status: 'pending' },
     { id: 'cowork-server', label: 'Install cowork-server', status: 'pending' },
     { id: 'verify', label: 'Verify installation', status: 'pending' },
@@ -418,17 +418,57 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     sendLog(win, '--- Checking for git ---\n');
     const hasGit = await commandExists('git');
     if (!hasGit) {
-      setStep('git', 'error');
-      sendLog(win, '\nERROR: git is not installed.\n');
       if (process.platform === 'darwin') {
+        setStep('git', 'error');
+        sendLog(win, '\nERROR: git is not installed.\n');
         sendLog(win, 'Install it with: xcode-select --install\n');
+        sendInstallError(win, 'git is required but not found.');
+        return false;
       } else {
-        sendLog(win, 'Install it from: https://git-scm.com/downloads/win\n');
+        sendLog(win, 'git not found. Installing via winget...\n');
+        const result = await runCommand(
+          'winget',
+          ['install', '--id', 'Git.Git', '-e', '--source', 'winget', '--accept-package-agreements', '--accept-source-agreements'],
+          win,
+          { shouldAbort }
+        );
+        if (abortIfRequested()) return false;
+        if (result.code !== 0) {
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: Failed to install git via winget.\n');
+          sendLog(win, 'Install it manually from: https://git-scm.com/downloads/win\n');
+          sendInstallError(win, 'Failed to install git.');
+          return false;
+        }
+        // winget can install git machine-wide (C:\Program Files\Git\cmd) or
+        // per-user (%LOCALAPPDATA%\Programs\Git\cmd) depending on elevation.
+        // Probe both since winget updates the registry PATH but not the running
+        // process's inherited env — we must inject the real path ourselves.
+        const gitCandidates = [
+          'C:\\Program Files\\Git\\cmd',
+          path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Git', 'cmd'),
+        ];
+        const gitCmdPath = gitCandidates.find(p => fileExists(path.join(p, 'git.exe')));
+        if (!gitCmdPath) {
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: git was installed but its path could not be located.\n');
+          sendInstallError(win, 'git installed but path not found.');
+          return false;
+        }
+        if (!process.env.PATH?.includes(gitCmdPath)) {
+          process.env.PATH = `${gitCmdPath}${path.delimiter}${process.env.PATH ?? ''}`;
+        }
+        if (!(await commandExists('git'))) {
+          setStep('git', 'error');
+          sendLog(win, '\nERROR: git was installed but is still not resolvable on PATH.\n');
+          sendInstallError(win, 'git not resolvable after install.');
+          return false;
+        }
+        sendLog(win, 'git installed successfully.\n');
       }
-      sendInstallError(win, 'git is required but not found.');
-      return false;
+    } else {
+      sendLog(win, 'git found.\n');
     }
-    sendLog(win, 'git found.\n');
     setStep('git', 'done');
 
     // Step 2: Check/install uv
