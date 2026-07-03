@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
 import ConnectWorkflowView from './ConnectWorkflowView';
 import {
@@ -258,8 +258,6 @@ function MetaRow({ label, value }) {
   );
 }
 
-const VAULT_KEEP = '__anton_vault_keep__';
-
 function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
@@ -306,7 +304,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       label: f.label || humanLabel(f.name),
       value: vaultFields[f.name] ?? null,
       isSecret: f.secret === true || f.type === 'password'
-        || secureKeys.has(f.name) || vaultFields[f.name] === VAULT_KEEP,
+        || secureKeys.has(f.name) || vaultFields[f.name] === CONNECTIONS_VAULT_KEEP,
     })),
     ...Object.entries(vaultFields)
       .filter(([k]) => !specKeys.has(k))
@@ -314,7 +312,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         key,
         label: humanLabel(key),
         value,
-        isSecret: secureKeys.has(key) || value === VAULT_KEEP,
+        isSecret: secureKeys.has(key) || value === CONNECTIONS_VAULT_KEEP,
       })),
   ];
 
