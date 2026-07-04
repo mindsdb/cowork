@@ -2,7 +2,7 @@
   "name": "anton",
   "productName": "MindsHub Cowork",
   "version": "2.0.7",
-  "description": "MindsHub Cowork \u2014 autonomous AI coworker",
+  "description": "MindsHub Cowork — autonomous AI coworker",
   "author": "MindsDB",
   "license": "AGPL-3.0-only",
   "main": "dist/main/main/index.js",
