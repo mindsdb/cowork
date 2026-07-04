@@ -150,20 +150,33 @@ export function modelLabel(id) {
 }
 
 /**
+ * Resolve a display label for a model id. Prefer an inline entry label or the
+ * server `modelLabels` map from `/settings/recommended-models`; otherwise use
+ * the raw id.
+ */
+export function resolveModelLabel(id, modelLabels) {
+  if (!id) return '';
+  if (modelLabels && modelLabels[id]) return modelLabels[id];
+  return id;
+}
+
+/**
  * Map a provider's runtime model-id list to `{id, label}` options for
  * dropdowns. `recommendedModels` is the backend-overlaid map from settings.
  */
-export function recommendedModelOptions(recommendedModels, providerType) {
+export function recommendedModelOptions(recommendedModels, providerType, modelLabels) {
   const entries = (recommendedModels && recommendedModels[providerType]) || [];
   // Entries are model-id strings today. Forward-compat: the backend may serve
   // an object `{ id, label?, locked? }`. When a `label` is present it is the
   // source of truth for the display name (e.g. the free model's "MindsHub Air"
-  // lives in the backend model config, not hardcoded here); otherwise fall back
-  // to the id-derived label. A boolean `locked` is passed through for ENG-531.
+  // lives in the backend model config, not hardcoded here); otherwise consult
+  // the server `modelLabels` map, then fall back to the raw id. A boolean
+  // `locked` is passed through for ENG-531.
   return entries.map((entry) => {
     const isObj = entry && typeof entry === 'object';
     const id = isObj ? entry.id : entry;
-    const label = (isObj && typeof entry.label === 'string' && entry.label) || modelLabel(id);
+    const label = (isObj && typeof entry.label === 'string' && entry.label)
+      || resolveModelLabel(id, modelLabels);
     const opt = { id, label };
     if (isObj && typeof entry.locked === 'boolean') {
       opt.locked = entry.locked;

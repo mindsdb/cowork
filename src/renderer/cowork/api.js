@@ -1025,6 +1025,7 @@ export async function fetchSettings() {
         // use (marked enabled:false) so the picker shows them greyed as
         // upgrade prompts. Absent id ⇒ available (backwards compatible).
         result.modelEnabled = rec.modelEnabled || {};
+        result.modelLabels = rec.modelLabels || {};
       }
       _lastFetchedSettings = result;
       return result;

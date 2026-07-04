@@ -33,8 +33,8 @@ export function isRoleModelLocked(model, tier, modelEnabled = {}) {
 // (server availability first, tier heuristic fallback), and unlocked models are
 // surfaced first so a free user reaches a selectable model without scrolling
 // past locked frontier ones.
-export function buildRoleModels(recommendedModels, providerType, tier, modelEnabled = {}) {
-  const mapped = recommendedModelOptions(recommendedModels, providerType)
+export function buildRoleModels(recommendedModels, providerType, tier, modelEnabled = {}, modelLabels = {}) {
+  const mapped = recommendedModelOptions(recommendedModels, providerType, modelLabels)
     .map((o) => ({ id: o.id, name: o.label, locked: isRoleModelLocked(o, tier, modelEnabled) }));
   return orderUnlockedFirst(mapped);
 }

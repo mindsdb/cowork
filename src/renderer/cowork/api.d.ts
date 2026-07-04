@@ -11,6 +11,8 @@ export interface RecommendedModels {
   recommendedPair?: Record<string, [string, string] | string[]>;
   /** Per-model effort capability: id → { efforts, default }. */
   modelEfforts?: Record<string, { efforts: string[]; default: string }>;
+  /** Per-model display labels: id → label (server-owned). */
+  modelLabels?: Record<string, string>;
   [key: string]: unknown;
 }
 

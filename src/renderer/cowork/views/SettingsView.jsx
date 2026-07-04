@@ -734,6 +734,7 @@ export default function SettingsView({
   const modelMode = settings.modelMode === 'custom' ? 'custom' : 'default';
   const overrides = settings.modelOverrides || {};
   const recommendedModels = settings.recommendedModels || {};
+  const modelLabels = settings.modelLabels || {};
   const recommendedPair = settings.recommendedPair || {};
   const typeLabels = settings.providerTypeLabels || PROVIDER_LABELS_LOCAL;
 
@@ -886,7 +887,7 @@ export default function SettingsView({
       const o = roleOverride(role);
       if (roleProviderType(role) === type) {
         const pair = recommendedPair['minds-cloud'] || ['', ''];
-        const fallback = pair[role === 'planning' ? 0 : 1] || (recommendedModelOptions(recommendedModels, 'minds-cloud')[0]?.id || '');
+        const fallback = pair[role === 'planning' ? 0 : 1] || (recommendedModelOptions(recommendedModels, 'minds-cloud', modelLabels)[0]?.id || '');
         adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
         setRoleDriver(role, 'minds-cloud', fallback);
       } else {
@@ -1491,7 +1492,7 @@ export default function SettingsView({
             // Normalize through recommendedModelOptions so both today's id-string
             // list and the future {id, locked} object shape (ENG-531) yield
             // uniform {id, label, locked?} entries — same path App uses.
-            const modelList = recommendedModelOptions(recommendedModels, curType);
+            const modelList = recommendedModelOptions(recommendedModels, curType, modelLabels);
             // Per-model availability from MindsHub /v1/models (settings.modelEnabled):
             // a model the user's tier can't use is flagged false. Folded into each
             // option's lock below as the server-truth source (client heuristic is the

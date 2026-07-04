@@ -144,18 +144,21 @@ export default function OnboardingScreen({
   // here. Empty until the fetch resolves; the picker degrades to a free-text
   // input in that window (and if the backend is unreachable).
   const [recModels, setRecModels] = useState<Record<string, string[]>>({});
+  const [recModelLabels, setRecModelLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     let cancelled = false;
     fetchRecommendedModels().then((rec) => {
       const map = (rec?.recommendedModels as Record<string, string[]> | undefined);
+      const labels = rec?.modelLabels as Record<string, string> | undefined;
       if (!cancelled && map) setRecModels(map);
+      if (!cancelled && labels) setRecModelLabels(labels);
     });
     return () => { cancelled = true; };
   }, []);
 
-  const ANTHROPIC_MODELS = useMemo(() => recommendedModelOptions(recModels, 'anthropic'), [recModels]);
-  const OPENAI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'openai'), [recModels]);
-  const GEMINI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'gemini'), [recModels]);
+  const ANTHROPIC_MODELS = useMemo(() => recommendedModelOptions(recModels, 'anthropic', recModelLabels), [recModels, recModelLabels]);
+  const OPENAI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'openai', recModelLabels), [recModels, recModelLabels]);
+  const GEMINI_MODELS = useMemo(() => recommendedModelOptions(recModels, 'gemini', recModelLabels), [recModels, recModelLabels]);
 
   const models = byokProvider === 'anthropic'
     ? ANTHROPIC_MODELS

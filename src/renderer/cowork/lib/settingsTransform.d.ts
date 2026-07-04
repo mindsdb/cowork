@@ -10,6 +10,12 @@ export interface ProviderModel {
 /** Derive a human-readable label from a model id (pure, family-aware). */
 export function modelLabel(id: string | null | undefined): string;
 
+/** Prefer server `modelLabels[id]`, else the raw model id. */
+export function resolveModelLabel(
+  id: string | null | undefined,
+  modelLabels: Record<string, string> | null | undefined,
+): string;
+
 /**
  * Map a provider's runtime model-id list (from the backend-overlaid
  * `recommendedModels` settings map) to `{id, label}` dropdown options.
@@ -17,6 +23,7 @@ export function modelLabel(id: string | null | undefined): string;
 export function recommendedModelOptions(
   recommendedModels: Record<string, string[]> | null | undefined,
   providerType: string,
+  modelLabels?: Record<string, string> | null,
 ): ProviderModel[];
 
 export function providerValueToType(value: string | null | undefined): string;

@@ -45,7 +45,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchSavedConnection, deleteDatasource,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
-import { modelLabel, providerValueToType } from './lib/settingsTransform';
+import { resolveModelLabel, providerValueToType } from './lib/settingsTransform';
 import { effectiveTier } from './lib/modelEntitlement';
 import { settingKeyForRole, buildRoleModels, withSelectionFirst, isRoleModelLocked } from './lib/roleModels';
 import { useDevTier } from './lib/useDevTier';
@@ -1028,8 +1028,8 @@ function AppCore() {
   const planningProviderType = providerValueToType(settings.planningProvider) || 'minds-cloud';
   const modelTier = effectiveTier(planningProviderType, devTier);
   const models = useMemo(
-    () => buildRoleModels(settings.recommendedModels, planningProviderType, modelTier, settings.modelEnabled),
-    [settings.recommendedModels, planningProviderType, modelTier, settings.modelEnabled],
+    () => buildRoleModels(settings.recommendedModels, planningProviderType, modelTier, settings.modelEnabled, settings.modelLabels),
+    [settings.recommendedModels, settings.modelLabels, planningProviderType, modelTier, settings.modelEnabled],
   );
   // Coding role runs its own model + provider (can differ from planning). The
   // composer's two-role picker (ENG-531) reads this list for the Coding tab;
@@ -1037,8 +1037,8 @@ function AppCore() {
   const codingProviderType = providerValueToType(settings.codingProvider) || 'minds-cloud';
   const codingModelTier = effectiveTier(codingProviderType, devTier);
   const codingModels = useMemo(
-    () => buildRoleModels(settings.recommendedModels, codingProviderType, codingModelTier, settings.modelEnabled),
-    [settings.recommendedModels, codingProviderType, codingModelTier, settings.modelEnabled],
+    () => buildRoleModels(settings.recommendedModels, codingProviderType, codingModelTier, settings.modelEnabled, settings.modelLabels),
+    [settings.recommendedModels, settings.modelLabels, codingProviderType, codingModelTier, settings.modelEnabled],
   );
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
@@ -1306,7 +1306,7 @@ function AppCore() {
         const modelId = data.defaultModel || data.planningModel;
         setSelectedModel({
           id: modelId,
-          name: modelLabel(modelId) || modelId || 'Planning model',
+          name: resolveModelLabel(modelId, data.modelLabels) || modelId || 'Planning model',
         });
       }
     });
@@ -1573,7 +1573,7 @@ function AppCore() {
     if (latest && typeof latest === 'object') {
       setSettings((prev) => ({ ...prev, ...latest }));
       const modelId = latest.defaultModel || latest.planningModel;
-      setSelectedModel({ id: modelId, name: modelLabel(modelId) || modelId || 'Planning model' });
+      setSelectedModel({ id: modelId, name: resolveModelLabel(modelId, latest.modelLabels) || modelId || 'Planning model' });
     }
     return result;
   }, [settings]);
@@ -3368,8 +3368,8 @@ function AppCore() {
   const codingSelected = useMemo(() => {
     const id = settings.codingModel;
     if (!id) return null;
-    return { id, name: modelLabel(id) || id };
-  }, [settings.codingModel]);
+    return { id, name: resolveModelLabel(id, settings.modelLabels) || id };
+  }, [settings.codingModel, settings.modelLabels]);
   const codingModelOptions = useMemo(
     () => withSelectionFirst(codingSelected, codingModels, codingModelTier, settings.modelEnabled),
     [codingSelected, codingModels, codingModelTier, settings.modelEnabled],

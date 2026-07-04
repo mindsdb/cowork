@@ -60,6 +60,14 @@ describe('buildRoleModels', () => {
     ]);
   });
 
+  it('uses modelLabels map for display names', () => {
+    const recAnthropic = { anthropic: ['claude-opus-4-8'] };
+    const labels = { 'claude-opus-4-8': 'Claude Opus 4.8' };
+    expect(buildRoleModels(recAnthropic, 'anthropic', null, {}, labels)).toEqual([
+      { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', locked: false },
+    ]);
+  });
+
   it('uses the server availability map over the tier heuristic', () => {
     // Server says opus is available (unlocked) and kimi is NOT, inverting the
     // free-tier heuristic. kimi becomes locked, opus unlocked and hoisted.

@@ -35,6 +35,14 @@ describe('recommendedModelOptions', () => {
     ]);
   });
 
+  it('prefers modelLabels map when entry is a plain id string', () => {
+    const rec = { anthropic: ['claude-opus-4-8'] };
+    const labels = { 'claude-opus-4-8': 'Claude Opus 4.8' };
+    expect(recommendedModelOptions(rec, 'anthropic', labels)).toEqual([
+      { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
+    ]);
+  });
+
   it('returns [] for an unknown or empty provider', () => {
     expect(recommendedModelOptions({}, 'minds-cloud')).toEqual([]);
     expect(recommendedModelOptions(null, 'minds-cloud')).toEqual([]);
