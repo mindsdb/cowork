@@ -7,6 +7,16 @@ on:
         description: preview | stable | prod
         required: true
         type: string
+      server_ref:
+        description: "cowork-server and anton git branch/tag (empty = main)"
+        required: false
+        type: string
+        default: ""
+      minds_api_url:
+        description: "MindsHub API base URL (empty = https://api.mindshub.ai)"
+        required: false
+        type: string
+        default: ""
     outputs:
       artifact_name:
         description: Final pkg file name (uploaded as the artifact name)
@@ -137,6 +147,13 @@ jobs:
           GH_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
+          # Both refs come from the same input so a staging build pins staging
+          # cowork-server AND staging anton. server-source.ts overrides anton's
+          # source at install time via --no-sources-package + --with, so this
+          # does not require any per-branch pin in cowork-server's pyproject.
+          COWORK_SERVER_REF: ${{ inputs.server_ref }}
+          ANTON_REF: ${{ inputs.server_ref }}
+          VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
         run: npm run release:mac:pkg:notarized
 
       - name: Compute artifact name

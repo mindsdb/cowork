@@ -16,6 +16,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
 import { coworkHome } from './cowork-home';
+import { MINDS_ENV_SLUG } from './minds-urls';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
@@ -485,6 +486,11 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it.
       COWORK_SERVER_OWNER: serverOwnerToken(),
+      // Propagate the client's environment (staging/dev) to the server so its
+      // own env-aware MindsHub defaults resolve to the same host the desktop
+      // build points at. Only set when the build is baked for a non-prod env
+      // and the caller hasn't already pinned ENV explicitly.
+      ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
     };
 
     // detached: true on POSIX puts the child in its own process group so
