@@ -10,7 +10,8 @@ import { startServer, stopServer, isServerRunning, isServerStarting, getServerPo
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
+import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
+import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
@@ -592,8 +593,8 @@ function setupIPC() {
     // is handled post-login by ensureActiveOrg() in minds-auth.ts.
     const result = await oauthConnect({
       clientId: 'anton-desktop',
-      authUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/auth',
-      tokenUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/token',
+      authUrl: KEYCLOAK_AUTH_URL,
+      tokenUrl: KEYCLOAK_TOKEN_URL,
       scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
     });
     if (result.ok && result.access_token) {
@@ -915,7 +916,7 @@ function setupIPC() {
       if (provider === 'anthropic') {
         return validateAnthropic(apiKey, model || 'claude-sonnet-4-6');
       } else if (provider === 'minds') {
-        return validateMinds(apiKey, baseUrl || 'https://api.mindshub.ai');
+        return validateMinds(apiKey, baseUrl || MINDS_API_HOST);
       } else if (provider === 'openai-compatible') {
         return validateOpenAICompatible(apiKey, baseUrl || 'https://api.openai.com/v1', model);
       }

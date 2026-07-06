@@ -85,20 +85,27 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   const coworkRef = opts?.coworkRef || getCoworkRef();
   const antonRef = opts?.antonRef || getAntonRef();
 
-  // By default, let cowork-server's own `[tool.uv.sources]` pin decide which
-  // anton-agent to pull (currently branch `main`). That is the version
-  // cowork-server actually requires, which is what we want installed.
+  // By default (ANTON_REF=main), let cowork-server's own `[tool.uv.sources]`
+  // pin decide which anton-agent to pull — that is the version cowork-server
+  // requires, and it keeps cowork-server's pyproject identical across the
+  // main/staging branches (so merging staging → main never drags an anton ref
+  // along).
   //
-  // Do NOT pass `--with anton-agent @ git+...` on the default path: it is not
-  // an override. uv treats it as a *second* URL requirement for the same
-  // package and aborts with "Requirements contain conflicting URLs for package
-  // `anton-agent`" — even when the two URLs are textually identical — which
-  // broke every fresh git install. Only inject `--with` when a developer asks
-  // for a non-default ANTON_REF while iterating.
+  // For a non-default ANTON_REF (e.g. a staging build pinning anton@staging),
+  // we override the ref from HERE rather than in cowork-server. A bare
+  // `--with anton-agent @ git+...` is NOT an override: uv treats it as a
+  // *second* URL requirement alongside the sources pin and aborts with
+  // "Requirements contain conflicting URLs for package `anton-agent`" — even
+  // for identical URLs. Pairing it with `--no-sources-package anton-agent`
+  // disables the sources pin for just that package, so the `--with` becomes
+  // the sole source and resolves cleanly.
   const withArgs =
     antonRef === 'main'
       ? []
-      : ['--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`];
+      : [
+          '--no-sources-package', ANTON_PACKAGE,
+          '--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`,
+        ];
 
   return {
     package: `git+${COWORK_SERVER_REPO}@${coworkRef}`,

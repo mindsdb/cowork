@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Bakes COWORK_SERVER_REF / ANTON_REF into a generated TypeScript file that
-// gets compiled into the Electron main bundle. Called as a `prebuild:main`
-// npm hook so packaged apps carry the ref that was set at build time.
+// Bakes COWORK_SERVER_REF / ANTON_REF / VITE_MINDS_API_URL into a generated
+// TypeScript file that gets compiled into the Electron main bundle. Called as
+// a `prebuild:main` npm hook so packaged apps carry the values that were set
+// at build time.
 //
 // Priority at runtime: process.env.COWORK_SERVER_REF > baked value > 'main'
+// (VITE_MINDS_API_URL: process.env.MINDS_API_HOST > baked > prod)
 // In dev mode (npm run dev:main, make app) the env var from the Makefile wins
 // and this file is never needed — but it's safe to generate it anyway.
 
@@ -17,6 +19,9 @@ const outFile = join(outDir, 'build-channel.gen.ts');
 
 const coworkRef = (process.env.COWORK_SERVER_REF || '').trim();
 const antonRef = (process.env.ANTON_REF || '').trim();
+// The renderer gets VITE_MINDS_API_URL baked by Vite; the main process is
+// plain tsc and can't see it at runtime, so bake it here too.
+const mindsApiUrl = (process.env.VITE_MINDS_API_URL || '').trim();
 
 mkdirSync(outDir, { recursive: true });
 writeFileSync(
@@ -25,10 +30,11 @@ writeFileSync(
     '// Auto-generated at build time by scripts/gen-build-channel.mjs — do not edit',
     `export const BUILD_COWORK_SERVER_REF = '${coworkRef}';`,
     `export const BUILD_ANTON_REF = '${antonRef}';`,
+    `export const BUILD_MINDS_API_URL = '${mindsApiUrl}';`,
     '',
   ].join('\n'),
 );
 
 console.log(
-  `[gen-build-channel] COWORK_SERVER_REF=${coworkRef || '(unset)'} ANTON_REF=${antonRef || '(unset)'}`,
+  `[gen-build-channel] COWORK_SERVER_REF=${coworkRef || '(unset)'} ANTON_REF=${antonRef || '(unset)'} MINDS_API_URL=${mindsApiUrl || '(unset)'}`,
 );
