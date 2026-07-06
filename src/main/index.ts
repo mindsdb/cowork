@@ -8,7 +8,7 @@ import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
 import { setUpdateNotifier } from './server-updater';
-import { initUpdater } from './updater';
+import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
@@ -966,7 +966,10 @@ function setupIPC() {
     };
   });
 
-  // UI update IPC handlers are registered by initUpdater() — see below.
+  // Register UI/server update IPC handlers unconditionally so the renderer
+  // can check/apply in any build (dev, unpackaged, server-down). The gated
+  // boot/periodic polling is started separately by initUpdater().
+  registerUpdateHandlers(() => mainWindow);
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
