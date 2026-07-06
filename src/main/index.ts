@@ -18,6 +18,7 @@ import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
+import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -25,28 +26,6 @@ function getAntonEnvPath(): string {
 
 function getCoworkStatePath(): string {
   return coworkStatePath();
-}
-
-// Server bearer token (COWORK_AUTH_TOKEN) for the loopback API when the server
-// runs with COWORK_REQUIRE_AUTH=true. Read once and cached for the server's
-// lifetime; the SERVER_RESTART handler clears it so a token a freshly-restarted
-// server generated is picked up. `undefined` = not yet read, `null` = no token
-// (auth disabled). The token stays in the main process — it's injected into
-// requests by the webRequest hook in createWindow and never handed to the
-// renderer.
-let cachedAuthToken: string | null | undefined;
-
-function getServerAuthToken(): string | null {
-  if (cachedAuthToken === undefined) {
-    const raw = readEnvFile()['COWORK_AUTH_TOKEN'];
-    cachedAuthToken = raw ? raw.trim().replace(/^["']|["']$/g, '') : null;
-  }
-  return cachedAuthToken;
-}
-
-function authHeader(): Record<string, string> {
-  const token = getServerAuthToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function clearStoredProviderState(): void {
@@ -577,6 +556,7 @@ function setupIPC() {
       try {
         const credsRes = await fetch(
           `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+          { headers: authHeader() },
         );
         if (!credsRes.ok) {
           const err = await credsRes.json().catch(() => ({})) as { detail?: string };
@@ -593,6 +573,7 @@ function setupIPC() {
       try {
         const specRes = await fetch(
           `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
+          { headers: authHeader() },
         );
         if (!specRes.ok) throw new Error(`HTTP ${specRes.status}`);
         const spec = await specRes.json() as Record<string, any>;
@@ -647,7 +628,7 @@ function setupIPC() {
         `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/save`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
           body: JSON.stringify({
             connector_id: engine,
             method: 'browser_oauth_builtin',
@@ -691,7 +672,7 @@ function setupIPC() {
     try {
       await fetch(
         `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}`,
-        { method: 'DELETE' },
+        { method: 'DELETE', headers: authHeader() },
       );
     } catch {}
     return { ok: true };
@@ -949,7 +930,7 @@ function setupIPC() {
     await stopServer();
     // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
     // the cache so the webRequest hook re-reads it on the next request.
-    cachedAuthToken = undefined;
+    resetServerAuthTokenCache();
     const result = await startServer({});
     if (result.ok) {
       console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
@@ -1389,14 +1370,14 @@ const OAUTH_ENGINES = new Set(Object.keys(OAUTH_CREDENTIALS));
 async function startOrphanRefreshLoops(): Promise<void> {
   try {
     const base = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections`;
-    const listRes = await fetch(`${base}/`);
+    const listRes = await fetch(`${base}/`, { headers: authHeader() });
     if (!listRes.ok) return;
     const connections = await listRes.json() as Array<{ engine: string; name: string }>;
 
     for (const { engine, name } of connections) {
       if (!OAUTH_ENGINES.has(engine)) continue;
       try {
-        const detailRes = await fetch(`${base}/${engine}/${name}`);
+        const detailRes = await fetch(`${base}/${engine}/${name}`, { headers: authHeader() });
         if (!detailRes.ok) continue;
         const detail = await detailRes.json() as { method?: string; fields?: Record<string, string> };
         const fields = detail.fields || {};
@@ -1408,7 +1389,7 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const expiresAt = fields.expires_at;
         if (!accountEmail || !expiresAt) continue;
         // Fetch token_url from the spec — it's masked in the vault detail response.
-        const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`);
+        const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`, { headers: authHeader() });
         if (!specRes.ok) continue;
         const spec = await specRes.json() as Record<string, any>;
         const tokenUrl = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin')?.oauth?.token_url;

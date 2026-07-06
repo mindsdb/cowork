@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron';
 import { getServerPort } from './server-process';
 import { getRefreshToken, setRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
+import { authHeader } from './server-auth';
 import { IPC } from '../shared/ipc-channels';
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
@@ -97,6 +98,7 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   try {
     const credsRes = await fetch(
       `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+      { headers: authHeader() },
     );
     if (!credsRes.ok) {
       console.error(`[token-refresh] credentials endpoint returned ${credsRes.status} for ${engine}`);
@@ -188,7 +190,7 @@ async function patchToken(engine: string, name: string, updates: Record<string, 
   const url = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}/token`;
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
     body: JSON.stringify(updates),
   });
   // 404 = connection was deleted while we were mid-refresh — discard silently
