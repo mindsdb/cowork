@@ -453,13 +453,17 @@ export default function NewProjectModal({ open, onClose, onCreated, suggestedNam
                   onClick={() => { setError(''); setStep(STEP_SCRATCH); }}
                   disabled={busy}
                 />
-                <OptionRow
-                  icon={Ico.folder(18)}
-                  title="Use an existing folder"
-                  description="Give the agent a folder you already work from."
-                  onClick={() => { setError(''); setStep(STEP_EXISTING_PICK); }}
-                  disabled={busy}
-                />
+                {/* Local folders only exist next to the desktop app; in web
+                    mode the server is remote, so hide the option entirely. */}
+                {host.isElectron && (
+                  <OptionRow
+                    icon={Ico.folder(18)}
+                    title="Use an existing folder"
+                    description="Give the agent a folder you already work from."
+                    onClick={() => { setError(''); setStep(STEP_EXISTING_PICK); }}
+                    disabled={busy}
+                  />
+                )}
               </div>
               {errorBanner}
             </>
