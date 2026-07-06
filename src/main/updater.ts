@@ -76,7 +76,9 @@ export function initUpdater(
     } else {
       sendStatus({
         phase: 'available',
-        version: ui.newVersion,
+        // Interim: surface whichever version we have so the banner never
+        // renders blank. Longer term this collapses to one unified version.
+        version: ui.newVersion ?? server.latestVersion,
         serverUpdate: server.updateAvailable,
         serverVersion: server.latestVersion,
       });
