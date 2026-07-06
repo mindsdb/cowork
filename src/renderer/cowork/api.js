@@ -224,7 +224,7 @@ function _conversationToTask(conv, messages = []) {
   };
 }
 
-export async function fetchSessions() {
+export async function fetchConversationList() {
   try {
     // Critical: pass `project=all` so we list conversations across
     // every project, not just the active one. Without this, a task
@@ -232,7 +232,15 @@ export async function fetchSessions() {
     // refresh while the user is "in" project B (because the server
     // defaults to the active project's episodes/ dir).
     const list = await req('/conversations/?project=all&limit=200');
-    const conversations = Array.isArray(list?.conversations) ? list.conversations : [];
+    return Array.isArray(list?.conversations) ? list.conversations : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchSessions() {
+  try {
+    const conversations = await fetchConversationList();
     if (conversations.length === 0) return [];
     // Fan out for the most recent N — full message history isn't
     // needed for the sidebar/projects-list rendering, but loading
