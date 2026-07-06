@@ -585,7 +585,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
                 onClick={() => setShowComments((v) => !v)}
                 style={showComments ? { color: 'var(--accent)' } : undefined}
               >
-                {Ico.chat(18)}
+                {Ico.chats(18)}
               </IconButton>
             </Tooltip>
           )}
