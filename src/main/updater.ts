@@ -3,7 +3,7 @@
 // Both respect the auto/manual update mode and are always applied
 // together — server first, then UI, then window reload.
 
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
@@ -16,24 +16,40 @@ async function applyServerUpdate(): Promise<void> {
   else if (result.error) console.error(`[updater] server update failed: ${result.error}`);
 }
 
-function reload(win: BrowserWindow) {
-  win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-  win.loadFile(getRendererPath());
-}
-
 export function initUpdater(
-  win: BrowserWindow,
+  getWindow: () => BrowserWindow | null,
   rendererReady: Promise<void>,
   getMode: () => 'auto' | 'manual',
 ) {
   const { ipcMain } = require('electron');
+
+  // Resolve a live window at the moment of use. The window can be closed
+  // and later recreated (on macOS, closing keeps the app alive and dock
+  // re-activate reassigns mainWindow), so we must never hold a captured
+  // reference across awaits or across the long-lived poll interval — a
+  // stale/destroyed handle throws "Object has been destroyed" on send/reload.
+  function liveWindow(): BrowserWindow | null {
+    const win = getWindow();
+    return win && !win.isDestroyed() ? win : null;
+  }
+
+  function sendStatus(payload: Record<string, unknown>) {
+    liveWindow()?.webContents.send(IPC.UI_UPDATE_STATUS, payload);
+  }
+
+  function reload() {
+    const win = liveWindow();
+    if (!win) return;
+    win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+    win.loadFile(getRendererPath());
+  }
 
   ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUIUpdate());
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
     const server = await checkForServerUpdate();
     if (server.updateAvailable) await applyServerUpdate();
     const uiApplied = await applyUIUpdate();
-    if (uiApplied || server.updateAvailable) reload(win);
+    if (uiApplied || server.updateAvailable) reload();
     return uiApplied || server.updateAvailable;
   });
 
@@ -56,9 +72,9 @@ export function initUpdater(
     if (autoApply && getMode() === 'auto') {
       if (server.updateAvailable) await applyServerUpdate();
       const uiApplied = ui.updateAvailable ? await applyUIUpdate() : false;
-      if (uiApplied || server.updateAvailable) reload(win);
+      if (uiApplied || server.updateAvailable) reload();
     } else {
-      win.webContents.send(IPC.UI_UPDATE_STATUS, {
+      sendStatus({
         phase: 'available',
         version: ui.newVersion,
         serverUpdate: server.updateAvailable,
@@ -71,9 +87,13 @@ export function initUpdater(
     console.log(`[updater] boot check (mode: ${getMode()})...`);
     await poll(true).catch(err => console.error('[updater] boot check failed:', err));
 
-    setInterval(async () => {
+    const timer = setInterval(() => {
       console.log(`[updater] periodic check (mode: ${getMode()})...`);
-      await poll(false).catch(err => console.error('[updater] periodic check failed:', err));
+      poll(false).catch(err => console.error('[updater] periodic check failed:', err));
     }, UPDATE_POLL_MS);
+
+    // Don't let the interval keep the process alive, and stop polling on quit.
+    timer.unref?.();
+    app.on('before-quit', () => clearInterval(timer));
   });
 }

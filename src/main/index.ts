@@ -1170,7 +1170,7 @@ app.whenReady().then(async () => {
 
       const devMode = getDevMode();
       if (app.isPackaged && !devMode && mainWindow) {
-        initUpdater(mainWindow, rendererReady, getUpdateMode);
+        initUpdater(() => mainWindow, rendererReady, getUpdateMode);
       } else if (!app.isPackaged) {
         console.log('[updater] skipped — not a packaged build');
       } else if (devMode) {
