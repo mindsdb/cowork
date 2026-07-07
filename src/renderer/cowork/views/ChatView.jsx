@@ -941,10 +941,13 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
 // around: Upgrade is just a billing link (host.openExternal window.opens on
 // web), and Switch model routes to Settings on both shells.
 function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
-  // modelLabel leaves single-token aliases as-is ("sonnet") — capitalize for
-  // the title ("Sonnet isn't included in your plan").
+  // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
+  // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
+  // bare single-token alias ("sonnet") comes back lowercase, and it reads
+  // better capitalized in the title. So capitalize single-word labels only,
+  // leaving anything modelLabel already spaced/cased untouched.
   const raw = modelLabel(failedModel) || failedModel || 'This model';
-  const label = raw.charAt(0).toUpperCase() + raw.slice(1);
+  const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
   const title = denied
     ? `${label} isn't included in your plan`
