@@ -3491,6 +3491,7 @@ function AppCore() {
             models={modelOptions}
             attachments={composerAttachments}
             connectors={connectors}
+            onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -3578,6 +3579,7 @@ function AppCore() {
             onDeleteProject={handleDeleteProject}
             attachments={composerAttachments}
             connectors={connectors}
+            onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}

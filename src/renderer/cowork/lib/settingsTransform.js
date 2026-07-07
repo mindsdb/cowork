@@ -16,6 +16,8 @@
  *      API key settings on read; synced back on write.
  */
 
+import { MINDS_API_BASE } from '../../lib/mindsUrls';
+
 // ─── Key maps ──────────────────────────────────────────────────────────
 
 /** Server snake_case → client camelCase */
@@ -233,7 +235,7 @@ function backfillProviders(result) {
   if (result.mindsApiKey === '***' && !hasType('minds-cloud')) {
     providers.push({
       type: 'minds-cloud', apiKey: '***',
-      mindsUrl: (result.mindsUrl || 'https://api.mindshub.ai/v1').replace(/\/v1$/, ''),
+      mindsUrl: (result.mindsUrl || `${MINDS_API_BASE}/v1`).replace(/\/v1$/, ''),
       isDefault: planningType === 'minds-cloud',
     });
   }

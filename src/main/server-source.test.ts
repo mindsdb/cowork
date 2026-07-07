@@ -71,11 +71,16 @@ describe('getInstallSpec', () => {
     expect(spec.withArgs).toEqual([]);
   });
 
-  it('injects exactly one --with pair when ANTON_REF is non-default', () => {
+  it('non-default ANTON_REF injects --no-sources-package + --with as a pair', () => {
+    // The --no-sources-package disables cowork-server's [tool.uv.sources] pin
+    // for anton-agent so the --with becomes the SOLE source — a bare --with
+    // alongside the pin makes uv abort with "conflicting URLs".
     withEnv({ ANTON_REF: 'feat/x' }, () => {
       const spec = getInstallSpec();
       expect(spec.channel).toBe('git');
       expect(spec.withArgs).toEqual([
+        '--no-sources-package',
+        'anton-agent',
         '--with',
         'anton-agent @ git+https://github.com/mindsdb/anton.git@feat/x',
       ]);
@@ -152,6 +157,8 @@ describe('getInstallSpec', () => {
         const spec = getInstallSpec({ coworkRef: 'rollback-sha', antonRef: 'anton-sha' });
         expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@rollback-sha');
         expect(spec.withArgs).toEqual([
+          '--no-sources-package',
+          'anton-agent',
           '--with',
           'anton-agent @ git+https://github.com/mindsdb/anton.git@anton-sha',
         ]);

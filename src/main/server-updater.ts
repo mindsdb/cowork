@@ -35,59 +35,22 @@ import {
   isFullCommitSha,
   parseLsRemote,
   parseVcsInfo,
-  parseInstalledVersion,
   decideGitUpdate,
   decidePypiUpdate,
   type VcsInfo,
 } from './update-logic';
+import { PYTHON_RANGE, getEnvPath, findUv, getInstalledVersion } from './uv-paths';
 
 const PACKAGE_NAME = 'cowork-server';
 const PYPI_JSON_URL = `https://pypi.org/pypi/${PACKAGE_NAME}/json`;
 const PYPI_TIMEOUT_MS = 5000;
 const DISABLE_VAR = 'COWORK_SERVER_DISABLE_AUTOUPDATE';
 
-// PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
-// Keep in sync with installer.ts PYTHON_RANGE and cowork-server requires-python.
-const PYTHON_RANGE = '>=3.12,<3.14';
-
 export interface ServerUpdateResult {
   updated: boolean;
   previousVersion?: string;
   newVersion?: string;
   error?: string;
-}
-
-// ---------------------------------------------------------------------------
-// uv / path helpers
-// ---------------------------------------------------------------------------
-
-function getLocalBin(): string {
-  return path.join(os.homedir(), '.local', 'bin');
-}
-
-function getUvBinary(): string {
-  const localBin = getLocalBin();
-  return path.join(localBin, process.platform === 'win32' ? 'uv.exe' : 'uv');
-}
-
-function findUv(): string | null {
-  const explicit = getUvBinary();
-  if (fs.existsSync(explicit)) return explicit;
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', 'uv');
-  if (fs.existsSync(cargoBin)) return cargoBin;
-  if (process.platform === 'darwin') {
-    for (const p of ['/opt/homebrew/bin/uv', '/usr/local/bin/uv']) {
-      if (fs.existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
-function getEnvPath(): string {
-  const localBin = getLocalBin();
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
-  const currentPath = process.env.PATH || '';
-  return [localBin, cargoBin, currentPath].join(path.delimiter);
 }
 
 /** uv tools directory (mirrors server-deps.getUvToolsDir). */
@@ -199,19 +162,6 @@ function fetchLatestVersion(): Promise<string | null> {
   });
 }
 
-function getInstalledVersion(uv: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    // Force plain output: a forced-color environment makes `uv tool list`
-    // emit ANSI codes that break the start-anchored regex below. NO_COLOR
-    // overrides FORCE_COLOR. (Mirror of installer.ts getInstalledVersion.)
-    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
-    execFile(uv, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
-      if (err) { resolve(null); return; }
-      resolve(parseInstalledVersion(stdout));
-    });
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -220,6 +170,61 @@ let _notify: ((payload: Record<string, unknown>) => void) | null = null;
 
 export function setUpdateNotifier(fn: (payload: Record<string, unknown>) => void): void {
   _notify = fn;
+}
+
+export interface ServerUpdateCheckResult {
+  updateAvailable: boolean;
+  currentVersion?: string;
+  latestVersion?: string;
+}
+
+/** Check whether a server update is available WITHOUT applying it. */
+export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return { updateAvailable: false };
+
+    const uv = findUv();
+    if (!uv) return { updateAvailable: false };
+
+    const coworkVcs = readVcsInfo('cowork_server');
+    if (coworkVcs) {
+      // Git channel: compare remote SHA vs installed SHA
+      const coworkRef = getCoworkRef();
+      const antonRef = getAntonRef();
+      const antonVcs = readVcsInfo('anton_agent');
+      const [coworkRemote, antonRemote] = await Promise.all([
+        lsRemote(COWORK_SERVER_REPO, coworkRef),
+        lsRemote(ANTON_REPO, antonRef),
+      ]);
+      const { coworkChanged, needsUpdate } = decideGitUpdate({
+        coworkRemote,
+        antonRemote,
+        coworkVcs,
+        antonVcs,
+      });
+      return {
+        updateAvailable: needsUpdate,
+        currentVersion: coworkVcs.commit.slice(0, 7),
+        latestVersion: coworkChanged ? coworkRemote!.slice(0, 7) : coworkVcs.commit.slice(0, 7),
+      };
+    }
+
+    // PyPI channel: compare version numbers
+    const [currentVersion, latestVersion] = await Promise.all([
+      getInstalledVersion(uv),
+      fetchLatestVersion(),
+    ]);
+    if (!currentVersion || !latestVersion) return { updateAvailable: false };
+    return {
+      updateAvailable: decidePypiUpdate(currentVersion, latestVersion).action === 'update',
+      currentVersion,
+      latestVersion,
+    };
+  } catch (err: any) {
+    console.error('[server-updater] check failed:', err);
+    return { updateAvailable: false };
+  }
 }
 
 export async function maybeUpdateServer(): Promise<ServerUpdateResult> {

@@ -1902,6 +1902,7 @@ export default function ChatView({
             models={model ? [model] : []}
             attachments={attachments}
             connectors={connectors}
+            onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}

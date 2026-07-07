@@ -3,27 +3,28 @@ import { stopServer, startServer, isServerRunning, isServerStarting, getServerPo
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
 import { getInstallationId } from './installation-id';
+import {
+  MINDS_API_HOST,
+  MINDS_KEYCLOAK_BASE,
+  MINDS_AUTH_SERVICE_URL as AUTH_SERVICE_URL,
+  MINDS_CONSOLE_HOST,
+} from './minds-urls';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const KEYCLOAK_BASE = 'https://auth.mindshub.ai/auth';
+const KEYCLOAK_BASE = MINDS_KEYCLOAK_BASE;
 const KEYCLOAK_REALM = 'mindsdb';
 // `anton-desktop` is the native Keycloak client used for the loopback
 // PKCE flow in the desktop app.
 const KEYCLOAK_CLIENT_ID = 'anton-desktop';
 const TOKEN_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 
-// Django auth-service that issues MindsHub API keys. The Keycloak JWT
-// alone is NOT a valid LLM credential — the gateway only accepts an
-// `mdb_*` API key minted here. We exchange the JWT for a key once at
-// finalize time and stash the key in ~/.anton/.env; the JWT itself
-// never reaches the LLM gateway.
-const AUTH_SERVICE_URL = 'https://auth.mindshub.ai/v1';
-
-// MindsHub LLM gateway base URL (OpenAI-compatible). Promote to
-// api.mindshub.ai when the desktop app moves to prod.
-const MINDS_LLM_BASE_URL = 'https://api.mindshub.ai/v1';
+// Login endpoints for the loopback PKCE flow, derived from the same
+// env-aware base as everything else so the MINDSHUB_LOGIN IPC handler in
+// index.ts never has to hardcode a host.
+export const KEYCLOAK_AUTH_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth`;
+export const KEYCLOAK_TOKEN_URL = TOKEN_URL;
 
 // Base label for the MindsHub API key. ENG-440: keys are minted per
 // device — the full name is `hub:anton:<installation_id>` (see
@@ -479,7 +480,7 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     return {
       error:
         'Could not select an active MindsHub organization for this account. ' +
-        'Sign in at console.dev.mindshub.ai once to create or join an organization, then try again.',
+        `Sign in at ${MINDS_CONSOLE_HOST.replace(/^https?:\/\//, '')} once to create or join an organization, then try again.`,
     };
   }
   const accessToken = orgResult.token;
@@ -673,7 +674,7 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
     .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
   lines.push(
     'ANTON_MINDS_ENABLED=true',
-    `ANTON_MINDS_URL=${MINDS_LLM_BASE_URL.replace(/\/v1$/, '')}`,
+    `ANTON_MINDS_URL=${MINDS_API_HOST}`,
     `ANTON_MINDS_API_KEY=${apiKey}`,
     'ANTON_PLANNING_PROVIDER=minds-cloud',
     'ANTON_CODING_PROVIDER=minds-cloud',

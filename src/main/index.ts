@@ -7,14 +7,16 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
-import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
+import { setUpdateNotifier } from './server-updater';
+import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
+import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
+import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
-import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
-import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
+import { getRendererPath, getBundledPath, getCachedVersion } from './ui-updater';
+import { getAppDisplayVersion } from './server-source';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -592,8 +594,8 @@ function setupIPC() {
     // is handled post-login by ensureActiveOrg() in minds-auth.ts.
     const result = await oauthConnect({
       clientId: 'anton-desktop',
-      authUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/auth',
-      tokenUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/token',
+      authUrl: KEYCLOAK_AUTH_URL,
+      tokenUrl: KEYCLOAK_TOKEN_URL,
       scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
     });
     if (result.ok && result.access_token) {
@@ -915,7 +917,7 @@ function setupIPC() {
       if (provider === 'anthropic') {
         return validateAnthropic(apiKey, model || 'claude-sonnet-4-6');
       } else if (provider === 'minds') {
-        return validateMinds(apiKey, baseUrl || 'https://api.mindshub.ai');
+        return validateMinds(apiKey, baseUrl || MINDS_API_HOST);
       } else if (provider === 'openai-compatible') {
         return validateOpenAICompatible(apiKey, baseUrl || 'https://api.openai.com/v1', model);
       }
@@ -960,31 +962,15 @@ function setupIPC() {
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
     const uiVersion = getCachedVersion();
     return {
-      app: app.getVersion(),
+      app: getAppDisplayVersion(),
       ui: uiVersion || 'bundled',
     };
   });
 
-  // UI Updates
-  ipcMain.handle(IPC.UI_UPDATE_CHECK, async () => {
-    return checkForUIUpdate();
-  });
-
-  ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
-    console.log('[ui-updater] apply requested via IPC');
-    try {
-      const applied = await applyUIUpdate();
-      console.log(`[ui-updater] apply result: ${applied}`);
-      if (applied && mainWindow) {
-        console.log('[ui-updater] reloading window with new bundle');
-        mainWindow.loadFile(getRendererPath());
-      }
-      return applied;
-    } catch (err) {
-      console.error('[ui-updater] apply failed:', err);
-      throw err;
-    }
-  });
+  // Register UI/server update IPC handlers unconditionally so the renderer
+  // can check/apply in any build (dev, unpackaged, server-down). The gated
+  // boot/periodic polling is started separately by initUpdater().
+  registerUpdateHandlers(() => mainWindow);
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
@@ -995,7 +981,7 @@ function setupIPC() {
 async function purgeHttpCacheOnUpgrade(): Promise<void> {
   try {
     const markerPath = path.join(app.getPath('userData'), 'cache-purge.json');
-    const current = app.getVersion();
+    const current = getAppDisplayVersion();
     let last = '';
     if (fs.existsSync(markerPath)) {
       try {
@@ -1053,8 +1039,8 @@ app.whenReady().then(async () => {
               click: () => {
                 const uiVersion = getCachedVersion();
                 const versionStr = uiVersion
-                  ? `${app.getVersion()} (UI: ${uiVersion})`
-                  : app.getVersion();
+                  ? `${getAppDisplayVersion()} (UI: ${uiVersion})`
+                  : getAppDisplayVersion();
                 app.setAboutPanelOptions({
                   applicationName: 'MindsHub Cowork',
                   applicationVersion: versionStr,
@@ -1129,6 +1115,20 @@ app.whenReady().then(async () => {
   await resolveServerPort();
   createWindow();
 
+  // Capture renderer readiness NOW, before the async server start —
+  // did-finish-load fires quickly (especially with Vite dev server)
+  // and would be missed if we attached the listener after server boot.
+  const rendererReady = new Promise<void>((resolve) => {
+    if (mainWindow?.webContents.isLoading() === false) {
+      // Already loaded (race: window created and loaded before we got here)
+      setTimeout(resolve, 1500);
+    } else {
+      mainWindow?.webContents.once('did-finish-load', () => {
+        setTimeout(resolve, 1500);
+      });
+    }
+  });
+
   // Boot-time server start. If cowork-server is installed, start it
   // in the background. If not, skip — the renderer's boot flow will
   // route to the setup screen which handles installation.
@@ -1168,85 +1168,17 @@ app.whenReady().then(async () => {
       console.error(`[server] start failed: ${result.reason}`);
     } else {
       console.log(`[server] running on http://127.0.0.1:${result.port}`);
-      // Background update check — runs after the server is already
-      // serving so users aren't blocked. If a newer version is found
-      // on PyPI, stops the server, upgrades, and restarts. Rolls back
-      // automatically if the new version fails the health probe.
       setUpdateNotifier((payload) => {
         mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       });
 
-      // Update server first, then check for UI updates. This ensures
-      // the renderer and server stay in sync — both track git HEAD on
-      // main, so updating them in sequence (server → UI) avoids any
-      // window where a new renderer talks to an old server.
-      const serverUpdateDone = maybeUpdateServer().then((updateResult) => {
-        if (updateResult.updated) {
-          console.log(`[server-updater] updated ${updateResult.previousVersion} → ${updateResult.newVersion}`);
-        } else if (updateResult.error) {
-          console.error(`[server-updater] ${updateResult.error}`);
-        }
-      }).catch((err) => {
-        console.error('[server-updater] check failed:', err);
-      });
-
-      // OTA UI update check — only in packaged builds and not in DEV_MODE.
-      // Waits for both the server update AND the renderer to finish loading
-      // so the React app has time to mount its IPC listener.
       const devMode = getDevMode();
-      if (app.isPackaged && !devMode) {
-        const rendererReady = new Promise<void>((resolve) => {
-          mainWindow?.webContents.once('did-finish-load', () => {
-            setTimeout(resolve, 1500);
-          });
-        });
-
-        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
-          try {
-            const updateMode = getUpdateMode();
-            console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
-            mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
-
-            const online = await hasInternet();
-            if (!online) {
-              console.log('[ui-updater] offline — skipping update check');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
-              return;
-            }
-
-            const result = await checkForUIUpdate();
-            if (!result.updateAvailable) {
-              console.log('[ui-updater] up to date');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
-              return;
-            }
-
-            console.log(`[ui-updater] new version available: ${result.newVersion}`);
-
-            if (updateMode === 'auto') {
-              console.log('[ui-updater] auto mode — downloading and applying...');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
-              const applied = await applyUIUpdate();
-              if (applied && mainWindow) {
-                console.log('[ui-updater] update applied — reloading window');
-                mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-                mainWindow.loadFile(getRendererPath());
-              }
-            } else {
-              console.log('[ui-updater] manual mode — notifying renderer');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
-                phase: 'available',
-                version: result.newVersion,
-              });
-            }
-          } catch (err) {
-            console.error('[ui-updater] startup check failed:', err);
-          }
-        });
+      if (app.isPackaged && !devMode && mainWindow) {
+        initUpdater(() => mainWindow, rendererReady, getUpdateMode);
       } else if (!app.isPackaged) {
-        console.log('[ui-updater] skipped — not a packaged build');
+        console.log('[updater] skipped — not a packaged build');
       } else if (devMode) {
-        console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
+        console.log(`[updater] skipped — DEV_MODE=${devMode}`);
       }
     }
   }).catch((err) => {
