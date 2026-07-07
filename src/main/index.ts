@@ -16,6 +16,7 @@ import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
 import { getRendererPath, getBundledPath, getCachedVersion } from './ui-updater';
+import { getAppDisplayVersion } from './server-source';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -961,7 +962,7 @@ function setupIPC() {
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
     const uiVersion = getCachedVersion();
     return {
-      app: app.getVersion(),
+      app: getAppDisplayVersion(),
       ui: uiVersion || 'bundled',
     };
   });
@@ -980,7 +981,7 @@ function setupIPC() {
 async function purgeHttpCacheOnUpgrade(): Promise<void> {
   try {
     const markerPath = path.join(app.getPath('userData'), 'cache-purge.json');
-    const current = app.getVersion();
+    const current = getAppDisplayVersion();
     let last = '';
     if (fs.existsSync(markerPath)) {
       try {
@@ -1038,8 +1039,8 @@ app.whenReady().then(async () => {
               click: () => {
                 const uiVersion = getCachedVersion();
                 const versionStr = uiVersion
-                  ? `${app.getVersion()} (UI: ${uiVersion})`
-                  : app.getVersion();
+                  ? `${getAppDisplayVersion()} (UI: ${uiVersion})`
+                  : getAppDisplayVersion();
                 app.setAboutPanelOptions({
                   applicationName: 'MindsHub Cowork',
                   applicationVersion: versionStr,
