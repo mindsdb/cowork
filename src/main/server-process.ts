@@ -16,6 +16,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
 import { coworkHome } from './cowork-home';
+import { MINDS_ENV_SLUG } from './minds-urls';
+import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
@@ -244,28 +246,6 @@ export function getServerOrigin(): string {
   return `http://${SERVER_HOST}:${serverPort}`;
 }
 
-function getUvPath(): string | null {
-  const localBin = path.join(os.homedir(), '.local', 'bin', 'uv');
-  if (fs.existsSync(localBin)) return localBin;
-  // Check common install paths
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', 'uv');
-  if (fs.existsSync(cargoBin)) return cargoBin;
-  return null;
-}
-
-// Build a PATH with ~/.local/bin and ~/.cargo/bin prepended. Critical
-// for macOS (and to a lesser extent Linux) GUI launches: when MindsHub Cowork.app
-// starts from Finder/Dock, process.env.PATH is the minimal launchd PATH
-// (`/usr/bin:/bin:/usr/sbin:/sbin`) — shell init files aren't read,
-// so `~/.local/bin` (where the installer puts `uv`) is missing.
-function getEnvPath(): string {
-  const localBin = path.join(os.homedir(), '.local', 'bin');
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
-  const currentPath = process.env.PATH || '';
-  const parts = [localBin, cargoBin, currentPath].filter(Boolean);
-  return parts.join(path.delimiter);
-}
-
 // In dev mode, return the sibling cowork-server source directory so we
 // can run `uv run cowork-server` against local source. Returns null when
 // packaged (the installed binary is used instead).
@@ -277,13 +257,9 @@ function getDevServerDir(): string | null {
   return path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
 }
 
-// Locate the installed `cowork-server` binary (installed via
-// `uv tool install cowork-server`). Lives in ~/.local/bin on
-// POSIX, %LOCALAPPDATA%/bin on Windows.
 function getCoworkServerBin(): string | null {
-  const localBin = path.join(os.homedir(), '.local', 'bin');
-  const localCandidate = path.join(localBin, process.platform === 'win32' ? 'cowork-server.exe' : 'cowork-server');
-  if (fs.existsSync(localCandidate)) return localCandidate;
+  const bin = getCoworkServerBinary();
+  if (fs.existsSync(bin)) return bin;
   if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
     const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'cowork-server.exe');
     if (fs.existsSync(winCandidate)) return winCandidate;
@@ -453,7 +429,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 
   if (isDevSource && devDir) {
     // Dev: use uv to run from source so local edits are picked up
-    const uvCmd = getUvPath();
+    const uvCmd = findUv();
     if (!uvCmd) {
       lastStartError = 'uv not found. Install uv first: https://docs.astral.sh/uv/getting-started/installation/';
       return { ok: false, reason: lastStartError };
@@ -485,6 +461,11 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it.
       COWORK_SERVER_OWNER: serverOwnerToken(),
+      // Propagate the client's environment (staging/dev) to the server so its
+      // own env-aware MindsHub defaults resolve to the same host the desktop
+      // build points at. Only set when the build is baked for a non-prod env
+      // and the caller hasn't already pinned ENV explicitly.
+      ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
     };
 
     // detached: true on POSIX puts the child in its own process group so

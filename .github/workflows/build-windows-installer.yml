@@ -7,6 +7,23 @@ on:
         description: preview | stable | prod
         required: true
         type: string
+      server_ref:
+        description: "cowork-server and anton git branch/tag (empty = main)"
+        required: false
+        type: string
+        default: ""
+      minds_api_url:
+        description: "MindsHub API base URL (empty = https://api.mindshub.ai)"
+        required: false
+        type: string
+        default: ""
+      app_version:
+        description: >-
+          App display version baked into the renderer as __APP_VERSION__.
+          Prod builds pass the CalVer release tag (e.g. v2.26.7.1.1).
+          Staging/dev builds omit this and fall back to git describe.
+        required: false
+        type: string
     outputs:
       artifact_name:
         description: Final exe file name (uploaded as the artifact name)
@@ -53,8 +70,13 @@ jobs:
     outputs:
       artifact_name: ${{ steps.name.outputs.artifact_name }}
     steps:
+      # Full clone so git describe can walk history to the nearest CalVer
+      # tag. Staging builds (untagged commits) need the distance calculation
+      # (e.g. "2.26.6.30.1-3-g1a2b3c4"); a shallow clone can't do this.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -97,6 +119,14 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
+          # Both refs come from the same input so a staging build pins staging
+          # cowork-server AND staging anton. server-source.ts overrides anton's
+          # source at install time via --no-sources-package + --with, so this
+          # does not require any per-branch pin in cowork-server's pyproject.
+          COWORK_SERVER_REF: ${{ inputs.server_ref }}
+          ANTON_REF: ${{ inputs.server_ref }}
+          VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
+          VITE_APP_VERSION: ${{ inputs.app_version }}
 
       - name: Resolve installer path
         id: installer

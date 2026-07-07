@@ -21,6 +21,7 @@ jobs:
     uses: ./.github/workflows/build-macos-pkg.yml
     with:
       build_kind: prod
+      app_version: ${{ inputs.tag }}
     secrets: inherit
 
   upload-macos:
@@ -35,6 +36,7 @@ jobs:
     uses: ./.github/workflows/build-windows-installer.yml
     with:
       build_kind: prod
+      app_version: ${{ inputs.tag }}
     secrets: inherit
 
   upload-windows:

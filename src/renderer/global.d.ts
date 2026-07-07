@@ -74,7 +74,7 @@ interface AntonTronAPI {
 }
 
 declare global {
-  /** Injected by Vite at build time from package.json `version`. */
+  /** App display version injected by Vite at build time. */
   const __APP_VERSION__: string;
   /** Short git commit hash at build time, or '' outside a repo. */
   const __GIT_HASH__: string;
