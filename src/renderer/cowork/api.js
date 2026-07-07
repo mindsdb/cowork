@@ -1236,6 +1236,13 @@ export async function fetchSavedConnection(engine, name) {
 // server-side against the prior record.
 export const ANTON_VAULT_KEEP = '__anton_vault_keep__';
 
+// Sentinel used specifically by the Connections detail/edit round-trip —
+// mirrors `cowork.services.connectors.identity.VAULT_KEEP_SENTINEL` on the
+// server. NOT the same value as ANTON_VAULT_KEEP above (that one is anton's
+// own data-vault sentinel for a different subsystem) — despite the similar
+// name, the two are deliberately distinct and must not be conflated.
+export const CONNECTIONS_VAULT_KEEP = 'ANTON_VAULT_KEEP';
+
 // ─── Connector registry ─────────────────────────────────────────────
 //
 // Predefined JSON specs in server/connectors/. Three calls:

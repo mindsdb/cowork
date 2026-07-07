@@ -39,16 +39,14 @@ interface AntonTronAPI {
     lastStartAt: number | null;
     recentLog: string;
   }>;
-  oauthConnect: (opts: {
-    authUrl: string;
-    tokenUrl: string;
-    clientId: string;
-    clientSecret?: string;
-    scopes: string[];
-    extraAuthParams?: Record<string, string>;
-  }) => Promise<{
+  oauthConnect: (opts:
+    | { engine: string; name?: string }
+    | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string> }
+  ) => Promise<{
     ok: boolean;
     reason?: string;
+    name?: string;
+    account_email?: string;
     refresh_token?: string;
     access_token?: string;
     expires_in?: number;
@@ -56,6 +54,8 @@ interface AntonTronAPI {
     token_type?: string;
   }>;
   oauthCancel: () => Promise<boolean>;
+  keychainRevoke: (opts: { engine: string; name: string; accountEmail: string }) => Promise<{ ok: boolean; reason?: string }>;
+  onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => () => void;
   mindshubLogin: () => Promise<{
     ok: boolean;
     reason?: string;

@@ -25,6 +25,20 @@ export function coworkStatePath(): string {
   return path.join(coworkHome(), 'state.json');
 }
 
+export function readEnvFile(): Record<string, string> {
+  const vars: Record<string, string> = {};
+  const envPath = coworkEnvPath();
+  if (!fs.existsSync(envPath)) return vars;
+  const content = fs.readFileSync(envPath, 'utf-8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx > 0) vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
+  }
+  return vars;
+}
+
 // Copy the legacy `~/.anton/.env` and `~/.anton/cowork/state.json` to the
 // new `~/.cowork` location when they don't exist there yet, so existing
 // installs keep their credentials + provider state. Idempotent and

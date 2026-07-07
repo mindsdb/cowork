@@ -27,17 +27,25 @@ contextBridge.exposeInMainWorld('antontron', {
   // Diagnostics — last start error + tail of stdout/stderr. Used
   // by the renderer's "why is the backend offline?" help modal.
   serverDiagnostics: () => ipcRenderer.invoke('server:get-diagnostics'),
-  // PKCE OAuth — main spawns a loopback server + opens the
-  // browser, returns the resulting tokens (or an error reason).
-  oauthConnect: (opts: {
-    authUrl: string;
-    tokenUrl: string;
-    clientId: string;
-    clientSecret?: string;
-    scopes: string[];
-    extraAuthParams?: Record<string, string>;
-  }) => ipcRenderer.invoke('oauth:connect', opts),
+  // PKCE OAuth — accepts either the builtin shape { engine, name } (main
+  // handles credentials + full flow) or the BYOK shape { authUrl, ... }
+  // (returns tokens to renderer). Returns the resulting tokens or an error.
+  oauthConnect: (opts: { engine: string; name?: string } | {
+    authUrl: string; tokenUrl: string; clientId: string;
+    clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>;
+  }) => ipcRenderer.invoke(IPC.OAUTH_CONNECT, opts),
   oauthCancel: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL),
+  // Disconnect a builtin OAuth connection: stops the refresh loop,
+  // removes the keychain entry, and deletes the vault record.
+  keychainRevoke: (opts: { engine: string; name: string; accountEmail: string }) =>
+    ipcRenderer.invoke(IPC.KEYCHAIN_REVOKE, opts),
+  // Fires when the background token-refresh loop encounters a failure.
+  // Returns an unsubscribe function.
+  onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => {
+    const listener = (_: any, payload: any) => cb(payload);
+    ipcRenderer.on(IPC.OAUTH_REFRESH_ERROR, listener);
+    return () => ipcRenderer.removeListener(IPC.OAUTH_REFRESH_ERROR, listener);
+  },
 
   // MindsHub onboarding — see main/index.ts for the rationale on
   // why these are split out from the generic oauth:connect bridge.

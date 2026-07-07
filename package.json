@@ -38,9 +38,11 @@
     "release:mac:pkg:notarized": "bash ./scripts/release-mac-pkg-notarized.sh",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never",
     "dist:win:all": "npm run build && electron-builder --win --publish never",
-    "release:win:local": "npm run dist:win"
+    "release:win:local": "npm run dist:win",
+    "rebuild": "electron-rebuild"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.1.0",
     "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -73,6 +75,7 @@
     "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
     "keycloak-js": "^26.2.4",
+    "keytar": "^7.9.0",
     "marked": "^17.0.4",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.1",
@@ -82,5 +85,8 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.6.0"
+  },
+  "allowScripts": {
+    "keytar@7.9.0": true
   }
 }
