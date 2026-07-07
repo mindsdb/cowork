@@ -18,7 +18,7 @@
 // Call after the server has booted so users aren't blocked. Disable with
 // COWORK_SERVER_DISABLE_AUTOUPDATE=1. Never throws.
 
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -149,6 +149,43 @@ function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: strin
 function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string }> {
   const spec = getInstallSpec({ coworkRef, antonRef });
   return runUv(uv, ['tool', 'install', spec.package, ...spec.withArgs, '--force', '--reinstall', '--python', PYTHON_RANGE]);
+}
+
+/** Recover a cowork-server venv stranded on an unsupported Python.
+ *
+ * A venv provisioned on Python < 3.12 by an older build keeps getting newer
+ * code pulled into it by in-place git updates; that code fails to *parse* on
+ * 3.11, so the server crashes at import time and never answers /health — and
+ * the normal updater (gated behind a successful start) never runs to fix it.
+ * Read the venv's interpreter from pyvenv.cfg and, if it's outside the
+ * supported range, reinstall on the configured channel: installGit's --python
+ * pin rebuilds the venv on a supported CPython (3.11 → 3.12). Returns false
+ * (no-op) when the interpreter is already fine or can't be determined; the
+ * caller owns the restart. Never throws. */
+export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return false;
+    const uv = findUv();
+    if (!uv) return false;
+    // Resolve the tools dir via uv itself — its on-disk layout differs across
+    // versions (e.g. %APPDATA%\uv\tools vs …\uv\data\tools on Windows).
+    const toolsDir = execFileSync(uv, ['tool', 'dir'], {
+      env: { ...process.env, PATH: getEnvPath() }, timeout: 10000, encoding: 'utf-8',
+    }).trim();
+    const cfg = fs.readFileSync(path.join(toolsDir, 'cowork-server', 'pyvenv.cfg'), 'utf-8');
+    const m = cfg.match(/version_info\s*=\s*(\d+)\.(\d+)/);
+    if (!m) return false;
+    const [maj, min] = [Number(m[1]), Number(m[2])];
+    if (maj === 3 && min >= 12 && min < 14) return false; // within PYTHON_RANGE — nothing to do
+
+    console.warn(`[server-updater] cowork-server venv on unsupported Python ${maj}.${min}; recreating`);
+    if (isServerRunning()) await stopServer();
+    const { ok } = await installGit(uv, getCoworkRef(), getAntonRef());
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 // ---- PyPI path helpers (release channel) ----------------------------------
