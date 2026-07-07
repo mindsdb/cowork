@@ -230,28 +230,51 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
-      const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
-      if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); return; }
       const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
       setBusy(true);
       setError('');
-      try {
-        const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
-        if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
-        window.open(result.authUrl, '_blank');
+
+      if (host.isElectron) {
+        // Electron — main process owns the full PKCE flow, keychain storage,
+        // /save call, and refresh loop start. Renderer gets { ok, name } back.
         patchForm(conversationId, {
           form_id: spec.form_id,
           _is_probing: true,
           status_text: 'Waiting for Google sign-in…',
           form_error: null,
         });
+        try {
+          const result = await host.oauthConnect({ engine, name: values?.label || '' });
+          if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
+          setBusy(false);
+          try { await fetchDatasources(); } catch { /* best effort */ }
+          patchForm(conversationId, {
+            form_id: spec.form_id,
+            _is_probing: false,
+            _is_success: true,
+            title: successTitle,
+            subtitle: 'Saved to the data vault. Cowork can now use this connection in tasks.',
+          });
+          trackDataSourceConnected(engine);
+          onContinue?.({ text: `Connected ${successTitle} — saved to the data vault.` });
+        } catch (e) {
+          patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'OAuth flow failed.' });
+          setBusy(false);
+        }
+        return;
+      }
+
+      // Web fallback — server-side redirect flow.
+      const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+      if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
+      try {
+        const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
+        if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+        window.open(result.authUrl, '_blank');
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
         startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
       } catch (e) {
-        patchForm(conversationId, {
-          form_id: spec.form_id,
-          _is_probing: false,
-          form_error: e?.message || 'Could not start Google sign-in.',
-        });
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'Could not start Google sign-in.' });
         setBusy(false);
       }
       return;
@@ -829,28 +852,37 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 if (method?.fields?.length) return;
                 // No fields — auto-start immediately on method selection.
                 const engine = spec.engine || spec._connector_id || 'google_drive';
-                const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
-                if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); return; }
                 const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
                 setBusy(true);
                 setError('');
+
+                if (host.isElectron) {
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
+                  try {
+                    const result = await host.oauthConnect({ engine, name: '' });
+                    if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
+                    setBusy(false);
+                    try { await fetchDatasources(); } catch { /* best effort */ }
+                    patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, _is_success: true, title: successTitle, subtitle: 'Saved to the data vault. Cowork can now use this connection in tasks.' });
+                    trackDataSourceConnected(engine);
+                  } catch (e) {
+                    patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'OAuth flow failed.' });
+                    setBusy(false);
+                  }
+                  return;
+                }
+
+                // Web fallback
+                const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+                if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
                 try {
                   const result = await startConnectorOAuth(serviceId);
                   if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
                   window.open(result.authUrl, '_blank');
-                  patchForm(conversationId, {
-                    form_id: spec.form_id,
-                    _is_probing: true,
-                    status_text: 'Waiting for Google sign-in…',
-                    form_error: null,
-                  });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
                   startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
                 } catch (e) {
-                  patchForm(conversationId, {
-                    form_id: spec.form_id,
-                    _is_probing: false,
-                    form_error: e?.message || 'Could not start Google sign-in.',
-                  });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'Could not start Google sign-in.' });
                   setBusy(false);
                 }
               }}
