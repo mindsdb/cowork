@@ -1,27 +1,20 @@
 // Artifact comments sidebar (Plan 5, Part B).
 //
-// Lists threads for a published restricted artifact, with compose / reply /
-// resolve, and live updates over SSE (fetch + iterateSSE, upsert-by-id with a
-// version guard). Talks only to cowork-server, which attaches the user's creds
-// and proxies to the inference backend. The on-artifact marker anchoring from
-// the published shell (comments_ui.py LAYER_JS) is a deliberate follow-up; this
-// panel delivers the thread list + realtime core.
+// Presentational list of threads for a published restricted artifact, with
+// compose / reply / resolve. The comments state (initial load + realtime SSE +
+// mutations) lives in the shared `useArtifactComments` hook, instantiated once
+// in ArtifactViewer so the SAME set also backs the on-artifact marker layer
+// (comments_layer.py + useArtifactCommentLayer). This panel receives that state
+// and the layer's imperative controls as props:
+//   - hovering a card highlights the anchored element in the iframe (onHover/onLeave)
+//   - the "go to" affordance scrolls to it and opens its thread (onFocus)
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  addCommentReply,
-  createCommentThread,
-  listCommentThreads,
-  openCommentsStream,
-  setCommentThreadStatus,
-} from '../../api';
-import {
-  maxUpdatedAt,
   replyAuthorEmail,
   threadAuthorEmail,
   threadReplies,
   threadText,
-  upsertThread,
 } from '../../lib/commentsReducer';
 
 const TABS = [
@@ -40,58 +33,20 @@ function isClosed(t) {
   return t.status === 'resolved' || t.status === 'dismissed';
 }
 
-export function CommentsPanel({ userDir, reportId, onClose }) {
-  const [threads, setThreads] = useState([]);
+export function CommentsPanel({
+  threads = [],
+  error = '',
+  expired = false,
+  onCreate,
+  onReply,
+  onStatus,
+  onClose,
+  onHoverThread,
+  onLeaveThread,
+  onFocusThread,
+}) {
   const [tab, setTab] = useState('open');
   const [draft, setDraft] = useState('');
-  const [error, setError] = useState('');
-  const [expired, setExpired] = useState(false);
-  const threadsRef = useRef([]);
-  threadsRef.current = threads;
-
-  const apply = useCallback((event) => {
-    setThreads((prev) => upsertThread(prev, event));
-  }, []);
-
-  // Initial load, then subscribe from the max updated_at (closes the gap).
-  // Reconnect on any drop with the latest `since` (B2), capped backoff; a terminal
-  // 401/403 stops for good (session expired) instead of hammering the server.
-  useEffect(() => {
-    if (!userDir || !reportId) return undefined;
-    let cancelled = false;
-    let ctrl = null;
-    let retryTimer = null;
-    let attempts = 0;
-
-    const connect = (since) => {
-      if (cancelled) return;
-      ctrl = openCommentsStream(userDir, reportId, since, {
-        onEvent: (ev) => { attempts = 0; apply(ev); },
-        onExpired: () => setExpired(true), // terminal — no reconnect
-        onError: () => {
-          if (cancelled) return;
-          const delay = Math.min(30000, 1000 * 2 ** attempts);
-          attempts += 1;
-          retryTimer = setTimeout(() => connect(maxUpdatedAt(threadsRef.current)), delay);
-        },
-      });
-    };
-
-    listCommentThreads(userDir, reportId, 'all')
-      .then((data) => {
-        if (cancelled) return;
-        const loaded = (data && data.threads) || [];
-        setThreads(loaded);
-        connect(maxUpdatedAt(loaded));
-      })
-      .catch((e) => !cancelled && setError(e.message || 'Failed to load comments'));
-
-    return () => {
-      cancelled = true;
-      if (ctrl) ctrl.abort();
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, [userDir, reportId, apply]);
 
   const visible = useMemo(() => {
     if (tab === 'all') return threads.filter((t) => t.status !== 'dismissed');
@@ -99,36 +54,14 @@ export function CommentsPanel({ userDir, reportId, onClose }) {
     return threads.filter((t) => !isClosed(t));
   }, [threads, tab]);
 
-  const submitNew = useCallback(async () => {
+  const submitNew = useCallback(() => {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-    try {
-      const created = await createCommentThread(userDir, reportId, { selector: null, text });
-      apply({ ...created, type: created.type || 'thread.created' });
-    } catch (e) {
-      setError(e.message || 'Failed to post');
-    }
-  }, [draft, userDir, reportId, apply]);
-
-  const reply = useCallback(async (id, text) => {
-    if (!text.trim()) return;
-    try {
-      const updated = await addCommentReply(userDir, reportId, id, text.trim());
-      apply({ ...updated, type: 'thread.updated' });
-    } catch (e) {
-      setError(e.message || 'Failed to reply');
-    }
-  }, [userDir, reportId, apply]);
-
-  const setStatus = useCallback(async (id, status) => {
-    try {
-      const updated = await setCommentThreadStatus(userDir, reportId, id, status);
-      apply({ ...updated, type: 'thread.updated' });
-    } catch (e) {
-      setError(e.message || 'Failed to update');
-    }
-  }, [userDir, reportId, apply]);
+    // Unanchored comment (no element selected). Element-anchored comments are
+    // created from the on-artifact layer, which supplies the selector.
+    onCreate && onCreate({ selector: null, text });
+  }, [draft, onCreate]);
 
   return (
     <div className="ac-panel" style={S.panel}>
@@ -158,7 +91,15 @@ export function CommentsPanel({ userDir, reportId, onClose }) {
       <div style={S.list}>
         {visible.length === 0 && <div style={S.empty}>No comments</div>}
         {visible.map((t) => (
-          <ThreadCard key={t.id} thread={t} onReply={reply} onStatus={setStatus} />
+          <ThreadCard
+            key={t.id}
+            thread={t}
+            onReply={onReply}
+            onStatus={onStatus}
+            onHover={onHoverThread}
+            onLeave={onLeaveThread}
+            onFocus={onFocusThread}
+          />
         ))}
       </div>
 
@@ -181,21 +122,36 @@ export function CommentsPanel({ userDir, reportId, onClose }) {
   );
 }
 
-function ThreadCard({ thread, onReply, onStatus }) {
+function ThreadCard({ thread, onReply, onStatus, onHover, onLeave, onFocus }) {
   const [replyText, setReplyText] = useState('');
   const resolved = thread.status === 'resolved';
   const dismissed = thread.status === 'dismissed';
+  const anchored = !!thread.selector;
   return (
-    <div style={S.card}>
+    <div
+      style={S.card}
+      onMouseEnter={() => anchored && onHover && onHover(thread.id)}
+      onMouseLeave={() => anchored && onLeave && onLeave(thread.id)}
+    >
       <div style={S.cardTop}>
         <span style={S.name}>{nameOf(threadAuthorEmail(thread))}</span>
         <div>
           {dismissed && <span style={S.badge}>Dismissed</span>}
-          <button type="button" style={S.pill} onClick={() => onStatus(thread.id, resolved ? 'open' : 'resolved')}>
+          {anchored && (
+            <button
+              type="button"
+              style={S.pill}
+              title="Go to the commented element"
+              onClick={() => onFocus && onFocus(thread.id)}
+            >
+              Go to
+            </button>
+          )}
+          <button type="button" style={S.pill} onClick={() => onStatus && onStatus(thread.id, resolved ? 'open' : 'resolved')}>
             {resolved ? 'Reopen' : 'Resolve'}
           </button>
           {!resolved && !dismissed && (
-            <button type="button" style={S.pill} onClick={() => onStatus(thread.id, 'dismissed')}>Dismiss</button>
+            <button type="button" style={S.pill} onClick={() => onStatus && onStatus(thread.id, 'dismissed')}>Dismiss</button>
           )}
         </div>
       </div>
@@ -212,7 +168,7 @@ function ThreadCard({ thread, onReply, onStatus }) {
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); onReply(thread.id, replyText); setReplyText(''); }
+            if (e.key === 'Enter') { e.preventDefault(); onReply && onReply(thread.id, replyText); setReplyText(''); }
           }}
           placeholder="Reply…"
           style={S.replyInput}

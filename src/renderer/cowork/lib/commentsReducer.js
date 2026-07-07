@@ -47,3 +47,33 @@ export function threadReplies(t) {
 export function replyAuthorEmail(r) {
   return (r && r.author && r.author.email) || '';
 }
+
+// ISO8601 (inference) -> epoch seconds; numbers pass through. The on-artifact
+// layer renders relative times off epoch seconds.
+export function isoToEpoch(s) {
+  if (typeof s === 'number') return s;
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
+}
+
+// Flatten an inference thread into the shape the injected marker layer renders
+// (see cowork-server comments_layer.py). The layer is credential-free and only
+// ever receives this pre-normalized shape over postMessage.
+export function normalizeThreadForLayer(t) {
+  return {
+    id: t.id,
+    selector: t.selector,
+    status: t.status,
+    author: threadAuthorEmail(t),
+    text: threadText(t),
+    // Prefer the thread's own creation time so the marker popover timestamp is
+    // stable; fall back to updated_at when the backend omits created_at (it
+    // otherwise jumps forward on every reply/status change).
+    created_at: isoToEpoch(t.created_at || t.updated_at),
+    replies: threadReplies(t).map((r) => ({
+      author: replyAuthorEmail(r),
+      text: r.text || '',
+      created_at: isoToEpoch(r.created_at),
+    })),
+  };
+}

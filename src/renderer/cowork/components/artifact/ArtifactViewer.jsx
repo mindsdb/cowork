@@ -28,6 +28,8 @@ import { MarkdownContent } from '../markdown/MarkdownContent';
 import { usePublish } from './publish/usePublish';
 import { PublishMenu } from './publish/PublishMenu';
 import { CommentsPanel } from './CommentsPanel';
+import { useArtifactComments } from './useArtifactComments';
+import { useArtifactCommentLayer } from './useArtifactCommentLayer';
 
 // Extensions we render inline with the lightweight text preview path
 // (server `/v1/artifacts/preview` → text body). `.md` gets the full
@@ -44,6 +46,15 @@ function _withVersion(url, version) {
   if (!url || version == null || version === '') return url;
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${encodeURIComponent(version)}`;
+}
+
+// Opt the iframe's entry document into the server-injected comment marker
+// layer (cowork-server comments_layer.py gates on this flag). Must match
+// ACTIVATION_PARAM there.
+function _withCommentFlag(url) {
+  if (!url) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}__antonComments=1`;
 }
 
 function _extOfPath(p) {
@@ -241,6 +252,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
   const [previewUrl, setPreviewUrl] = useState('');
+  // 'static' (HTML asset bundle) | 'proxy' (fullstack) — the comment marker
+  // layer is server-injected only on the static serve path, so the pin/mode
+  // affordance and the activation flag are gated on this.
+  const [previewKind, setPreviewKind] = useState('');
   // Whether the iframe has finished its first paint — drives the loading
   // placeholder so it lingers past "URL is ready" until content is visible.
   const [iframeReady, setIframeReady] = useState(false);
@@ -265,6 +280,30 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // Publish/access state machine — the single source of truth for the
   // <PublishMenu> popover and the link-pill's published-URL display.
   const pub = usePublish(artifact, { onChange, enabled: open });
+
+  // Comments are enabled only for a published, restricted artifact whose composite
+  // key ({user_dir}/{report_id}) the server has surfaced (Plan 5). Derived here
+  // (before the early return) so the comment hooks below can run unconditionally.
+  const commentsEnabled = !!pub.publishedUrl && pub.accessMode === 'restricted' && !!pub.artifactKey;
+  const _akParts = (pub.artifactKey || '').split('/');
+  const commentUserDir = _akParts[0] || '';
+  const commentReportId = _akParts.slice(1).join('/') || '';
+
+  // Iframe handle + shared comments state. One `useArtifactComments` instance
+  // backs BOTH the sidebar list and the on-artifact marker layer (injected by
+  // cowork-server) — `useArtifactCommentLayer` bridges to that layer over
+  // postMessage. Both stay dormant when comments are disabled.
+  const iframeRef = useRef(null);
+  const comments = useArtifactComments(commentUserDir, commentReportId, {
+    enabled: open && commentsEnabled,
+  });
+  const layer = useArtifactCommentLayer(iframeRef, {
+    threads: comments.threads,
+    enabled: open && commentsEnabled,
+    onCreate: comments.create,
+    onReply: comments.reply,
+    onStatus: comments.setStatus,
+  });
 
   const isText = _isTextArtifact(artifact);
   const textExt = isText
@@ -299,6 +338,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setLoading(true);
     setErr('');
     setPreviewUrl('');
+    setPreviewKind('');
     setBackendPort(null);
     setTextPreview(null);
     let cancelled = false;
@@ -342,13 +382,29 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             iframeUrl = u.toString();
           } catch { /* fall through with the raw URL */ }
           if (cancelled) return;
-          setPreviewUrl(_withVersion(iframeUrl, cacheVersion));
+          setPreviewKind('proxy');
+          // Fullstack previews flow through the proxy, which injects the marker
+          // layer into the root HTML on the same activation flag (see
+          // preview_proxy.py). Bake it in at mount time — same rationale as the
+          // static branch below (stable src, no reactive reload).
+          setPreviewUrl(commentsEnabled
+            ? _withCommentFlag(_withVersion(iframeUrl, cacheVersion))
+            : _withVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
           return;
         }
         if (!url) throw new Error('Preview mount returned no URL');
         if (cancelled) return;
-        setPreviewUrl(_withVersion(url, cacheVersion));
+        setPreviewKind('static');
+        // Bake the comment-layer activation flag into the URL at mount time
+        // (rather than swapping the iframe `src` reactively later) so the src
+        // stays stable — no gratuitous reload/flicker. Injecting the layer into
+        // an already-loaded cross-origin iframe is impossible, so enabling
+        // comments after load inherently needs a remount; commentsEnabled is in
+        // this effect's deps to make that a single, intentional re-run.
+        setPreviewUrl(commentsEnabled
+          ? _withCommentFlag(_withVersion(url, cacheVersion))
+          : _withVersion(url, cacheVersion));
         // Adopt the server's known published URL when the artifact object
         // (e.g. a chat-bubble preview) didn't carry one. Don't blank a
         // locally-known value when the server returns "".
@@ -358,7 +414,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasActionPath, disabledReason, isText, reloadNonce]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasActionPath, disabledReason, isText, reloadNonce, commentsEnabled]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -382,12 +438,6 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
   const title = artifact.title || artifact.path?.split('/').pop();
   const isPublished = !!pub.publishedUrl;
-  // Comments are enabled only for a published, restricted artifact whose composite
-  // key ({user_dir}/{report_id}) the server has surfaced (Plan 5).
-  const commentsEnabled = isPublished && pub.accessMode === 'restricted' && !!pub.artifactKey;
-  const _akParts = (pub.artifactKey || '').split('/');
-  const commentUserDir = _akParts[0] || '';
-  const commentReportId = _akParts.slice(1).join('/') || '';
 
   // Open the local file only when the file is actually on this machine
   // (Electron + loopback server). When the desktop app points at a REMOTE
@@ -577,6 +627,18 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
         {/* Right — publish · more · close */}
         <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+          {commentsEnabled && (previewKind === 'static' || previewKind === 'proxy') && (
+            <Tooltip label="Comment on element">
+              <IconButton
+                aria-label="Comment on element"
+                title="Click an element to comment on it"
+                onClick={() => layer.toggleMode()}
+                style={layer.mode ? { color: 'var(--accent)' } : undefined}
+              >
+                {Ico.pin(18)}
+              </IconButton>
+            </Tooltip>
+          )}
           {commentsEnabled && (
             <Tooltip label="Comments">
               <IconButton
@@ -690,9 +752,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           <>
             {previewUrl && (
               <iframe
+                ref={iframeRef}
                 title={title || 'Artifact preview'}
+                // The comment-layer activation flag (when applicable) is already
+                // baked into previewUrl at mount time — see the mount effect —
+                // so the src stays stable and doesn't reload reactively.
                 src={previewUrl}
-                onLoad={() => setIframeReady(true)}
+                onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
                 sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
                 style={{
                   width: '100%', height: '100%', border: 0, background: '#fff',
@@ -706,8 +772,15 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       </div>
         {showComments && commentsEnabled && commentUserDir && commentReportId && (
           <CommentsPanel
-            userDir={commentUserDir}
-            reportId={commentReportId}
+            threads={comments.threads}
+            error={comments.error}
+            expired={comments.expired}
+            onCreate={comments.create}
+            onReply={comments.reply}
+            onStatus={comments.setStatus}
+            onHoverThread={layer.hlOn}
+            onLeaveThread={layer.hlOff}
+            onFocusThread={layer.focus}
             onClose={() => setShowComments(false)}
           />
         )}
