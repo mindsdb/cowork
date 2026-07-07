@@ -692,8 +692,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
       {/* Body — text (.md/.txt/.csv) renders inline; everything else is a
           sandboxed iframe with a "Preview" placeholder until it paints.
-          Wrapped in a row so the comments panel can dock on the right. */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          `position: relative` so the comments panel can overlay the preview
+          (anchored right) instead of shifting it. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
       <div style={{ flex: 1, minHeight: 0, position: 'relative', background: 'var(--surface-2)', overflow: isText ? 'auto' : 'hidden' }}>
         {err ? (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
