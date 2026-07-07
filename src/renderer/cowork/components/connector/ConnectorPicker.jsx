@@ -10,7 +10,7 @@
 // keywords / category / description). When the registry grows we
 // can switch to /connectors/match for the natural-language path.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { Modal } from '../ui/Modal';
@@ -166,7 +166,9 @@ function SelectPill({ label, value, onChange, options }) {
   );
 }
 
-function ConnectorTile({ connector, onPick }) {
+// memo: `filtered` changes on every search keystroke, so the .map recreates
+// every tile element — memo skips tiles whose connector didn't change.
+const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
   return (
     <button
       type="button"
@@ -216,7 +218,7 @@ function ConnectorTile({ connector, onPick }) {
       </div>
     </button>
   );
-}
+});
 
 export default function ConnectorPicker({ open, onPick, onClose }) {
   const [connectors, setConnectors] = useState([]);
