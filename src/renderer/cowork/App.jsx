@@ -689,9 +689,12 @@ const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
 const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
 
 function nextPollDelay(schedules) {
-  const active = (schedules || []).filter((s) => s.enabled && s.nextRunAt);
-  if (active.length === 0) return SCHEDULE_POLL_MAX_DELAY_MS;
-  const earliest = Math.min(...active.map((s) => new Date(s.nextRunAt).getTime()));
+  const dueTimes = (schedules || [])
+    .filter((s) => s.enabled && s.nextRunAt)
+    .map((s) => new Date(s.nextRunAt).getTime())
+    .filter(Number.isFinite);
+  if (dueTimes.length === 0) return SCHEDULE_POLL_MAX_DELAY_MS;
+  const earliest = Math.min(...dueTimes);
   const untilDue = earliest - Date.now() + SCHEDULE_POLL_RUN_BUFFER_MS;
   return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
 }
@@ -723,8 +726,6 @@ function AppCore() {
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
-  const scheduledRef = useRef(scheduled);
-  useEffect(() => { scheduledRef.current = scheduled; }, [scheduled]);
   // Flat session→schedule map sourced from `GET /v1/schedules`.
   // Lets TasksView collapse all conversations belonging to one
   // schedule into a single grouped row instead of listing each
@@ -3265,7 +3266,9 @@ function AppCore() {
     const known = new Set(tasksRef.current.map((t) => t.id));
     const unseenIds = conversations.map((c) => c.id).filter((id) => id && !known.has(id));
     if (unseenIds.length === 0) return;
-    const freshTasks = await Promise.all(unseenIds.map((id) => fetchSession(id)));
+    const SYNC_CAP = 50;
+    const toFetch = unseenIds.slice(0, SYNC_CAP);
+    const freshTasks = await Promise.all(toFetch.map((id) => fetchSession(id)));
     setTasks((prev) => {
       let next = prev;
       for (const task of freshTasks) {
@@ -3283,7 +3286,6 @@ function AppCore() {
   // due soon checks close to that moment. Skipped entirely when there are
   // no schedules at all — nothing to poll for.
   useEffect(() => {
-    if (scheduled.length === 0) return undefined;
     let cancelled = false;
     let timer = setTimeout(tick, nextPollDelay(scheduled));
     async function tick() {
@@ -3292,7 +3294,7 @@ function AppCore() {
       const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
       if (hasNewRun) await syncNewConversations();
       if (cancelled) return;
-      timer = setTimeout(tick, nextPollDelay(scheduledRef.current));
+      timer = setTimeout(tick, nextPollDelay(list));
     }
     return () => { cancelled = true; clearTimeout(timer); };
   }, [scheduled.length, refreshSchedules, syncNewConversations]);
