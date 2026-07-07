@@ -29,6 +29,57 @@ function nameOf(email) {
   return i > 0 ? s.slice(0, i) : s || 'Anonymous';
 }
 
+// Icons mirror the mindshub_services layer/sidebar so the compose + reply rows
+// look identical (single-line input + send/clear icon buttons).
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+      strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+// Shared single-line input + send/clear row used by the composer and each
+// card's reply box. `onSubmit` fires on the send button or Enter; `onClear`
+// wipes the field.
+function InputRow({ value, onChange, onSubmit, onClear, placeholder, sendTitle }) {
+  const canSend = !!value.trim();
+  return (
+    <div style={S.replyRow}>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSubmit(); } }}
+        placeholder={placeholder}
+        style={S.replyInput}
+      />
+      <button
+        type="button"
+        style={{ ...S.iconSend, opacity: canSend ? 1 : 0.45, cursor: canSend ? 'pointer' : 'default' }}
+        title={sendTitle}
+        disabled={!canSend}
+        onClick={onSubmit}
+      >
+        <SendIcon />
+      </button>
+      <button type="button" style={S.iconCancel} title="Clear" onClick={onClear}>
+        <CloseIcon />
+      </button>
+    </div>
+  );
+}
+
 function isClosed(t) {
   return t.status === 'resolved' || t.status === 'dismissed';
 }
@@ -104,19 +155,14 @@ export function CommentsPanel({
       </div>
 
       <div style={S.composer}>
-        <textarea
+        <InputRow
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitNew(); }
-          }}
+          onChange={setDraft}
+          onSubmit={submitNew}
+          onClear={() => setDraft('')}
           placeholder="Add a comment…"
-          rows={2}
-          style={S.textarea}
+          sendTitle="Comment"
         />
-        <button type="button" onClick={submitNew} disabled={!draft.trim()} style={S.primary}>
-          Comment
-        </button>
       </div>
     </div>
   );
@@ -162,18 +208,14 @@ function ThreadCard({ thread, onReply, onStatus, onHover, onLeave, onFocus }) {
           <span style={S.replyText}>{r.text}</span>
         </div>
       ))}
-      <div style={S.replyRow}>
-        <input
-          type="text"
-          value={replyText}
-          onChange={(e) => setReplyText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); onReply && onReply(thread.id, replyText); setReplyText(''); }
-          }}
-          placeholder="Reply…"
-          style={S.replyInput}
-        />
-      </div>
+      <InputRow
+        value={replyText}
+        onChange={setReplyText}
+        onSubmit={() => { onReply && onReply(thread.id, replyText); setReplyText(''); }}
+        onClear={() => setReplyText('')}
+        placeholder="Reply…"
+        sendTitle="Send reply"
+      />
     </div>
   );
 }
@@ -202,14 +244,18 @@ const S = {
     marginLeft: 6, background: 'transparent', cursor: 'pointer' },
   reply: { marginTop: 8, paddingLeft: 8, borderLeft: '2px solid #223040' },
   replyText: { fontSize: 12, marginLeft: 6 },
-  replyRow: { marginTop: 8 },
-  replyInput: { width: '100%', boxSizing: 'border-box', height: 30, padding: '0 10px', background: '#0b121a',
-    border: '1px solid #283845', borderRadius: 6, color: '#e7eef3' },
+  // Single-line input + send/clear icon buttons, matching the mindshub_services
+  // reply row. Used by both the composer and each card's reply box.
+  replyRow: { display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 },
+  replyInput: { flex: 1, minWidth: 0, boxSizing: 'border-box', height: 34, padding: '0 12px',
+    background: '#0b121a', border: '1px solid #283845', borderRadius: 8, color: '#e7eef3', outline: 'none' },
+  iconSend: { flexShrink: 0, width: 34, height: 34, borderRadius: 8, background: 'transparent',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+    border: '1px solid #2a3a48', color: '#cfdae2' },
+  iconCancel: { flexShrink: 0, width: 34, height: 34, borderRadius: 8, background: 'transparent',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+    border: '1px solid #4a2530', color: '#e0556a' },
   composer: { borderTop: '1px solid #2a3a48', padding: 12 },
-  textarea: { width: '100%', boxSizing: 'border-box', background: '#0b121a', border: '1px solid #283845',
-    borderRadius: 6, color: '#e7eef3', padding: 8, resize: 'none' },
-  primary: { marginTop: 8, width: '100%', height: 32, border: 'none', borderRadius: 6, background: '#00e5ff',
-    color: '#04121a', fontWeight: 700, cursor: 'pointer' },
 };
 
 export default CommentsPanel;
