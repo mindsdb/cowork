@@ -173,7 +173,15 @@ jobs:
         id: name
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
+          # gen-build-channel.mjs (prebuild:main) resolves the display version once
+          # during the build and writes it here, so the filename matches the version
+          # the app reports (__APP_VERSION__). Fall back to package.json if absent.
+          VERSION_FILE="src/main/app-version.gen.txt"
+          if [ -s "$VERSION_FILE" ]; then
+            VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
           SHA="${GITHUB_SHA::7}"
           case "${{ inputs.build_kind }}" in
             preview) NAME="mindshub-cowork-${VERSION}-preview-${SHA}.pkg" ;;
