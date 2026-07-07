@@ -72,9 +72,12 @@ interface VcsInfo {
   requestedRevision: string;
 }
 
-/** Locate site-packages inside the cowork-server tool venv. */
-function sitesPackagesDir(): string | null {
-  const venv = path.join(getUvToolsDir(), 'cowork-server');
+/** Locate site-packages inside the cowork-server tool venv. Callers that have
+ *  already resolved the tools dir reliably (via `uv tool dir`) should pass it —
+ *  otherwise this falls back to the platform heuristic, which can be wrong on
+ *  Windows (%APPDATA%\uv\tools vs …\uv\data\tools across uv versions). */
+function sitesPackagesDir(toolsDir: string = getUvToolsDir()): string | null {
+  const venv = path.join(toolsDir, 'cowork-server');
   // Windows: <venv>/Lib/site-packages ; Unix: <venv>/lib/pythonX.Y/site-packages
   const win = path.join(venv, 'Lib', 'site-packages');
   if (fs.existsSync(win)) return win;
@@ -90,8 +93,8 @@ function sitesPackagesDir(): string | null {
 /** Read git VCS info for an installed dist (e.g. "cowork_server", "anton_agent").
  *  Returns null when the dist was installed from a registry (PyPI) — i.e.
  *  no direct_url.json with vcs_info. */
-function readVcsInfo(distName: string): VcsInfo | null {
-  const sp = sitesPackagesDir();
+function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
+  const sp = sitesPackagesDir(toolsDir);
   if (!sp) return null;
   let distInfo: string | null = null;
   try {
@@ -209,7 +212,10 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
     // Reinstall on the source the venv was actually installed from — the git
     // channel carries anton refs, PyPI is a plain package spec. Both pin
     // --python, which is what rebuilds the venv on a supported interpreter.
-    const onGit = !!readVcsInfo('cowork_server');
+    // Detect the source against the SAME reliably-resolved toolsDir used above,
+    // not the platform heuristic — otherwise a git install on a Windows layout
+    // the heuristic misses would be wrongly reinstalled from PyPI.
+    const onGit = !!readVcsInfo('cowork_server', toolsDir);
     const { ok, stderr } = onGit
       ? await installGit(uv, getCoworkRef(), getAntonRef())
       : await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
