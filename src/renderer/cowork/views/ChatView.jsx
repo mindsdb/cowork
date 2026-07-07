@@ -33,6 +33,7 @@ import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
+import { modelLabel } from '../lib/settingsTransform';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -925,6 +926,67 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   );
 }
 
+// Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
+// credential is FINE — the gateway rejected the requested MODEL. Two flavors,
+// keyed on the gateway's structured code:
+//
+// - `model_access_denied` — plan gate: the account's tier doesn't include the
+//   model. An upgrade genuinely fixes it, so lead with Upgrade.
+// - `model_disabled` — hedged until the gateway distinguishes tier locks from
+//   admin kill switches everywhere (ENG-596): it can be either, so offer both
+//   Switch-model and Upgrade without promising the upgrade fixes it.
+//
+// The body is the server's curated copy (anton's message, passed through
+// verbatim) — unlike ReconnectCard there's no web-only affordance to work
+// around: Upgrade is just a billing link (host.openExternal window.opens on
+// web), and Switch model routes to Settings on both shells.
+function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
+  const label = modelLabel(failedModel) || failedModel || 'This model';
+  const denied = code === 'model_access_denied';
+  const title = denied
+    ? `${label} isn't included in your plan`
+    : `${label} isn't available right now`;
+
+  const primaryStyle = {
+    border: 'none', background: T.ink, color: 'var(--bg)',
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  };
+  const secondaryStyle = {
+    border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  };
+
+  return (
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+      <div style={{
+        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
+        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+          {title}
+        </div>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+          {errorText || 'Switch models in Settings, or upgrade your plan to unlock it.'}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+          <button
+            type="button"
+            onClick={() => host.openExternal(MINDS_BILLING_URL)}
+            style={denied ? primaryStyle : secondaryStyle}
+          >Upgrade plan</button>
+          <button
+            type="button"
+            onClick={() => onOpenSettings?.('agent')}
+            style={denied ? secondaryStyle : primaryStyle}
+          >Switch model</button>
+        </div>
+      </div>
+    </AnswerTurn>
+  );
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1628,6 +1690,22 @@ export default function ChatView({
                       onOpenSettings={onOpenSettings}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
+                    />
+                  );
+                }
+                // Model-403 mid-conversation: the plan doesn't include the
+                // model (or it's admin-disabled) → offer Upgrade / Switch
+                // model, never "try again".
+                if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
+                  return (
+                    <ModelUnavailableCard
+                      key={i}
+                      time={formatTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                      code={m.code}
+                      failedModel={m.failedModel}
+                      errorText={m.content}
                     />
                   );
                 }

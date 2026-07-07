@@ -444,6 +444,10 @@ function failedEventMeta(events) {
     message: ev.error || ev.message || '',
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
+    // model-403 (model_access_denied / model_disabled): which model the
+    // gateway rejected, so the card can name it. `failedModel` locally —
+    // "model" is too overloaded in message objects.
+    failedModel: ev.model ?? null,
   };
 }
 
@@ -488,6 +492,7 @@ function hydrateMessagesFromServerEvents(messages) {
           code,
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
+          failedModel: failed?.failedModel ?? null,
         });
       }
     }
@@ -995,6 +1000,7 @@ function AppCore() {
             code: event?.code,
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
+            failedModel: event?.model ?? null,
           };
       return {
         ...t,
