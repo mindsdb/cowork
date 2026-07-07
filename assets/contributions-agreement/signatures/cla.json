@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "StpMax",
+      "id": 4068133,
+      "comment_id": 4905193163,
+      "created_at": "2026-07-07T14:57:53Z",
+      "repoId": 1175009923,
+      "pullRequestNo": 339
+    }
+  ]
 }
