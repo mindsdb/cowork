@@ -11,7 +11,18 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   test: {
-    coverage: { provider: 'v8', reporter: ['text', 'html'] }, // root-only option
+    // Coverage floors: set from MEASURED values
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'json-summary'],
+      thresholds: {
+        statements: 48,
+        branches: 42,
+        lines: 50,
+        'src/main/update-logic.ts': { statements: 100, branches: 100 },
+        'src/main/server-source.ts': { statements: 100, branches: 90 },
+      },
+    },
     projects: [
       {
         extends: true, // inherit root plugins (react) + settings

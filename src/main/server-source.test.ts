@@ -1,12 +1,27 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   getChannel,
   getCoworkRef,
   getAntonRef,
   getInstallSpec,
+  getAppDisplayVersion,
   COWORK_SERVER_MIN_VERSION,
 } from './server-source';
 import { withEnv } from '../../tests/helpers/env';
+
+// getAppDisplayVersion lazily requires electron via bare CJS `require()`,
+// which vi.mock cannot intercept (in Node the electron package resolves to a
+// binary-path string, not the runtime API). Seed the CJS require cache with a
+// stub before the lazy require fires.
+import { createRequire } from 'node:module';
+const cjsRequire = createRequire(import.meta.url);
+const electronId = cjsRequire.resolve('electron');
+cjsRequire.cache[electronId] = {
+  id: electronId,
+  filename: electronId,
+  loaded: true,
+  exports: { app: { getVersion: () => '9.9.9' } },
+} as never;
 
 // The env is scrubbed before each test (tests/setup-env.ts), so "no env set"
 // is the true default install path. The build-ref fallback (_buildRef) is
@@ -34,6 +49,14 @@ describe('getChannel', () => {
     withEnv({ COWORK_SERVER_CHANNEL: 'not-a-channel' }, () => {
       expect(getChannel()).toBe('git');
     });
+  });
+});
+
+describe('getAppDisplayVersion', () => {
+  it('falls back to app.getVersion() when no build-time version is baked', () => {
+    // build-channel.gen doesn't exist in the test env, so the baked-value
+    // branch is empty and electron's package.json version wins.
+    expect(getAppDisplayVersion()).toBe('9.9.9');
   });
 });
 

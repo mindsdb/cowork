@@ -38,6 +38,23 @@ jobs:
         run: npm run check:cowork-purity
       - name: Unit + component tests + coverage
         run: npm run test:coverage
+      - name: Coverage summary
+        # Renders the json-summary into the run's Summary tab. No third-party
+        # action, no extra permissions (qa.md §7 supply-chain stance).
+        if: always()
+        run: |
+          node -e "
+          const s = require('./coverage/coverage-summary.json');
+          const rows = Object.entries(s)
+            .filter(([f]) => f !== 'total')
+            .map(([f, d]) => \`| \${f.replace(process.cwd() + '/', '')} | \${d.statements.pct}% | \${d.branches.pct}% | \${d.lines.pct}% |\`);
+          const t = s.total;
+          console.log('## Coverage');
+          console.log('| File | Stmts | Branch | Lines |');
+          console.log('|---|---|---|---|');
+          console.log(\`| **total** | **\${t.statements.pct}%** | **\${t.branches.pct}%** | **\${t.lines.pct}%** |\`);
+          rows.forEach(r => console.log(r));
+          " >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
