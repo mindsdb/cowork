@@ -51,7 +51,7 @@ npm run typecheck   # main (tsconfig.main.json) + renderer (tsconfig.json) + tes
 
 ### Testing
 
-Full plan and rationale: [qa.md](qa.md). Vitest runs two projects — `main`
+Vitest runs two projects — `main`
 (node env, `src/main` + `src/shared`) and `renderer` (happy-dom env,
 `src/renderer`). Tests are **colocated** (`foo.test.ts` beside `foo.ts`);
 shared setup lives in `tests/` (autouse env scrub, `TZ=UTC`, network deny —
