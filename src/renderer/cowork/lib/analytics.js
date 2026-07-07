@@ -4,6 +4,12 @@
 // Identity is stitched via the Keycloak JWT's `sub` claim, which is the
 // same user_id used by the web console (ENG-227 / ENG-235).
 //
+// Account attributes (email, active org, tier) are attached to the person via
+// `$set` on every authenticated event so desktop-only users — who never open
+// the web console — still carry joinable identity for the signup→paying funnel
+// (ENG-537). Before this the sub was the only identifier, so a desktop-only
+// person showed in PostHog as a bare UUID with no email/org to join on.
+//
 // Event contracts (ENG-237):
 //   data_source_connected  — { source_type, surface }
 //   artifact_built         — { artifact_type, surface }
@@ -56,10 +62,42 @@ function isCi() {
   return ci;
 }
 
+// Verbose per-event logging for local diagnosis (ENG-537). Off unless
+// VITE_ANALYTICS_DEBUG=true or `?analytics_debug=1` — keeps production silent
+// while letting a dev watch the capture path in the renderer DevTools console.
+let _cachedDebug = null;
+function isDebug() {
+  if (_cachedDebug !== null) return _cachedDebug;
+  let dbg = false;
+  try {
+    if (
+      typeof import.meta !== 'undefined' &&
+      import.meta.env?.VITE_ANALYTICS_DEBUG === 'true'
+    ) {
+      dbg = true;
+    }
+    if (!dbg && typeof window !== 'undefined' && window.location?.search) {
+      dbg = new URLSearchParams(window.location.search).get('analytics_debug') === '1';
+    }
+  } catch {
+    dbg = false;
+  }
+  _cachedDebug = dbg;
+  return dbg;
+}
+function dlog(...args) {
+  if (isDebug()) console.log('[analytics]', ...args);
+}
+
 // True when the signed-in user is a mindsdb.com account — set from the JWT
 // `email` claim when the distinct_id is decoded (see getDistinctId).
 const INTERNAL_EMAIL_DOMAIN = '@mindsdb.com';
 let _cachedIsInternal = false;
+
+// Account attributes attached to the PostHog person via `$set` on every
+// authenticated event, so desktop events carry email/org and can be joined to
+// signup + Stripe (ENG-537). Populated from JWT claims in getDistinctId.
+let _cachedPersonProps = {};
 
 // Decode the JWT payload without a library. Returns null on any error.
 function decodeJwtPayload(token) {
@@ -87,6 +125,23 @@ async function getDistinctId() {
     const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : '';
     _cachedIsInternal = email.endsWith(INTERNAL_EMAIL_DOMAIN);
     _cachedDistinctId = payload.sub;
+    // Account attributes for `$set` (ENG-537). The active org lives in the
+    // `activate_organization` claim; `realm_access.roles` carries a `free`
+    // marker for the free tier. Undefined values are dropped by JSON.stringify.
+    const activeOrg = payload.activate_organization;
+    const roles = payload.realm_access?.roles;
+    _cachedPersonProps = {
+      email: email || undefined,
+      name: typeof payload.name === 'string' ? payload.name : undefined,
+      organization_id: typeof activeOrg?.id === 'string' ? activeOrg.id : undefined,
+      organization_name: typeof activeOrg?.name === 'string' ? activeOrg.name : undefined,
+      is_free_tier: Array.isArray(roles) ? roles.includes('free') : undefined,
+    };
+    dlog('identity resolved', {
+      distinct_id: _cachedDistinctId,
+      is_internal: _cachedIsInternal,
+      ..._cachedPersonProps,
+    });
     // Cache for 5 minutes — tokens refresh on a longer cycle.
     _cacheExpiry = Date.now() + 5 * 60 * 1000;
     return _cachedDistinctId;
@@ -100,12 +155,21 @@ async function getDistinctId() {
 // one-shot callers (trackAppInstalled) rely on this so they don't mark
 // themselves done before the event is delivered. Other callers ignore it.
 function capture(event, properties = {}) {
-  if (!POSTHOG_KEY) return Promise.resolve(false);
+  if (!POSTHOG_KEY) {
+    dlog('skip', event, '— no POSTHOG_KEY (VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN unset)');
+    return Promise.resolve(false);
+  }
   // CI/QA traffic never reaches PostHog — keeps the funnel cohort clean without
   // every query having to remember an exclusion filter.
-  if (isCi()) return Promise.resolve(false);
+  if (isCi()) {
+    dlog('skip', event, '— CI session');
+    return Promise.resolve(false);
+  }
   return getDistinctId().then((distinctId) => {
-    if (!distinctId) return false;
+    if (!distinctId) {
+      dlog('skip', event, '— no distinct_id (signed out?)');
+      return false;
+    }
     const body = JSON.stringify({
       api_key: POSTHOG_KEY,
       event,
@@ -115,15 +179,31 @@ function capture(event, properties = {}) {
         surface: SURFACE,
         is_internal: _cachedIsInternal,
         $lib: 'cowork-desktop',
+        // Merge account attributes onto the person so the sub-keyed desktop
+        // events stitch to signup + Stripe. `$set` re-applies on every event so
+        // an org switch or tier change stays current (ENG-537).
+        $set: _cachedPersonProps,
       },
       timestamp: new Date().toISOString(),
     });
+    dlog('POST', event, { distinct_id: distinctId, $set: _cachedPersonProps });
     return fetch(`${POSTHOG_HOST}/capture/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
-    }).then((res) => res.ok).catch(() => false);
-  }).catch(() => false);
+    })
+      .then((res) => {
+        dlog('POST', event, '->', res.status);
+        return res.ok;
+      })
+      .catch((err) => {
+        dlog('POST', event, 'failed', err);
+        return false;
+      });
+  }).catch((err) => {
+    dlog('getDistinctId threw for', event, err);
+    return false;
+  });
 }
 
 // ── Public event helpers ───────────────────────────────────────────
