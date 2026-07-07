@@ -1279,7 +1279,7 @@ app.whenReady().then(async () => {
       // in-place update loaded newer 3.12+ code into) crashes at import time
       // and never answers /health. Recreate it on a supported interpreter and
       // retry once before surfacing the error. No-op for any other failure.
-      console.error(`[server] start failed: ${result.reason}`);
+      console.error(`[server] start failed (${result.reason}); checking for a stranded Python venv`);
       if (await recreateVenvIfUnsupportedPython()) {
         console.log('[server] recreated venv on a supported Python; retrying start');
         result = await startServer();
