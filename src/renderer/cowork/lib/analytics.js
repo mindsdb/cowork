@@ -10,6 +10,11 @@
 // (ENG-537). Before this the sub was the only identifier, so a desktop-only
 // person showed in PostHog as a bare UUID with no email/org to join on.
 //
+// Pre-login events (notably app_installed) are captured under a stable
+// anonymous device id and merged into the account on first sign-in via a
+// PostHog `$identify` alias, so the install → signup → paying funnel is
+// complete even for users who install before authenticating (ENG-537).
+//
 // Event contracts (ENG-237):
 //   data_source_connected  — { source_type, surface }
 //   artifact_built         — { artifact_type, surface }
@@ -99,6 +104,32 @@ let _cachedIsInternal = false;
 // signup + Stripe (ENG-537). Populated from JWT claims in getDistinctId.
 let _cachedPersonProps = {};
 
+// Stable anonymous device id (localStorage), used as the distinct_id before
+// sign-in so installs/opens are captured, then merged into the account via a
+// `$identify` alias on login (ENG-537). Mirrors the web console's client uuid.
+const DEVICE_ID_KEY = 'cowork_device_id';
+let _cachedDeviceId = null;
+function getDeviceId() {
+  if (_cachedDeviceId) return _cachedDeviceId;
+  const mint = () =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `dev-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  try {
+    let id = window.localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = mint();
+      window.localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    _cachedDeviceId = id;
+  } catch {
+    // localStorage unavailable — volatile per-session id so events still send
+    // (they just won't merge across restarts).
+    _cachedDeviceId = mint();
+  }
+  return _cachedDeviceId;
+}
+
 // Decode the JWT payload without a library. Returns null on any error.
 function decodeJwtPayload(token) {
   try {
@@ -142,12 +173,62 @@ async function getDistinctId() {
       is_internal: _cachedIsInternal,
       ..._cachedPersonProps,
     });
+    // Fold any pre-login anonymous activity on this device into the account.
+    mergeAnonIntoAccount(_cachedDistinctId);
     // Cache for 5 minutes — tokens refresh on a longer cycle.
     _cacheExpiry = Date.now() + 5 * 60 * 1000;
     return _cachedDistinctId;
   } catch {
     return null;
   }
+}
+
+// Once per (device → account), tell PostHog to merge the anonymous device
+// person into the identified account person, so pre-login events (notably
+// app_installed) follow the user in (ENG-537). PostHog's server-side merge is
+// an `$identify` event carrying `$anon_distinct_id`. Idempotent via a
+// localStorage marker so it fires once per account, not on every event.
+const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
+function mergeAnonIntoAccount(sub) {
+  if (!POSTHOG_KEY || isCi() || !sub) return;
+  try {
+    if (window.localStorage.getItem(IDENTITY_MERGED_KEY) === sub) return;
+  } catch {
+    // localStorage unavailable — fall through and attempt the merge anyway.
+  }
+  const deviceId = getDeviceId();
+  // Nothing to merge if there's no distinct device id to alias from.
+  if (!deviceId || deviceId === sub) return;
+  const body = JSON.stringify({
+    api_key: POSTHOG_KEY,
+    event: '$identify',
+    distinct_id: sub,
+    properties: {
+      $anon_distinct_id: deviceId,
+      $set: _cachedPersonProps,
+      surface: SURFACE,
+      is_internal: _cachedIsInternal,
+      $lib: 'cowork-desktop',
+    },
+    timestamp: new Date().toISOString(),
+  });
+  dlog('$identify merge', { distinct_id: sub, $anon_distinct_id: deviceId });
+  fetch(`${POSTHOG_HOST}/capture/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  })
+    .then((res) => {
+      dlog('$identify merge ->', res.status);
+      if (res.ok) {
+        try {
+          window.localStorage.setItem(IDENTITY_MERGED_KEY, sub);
+        } catch {
+          /* best effort — a re-merge next session is harmless */
+        }
+      }
+    })
+    .catch((err) => dlog('$identify merge failed', err));
 }
 
 // Fire-and-forget POST to PostHog Capture API. Never throws, never blocks.
@@ -166,27 +247,31 @@ function capture(event, properties = {}) {
     return Promise.resolve(false);
   }
   return getDistinctId().then((distinctId) => {
-    if (!distinctId) {
-      dlog('skip', event, '— no distinct_id (signed out?)');
+    // Fall back to the anonymous device id before sign-in so pre-login events
+    // (notably app_installed) are captured instead of dropped; they merge into
+    // the account on first sign-in (see mergeAnonIntoAccount).
+    const captureId = distinctId || getDeviceId();
+    if (!captureId) {
+      dlog('skip', event, '— no identity and no device id');
       return false;
     }
+    const eventProps = {
+      ...properties,
+      surface: SURFACE,
+      is_internal: _cachedIsInternal,
+      $lib: 'cowork-desktop',
+    };
+    // Account attributes only apply to an identified person; pre-login events
+    // ride the device id and inherit these via the $identify merge on sign-in.
+    if (distinctId) eventProps.$set = _cachedPersonProps;
     const body = JSON.stringify({
       api_key: POSTHOG_KEY,
       event,
-      distinct_id: distinctId,
-      properties: {
-        ...properties,
-        surface: SURFACE,
-        is_internal: _cachedIsInternal,
-        $lib: 'cowork-desktop',
-        // Merge account attributes onto the person so the sub-keyed desktop
-        // events stitch to signup + Stripe. `$set` re-applies on every event so
-        // an org switch or tier change stays current (ENG-537).
-        $set: _cachedPersonProps,
-      },
+      distinct_id: captureId,
+      properties: eventProps,
       timestamp: new Date().toISOString(),
     });
-    dlog('POST', event, { distinct_id: distinctId, $set: _cachedPersonProps });
+    dlog('POST', event, { distinct_id: captureId, identified: Boolean(distinctId) });
     return fetch(`${POSTHOG_HOST}/capture/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -201,7 +286,7 @@ function capture(event, properties = {}) {
         return false;
       });
   }).catch((err) => {
-    dlog('getDistinctId threw for', event, err);
+    dlog('capture failed for', event, err);
     return false;
   });
 }
@@ -255,9 +340,10 @@ export function trackHarnessSwapped(from, to) {
   capture('harness_swapped', { from: from || 'unknown', to: to || 'unknown' });
 }
 
-// Desktop app installed — fired once per install on the first authenticated
-// launch. A localStorage marker keeps it idempotent across restarts; we wait
-// for an identity so the event isn't dropped before the user signs in.
+// Desktop app installed — fired once per install on the first healthy launch.
+// Captured even before sign-in (under the anonymous device id) so the install
+// is recorded at true install time and merged into the account on first login
+// (ENG-537). A localStorage marker keeps it idempotent across restarts.
 const APP_INSTALLED_KEY = 'cowork_app_installed_tracked';
 export async function trackAppInstalled() {
   if (!host.isElectron) return;
