@@ -941,7 +941,10 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
 // around: Upgrade is just a billing link (host.openExternal window.opens on
 // web), and Switch model routes to Settings on both shells.
 function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
-  const label = modelLabel(failedModel) || failedModel || 'This model';
+  // modelLabel leaves single-token aliases as-is ("sonnet") — capitalize for
+  // the title ("Sonnet isn't included in your plan").
+  const raw = modelLabel(failedModel) || failedModel || 'This model';
+  const label = raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
   const title = denied
     ? `${label} isn't included in your plan`
