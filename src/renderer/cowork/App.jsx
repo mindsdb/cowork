@@ -3280,6 +3280,14 @@ function AppCore() {
     });
   }, []);
 
+  // Recomputed whenever an enabled schedule's due time changes — used as
+  // the poll effect's dependency below instead of `scheduled.length`,
+  // which stays the same across an edit/pause/resume
+  const scheduleKey = scheduled
+    .filter((s) => s.enabled)
+    .map((s) => s.nextRunAt)
+    .join(',');
+
   // Self-adjusting poll (not a fixed interval): reschedules itself after
   // every tick based on the freshest `nextRunAt`, so an idle app with
   // schedules due far in the future stays quiet, while one with something
@@ -3297,7 +3305,7 @@ function AppCore() {
       timer = setTimeout(tick, nextPollDelay(list));
     }
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [scheduled.length, refreshSchedules, syncNewConversations]);
+  }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
   const handleCreateSchedule = async (payload) => {
     await createSchedule(payload);
