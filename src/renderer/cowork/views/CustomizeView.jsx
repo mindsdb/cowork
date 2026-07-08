@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
+import Spinner from '../components/ui/Spinner';
 import ConnectWorkflowView from './ConnectWorkflowView';
 import {
   PageHeader,
@@ -278,12 +279,14 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const [spec, setSpec] = useState(null);
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pickerState, setPickerState] = useState({ status: 'idle' });
 
   useEffect(() => {
     if (!connection) return;
     setLoading(true);
     setSpec(null);
     setSaved(null);
+    setPickerState({ status: 'idle' });
     Promise.all([
       fetchConnector(connection.engine).catch(() => null),
       fetchSavedConnection(connection.engine, connection.name).catch(() => null),
@@ -291,6 +294,15 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       setSpec(connSpec);
       setSaved(savedData);
       setLoading(false);
+      const rawPicked = savedData?.fields?.picked_files;
+      if (rawPicked) {
+        try {
+          setPickerState({ status: 'done', files: JSON.parse(rawPicked) });
+        } catch {
+          // Malformed field — behave as if nothing was picked yet rather
+          // than crash the panel.
+        }
+      }
     });
   }, [connection?.engine, connection?.name]);
 
@@ -312,6 +324,30 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const specFields = bestMethod?.fields || spec?.form?.fields || [];
   const specKeys = new Set(specFields.map((f) => f.name));
 
+  const handlePickFiles = async () => {
+    const accountEmail = vaultFields.account_email;
+    if (!accountEmail) {
+      setPickerState({ status: 'error', reason: 'No account email on file for this connection — try reconnecting.' });
+      return;
+    }
+    setPickerState({ status: 'waiting' });
+    try {
+      const result = await host.pickDriveFiles(connection.engine, connection.name, accountEmail);
+      if (!result.ok) {
+        setPickerState({ status: 'error', reason: result.reason || 'Could not open the Drive picker.' });
+        return;
+      }
+      setPickerState({ status: 'done', files: result.files || [], failed: result.failed || [] });
+    } catch (err) {
+      setPickerState({ status: 'error', reason: err?.message || String(err) });
+    }
+  };
+
+  const handleCancelPicker = () => {
+    host.cancelDrivePicker();
+    setPickerState({ status: 'idle' });
+  };
+
   // Display list: spec fields in order (vault value where available),
   // followed by any vault fields not covered by the spec.
   const displayFields = [
@@ -323,7 +359,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         || secureKeys.has(f.name) || vaultFields[f.name] === CONNECTIONS_VAULT_KEEP,
     })),
     ...Object.entries(vaultFields)
-      .filter(([k]) => !specKeys.has(k))
+      .filter(([k]) => !specKeys.has(k) && k !== 'picked_files')
       .map(([key, value]) => ({
         key,
         label: humanLabel(key),
@@ -460,6 +496,117 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                         </span>
                       </div>
                     ))}
+                  </div>
+                </>
+              )}
+
+              {/* Drive file access — drive.file only grants the app files
+                  it creates itself; picking files here grants access to
+                  existing ones without widening the OAuth scope. */}
+              {connection.engine === 'google_drive' && (
+                <>
+                  <div style={{
+                    fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
+                    letterSpacing: '0.05em', textTransform: 'uppercase',
+                    color: 'var(--ink-3)', marginBottom: 8,
+                  }}>
+                    Drive files
+                  </div>
+                  <div style={{
+                    border: '1px solid var(--line)', borderRadius: 8,
+                    padding: '12px 14px', marginBottom: 20,
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                  }}>
+                    <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
+                      This connection can only read files it created itself. Pick any files below —
+                      including several at once, or whole Shared Drives — to grant access to them too.
+                    </div>
+                    {pickerState.status === 'waiting' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <Spinner style={{ color: 'var(--ink-3)' }} />
+                        <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                          Opened in your browser — pick your files there, then come back. Confirming access can take a few seconds after you return.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCancelPicker}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid var(--line)',
+                            color: 'var(--ink-3)',
+                            padding: '5px 10px', borderRadius: 7,
+                            fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handlePickFiles}
+                        style={{
+                          alignSelf: 'flex-start',
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--line)',
+                          color: 'var(--ink)',
+                          padding: '7px 12px', borderRadius: 7,
+                          fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Pick Drive files
+                      </button>
+                    )}
+                    {pickerState.status === 'error' && (
+                      <div style={{ fontSize: 12, color: 'var(--danger)' }}>{pickerState.reason}</div>
+                    )}
+                    {pickerState.status === 'done' && pickerState.failed?.length > 0 && (
+                      <div style={{
+                        fontSize: 12, color: 'var(--danger)', lineHeight: 1.5,
+                        padding: '8px 10px', borderRadius: 7,
+                        background: 'color-mix(in srgb, var(--danger) 8%, var(--surface))',
+                        border: '1px solid color-mix(in srgb, var(--danger) 25%, transparent)',
+                      }}>
+                        Google didn't actually grant access to {pickerState.failed.length === 1 ? 'this file' : 'these files'} —
+                        try picking {pickerState.failed.length === 1 ? 'it' : 'them'} again:
+                        <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                          {pickerState.failed.map((f) => (
+                            <li key={f.id}>{f.name} ({f.reason})</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {pickerState.status === 'done' && pickerState.files.length === 0 && (
+                      <div style={{ fontSize: 12, color: 'var(--ink-4)', fontStyle: 'italic' }}>No files selected.</div>
+                    )}
+                    {pickerState.status === 'done' && pickerState.files.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+                          Granted access to {pickerState.files.length} file{pickerState.files.length === 1 ? '' : 's'}:
+                        </div>
+                        {pickerState.files.map((f) => (
+                          <a
+                            key={f.id}
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              fontSize: 12, color: 'var(--ink)',
+                              textDecoration: 'none',
+                              padding: '4px 6px', borderRadius: 6,
+                              background: 'var(--surface-2)',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {f.iconUrl && <img src={f.iconUrl} alt="" style={{ width: 14, height: 14, flexShrink: 0 }} />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

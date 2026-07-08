@@ -224,7 +224,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   }
 }
 
-function findFreePort(): Promise<number> {
+export function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.unref();
@@ -237,12 +237,12 @@ function findFreePort(): Promise<number> {
   });
 }
 
-function closeServer(server: http.Server | null) {
+export function closeServer(server: http.Server | null) {
   if (!server) return;
   try { server.close(); } catch {}
 }
 
-function base64UrlEncode(buf: Buffer): string {
+export function base64UrlEncode(buf: Buffer): string {
   return buf
     .toString('base64')
     .replace(/=/g, '')

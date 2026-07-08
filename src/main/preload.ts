@@ -46,6 +46,11 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.OAUTH_REFRESH_ERROR, listener);
     return () => ipcRenderer.removeListener(IPC.OAUTH_REFRESH_ERROR, listener);
   },
+  // Opens the Google Picker in the OS browser for a builtin OAuth
+  // connection and resolves with the files the user selected there.
+  oauthPickDriveFiles: (opts: { engine: string; name: string; accountEmail: string; fileIds?: string[] }) =>
+    ipcRenderer.invoke(IPC.OAUTH_PICK_DRIVE_FILES, opts),
+  oauthCancelPicker: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL_PICKER),
 
   // MindsHub onboarding — see main/index.ts for the rationale on
   // why these are split out from the generic oauth:connect bridge.

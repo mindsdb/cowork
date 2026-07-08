@@ -42,6 +42,11 @@ export const IPC = {
   // Fired by the background token-refresh loop when consecutive failures hit
   // threshold (transient) or a 401 makes the refresh token permanently invalid.
   OAUTH_REFRESH_ERROR: 'oauth:refresh-error',
+  // Runs the whole Google Picker flow: mints a short-lived access_token,
+  // opens the picker in the OS browser (same loopback pattern as
+  // OAUTH_CONNECT), and resolves with the files the user selected there.
+  OAUTH_PICK_DRIVE_FILES: 'oauth:pick-drive-files',
+  OAUTH_CANCEL_PICKER: 'oauth:cancel-picker',
 
   // MindsHub — split from oauth:connect so env writes only happen
   // after the user has chosen an LLM path (free users may never

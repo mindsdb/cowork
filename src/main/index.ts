@@ -12,7 +12,9 @@ import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
-import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections } from './token-refresh';
+import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
+import { openDrivePickerFlow, cancelCurrentDrivePicker } from './drive-picker-service';
+import { getPickedFiles, savePickedFiles, verifyPickedFiles } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
@@ -673,6 +675,36 @@ function setupIPC() {
 
     // BYOK passthrough: renderer passes full OAuth opts, gets tokens back.
     return oauthConnect(o);
+  });
+
+  ipcMain.handle(IPC.OAUTH_PICK_DRIVE_FILES, async (_event, opts) => {
+    const { engine, name, accountEmail, fileIds } = opts || {};
+    if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    const access = await getPickerAccess(engine, accountEmail);
+    if (!access.ok) return access;
+    const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, fileIds);
+    if (!pickResult.ok) return pickResult;
+    const newFiles = pickResult.files || [];
+    // Nothing new picked (user cancelled) — return the existing persisted
+    // list untouched rather than wiping it.
+    if (newFiles.length === 0) {
+      return { ok: true, files: await getPickedFiles(engine, name) };
+    }
+    // The picker's PICKED callback firing doesn't guarantee Google actually
+    // completed the per-file grant — confirm each file is readable with the
+    // token we just minted before persisting it, so a broken grant surfaces
+    // immediately instead of silently sitting in the list until Anton hits
+    // a 403 on it later.
+    const { verified, failed } = await verifyPickedFiles(access.accessToken, newFiles);
+    const files = verified.length > 0
+      ? await savePickedFiles(engine, name, verified)
+      : await getPickedFiles(engine, name);
+    return { ok: true, files, failed };
+  });
+
+  ipcMain.handle(IPC.OAUTH_CANCEL_PICKER, () => {
+    cancelCurrentDrivePicker();
+    return true;
   });
 
   ipcMain.handle(IPC.KEYCHAIN_REVOKE, async (_event, opts) => {

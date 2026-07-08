@@ -415,6 +415,49 @@ export async function keychainRevoke(engine: string, name: string, accountEmail:
   return { ok: false, reason: 'keychainRevoke is Electron-only.' };
 }
 
+export interface DrivePickerFile {
+  id: string;
+  name: string;
+  mimeType?: string;
+  iconUrl?: string;
+  url?: string;
+  resourceKey?: string | null;
+}
+
+export interface FailedDrivePick {
+  id: string;
+  name: string;
+  reason: string;
+}
+
+export interface DrivePickerResult {
+  ok: boolean;
+  reason?: string;
+  files?: DrivePickerFile[];
+  failed?: FailedDrivePick[];
+}
+
+// Electron-only: opens the Google Picker in the OS default browser (not
+// embedded — Google's sign-in step gets blocked inside Electron the same
+// way raw OAuth would) and resolves once the user picks files there or
+// cancels. Needed because drive.file alone only grants the app access to
+// files it created itself — the Picker is how a user grants access to
+// existing files without widening the OAuth scope. `fileIds`, when
+// known (e.g. from a pasted Drive link), pre-navigates the picker to
+// those files for faster consent.
+export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[]): Promise<DrivePickerResult> {
+  if (isElectron && typeof bridge.oauthPickDriveFiles === 'function') {
+    return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds });
+  }
+  return { ok: false, reason: 'Google Picker is Electron-only for now.' };
+}
+
+export async function cancelDrivePicker(): Promise<void> {
+  if (isElectron && typeof bridge.oauthCancelPicker === 'function') {
+    await bridge.oauthCancelPicker();
+  }
+}
+
 export function onOAuthRefreshError(
   cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void,
 ): () => void {
@@ -556,6 +599,8 @@ export const host = {
   logout,
   keychainRevoke,
   onOAuthRefreshError,
+  pickDriveFiles,
+  cancelDrivePicker,
 };
 
 export default host;

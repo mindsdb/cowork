@@ -56,6 +56,13 @@ interface AntonTronAPI {
   oauthCancel: () => Promise<boolean>;
   keychainRevoke: (opts: { engine: string; name: string; accountEmail: string }) => Promise<{ ok: boolean; reason?: string }>;
   onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => () => void;
+  oauthPickDriveFiles: (opts: { engine: string; name: string; accountEmail: string; fileIds?: string[] }) => Promise<{
+    ok: boolean;
+    reason?: string;
+    files?: Array<{ id: string; name: string; mimeType?: string; iconUrl?: string; url?: string; resourceKey?: string | null }>;
+    failed?: Array<{ id: string; name: string; reason: string }>;
+  }>;
+  oauthCancelPicker: () => Promise<boolean>;
   mindshubLogin: () => Promise<{
     ok: boolean;
     reason?: string;
