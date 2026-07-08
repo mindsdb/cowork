@@ -1,0 +1,53 @@
+# Cowork against a custom Anthropic-protocol gateway.
+#
+# For deployments where model traffic must go through an internal
+# gateway that speaks the Anthropic Messages API (custom base URL and
+# gateway-issued API keys) instead of api.anthropic.com.
+#
+# Build the image from the workspace root (the directory containing the
+# `cowork/` checkout):
+#
+#     docker build -f cowork/Dockerfile -t cowork:gateway \
+#       --build-arg COWORK_SERVER_VERSION=0.26.7.6.4 .
+#
+# Then, from this directory:
+#
+#     docker compose up -d
+#
+# and browse to http://localhost:26866 — the app starts fully
+# configured; no provider onboarding.
+#
+# The API key can be supplied either directly (ANTON_ANTHROPIC_API_KEY)
+# or read at container start from a mounted JSON credentials file
+# (COWORK_LLM_CREDS_FILE + COWORK_LLM_CREDS_FIELD, see the volume
+# example below).
+services:
+  cowork:
+    image: cowork:gateway
+    ports:
+      - "26866:26866"
+    environment:
+      # Routes all Anthropic API traffic through the gateway — the
+      # anthropic SDK reads this env var directly.
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:?set to your gateway URL}
+      ANTON_PLANNING_PROVIDER: anthropic
+      ANTON_CODING_PROVIDER: anthropic
+      ANTON_PLANNING_MODEL: ${COWORK_MODEL:-claude-opus-4-7}
+      ANTON_CODING_MODEL: ${COWORK_MODEL:-claude-opus-4-7}
+      # Option A — pass the gateway-issued key directly:
+      # ANTON_ANTHROPIC_API_KEY: ${ANTON_ANTHROPIC_API_KEY}
+      # Option B — read it from a mounted JSON credentials file:
+      # COWORK_LLM_CREDS_FILE: /creds/credentials.json
+      # COWORK_LLM_CREDS_FIELD: apiKey
+      # Uncomment to also skip the first-run terms screen for every
+      # browser (accepting the terms on behalf of your users):
+      # ANTON_TERMS_CONSENT: "true"
+    volumes:
+      # Persistent state: settings DB, projects, vault.
+      - cowork-data:/home/anton/.cowork
+      # Option B credentials file (read-only):
+      # - /path/to/credentials.json:/creds/credentials.json:ro
+    restart: unless-stopped
+
+volumes:
+  cowork-data:

@@ -16,12 +16,12 @@
 #       cowork:dev
 #
 # Preconfigured run (skips onboarding — see scripts/docker-entrypoint.py
-# and deploy/cvs/ for the CVS AIP-gateway deployment):
+# and deploy/gateway/ for Anthropic-protocol gateway deployments):
 #     docker run -p 26866:26866 \
 #       -e ANTHROPIC_BASE_URL=https://<anthropic-protocol-gateway> \
+#       -e ANTON_ANTHROPIC_API_KEY=<gateway-issued-key> \
 #       -e ANTON_PLANNING_PROVIDER=anthropic -e ANTON_CODING_PROVIDER=anthropic \
 #       -e ANTON_PLANNING_MODEL=claude-opus-4-7 -e ANTON_CODING_MODEL=claude-opus-4-7 \
-#       -v ~/.cvscode:/home/anton/.cvscode:ro \
 #       -v cowork-data:/home/anton/.cowork \
 #       cowork:dev
 #
@@ -170,62 +170,27 @@ COPY --chown=anton:anton --chmod=755 cowork/scripts/docker-entrypoint.py /app/do
 # this to keep database/vault/settings across container restarts.
 RUN mkdir -p /home/anton/.cowork && chown anton:anton /home/anton/.cowork
 
-# ── Final hardening: strip the package manager + its TLS/XML stack ────────
-# UBI's microdnf transitively requires glib2, which requires gnutls; the
-# dnf machinery also pulls gpgme/gnupg2. None of these are used at runtime
-# — cowork runs only the /opt/venv Python interpreter (which links openssl,
-# not gnutls) and serves plain HTTP. The base ships gnutls + gnupg2 with
-# four HIGH CVEs that have NO upstream fix (DTLS DoS + RSA-PSK auth-bypass,
-# CVE-2026-33845/-33846/-42009/-42010); rather than suppress them in
-# .trivyignore, we remove the whole unused closure so they vanish from the
-# scan entirely. This also drops the dnf/microdnf attack surface, matching
-# the distroless philosophy for an immutable runtime image.
+# ── Final hardening: allowlist strip — remove every unused RPM ────────────
+# Customer image-intake scanners block on any HIGH/
+# CRITICAL CVE physically present in the image, fixable or not, and
+# Red Hat regularly has no patch for new CVEs on base packages the app
+# never executes (gnutls 2026-06, libacl/libattr 2026-07-01,
+# curl-minimal 2026-07-02, ...). Enumerating packages to REMOVE is
+# whack-a-mole, so the strip is allowlist-based instead: the script
+# declares the packages the runtime genuinely needs (python3.12 + venv
+# native-wheel deps, bash for docker exec, the TLS trust store),
+# computes their dependency closure live against the rpm database, and
+# removes everything else — ~76 of ~117 packages, including microdnf,
+# curl, rpm itself and every no-fix-CVE carrier. The rpm DATABASE
+# (/var/lib/rpm/rpmdb.sqlite) survives, so scanners still enumerate
+# the ~41 remaining packages honestly. Full rationale, the allowlist,
+# and the scriptlet-dependency DENY list live in the script.
 #
-# The removal runs LAST, after every microdnf install + useradd, since
-# it destroys microdnf. The closure below is the full set rpm reports as
-# requiring libgnutls.so / glib2 / gnupg2 on UBI 9.8; re-derive with
-# `rpm -e --test` after a base bump.
-RUN rpm -e \
-        gnutls glib2 gnupg2 gpgme \
-        gobject-introspection json-glib libpeas libmodulemd \
-        librhsm librepo libdnf microdnf \
-    && rm -rf /var/cache/dnf /var/lib/dnf
-
-# ── Final hardening, part 2: strip the libacl/libattr closure ─────────────
-# CVE-2026-54369 (libacl) and CVE-2026-54371 (libattr) are HIGH local
-# privilege escalations with NO Red Hat fix, and they block customer
-# image-intake scanners (e.g. Wiz "External Image Intake CVEs Found")
-# that don't honor our .trivyignore triage. libacl cannot be patched
-# around: it is a hard link-time dependency of coreutils-single, sed,
-# libarchive, rpm-libs and shadow-utils. None of those are needed at
-# runtime — the app is a Python venv served by uvicorn, the entrypoint
-# is pure Python, and the healthcheck is python -c. So the entire
-# closure comes out, the same distroless treatment the gnutls stack got
-# above:
-#   libacl libattr     — the flagged packages themselves
-#   coreutils-single   — links libacl; only used by build-time RUNs
-#   sed                — links libacl closure; only used in scriptlets
-#   libarchive         — links libacl; nothing at runtime uses it
-#   shadow-utils       — links libacl; only needed for useradd above
-#   libsolv            — orphaned by the libdnf removal above
-#   krb5-libs          — orphaned; cowork does not speak Kerberos
-#   rpm, rpm-libs      — link libacl. Removing the rpm TOOL does not
-#                        remove the rpm DATABASE: /var/lib/rpm/
-#                        rpmdb.sqlite survives the transaction
-#                        (verified), so Trivy/Wiz/Snyk still enumerate
-#                        every remaining RPM honestly — the scan stays
-#                        truthful, there is just no package tooling
-#                        left in the image to exploit.
-# --nodeps is required because ca-certificates, krb5-libs and
-# openssl-fips-provider-so declare INSTALL-TIME scriptlet dependencies
-# on sed/coreutils (%post runs update-ca-trust etc.). Those scriptlets
-# already ran during the microdnf install above and nothing re-runs
-# them in an immutable image, so the runtime dependency does not exist.
-# Python, openssl and the CA trust store are unaffected (verified:
-# ssl + anthropic import and TLS egress work post-strip).
-RUN rpm -e --nodeps \
-        libacl libattr coreutils-single sed libarchive shadow-utils \
-        libsolv krb5-libs rpm rpm-libs
+# Runs LAST: after every microdnf install and useradd (both are
+# removed by the strip), before USER anton. The bind mount leaves no
+# copy of the script in the image.
+RUN --mount=type=bind,source=cowork/scripts/docker-strip-packages.py,target=/tmp/strip.py \
+    python3.12 /tmp/strip.py
 
 USER anton
 
@@ -246,7 +211,7 @@ sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:26866/api/v1/health/',tim
 
 # The entrypoint pre-seeds ~/.anton/.env from ANTON_* env vars on first
 # boot (so the env→DB migration configures the provider and the SPA
-# skips onboarding) and can pull the API key from a mounted CVS Code
+# skips onboarding) and can pull the API key from a mounted JSON
 # credentials file. Pure Python — coreutils/sed are stripped above.
 # See scripts/docker-entrypoint.py.
 ENTRYPOINT ["python", "/app/docker-entrypoint.py"]

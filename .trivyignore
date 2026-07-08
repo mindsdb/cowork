@@ -15,30 +15,25 @@
 # Last reviewed: 2026-07-02 against
 #   registry.access.redhat.com/ubi9-minimal@sha256:
 #     5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362
-# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.26.6.26.1
+# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.26.7.6.4
 # Python closure installed into /opt/venv on python3.12.
 #
 # Current posture: a TRUE scan (no active suppressions) of the shipped
 # image is 0 HIGH / 0 CRITICAL on both linux/amd64 and linux/arm64,
 # across the OS layer and the entire Python dependency closure. This
-# matters because customer intake scanners (CVS runs Wiz) do NOT read
-# this file — anything HIGH+ that physically exists in the image blocks
-# their intake policy regardless of our triage. Hence the Dockerfile's
-# two-part hardening strip: the no-upstream-fix gnutls closure AND the
-# no-upstream-fix libacl/libattr closure (CVE-2026-54369/-54371, which
-# failed CVS's Wiz intake on 2026-07-01) are REMOVED from the image,
-# not suppressed here. Everything with an available fix is applied at
-# build time: `microdnf update` pulls current Red Hat errata (e.g.
-# openssl-libs 3.5.5-4.el9_8 for CVE-2026-45447) and the Dockerfile
-# pins a PyJWT >= 2.13.0 floor (CVE-2026-48526).
-#
-# Note: the 9.8 base errata fixed the krb5-libs, libcap, and python
-# HIGHs that the previous 9.7 digest carried. The four gnutls HIGHs that
-# still have no upstream fix (CVE-2026-33845/-33846/-42009/-42010) are no
-# longer suppressed here — the runtime stage REMOVES the entire unused
-# dnf/glib2/gnupg/gnutls package closure (see Dockerfile "Final
-# hardening" step), so those packages don't exist in the shipped image
-# and never reach a scan.
+# matters because customer intake scanners do NOT read this file —
+# anything HIGH+ that physically exists in the image blocks a typical
+# intake policy regardless of our triage or fixability (observed with
+# gnutls 2026-06, libacl/libattr 2026-07-01, curl-minimal 2026-07-02).
+# The image therefore uses an ALLOWLIST strip
+# (scripts/docker-strip-packages.py): only the runtime's actual
+# dependency closure (~41 packages: python3.12, bash, the TLS trust
+# store, glibc plumbing) ships; every other base package — curl, rpm,
+# coreutils, systemd-libs, libxml2, ... — is removed at build time and
+# can never flag. The rpm DATABASE survives the strip, so scanners
+# still enumerate the remaining packages honestly. Fixes that DO exist
+# are applied: `microdnf update` pulls current Red Hat errata and the
+# Dockerfile pins a PyJWT >= 2.13.0 floor (CVE-2026-48526).
 #
 # Threat model summary: cowork is a FastAPI HTTP server that listens on
 # a single loopback port (default 26866). It does NOT terminate TLS, does
