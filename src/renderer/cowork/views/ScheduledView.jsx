@@ -329,7 +329,7 @@ function ScheduleListRow({
   const missedRuns = Number(task.missedRuns) || 0;
 
   const cadenceLabel = {
-    once: 'Once', hourly: 'Hourly', daily: 'Daily', weekly: 'Weekly',
+    once: 'Once', hourly: 'Hourly', daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly',
   }[task.cadence] || task.cadence;
 
   const projectName = task.project || task.projectName || '';

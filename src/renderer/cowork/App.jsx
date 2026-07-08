@@ -33,7 +33,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
-import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -677,6 +677,26 @@ function appendActivity(messages, event) {
       state: 'running',
     },
   ];
+}
+
+// How long to wait before the next `GET /schedules/` poll:
+// - close to the soonest due schedule (so a background run shows up promptly)
+// - but never more than MAX (a heartbeat for cross-client changes / clock drift)
+// - and never less than MIN (so an overdue-but-not-yet-processed schedule can't turn into a busy loop).
+// RUN_BUFFER gives the time to actually finish task before we go check.
+const SCHEDULE_POLL_MAX_DELAY_MS = 10 * 60 * 1000;
+const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
+const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
+
+function nextPollDelay(schedules) {
+  const dueTimes = (schedules || [])
+    .filter((s) => s.enabled && s.nextRunAt)
+    .map((s) => new Date(s.nextRunAt).getTime())
+    .filter(Number.isFinite);
+  if (dueTimes.length === 0) return SCHEDULE_POLL_MAX_DELAY_MS;
+  const earliest = Math.min(...dueTimes);
+  const untilDue = earliest - Date.now() + SCHEDULE_POLL_RUN_BUFFER_MS;
+  return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
 }
 
 export default function App() {
@@ -3238,11 +3258,62 @@ function AppCore() {
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
-  const refreshSchedules = async () => {
+  const refreshSchedules = useCallback(async () => {
     const data = await fetchSchedules();
-    setScheduled(data.schedules || []);
+    const list = data.schedules || [];
+    setScheduled(list);
     setScheduleRunsIndex(data.runs_index || {});
-  };
+    return list;
+  }, []);
+
+  // Diffs the full conversation list against known tasks and adds any
+  // unseen ones — catches every new conversation since the last check,
+  // not just the most recent one.
+  const syncNewConversations = useCallback(async () => {
+    const conversations = await fetchConversationList();
+    const known = new Set(tasksRef.current.map((t) => t.id));
+    const unseenIds = conversations.map((c) => c.id).filter((id) => id && !known.has(id));
+    if (unseenIds.length === 0) return;
+    const SYNC_CAP = 50;
+    const toFetch = unseenIds.slice(0, SYNC_CAP);
+    const freshTasks = await Promise.all(toFetch.map((id) => fetchSession(id)));
+    setTasks((prev) => {
+      let next = prev;
+      for (const task of freshTasks) {
+        if (!task || deletedTaskIdsRef.current.has(task.id)) continue;
+        if (next.some((t) => t.id === task.id)) continue;
+        next = [task, ...next];
+      }
+      return next;
+    });
+  }, []);
+
+  // Recomputed whenever an enabled schedule's due time changes — used as
+  // the poll effect's dependency below instead of `scheduled.length`,
+  // which stays the same across an edit/pause/resume
+  const scheduleKey = scheduled
+    .filter((s) => s.enabled)
+    .map((s) => s.nextRunAt)
+    .join(',');
+
+  // Self-adjusting poll (not a fixed interval): reschedules itself after
+  // every tick based on the freshest `nextRunAt`, so an idle app with
+  // schedules due far in the future stays quiet, while one with something
+  // due soon checks close to that moment. Skipped entirely when there are
+  // no schedules at all — nothing to poll for.
+  useEffect(() => {
+    let cancelled = false;
+    let timer = setTimeout(tick, nextPollDelay(scheduled));
+    async function tick() {
+      const list = await refreshSchedules();
+      const known = new Set(tasksRef.current.map((t) => t.id));
+      const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
+      if (hasNewRun) await syncNewConversations();
+      if (cancelled) return;
+      timer = setTimeout(tick, nextPollDelay(list));
+    }
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
   const handleCreateSchedule = async (payload) => {
     await createSchedule(payload);

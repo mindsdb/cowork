@@ -93,10 +93,11 @@ function Pill({ color, label }) {
 
 function CadencePill({ cadence }) {
   const label = {
-    once:   'One-off',
-    hourly: 'Hourly',
-    daily:  'Daily',
-    weekly: 'Weekly',
+    once:     'One-off',
+    hourly:   'Hourly',
+    daily:    'Daily',
+    weekdays: 'Weekdays',
+    weekly:   'Weekly',
   }[cadence] || cadence;
   return (
     <span style={{
