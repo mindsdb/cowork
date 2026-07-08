@@ -15,7 +15,7 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
-import { coworkHome } from './cowork-home';
+import { coworkHome, buildKind } from './cowork-home';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
 
@@ -450,6 +450,12 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   }
 
   pendingStart = (async (): Promise<StartServerResult> => {
+    // Hand the server the same config home the desktop app uses so both sides
+    // agree — including the per-build isolation (~/.cowork-<kind>) that keeps a
+    // non-prod build off the production SQLite DB (ENG-324). cowork-server
+    // derives every path from COWORK_HOME (see cowork.common.paths).
+    const dataHome = coworkHome();
+    console.log(`[server] build kind "${buildKind()}" → data home ${dataHome}`);
     const env = {
       ...process.env,
       ...loadBundledServerCredentials(),
@@ -457,6 +463,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
+      COWORK_HOME: dataHome,
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it.
