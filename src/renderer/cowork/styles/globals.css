@@ -4773,6 +4773,14 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--ink);
   box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
   user-select: text;
+  /* The bubble is a flex item in a column flex (.user-turn-inner). Without
+     min-width:0 its min-content floor is the widest unbreakable child — a
+     pasted code block / wide table with `white-space: pre` — which lets the
+     bubble grow past the inner's 78% cap and run off the chat column.
+     min-width:0 lets it shrink so the code block's own overflow-x:auto
+     scrolls the long line within the bubble instead. */
+  min-width: 0;
+  max-width: 100%;
 }
 /* ─── Shared turn-action toolbar ──────────────────────────────────────────
    Horizontal row of icon buttons below both user and assistant messages.
