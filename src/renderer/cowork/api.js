@@ -1981,6 +1981,33 @@ export function setCommentThreadStatus(userDir, reportId, threadId, status) {
   });
 }
 
+export function editCommentThread(userDir, reportId, threadId, text) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function deleteCommentThread(userDir, reportId, threadId) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function editCommentReply(userDir, reportId, threadId, replyId, text) {
+  return req(
+    `${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}`,
+    { method: 'PATCH', body: JSON.stringify({ text }) },
+  );
+}
+
+export function deleteCommentReply(userDir, reportId, threadId, replyId) {
+  return req(
+    `${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}`,
+    { method: 'DELETE' },
+  );
+}
+
 // Open the SSE stream via fetch + iterateSSE (NOT EventSource — the renderer
 // can't set headers and we route through cowork-server). Returns an
 // AbortController; callers call .abort() on unmount. onExpired fires on a

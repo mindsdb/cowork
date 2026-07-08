@@ -16,15 +16,22 @@ import { normalizeThreadForLayer } from '../../lib/commentsReducer';
 
 export function useArtifactCommentLayer(
   iframeRef,
-  { threads, enabled, onCreate, onReply, onStatus } = {},
+  {
+    threads, viewer, enabled, onCreate, onReply, onStatus,
+    onEditThread, onDeleteThread, onEditReply, onDeleteReply,
+  } = {},
 ) {
   const [mode, setMode] = useState(false); // comment-placement active in the iframe
 
   // Keep the latest values addressable from the (stable) message listener.
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
-  const handlersRef = useRef({ onCreate, onReply, onStatus });
-  handlersRef.current = { onCreate, onReply, onStatus };
+  const viewerRef = useRef(viewer);
+  viewerRef.current = viewer;
+  const handlersRef = useRef({});
+  handlersRef.current = {
+    onCreate, onReply, onStatus, onEditThread, onDeleteThread, onEditReply, onDeleteReply,
+  };
 
   const postToLayer = useCallback((msg) => {
     const win = iframeRef.current && iframeRef.current.contentWindow;
@@ -33,7 +40,11 @@ export function useArtifactCommentLayer(
   }, [iframeRef]);
 
   const sendList = useCallback(() => {
-    postToLayer({ type: 'list', comments: (threadsRef.current || []).map(normalizeThreadForLayer) });
+    postToLayer({
+      type: 'list',
+      comments: (threadsRef.current || []).map(normalizeThreadForLayer),
+      viewer: viewerRef.current || null,
+    });
   }, [postToLayer]);
 
   // Inbound messages from the layer. One stable listener; reads live values via
@@ -60,6 +71,10 @@ export function useArtifactCommentLayer(
         case 'create': h.onCreate && h.onCreate({ selector: d.selector || null, text: d.text }); break;
         case 'reply': h.onReply && h.onReply(d.id, d.text); break;
         case 'status': h.onStatus && h.onStatus(d.id, d.status); break;
+        case 'edit': h.onEditThread && h.onEditThread(d.id, d.text); break;
+        case 'delete': h.onDeleteThread && h.onDeleteThread(d.id); break;
+        case 'edit-reply': h.onEditReply && h.onEditReply(d.id, d.replyId, d.text); break;
+        case 'delete-reply': h.onDeleteReply && h.onDeleteReply(d.id, d.replyId); break;
         case 'mode': setMode(!!d.active); break;
         default: break;
       }

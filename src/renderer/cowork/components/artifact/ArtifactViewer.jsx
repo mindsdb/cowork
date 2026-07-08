@@ -299,10 +299,15 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   });
   const layer = useArtifactCommentLayer(iframeRef, {
     threads: comments.threads,
+    viewer: comments.viewer,
     enabled: open && commentsEnabled,
     onCreate: comments.create,
     onReply: comments.reply,
     onStatus: comments.setStatus,
+    onEditThread: comments.editThread,
+    onDeleteThread: comments.deleteThread,
+    onEditReply: comments.editReply,
+    onDeleteReply: comments.deleteReply,
   });
 
   const isText = _isTextArtifact(artifact);
@@ -776,9 +781,14 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             threads={comments.threads}
             error={comments.error}
             expired={comments.expired}
+            viewer={comments.viewer}
             onCreate={comments.create}
             onReply={comments.reply}
             onStatus={comments.setStatus}
+            onEditThread={comments.editThread}
+            onDeleteThread={comments.deleteThread}
+            onEditReply={comments.editReply}
+            onDeleteReply={comments.deleteReply}
             onHoverThread={layer.hlOn}
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}

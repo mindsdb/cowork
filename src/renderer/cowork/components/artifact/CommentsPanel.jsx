@@ -15,6 +15,7 @@ import {
   threadAuthorEmail,
   threadReplies,
   threadText,
+  viewerCanEdit,
 } from '../../lib/commentsReducer';
 
 const TABS = [
@@ -82,6 +83,41 @@ function LocateIcon() {
     </svg>
   );
 }
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+// Small "(edited)" marker; hover shows the edit timestamp.
+function EditedMark({ at }) {
+  if (!at) return null;
+  let title = 'Edited';
+  try { title = `Edited ${new Date(at).toLocaleString()}`; } catch { /* ignore */ }
+  return <span title={title} style={S.editedMark}>(edited)</span>;
+}
+// Compact icon button for row-level edit/delete affordances.
+function MiniBtn({ title, danger, onClick, children }) {
+  return (
+    <button type="button" title={title} onClick={onClick}
+      style={{ ...S.miniBtn, ...(danger ? S.miniBtnDanger : null) }}>
+      {children}
+    </button>
+  );
+}
 
 // Shared single-line input + send/clear row used by the composer and each
 // card's reply box. `onSubmit` fires on the send button or Enter; `onClear`
@@ -122,9 +158,14 @@ export function CommentsPanel({
   threads = [],
   error = '',
   expired = false,
+  viewer = null,
   onCreate,
   onReply,
   onStatus,
+  onEditThread,
+  onDeleteThread,
+  onEditReply,
+  onDeleteReply,
   onClose,
   onHoverThread,
   onLeaveThread,
@@ -219,8 +260,13 @@ export function CommentsPanel({
           <ThreadCard
             key={t.id}
             thread={t}
+            viewer={viewer}
             onReply={onReply}
             onStatus={onStatus}
+            onEditThread={onEditThread}
+            onDeleteThread={onDeleteThread}
+            onEditReply={onEditReply}
+            onDeleteReply={onDeleteReply}
             onHover={onHoverThread}
             onLeave={onLeaveThread}
             onFocus={onFocusThread}
@@ -242,11 +288,48 @@ export function CommentsPanel({
   );
 }
 
-function ThreadCard({ thread, onReply, onStatus, onHover, onLeave, onFocus }) {
+function ThreadCard({
+  thread, viewer, onReply, onStatus, onEditThread, onDeleteThread, onEditReply, onDeleteReply,
+  onHover, onLeave, onFocus,
+}) {
   const [replyText, setReplyText] = useState('');
+  const [editingRoot, setEditingRoot] = useState(false);
+  const [rootDraft, setRootDraft] = useState('');
+  const [editingReplyId, setEditingReplyId] = useState(null);
+  const [replyDraft, setReplyDraft] = useState('');
   const resolved = thread.status === 'resolved';
   const dismissed = thread.status === 'dismissed';
   const anchored = !!thread.selector;
+  const mineRoot = viewerCanEdit(thread.payload, viewer);
+
+  const startRootEdit = () => { setRootDraft(threadText(thread)); setEditingRoot(true); };
+  const saveRootEdit = () => {
+    // Skip the PATCH (and the spurious "(edited)" bump) when nothing changed.
+    if (rootDraft.trim() && rootDraft.trim() !== threadText(thread)) {
+      onEditThread && onEditThread(thread.id, rootDraft);
+    }
+    setEditingRoot(false);
+  };
+  const confirmDeleteRoot = () => {
+    // eslint-disable-next-line no-alert
+    if (window.confirm('Удалить эту цепочку комментариев?')) {
+      onDeleteThread && onDeleteThread(thread.id);
+    }
+  };
+  const startReplyEdit = (r) => { setEditingReplyId(r.id); setReplyDraft(r.text || ''); };
+  const saveReplyEdit = (rid, original) => {
+    if (replyDraft.trim() && replyDraft.trim() !== (original || '')) {
+      onEditReply && onEditReply(thread.id, rid, replyDraft);
+    }
+    setEditingReplyId(null);
+  };
+  const confirmDeleteReply = (rid) => {
+    // eslint-disable-next-line no-alert
+    if (window.confirm('Удалить этот комментарий?')) {
+      onDeleteReply && onDeleteReply(thread.id, rid);
+    }
+  };
+
   return (
     <div
       style={S.card}
@@ -254,9 +337,18 @@ function ThreadCard({ thread, onReply, onStatus, onHover, onLeave, onFocus }) {
       onMouseLeave={() => anchored && onLeave && onLeave(thread.id)}
     >
       <div style={S.cardTop}>
-        <span style={S.name}>{nameOf(threadAuthorEmail(thread))}</span>
+        <span style={S.name}>
+          {nameOf(threadAuthorEmail(thread))}
+          <EditedMark at={thread.payload && thread.payload.edited_at} />
+        </span>
         <div style={S.actions}>
           {dismissed && <span style={S.badge}>Dismissed</span>}
+          {mineRoot && !editingRoot && (
+            <>
+              <MiniBtn title="Edit comment" onClick={startRootEdit}><EditIcon /></MiniBtn>
+              <MiniBtn title="Delete thread" danger onClick={confirmDeleteRoot}><TrashIcon /></MiniBtn>
+            </>
+          )}
           {anchored ? (
             <button
               type="button"
@@ -280,13 +372,52 @@ function ThreadCard({ thread, onReply, onStatus, onHover, onLeave, onFocus }) {
           </button>
         </div>
       </div>
-      <div style={S.text}>{threadText(thread)}</div>
-      {threadReplies(thread).map((r, i) => (
-        <div key={r.id || i} style={S.reply}>
-          <span style={S.name}>{nameOf(replyAuthorEmail(r))}</span>
-          <span style={S.replyText}>{r.text}</span>
-        </div>
-      ))}
+      {editingRoot ? (
+        <InputRow
+          value={rootDraft}
+          onChange={setRootDraft}
+          onSubmit={saveRootEdit}
+          onClear={() => setEditingRoot(false)}
+          placeholder="Edit comment…"
+          sendTitle="Save"
+        />
+      ) : (
+        <div style={S.text}>{threadText(thread)}</div>
+      )}
+      {threadReplies(thread).map((r, i) => {
+        // Require r.id: without it edit/delete would target /replies/undefined and
+        // `editingReplyId === r.id` (undefined) would open every id-less reply at once.
+        const mineReply = viewerCanEdit(r, viewer) && !!r.id;
+        const isEditingThisReply = !!r.id && editingReplyId === r.id;
+        return (
+          <div key={r.id || i} style={S.reply}>
+            <div style={S.replyHead}>
+              <span style={S.name}>
+                {nameOf(replyAuthorEmail(r))}
+                <EditedMark at={r.edited_at} />
+              </span>
+              {mineReply && !isEditingThisReply && (
+                <div style={S.replyActions}>
+                  <MiniBtn title="Edit reply" onClick={() => startReplyEdit(r)}><EditIcon /></MiniBtn>
+                  <MiniBtn title="Delete reply" danger onClick={() => confirmDeleteReply(r.id)}><TrashIcon /></MiniBtn>
+                </div>
+              )}
+            </div>
+            {isEditingThisReply ? (
+              <InputRow
+                value={replyDraft}
+                onChange={setReplyDraft}
+                onSubmit={() => saveReplyEdit(r.id, r.text || '')}
+                onClear={() => setEditingReplyId(null)}
+                placeholder="Edit reply…"
+                sendTitle="Save"
+              />
+            ) : (
+              <span style={S.replyText}>{r.text}</span>
+            )}
+          </div>
+        );
+      })}
       <InputRow
         value={replyText}
         onChange={setReplyText}
@@ -339,7 +470,15 @@ const S = {
     fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
   resolveActive: { borderColor: 'rgba(74,201,126,0.35)', background: 'rgba(74,201,126,0.12)', color: '#66d39a' },
   reply: { marginTop: 8, paddingLeft: 8, borderLeft: '2px solid #223040' },
-  replyText: { fontSize: 12, marginLeft: 6 },
+  replyHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  replyActions: { display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 },
+  replyText: { fontSize: 12, marginLeft: 6, display: 'block', marginTop: 2,
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+  editedMark: { fontSize: 11, color: '#6c7a87', marginLeft: 6, fontWeight: 400 },
+  miniBtn: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 24, height: 24, borderRadius: 6, border: '1px solid #2a3a48', background: 'transparent',
+    color: '#9fb0bd', cursor: 'pointer', flexShrink: 0 },
+  miniBtnDanger: { borderColor: '#4a2530', color: '#e0556a' },
   // Single-line input + send/clear icon buttons, matching the mindshub_services
   // reply row. Used by both the composer and each card's reply box.
   replyRow: { display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 },
