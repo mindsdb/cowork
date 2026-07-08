@@ -741,10 +741,13 @@ export default function SettingsView({
     return { ...override, providerType: providerValueToType(override.providerType) };
   };
   const canonicalProviderForRole = (role) => providerValueToType(
-    role === 'planning' ? settings.planningProvider : settings.codingProvider,
+    role === 'planning' ? settings.planningProvider
+      : role === 'router' ? settings.routerProvider
+      : settings.codingProvider,
   ) || 'minds-cloud';
   const canonicalModelForRole = (role) => {
     if (role === 'planning') return settings.planningModel ?? settings.defaultModel ?? '';
+    if (role === 'router') return settings.routerModel ?? '';
     return settings.codingModel ?? '';
   };
   const roleProviderType = (role) => roleOverride(role)?.providerType || canonicalProviderForRole(role);
@@ -762,6 +765,9 @@ export default function SettingsView({
       setSetting('planningProvider', normalizedType);
       setSetting('planningModel', nextModel);
       setSetting('defaultModel', nextModel);
+    } else if (role === 'router') {
+      setSetting('routerProvider', normalizedType);
+      setSetting('routerModel', nextModel);
     } else {
       setSetting('codingProvider', normalizedType);
       setSetting('codingModel', nextModel);
@@ -874,11 +880,12 @@ export default function SettingsView({
     // Role settings referencing the removed provider get re-pointed
     // at MindsHub with its recommended pair for the role.
     const adjustedOverrides = {};
-    for (const role of ['planning', 'coding']) {
+    for (const role of ['planning', 'coding', 'router']) {
       const o = roleOverride(role);
       if (roleProviderType(role) === type) {
-        const pair = recommendedPair['minds-cloud'] || ['', ''];
-        const fallback = pair[role === 'planning' ? 0 : 1] || (recommendedModels['minds-cloud']?.[0] || '');
+        const pair = recommendedPair['minds-cloud'] || ['', '', ''];
+        const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
+        const fallback = pair[roleIdx] || pair[1] || (recommendedModels['minds-cloud']?.[0] || '');
         adjustedOverrides[role] = { providerType: 'minds-cloud', model: fallback };
         setRoleDriver(role, 'minds-cloud', fallback);
       } else {
@@ -949,6 +956,10 @@ export default function SettingsView({
     if ((providerValueToType(s.codingProvider) || 'minds-cloud') !== type) {
       next.codingProvider = type;
       next.codingModel = pair[1] || '';
+    }
+    if ((providerValueToType(s.routerProvider) || 'minds-cloud') !== type) {
+      next.routerProvider = type;
+      next.routerModel = pair[2] || pair[1] || '';
     }
     return next;
   };
@@ -1476,8 +1487,12 @@ export default function SettingsView({
                     ? rawType
                     : defaultModeProviderType;
                   const providerWasRepointed = curType !== rawType;
-                  const fallbackPair = recommendedPair[curType] || ['', ''];
-                  const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
+                  // Role slot in the per-provider default tuple
+                  // [planning, coding, router]. Router falls back to the coding
+                  // default when the backend hasn't sent a 3rd slot yet.
+                  const roleIdx = role === 'planning' ? 0 : role === 'router' ? 2 : 1;
+                  const fallbackPair = recommendedPair[curType] || ['', '', ''];
+                  const fallbackModel = fallbackPair[roleIdx] || fallbackPair[1] || '';
                   const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
@@ -1505,15 +1520,19 @@ export default function SettingsView({
                   // (settings.modelEfforts, sourced from MindsHub /v1/models + the
                   // static direct-provider catalog). Suppressed for the Hermes
                   // harness, which has no effort knob.
-                  const effortKey = role === 'planning' ? 'planningReasoningEffort' : 'codingReasoningEffort';
+                  // Router has no reasoning-effort knob — it's a single cheap
+                  // gating call, not a reasoning role.
+                  const effortKey = role === 'planning' ? 'planningReasoningEffort'
+                    : role === 'coding' ? 'codingReasoningEffort'
+                    : null;
                   const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
                   const effortEntry = (settings.modelEfforts || {})[curModel];
                   const effortOptions = effortEntry?.efforts || [];
-                  const savedEffort = settings[effortKey];
+                  const savedEffort = effortKey ? settings[effortKey] : '';
                   const effortValue = effortOptions.includes(savedEffort)
                     ? savedEffort
                     : (effortEntry?.default || effortOptions[0] || '');
-                  const showEffort = harnessSupportsEffort && effortOptions.length > 0;
+                  const showEffort = !!effortKey && harnessSupportsEffort && effortOptions.length > 0;
 
                   const writeOverride = (next) => {
                     const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
@@ -1525,7 +1544,7 @@ export default function SettingsView({
                     setSetting('modelMode', 'custom');
                     // Effort is model-specific — drop any stale level so we never
                     // send an effort the newly-selected model doesn't accept.
-                    setSetting(effortKey, '');
+                    if (effortKey) setSetting(effortKey, '');
                   };
 
                   // Plain bold field label. Note: no dotted underline — that reads as
@@ -1550,7 +1569,11 @@ export default function SettingsView({
                   ) : null;
 
                   return (
-                    <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`} notice={noCreditsNotice}>
+                    <Section title={label} subtitle={`Used for ${
+                      role === 'planning' ? 'reasoning, orchestration, and responses'
+                        : role === 'router' ? 'fast respond-or-delegate gating on each turn, and history summarization'
+                        : 'scratchpad code generation'
+                    }.`} notice={noCreditsNotice}>
                       <div style={{ display: 'grid', gap: 6 }}>
                         {multipleProviders && (
                           <label style={{ display: 'grid', gap: 4 }}>
@@ -1560,8 +1583,8 @@ export default function SettingsView({
                               value={curType}
                               onChange={(e) => {
                                 const t = e.target.value;
-                                const pair = recommendedPair[t] || ['', ''];
-                                const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
+                                const pair = recommendedPair[t] || ['', '', ''];
+                                const newModel = pair[roleIdx] || pair[1] || (recommendedModels[t]?.[0] || '');
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
                               }}
@@ -1659,6 +1682,7 @@ export default function SettingsView({
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: 'Planning model' })}
+                    {RoleRow({ role: 'router', label: 'Routing and summarization model' })}
                     {RoleRow({ role: 'coding', label: 'Coding model' })}
                   </>
                 );
