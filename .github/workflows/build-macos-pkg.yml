@@ -183,9 +183,17 @@ jobs:
             VERSION=$(node -p "require('./package.json').version")
           fi
           SHA="${GITHUB_SHA::7}"
+          # Untagged builds carry `git describe`'s <tag>-<N>-g<sha> suffix; the
+          # preview/stable names already append -${SHA}, so strip that suffix to
+          # avoid the commit sha appearing twice. A clean release tag (prod) has
+          # no such suffix, so this is a no-op there.
+          VERSION_FN="$VERSION"
           case "${{ inputs.build_kind }}" in
-            preview) NAME="mindshub-cowork-${VERSION}-preview-${SHA}.pkg" ;;
-            stable)  NAME="mindshub-cowork-${VERSION}-stable-${SHA}.pkg"  ;;
+            preview|stable) VERSION_FN=$(printf '%s' "$VERSION" | sed -E 's/-[0-9]+-g[0-9a-f]+$//') ;;
+          esac
+          case "${{ inputs.build_kind }}" in
+            preview) NAME="mindshub-cowork-${VERSION_FN}-preview-${SHA}.pkg" ;;
+            stable)  NAME="mindshub-cowork-${VERSION_FN}-stable-${SHA}.pkg"  ;;
             prod)    NAME="mindshub-cowork-${VERSION}.pkg" ;;
             *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
           esac
