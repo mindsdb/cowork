@@ -148,14 +148,6 @@ jobs:
               json.dump(creds, f)
           "
 
-      # Non-prod builds get the dev icon so installed dev/staging apps are
-      # visually distinguishable from the production app. Overwriting
-      # assets/icon.png covers electron-builder (icns generation) AND the
-      # packaged runtime, which loads assets/icon.png from resources.
-      - name: Use dev icon for non-prod builds
-        if: inputs.build_kind != 'prod'
-        run: cp assets/icon-dev.png assets/icon.png
-
       - name: Build, sign and notarize pkg
         env:
           CSC_FOR_PULL_REQUEST: "true"
