@@ -297,13 +297,9 @@ function ensureDefaultProject() {
 // ─── Icons ───────────────────────────────────────────────────
 function getIconPath(): string {
   if (app.isPackaged) {
-    // CI swaps assets/icon.png for the dev icon on non-prod builds, so
-    // packaged dev/staging apps get the dev icon through this same path.
     return path.join(process.resourcesPath, 'assets', 'icon.png');
   }
-  // Unpackaged = local dev — use the dev icon so it's distinguishable from
-  // an installed production app.
-  return path.join(__dirname, '..', '..', '..', 'assets', 'icon-dev.png');
+  return path.join(__dirname, '..', '..', '..', 'assets', 'icon.png');
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -311,12 +307,6 @@ let activeInstall: { cancelled: boolean } | null = null;
 
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
-  // On macOS the BrowserWindow `icon` option is ignored — the dock shows the
-  // bundle icon (packaged) or Electron's default (dev). Set it explicitly in
-  // dev so the dev icon actually shows up.
-  if (process.platform === 'darwin' && !app.isPackaged) {
-    app.dock?.setIcon(icon);
-  }
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
   const devMode = getDevMode();
 
