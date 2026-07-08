@@ -17,6 +17,7 @@ import {
   threadText,
   viewerCanEdit,
 } from '../../lib/commentsReducer';
+import { ConfirmModal } from '../ConfirmModal';
 
 const TABS = [
   ['open', 'Open'],
@@ -297,6 +298,12 @@ function ThreadCard({
   const [rootDraft, setRootDraft] = useState('');
   const [editingReplyId, setEditingReplyId] = useState(null);
   const [replyDraft, setReplyDraft] = useState('');
+  // Pending delete confirmation. null = closed; {type:'thread'} for the whole
+  // thread; {type:'reply', rid} for a single reply. Uses the in-app
+  // <ConfirmModal> instead of window.confirm — the native dialog steals
+  // webContents focus in Electron, leaving the composer visibly present but
+  // dead afterwards (couldn't type until the window was re-focused).
+  const [pendingDelete, setPendingDelete] = useState(null);
   const resolved = thread.status === 'resolved';
   const dismissed = thread.status === 'dismissed';
   const anchored = !!thread.selector;
@@ -310,12 +317,7 @@ function ThreadCard({
     }
     setEditingRoot(false);
   };
-  const confirmDeleteRoot = () => {
-    // eslint-disable-next-line no-alert
-    if (window.confirm('Удалить эту цепочку комментариев?')) {
-      onDeleteThread && onDeleteThread(thread.id);
-    }
-  };
+  const confirmDeleteRoot = () => setPendingDelete({ type: 'thread' });
   const startReplyEdit = (r) => { setEditingReplyId(r.id); setReplyDraft(r.text || ''); };
   const saveReplyEdit = (rid, original) => {
     if (replyDraft.trim() && replyDraft.trim() !== (original || '')) {
@@ -323,11 +325,12 @@ function ThreadCard({
     }
     setEditingReplyId(null);
   };
-  const confirmDeleteReply = (rid) => {
-    // eslint-disable-next-line no-alert
-    if (window.confirm('Удалить этот комментарий?')) {
-      onDeleteReply && onDeleteReply(thread.id, rid);
-    }
+  const confirmDeleteReply = (rid) => setPendingDelete({ type: 'reply', rid });
+  const runPendingDelete = () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.type === 'reply') onDeleteReply && onDeleteReply(thread.id, pendingDelete.rid);
+    else onDeleteThread && onDeleteThread(thread.id);
+    setPendingDelete(null);
   };
 
   return (
@@ -425,6 +428,17 @@ function ThreadCard({
         onClear={() => setReplyText('')}
         placeholder="Reply…"
         sendTitle="Send reply"
+      />
+      <ConfirmModal
+        open={!!pendingDelete}
+        title={pendingDelete?.type === 'reply' ? 'Delete reply?' : 'Delete comment thread?'}
+        message={pendingDelete?.type === 'reply'
+          ? 'This reply will be permanently deleted.'
+          : 'The entire comment thread will be permanently deleted.'}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={runPendingDelete}
+        onClose={() => setPendingDelete(null)}
       />
     </div>
   );
