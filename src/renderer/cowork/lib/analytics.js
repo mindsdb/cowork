@@ -142,6 +142,20 @@ function decodeJwtPayload(token) {
   }
 }
 
+// Resolve the plan tier from Keycloak realm roles, mirroring the web console's
+// useHasFullAccess (ENG-452). An account can carry several tier roles at once —
+// a paid user keeps the `free` role too — so a paid/staff role must win over
+// `free`. Precedence: staff > team > pro/pro-hub > free. Returns undefined when
+// roles are absent, so the property is omitted rather than guessed.
+function resolvePlanTier(roles) {
+  if (!Array.isArray(roles)) return undefined;
+  const set = new Set(roles.map((r) => String(r).toLowerCase()));
+  if (set.has('staff')) return 'staff';
+  if (set.has('team')) return 'team';
+  if (set.has('pro') || set.has('pro-hub')) return 'pro';
+  return 'free';
+}
+
 // Cached distinct_id to avoid decoding the JWT on every event.
 let _cachedDistinctId = null;
 let _cacheExpiry = 0;
@@ -157,16 +171,18 @@ async function getDistinctId() {
     _cachedIsInternal = email.endsWith(INTERNAL_EMAIL_DOMAIN);
     _cachedDistinctId = payload.sub;
     // Account attributes for `$set` (ENG-537). The active org lives in the
-    // `activate_organization` claim; `realm_access.roles` carries a `free`
-    // marker for the free tier. Undefined values are dropped by JSON.stringify.
+    // `activate_organization` claim; tier comes from `realm_access.roles` via
+    // resolvePlanTier (paid wins over the co-present `free` role). Undefined
+    // values are dropped by JSON.stringify.
     const activeOrg = payload.activate_organization;
-    const roles = payload.realm_access?.roles;
+    const planTier = resolvePlanTier(payload.realm_access?.roles);
     _cachedPersonProps = {
       email: email || undefined,
       name: typeof payload.name === 'string' ? payload.name : undefined,
       organization_id: typeof activeOrg?.id === 'string' ? activeOrg.id : undefined,
       organization_name: typeof activeOrg?.name === 'string' ? activeOrg.name : undefined,
-      is_free_tier: Array.isArray(roles) ? roles.includes('free') : undefined,
+      plan_tier: planTier,
+      is_free_tier: planTier === undefined ? undefined : planTier === 'free',
     };
     dlog('identity resolved', {
       distinct_id: _cachedDistinctId,
@@ -378,4 +394,26 @@ export async function trackAppInstalled() {
   const sent = await capture('app_installed');
   if (!sent) return;
   try { window.localStorage.setItem(APP_INSTALLED_KEY, '1'); } catch { /* best effort */ }
+}
+
+// Reset per-device analytics identity on sign-out (ENG-537 review note). A
+// different account signing in on the same machine then starts from a fresh
+// anonymous device id and merges cleanly — otherwise PostHog refuses to
+// re-merge the already-claimed device id into the second account, and pre-login
+// events attribute to the shared device. The install marker is deliberately
+// NOT cleared: the machine is still installed, so app_installed must not
+// re-fire (installs are counted per device, once).
+export function resetDeviceIdentity() {
+  _cachedDeviceId = null;
+  _cachedDistinctId = null;
+  _cacheExpiry = 0;
+  _cachedIsInternal = false;
+  _cachedPersonProps = {};
+  _mergeInFlight.clear();
+  try {
+    window.localStorage.removeItem(DEVICE_ID_KEY);
+    window.localStorage.removeItem(IDENTITY_MERGED_KEY);
+  } catch {
+    /* localStorage unavailable — the in-memory reset above still applies */
+  }
 }
