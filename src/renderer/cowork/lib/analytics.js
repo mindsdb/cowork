@@ -189,8 +189,14 @@ async function getDistinctId() {
 // an `$identify` event carrying `$anon_distinct_id`. Idempotent via a
 // localStorage marker so it fires once per account, not on every event.
 const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
+// Synchronous guard against the merge firing twice when two events resolve
+// identity in the same tick — the localStorage marker is only written after the
+// async POST returns, too late to dedupe concurrent callers. Cleared on failure
+// so a later event can still retry.
+const _mergeInFlight = new Set();
 function mergeAnonIntoAccount(sub) {
   if (!POSTHOG_KEY || isCi() || !sub) return;
+  if (_mergeInFlight.has(sub)) return;
   try {
     if (window.localStorage.getItem(IDENTITY_MERGED_KEY) === sub) return;
   } catch {
@@ -199,13 +205,16 @@ function mergeAnonIntoAccount(sub) {
   const deviceId = getDeviceId();
   // Nothing to merge if there's no distinct device id to alias from.
   if (!deviceId || deviceId === sub) return;
+  _mergeInFlight.add(sub);
   const body = JSON.stringify({
     api_key: POSTHOG_KEY,
     event: '$identify',
     distinct_id: sub,
     properties: {
       $anon_distinct_id: deviceId,
-      $set: _cachedPersonProps,
+      // Carry device_id onto the person too, so the deterministic join key is
+      // available regardless of whether the person-merge lands (ENG-537).
+      $set: { ..._cachedPersonProps, device_id: deviceId },
       surface: SURFACE,
       is_internal: _cachedIsInternal,
       $lib: 'cowork-desktop',
@@ -226,9 +235,14 @@ function mergeAnonIntoAccount(sub) {
         } catch {
           /* best effort — a re-merge next session is harmless */
         }
+      } else {
+        _mergeInFlight.delete(sub); // let a later event retry
       }
     })
-    .catch((err) => dlog('$identify merge failed', err));
+    .catch((err) => {
+      dlog('$identify merge failed', err);
+      _mergeInFlight.delete(sub); // let a later event retry
+    });
 }
 
 // Fire-and-forget POST to PostHog Capture API. Never throws, never blocks.
@@ -250,7 +264,8 @@ function capture(event, properties = {}) {
     // Fall back to the anonymous device id before sign-in so pre-login events
     // (notably app_installed) are captured instead of dropped; they merge into
     // the account on first sign-in (see mergeAnonIntoAccount).
-    const captureId = distinctId || getDeviceId();
+    const deviceId = getDeviceId();
+    const captureId = distinctId || deviceId;
     if (!captureId) {
       dlog('skip', event, '— no identity and no device id');
       return false;
@@ -260,10 +275,14 @@ function capture(event, properties = {}) {
       surface: SURFACE,
       is_internal: _cachedIsInternal,
       $lib: 'cowork-desktop',
+      // Stable per-install id on every event (pre- and post-login) so
+      // install → account can be joined deterministically even if PostHog
+      // declines to merge the device person into the account (ENG-537).
+      device_id: deviceId,
     };
     // Account attributes only apply to an identified person; pre-login events
     // ride the device id and inherit these via the $identify merge on sign-in.
-    if (distinctId) eventProps.$set = _cachedPersonProps;
+    if (distinctId) eventProps.$set = { ..._cachedPersonProps, device_id: deviceId };
     const body = JSON.stringify({
       api_key: POSTHOG_KEY,
       event,
