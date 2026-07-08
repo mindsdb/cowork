@@ -1,0 +1,56 @@
+# Trivy ignore file for cowork's customer-facing Docker image.
+#
+# Each entry is a HIGH/CRITICAL CVE that we have triaged and accepted
+# as residual risk. Every entry MUST cite:
+#   1. The package and current Red Hat UBI 9 version.
+#   2. Why no fix is applied (most commonly: no upstream patch yet).
+#   3. Why the residual risk is acceptable in our threat model.
+#
+# This file is checked into the repo so the customer (and any auditor)
+# can see exactly what we've ignored and why. Re-review on every base
+# image bump — `docker pull registry.access.redhat.com/ubi9-minimal`
+# then re-scan and remove any entry whose CVE is now patched in the
+# new base.
+#
+# Last reviewed: 2026-07-02 against
+#   registry.access.redhat.com/ubi9-minimal@sha256:
+#     5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362
+# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.26.7.6.4
+# Python closure installed into /opt/venv on python3.12.
+#
+# Current posture: a TRUE scan (no active suppressions) of the shipped
+# image is 0 HIGH / 0 CRITICAL on both linux/amd64 and linux/arm64,
+# across the OS layer and the entire Python dependency closure. This
+# matters because customer intake scanners do NOT read this file —
+# anything HIGH+ that physically exists in the image blocks a typical
+# intake policy regardless of our triage or fixability (observed with
+# gnutls 2026-06, libacl/libattr 2026-07-01, curl-minimal 2026-07-02).
+# The image therefore uses an ALLOWLIST strip
+# (scripts/docker-strip-packages.py): only the runtime's actual
+# dependency closure (~41 packages: python3.12, bash, the TLS trust
+# store, glibc plumbing) ships; every other base package — curl, rpm,
+# coreutils, systemd-libs, libxml2, ... — is removed at build time and
+# can never flag. The rpm DATABASE survives the strip, so scanners
+# still enumerate the remaining packages honestly. Fixes that DO exist
+# are applied: `microdnf update` pulls current Red Hat errata and the
+# Dockerfile pins a PyJWT >= 2.13.0 floor (CVE-2026-48526).
+#
+# Threat model summary: cowork is a FastAPI HTTP server that listens on
+# a single loopback port (default 26866). It does NOT terminate TLS, does
+# NOT speak DTLS / WebRTC, does NOT speak Kerberos, does NOT parse
+# untrusted XML on its HTTP API (the API is JSON-only), and does NOT load
+# arbitrary terminfo from network input.
+
+# expat — Expat XML parser, linked by CPython's pyexpat and therefore a
+# hard dependency of the python3.12 interpreter (cannot be removed
+# without removing the interpreter). CVE-2026-45186 is a DoS via crafted
+# XML input. As of the 2026-06-09 review the UBI 9.8 base ships an expat
+# that neither Trivy nor ECR flags for this CVE, so it does NOT currently
+# appear in a scan of the shipped image — this entry is retained purely
+# as defense-in-depth, in case a scanner with a different advisory DB
+# (e.g. the customer's Snyk) still reports it. Even if surfaced, the risk
+# is acceptable: cowork's HTTP API consumes JSON only and exposes no
+# untrusted-XML parsing path, so the crafted-input vector is unreachable
+# from the network surface; DoS-class (no RCE). Remove this entry once
+# confirmed permanently fixed across the scanners we care about.
+CVE-2026-45186
