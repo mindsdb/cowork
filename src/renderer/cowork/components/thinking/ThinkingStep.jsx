@@ -8,7 +8,6 @@
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { StepIcon } from './StepIcon';
-import { useOrbitSlot } from '../../lib/orbitRegistry';
 
 const DOT_FRAMES = ['.', '..', '...', '..', '.'];
 function TextDots() {
@@ -37,23 +36,16 @@ export function ThinkingStep({
 }) {
   const isInProgress = step.status === 'in_progress';
   const duration = formatStepDuration(step.startedAt, step.completedAt);
-  // Register this row as an orb slot so the floating OrbitMorph can
-  // anchor over it when this step is the active one.
-  const slotRef = useOrbitSlot(`step:${step.id}`);
 
   return (
     <div
-      ref={slotRef}
       className={clsx(
         'group flex gap-1.5',
         onActivate && 'cursor-pointer'
       )}
       onClick={onActivate ? () => onActivate(step) : undefined}
     >
-      {/* Left rail — vertical line + circular marker. The orb (when
-          active) replaces the marker visually via absolute positioning
-          handled by the chat-level registry. We still render the marker
-          so the slot has a stable bounding rect to anchor against. */}
+      {/* Left rail — vertical line + circular marker. */}
       <div className="flex w-4 flex-col items-center">
         <div className={clsx('w-px flex-1', isFirst ? 'bg-transparent' : 'bg-line-2')} />
         <div
