@@ -254,6 +254,7 @@ export default function HomeView({
   serverOnline = false, onShowServerHelp,
   skipIntro = false,
   agentLabel,
+  prefill = null,
 }) {
   useEffect(() => { _ensureBootKeyframes(); }, []);
 
@@ -523,7 +524,7 @@ export default function HomeView({
                 <button
                   type="button"
                   className="btn-primary"
-                  onClick={onOpenSettings}
+                  onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
                 >Settings</button>
               </div>
@@ -531,6 +532,7 @@ export default function HomeView({
           ) : (
             <Composer
               onSend={onSend}
+              prefill={prefill}
               project={project}
               onProjectChange={onProjectChange}
               model={model}

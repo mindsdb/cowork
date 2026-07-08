@@ -1,5 +1,8 @@
 import { saveTokens, getRefreshToken } from './token-store';
-import { stopServer, startServer } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
+import { checkInstallStatus } from './installer';
+import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
+import { getInstallationId } from './installation-id';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -22,10 +25,20 @@ const AUTH_SERVICE_URL = 'https://auth.mindshub.ai/v1';
 // api.mindshub.ai when the desktop app moves to prod.
 const MINDS_LLM_BASE_URL = 'https://api.mindshub.ai/v1';
 
-// Stable name we register the API key under. Listing + deleting any
-// pre-existing entry with this name before creating a new one keeps
-// re-onboarding from leaking ghost keys in the user's account.
+// Base label for the MindsHub API key. ENG-440: keys are minted per
+// device — the full name is `hub:anton:<installation_id>` (see
+// antonKeyName). A single fixed name meant whoever logged in last deleted
+// everyone else's key, silently 401-ing the other devices; per-device
+// names let each install own its own key.
 const ANTON_KEY_NAME = 'hub:anton';
+
+// Per-device key name. Keeping the device id in the name (rather than
+// tracking sessions server-side) fixes the displaced-device bug purely
+// client-side. A cleanup/expiry policy for stale device keys is a
+// deferred follow-up (ENG-440).
+function antonKeyName(): string {
+  return `${ANTON_KEY_NAME}:${getInstallationId()}`;
+}
 
 // Every auth-service / Keycloak request gets a hard deadline. Node's
 // fetch has none by default, so a black-holed connection would hang
@@ -41,7 +54,7 @@ function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
 // access token is worth pulling — the env file is the source of truth
 // for the LLM credential, the JWT only matters for auth-service calls.
 function envHasMindsCommitted(): boolean {
-  const envPath = path.join(os.homedir(), '.anton', '.env');
+  const envPath = coworkEnvPath();
   if (!fs.existsSync(envPath)) return false;
   const content = fs.readFileSync(envPath, 'utf-8');
   return /^ANTON_MINDS_API_KEY=/m.test(content);
@@ -307,11 +320,14 @@ export async function ensureActiveOrg(accessToken: string): Promise<EnsureActive
 // ── API key provisioning ──────────────────────────────────────────
 //
 // Calls the auth-service `/v1/api-keys/` endpoint with the JWT as a
-// Bearer credential, removes any existing key registered under the
-// same name (so re-onboarding doesn't pile up dead keys), then mints a
-// fresh one. The returned `key` is the actual `mdb_*` string the LLM
-// gateway expects. Returns null on any error so callers can surface a
-// user-visible message instead of writing a bad credential to env.
+// Bearer credential. ENG-440: the key is minted under a per-device name
+// (`hub:anton:<installation_id>`), and we remove only a prior key with
+// that exact per-device name before re-minting — so re-onboarding on this
+// machine doesn't pile up dead keys, while a login on a *different* device
+// never revokes this one. The returned `key` is the actual `mdb_*` string
+// the LLM gateway expects. Returns null on any error so callers can
+// surface a user-visible message instead of writing a bad credential to
+// env.
 
 interface ApiKeyRecord {
   key?: string;
@@ -332,19 +348,41 @@ export interface ProvisionResult {
   error?: string;
 }
 
+// Lists every API key on the account, following DRF-style `next`
+// pagination so a key is never missed because it fell off the first page.
+// ENG-440: this matters now that we deliberately let keys accumulate per
+// account (the legacy `hub:anton` is kept, per-device keys add up) — a
+// single-page read could miss this device's own prior `hub:anton:<id>`
+// and mint a duplicate under the same name on every re-onboard. A bare
+// array means the endpoint isn't paginated and is already the full list.
+// Best-effort: any failure returns what we have so far so key creation
+// still proceeds.
 async function listExistingKeys(accessToken: string): Promise<{ name?: string; prefix?: string }[]> {
-  try {
-    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return [];
-    const body = await res.json() as { results?: unknown } | unknown[];
-    if (Array.isArray(body)) return body as { name?: string; prefix?: string }[];
-    const results = (body as { results?: unknown }).results;
-    return Array.isArray(results) ? results as { name?: string; prefix?: string }[] : [];
-  } catch {
-    return [];
+  const collected: { name?: string; prefix?: string }[] = [];
+  let url: string | null = `${AUTH_SERVICE_URL}/api-keys/`;
+  // Hard page cap so a malformed `next` chain can't loop forever.
+  for (let page = 0; url && page < 50; page++) {
+    try {
+      const res = await timedFetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) break;
+      const body = await res.json() as { results?: unknown; next?: unknown } | unknown[];
+      if (Array.isArray(body)) {
+        collected.push(...(body as { name?: string; prefix?: string }[]));
+        break;
+      }
+      const results = (body as { results?: unknown }).results;
+      if (Array.isArray(results)) {
+        collected.push(...(results as { name?: string; prefix?: string }[]));
+      }
+      const next = (body as { next?: unknown }).next;
+      url = typeof next === 'string' && next ? next : null;
+    } catch {
+      break;
+    }
   }
+  return collected;
 }
 
 async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<void> {
@@ -534,12 +572,16 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     }
   }
 
-  // Step 1: drop any prior `hub:anton` key so the user's account stays
-  // tidy across re-onboards. Best-effort — listing/deleting failures
-  // shouldn't block creation of a new key.
+  // Step 1: drop only THIS device's prior key so re-onboarding on the same
+  // machine stays tidy. ENG-440: match the exact per-device name and never
+  // the legacy fixed `hub:anton` — deleting a key another (not-yet-upgraded)
+  // device still relies on is precisely the silent-revocation bug we're
+  // fixing. Best-effort — listing/deleting failures shouldn't block creation
+  // of the new key.
+  const keyName = antonKeyName();
   const existing = await listExistingKeys(provisionToken);
   for (const entry of existing) {
-    if (entry?.name === ANTON_KEY_NAME && entry.prefix) {
+    if (entry?.name === keyName && entry.prefix) {
       await deleteKeyByPrefix(provisionToken, entry.prefix);
     }
   }
@@ -556,7 +598,7 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
         Authorization: `Bearer ${provisionToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name: ANTON_KEY_NAME }),
+      body: JSON.stringify({ name: keyName }),
     });
     if (res.ok) {
       const data = await res.json() as ApiKeyRecord;
@@ -587,9 +629,13 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
 const MINDS_KEYS = [
   'ANTON_MINDS_ENABLED',
   'ANTON_MINDS_URL',
-  'ANTON_OPENAI_API_KEY',
+  // NOTE: ANTON_OPENAI_API_KEY / ANTON_OPENAI_BASE_URL are intentionally
+  // NOT in this strip list (ENG-436). MindsHub no longer commandeers the
+  // OpenAI slot — the scratchpad resolves minds-cloud natively via
+  // minds_api_key/minds_url (cowork-server `_resolve_coding`). Leaving
+  // them out means a user's own OpenAI key survives a MindsHub login,
+  // the same way the Anthropic key already does.
   'ANTON_MINDS_API_KEY',
-  'ANTON_OPENAI_BASE_URL',
   'ANTON_PLANNING_PROVIDER',
   'ANTON_CODING_PROVIDER',
   'ANTON_PLANNING_MODEL',
@@ -603,28 +649,32 @@ const MINDS_KEYS = [
 // overwrite) and restarts the python server so it picks them up.
 // `apiKey` MUST be the `mdb_*` value minted via `provisionAntonApiKey`
 // — passing a raw Keycloak JWT here is what caused the historic 401s
-// from the LLM gateway. ANTON_OPENAI_BASE_URL is required because
-// checkConfigured() demands it alongside ANTON_OPENAI_API_KEY. The
-// live MindsHub gateway now expects the `latest:*` alias namespace;
-// the older deprecated sentinel aliases 500 with "Mind not found".
+// from the LLM gateway. The live MindsHub gateway expects the
+// `latest:*` alias namespace; the older deprecated sentinel aliases
+// 500 with "Mind not found".
+//
+// ENG-436: we write ONLY the dedicated minds_* slots — never
+// ANTON_OPENAI_API_KEY / ANTON_OPENAI_BASE_URL. cowork-server resolves
+// minds-cloud from minds_api_key/minds_url for both the main agent and
+// the scratchpad, and `check_configured` is satisfied by minds_api_key
+// alone, so the OpenAI slot is no longer needed — and leaving it
+// untouched lets a user's own OpenAI key survive login.
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
-  const antonDir = path.join(os.homedir(), '.anton');
-  // ~/.anton normally exists by the time SSO finalize runs (the server
+  const homeDir = coworkHome();
+  // ~/.cowork normally exists by the time SSO finalize runs (the server
   // creates it on boot), but if the server failed to start the finalize
   // write would ENOENT and the user's freshly-minted key is lost.
-  if (!fs.existsSync(antonDir)) {
-    fs.mkdirSync(antonDir, { recursive: true });
+  if (!fs.existsSync(homeDir)) {
+    fs.mkdirSync(homeDir, { recursive: true });
   }
-  const envPath = path.join(antonDir, '.env');
+  const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   const lines = existing.split('\n')
     .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
   lines.push(
     'ANTON_MINDS_ENABLED=true',
     `ANTON_MINDS_URL=${MINDS_LLM_BASE_URL.replace(/\/v1$/, '')}`,
-    `ANTON_OPENAI_API_KEY=${apiKey}`,
     `ANTON_MINDS_API_KEY=${apiKey}`,
-    `ANTON_OPENAI_BASE_URL=${MINDS_LLM_BASE_URL}`,
     'ANTON_PLANNING_PROVIDER=minds-cloud',
     'ANTON_CODING_PROVIDER=minds-cloud',
     'ANTON_PLANNING_MODEL=latest:sonnet',
@@ -632,32 +682,77 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   );
   fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n', 'utf-8');
 
-  // Also clean up old provider entries from state.json so they don't show as green in Settings
-  const statePath = path.join(os.homedir(), '.anton', 'cowork', 'state.json');
+  // Ensure state.json has minds-cloud as the active provider so the server
+  // doesn't default to Anthropic on first boot (state.json may not exist yet
+  // after a flush).
+  const statePath = coworkStatePath();
   try {
+    let state: any = { preferences: {} };
     if (fs.existsSync(statePath)) {
-      const raw = fs.readFileSync(statePath, 'utf-8');
-      const state = JSON.parse(raw) as any;
-      if (state?.preferences?.providers && Array.isArray(state.preferences.providers)) {
-        // Keep only minds-cloud provider; remove anthropic, openai, gemini, openai-compatible
-        state.preferences.providers = state.preferences.providers.filter(
-          (p: any) => p?.type === 'minds-cloud'
-        );
-        // Ensure minds-cloud is marked as default
-        for (const p of state.preferences.providers) {
-          if (p?.type === 'minds-cloud') {
-            p.isDefault = true;
-          }
-        }
-        fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
-      }
+      try { state = JSON.parse(fs.readFileSync(statePath, 'utf-8')); } catch { state = { preferences: {} }; }
     }
+    if (!state.preferences) state.preferences = {};
+    // Keep only minds-cloud; remove any other provider entries.
+    const existing: any[] = Array.isArray(state.preferences.providers) ? state.preferences.providers : [];
+    const mindsEntry = existing.find((p: any) => p?.type === 'minds-cloud') ?? { type: 'minds-cloud' };
+    mindsEntry.isDefault = true;
+    state.preferences.providers = [mindsEntry];
+    fs.mkdirSync(coworkHome(), { recursive: true });
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
   } catch (error) {
-    console.warn('[minds-auth] failed to clean up provider state', error);
+    console.warn('[minds-auth] failed to set provider state', error);
+  }
+
+  // Only restart the server if it's already installed. On a fresh install the
+  // server isn't available yet — the setup wizard will start it after install
+  // completes, at which point handleInstallComplete syncs the credentials.
+  const { antonInstalled } = await checkInstallStatus();
+  if (!antonInstalled) {
+    console.log('[minds-auth] server not installed yet — skipping restart; setup will sync creds after install');
+    return;
   }
 
   await stopServer();
   await startServer();
+
+  // Sync the .env values we just wrote to the server's SQLite DB.
+  // The one-time .env → DB migration (migrate_env_to_db) is sentinel-
+  // guarded and won't re-run, so credentials written to .env after
+  // initial setup never reach the DB unless we explicitly push them.
+  // POST /api/v1/settings/raw merges and calls sync_env_vars_to_db.
+  if (isServerRunning() || isServerStarting()) {
+    const port = getServerPort();
+    const envContent = fs.readFileSync(coworkEnvPath(), 'utf-8');
+    try {
+      const syncRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/raw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: envContent }),
+      });
+      if (!syncRes.ok) {
+        console.warn('[minds-auth] settings/raw sync returned', syncRes.status);
+      }
+    } catch (error) {
+      console.warn('[minds-auth] failed to sync .env to server DB', error);
+    }
+
+    // Verify the server is actually configured after the sync.
+    // If the sync failed silently (DB not updated), config_ready will
+    // still be false and the user would appear unconfigured after login.
+    try {
+      const healthRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/health/`);
+      if (healthRes.ok) {
+        const health = await healthRes.json() as Record<string, unknown>;
+        if (!health.config_ready) {
+          console.warn('[minds-auth] config_ready is false after sync — restarting server');
+          await stopServer();
+          await startServer();
+        }
+      }
+    } catch (error) {
+      console.warn('[minds-auth] health check after sync failed:', error);
+    }
+  }
 }
 
 let _refreshTimer: NodeJS.Timeout | null = null;

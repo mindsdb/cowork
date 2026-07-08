@@ -10,6 +10,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 import Sidebar from './components/Sidebar';
 import MobileShell from './components/MobileShell';
 import { ConfirmModal } from './components/ConfirmModal';
+import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
@@ -21,12 +22,13 @@ import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
+import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { host } from '../platform/host';
+import { host, getAccessToken } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
@@ -44,7 +46,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -175,29 +177,6 @@ const ACCENT_VARS = {
 
 const THINKING_PLACEHOLDER = 'Thinking...';
 
-// Friendly continuation prompts. We reach for one of these when the
-// user lands on a conversation that was streaming when the app or
-// server died (or the user closed the window mid-turn). The prompt
-// becomes a synthetic assistant message (or the tail of one) so the
-// user has something to react to instead of staring at frozen
-// "thinking" indicators.
-const CONTINUE_PROMPTS = [
-  'Looks like we paused mid-flow. Want to pick up where we left off?',
-  'Got cut off before I could finish. Should I keep going?',
-  "Hey — looks like our last run got cut short. Continue from here?",
-  "I lost my place when the session ended. Want me to resume the work?",
-  "Things stopped before I wrapped up. Ready to continue?",
-  "Looks like that turn didn't finish. Want me to take another swing at it?",
-  'We left this one mid-thought — keep going, or pivot to something else?',
-  "Got disconnected. Should I resume from where I was?",
-  "That last task didn't complete. Want to pick it back up?",
-  'Picking back up — should I continue, or are we moving on?',
-];
-
-function pickContinuePrompt() {
-  return CONTINUE_PROMPTS[Math.floor(Math.random() * CONTINUE_PROMPTS.length)];
-}
-
 function stripStreaming(messages) {
   return messages.filter((m) => m.role !== '_streaming');
 }
@@ -236,22 +215,10 @@ const RUNNING_STEP_STATUSES = new Set([
 
 // Reconcile a task's stored streaming/running state against whether
 // a real SSE stream is alive for it RIGHT NOW. Called when the user
-// navigates into a task. Three concerns:
-//
-//   1. `_streaming` UI placeholder rows — if no live stream exists
-//      for this task, the placeholder is a zombie from a previous
-//      run; drop it.
-//   2. Step rows whose `status` says they're still working —
-//      collapse them to `completed` so the progress box doesn't
-//      keep animating.
-//   3. If anything was clearly mid-flight (zombie placeholder, or a
-//      trailing user message with no assistant reply), append a
-//      friendly "continue?" assistant message — appending to the
-//      last assistant message when there is one, else inserting a
-//      fresh one. This is renderer-side only; it never goes to the
-//      server (anton's history stays clean) and it gets replaced as
-//      soon as the user sends their next message.
-function reconcileTaskMessages(messages, isLive, isServerInFlight = false, allowContinuation = true) {
+// navigates into a task:
+//   1. Drop `_streaming` / activity placeholders when not live.
+//   2. Collapse in-progress steps to `completed` when not tailing.
+function reconcileTaskMessages(messages, isLive, isServerInFlight = false) {
   if (!Array.isArray(messages)) return messages;
   if (isLive) return messages; // legitimate in-flight (local), leave alone
   // If the server says this conversation's producer is still running,
@@ -274,9 +241,6 @@ function reconcileTaskMessages(messages, isLive, isServerInFlight = false, allow
     if (!hasContent) return withThinkingPlaceholder(messages, { label: 'Running task…' });
     return messages;
   }
-  // Pass 1 — strip _streaming + activity placeholders, mark
-  // running steps as completed. Each rewritten message gets a flag
-  // so we can avoid double-tagging continuation prompts.
   const cleaned = messages
     .filter((m) => m && m.role !== '_streaming' && m.role !== 'activity')
     .map((m) => {
@@ -299,55 +263,7 @@ function reconcileTaskMessages(messages, isLive, isServerInFlight = false, allow
       return { ...m, ...(dirty ? { steps: nextSteps } : {}), ...(streamStatusFix || {}) };
     });
 
-  // Decide whether a continuation prompt is warranted.
-  //
-  // In the detached-buffer model a turn that finished writes a terminal
-  // record (response.completed/failed) and a returning client just
-  // re-tails the buffer — a client disconnect or a normal completion is
-  // NOT an interruption. So we nudge ONLY when the last turn is
-  // genuinely incomplete:
-  //   • a trailing user message with no assistant reply (producer died
-  //     before persisting anything), OR
-  //   • an assistant turn with no terminal AND no reply text.
-  // A stripped `_streaming` row on its own is just cleanup, never a
-  // signal of interruption (it was the previous trigger's false
-  // positive). Callers that already know the turn finished — e.g. the
-  // in-flight poll's finished-refetch — pass allowContinuation=false.
-  if (!allowContinuation) return cleaned;
-  const tail = cleaned.length > 0 ? cleaned[cleaned.length - 1] : null;
-  let wantContinuation = false;
-  if (tail && tail.role === 'user') {
-    wantContinuation = true;
-  } else if (tail && tail.role === 'assistant') {
-    const finished = tail._turnComplete
-      || (typeof tail.content === 'string' && tail.content.trim().length > 0);
-    wantContinuation = !finished;
-  }
-  if (!wantContinuation) return cleaned;
-
-  const prompt = pickContinuePrompt();
-  const last = cleaned[cleaned.length - 1];
-  if (last && last.role === 'assistant' && !last._continuationAppended) {
-    // Append to the existing assistant message (per request: "if the
-    // last message is from anton, append into it").
-    const sep = last.content && last.content.length ? '\n\n' : '';
-    return [
-      ...cleaned.slice(0, -1),
-      { ...last, content: (last.content || '') + sep + prompt, _continuationAppended: true },
-    ];
-  }
-  // Otherwise inject a fresh assistant message.
-  return [
-    ...cleaned,
-    {
-      role: 'assistant',
-      content: prompt,
-      steps: [],
-      startedAt: Date.now(),
-      _continuationAppended: true,
-      _client_only: true,
-    },
-  ];
+  return cleaned;
 }
 
 function removeThinkingPlaceholder(messages) {
@@ -507,7 +423,7 @@ function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
   for (const ev of events) {
-    try { state = reduceStream(state, ev); } catch {}
+    try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
   }
   return {
     steps: state.steps || [],
@@ -519,32 +435,92 @@ function reduceServerEvents(events, fallbackStartedAt) {
   };
 }
 
+function failedEventMeta(events) {
+  if (!Array.isArray(events)) return null;
+  const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
+  if (!ev) return null;
+  return {
+    code: ev.code || null,
+    message: ev.error || ev.message || '',
+    reconnectable: ev.reconnectable ?? null,
+    providerLabel: ev.provider_label ?? null,
+  };
+}
+
 // Walk a messages payload from the server and, for any assistant
 // turn that carries an `events` array (the new sidecar), derive
-// `steps`/`startedAt` via the live reducer. Drops the raw `events`
-// so React state doesn't carry the redundant log around.
+// `steps`/`startedAt` via the live reducer. A terminal
+// `response.failed` becomes a client-side error bubble after the
+// partial assistant turn. Drops the raw `events` array.
 function hydrateMessagesFromServerEvents(messages) {
   if (!Array.isArray(messages)) return messages;
-  return messages.map((m) => {
-    if (m.role !== 'assistant') return m;
-    const events = m.events;
-    if (!Array.isArray(events) || events.length === 0) return m;
-    const reduced = reduceServerEvents(events, m.startedAt);
+  const out = [];
+  for (const m of messages) {
+    if (!m || m.role !== 'assistant' || !Array.isArray(m.events) || m.events.length === 0) {
+      out.push(m);
+      continue;
+    }
+    const reduced = reduceServerEvents(m.events, m.startedAt);
     const { events: _drop, ...rest } = m;
-    if (!reduced) return rest;
-    // A turn that reached a terminal record (response.completed/failed)
-    // is finished — used downstream to decide it never needs a
-    // "didn't finish" continuation nudge.
+    if (!reduced) {
+      out.push(rest);
+      continue;
+    }
     const turnComplete = reduced.status === 'done' || reduced.status === 'error';
     const completeFlag = turnComplete ? { _turnComplete: true } : {};
-    if (reduced.steps.length === 0) return { ...rest, ...completeFlag };
-    return {
+    out.push({
       ...rest,
-      steps: reduced.steps,
-      startedAt: rest.startedAt || reduced.startedAt,
       ...completeFlag,
+      ...(reduced.steps.length > 0
+        ? { steps: reduced.steps, startedAt: rest.startedAt || reduced.startedAt }
+        : {}),
+    });
+    if (reduced.status === 'error') {
+      const failed = failedEventMeta(m.events);
+      const code = failed?.code || null;
+      const errText = failed?.message || 'An unexpected error occurred.';
+      if (isAntonConfigError(errText, { code })) {
+        out.push({ role: 'provider_required' });
+      } else {
+        out.push({
+          role: 'error',
+          content: normalizeAntonError(errText, { code }),
+          code,
+          reconnectable: failed?.reconnectable ?? null,
+          providerLabel: failed?.providerLabel ?? null,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function applySessionMessages(
+  cid,
+  rawMessages,
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
+) {
+  const hydrated = hydrateMessagesFromServerEvents(rawMessages);
+  const merged = skipLocalSidecar ? hydrated : mergeConvTurns(cid, hydrated);
+  return reconcileTaskMessages(merged, isLive, isServerInFlight);
+}
+
+async function loadSessionMessagesWithRetry(
+  cid,
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false } = {},
+) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
+    }
+    const fresh = await fetchSession(cid);
+    if (!fresh || !Array.isArray(fresh.messages)) continue;
+    return {
+      messages: applySessionMessages(cid, fresh.messages, { isLive, isServerInFlight, skipLocalSidecar }),
+      disabledConnections: fresh.disabledConnections,
     };
-  });
+  }
+  return null;
 }
 
 // Persist the full step set for one assistant turn so reload restores
@@ -590,6 +566,7 @@ function mergeConvTurns(cid, messages) {
   let assistantIdx = 0;
   return messages.map((m) => {
     if (m.role !== 'assistant') return m;
+    if (m._turnComplete) return m;
     const saved = map[assistantIdx];
     assistantIdx += 1;
     if (!saved || !Array.isArray(saved.steps) || saved.steps.length === 0) return m;
@@ -637,8 +614,10 @@ function mergeTasksFromServer(serverTasks, localTasks) {
     const l = localById.get(server.id);
     if (!l) return server;
     const lMessages = Array.isArray(l.messages) ? l.messages : [];
-    const isStreaming = lMessages.some((m) => m.role === '_streaming');
+    const sMessages = Array.isArray(server.messages) ? server.messages : [];
+    const isStreaming = lMessages.some((m) => m?.role === '_streaming');
     const hasLocalContent = lMessages.length > 0;
+    const countAssistants = (msgs) => (msgs || []).filter((m) => m?.role === 'assistant').length;
     if (!isStreaming && !hasLocalContent) {
       // Even without live messages, prefer the locally-bumped
       // updatedAt if it's newer — handleSendInTask stamps the task
@@ -646,6 +625,16 @@ function mergeTasksFromServer(serverTasks, localTasks) {
       // races between user-click-send and the first SSE event must
       // not overwrite the bump.
       return { ...server, updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt) };
+    }
+    if (!isStreaming && countAssistants(sMessages) > countAssistants(lMessages)) {
+      return {
+        ...server,
+        updatedAt: _newerUpdatedAt(l.updatedAt, server.updatedAt),
+        disabledConnections: l.disabledConnections ?? server.disabledConnections ?? [],
+        attachments: lMessages.length && Array.isArray(l.attachments) && l.attachments.length
+          ? l.attachments
+          : server.attachments,
+      };
     }
     return {
       ...server,
@@ -708,6 +697,8 @@ function AppCore() {
   const agentLabel = getAgentLabel(settings);
 
   const [tasks, setTasks] = useState([]);
+  const tasksRef = useRef(tasks);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   // IDs of tasks deleted this session. Used to filter them out of
   // subsequent fetchSessions responses so zombies can't reappear.
   const deletedTaskIdsRef = useRef(new Set());
@@ -725,7 +716,11 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState('agent');
+  const [ssoConnected, setSsoConnected] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -746,6 +741,7 @@ function AppCore() {
   // mid-turn)" when the user navigates back to it. See
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
+  const activeStreamGenerationRef = useRef(0);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
@@ -795,14 +791,11 @@ function AppCore() {
               if (!fresh || !Array.isArray(fresh.messages)) return;
               setTasks((tasksPrev) => tasksPrev.map((t) => {
                 if (t.id !== cid) return t;
-                const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
-                const enriched = mergeConvTurns(cid, fromServer);
-                // The producer just LEFT the in-flight list → this turn
-                // finished. Never inject a "didn't finish" nudge here
-                // (allowContinuation=false): if it errored, the persisted
-                // response.failed renders normally; a genuine interruption
-                // is caught on open via the terminal-aware path.
-                return { ...t, messages: reconcileTaskMessages(enriched, false, false, false), status: 'idle' };
+                return {
+                  ...t,
+                  messages: applySessionMessages(cid, fresh.messages),
+                  status: 'idle',
+                };
               }));
             }).catch(() => {});
           });
@@ -841,6 +834,20 @@ function AppCore() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshInFlightSet]);
+
+  // Stray-drop guard: a file dropped OUTSIDE a registered dropzone would
+  // otherwise make the (Electron) window navigate to / open the file.
+  // Swallowing the default dragover+drop at the window level kills that
+  // navigation; React's per-zone onDrop still fires (it stops propagation).
+  useEffect(() => {
+    const prevent = (e) => { e.preventDefault(); };
+    window.addEventListener('dragover', prevent, false);
+    window.addEventListener('drop', prevent, false);
+    return () => {
+      window.removeEventListener('dragover', prevent, false);
+      window.removeEventListener('drop', prevent, false);
+    };
+  }, []);
 
   // Heartbeat poll — every 5 seconds, but ONLY while the set is
   // non-empty. When nothing's in flight, an idle tab makes zero
@@ -884,97 +891,121 @@ function AppCore() {
   };
 
   const handleStopStream = useCallback(async (opts = {}) => {
-    // `silent: true` aborts the stream without leaving the "Task stopped"
-    // assistant placeholder behind — used when the caller is about to
-    // remove the user turn anyway (delete flow), so the placeholder
-    // would just flash on screen for a frame before being pruned.
     const silent = opts?.silent === true;
-    // Snapshot the conversation_id BEFORE we clear the ref — we need
-    // it for the server-side cancel call below.
-    const cidToCancel = activeStreamingTaskIdRef.current;
-    // 1) Cancel the running scratchpad (if any) so anton stops
-    //    executing user code mid-cell.
+    activeStreamGenerationRef.current += 1;
+
+    let cidToCancel = activeStreamingTaskIdRef.current;
+    if (!cidToCancel) {
+      const streamingTask = tasksRef.current.find(
+        (t) => (t.messages || []).some((m) => m.role === '_streaming'),
+      );
+      cidToCancel = streamingTask?.id ?? null;
+    }
+
     const padName = activeScratchpadRef.current;
     if (padName) {
       try { await cancelScratchpad(padName); } catch {}
     }
-    // 2) Phase 3 — explicit server-side cancel. Under the Phase 1
-    //    producer/consumer split, aborting the SSE fetch alone no
-    //    longer halts the underlying turn; we have to signal the
-    //    producer task directly. Fire-and-forget: we don't await it
-    //    on the user-facing path because local state teardown is what
-    //    the user actually sees. The producer's CancelledError branch
-    //    handles history finalize + buffer Cancelled terminal.
-    if (cidToCancel) {
-      cancelResponse(cidToCancel).catch(() => { /* idempotent */ });
-      // Cache: we just told the server to cancel, so this conversation
-      // is no longer "in flight" from our point of view. The fetch
-      // abort below will short-circuit the SSE consumer before its
-      // onDone/onError fires, so we can't rely on those to update the
-      // cache — drop the mark here.
-      markInFlightDone(cidToCancel);
-    }
-    // 3) Abort the SSE fetch so the renderer stops accumulating events.
-    //    With Phase 1 this is only consumer-side cleanup; the producer
-    //    is unaffected (good when the user closes a tab, also OK here
-    //    because step 2 already told the producer to stop).
+
     const ctrl = activeStreamCtrlRef.current;
     if (ctrl) {
       try { ctrl.abort(); } catch {}
       activeStreamCtrlRef.current = null;
     }
-    activeScratchpadRef.current = null;
-    activeStreamingTaskIdRef.current = null;
-
-    if (silent) {
-      // Just strip the `_streaming` + stale `activity` rows; the caller
-      // will follow up with its own state mutation (e.g. delete the user
-      // turn) and we don't want a "stopped" message lingering between.
-      setTasks((prev) => prev.map((t) => {
-        const before = t.messages || [];
-        const filtered = before.filter((m) => m.role !== '_streaming' && m.role !== 'activity');
-        if (filtered.length === before.length) return t;
-        return { ...t, status: 'idle', messages: filtered };
-      }));
-      return;
-    }
-
-    // 3) Roll the streaming placeholder into a final assistant
-    //    message. Drop the in-flight steps so the rail's Progress
-    //    + ThinkingBlock collapse cleanly, and leave a friendly
-    //    confirmation in place of any partial body text.
-    const STOP_MESSAGES = [
-      'Task stopped — let me know what to try next.',
-      'Got it, I stepped back. Want to take another angle?',
-      'Stopped here. What would you like me to do instead?',
-      'Paused as requested. Ready when you are.',
-      'All halted. Tell me how to proceed.',
-      'Done — execution stopped on your call.',
-      'Standing by. Send another prompt when you\'re ready.',
-      'Task halted gracefully. What\'s next?',
-    ];
-    const stoppedMsg = STOP_MESSAGES[Math.floor(Math.random() * STOP_MESSAGES.length)];
 
     setTasks((prev) => prev.map((t) => {
-      const streaming = (t.messages || []).find((m) => m.role === '_streaming');
+      const streaming = (t.messages || []).some((m) => m.role === '_streaming');
+      if (!streaming && t.id !== cidToCancel) return t;
       if (!streaming) return t;
-      const others = t.messages
-        .filter((m) => m.role !== '_streaming')
-        .filter((m) => m.role !== 'activity'); // also clear stale activity rows
       return {
         ...t,
         status: 'idle',
-        messages: [...others, {
-          role: 'assistant',
-          content: stoppedMsg,
-          // Empty steps so Progress + ThinkingBlock stop rendering
-          // for this turn — the rail returns to its idle state.
-          steps: [],
-          startedAt: streaming.startedAt,
-        }],
+        messages: (t.messages || []).filter(
+          (m) => m.role !== '_streaming' && m.role !== 'activity',
+        ),
       };
     }));
-  }, []);
+
+    if (cidToCancel) {
+      try { await cancelResponse(cidToCancel); } catch { /* idempotent */ }
+      markInFlightDone(cidToCancel);
+      setMessageQueue((prev) => {
+        const next = { ...prev };
+        delete next[cidToCancel];
+        return next;
+      });
+    }
+
+    activeScratchpadRef.current = null;
+    activeStreamingTaskIdRef.current = null;
+
+    if (silent || !cidToCancel) return;
+
+    try {
+      const loaded = await loadSessionMessagesWithRetry(cidToCancel, { skipLocalSidecar: true });
+      if (loaded) {
+        setTasks((prev) => prev.map((t) =>
+          t.id === cidToCancel
+            ? {
+                ...t,
+                status: 'idle',
+                messages: loaded.messages,
+                ...(Array.isArray(loaded.disabledConnections)
+                  ? { disabledConnections: loaded.disabledConnections }
+                  : {}),
+              }
+            : t,
+        ));
+      }
+    } catch { /* placeholders already stripped */ }
+  }, [markInFlightDone]);
+
+  const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
+    if (event?.code === 'cancelled') return;
+    activeStreamCtrlRef.current = null;
+    activeScratchpadRef.current = null;
+    activeStreamingTaskIdRef.current = null;
+    const ids = [...new Set(taskIds.filter(Boolean))];
+    ids.forEach((id) => markInFlightDone(id));
+
+    const loaded = cid ? await loadSessionMessagesWithRetry(cid) : null;
+    setTasks((prev) => prev.map((t) => {
+      if (!ids.includes(t.id)) return t;
+      if (loaded) {
+        const hasError = loaded.messages.some(
+          (m) => m.role === 'error' || m.role === 'provider_required',
+        );
+        return {
+          ...t,
+          status: hasError ? 'error' : 'idle',
+          messages: loaded.messages,
+          ...(Array.isArray(loaded.disabledConnections)
+            ? { disabledConnections: loaded.disabledConnections }
+            : {}),
+        };
+      }
+      const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
+      const configError = isAntonConfigError(message, event);
+      const displayError = normalizeAntonError(message, event);
+      const trailer = configError
+        ? { role: 'provider_required' }
+        : {
+            role: 'error',
+            content: displayError,
+            code: event?.code,
+            reconnectable: event?.reconnectable ?? null,
+            providerLabel: event?.provider_label ?? null,
+          };
+      return {
+        ...t,
+        status: configError ? 'idle' : 'error',
+        messages: [...msgs, trailer],
+      };
+    }));
+    if (isAntonConfigError(message, event)) {
+      fetchHealth().then((h) => setHealth(h));
+    }
+  }, [markInFlightDone]);
 
   // Per-task streaming state is derived inside ChatView (it has the
   // task object via props). Don't compute it here — `activeTaskId` is
@@ -985,7 +1016,7 @@ function AppCore() {
   // cowork-server) — labels derived from ids, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
   const models = useMemo(() => {
-    const providerType = providerValueToType(settings.planningProvider) || 'anthropic';
+    const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType)
       .map((o) => ({ id: o.id, name: o.label, desc: '' }));
   }, [settings.recommendedModels, settings.planningProvider]);
@@ -1174,7 +1205,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize | settings
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -1195,6 +1226,7 @@ function AppCore() {
   const [serverOnline, setServerOnline] = useState(host.isWeb);
   const [serverBusy, setServerBusy] = useState(false);
   const [serverBusyKind, setServerBusyKind] = useState('starting'); // 'starting' | 'stopping'
+
   // `config_ready` deliberately omitted from the initial state — the
   // boot-time settings redirect at line ~798 keys off `=== false` so
   // that "not yet fetched" (undefined) and "server confirmed
@@ -1203,6 +1235,13 @@ function AppCore() {
   // serverOnline starts true (the web shell), before fetchHealth has
   // even returned.
   const [health, setHealth] = useState({ status: 'offline', anton_available: false });
+
+  // Desktop "app installed" — fire once per install, after the backend is up
+  // (health 'ok') and an identity is available. trackAppInstalled self-guards
+  // (localStorage marker + waits for a distinct_id), so re-running is safe.
+  useEffect(() => {
+    if (host.isElectron && health.status === 'ok') trackAppInstalled();
+  }, [health.status]);
 
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
@@ -1243,6 +1282,27 @@ function AppCore() {
   useEffect(() => {
     refreshData();
   }, [refreshData]);
+
+  const handleServerStart = useCallback(async () => {
+    setServerBusyKind('starting');
+    setServerBusy(true);
+    try {
+      const result = await host.serverStart?.();
+      if (result) {
+        setServerOnline(!!result.running);
+        if (result.running) setTimeout(refreshData, 400);
+      }
+    } catch {} finally { setServerBusy(false); }
+  }, [refreshData]);
+
+  const handleServerStop = useCallback(async () => {
+    setServerBusyKind('stopping');
+    setServerBusy(true);
+    try {
+      const result = await host.serverStop?.();
+      if (result) setServerOnline(!!result.running);
+    } catch {} finally { setServerBusy(false); }
+  }, []);
 
   // Allow descendants (e.g. ProjectsView's rename / create flow) to
   // ask for a fresh projects list without prop-drilling a refetch
@@ -1358,7 +1418,7 @@ function AppCore() {
     if (host.isWeb) return;
     if (health.config_ready === false) {
       bootConfigRedirectFiredRef.current = true;
-      setRoute('settings');
+      setSettingsOpen(true);
     }
   }, [serverOnline, health.config_ready]);
 
@@ -1580,19 +1640,25 @@ function AppCore() {
     };
 
     activeStreamingTaskIdRef.current = taskId;
+    const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = tailInFlight(taskId, {
       fromSeq: 0, // Replay from the start — the reducer is idempotent
                   // over text deltas, and from_seq=0 keeps the rebuild
                   // simple. A per-task last-seen-seq optimisation is
                   // possible later if we see network overhead.
       onEvent(ev) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         streamState = reduceStream(streamState, ev);
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
       },
-      onChunk(chunk) { assistantContent += chunk; },
+      onChunk(chunk) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
+        assistantContent += chunk;
+      },
       onDone() {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -1628,24 +1694,13 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
-        const configError = isAntonConfigError(message, event);
-        const displayError = normalizeAntonError(message, event);
-        activeStreamCtrlRef.current = null;
-        activeScratchpadRef.current = null;
-        activeStreamingTaskIdRef.current = null;
-        markInFlightDone(taskId);
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== taskId) return t;
-          const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          const trailer = configError
-            ? { role: 'provider_required' }
-            : { role: 'error', content: displayError, code: event?.code };
-          return { ...t, status: configError ? 'idle' : 'error', messages: [...msgs, trailer] };
-        }));
+        if (event?.code === 'cancelled') return;
+        if (streamGen !== activeStreamGenerationRef.current) return;
+        void handleStreamError([taskId], taskId, message, event);
       },
     });
     return true;
-  }, [markInFlight, markInFlightDone]);
+  }, [markInFlight, markInFlightDone, handleStreamError]);
 
   const selectTask = (id) => {
     if (isNarrow) setMobileSidebarOpen(false);
@@ -1661,13 +1716,9 @@ function AppCore() {
       }).catch(() => {});
 
       // Is this conversation actually mid-stream right now? If yes,
-      // we LEAVE running indicators alone. If no, the reconcile pass
-      // will collapse zombie steps and may inject a "want to
-      // continue?" prompt for the user.
-      const isLive = (
-        !!activeStreamCtrlRef.current
-        && activeStreamingTaskIdRef.current === id
-      );
+      // we LEAVE running indicators alone. If no, reconcile strips
+      // zombie placeholders and collapses stale step state.
+      const isLive = activeStreamingTaskIdRef.current === id;
 
       // Cross-client cache (Option B): when the server says this
       // conversation's producer is still running, skip the "things
@@ -1693,9 +1744,7 @@ function AppCore() {
           //      anyone reading the conversation gets the same view.
           //   2. localStorage sidecar — legacy fallback for turns
           //      created before the server sidecar shipped.
-          const fromServer = hydrateMessagesFromServerEvents(fresh.messages);
-          const enriched = mergeConvTurns(id, fromServer);
-          const reconciled = reconcileTaskMessages(enriched, isLive, isServerInFlight);
+          const reconciled = applySessionMessages(id, fresh.messages, { isLive, isServerInFlight });
           const dc = Array.isArray(fresh.disabledConnections) ? fresh.disabledConnections : undefined;
           setTasks((prev) => prev.map((t) =>
             t.id === id ? {
@@ -1710,9 +1759,7 @@ function AppCore() {
         // any data persisted in a prior session.
         setTasks((prev) => prev.map((t) => {
           if (t.id !== id) return t;
-          const fromServer = hydrateMessagesFromServerEvents(t.messages);
-          const enriched = mergeConvTurns(id, fromServer);
-          return { ...t, messages: reconcileTaskMessages(enriched, isLive, isServerInFlight) };
+          return { ...t, messages: applySessionMessages(id, t.messages, { isLive, isServerInFlight }) };
         }));
       }
     }
@@ -1731,6 +1778,17 @@ function AppCore() {
     if (isNarrow) setMobileSidebarOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
+    setComposerPrefill(null);
+    setRoute('home');
+  };
+
+  const handleNavigateHomeWithPrefill = (text, projectName) => {
+    setActiveTaskId(null);
+    setComposerAttachments([]);
+    setComposerPrefill({ text, bump: Date.now() });
+    const targetName = projectName || 'general';
+    const proj = projects.find((p) => p.name === targetName);
+    if (proj) setSelectedProject(proj);
     setRoute('home');
   };
 
@@ -2109,7 +2167,27 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
   }, []);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
+  }, [settingsOpen]);
+
+  const handleSsoSignIn = async () => {
+    if (!host.isElectron) return;
+    const loginResult = await host.mindshubLogin();
+    if (!loginResult?.ok) return;
+    await host.mindshubFinalize().catch(() => {});
+    setSsoConnected(true);
+    refreshData();
+  };
+
   const navigate = (key) => {
+    if (key === 'settings' || key.startsWith('settings:')) {
+      const section = key.includes(':') ? key.split(':')[1] : null;
+      if (section) setSettingsSection(section);
+      setSettingsOpen(true);
+      return;
+    }
     if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -2304,6 +2382,22 @@ function AppCore() {
 
     let assistantContent = '';
     let resolvedId = taskId;
+    // Server mints the canonical id on `response.created` for tmp- tasks.
+    // adoptServerId keeps activeStreamingTaskIdRef (and cancel) in sync.
+    const adoptServerId = (sid) => {
+      if (!sid || sid === resolvedId) return;
+      const previousId = resolvedId;
+      resolvedId = sid;
+      setTasks((prev) => prev.map((t) =>
+        t.id === previousId || t.id === taskId ? { ...t, id: sid } : t,
+      ));
+      if (activeStreamingTaskIdRef.current === previousId) {
+        activeStreamingTaskIdRef.current = sid;
+      }
+      markInFlightDone(previousId);
+      markInFlight(sid);
+      setActiveTaskId((curr) => (curr === previousId ? sid : curr));
+    };
     // Adapter state — folded by every raw SSE event so the streaming
     // message can carry structured ThinkingStep[] for the UI.
     let streamState = initialStreamState();
@@ -2350,8 +2444,11 @@ function AppCore() {
       // Tag which task is mid-flight so reconcileTaskMessages can
       // tell legitimate running indicators from zombies on reload.
       activeStreamingTaskIdRef.current = taskId;
+      markInFlight(taskId);
     };
     trackAgentSessionStarted();
+    trackFirstQuery();
+    const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(text, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
@@ -2360,6 +2457,9 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
+        const sid = ev?.conversation_id || ev?.response?.conversation_id;
+        if (sid) adoptServerId(sid);
         streamState = reduceStream(streamState, ev);
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
@@ -2368,53 +2468,30 @@ function AppCore() {
         flushSync(() => flushStreamingMessage());
       },
       onChunk(chunk, sid) {
-        if (sid && sid !== resolvedId) {
-          const previousId = resolvedId;
-          resolvedId = sid;
-          setTasks((prev) => prev.map((t) =>
-            t.id === previousId || t.id === taskId
-              ? { ...t, id: sid }
-              : t,
-          ));
-          setActiveTaskId(sid);
-        }
+        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (sid) adoptServerId(sid);
         assistantContent += chunk;
-        // The adapter already accumulates bodyText; the chunk callback
-        // remains the source of truth for resolving conversation id.
       },
       onProgress(event, sid) {
-        // Track the resolved conversation id (in case onChunk hasn't
-        // run yet for this stream — onChunk does the same dance).
-        if (sid && sid !== resolvedId) {
-          const previousId = resolvedId;
-          resolvedId = sid;
-          setTasks((prev) => prev.map((t) => t.id === previousId || t.id === taskId ? { ...t, id: sid } : t));
-          setActiveTaskId(sid);
-        }
+        if (streamGen !== activeStreamGenerationRef.current) return;
+        if (sid) adoptServerId(sid);
         // Intentionally a no-op for messages: every `response.in_progress`
         // event already passed through onEvent → flushStreamingMessage,
         // which is the source of truth for the streaming row + steps.
-        // The previous implementation appended an `activity` row here
-        // and stripped the `_streaming` row in the process — but the
-        // chat scroll filters activity rows out (they're never visible)
-        // while losing the streaming row blanked the AnswerTurn until
-        // the body deltas started.
       },
       onToolResult(event, sid) {
-        if (sid && sid !== resolvedId) {
-          const previousId = resolvedId;
-          resolvedId = sid;
-          setTasks((prev) => prev.map((t) => t.id === previousId || t.id === taskId ? { ...t, id: sid } : t));
-          setActiveTaskId(sid);
-        }
+        if (sid) adoptServerId(sid);
         // See onProgress comment — same reasoning. The adapter (via
         // onEvent) captures scratchpad results into the steps array.
       },
       onDone(sid) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
         const finalId = sid || resolvedId;
+        markInFlightDone(finalId);
+        if (finalId !== taskId) markInFlightDone(taskId);
         const finalContent = streamState.bodyText || assistantContent;
         const finalSteps = streamState.steps;
         const finalStartedAt = streamState.startedAt;
@@ -2461,20 +2538,9 @@ function AppCore() {
         fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
       },
       onError(message, event) {
-        const configError = isAntonConfigError(message, event);
-        const displayError = normalizeAntonError(message, event);
-        activeStreamCtrlRef.current = null;
-        activeScratchpadRef.current = null;
-        activeStreamingTaskIdRef.current = null;
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== resolvedId && t.id !== taskId) return t;
-          const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          const trailer = configError
-            ? { role: 'provider_required' }
-            : { role: 'error', content: displayError, code: event?.code };
-          return { ...t, status: configError ? 'idle' : 'error', messages: [...msgs, trailer] };
-        }));
-        fetchHealth().then((h) => setHealth(h));
+        if (event?.code === 'cancelled') return;
+        if (streamGen !== activeStreamGenerationRef.current) return;
+        void handleStreamError([resolvedId, taskId], resolvedId, message, event);
       },
     });
 
@@ -2660,6 +2726,7 @@ function AppCore() {
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
     activeStreamingTaskIdRef.current = id;
+    const streamGen = activeStreamGenerationRef.current;
     activeStreamCtrlRef.current = streamMessage(id, sendText, {
       projectName: taskProjectName,
       projectPath: taskProjectPath,
@@ -2667,6 +2734,7 @@ function AppCore() {
       attachmentIds,
       disabledConnections: disabledForSend,
       onEvent(ev) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         // Adopt the server's canonical id as soon as it lands. The
         // server's `chat_stream` strips `tmp-` prefixes and mints a
         // fresh id; the new value rides on `response.created`.
@@ -2678,6 +2746,7 @@ function AppCore() {
         flushSync(() => flushStreaming());
       },
       onChunk(chunk, sid) {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         if (sid) adoptServerId(sid);
         // The adapter accumulates bodyText already; this callback is
         // redundant for content but cheap and useful as a fallback if
@@ -2685,6 +2754,7 @@ function AppCore() {
         assistantContent += chunk;
       },
       onDone() {
+        if (streamGen !== activeStreamGenerationRef.current) return;
         activeStreamCtrlRef.current = null;
         activeScratchpadRef.current = null;
         activeStreamingTaskIdRef.current = null;
@@ -2729,28 +2799,15 @@ function AppCore() {
         }
       },
       onError(message, event) {
-        const configError = isAntonConfigError(message, event);
-        const displayError = normalizeAntonError(message, event);
-        activeStreamCtrlRef.current = null;
-        activeScratchpadRef.current = null;
-        activeStreamingTaskIdRef.current = null;
-        markInFlightDone(resolvedId);
-        if (resolvedId !== id) markInFlightDone(id);
-        setTasks((prev) => prev.map((t) => {
-          if (t.id !== id && t.id !== resolvedId) return t;
-          const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          const trailer = configError
-            ? { role: 'provider_required' }
-            : { role: 'error', content: displayError, code: event?.code };
-          return { ...t, status: configError ? 'idle' : 'error', messages: [...msgs, trailer] };
-        }));
-        fetchHealth().then((h) => setHealth(h));
-        // Same drain on error so a failed turn doesn't strand the
-        // queue. The next item gets its own shot at the LLM.
-        const next = popQueueHead(id);
-        if (next) {
-          Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
-        }
+        if (event?.code === 'cancelled') return;
+        if (streamGen !== activeStreamGenerationRef.current) return;
+        void (async () => {
+          await handleStreamError([resolvedId, id], resolvedId, message, event);
+          const next = popQueueHead(id);
+          if (next) {
+            Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || []));
+          }
+        })();
       },
     });
   };
@@ -2858,7 +2915,7 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
-              trackDataSourceConnected(currentForm._connector_id || currentForm.engine || 'unknown');
+              trackDataSourceConnected(formSpec?._connector_id || formSpec?.engine || currentForm._connector_id || currentForm.engine || name || 'unknown');
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,
@@ -3052,8 +3109,7 @@ function AppCore() {
     // If anton is actively streaming a response to the turn being
     // deleted, stop the stream first so the SSE connection doesn't
     // keep producing events for a turn that no longer exists. The
-    // silent flag keeps the abort from injecting a "Task stopped"
-    // placeholder which would only flash before being pruned.
+    // silent flag skips the post-cancel session refetch.
     if (activeStreamingTaskIdRef.current === taskId) {
       try { await handleStopStream({ silent: true }); } catch {}
     }
@@ -3102,7 +3158,9 @@ function AppCore() {
       const fresh = await fetchSession(taskId);
       if (fresh && Array.isArray(fresh.messages)) {
         setTasks((prev) => prev.map((t) =>
-          t.id === taskId ? { ...t, messages: fresh.messages } : t,
+          t.id === taskId
+            ? { ...t, messages: applySessionMessages(taskId, fresh.messages) }
+            : t,
         ));
       }
     } catch {}
@@ -3333,6 +3391,7 @@ function AppCore() {
           artifactsCount={artifacts.length}
           connectorsCount={connectors.length}
           activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
+          settingsActive={settingsOpen}
           activeTaskId={activeTaskId}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
@@ -3366,7 +3425,7 @@ function AppCore() {
           showCounters={settings.showCounters !== false}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
-          onShowServerHelp={() => setServerHelpOpen(true)}
+          onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
           onToggleServer={async () => {
             if (serverBusy) return;
             // Decide intent from main's actual state, not renderer state.
@@ -3439,11 +3498,12 @@ function AppCore() {
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
             configReady={health.config_ready ?? settings.configReady}
             configError={health.config_error ?? settings.configError}
-            onOpenSettings={() => setRoute('settings')}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
             serverOnline={serverOnline}
             agentLabel={agentLabel}
-            onShowServerHelp={() => setServerHelpOpen(true)}
+            onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
             skipIntro={bootIntroDone}
+            prefill={composerPrefill}
           />
         )}
 
@@ -3451,7 +3511,7 @@ function AppCore() {
           <ChatView
             task={currentTask}
             onSend={handleSendInTask}
-            onOpenSettings={() => setRoute('settings')}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
             queuedMessages={messageQueue[currentTask?.id] || []}
             onRemoveFromQueue={(itemId) => removeFromQueue(currentTask?.id, itemId)}
             onBack={() => {
@@ -3631,31 +3691,71 @@ function AppCore() {
           />
         )}
 
-        {route === 'dispatch' && (
-          <ChannelsView />
-        )}
 
         {route === 'customize' && (
           <CustomizeView
             connectors={connectors}
             onConnectionsSynced={(next) =>
               setConnectors(Array.isArray(next) ? next : [])}
-            onOpenSettings={() => setRoute('settings')}
+            onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
             onConnectNew={handleStartConnectChat}
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
           />
         )}
 
-        {route === 'settings' && (
-          <SettingsView settings={settings} setSetting={setSetting} onSave={saveSettings} theme={theme} onThemeChange={setTheme} skin={skin} onSkinChange={setSkin} customTheme={customTheme} onCustomThemeChange={setCustomTheme} agentLabel={agentLabel} />
-        )}
+        {/* Settings modal — rendered over whatever route is active */}
+        <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
+          <ModalHeader
+            id="settings-modal-title"
+            title="Settings"
+            onClose={() => setSettingsOpen(false)}
+            right={!ssoConnected && host.isElectron ? (
+              <button
+                type="button"
+                onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
+                title="Sign in with MindsHub to use managed models"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '5px 11px', borderRadius: 7,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'transparent',
+                  color: 'var(--ink-3)',
+                  fontFamily: 'var(--font-body)', fontSize: 12.5,
+                  cursor: 'pointer', flexShrink: 0,
+                  transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+              >Sign in</button>
+            ) : undefined}
+          />
+          <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <SettingsView
+              settings={settings} setSetting={setSetting} onSave={saveSettings}
+              theme={theme} onThemeChange={setTheme}
+              skin={skin} onSkinChange={setSkin}
+              customTheme={customTheme} onCustomThemeChange={setCustomTheme}
+              agentLabel={agentLabel}
+              section={settingsSection}
+              onSectionChange={setSettingsSection}
+              serverOnline={serverOnline}
+              serverBusy={serverBusy}
+              serverBusyKind={serverBusyKind}
+              onStartServer={handleServerStart}
+              onStopServer={handleServerStop}
+              isSsoConnected={ssoConnected}
+              onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+            />
+          </ModalBody>
+        </Modal>
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {['memory', 'skills', 'publish'].includes(route) && (
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}
             project={selectedProject}
@@ -3739,46 +3839,8 @@ function AppCore() {
         serverBusy={serverBusy}
         serverBusyKind={serverBusyKind}
         agentLabel={agentLabel}
-        onStart={async () => {
-          // Atomic start — used by both the offline "Start" button
-          // and the composed "Restart" path inside the modal.
-          setServerBusyKind('starting');
-          setServerBusy(true);
-          try {
-            if (serverOnline) {
-              setServerBusyKind('stopping');
-              setServerBusy(true);
-              try {
-                const stopRes = await host.serverStop?.();
-                if (stopRes) setServerOnline(!!stopRes.running);
-              } catch {}
-            }
-            setServerBusyKind('starting');
-            setServerBusy(true);
-            const result = await host.serverStart?.();
-            if (result) {
-              setServerOnline(!!result.running);
-              if (result.running) setTimeout(refreshData, 400);
-            }
-          } catch {} finally {
-            setServerBusy(false);
-          }
-        }}
-        onStop={async () => {
-          // Atomic stop — used by the new modal "Stop" button so the
-          // user can shut down the backend without it immediately
-          // re-starting. The previous single-button onRetry forced
-          // stop+start every click and made it impossible to leave
-          // the backend off.
-          setServerBusyKind('stopping');
-          setServerBusy(true);
-          try {
-            const result = await host.serverStop();
-            if (result) setServerOnline(!!result.running);
-          } catch {} finally {
-            setServerBusy(false);
-          }
-        }}
+        onStart={handleServerStart}
+        onStop={handleServerStop}
       />
       )}
 

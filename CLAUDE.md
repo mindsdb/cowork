@@ -12,16 +12,28 @@ Electron 39 + Vite + React 19 + Tailwind desktop app with a FastAPI Python sidec
 ### Build & run
 
 ```sh
-# Full Electron build → release/mac-arm64/Minds Cowork.app
+# Full Electron build → release/mac-arm64/MindsHub Cowork.app
 PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run pack
+```
 
-# Dev mode — hot-reloads renderer (needs cowork-server running separately)
 - Output: `release/mac-arm64/MindsHub Cowork.app`
 - Confirm with: `stat -f "%Sm" -t "%H:%M:%S" "release/mac-arm64/MindsHub Cowork.app"`
 - Code-sign warnings ("0 valid identities found") are expected in dev — ignore.
 - Build is the only way to verify Python server changes; the renderer is bundled into the same artifact.
 
-## Dev mode (renderer only, faster iteration)
+> **iCloud builds** — If the repo lives under `~/Documents` (iCloud Drive), codesign will fail with
+> `resource fork, Finder information, or similar detritus not allowed` on the GPU Helper binary.
+> The `scripts/strip-xattrs.js` `afterPack` hook clears `com.apple.provenance` and
+> `com.apple.FinderInfo`, but iCloud re-tags binaries in the race window before signing.
+> Build to `/tmp` instead and copy back:
+>
+> ```sh
+> PATH="/opt/homebrew/opt/node@20/bin:$PATH" \
+>   npx electron-builder --mac --arm64 --config.directories.output=/tmp/minds-build
+> cp -R /tmp/minds-build/mac-arm64 release/
+> ```
+
+### Dev mode (renderer only, faster iteration)
 
 ```sh
 PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run dev
@@ -30,10 +42,6 @@ PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run dev
 npm run dev:web
 npm run build:web   # → dist/renderer-web/
 ```
-
-Confirm build timestamp: `stat -f "%Sm" -t "%H:%M:%S" "release/mac-arm64/Minds Cowork.app"`
-
-Code-sign warnings ("0 valid identities found") are expected in dev — ignore.
 
 ### Type checking
 
@@ -57,7 +65,16 @@ uv run cowork-server
 # or %LOCALAPPDATA%/bin/cowork-server.exe (Windows)
 ```
 
-FastAPI runs loopback-only at `127.0.0.1:26866`. CORS is locked to the renderer origin.
+FastAPI runs loopback-only at `127.0.0.1:26866`. CORS defaults to localhost origins only; override with `COWORK_ALLOWED_ORIGINS='["*"]'` for cloud/VPC deployments or an ingress-controlled environment.
+
+**Optional bearer-token authentication** — off by default. Set in `~/.cowork/.env`:
+
+```
+COWORK_REQUIRE_AUTH=true
+COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
+```
+
+When `COWORK_REQUIRE_AUTH=true` and `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. The `/api/v1/health/` endpoint is always exempt.
 
 #### Install source & channel
 
@@ -71,6 +88,7 @@ Default: **git, branch `main`** for both. Override via env (the parent `minds` r
 | `COWORK_SERVER_REF` | `main` | cowork-server branch / tag / commit (git channel) |
 | `ANTON_REF` | `main` | anton branch / tag / commit — applied via `uv ... --with`, overriding cowork-server's `tool.uv.sources` pin |
 | `COWORK_SERVER_PACKAGE` | — | escape hatch: a literal `uv` spec (local path, custom URL); wins over all |
+| `ANTON_PACKAGE` | — | escape hatch for anton; only honoured when `COWORK_SERVER_PACKAGE` is also set. Must be an absolute path or valid `uv` spec. **Requires** `backend/core_api/pyproject.toml` `[tool.uv.sources]` to be updated to `{ path = "../../core_agent" }` first — uv rejects conflicting URL sources for the same package. |
 
 ```sh
 # develop against a feature branch of anton + cowork-server:
@@ -140,6 +158,12 @@ Settings live in `~/.anton/.env` (API keys, consent flags, provider choice). Ser
 ### Theming
 
 Dark/light via `body[data-theme="dark"]` selector. Colors defined as CSS variables (`--bg`, `--surface`, `--ink`, `--accent`, …) and aliased in [tailwind.config.js](tailwind.config.js). Tailwind's preflight is disabled to preserve existing inline styles.
+
+### Renderer component layering
+
+- **`components/ui/`** — pure primitives (buttons, inputs, cards, menu/modal primitives, pills, spinners). No product-specific logic.
+- **`components/`** — reusable app-level compositions (`OverflowMenu`, `ConfirmModal`, `TaskMenu`) that combine primitives with Cowork icons/labels/patterns.
+- **Feature folders** (`rail/`, `task/`, `project/`, etc.) — domain-specific components. Prefer shared `Menu` or `OverflowMenu` over hand-rolling portals/outside-click/keyboard handling.
 
 ## Misc
 

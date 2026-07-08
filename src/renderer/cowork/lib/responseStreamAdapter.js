@@ -1,4 +1,4 @@
-import { trackArtifactBuilt as _trackArtifactBuilt } from './analytics';
+import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -12,11 +12,15 @@ import { trackArtifactBuilt as _trackArtifactBuilt } from './analytics';
 //                                   thought.progress             (phase markers)
 //                                   thought.scratchpad.result    (cell output)
 //   response.output_text.delta  — body text streaming, `delta` field
+//   response.artifact_created   — an artifact this turn produced (any type);
+//                                 carries an `artifact` payload → one card
 //   response.completed | failed — terminal
 //
 // We collapse each scratchpad cell (start → end → progress → result) into
-// a single ThinkingStep. progress.publish_or_preview produces a separate
-// "Artifact" step from the JSON in the *following* progress event.
+// a single ThinkingStep. response.artifact_created produces a separate
+// "Artifact" step (card) — the single, deterministic source of artifact
+// cards for every type, emitted by the harness at turn end and replayed
+// identically on reload.
 //
 // Usage:
 //
@@ -40,13 +44,12 @@ export function initialStreamState() {
     steps: [],
     /** Streaming/finished body text (markdown). */
     bodyText: '',
-    /** Set when we've seen 'publish_or_preview' and expect the next
-     *  progress content to be the artifact JSON payload. */
-    awaitingArtifactPayload: false,
     /** Harness/agent ID from `response.created` (e.g. 'anton', 'hermes'). */
     harness: null,
     /** Surfaced for diagnostics if a failure event arrives. */
     error: null,
+    /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
+    errorCode: null,
   };
 }
 
@@ -203,7 +206,7 @@ function deriveCellStatus(serverStatus, parsedCell) {
  * @param {() => number} [now] — clock injection for tests
  * @returns {object} new state
  */
-export function reduceStream(state, event, now = Date.now) {
+export function reduceStream(state, event, now = Date.now, { replay = false } = {}) {
   if (!event || typeof event !== 'object') return state;
   const type = event.type;
 
@@ -234,11 +237,20 @@ export function reduceStream(state, event, now = Date.now) {
   }
 
   if (type === 'response.failed') {
+    // Key upgrade-intent signal: a free user hit the token cap. Fire once here,
+    // on receipt — not in the render path (ChatView), which re-runs every paint.
+    if (!replay && event.code === 'token_limit') {
+      try { _trackTokenCapHit(); }
+      catch { /* analytics must never break streaming */ }
+    }
     return {
       ...state,
       steps: closeOpenInspectableSteps(state.steps, eventTs),
       status: 'error',
       error: event.error || event.message || 'Response failed',
+      // Stable wire code (e.g. 'token_limit') so the renderer can show a
+      // richer affordance — the out-of-credits card — instead of plain text.
+      errorCode: event.code || null,
     };
   }
 
@@ -249,6 +261,85 @@ export function reduceStream(state, event, now = Date.now) {
     // and is now producing the visible response.
     const steps = closeReasoningStep(state.steps, eventTs);
     return { ...state, status: 'streaming', bodyText: state.bodyText + delta, steps };
+  }
+
+  // Inline artifact card. The harness emits one of these at turn end for
+  // every artifact the turn produced (any type — HTML, dataset, doc,
+  // image…), detected via the artifacts-dir diff, and replays them
+  // identically on reload. This is the single, deterministic source of
+  // artifact cards. Deduped by slug/path so a replay can't double a card.
+  if (type === 'response.artifact_created') {
+    const art = (event.artifact && typeof event.artifact === 'object') ? event.artifact : {};
+    const key = art.slug || art.file_path || art.path || '';
+    if (key && state.steps.some((s) => s.badge === 'Artifact' && s._artifactKey === key)) {
+      return state;
+    }
+    const filePath = art.file_path || art.path || '';
+    const step = {
+      id: `artifact-${art.slug || state.steps.length + 1}`,
+      label: art.title || art.slug || 'Artifact',
+      badge: 'Artifact',
+      icon: 'sparkle',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: {
+        title: art.title || art.slug || 'Artifact',
+        file_path: filePath,
+        path: filePath,
+        ext: art.ext || '',
+        action: art.type || 'artifact',
+      },
+      output: null,
+      result: null,
+      _artifactKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    if (!replay) {
+      try { _trackArtifactBuilt(art.type || 'unknown'); }
+      catch { /* analytics must never break streaming */ }
+    }
+    return { ...state, steps: [...state.steps, step] };
+  }
+
+  // Inline skill-draft card. The harness emits this at turn end for a skill the
+  // agent BUILT this turn (via skill-creator), detected via the skill-drafts
+  // dir diff. A skill is NOT an artifact and is NOT auto-saved — this card lets
+  // the user Save or Download it. Self-contained payload (full SKILL.md +
+  // sibling files) so it renders + downloads identically on reload. Deduped by
+  // slug so a replay can't double a card.
+  if (type === 'response.skill_created') {
+    const sk = (event.skill && typeof event.skill === 'object') ? event.skill : {};
+    const key = sk.slug || sk.label || sk.name || '';
+    if (key && state.steps.some((s) => s.badge === 'Skill' && s._skillKey === key)) {
+      return state;
+    }
+    const step = {
+      id: `skill-${sk.slug || state.steps.length + 1}`,
+      label: sk.name || sk.slug || 'Skill',
+      badge: 'Skill',
+      icon: 'cube',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: {
+        slug: sk.slug || '',
+        label: sk.label || sk.slug || '',
+        name: sk.name || sk.slug || 'Skill',
+        description: sk.description || '',
+        instructions: sk.instructions || '',
+        skill_md: sk.skill_md || '',
+        files: Array.isArray(sk.files) ? sk.files : [],
+        projects: Array.isArray(sk.projects) ? sk.projects : undefined,
+      },
+      output: null,
+      result: null,
+      _skillKey: key,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
   }
 
   // ── thought.* sub-events live under response.in_progress ──────────
@@ -464,7 +555,6 @@ export function reduceStream(state, event, now = Date.now) {
   // Progress markers
   if (role === 'thought.progress') {
     const phase = event.phase;
-    const content = event.content;
 
     // Cell finished — flip the trailing in-progress scratchpad to
     // completed if the .result hasn't arrived yet. (When .result does
@@ -544,44 +634,10 @@ export function reduceStream(state, event, now = Date.now) {
       return { ...state, steps: patchLastScratchpadStep(state.steps, patch) };
     }
 
-    // 'publish_or_preview' is a two-event sequence — this one is just
-    // the marker, the *next* progress event carries the JSON payload.
-    if (content === 'publish_or_preview') {
-      return { ...state, awaitingArtifactPayload: true };
-    }
-
-    // If we just saw the marker and this event has JSON content,
-    // unpack it as an Artifact step.
-    if (state.awaitingArtifactPayload && typeof content === 'string') {
-      const payload = safeJsonParse(content);
-      if (payload && (payload.file_path || payload.title)) {
-        const id = `artifact-${state.steps.length + 1}`;
-        const step = {
-          id,
-          label: payload.title || payload.file_path || 'Artifact',
-          badge: 'Artifact',
-          icon: 'sparkle',
-          status: 'completed',
-          startedAt: now(),
-          completedAt: now(),
-          data: payload,
-          output: null,
-          result: null,
-          _isScratchpad: false,
-          _scratchpadTabId: null,
-        };
-        // Fire analytics event for artifact creation (ENG-237).
-        try { _trackArtifactBuilt(payload.type || payload.kind || 'unknown'); }
-        catch { /* analytics must never break streaming */ }
-        return {
-          ...state,
-          awaitingArtifactPayload: false,
-          steps: [...state.steps, step],
-        };
-      }
-      // Wasn't JSON after all — clear the flag and ignore.
-      return { ...state, awaitingArtifactPayload: false };
-    }
+    // Artifact cards no longer come from the publish_or_preview marker
+    // (HTML-only, and dependent on the agent calling that tool). They now
+    // arrive as `response.artifact_created` events at turn end for every
+    // artifact type — handled near the top of this reducer.
 
     // 'reasoning_done' and other ad-hoc messages are noise; the live
     // step state is enough.

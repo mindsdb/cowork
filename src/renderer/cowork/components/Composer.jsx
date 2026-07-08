@@ -7,6 +7,20 @@ import {
   parseOpenerLine,
 } from './composerFences';
 import { HighlightOverlay } from './composerHighlight';
+import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
+import { AttachmentThumbnail } from './AttachmentThumbnail';
+import { useSkills } from '../lib/skillsStore';
+
+// Detect a "/" slash-command token immediately before the caret. Returns the
+// token's start index (the "/") and the lowercased query fragment, or null when
+// the caret isn't in a slash token. A token starts at the input start or after
+// whitespace, so "/" only triggers at a word boundary (not inside a word/path).
+function detectSlashToken(text, caret) {
+  const before = text.slice(0, Math.max(0, caret));
+  const m = before.match(/(^|\s)\/([\w-]*)$/);
+  if (!m) return null;
+  return { start: caret - m[2].length - 1, query: m[2].toLowerCase() };
+}
 
 function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
@@ -17,12 +31,16 @@ function AttachmentChip({ attachment, onRemove }) {
     : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
       ? attachment.extractionStatus.replace('_', ' ')
       : null);
+  // Pending image uploads carry the original File, so preview it straight
+  // from a local object URL (no fetch). Other attachments keep the glyph.
+  const showThumb = isImage && attachment.pendingFile;
   return (
     <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
       <span className="attachment-chip-icon">
-        {src === 'connector' ? Ico.link(13)
-          : isImage ? Ico.image(13)
-            : Ico.doc(13)}
+        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
+          : src === 'connector' ? Ico.link(13)
+            : isImage ? Ico.image(13)
+              : Ico.doc(13)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
@@ -107,6 +125,16 @@ export default function Composer({
       changes much less often than the caret itself, so we track caret
       position in a ref and only set state on the derived flag. */
   const [inFence, setInFence] = useState(false);
+  /** "/" slash-command menu: a filterable skill picker above the input.
+      `slashTokenStartRef` records the index of the "/" so accept can replace
+      the whole "/<frag>" token. Mirrors the project-menu pattern but the
+      filter is the composer text itself (no separate search input). */
+  const [slashMenuBelow, setSlashMenuBelow] = useState(false);
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [slashIndex, setSlashIndex] = useState(0);
+  const slashTokenStartRef = useRef(0);
+  const { skills: allSkills } = useSkills();
   const taRef = useRef(null);
   /** Mirror element for the source-mode highlight overlay. Sized and
       styled to match the textarea exactly so the overlay aligns with
@@ -253,6 +281,90 @@ export default function Composer({
     return false;
   };
 
+  // ── "/" slash-command menu ─────────────────────────────────────────
+  // Recompute the active slash token from the text + caret. Called on every
+  // input/caret change; opens the menu when the caret sits in a "/<frag>"
+  // token and closes it otherwise.
+  const refreshSlash = useCallback((text, caret) => {
+    const tok = detectSlashToken(text, caret);
+    if (tok) {
+      slashTokenStartRef.current = tok.start;
+      setSlashQuery(tok.query);
+      setSlashIndex(0);
+      if (wrapRef.current) {
+        const r = wrapRef.current.getBoundingClientRect();
+        setSlashMenuBelow(r.top < 340);
+      }
+      setSlashOpen(true);
+    } else {
+      setSlashOpen((prev) => (prev ? false : prev));
+    }
+  }, []);
+
+  // The menu items: a small built-in action row (matching the reference) plus
+  // the live skills filtered by the typed fragment. Reads the shared store, so
+  // saving/deleting a skill anywhere updates this list with no reload.
+  const slashItems = useMemo(() => {
+    if (!slashOpen) return [];
+    const builtins = [
+      { id: 'add-files', label: 'add-files', hint: 'Open file picker', kind: 'action',
+        run: () => fileRef.current?.click() },
+    ];
+    const currentProject = project?.name;
+    const skillRows = (allSkills || [])
+      .filter((s) => {
+        if (s.enabled === false) return false;
+        const skillProject = s.projects?.[0] || s.project;
+        if (!skillProject) return true;
+        return skillProject === currentProject;
+      })
+      .map((s) => ({
+        id: `skill:${s.label}`, label: s.label, hint: s.description || '', kind: 'skill', name: s.label,
+      }));
+    const all = [...builtins, ...skillRows];
+    if (!slashQuery) return all;
+    return all.filter(
+      (i) => i.label.toLowerCase().includes(slashQuery) || (i.hint || '').toLowerCase().includes(slashQuery),
+    );
+  }, [slashOpen, slashQuery, allSkills, project]);
+
+  const closeSlash = useCallback(() => setSlashOpen((prev) => (prev ? false : prev)), []);
+
+  // Known skill names — the overlay colours only "/<known-skill>" tokens (not
+  // arbitrary slashes like a file path), matching how the sent message tints
+  // mentions. Kept as a Set for O(1) membership in the highlighter.
+  const mentionNames = useMemo(
+    () => new Set((allSkills || []).map((s) => s.label).filter(Boolean)),
+    [allSkills],
+  );
+
+  // Accept an item: actions run after stripping the "/frag" token; skills are
+  // inserted as a plain "/slug " mention (no backticks). The overlay + the sent
+  // message colour any "/<known-skill>" token in the brand accent, so the
+  // mention reads distinctly without literal backtick characters. Replacement
+  // goes through insertTextWithUndo so Cmd+Z reverses it.
+  const acceptSlash = useCallback((item) => {
+    if (!item) return;
+    const ta = taRef.current;
+    const caret = ta ? ta.selectionStart : caretPosRef.current;
+    const start = slashTokenStartRef.current;
+    setSlashOpen(false);
+    if (item.kind === 'action') {
+      const next = value.slice(0, start) + value.slice(caret);
+      pendingCaretRef.current = start;
+      setValue(next);
+      requestAnimationFrame(() => { try { item.run?.(); } catch { /* noop */ } });
+      return;
+    }
+    const mention = '/' + item.name + ' ';
+    const caretAfter = start + mention.length;
+    if (ta) { ta.focus(); try { ta.setSelectionRange(start, caret); } catch { /* noop */ } }
+    if (!insertTextWithUndo(mention, caretAfter)) {
+      pendingCaretRef.current = caretAfter;
+      setValue(value.slice(0, start) + mention + value.slice(caret));
+    }
+  }, [value]);
+
   // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial
@@ -397,6 +509,25 @@ export default function Composer({
     }
   }
 
+  // Drag OS files onto the composer to attach them to the message.
+  const { isDragging: filesDragging, dropHandlers: fileDropHandlers } = useFileDrop({
+    onFiles: handleAttachFiles,
+    disabled: disabled || busy || !onAttachFiles,
+  });
+
+  // Paste (⌘V) an image/gif/file straight into the composer. A <textarea>
+  // can't hold binary clipboard data, so without this the paste is a silent
+  // no-op. Route any file items to the same attach path as drag-drop and the
+  // file picker; a plain-text paste carries no file items and falls through
+  // to the textarea's default handling.
+  const handlePaste = (event) => {
+    if (disabled || busy || !onAttachFiles) return;
+    const files = extractClipboardFiles(event.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    handleAttachFiles(files);
+  };
+
   function pairKey(engine, name) {
     return `${String(engine || '').trim().toLowerCase()}\t${String(name || '').trim()}`;
   }
@@ -446,7 +577,8 @@ export default function Composer({
   }, []);
 
   return (
-    <div ref={wrapRef} style={{ width: '100%', maxWidth: 'var(--composer-max-width, 640px)', position: 'relative' }}>
+    <div ref={wrapRef} {...fileDropHandlers} style={{ width: '100%', maxWidth: 'var(--composer-max-width, 640px)', position: 'relative' }}>
+      <FileDropOverlay active={filesDragging} label="Drop files to attach" />
       <input
         ref={fileRef}
         type="file"
@@ -456,7 +588,53 @@ export default function Composer({
       />
 
       <div style={{ width: '100%' }}>
-        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`}>
+        <div className={`composer-wrap${focused ? ' focused' : ''}${inFence ? ' in-fence' : ''}`} style={{ position: 'relative' }}>
+
+          {/* "/" slash-command menu — anchored to composer-wrap so it appears
+              just above/below the textarea, not below the toolbar. */}
+          {slashOpen && slashItems.length > 0 && (
+            <div
+              className="menu"
+              role="listbox"
+              aria-label="Skills and actions"
+              onMouseDown={(e) => e.preventDefault()}
+              style={{
+                position: 'absolute', left: 0, right: 0,
+                ...(slashMenuBelow
+                  ? { top: 'calc(100% + 8px)', bottom: 'auto' }
+                  : { top: 'auto', bottom: 'calc(100% + 8px)' }),
+                maxHeight: 'min(50vh, 320px)', overflowY: 'auto', padding: '4px 0', zIndex: 40,
+              }}
+            >
+              {slashItems.map((item, i) => {
+                const active = i === Math.min(slashIndex, slashItems.length - 1);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className="menu-item"
+                    onMouseEnter={() => setSlashIndex(i)}
+                    onClick={() => acceptSlash(item)}
+                    style={active ? { background: 'var(--surface-2)' } : undefined}
+                  >
+                    <span style={{ display: 'inline-flex', color: 'var(--frost-700, var(--ink-3))' }}>
+                      {item.kind === 'action' ? Ico.upload(15) : Ico.cube(15)}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                      {item.label}
+                    </span>
+                    {item.hint && (
+                      <span style={{ color: 'var(--ink-3)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '46%' }}>
+                        {item.hint}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {attachments.length > 0 && (
             <div className="attachment-strip">
               {attachments.map((attachment) => (
@@ -471,7 +649,7 @@ export default function Composer({
               className="composer-textarea-overlay"
               aria-hidden="true"
             >
-              <HighlightOverlay text={value} />
+              <HighlightOverlay text={value} mentionNames={mentionNames} />
             </div>
             <textarea
             ref={taRef}
@@ -479,14 +657,26 @@ export default function Composer({
             placeholder={placeholder}
             disabled={disabled}
             value={value}
-            onChange={(e) => { setValue(e.target.value); bumpTyping(); }}
+            onChange={(e) => { setValue(e.target.value); bumpTyping(); refreshSlash(e.target.value, e.target.selectionStart); }}
+            onPaste={handlePaste}
             onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onSelect={syncCaret}
-            onClick={syncCaret}
+            onBlur={() => { setFocused(false); setTimeout(() => closeSlash(), 120); }}
+            onSelect={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
+            onClick={(e) => { syncCaret(); refreshSlash(e.target.value, e.target.selectionStart); }}
             onScroll={handleScroll}
             onKeyDown={(e) => {
               if (disabled) return;
+
+              // (S) Slash-command menu: intercept navigation/accept BEFORE the
+              // send / fence logic so Enter picks an item instead of sending.
+              if (slashOpen && slashItems.length > 0) {
+                const n = slashItems.length;
+                const idx = Math.min(slashIndex, n - 1);
+                if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex((idx + 1) % n); return; }
+                if (e.key === 'ArrowUp')   { e.preventDefault(); setSlashIndex((idx - 1 + n) % n); return; }
+                if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); acceptSlash(slashItems[idx]); return; }
+                if (e.key === 'Escape')    { e.preventDefault(); closeSlash(); return; }
+              }
               const ta = e.currentTarget;
               const pos = ta.selectionStart;
               const txt = value;
@@ -616,6 +806,7 @@ export default function Composer({
               }
             }}
             rows={1}
+            spellCheck={false}
           />
           </div>
 

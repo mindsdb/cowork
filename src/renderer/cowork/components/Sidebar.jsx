@@ -5,25 +5,13 @@ import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
+import { timeAgo } from '../lib/formatTime';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
 const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
-
-function timeAgo(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (secs < 60)     return 'just now';
-  if (secs < 3600)   return `${Math.floor(secs / 60)} min ago`;
-  if (secs < 86400)  return `${Math.floor(secs / 3600)} h ago`;
-  if (secs < 172800) return 'Yesterday';
-  if (secs < 604800) return `${Math.floor(secs / 86400)} d ago`;
-  return `${Math.floor(secs / 604800)} w ago`;
-}
 
 function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
   return (
@@ -216,6 +204,7 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   agentLabel,
+  settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
@@ -546,10 +535,6 @@ export default function Sidebar({
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
-          {/* Channels — connect messaging apps (Telegram/Slack/etc.) so
-              people can talk to the agent from their chats. Routes to the
-              `dispatch` key, which App.jsx renders as <ChannelsView />. */}
-          <NavItem icon={Ico.chats(15)} label="Channels" onClick={() => onNavigate('dispatch')} active={activeRoute === 'dispatch'} />
         </div>
 
         {/* Brain-style nav — visually grouped panel.
@@ -564,41 +549,34 @@ export default function Sidebar({
             a touch tighter than the heading's own footprint, which
             avoids leaving an empty heading-sized void. */}
         <div className="anton-group" style={{ marginTop: 18 }}>
-          <NavItem icon={Ico.brain(15)}    label="Memories"       onClick={() => onNavigate('memory')}   active={activeRoute === 'memory'}   compact />
-          <NavItem icon={Ico.cube(15)}     label="Skills library" onClick={() => onNavigate('skills')}   active={activeRoute === 'skills'}   compact />
-          {/* "Connect data" removed from the sidebar — the canonical
-              connector surface is the Connect Apps and Data page
-              (route='customize'). The legacy 'connect' route used to
-              render UtilitiesView/ConnectView and has been retired. */}
-          <NavItem icon={Ico.settings(15)} label="Settings"       onClick={() => onNavigate('settings')} active={activeRoute === 'settings'} compact />
+          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} compact />
+          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} compact />
         </div>
 
-        {/* Pinned */}
-        <div className="section-label">Pinned</div>
-        {pinnedTasks.length ? (
-          <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {pinnedTasks.map((task) => (
-              <RecentItem
-                key={task.id}
-                task={task}
-                projects={projects}
-                onClick={() => onSelectTask(task.id)}
-                onPin={onPinTask}
-                onUnpin={onUnpinTask}
-                onRename={onRenameTask}
-                onDelete={onDeleteTask}
-                onMoveToProject={onMoveTaskToProject}
-                showTimestamp={showCounters}
-                isActive={activeTaskIds.has(task.id)}
-                agentLabel={agentLabel}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="pinned-empty">
-            <span style={{ display: 'inline-flex' }}>{Ico.pin(12)}</span>
-            <span>Visit or pin tasks to keep them here.</span>
-          </div>
+        {/* Pinned — only rendered when there are pinned tasks; an empty
+            section just wastes rail space. */}
+        {pinnedTasks.length > 0 && (
+          <>
+            <div className="section-label">Pinned</div>
+            <div style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {pinnedTasks.map((task) => (
+                <RecentItem
+                  key={task.id}
+                  task={task}
+                  projects={projects}
+                  onClick={() => onSelectTask(task.id)}
+                  onPin={onPinTask}
+                  onUnpin={onUnpinTask}
+                  onRename={onRenameTask}
+                  onDelete={onDeleteTask}
+                  onMoveToProject={onMoveTaskToProject}
+                  showTimestamp={showCounters}
+                  isActive={activeTaskIds.has(task.id)}
+                  agentLabel={agentLabel}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* Recents — heading row with a "View all →" link pinned
@@ -755,69 +733,63 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Footer status — Electron-only. In the hosted web shell the
-            FastAPI process IS the host, so start/stop/diagnostics have
-            no meaning and we drop the entire pill + power button. */}
+        {/* Footer — Electron-only. Web shell omits this entirely since the
+            FastAPI process IS the host (start/stop/diagnostics don't apply).
+
+            Normal state: a settings nav row — no server noise when everything
+            is working fine.
+            Disconnected / busy: the status pill replaces the settings row so
+            the problem is immediately visible. */}
         {!host.isWeb && (
         <div className="anton-sidebar__footer">
-          {/* The whole "backend · <status>" pill is the help affordance
-              now — click anywhere on it to open the server-state modal.
-              Replaces the previous standalone "?" icon, which only
-              appeared when offline and read as visual clutter. */}
-          <button
-            type="button"
-            className={
-              'status-pill is-clickable' +
-              (serverBusy ? ' is-busy' : serverOnline ? ' is-on' : '')
-            }
-            onClick={onShowServerHelp}
-            title="Backend status — click for details"
-            aria-label="Backend status — click for details"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            <span
-              className={
-                'status-dot' +
-                (serverBusy ? ' busy' : serverOnline ? '' : ' offline')
-              }
-            />
-            <span className="status-text">
-              <span className="status-text__faded">backend ·</span>{' '}
-              {serverBusy ? (
-                <>
-                  <span className="status-text__live">{serverBusyKind}</span>{' '}
-                  <Spinner />
-                </>
-              ) : (
-                <span className={serverOnline ? 'status-text__live' : 'status-text__faded'}>
-                  {serverOnline ? 'connected' : 'offline'}
+          {(!serverOnline || serverBusy) ? (
+            <>
+              <button
+                type="button"
+                className={
+                  'status-pill is-clickable' +
+                  (serverBusy ? ' is-busy' : '')
+                }
+                onClick={onShowServerHelp}
+                title="Backend status — click for details"
+                aria-label="Backend status — click for details"
+                style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
+              >
+                <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                <span className="status-text">
+                  <span className="status-text__faded">backend ·</span>{' '}
+                  {serverBusy ? (
+                    <>
+                      <span className="status-text__live">{serverBusyKind}</span>{' '}
+                      <Spinner />
+                    </>
+                  ) : (
+                    <span className="status-text__faded">offline</span>
+                  )}
                 </span>
-              )}
-            </span>
-          </button>
-          <div className="anton-sidebar__footer-actions">
+              </button>
+              <button
+                className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                onClick={() => onNavigate('settings:backend')}
+                title="Settings"
+                aria-label="Settings"
+                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+              >
+                {Ico.settings(13)}
+              </button>
+            </>
+          ) : (
             <button
-              className={
-                'chrome-btn--small server-toggle' +
-                (serverOnline ? ' is-on' : '') +
-                (serverBusy ? ' is-busy' : '')
-              }
-              onClick={onToggleServer}
-              disabled={serverBusy}
-              title={
-                serverBusy
-                  ? `Backend ${serverBusyKind}…`
-                  : serverOnline ? `Stop ${agentLabel || 'Anton'} backend` : `Start ${agentLabel || 'Anton'} backend`
-              }
-              aria-label={serverOnline ? 'Stop backend' : 'Start backend'}
-              aria-busy={serverBusy ? 'true' : undefined}
+              className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+              onClick={() => onNavigate('settings:agent')}
+              title="Settings"
+              aria-label="Settings"
               style={{ WebkitAppRegion: 'no-drag' }}
             >
-              {serverBusy
-                ? <Spinner intervalMs={70} />
-                : (serverOnline ? Ico.powerOff(13) : Ico.power(13))}
+              <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+              <span>Settings</span>
             </button>
-          </div>
+          )}
         </div>
         )}
 

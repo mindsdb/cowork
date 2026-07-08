@@ -4,7 +4,10 @@
 #     docker build -f cowork/Dockerfile -t cowork:dev .
 #     # Pin a specific version:
 #     docker build -f cowork/Dockerfile -t cowork:dev \
-#       --build-arg COWORK_SERVER_VERSION=0.26.6.26.1 .
+#       --build-arg COWORK_SERVER_VERSION=0.26.7.6.4 .
+#     # Install cowork-server from a git ref instead of PyPI (staging builds):
+#     docker build -f cowork/Dockerfile -t cowork:dev \
+#       --build-arg COWORK_SERVER_REF=staging .
 #
 # Run:
 #     docker run -p 26866:26866 \
@@ -29,7 +32,8 @@
 # what's needed to serve traffic:
 #
 #   spa-builder   Node + npm — builds the renderer; produces /build/dist/
-#   py-builder    UBI9 + uv  — installs cowork-server from PyPI into /opt/venv
+#   py-builder    UBI9 + uv  — installs cowork-server (PyPI version, or a git
+#                 ref when COWORK_SERVER_REF is set) into /opt/venv
 #   runtime       UBI9       — copies /opt/venv + SPA + wrapper.
 #                              NO uv, NO compilers, NO source tree.
 
@@ -76,11 +80,14 @@ FROM registry.access.redhat.com/ubi9-minimal@sha256:5b74fce9d6e629942a0c6dc0f546
 # python3.12 is the interpreter the venv is seeded from (uv links the
 # venv to this RPM-managed Python so it stays Red Hat-patched and
 # scannable — no downloaded standalone CPython). ca-certificates is
-# required for HTTPS to PyPI during the install.
+# required for HTTPS to PyPI during the install. git-core is needed only
+# when COWORK_SERVER_REF is set (install from a git ref instead of PyPI);
+# it never reaches the runtime stage.
 RUN microdnf update -y \
     && microdnf install -y --nodocs \
         python3.12 \
         ca-certificates \
+        git-core \
     && microdnf clean all \
     && rm -rf /var/cache/yum
 
@@ -98,7 +105,9 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 COPY cowork/scripts/install-cowork-server.sh /tmp/install-cowork-server.sh
 ARG COWORK_SERVER_VERSION
-ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION}
+ARG COWORK_SERVER_REF=
+ENV COWORK_SERVER_VERSION=${COWORK_SERVER_VERSION} \
+    COWORK_SERVER_REF=${COWORK_SERVER_REF}
 RUN chmod +x /tmp/install-cowork-server.sh && /tmp/install-cowork-server.sh
 
 # Security floor for transitive Python deps. PyJWT < 2.13.0 (pulled in

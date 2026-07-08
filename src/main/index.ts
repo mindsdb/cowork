@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -6,21 +6,22 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath } from './server-process';
+import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
 import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens } from './token-store';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
 
 function getAntonEnvPath(): string {
-  return path.join(os.homedir(), '.anton', '.env');
+  return coworkEnvPath();
 }
 
 function getCoworkStatePath(): string {
-  return path.join(os.homedir(), '.anton', 'cowork', 'state.json');
+  return coworkStatePath();
 }
 
 function readEnvFile(): Record<string, string> {
@@ -37,6 +38,28 @@ function readEnvFile(): Record<string, string> {
     }
   }
   return vars;
+}
+
+// Server bearer token (COWORK_AUTH_TOKEN) for the loopback API when the server
+// runs with COWORK_REQUIRE_AUTH=true. Read once and cached for the server's
+// lifetime; the SERVER_RESTART handler clears it so a token a freshly-restarted
+// server generated is picked up. `undefined` = not yet read, `null` = no token
+// (auth disabled). The token stays in the main process — it's injected into
+// requests by the webRequest hook in createWindow and never handed to the
+// renderer.
+let cachedAuthToken: string | null | undefined;
+
+function getServerAuthToken(): string | null {
+  if (cachedAuthToken === undefined) {
+    const raw = readEnvFile()['COWORK_AUTH_TOKEN'];
+    cachedAuthToken = raw ? raw.trim().replace(/^["']|["']$/g, '') : null;
+  }
+  return cachedAuthToken;
+}
+
+function authHeader(): Record<string, string> {
+  const token = getServerAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function clearStoredProviderState(): void {
@@ -78,12 +101,57 @@ function getUpdateMode(): 'auto' | 'manual' {
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
 }
 
-function checkConfigured(): { configured: boolean; provider: string } {
+// Resolves once the boot-time server start has settled (server up, or
+// decided-not-to-start because it isn't installed). serverConfigured() awaits
+// this instead of polling, so cold-boot routing waits exactly as long as the
+// real startup takes — uvicorn cold start included — rather than a fixed cap.
+// Assigned synchronously in app.whenReady() so it exists before the renderer's
+// init() can call through to checkConfigured().
+let bootServerSettled: Promise<void> = Promise.resolve();
+
+// Ask the running server for its readiness. Reads `config_ready` from /health —
+// the SAME signal the in-app chat gate uses (settings.config_status) — so
+// routing and the chat gate read one identical value and cannot disagree.
+// Returns null when the server can't be reached/answered, so the caller falls
+// back to the .env heuristic.
+async function serverConfigured(): Promise<{ configured: boolean; provider: string } | null> {
+  try { await bootServerSettled; } catch { /* boot start failed — fall through */ }
+  if (!isServerRunning()) return null;
+  try {
+    const res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/health/`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) {
+      console.warn(`[checkConfigured] /health returned HTTP ${res.status}; falling back to .env`);
+      return null;
+    }
+    const data = await res.json() as { config_ready?: boolean; provider?: string };
+    if (typeof data.config_ready !== 'boolean') {
+      console.warn('[checkConfigured] /health had no config_ready; falling back to .env');
+      return null;
+    }
+    return { configured: data.config_ready, provider: data.provider ?? '' };
+  } catch (err) {
+    console.warn('[checkConfigured] could not reach server /health; falling back to .env:', err);
+    return null;
+  }
+}
+
+async function checkConfigured(): Promise<{ configured: boolean; provider: string }> {
   const vars = readEnvFile();
   if (vars.ANTON_TERMS_CONSENT !== 'true') return { configured: false, provider: '' };
-  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds' };
+  // config_ready from /health is authoritative and is the SAME signal the
+  // in-app chat gate uses — defer to it so routing and the chat gate can't
+  // disagree. (The old .env any-key check could pass here while config_ready
+  // was false, stranding the user on "Connect a provider" with no recovery.)
+  const fromServer = await serverConfigured();
+  if (fromServer) return fromServer;
+  // Server genuinely unreachable: fall back to the .env heuristic so a
+  // configured user isn't needlessly bounced to onboarding. Provider strings
+  // mirror the server's config_status vocabulary so the IPC value isn't
+  // path-dependent.
+  if (vars.ANTON_MINDS_API_KEY) return { configured: true, provider: 'minds_cloud' };
   if (vars.ANTON_ANTHROPIC_API_KEY) return { configured: true, provider: 'anthropic' };
-  if (vars.ANTON_OPENAI_API_KEY && vars.ANTON_OPENAI_BASE_URL) return { configured: true, provider: 'openai' };
   if (vars.ANTON_OPENAI_API_KEY) return { configured: true, provider: 'openai' };
   return { configured: false, provider: '' };
 }
@@ -289,6 +357,10 @@ function createWindow() {
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // ENG-439: hand the resolved (per-OS-user) server port to the renderer
+      // synchronously, so getApiOrigin() addresses our own sidecar instead of
+      // a hardcoded 26866 that could belong to another OS user.
+      additionalArguments: [`--cowork-server-port=${getServerPort()}`],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
@@ -298,9 +370,34 @@ function createWindow() {
       // loopback python server we spawn ourselves. CSP in index.html still
       // allowlists the exact origins for defense in depth.
       // codeql[js/electron-disable-websecurity]
-      webSecurity: false, 
+      webSecurity: false,
     },
   });
+
+  // Inject the server's bearer token into every request the renderer makes to
+  // the loopback API — including browser-initiated loads (images, iframes and
+  // their relative sub-resources, downloads) that can't carry an Authorization
+  // header from renderer JS, and requests that follow a 307 trailing-slash
+  // redirect (Chromium strips the header on those; this re-adds it on the
+  // redirected request). Done at the network layer so it's uniform and the
+  // token never reaches the renderer. Scoped to our loopback server's origin
+  // so it can't leak elsewhere. No-op when the server runs without auth.
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
+    (details, callback) => {
+      const token = getServerAuthToken();
+      if (token) {
+        try {
+          if (new URL(details.url).port === String(getServerPort())) {
+            details.requestHeaders['Authorization'] = `Bearer ${token}`;
+          }
+        } catch {
+          // Malformed URL — leave the headers untouched.
+        }
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
 
   // Renderer loading priority:
   // 1. DEV_MODE=live → Vite dev server (hot reload without full build)
@@ -536,15 +633,25 @@ function setupIPC() {
   // Renderer only calls this on the paid-user / Minds-as-LLM path.
   ipcMain.handle(IPC.MINDSHUB_FINALIZE, async () => {
     const token = getAccessToken();
-    if (!token) return { ok: false, reason: 'No cached MindsHub access token.' };
+    if (!token) {
+      console.error('[mindshub:finalize] no cached access token — login may not have completed');
+      return { ok: false, reason: 'No cached MindsHub access token.' };
+    }
+    console.log('[mindshub:finalize] provisioning API key…');
     const result = await provisionAntonApiKey(token);
+    console.log('[mindshub:finalize] provisionAntonApiKey result:', result.key ? 'key minted' : `error: ${result.error}`);
     if (result.upgradeRequired) {
       return { ok: false, upgradeRequired: true };
     }
     if (!result.key) {
       return { ok: false, reason: result.error || 'Could not provision a MindsHub API key.' };
     }
-    await writeMindsKeyToEnvAndRestart(result.key);
+    try {
+      await writeMindsKeyToEnvAndRestart(result.key);
+    } catch (err: any) {
+      console.error('[mindshub:finalize] writeMindsKeyToEnvAndRestart failed:', err);
+      return { ok: false, reason: `Failed to save MindsHub credentials: ${err?.message || err}` };
+    }
     return { ok: true, apiKey: result.key };
   });
 
@@ -573,50 +680,121 @@ function setupIPC() {
     // timeout regardless, so worst case it tidies up in background.
     endKeycloakSession();
     clearTokens();
+
+    // Clear credentials from the server's SQLite DB (the authoritative
+    // source for config_ready). A single POST /settings/logout atomically
+    // clears all credential keys and provider state in one transaction.
+    // If the endpoint isn't available (404/405 — older server version),
+    // fall back to individual DELETE requests for each credential key.
+    let dbCleared = false;
+    if (isServerRunning() || isServerStarting()) {
+      const port = getServerPort();
+      try {
+        const res = await Promise.race([
+          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('logout request timed out')), 5000),
+          ),
+        ]);
+        dbCleared = res.status >= 200 && res.status < 300;
+        if (!dbCleared) console.warn('[logout] POST /settings/logout returned', res.status);
+      } catch (err) {
+        console.warn('[logout] POST /settings/logout failed:', err);
+      }
+
+      // Fallback: if POST /settings/logout isn't available (404/405 on
+      // older server versions that don't have the endpoint yet), clear
+      // each credential key individually via DELETE. Without this, the
+      // DB retains credentials and config_ready stays true after logout.
+      if (!dbCleared) {
+        console.log('[logout] falling back to individual DELETE requests');
+        const DB_CREDENTIAL_KEYS = [
+          'minds_api_key', 'anthropic_api_key', 'openai_api_key',
+          'gemini_api_key', 'openai_compatible_api_key',
+          'minds_url', 'openai_base_url',
+          'providers_json', 'provider_status', 'provider_status_details',
+        ];
+        const deletes = DB_CREDENTIAL_KEYS.map((key) =>
+          httpRequest(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+          }).catch(() => { /* best effort */ }),
+        );
+        await Promise.race([
+          Promise.allSettled(deletes),
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+        ]);
+        dbCleared = true;
+      }
+    }
+
+    // Strip .env (for the standalone anton CLI and next-boot migration).
+    const LOGOUT_ENV_KEYS = [
+      'ANTON_MINDS_API_KEY',
+      'ANTON_MINDS_URL',
+      'ANTON_MINDS_ENABLED',
+      'ANTON_OPENAI_API_KEY',
+      'ANTON_OPENAI_BASE_URL',
+      'ANTON_OPENAI_API_KEY_CUSTOM',
+      'ANTON_ANTHROPIC_API_KEY',
+      'ANTON_GEMINI_API_KEY',
+      'ANTON_PLANNING_PROVIDER',
+      'ANTON_CODING_PROVIDER',
+      'ANTON_PLANNING_MODEL',
+      'ANTON_CODING_MODEL',
+    ];
     const envPath = getAntonEnvPath();
     if (fs.existsSync(envPath)) {
-      const LOGOUT_KEYS = [
-        'ANTON_MINDS_API_KEY',
-        'ANTON_MINDS_URL',
-        'ANTON_MINDS_ENABLED',
-        'ANTON_OPENAI_API_KEY',
-        'ANTON_OPENAI_BASE_URL',
-        'ANTON_ANTHROPIC_API_KEY',
-        'ANTON_PLANNING_PROVIDER',
-        'ANTON_CODING_PROVIDER',
-        'ANTON_PLANNING_MODEL',
-        'ANTON_CODING_MODEL',
-      ];
       const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
-        .filter((l) => !LOGOUT_KEYS.some((k) => l.startsWith(k + '=')));
+        .filter((l) => !LOGOUT_ENV_KEYS.some((k) => l.startsWith(k + '=')));
       fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
-      for (const key of LOGOUT_KEYS) {
+      for (const key of LOGOUT_ENV_KEYS) {
         delete process.env[key];
       }
     }
     clearStoredProviderState();
+
+    // Restart the server so in-memory caches (settings, provider objects)
+    // are flushed. If the DB clear failed (server was down, timed out),
+    // the restart re-reads the cleaned .env as the sole credential source.
+    // Without this, the Python process could still hold credentials in
+    // memory and report config_ready: true after the UI says "signed out".
     if (isServerRunning() || isServerStarting()) {
       try {
-        // Cap the reset at 3s. httpRequest() has no timeout of its own,
-        // so a hung (vs. crashed) python server would otherwise block
-        // this await forever — the deferred reload below would never
-        // fire and the confirm modal would sit on "Signing out…". The
-        // runtime reset is best-effort cleanup; the reload re-routes to
-        // onboarding regardless of whether it succeeded.
-        await Promise.race([
-          httpRequest(`http://127.0.0.1:${getServerPort()}/v1/settings/runtime-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}',
-          }),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('runtime-reset timed out')), 3000),
-          ),
-        ]);
-      } catch (error) {
-        console.warn('[logout] failed to reset live runtimes', error);
+        await stopServer();
+        await startServer();
+
+        // Verify the restart actually cleared config_ready. If it didn't,
+        // credentials survived in the DB — log loudly so we can diagnose.
+        const healthPort = getServerPort();
+        try {
+          const healthRes = await Promise.race([
+            fetch(`http://127.0.0.1:${healthPort}/api/v1/health/`, {
+              signal: AbortSignal.timeout(3000),
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('health check timed out')), 3500),
+            ),
+          ]);
+          if (healthRes.ok) {
+            const health = await healthRes.json() as Record<string, unknown>;
+            if (health.config_ready) {
+              console.error('[logout] BUG: config_ready is still true after logout — credentials survived in DB');
+            } else {
+              console.log('[logout] verified: config_ready is false after restart');
+            }
+          }
+        } catch {
+          // Health check failed — server may still be starting, not fatal
+        }
+      } catch (err) {
+        console.warn('[logout] server restart failed:', err);
       }
     }
+
     // Force-reload the renderer from main. The renderer's own
     // `window.location.reload()` was unreliable here (page stayed on
     // the stuck confirm modal); driving the reload from the main
@@ -650,6 +828,9 @@ function setupIPC() {
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
     console.log('[server] restart requested (post-onboarding)');
     await stopServer();
+    // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
+    // the cache so the webRequest hook re-reads it on the next request.
+    cachedAuthToken = undefined;
     const result = await startServer({});
     if (result.ok) {
       console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
@@ -660,11 +841,11 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
-    const antonDir = path.join(os.homedir(), '.anton');
-    if (!fs.existsSync(antonDir)) {
-      fs.mkdirSync(antonDir, { recursive: true });
+    const homeDir = coworkHome();
+    if (!fs.existsSync(homeDir)) {
+      fs.mkdirSync(homeDir, { recursive: true });
     }
-    const envPath = path.join(antonDir, '.env');
+    const envPath = coworkEnvPath();
     const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
     const merged = new Map<string, string>();
     for (const line of existing.split('\n')) {
@@ -689,6 +870,39 @@ function setupIPC() {
     }
 
     return true;
+  });
+
+  // Keychain preference — reads/writes COWORK_KEYCHAIN in ~/.cowork/.env.
+  // When enabled the refresh token lives in the macOS keychain; otherwise
+  // it sits in a plaintext file under ~/.cowork. Flipping the flag migrates
+  // any existing token to the chosen store.
+  ipcMain.handle(IPC.KEYCHAIN_PREF_GET, () => {
+    const vars = readEnvFile();
+    // Default is enabled; only false when explicitly set to 'false'.
+    return { enabled: vars.COWORK_KEYCHAIN !== 'false' };
+  });
+
+  ipcMain.handle(IPC.KEYCHAIN_PREF_SET, async (_event, enabled: boolean) => {
+    try {
+      const homeDir = coworkHome();
+      if (!fs.existsSync(homeDir)) {
+        fs.mkdirSync(homeDir, { recursive: true });
+      }
+      const envPath = coworkEnvPath();
+      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+      const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
+      // Only write the key when disabling; absence means "enabled" (the default).
+      if (!enabled) lines.push('COWORK_KEYCHAIN=false');
+      const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
+      fs.writeFileSync(envPath, out, 'utf-8');
+
+      // Move any existing token into the newly-chosen store.
+      migrateRefreshTokenStore(enabled);
+      return { ok: true };
+    } catch (error) {
+      console.error('[keychain] failed to set preference', error);
+      return { ok: false };
+    }
   });
 
   ipcMain.handle(IPC.SETTINGS_CHECK_CONFIGURED, async () => {
@@ -773,7 +987,42 @@ function setupIPC() {
   });
 }
 
-app.whenReady().then(() => {
+// One-time purge of the on-disk HTTP cache, gated by app version. Older builds
+// let Electron cache settings/stream responses to Cache_Data, leaving plaintext
+// API keys (incl. rotated ones) on disk (ENG-462). Secret-bearing responses now
+// send Cache-Control: no-store, but keys already cached must be cleared — so do
+// it once per version (on upgrade / first install), not on every launch.
+async function purgeHttpCacheOnUpgrade(): Promise<void> {
+  try {
+    const markerPath = path.join(app.getPath('userData'), 'cache-purge.json');
+    const current = app.getVersion();
+    let last = '';
+    if (fs.existsSync(markerPath)) {
+      try {
+        last = (JSON.parse(fs.readFileSync(markerPath, 'utf-8')) as { version?: string }).version || '';
+      } catch {
+        // Corrupt marker → treat as not-yet-purged and rewrite below.
+      }
+    }
+    if (last === current) return;
+    await session.defaultSession.clearCache();
+    fs.writeFileSync(markerPath, JSON.stringify({ version: current }) + '\n', 'utf-8');
+    console.log(`[cache] purged HTTP cache on upgrade (${last || 'none'} → ${current})`);
+  } catch (err) {
+    console.warn('[cache] HTTP cache purge failed (non-fatal)', err);
+  }
+}
+
+app.whenReady().then(async () => {
+  // Consolidate the legacy ~/.anton global config into ~/.cowork before
+  // anything reads the env or starts the server. Best-effort + idempotent.
+  migrateLegacyHome();
+
+  // Purge any plaintext API keys older builds cached to disk (ENG-462).
+  // Fire-and-forget: version-gated + idempotent, and current responses send
+  // no-store so nothing new re-caches while this runs.
+  void purgeHttpCacheOnUpgrade();
+
   const isMac = process.platform === 'darwin';
 
   if (isMac) {
@@ -874,14 +1123,25 @@ app.whenReady().then(() => {
 
   ensureDefaultProject();
   setupIPC();
+  // ENG-439: decide the (per-OS-user) server port before the window exists so
+  // the renderer can be handed the resolved port via additionalArguments,
+  // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
+  await resolveServerPort();
   createWindow();
 
   // Boot-time server start. If cowork-server is installed, start it
   // in the background. If not, skip — the renderer's boot flow will
   // route to the setup screen which handles installation.
+  //
+  // `bootServerSettled` is resolved the moment the start decision is made
+  // (server up, failed, or skipped) — before the slow OTA update checks — so
+  // checkConfigured() can await the real readiness without polling.
+  let resolveBootServer: () => void = () => {};
+  bootServerSettled = new Promise<void>((resolve) => { resolveBootServer = resolve; });
   checkInstallStatus().then(async ({ antonInstalled }) => {
     if (!antonInstalled) {
       console.log('[server] skipped: cowork-server not installed; setup screen will handle.');
+      resolveBootServer();
       return;
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
@@ -903,6 +1163,7 @@ app.whenReady().then(() => {
     }
 
     const result = await startServer();
+    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     if (!result.ok) {
       console.error(`[server] start failed: ${result.reason}`);
     } else {
@@ -990,6 +1251,7 @@ app.whenReady().then(() => {
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
+    resolveBootServer();  // never leave checkConfigured() awaiting a stuck boot
   });
 
   app.on('activate', () => {

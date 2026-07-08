@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph } from '../components/ui';
+import { OrbitMorph, Message } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
@@ -21,12 +21,15 @@ import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import SkillCard from '../components/SkillCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
-import { revealArtifact } from '../api';
+import { revealArtifact, exportArtifact, attachmentRawUrl, fetchHealth } from '../api';
+import { AttachmentThumbnail } from '../components/AttachmentThumbnail';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { host } from '../../platform/host';
+import { host, isWeb } from '../../platform/host';
+import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
@@ -83,9 +86,13 @@ function Divider({ label }) {
   );
 }
 
-function MessageActions({ getText, onDelete }) {
-  // Copy + delete for now — refresh / thumbs up / thumbs down hidden
-  // until the underlying actions are wired.
+// ─── Shared turn-action toolbar ──────────────────────────────────────────
+// Used by both user and assistant turns for consistent styling. Actions
+// fade in on hover of the parent turn, but stay visible when `isLast`
+// is true (matching Claude's pattern where the most recent exchange
+// always shows its toolbar).
+const ICON_SZ = 15;
+function TurnActions({ getText, onEdit, onDelete, isLast = false, align = 'left' }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     const text = typeof getText === 'function' ? getText() : '';
@@ -97,43 +104,40 @@ function MessageActions({ getText, onDelete }) {
     }
   };
   return (
-    <div style={{ display: 'flex', gap: 4, marginTop: 4, color: T.ink4 }}>
+    <div
+      className={`turn-actions${isLast ? ' is-last' : ''}`}
+      style={{ justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}
+    >
+      {onEdit && (
+        <button
+          type="button"
+          className="turn-action-btn"
+          onClick={onEdit}
+          title="Edit and resend"
+          aria-label="Edit and resend this message"
+        >
+          {Ico.edit ? Ico.edit(ICON_SZ) : Ico.pencil ? Ico.pencil(ICON_SZ) : Ico.code(ICON_SZ)}
+        </button>
+      )}
       <button
         type="button"
-        className="hover-tint"
-        title={copied ? 'Copied' : 'Copy response'}
-        aria-label={copied ? 'Copied' : 'Copy response'}
+        className="turn-action-btn"
+        title={copied ? 'Copied' : 'Copy'}
+        aria-label={copied ? 'Copied' : 'Copy'}
         onClick={onCopy}
-        style={{
-          cursor: 'pointer',
-          background: 'transparent',
-          border: 0,
-          padding: 0,
-          width: 26, height: 26, borderRadius: 6,
-          display: 'grid', placeItems: 'center',
-          color: copied ? 'var(--accent)' : 'inherit',
-        }}
+        style={copied ? { color: 'var(--accent)' } : undefined}
       >
-        {copied ? Ico.check(13) : Ico.copy(13)}
+        {copied ? Ico.check(ICON_SZ) : Ico.copy(ICON_SZ)}
       </button>
       {onDelete && (
         <button
           type="button"
-          className="hover-tint hover-tint-danger"
-          title="Delete this question and response"
-          aria-label="Delete this question and response"
+          className="turn-action-btn turn-action-btn--danger"
+          title="Delete"
+          aria-label="Delete"
           onClick={onDelete}
-          style={{
-            cursor: 'pointer',
-            background: 'transparent',
-            border: 0,
-            padding: 0,
-            width: 26, height: 26, borderRadius: 6,
-            display: 'grid', placeItems: 'center',
-            color: 'inherit',
-          }}
         >
-          {Ico.trash(13)}
+          {Ico.trash(ICON_SZ)}
         </button>
       )}
     </div>
@@ -146,9 +150,8 @@ function MessageActions({ getText, onDelete }) {
 // "orphan" — no assistant response followed it (e.g. the stream was
 // stopped before anton produced anything). For paired user→answer
 // cycles, the delete affordance lives on the assistant bubble's
-// MessageActions and removes both halves. The orphan case has no
-// assistant bubble, so we surface the delete here instead — a
-// hover-revealed trash glyph just outside the bubble's bottom-left.
+// TurnActions and removes both halves. The orphan case has no
+// assistant bubble, so we surface the delete here instead.
 // Connect-intro bubble — synthesized assistant turn shown after the
 // user picks a connector. Reads as a small card with the connector
 // logo + label and a "Fill out the form on the side panel →" prompt.
@@ -328,44 +331,10 @@ function userTurnAttachmentLabel(a) {
   return 'File';
 }
 
-function UserTurn({ content, attachments, time, onDelete, onEdit }) {
-  // Hover affordances are CSS now (`.user-turn:hover .user-turn-action`),
-  // so no useState flags here. Edit/Trash stack just outside the bubble's
-  // right edge — user messages are right-aligned, so the toolbar belongs
-  // on the same side as the speaker (Linear / Slack DM pattern). The
-  // `has-meta` / `is-stacked` modifiers raise the buttons over the meta
-  // line and over each other when both are present.
-  const editClass =
-    'user-turn-action'
-    + (onDelete ? ' is-stacked' : (time ? ' has-meta' : ''));
-  const trashClass =
-    'user-turn-action user-turn-action--danger'
-    + (time ? ' has-meta' : '');
+function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projectName, conversationId }) {
   return (
     <div className="user-turn">
       <div className="user-turn-inner">
-        {onEdit && (
-          <button
-            type="button"
-            className={editClass}
-            onClick={() => onEdit(content)}
-            title="Edit and resend"
-            aria-label="Edit and resend this message"
-          >
-            {Ico.edit ? Ico.edit(13) : Ico.pencil ? Ico.pencil(13) : Ico.code(13)}
-          </button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            className={trashClass}
-            onClick={onDelete}
-            title="Delete this message"
-            aria-label="Delete this message"
-          >
-            {Ico.trash(13)}
-          </button>
-        )}
         <div className="user-turn-bubble">
           {/* User messages flow through the same markdown pipeline as
               assistant turns so fenced code blocks, bold/italic, lists,
@@ -380,18 +349,41 @@ function UserTurn({ content, attachments, time, onDelete, onEdit }) {
             enableCharts={false}
           />
         </div>
-        {attachments?.map((a) => (
-          <div key={a.id} className="user-turn-attachment">
-            <span className="user-turn-attachment-icon">
-              {userTurnAttachmentIcon(a)}
-            </span>
-            <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
-            <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
-          </div>
-        ))}
-        {time && (
-          <span className="user-turn-meta">you · {time}</span>
-        )}
+        {attachments?.map((a) => {
+          // Image attachments preview inline as a thumbnail (fetched as a
+          // blob — the CSP blocks a direct loopback <img src>). Clicking
+          // opens the full image via the OS/browser. We can only build the
+          // raw URL when the conversation is project-scoped; without it,
+          // fall back to the icon+name chip.
+          const isImage = a.mime && String(a.mime).startsWith('image/');
+          const rawUrl = isImage ? attachmentRawUrl(projectName, conversationId, a.id) : null;
+          if (rawUrl) {
+            return (
+              <AttachmentThumbnail
+                key={a.id}
+                url={rawUrl}
+                alt={a.name || 'Image'}
+                onOpen={() => host.openExternal(rawUrl)}
+              />
+            );
+          }
+          return (
+            <div key={a.id} className="user-turn-attachment">
+              <span className="user-turn-attachment-icon">
+                {userTurnAttachmentIcon(a)}
+              </span>
+              <span className="user-turn-attachment-name">{userTurnAttachmentLabel(a)}</span>
+              <span className="user-turn-attachment-meta">{userTurnAttachmentMeta(a)}</span>
+            </div>
+          );
+        })}
+        <TurnActions
+          getText={() => content || ''}
+          onEdit={onEdit ? () => onEdit(content) : null}
+          onDelete={onDelete}
+          isLast={isLast}
+          align="right"
+        />
       </div>
     </div>
   );
@@ -403,11 +395,11 @@ const CHAT_ORB_SIZE = 22;
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // `slotIdHeader` lets the parent register an orb anchor beside the label
 // (while the request is in flight with no step row / body caret yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel, isLast }) {
   // Stable id: never use Math.random() here (would churn register every render).
   const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
+    <div className="answer-turn" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {/* Empty box only — orb centers here so it never stacks against glyphs. */}
@@ -438,7 +430,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       </div>
       {children}
       {showActions && state !== 'thinking' && (
-        <MessageActions getText={() => copyText || ''} onDelete={onDelete} />
+        <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
       )}
     </div>
   );
@@ -487,12 +479,37 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
   );
 }
 
+// Renders any badge='Skill' steps as inline SkillCards — a skill the agent
+// BUILT this turn. Sibling of StepArtifacts, but explicitly NOT the artifact
+// system: a skill is a draft the user saves or downloads from the card.
+function StepSkills({ steps }) {
+  const skills = steps?.filter((s) => s.badge === 'Skill') || [];
+  if (skills.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+      {skills.map((s) => (
+        <SkillCard key={s.id} skill={s.data || {}} />
+      ))}
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   const [status, setStatus] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
   }, []);
+  // Close the export menu on any outside click. Clicks on the menu/toggle
+  // stopPropagation, so this only fires for clicks elsewhere.
+  useEffect(() => {
+    if (!exportOpen) return undefined;
+    const close = () => setExportOpen(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [exportOpen]);
 
   const path = artifact.canonicalPath || artifact.file_path || artifact.path;
   const displayPath = artifact.displayPath || path;
@@ -518,6 +535,34 @@ function ArtifactCard({ artifact, onOpen }) {
   const isInlineText = _INLINE_TEXT_EXTS.includes(lcExt)
     || _INLINE_TEXT_EXTS.some((e) => lcPath.endsWith(e));
   const canPreviewInline = isHtml || isInlineText;
+  // Document artifacts (markdown/HTML/text) can be exported to PDF/Word/HTML.
+  const _EXPORTABLE_EXTS = ['.md', '.markdown', '.html', '.htm', '.txt'];
+  const canExport = canAct
+    && (_EXPORTABLE_EXTS.includes(lcExt) || _EXPORTABLE_EXTS.some((e) => lcPath.endsWith(e)));
+  const handleExport = async (fmt) => {
+    setExportOpen(false);
+    if (!canAct) {
+      showStatus('error', disabledReason || 'No artifact file path is available.');
+      return;
+    }
+    setExporting(true);
+    showStatus('ok', `Exporting ${fmt.toUpperCase()}…`);
+    try {
+      const res = await exportArtifact(path, fmt);
+      showStatus('ok', `Exported ${res.filename}`);
+      // Desktop: open the result in the OS. Web: it's saved in the artifact
+      // folder and shows in the Artifacts panel.
+      if (!host.isWeb) { try { await host.openPath(res.path); } catch { /* ignore */ } }
+    }
+    catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[artifact-export] failed', e);
+      showStatus('error', e?.message || `Could not export ${fmt.toUpperCase()}.`);
+    }
+    finally {
+      setExporting(false);
+    }
+  };
   const handleOpen = async () => {
     if (!canAct) {
       showStatus('error', disabledReason || 'No artifact file path is available.');
@@ -660,6 +705,43 @@ function ArtifactCard({ artifact, onOpen }) {
             {status.text}
           </span>
         )}
+        {canExport && (
+          <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+            <SmallBtn
+              disabled={!canAct || exporting}
+              onClick={() => setExportOpen((v) => !v)}
+              title="Export to another format"
+            >
+              Export ▾
+            </SmallBtn>
+            {exportOpen && (
+              <div
+                role="menu"
+                style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
+                  background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  display: 'flex', flexDirection: 'column', gap: 2,
+                }}
+              >
+                {[['pdf', 'PDF'], ['docx', 'Word (.docx)'], ['html', 'HTML']].map(([fmt, label]) => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => { e.stopPropagation(); handleExport(fmt); }}
+                    style={{
+                      all: 'unset', cursor: 'pointer', padding: '7px 10px', borderRadius: 7,
+                      fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink,
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = T.surface2; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  >{label}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {!host.isWeb && (
           <SmallBtn disabled={!canAct} onClick={handleReveal} title={canAct ? `${revealLabel}: ${path}` : disabledReason || 'No file path'}>
             {revealLabel}
@@ -717,58 +799,129 @@ function StreamCursor() {
 // (PhaseProgress / WorkingFolderLive / ContextCard) which are
 // composed via ProgressBox / WorkingFolderBox / ContextBox.
 
-// ─── Header crumb helpers ────────────────────────────────────────────────
-function CrumbSep() {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        color: T.ink4, fontFamily: FONT_DISPLAY, fontWeight: 400,
-        fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-        userSelect: 'none',
-      }}
-    >›</span>
-  );
+
+// Wait for the sidecar to come back after mindshubFinalize restarts it, so we
+// don't tell the user to resend into a cold server (any 200 from /health = up).
+async function waitForServerReady(timeoutMs = 8000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      if (await fetchHealth()) return true;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  return false;
 }
 
-function CrumbButton({ label, onClick, title, maxWidth }) {
+// Mid-conversation provider auth failure (`provider_auth`): the credential the
+// gateway sees is invalid (revoked / rotated / never provisioned / org drift),
+// so chat calls 401.
+//
+// For **MindsHub** (`reconnectable`), the fix is to re-provision the key in
+// place via mindshubFinalize (the same step login runs) — no logout. For a
+// **BYOK** provider, only the user can fix their own key, so we point them to
+// Settings instead of dragging them into a MindsHub login. Reconnect is also
+// desktop-only (finalize/login are Electron IPC), so on web we fall back to
+// Settings too.
+function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const canReconnect = Boolean(reconnectable) && !isWeb;
+
+  const reconnect = async () => {
+    if (busy) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      let res = await host.mindshubFinalize();
+      if (res?.upgradeRequired) {
+        host.openExternal(MINDS_BILLING_URL);
+        return;
+      }
+      if (!res?.ok) {
+        // No usable session to re-provision from → full sign-in.
+        res = await host.mindshubLogin();
+      }
+      if (res?.ok || res?.apiKey) {
+        // finalize restarts the sidecar — wait until it's back so the resend
+        // doesn't hit a cold server.
+        await waitForServerReady();
+        setDone(true);
+      } else {
+        setErr(res?.reason || 'Could not reconnect. Try signing out and back in.');
+      }
+    } catch (e) {
+      setErr(e?.message || 'Reconnect failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // title + body are derived from what this card can actually offer (web-aware),
+  // so they never contradict the buttons shown. We deliberately don't reuse the
+  // server's copy here: it's provider-aware but not web-aware (it can't know the
+  // desktop-only Reconnect is unavailable on web).
+  const title = done
+    ? 'Reconnected'
+    : canReconnect ? 'Reconnect to continue'
+    : reconnectable ? 'Sign in again'
+    : 'Update your API key';
+  const body = done
+    ? 'Your MindsHub session was refreshed. Send your message again to continue.'
+    : err || (
+        canReconnect
+          ? "Your MindsHub session is no longer valid. Reconnect to keep going — you won't lose this conversation."
+          : reconnectable
+            ? 'Your MindsHub session is no longer valid. Open Settings to sign in again.'
+            : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
+      );
+
+  const primaryStyle = {
+    border: 'none', background: T.ink, color: 'var(--bg)',
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
+  };
+  const secondaryStyle = {
+    border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  };
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      // Explicit resets instead of `all: unset` — the latter wipes
-      // -webkit-app-region back to its initial which interacts badly
-      // with the chat outer's drag region. With explicit no-drag,
-      // clicks reliably reach the button.
-      style={{
-        cursor: 'pointer',
-        background: 'transparent',
-        border: 0,
-        // `outline: 0` removed — global rule
-        // `button:focus:not(:focus-visible) { outline: none }` already
-        // suppresses the mouse-click ring while preserving the
-        // keyboard-focus ring for WCAG 2.4.7.
-        font: 'inherit',
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: T.ink3,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.color = 'var(--ink)';
-        e.currentTarget.style.background = 'var(--surface-2)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.color = 'var(--ink-3)';
-        e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {label}
-    </button>
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+      <div style={{
+        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
+        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+          {title}
+        </div>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+          {body}
+        </div>
+        {!done && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            {canReconnect && (
+              <button
+                type="button"
+                onClick={reconnect}
+                disabled={busy}
+                style={{ ...primaryStyle, cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 }}
+              >{busy ? 'Reconnecting…' : 'Reconnect'}</button>
+            )}
+            <button
+              type="button"
+              onClick={() => onOpenSettings?.('agent')}
+              style={canReconnect ? secondaryStyle : { ...primaryStyle, cursor: 'pointer' }}
+            >Open Settings</button>
+          </div>
+        )}
+      </div>
+    </AnswerTurn>
   );
 }
 
@@ -1299,7 +1452,7 @@ export default function ChatView({
             <Divider label={dividerLabel(new Date())} />
 
             {(() => {
-              // Track the assistant turn index inline so MessageActions
+              // Track the assistant turn index inline so TurnActions
               // knows which user→answer cycle to delete. The walker
               // mirrors the server's `_count_displayable_assistant_bubbles`
               // contract: each assistant entry counts once. We also
@@ -1319,6 +1472,17 @@ export default function ChatView({
                 }
                 return true;
               };
+              // Index of the last user or assistant message — its actions
+              // stay always-visible (Claude pattern: most recent exchange
+              // shows its toolbar). When streaming, nothing needs isLast
+              // since the streaming turn has no actions yet.
+              let lastTurnIdx = -1;
+              if (!streamingMsg) {
+                for (let j = visibleMessages.length - 1; j >= 0; j--) {
+                  const r = visibleMessages[j]?.role;
+                  if (r === 'user' || r === 'assistant') { lastTurnIdx = j; break; }
+                }
+              }
               return visibleMessages.map((m, i) => {
               if (m.role === 'user') {
                 userInputIdx += 1;
@@ -1329,8 +1493,11 @@ export default function ChatView({
                     key={i}
                     content={m.content}
                     attachments={m.attachments}
+                    projectName={project?.name}
+                    conversationId={task?.id}
                     time={formatTime(m.createdAt)}
                     onDelete={orphan ? () => onDeleteTurn?.(turnIdxForThisUser) : null}
+                    isLast={i === lastTurnIdx}
                     onEdit={(text) => {
                       // Pull the message text back into the composer
                       // for refine-and-resend. Each click bumps the
@@ -1404,17 +1571,69 @@ export default function ChatView({
                 );
               }
               if (m.role === 'error') {
+                // Out-of-credits: render an actionable card (Add credits /
+                // Bring your own keys) instead of a plain error. Reused for
+                // ANY turn that fails with the `token_limit` code — the
+                // first message on a fresh account that's spent its free
+                // tokens, or a mid-session exhaustion.
+                if (m.code === 'token_limit') {
+                  return (
+                    <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                      <div style={{
+                        border: `1px solid ${T.line}`,
+                        background: T.surface,
+                        borderRadius: 12,
+                        padding: '16px 18px',
+                        maxWidth: 520,
+                        display: 'flex', flexDirection: 'column', gap: 10,
+                      }}>
+                        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+                          You're out of credits
+                        </div>
+                        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+                          {m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                          <button
+                            type="button"
+                            onClick={() => host.openExternal(MINDS_BILLING_URL)}
+                            style={{
+                              border: 'none', background: T.ink, color: 'var(--bg)',
+                              borderRadius: 8, padding: '8px 14px',
+                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            }}
+                          >Add credits</button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenSettings?.('agent')}
+                            style={{
+                              border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+                              borderRadius: 8, padding: '8px 14px',
+                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                            }}
+                          >Bring your own keys</button>
+                        </div>
+                      </div>
+                    </AnswerTurn>
+                  );
+                }
+                // Provider auth failure mid-conversation → offer Reconnect
+                // (re-provision the key in place), not "Subscribe".
+                if (m.code === 'provider_auth') {
+                  return (
+                    <ReconnectCard
+                      key={i}
+                      time={formatTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                      reconnectable={m.reconnectable}
+                      providerLabel={m.providerLabel}
+                    />
+                  );
+                }
                 return (
                   <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                    <div style={{
-                      border: '1px solid #F0C2B5',
-                      background: '#FFF7F4',
-                      color: '#8F321A',
-                      borderRadius: 10,
-                      padding: '10px 12px',
-                      fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.5,
-                      userSelect: 'text',
-                    }}>{m.content}</div>
+                    <Message>{m.content}</Message>
                   </AnswerTurn>
                 );
               }
@@ -1466,7 +1685,7 @@ export default function ChatView({
                         >Subscribe with MindsHub</button>
                         <button
                           type="button"
-                          onClick={() => onOpenSettings?.()}
+                          onClick={() => onOpenSettings?.('agent')}
                           style={{
                             border: `1px solid ${T.line}`,
                             background: 'transparent',
@@ -1499,6 +1718,7 @@ export default function ChatView({
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
+                  isLast={i === lastTurnIdx}
                 >
                   {m.steps?.length > 0 && (
                     <ThinkingBlock
@@ -1516,6 +1736,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepSkills steps={m.steps} />
                 </AnswerTurn>
               );
               });
@@ -1565,6 +1786,7 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <StepSkills steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>

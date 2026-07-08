@@ -10,11 +10,11 @@
 //
 // Status dot: cyan = published, green-pulse = live preview, none = local.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { Toast } from '../components/ui/Toast';
 import {
-  revealArtifact, publishArtifact, unpublishArtifact,
+  revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
@@ -25,21 +25,28 @@ import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import {
+  AccessChooser,
+  accessDraftFromArtifact,
+  isAccessDraftValid,
+  buildAccessPayload,
+} from '../components/artifact/publish/AccessChooser';
+import { ArtifactIcon, splitArtifactName } from '../components/artifacts/ArtifactIcon';
+import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
+import {
   PageHeader,
   FilterRow,
   SearchInput,
   SortPill,
-  ViewToggle,
   HoverMenu,
   useCollectionShortcut,
 } from '../components/collection';
+import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { host } from '../../platform/host';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 
 const FONT_BODY = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
-const FONT_MONO = "var(--font-mono)";
 
 const EMPTY_ARTIFACTS = [];
 
@@ -52,24 +59,6 @@ const SORT_OPTIONS = [
   { id: 'title', label: 'Title (A–Z)' },
   { id: 'type', label: 'Type' },
 ];
-
-function ArtifactsCounts({ search, total, filtered, publishedCount }) {
-  const filterActive = (search || '').trim().length > 0;
-  const countText = filterActive
-    ? `Showing ${filtered} of ${total}`
-    : `${total} ${total === 1 ? 'artifact' : 'artifacts'}`;
-  return (
-    <>
-      {countText}
-      {publishedCount > 0 && (
-        <>
-          {' · '}
-          <span style={{ color: 'var(--accent)' }}>{publishedCount} published</span>
-        </>
-      )}
-    </>
-  );
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -137,234 +126,30 @@ function kindOf(a) {
   return ext || 'file';
 }
 
-// Bare extension (no leading dot) — used for the type subtitle on the
-// card, where we want `type: html` rather than the broader "kind".
-function extensionOf(a) {
-  const fromExt = (a.ext || '').replace(/^\./, '').toLowerCase();
-  if (fromExt) return fromExt;
-  const m = (a.path || '').match(/\.([a-z0-9]+)$/i);
-  return (m?.[1] || 'file').toLowerCase();
-}
-
-// Pick a representative icon for the artifact based on its extension.
-// Mirrors the rough kind buckets server-side: dashboards (HTML), docs
-// (md/txt/pdf), code (py/js/css/etc), data (csv/json), images.
-function iconForArtifact(a) {
-  const ext = extensionOf(a);
-  if (ext === 'html' || ext === 'htm') return Ico.globe;
-  if (['md', 'txt', 'pdf', 'rtf', 'doc', 'docx'].includes(ext)) return Ico.doc;
-  if (['py', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sh', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h'].includes(ext)) return Ico.code;
-  if (['csv', 'json', 'jsonl', 'tsv', 'parquet', 'sqlite', 'db'].includes(ext)) return Ico.database;
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'avif', 'bmp', 'ico'].includes(ext)) return Ico.image;
-  return Ico.doc;
-}
-
-// ─── Action button (used by the bubble's bottom row) ─────────────────────
-
-function ActionButton({ children, onClick, danger, primary, title }) {
-  const styleBase = {
-    cursor: 'pointer',
-    fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
-    padding: '6px 10px', borderRadius: 7,
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-  };
-  if (primary) Object.assign(styleBase, {
-    background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)',
-  });
-  else if (danger) Object.assign(styleBase, {
-    background: 'transparent', color: 'var(--danger)',
-    border: '1px solid color-mix(in srgb, var(--danger) 30%, transparent)',
-  });
-  else Object.assign(styleBase, {
-    background: 'transparent', color: 'var(--ink-2)', border: '1px solid var(--line)',
-  });
-  return (
-    <button type="button" onClick={(e) => { e.stopPropagation(); onClick?.(); }} title={title} style={styleBase}>
-      {children}
-    </button>
-  );
-}
-
-// ─── Published pill + URL row (shared between grid + list) ───────────────
-
-// `mode` adds a glyph + tooltip so a password-protected or restricted publish
-// is distinguishable from a public one everywhere the pill shows. Falls back to
-// the legacy `protected` boolean for artifacts without an explicit accessMode.
-function PublishedPill({ mode, protected: isProtected = false }) {
-  const effectiveMode = mode && mode !== 'public' ? mode : (isProtected ? 'password' : 'public');
-  const isRestricted = effectiveMode === 'restricted';
-  const isPwd = effectiveMode === 'password';
-  return (
-    <span
-      title={isRestricted ? 'Published — restricted to selected people'
-        : isPwd ? 'Published — password protected' : 'Published'}
-      style={{
-        background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-        color: 'var(--accent)',
-        padding: '1px 6px', borderRadius: 999,
-        fontSize: 9, fontWeight: 700,
-        lineHeight: 1.2,
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        flexShrink: 0,
-        letterSpacing: '0.05em', textTransform: 'uppercase',
-        fontFamily: FONT_BODY,
-      }}
-    >
-      {isRestricted
-        ? <span style={{ display: 'inline-flex' }}>{Ico.people(9)}</span>
-        : isPwd
-          ? <span style={{ display: 'inline-flex' }}>{Ico.lock(9)}</span>
-          : <span style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--accent)' }} />}
-      Published
-    </span>
-  );
-}
-
-// Loose-but-practical email shape check. Splits on whitespace, commas and
-// semicolons; trims, lowercases and de-dupes; partitions into valid/invalid.
-const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-function parseEmailList(raw) {
-  const parts = (raw || '').split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const seen = new Set();
-  const valid = [];
-  const invalid = [];
-  for (const p of parts) {
-    if (seen.has(p)) continue;
-    seen.add(p);
-    (_EMAIL_RE.test(p) ? valid : invalid).push(p);
-  }
-  return { valid, invalid };
-}
-
-// Publish visibility chooser — Public / Password-protected / For selected
-// users (emails + org). On confirm it hands back an access object
-// ({ mode, ... }). Re-publishing pre-fills the existing selection (password is
-// revealable via the eye; emails/org come from the server's owner-side state).
+// Publish visibility chooser — a thin wrapper over the shared
+// <AccessChooser>. Owns only the draft + dialog chrome; the Public /
+// Password / Restricted UI and its validation live in one place now.
+// On confirm it hands back the access payload. Re-publishing pre-fills
+// the existing selection.
 function PublishDialog({ artifact, onCancel, onConfirm }) {
-  const [mode, setMode] = useState(artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public'));
-  const [password, setPassword] = useState(artifact?.accessPassword || '');
-  const [reveal, setReveal] = useState(false);
-  const [emailsText, setEmailsText] = useState((artifact?.accessEmails || []).join(', '));
-  const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
+  const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
   if (!artifact) return null;
-
-  const { valid: parsedEmails, invalid: invalidEmails } = parseEmailList(emailsText);
-  const canConfirm =
-    mode === 'public'
-    || (mode === 'password' && password.trim().length > 0)
-    || (mode === 'restricted' && (parsedEmails.length > 0 || orgAllowed));
-  const submit = () => {
-    if (!canConfirm) return;
-    if (mode === 'restricted') onConfirm({ mode: 'restricted', emails: parsedEmails, org_allowed: orgAllowed });
-    else if (mode === 'password') onConfirm({ mode: 'password', password: password.trim() });
-    else onConfirm({ mode: 'public' });
-  };
-
-  const Option = ({ value, icon, title, desc }) => {
-    const active = mode === value;
-    return (
-      <button type="button" onClick={() => setMode(value)} style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left', width: '100%',
-        padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-        background: active ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface-2)',
-        border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-        transition: 'background 120ms ease, border-color 120ms ease',
-      }}>
-        <span style={{ display: 'inline-flex', color: active ? 'var(--accent)' : 'var(--ink-3)', marginTop: 1 }}>{icon}</span>
-        <span style={{ minWidth: 0 }}>
-          <span style={{ display: 'block', fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{title}</span>
-          <span style={{ display: 'block', fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{desc}</span>
-        </span>
-      </button>
-    );
-  };
+  const canConfirm = isAccessDraftValid(draft);
+  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft)); };
 
   return (
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
-        title="Publish artifact"
+        title="Publish to the Web"
         subtitle={artifact.title || artifact.path?.split('/').pop()}
         onClose={onCancel}
       />
       <ModalBody>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Option value="public" icon={Ico.globe(16)} title="Public" desc="Anyone with the link can view it." />
-          <Option value="password" icon={Ico.lock(16)} title="Password protected" desc="Visitors must enter a password to view it." />
-          <Option value="restricted" icon={Ico.people(16)} title="For selected users" desc="Only people you list — or your whole org — can view it." />
+        <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink)', marginBottom: 8 }}>
+          Who can access your app
         </div>
-        {mode === 'password' && (
-          <div style={{ marginTop: 12 }}>
-            <label style={{
-              display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)',
-              marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>Password</label>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'var(--surface-2)', border: '1px solid var(--line)',
-              borderRadius: 8, padding: '0 8px 0 10px',
-            }}>
-              <input
-                type={reveal ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-                autoFocus
-                placeholder="Enter a password"
-                style={{
-                  flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none',
-                  color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 0',
-                }}
-              />
-              <button type="button" onClick={() => setReveal((v) => !v)} title={reveal ? 'Hide' : 'Show'}
-                style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
-                {reveal ? Ico.eyeOff(15) : Ico.eye(15)}
-              </button>
-            </div>
-            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
-              You can view this password anytime from the artifact’s preview.
-            </div>
-          </div>
-        )}
-        {mode === 'restricted' && (
-          <div style={{ marginTop: 12 }}>
-            <label style={{
-              display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)',
-              marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>Allowed emails</label>
-            <textarea
-              value={emailsText}
-              onChange={(e) => setEmailsText(e.target.value)}
-              autoFocus
-              rows={3}
-              placeholder="alice@acme.com, bob@acme.com"
-              style={{
-                width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8,
-                color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 10px', outline: 'none',
-              }}
-            />
-            <div style={{ fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-4)', marginTop: 6 }}>
-              {parsedEmails.length} recipient{parsedEmails.length === 1 ? '' : 's'}
-              {invalidEmails.length ? ` · ${invalidEmails.length} invalid ignored` : ''}
-              {' '}· comma- or newline-separated.
-            </div>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, cursor: 'pointer',
-              fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink)',
-            }}>
-              <input
-                type="checkbox"
-                checked={orgAllowed}
-                onChange={(e) => setOrgAllowed(e.target.checked)}
-                style={{ cursor: 'pointer' }}
-              />
-              Everyone in my organization
-            </label>
-          </div>
-        )}
+        <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
       </ModalBody>
       <ModalFooter>
         <button type="button" onClick={onCancel} style={{
@@ -377,170 +162,55 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
           opacity: canConfirm ? 1 : 0.5,
         }}>
-          {mode === 'password' ? 'Publish protected' : mode === 'restricted' ? 'Publish restricted' : 'Publish'}
+          {draft.mode === 'password' ? 'Publish protected' : draft.mode === 'restricted' ? 'Publish restricted' : 'Publish'}
         </button>
       </ModalFooter>
     </Modal>
   );
 }
 
-function PublishedUrlRow({ url, onOpen, onCopy }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async (e) => {
-    e.stopPropagation();
-    // The parent's onCopy returns a boolean indicating whether the
-    // copy actually landed in the clipboard. Only flip the icon on
-    // success — otherwise we were lying to the user about it working.
-    const ok = await onCopy?.();
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    }
-  };
-  const display = url.replace(/^https?:\/\//, '');
-  return (
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', gap: 0,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        borderRadius: 8,
-        overflow: 'hidden',
-        minWidth: 0,
-      }}
-    >
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onOpen?.(); }}
-        title={`Open in browser: ${url}`}
-        style={{
-          flex: 1, minWidth: 0,
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '7px 10px',
-          background: 'transparent', border: 0, cursor: 'pointer',
-          fontFamily: FONT_BODY, fontSize: 12,
-          color: 'var(--ink-2)', textAlign: 'left',
-          transition: 'color 120ms ease, background 120ms ease',
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.color = 'var(--accent)';
-          e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 8%, transparent)';
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.color = 'var(--ink-2)';
-          e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--accent)' }}>
-          {Ico.externalLink(13)}
-        </span>
-        <span style={{
-          minWidth: 0, flex: 1,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {display}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={handleCopy}
-        title={copied ? 'Copied' : 'Copy URL'}
-        style={{
-          flexShrink: 0,
-          padding: '7px 10px',
-          background: 'transparent',
-          border: 0, borderLeft: '1px solid var(--line)',
-          cursor: 'pointer',
-          color: copied ? 'var(--accent)' : 'var(--ink-3)',
-          display: 'inline-flex', alignItems: 'center',
-          transition: 'color 120ms ease, background 120ms ease',
-        }}
-        onMouseOver={(e) => {
-          if (!copied) e.currentTarget.style.color = 'var(--ink)';
-          e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 8%, transparent)';
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.color = copied ? 'var(--accent)' : 'var(--ink-3)';
-          e.currentTarget.style.background = 'transparent';
-        }}
-      >
-        {copied ? Ico.check(13) : Ico.copy(13)}
-      </button>
-    </div>
-  );
-}
-
 // ─── Card / Bubble (grid view) ───────────────────────────────────────────
 
-// Static path row used in place of the published URL pill when the
-// artifact is local-only. Mirrors the URL pill's surface so the card
-// keeps a consistent slot height as state flips between published
-// and not. Ellipsis-truncates a long path; full path lives in the
-// `title` attribute for hover. RTL trick on the path span keeps the
-// filename visible (truncates the front, not the back).
-//
-// Left-to-right mark (U+200E). The `direction: rtl` trick below would
-// otherwise let the bidi algorithm relocate an absolute path's leading
-// "/" to the visual end, rendering a bogus trailing slash. Prefixing the
-// path with a strong-LTR mark pins the leading slash in place.
-const LTR_MARK = String.fromCharCode(0x200e);
-
-function LocalPathRow({ path }) {
-  if (!path) return null;
+// Ghost icon button for the card header (open ↗ / ⋯). forwardRef so the
+// kebab can be the anchor for the page-level HoverMenu.
+const CardIconButton = forwardRef(function CardIconButton({ onClick, title, ariaLabel, children }, ref) {
   return (
-    <div
-      title={path}
+    <button
+      ref={ref}
+      type="button"
+      title={title}
+      aria-label={ariaLabel || title}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '7px 10px', borderRadius: 8,
-        background: 'var(--surface-2)',
-        border: '1px solid var(--line)',
-        minWidth: 0,
+        width: 28, height: 28, borderRadius: 7,
+        display: 'inline-grid', placeItems: 'center',
+        background: 'transparent', border: 0, padding: 0, cursor: 'pointer',
+        color: 'var(--ink-4)', transition: 'background .12s ease, color .12s ease',
       }}
+      onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+      onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-4)'; }}
     >
-      <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>
-        {Ico.folder(12)}
-      </span>
-      <span style={{
-        flex: 1, minWidth: 0,
-        fontFamily: FONT_MONO, fontSize: 11.5,
-        color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        direction: 'rtl', textAlign: 'left',
-      }}>{LTR_MARK + path}</span>
-    </div>
+      {children}
+    </button>
   );
-}
+});
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, busy, onOpenProject }) {
-  const isHtml = isHtmlArtifact(artifact);
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject }) {
   const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
-  // In the browser the artifact's address is its HTTP serve URL, not a
-  // local OS path the user can't reach. Surface that "private" URL in
-  // place of the path. Desktop keeps showing the local path.
+  // In the browser the artifact's address is its HTTP serve URL, not a local
+  // OS path the user can't reach — open that "private" URL instead.
   const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
-  // For fullstack apps the artifact "is" its slug folder, not the entry
-  // html — show the folder path on the card. Falls back to the primary
-  // path for everything else (and if `folder` is somehow absent).
-  const localPath = isBackendArtifact(artifact) ? (artifact.folder || artifact.path) : artifact.path;
 
-  const { revealed: showControls, hoverProps } = useRevealOnHover(isMenuOpen);
+  const { hoverProps } = useRevealOnHover(isMenuOpen);
   const kebabRef = useRef(null);
 
-  const onCopyUrl = async () => {
-    if (!published) return false;
-    return copyText(artifact.publishedUrl);
-  };
   const onOpenPublished = async () => {
     if (!published) return;
     try { await host.openExternal(artifact.publishedUrl); } catch {
       window.open(artifact.publishedUrl, '_blank', 'noreferrer');
     }
-  };
-  const onCopyPrivate = async () => {
-    if (!privateUrl) return false;
-    return copyText(privateUrl);
   };
   const onOpenPrivate = async () => {
     if (!privateUrl) return;
@@ -549,12 +219,9 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     }
   };
 
-  const Icon = iconForArtifact(artifact);
-  const ext = extensionOf(artifact);
   const projectLabel = projectNameOf(artifact, projects);
-  // The project the artifact belongs to. When resolved, the project
-  // label becomes a clickable affordance (renders as a button) that
-  // navigates the user to that project's detail page.
+  // The project the artifact belongs to. When resolved, the project label
+  // becomes a clickable affordance that navigates to that project's page.
   const projectMatch = projectOf(artifact, projects);
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
@@ -568,27 +235,38 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
     onMenuOpen?.(artifact, kebabRef.current.getBoundingClientRect());
   };
 
+  // Publishable = HTML + Markdown (isPublishableArtifact — the same predicate
+  // the Publish action + backend use); those show "Unpublished", everything
+  // else "Draft". Distinct from isWebAppArtifact (icon / name-only), so a .md
+  // is a "file" (shows its extension) yet still publishable. The name renders
+  // base-truncated with the extension always visible.
+  const publishable = isPublishableArtifact(artifact);
+  const { base, ext: nameExt } = splitArtifactName(artifact);
+  // ↗ — open the live thing: published URL, else served URL, else local file.
+  const onOpenExternal = (e) => {
+    e.stopPropagation();
+    if (published) onOpenPublished();
+    else if (privateUrl) onOpenPrivate();
+    else openArtifactFile(artifact);
+  };
+
   return (
     <div
+      className="cw-artifact-card"
       role="button"
       tabIndex={0}
       {...hoverProps}
-      onClick={() => canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)}
+      onClick={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
       onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
       style={{
-        position: 'relative',
         cursor: 'pointer',
         background: 'var(--surface)',
         border: '1px solid var(--line)',
-        // Card geometry matches ProjectCard so the two grids feel
-        // like the same family: 10px radius, 14/16 padding, 120 min
-        // height, 10px column gap.
-        borderRadius: 10,
-        padding: '14px 16px',
-        display: 'flex', flexDirection: 'column', gap: 10,
+        borderRadius: 12,
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
         transition: 'border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease',
         boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-        minHeight: 120,
       }}
       onMouseOver={(e) => {
         e.currentTarget.style.borderColor = 'var(--accent)';
@@ -601,227 +279,68 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
         e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
-      {/* Top-right cluster: status pill (left) + hover-revealed
-          kebab (right). The kebab is always rightmost so the user's
-          eye finds it in the same place regardless of pill state.
-          We toggle `visibility` (not display/opacity-without-space)
-          so the pill keeps its X position whether the kebab is
-          showing or not. */}
-      <div style={{
-        position: 'absolute', top: 12, right: 12,
-        display: 'flex', alignItems: 'center', gap: 6,
-        zIndex: 2,
-      }}>
-        {(published || artifact.live) && (
-          <span style={{ pointerEvents: 'none' }}>
-            {published ? <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} /> : (
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                fontFamily: FONT_BODY, fontSize: 11,
-                color: 'var(--accent)', fontWeight: 500,
-                border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-                padding: '3px 8px', borderRadius: 999,
-              }}>
-                <span className="pulse-dot" style={{
-                  width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)',
-                }} />
-                Live
-              </span>
-            )}
+      {/* Body — icon + name·ext + actions, then the status row. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px 16px', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+            <ArtifactIcon artifact={artifact} size={18} />
           </span>
-        )}
-        <button
-          ref={kebabRef}
-          type="button"
-          aria-label="Artifact menu"
-          title="More actions"
-          // Stop propagation on BOTH mousedown and click — the card
-          // itself is a click-able role="button" that opens the
-          // artifact, and a single `e.stopPropagation()` inside
-          // onClick wasn't reliably preventing the parent handler in
-          // every state (e.g. when the kebab was rendered while
-          // visibility was just transitioning).
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); openMenu(e); }}
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            display: 'inline-grid', placeItems: 'center',
-            color: 'var(--ink-3)',
-            background: 'transparent', border: 0, padding: 0,
-            cursor: 'pointer',
-            visibility: showControls ? 'visible' : 'hidden',
-            transition: 'background 120ms ease, color 120ms ease',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'var(--surface-2)';
-            e.currentTarget.style.color = 'var(--ink)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--ink-3)';
-          }}
-        >
-          {Ico.moreVert(14)}
-        </button>
-      </div>
-
-      {/* Header: small inline icon + title, with `type: <ext>` mono
-          subtitle directly under it. The kebab + status badge cluster
-          floats absolute at the top-right; we reserve right padding
-          so a long title can't overlap them. The kebab is always
-          there in layout (even when hidden) so the padding doesn't
-          jump on hover. */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0,
-        paddingRight: (published || artifact.live) ? 110 : 40,
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 7, minWidth: 0,
-        }}>
-          <span style={{
-            display: 'inline-flex', flexShrink: 0,
-            color: 'var(--ink-3)',
-          }}>
-            {/* Icons take size as a positional arg — calling
-                `Icon(14)` returns the rendered SVG at the right size.
-                The earlier `<Icon size={20} />` was rendering each
-                glyph at its 100%-width fallback (huge). */}
-            {Icon(14)}
-          </span>
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-            color: 'var(--ink)', minWidth: 0, flex: 1,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{artifact.title}</span>
+          {/* Name: base truncates, extension stays pinned + visible. */}
+          <div style={{
+            display: 'flex', alignItems: 'baseline', minWidth: 0, flex: 1,
+            fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
+          }} title={artifact.title}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+            {nameExt && <span style={{ flexShrink: 0, color: 'var(--ink-3)' }}>{nameExt}</span>}
+          </div>
+          {/* Actions — open-in-browser + ⋯ menu. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+            <CardIconButton title="Open" onClick={onOpenExternal}>{Ico.externalLink(15)}</CardIconButton>
+            <CardIconButton ref={kebabRef} title="More actions" ariaLabel="Artifact menu"
+              onClick={(e) => { e.stopPropagation(); openMenu(e); }}>
+              {Ico.moreVert(16)}
+            </CardIconButton>
+          </div>
         </div>
-        {/* Description — agent-supplied at create_artifact time. Two-
-            line clamp keeps the card height stable across artifacts
-            with short and long descriptions; the full text is in the
-            modal viewer. */}
-        {artifact.description && (
-          <span
-            title={artifact.description}
-            style={{
-              fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
-              lineHeight: 1.4,
-              display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-              overflow: 'hidden', textOverflow: 'ellipsis',
-            }}
-          >
-            {artifact.description}
-          </span>
-        )}
-        {/* project: <name> — sits above the type line so the workspace
-            origin reads first. Ellipsis-truncates so a long project
-            name can't push the card out of grid alignment; full name
-            is in `title` for hover. */}
-        <span
-          title={projectLabel}
-          style={{
-            fontFamily: FONT_MONO, fontSize: 11,
-            color: 'var(--ink-4)', letterSpacing: '0.04em',
-            display: 'flex', alignItems: 'baseline', gap: 4,
-            minWidth: 0,
-          }}
-        >
-          <span style={{ flexShrink: 0 }}>project:</span>
-          {canOpenProject ? (
-            <button
-              type="button"
-              // Same mousedown+click+keydown hardening the list row uses —
-              // the grid card's outer `<div role="button">` opens the
-              // artifact viewer, and we don't want the project click
-              // to fall through to that.
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onOpenProject(projectMatch);
-                }
-              }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-3)', minWidth: 0, flex: '0 1 auto',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-3)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
-            >{projectLabel}</button>
-          ) : (
-            <span style={{
-              color: 'var(--ink-3)', minWidth: 0, flex: '0 1 auto',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{projectLabel}</span>
-          )}
-        </span>
-        {/* type line — prefer the artifact's declared `type` (e.g.
-            `html-app`, `fullstack-stateless-app`) since that's the
-            metadata's source of truth; fall back to the bare
-            extension for legacy artifacts that predate the rename.
-            file-count chip surfaces multi-file artifacts at a glance
-            without competing with the title for space. */}
-        <span style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-          display: 'flex', alignItems: 'baseline', gap: 8,
-          minWidth: 0,
-        }}>
-          <span>
-            type: <span style={{ color: 'var(--ink-3)' }}>{artifact.type || ext}</span>
-          </span>
-          {typeof artifact.fileCount === 'number' && artifact.fileCount > 1 && (
-            <span title={`${artifact.fileCount} files in this artifact`}>
-              · <span style={{ color: 'var(--ink-3)' }}>{artifact.fileCount} files</span>
-            </span>
-          )}
-        </span>
+
+        <div style={{ display: 'flex', minWidth: 0 }}>
+          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} />
+        </div>
       </div>
 
-      {/* Surface the public URL when published; otherwise the HTTP
-          serve ("private") URL in the browser, where the artifact lives
-          on the server rather than on this machine; falling back to the
-          local OS path on desktop. Every card shows where the artifact
-          actually lives. */}
-      {published ? (
-        <PublishedUrlRow
-          url={artifact.publishedUrl}
-          onOpen={onOpenPublished}
-          onCopy={onCopyUrl}
-        />
-      ) : privateUrl ? (
-        <PublishedUrlRow
-          url={privateUrl}
-          onOpen={onOpenPrivate}
-          onCopy={onCopyPrivate}
-        />
-      ) : (
-        <LocalPathRow path={localPath} />
-      )}
-
-      {/* Spacer pushes the meta + actions to the bottom of the card so
-          the layout stays stable across cards of varying state. */}
-      <div style={{ flex: 1 }} />
-
+      {/* Footer — project origin + last-updated, divided from the body. */}
       <div style={{
-        fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '0.04em',
-        color: 'var(--ink-4)',
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '9px 16px', borderTop: '1px solid var(--line)', background: 'var(--surface-2)',
       }}>
-        {artifact.updated || '—'}
+        <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
+        {canOpenProject ? (
+          <button
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
+            title={`Open ${projectMatch.name}`}
+            style={{
+              all: 'unset', cursor: 'pointer',
+              fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
+              minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              transition: 'color 120ms ease',
+            }}
+            onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
+            onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.textDecoration = 'none'; }}
+          >{projectLabel}</button>
+        ) : (
+          <span title={projectLabel} style={{
+            fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
+            minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{projectLabel}</span>
+        )}
+        <span style={{
+          marginLeft: 'auto', flexShrink: 0,
+          fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
+        }}>{artifact.updated || '—'}</span>
       </div>
-      {/* The shared HoverMenu lives at the page level (parent
-          owns the menu state) — see the comment on
-          components/collection/HoverMenu for why this matters. */}
     </div>
   );
 }
@@ -833,66 +352,33 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
 // `Type` is the bare file extension (html, csv, png, …) and lives
 // before `Kind` (the broader category — Dashboard, Data, Image, …)
 // so the at-a-glance scan reads from concrete to abstract.
-const LIST_GRID = '24px 2fr 100px 60px 70px 1fr 110px 36px';
+// Name · Project · Status · (updated + actions). The trailing column is a
+// FIXED width — not `auto` — so the header grid (empty trailing cell) and each
+// row grid (updated + 2 icons) distribute their fr columns identically and the
+// Name/Project/Status headers line up exactly over their values.
+const LIST_GRID = 'minmax(0, 2.4fr) minmax(0, 1.3fr) minmax(0, 2fr) 200px';
 
 function ListHeaderRow() {
-  const Cell = ({ children, align }) => (
+  const Cell = ({ children }) => (
     <div style={{
-      fontFamily: FONT_MONO, fontSize: 10.5,
-      color: 'var(--ink-4)', letterSpacing: '0.10em',
-      textTransform: 'uppercase',
-      textAlign: align || 'left',
+      fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600, color: 'var(--ink-2)',
     }}>{children}</div>
   );
   return (
     <div style={{
-      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-      padding: '10px 14px',
+      display: 'grid', gridTemplateColumns: LIST_GRID, gap: 16,
+      padding: '10px 16px',
       borderBottom: '1px solid var(--line)',
     }}>
-      <Cell />
-      <Cell>Title</Cell>
-      <Cell>Published</Cell>
-      <Cell>Type</Cell>
-      <Cell>Kind</Cell>
+      <Cell>Name</Cell>
       <Cell>Project</Cell>
-      <Cell>Updated</Cell>
+      <Cell>Status</Cell>
       <Cell />
     </div>
   );
 }
 
-function StatusDot({ artifact }) {
-  const published = !!artifact.publishedUrl;
-  if (published) {
-    return (
-      <span aria-label="Published" title="Published" style={{
-        width: 8, height: 8, borderRadius: 99,
-        background: 'var(--accent)',
-        boxShadow: '0 0 6px var(--accent-glow)',
-        flexShrink: 0,
-      }} />
-    );
-  }
-  if (artifact.live) {
-    return (
-      <span aria-label="Live preview" title="Live preview" className="pulse-dot" style={{
-        width: 8, height: 8, borderRadius: 99,
-        background: 'var(--success)',
-        boxShadow: '0 0 6px var(--success-glow)',
-        flexShrink: 0,
-      }} />
-    );
-  }
-  return (
-    <span style={{
-      width: 8, height: 8, borderRadius: 99,
-      background: 'var(--ink-5)', flexShrink: 0,
-    }} />
-  );
-}
-
-function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onDelete, isMacPlatform = false }) {
+function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
   const items = [
@@ -919,6 +405,12 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       label: 'Copy URL',
       icon: Ico.copy(13),
       onClick: onCopyUrl,
+    },
+    published && artifact.modified && {
+      id: 'update',
+      label: 'Update',
+      icon: Ico.refresh(13),
+      onClick: onUpdate,
     },
     isPublishableArtifact(artifact) && !published && {
       id: 'publish',
@@ -953,15 +445,17 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
   );
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onDelete: doDelete, onOpenProject }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onDelete: doDelete, onOpenProject, phase, onRetry }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
-  const { hovered, revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
+  const { hovered, hoverProps } = useRevealOnHover(menuOpen);
 
-  const isHtml = isHtmlArtifact(artifact);
   const canPreview = isInlinePreviewable(artifact);
   const published = !!artifact.publishedUrl;
+  const publishable = isPublishableArtifact(artifact);   // HTML + Markdown — see ArtifactBubble note
+  const privateUrl = host.isWeb ? artifactServeUrl(artifact) : '';
+  const { base, ext: nameExt } = splitArtifactName(artifact);
   const project = projectNameOf(artifact, projects);
   const projectMatch = projectOf(artifact, projects);
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
@@ -974,6 +468,17 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
     if (canPreview) onOpenViewer?.(artifact);
     else openArtifactFile(artifact);
   };
+  const onOpenExternal = async (e) => {
+    e.stopPropagation();
+    const url = published ? artifact.publishedUrl : privateUrl;
+    if (url) { try { await host.openExternal(url); } catch { window.open(url, '_blank', 'noreferrer'); } }
+    else openArtifactFile(artifact);
+  };
+  const openMenu = (e) => {
+    e.stopPropagation();
+    setAnchorRect(triggerRef.current?.getBoundingClientRect() || null);
+    setMenuOpen(true);
+  };
 
   return (
     <>
@@ -984,9 +489,9 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onKeyDown={(e) => { if (e.key === 'Enter') onRowOpen(); }}
         {...hoverProps}
         style={{
-          display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-          padding: '12px 14px',
-          background: hovered ? 'var(--surface)' : 'transparent',
+          display: 'grid', gridTemplateColumns: LIST_GRID, gap: 16,
+          padding: '12px 16px',
+          background: hovered ? 'var(--surface-2)' : 'transparent',
           borderBottom: '1px solid var(--line)',
           cursor: 'pointer',
           transition: 'background .12s ease',
@@ -994,133 +499,61 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
           outline: 'none',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <StatusDot artifact={artifact} />
+        {/* Name — icon + base (truncates) + extension (pinned, subtle). */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+            <ArtifactIcon artifact={artifact} size={16} />
+          </span>
+          <div
+            title={artifact.title}
+            style={{
+              display: 'flex', alignItems: 'baseline', minWidth: 0,
+              fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600, lineHeight: 1.2,
+            }}
+          >
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{base}</span>
+            {nameExt && <span style={{ flexShrink: 0, color: 'var(--ink-3)' }}>{nameExt}</span>}
+          </div>
         </div>
 
-        <div style={{
-          fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 600,
-          color: 'var(--ink)', minWidth: 0,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{artifact.title}</div>
-
-        {/* Published column — pill when published, Live indicator when
-            actively streaming, em-dash for plain local artifacts. Keeps
-            the column width fixed so rows align cleanly. */}
-        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-          {published ? (
-            <PublishedPill mode={artifact.accessMode} protected={!!artifact.accessProtected} />
-          ) : artifact.live ? (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              fontFamily: FONT_BODY, fontSize: 11, color: 'var(--accent)', fontWeight: 500,
-              flexShrink: 0,
-            }}>
-              <span className="pulse-dot" style={{
-                width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)',
-              }} />
-              Live
-            </span>
-          ) : (
-            <span style={{ color: 'var(--ink-5)', fontFamily: FONT_MONO, fontSize: 11 }}>—</span>
-          )}
-        </div>
-
-        {/* Type — prefer the metadata-declared `type` (html-app,
-            fullstack-stateless-app, …); fall back to the primary
-            file's extension for legacy artifacts. Mono + uppercase
-            so it reads as a tag rather than a label. */}
-        <div
-          title={artifact.type || extensionOf(artifact)}
-          style={{
-            fontFamily: FONT_MONO, fontSize: 11,
-            color: 'var(--ink-4)', letterSpacing: '0.06em', textTransform: 'uppercase',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}
-        >{artifact.type || extensionOf(artifact)}</div>
-
-        <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-3)', letterSpacing: '0.06em', textTransform: 'uppercase',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{kindOf(artifact)}</div>
-
-        <div style={{
-          fontFamily: FONT_BODY, fontSize: 12.5,
-          color: 'var(--ink-2)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}>
+        {/* Project */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <span style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--ink-4)' }}>{Ico.folder(13)}</span>
           {canOpenProject ? (
             <button
               type="button"
-              // Stop propagation on BOTH mousedown and click — the
-              // surrounding row is a `role="button"` whose onClick
-              // opens the artifact, and a single onClick stopPropagation
-              // wasn't reliably preventing the row handler from firing
-              // first. Same defensive pattern the kebab uses.
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              onKeyDown={(e) => {
-                // Block keyboard Enter / Space from also bubbling to
-                // the row's `onKeyDown` (which would re-open the
-                // artifact). Activates the navigation in-place.
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onOpenProject(projectMatch);
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenProject(projectMatch); } }}
               title={`Open ${projectMatch.name}`}
               style={{
                 all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-2)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                maxWidth: '100%', display: 'inline-block',
-                transition: 'color 120ms ease',
+                fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
+                minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                display: 'inline-block', maxWidth: '100%', transition: 'color 120ms ease',
               }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-2)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.textDecoration = 'underline'; e.currentTarget.style.textUnderlineOffset = '2px'; }}
+              onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-2)'; e.currentTarget.style.textDecoration = 'none'; }}
             >{project}</button>
-          ) : project}
+          ) : (
+            <span title={project} style={{
+              fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-2)',
+              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{project}</span>
+          )}
         </div>
 
-        <div style={{
-          fontFamily: FONT_MONO, fontSize: 11,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
-        }}>{artifact.updated || '—'}</div>
+        {/* Status — query container so the access chip drops to icon-only
+            when the column gets tight (frees room for "Unpublished changes"). */}
+        <div className="cw-status-cell" style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+          <ArtifactStatus artifact={artifact} phase={phase} publishable={publishable} onRetry={onRetry} inlineChanges />
+        </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setAnchorRect(triggerRef.current?.getBoundingClientRect() || null);
-              setMenuOpen(true);
-            }}
-            aria-label="Artifact menu"
-            style={{
-              width: 26, height: 26, borderRadius: 6,
-              background: 'transparent', border: 0,
-              color: 'var(--ink-3)',
-              opacity: showKebab ? 1 : 0,
-              display: 'inline-grid', placeItems: 'center',
-              cursor: 'pointer',
-              transition: 'opacity .15s ease, color .15s ease, background .15s ease',
-            }}
-            onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-          >
-            {Ico.moreVert(15)}
-          </button>
+        {/* Updated + open + ⋯ */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
+          <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)' }}>{artifact.updated || '—'}</span>
+          <CardIconButton title="Open" onClick={onOpenExternal}>{Ico.externalLink(14)}</CardIconButton>
+          <CardIconButton ref={triggerRef} title="More actions" ariaLabel="Artifact menu" onClick={openMenu}>{Ico.moreVert(15)}</CardIconButton>
         </div>
       </div>
 
@@ -1135,6 +568,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         onCopyUrl={onCopyUrl}
         onPublish={() => doPublish?.(artifact)}
         onUnpublish={() => doUnpublish?.(artifact)}
+        onUpdate={() => doUpdate?.(artifact)}
         onDelete={doDelete ? () => doDelete(artifact) : undefined}
         isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
@@ -1158,50 +592,6 @@ function EmptyState({ agentLabel = 'the agent' }) {
       <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 380, textAlign: 'center' }}>
         When {agentLabel} creates documents, dashboards, or code outputs they'll appear here.
       </div>
-    </div>
-  );
-}
-
-// ─── Toast ───────────────────────────────────────────────────────────────
-//
-// Inline banner that surfaces publish / unpublish results so failures
-// (most commonly a missing ANTON_MINDS_API_KEY) don't disappear into
-// the console. Auto-dismisses after a few seconds; success and error
-// share the layout but have distinct accent / danger tints.
-
-function Toast({ kind, message, onClose }) {
-  if (!message) return null;
-  const isError = kind === 'error';
-  return (
-    <div style={{
-      // Position is owned by the parent wrapper now (fixed overlay),
-      // so this card carries no outer margin.
-      padding: '10px 14px',
-      borderRadius: 8,
-      background: isError
-        ? 'color-mix(in srgb, var(--danger) 12%, var(--surface))'
-        : 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
-      border: `1px solid ${isError ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--accent) 40%, transparent)'}`,
-      color: isError ? 'var(--danger)' : 'var(--ink-2)',
-      display: 'flex', alignItems: 'center', gap: 10,
-      fontFamily: FONT_BODY, fontSize: 12.5,
-    }}>
-      <span style={{ display: 'inline-flex', flexShrink: 0, color: isError ? 'var(--danger)' : 'var(--accent)' }}>
-        {isError ? Ico.alert?.(14) || Ico.trash(14) : Ico.check(14)}
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>{message}</span>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Dismiss"
-        style={{
-          background: 'transparent', border: 0,
-          color: 'var(--ink-3)', cursor: 'pointer',
-          padding: 4, display: 'inline-grid', placeItems: 'center',
-        }}
-      >
-        {Ico.close ? Ico.close(12) : '×'}
-      </button>
     </div>
   );
 }
@@ -1266,13 +656,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Auto-dismiss the toast after 5s — long enough to read, short enough
-  // not to linger across navigations.
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(id);
-  }, [toast]);
 
   const updateOne = (updated) => {
     setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
@@ -1292,6 +675,20 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       return next;
     });
   };
+
+  // Per-path transient status the status pills read: 'publishing' |
+  // 'updating' | 'unpublishing' | 'failed'. Cleared (idle) when the action
+  // settles successfully; 'failed' sticks until the user retries. Pure map
+  // → the pill is whatever's here, so the status can't get stuck.
+  const [statusByPath, setStatusByPath] = useState({});
+  const setPhase = (path, phase) => setStatusByPath((prev) => {
+    if (!phase) {
+      if (!(path in prev)) return prev;
+      const { [path]: _drop, ...rest } = prev;
+      return rest;
+    }
+    return { ...prev, [path]: phase };
+  });
 
   // Centralized publish — single source of truth for state updates,
   // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
@@ -1320,6 +717,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     setPublishTarget(null);
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
+    setPhase(artifact.path, 'publishing');
     try {
       const r = await publishArtifact(publishTargetPath(artifact), access);
       if (r?.url) {
@@ -1335,6 +733,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
           orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
         });
+        setPhase(artifact.path, null);
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
         trackArtifactPublished(r.report_id || artifact.id || '', m);
         setToast({
@@ -1342,6 +741,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           message: label ? `Published (${label}) — ${r.url}` : `Published — ${r.url}`,
         });
       } else {
+        setPhase(artifact.path, 'failed');
         setToast({ kind: 'error', message: 'Publish returned no URL.' });
       }
     } catch (e) {
@@ -1350,6 +750,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       const friendly = /minds_api_key/i.test(msg) || /minds api key/i.test(msg)
         ? 'Set your Minds API key in Settings to publish artifacts.'
         : `Publish failed: ${msg}`;
+      setPhase(artifact.path, 'failed');
       setToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
@@ -1360,6 +761,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   const handleUnpublish = async (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return;
     setBusy(artifact.path, true);
+    setPhase(artifact.path, 'unpublishing');
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
@@ -1368,6 +770,25 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
+      setPhase(artifact.path, null);
+    }
+  };
+
+  const handleUpdate = async (artifact) => {
+    if (!artifact?.path || busyPaths.has(artifact.path)) return;
+    setBusy(artifact.path, true);
+    setPhase(artifact.path, 'updating');
+    try {
+      const r = await updateArtifact(publishTargetPath(artifact));
+      // Server refreshed last_md5 + published_mtime, so the artifact is no
+      // longer "modified". Reflect it locally without a refetch.
+      updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
+      setToast({ kind: 'ok', message: 'Updated published version.' });
+    } catch (e) {
+      setToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+    } finally {
+      setBusy(artifact.path, false);
+      setPhase(artifact.path, null);
     }
   };
 
@@ -1421,11 +842,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   }, [list, search, sort]);
 
   const total = (list || []).length;
-  // Published count reflects the *visible* set so it tracks the filter
-  // (e.g. "Showing 5 of 12 · 2 published" surfaces what's in the view,
-  // not the global count). The numerator stays accurate while the
-  // denominator changes with the search.
-  const publishedCount = visible.filter((a) => a.publishedUrl).length;
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -1433,6 +849,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     <div className="scroll-clean" style={{
       flex: 1, overflowY: 'auto',
       display: 'flex', flexDirection: 'column',
+      // Query container so the artifacts grid picks its column count from the
+      // actual panel width (not the viewport) — see .artifacts-grid @container.
+      containerType: 'inline-size',
     }}>
       <PageHeader
         title="Live Artifacts"
@@ -1446,23 +865,13 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         subtitleBottom={20}
       />
 
-      {/* Toast is portalled to document.body so it renders after modals
-          in DOM order, which prevents iframes inside modals from
-          compositing on top of it regardless of z-index. */}
-      {createPortal(
-        <div style={{
-          position: 'fixed', top: 24, right: 32, zIndex: 90,
-          pointerEvents: toast?.message ? 'auto' : 'none',
-          maxWidth: 420,
-        }}>
-          <Toast
-            kind={toast?.kind}
-            message={toast?.message}
-            onClose={() => setToast(null)}
-          />
-        </div>,
-        document.body,
-      )}
+      <Toast
+        type={toast?.kind === 'ok' ? 'success' : 'error'}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+        duration={5000}
+        align="right"
+      />
 
       {/* Subtitle → search-row gap. Set to 20px per the design;
           ProjectsView uses 18px because its header has an anchor
@@ -1481,15 +890,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ViewToggle value={view} onChange={setView} /></span>}
-          counts={
-            <ArtifactsCounts
-              search={search}
-              total={total}
-              filtered={visible.length}
-              publishedCount={publishedCount}
-            />
-          }
+          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
         />
       )}
 
@@ -1497,10 +898,10 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         <EmptyState agentLabel={agentLabel} />
       ) : effectiveView === 'grid' ? (
         <div className="artifacts-grid" style={{
+          // Grid layout (display + responsive columns + gap) lives in CSS
+          // (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
+          // mobile — pure CSS media queries, no JS resize listener.
           padding: '6px 32px 60px',
-          // Same grid geometry as ProjectsView so cards line up at
-          // the same density across pages.
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
           marginTop: 18,
         }}>
           {visible.map((a) => (
@@ -1513,7 +914,8 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
                 prev?.artifact?.path === art.path ? null : { artifact: art, rect },
               )}
               isMenuOpen={menuFor?.artifact?.path === a.path}
-              busy={busyPaths.has(a.path)}
+              phase={statusByPath[a.path]}
+              onRetry={() => handlePublish(a)}
               onOpenProject={onOpenProject}
             />
           ))}
@@ -1529,8 +931,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onOpenViewer={setViewer}
               onPublish={handlePublish}
               onUnpublish={handleUnpublish}
+              onUpdate={handleUpdate}
               onDelete={handleTrash}
               onOpenProject={onOpenProject}
+              phase={statusByPath[a.path]}
+              onRetry={() => handlePublish(a)}
             />
           ))}
         </div>
@@ -1570,6 +975,14 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
           const busyA = busyPaths.has(a.path);
           const items = [];
           if (published) {
+            if (a.modified) {
+              items.push({
+                id: 'update',
+                label: busyA ? 'Working…' : 'Update',
+                icon: Ico.refresh(13),
+                onClick: () => handleUpdate(a),
+              });
+            }
             items.push({
               id: 'unpublish',
               label: busyA ? 'Working…' : 'Unpublish',

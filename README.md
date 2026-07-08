@@ -1,9 +1,4 @@
-```
-   █▀▄▀█ █ █▄ █ █▀▄ █▀   █▀▀ █▀█ █ █ █ █▀█ █▀█ █▄▀
-   █ ▀ █ █ █ ▀█ █▄▀ ▄█   █▄▄ █▄█ ▀▄▀▄▀ █▄█ █▀▄ █ █
-```
-
-# MindsHub Cowork - FRONTEND
+# MindsHub Cowork - Frontend
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mindsdb/cowork)
 
@@ -28,7 +23,7 @@ MindsHub Cowork runs in several contexts. The React SPA is identical across all 
 |-------------|----------|---------|------------|
 | **Local dev (Electron)** | Vite dev server on `:5173` | `uv run cowork-server` from sibling source dir | `npm run dev` |
 | **Local dev (web)** | Vite dev server on `:5173` | `uv run cowork-server` from sibling source dir | `npm run dev:web` |
-| **Packaged Electron** (macOS/Windows) | Bundled or OTA-cached React build | `cowork-server` binary via `uv tool install` from PyPI | Download from [downloads.mindsdb.com](https://downloads.mindsdb.com) |
+| **Packaged Electron** (macOS/Windows) | Bundled or OTA-cached React build | `cowork-server` binary via `uv tool install` from PyPI | Download from [downloads.mindshub.ai](https://downloads.mindshub.ai) |
 | **Docker** (web deployment) | Static files served by uvicorn | `cowork-server` installed in `/opt/venv` | `docker build` + `docker run` |
 
 ---
@@ -69,7 +64,7 @@ In dev mode the server runs from source (`uv run cowork-server`), so local Pytho
 
 #### Environment variables
 
-Copy `.env.example` to `.env` and fill in any optional tokens (e.g. `VITE_POSTHOG_ANTON_PROJECT_TOKEN` for analytics). Vite auto-loads `.env` at build/dev time. The `.env` file is gitignored.
+Copy `.env.example` to `.env` and fill in any optional tokens (e.g. `VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN` for analytics). Vite auto-loads `.env` at build/dev time. The `.env` file is gitignored.
 
 ### Dev Mode With Inspector
 
@@ -402,11 +397,33 @@ For hotfixes or out-of-band releases, coordinate with `@mindsdb/devops` to bypas
 # macOS — unsigned DMG (universal: x64 + arm64)
 npm run dist:mac
 
+# macOS — .app only, no DMG (faster, unsigned)
+npm run pack
+
 # Windows — NSIS installer (x64)
 npm run dist:win
 ```
 
 Prerequisites: Node.js 18+, npm. For signed builds: Apple Developer certificates (macOS) or EV code signing certificate (Windows).
+
+#### Building from local uncommitted source (via parent Makefile)
+
+When working in the `minds-platform` superproject, use `make pack-local` instead of `npm run pack`. It installs `cowork-server` from the local `backend/core_api/` directory (no push required), builds to `/tmp` to avoid the iCloud re-tagging codesign failure, then copies the result to `frontend/release/mac-arm64/`.
+
+```bash
+# from the minds-platform root:
+make pack-local
+# launch the built app with local server (auto-update disabled):
+COWORK_SERVER_DISABLE_AUTOUPDATE=1 open "frontend/release/mac-arm64/MindsHub Cowork.app"
+```
+
+> **iCloud builds** — If the repo lives under `~/Documents` (iCloud Drive), `npm run pack` fails with `resource fork, Finder information, or similar detritus not allowed` during codesign. Build to `/tmp` manually:
+>
+> ```bash
+> PATH="/opt/homebrew/opt/node@20/bin:$PATH" \
+>   npx electron-builder --mac --arm64 --config.directories.output=/tmp/minds-build
+> cp -R /tmp/minds-build/mac-arm64 release/
+> ```
 
 ### Code signing
 
@@ -524,17 +541,17 @@ No sidecar `.sha256` files are published — the `.pkg` is notarized by Apple an
 
 > **Lifecycle tip**: set bucket lifecycle rules to auto-expire objects under `previews/` (e.g. 14 days) and `snapshots/` (e.g. 60 days) to keep costs bounded. Prod objects have no expiration.
 
-### Public downloads at `downloads.mindsdb.com`
+### Public downloads at `downloads.mindshub.ai`
 
-End users never hit S3 directly. The `anton-installer` bucket is fronted by a CloudFront distribution aliased to **`https://downloads.mindsdb.com`**.
+End users never hit S3 directly. The `anton-installer` bucket is fronted by a CloudFront distribution aliased to **`https://downloads.mindshub.ai`** (the legacy domain `downloads.mindsdb.com` also continues to work during the transition).
 
-- macOS: https://downloads.mindsdb.com/anton/mac/anton-latest.pkg
-- Windows: https://downloads.mindsdb.com/anton/windows/anton-latest.exe
+- macOS: https://downloads.mindshub.ai/anton/mac/anton-latest.pkg
+- Windows: https://downloads.mindshub.ai/anton/windows/anton-latest.exe
 
 Public URL layout:
 
 ```
-https://downloads.mindsdb.com/
+https://downloads.mindshub.ai/
   anton/
     mac/
       anton-{version}.pkg                              # prod — versioned
@@ -553,19 +570,19 @@ Infrastructure:
 - **CloudFront + ACM + S3 OAC** live in [`terraform/newprod/us-east-1/anton/cloudfront.tf`](../terraform/newprod/us-east-1/anton/cloudfront.tf), which also defines the bucket policy / public-access-block that keep the bucket private and reachable only via CloudFront's Origin Access Control.
 - The bucket resource is in [`terraform/newprod/us-east-1/anton/s3.tf`](../terraform/newprod/us-east-1/anton/s3.tf).
 - The CloudFront domain name is published via [`terraform/newprod/us-east-1/anton/outputs.tf`](../terraform/newprod/us-east-1/anton/outputs.tf) (`cloudfront_downloads_domain_name`) and consumed by the Cloudflare stack.
-- DNS (`downloads.mindsdb.com` CNAME + ACM validation records) is managed in [`terraform/newprod/global/cloudflare/downloads.mindsdb.com-domain.tf`](../terraform/newprod/global/cloudflare/downloads.mindsdb.com-domain.tf).
+- DNS (`downloads.mindshub.ai` CNAME + ACM validation records) is managed in [`terraform/newprod/global/cloudflare/downloads.mindshub.ai-domain.tf`](../terraform/newprod/global/cloudflare/downloads.mindshub.ai-domain.tf). Legacy DNS (`downloads.mindsdb.com`) is in [`downloads.mindsdb.com-domain.tf`](../terraform/newprod/global/cloudflare/downloads.mindsdb.com-domain.tf).
 
 CloudFront behavior:
 
-- Path mapping is **1:1** — the S3 key `anton/mac/anton-latest.pkg` is reachable at `https://downloads.mindsdb.com/anton/mac/anton-latest.pkg`.
+- Path mapping is **1:1** — the S3 key `anton/mac/anton-latest.pkg` is reachable at `https://downloads.mindshub.ai/anton/mac/anton-latest.pkg`.
 - Viewer-protocol policy is `redirect-to-https`.
-- `GET /` → 302 redirect to `https://mindsdb.com` via the `downloads-root-redirect` CloudFront Function (viewer-request).
-- `GET /<missing key>` (S3 403/404) → 302 redirect to `https://mindsdb.com` via the `downloads-error-redirect` CloudFront Function (viewer-response). Unknown paths bounce to the marketing site instead of returning an XML error.
+- `GET /` → 302 redirect to `https://mindshub.ai` via the `downloads-root-redirect` CloudFront Function (viewer-request).
+- `GET /<missing key>` (S3 403/404) → redirect to `https://mindshub.ai` via `/redirect.html` (meta-refresh + JS). Unknown paths bounce to the marketing site instead of returning an XML error.
 - Default cache TTL is 1 hour, max 24 hours. Compression is enabled. No query strings or cookies are forwarded.
 
 > **Cache invalidations**: `anton-latest.{pkg,exe}` is overwritten on each prod release, so CloudFront may serve the stale copy for up to 1 hour. Create an invalidation for `/anton/mac/anton-latest.pkg` and/or `/anton/windows/anton-latest.exe` if a release needs to be visible immediately. Versioned URLs (`anton-{version}.pkg`) are immutable and never need invalidation.
 
-The [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) workflow prints both the `s3://` URI and the `https://downloads.mindsdb.com/...` URL for every object it uploads in its GitHub step summary, so PRs and releases have a clickable public URL in the Actions run.
+The [`upload-installer-to-s3.yml`](.github/workflows/upload-installer-to-s3.yml) workflow prints both the `s3://` URI and the `https://downloads.mindshub.ai/...` URL for every object it uploads in its GitHub step summary, so PRs and releases have a clickable public URL in the Actions run.
 
 ### Workflow files
 
@@ -640,6 +657,8 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
 | `UI_UPDATE_MODE` | Settings | OTA UI update behavior (`auto` / `manual`; default `auto`) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
+| `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
+| `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
 
 ---
 

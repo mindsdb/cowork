@@ -51,10 +51,15 @@ const isCloudHosted = (() => {
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
 const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', checkLoginIframe: false, redirectUri: cleanRedirectUri };
 
+// ENG-436: write ONLY the dedicated minds slots — never the OpenAI slot.
+// cowork-server resolves minds-cloud from minds_api_key/minds_url (main
+// agent + scratchpad), so the OpenAI slot is no longer needed and is left
+// for the user's own key. ANTON_MINDS_URL is required so the scratchpad
+// derives the right host (/v1 for api.mindshub.ai) instead of falling back
+// to the default mdb.ai.
 const MINDS_ENV_LINES = (token: string) => [
-  `ANTON_OPENAI_API_KEY=${token}`,
   `ANTON_MINDS_API_KEY=${token}`,
-  `ANTON_OPENAI_BASE_URL=https://api.mindshub.ai/v1`,
+  `ANTON_MINDS_URL=https://api.mindshub.ai`,
 ];
 
 /** Write MindsHub tokens to both .env (legacy) and the backend DB. */

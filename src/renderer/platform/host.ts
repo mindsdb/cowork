@@ -42,14 +42,18 @@ export function isMac(): boolean {
 // ---- API origin / OAuth redirect ---------------------------------------
 
 // Where the cowork SPA addresses its FastAPI backend.
-//   Electron (file:// or app://) → loopback at the fixed dev port.
+//   Electron (file:// or app://) → loopback at the port main resolved for
+//     THIS OS user and handed us via preload (ENG-439). Falls back to the
+//     legacy fixed port only if the bridge didn't supply one.
 //   Web (http(s)://...)          → same origin (FastAPI serves the SPA).
 export function getApiOrigin(): string {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
-  return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${ANTON_SERVER_PORT}`
-    : window.location.origin;
+  if (protocol === 'file:' || protocol === 'app:') {
+    const port = isElectron && typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
+    return `http://127.0.0.1:${port}`;
+  }
+  return window.location.origin;
 }
 
 // True when the FastAPI backend the SPA talks to lives on THIS machine
@@ -265,7 +269,10 @@ export async function checkConfigured(): Promise<{ configured: boolean; provider
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
   }
-  return fetchJson('/api/v1/settings/configured');
+  // Web: read config_ready from /health — the SAME signal the in-app chat gate
+  // uses — so onboarding-vs-app routing can't disagree with the chat gate.
+  const h = await fetchJson('/api/v1/health/') as { config_ready?: boolean; provider?: string };
+  return { configured: Boolean(h.config_ready), provider: h.provider ?? '' };
 }
 
 export async function validateProvider(
@@ -457,6 +464,23 @@ export async function mindshubGetCachedToken(): Promise<string | null> {
   return null;
 }
 
+// Where the refresh token is stored: macOS keychain (true) or a plaintext
+// file under ~/.cowork (false). Electron-only — the web shell has no local
+// token store, so both wrappers no-op to a safe default.
+export async function getKeychainPref(): Promise<boolean> {
+  if (isElectron && typeof bridge.getKeychainPref === 'function') {
+    return (await bridge.getKeychainPref()).enabled;
+  }
+  return false;
+}
+
+export async function setKeychainPref(enabled: boolean): Promise<boolean> {
+  if (isElectron && typeof bridge.setKeychainPref === 'function') {
+    return (await bridge.setKeychainPref(enabled)).ok;
+  }
+  return false;
+}
+
 export async function getAccessToken(): Promise<string | null> {
   if (isElectron && typeof bridge.getAccessToken === 'function') {
     return bridge.getAccessToken();
@@ -515,6 +539,8 @@ export const host = {
   mindshubRefresh,
   mindshubFinalize,
   mindshubGetCachedToken,
+  getKeychainPref,
+  setKeychainPref,
   getAccessToken,
   logout,
 };

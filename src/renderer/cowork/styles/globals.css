@@ -100,6 +100,28 @@
   --sage-500: #5D9287;
   --sage-600: #4D7A70;
   --sage-700: #3D6159;
+
+  /* ─── Type scale ─────────────────────────────────────────────────────── */
+  --text-2xs:  10px;   /* timestamps, mono badges, kbd labels */
+  --text-xs:   11px;   /* section labels (UPPERCASE), eyebrows */
+  --text-sm:   12.5px; /* secondary body, captions, helper text */
+  --text-base: 14px;   /* primary body, buttons, form inputs */
+  --text-md:   15px;   /* slightly emphasized body, composer */
+  --text-lg:   17px;   /* subheadings, card titles */
+  --text-xl:   22px;   /* pane titles, modal headings */
+  --text-2xl:  28px;   /* page-level headings */
+  --text-3xl:  36px;   /* home greeting, hero text */
+
+  /* ─── Spacing scale (4px base) ───────────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
 }
 
 /* ─── Light mode (default) ────────────────────────────────────────────────
@@ -119,6 +141,7 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
+  --line-soft:    #EFEFED;
   /* Sidebar surface — light mode uses a warmer grey so the OS-drawn
      inactive traffic-light circles (~#a8a8a8) read against it. Dark
      mode follows the regular surface. */
@@ -136,14 +159,29 @@ body, body[data-theme="light"] {
   --accent-bg:    #E5F4F7;
   --accent-glow:  rgba(31, 156, 176, 0.30);
 
+  /* Status — brandbook-aligned */
+  --ok:           #15803D;
+  --ok-bg:        #DCFCE7;
   --danger:       #B91C1C;
   --danger-bg:    #FEE2E2;
+  --danger-border:#F0C2B5;
+  --danger-text:  #8F321A;
+  --warn:         #B45309;
+  --warn-bg:      #FEF3C7;
+  --warning:      var(--warn);
+  --warning-bg:   var(--warn-bg);
+  --warning-border:#F3D9A0;
+  --warning-text: #78350F;
 
-  /* Active / online indicator (green dot on project cards + list rows).
-     Used with --success-glow as a soft halo when the project has live
-     activity. */
-  --success:      rgb(34, 160, 94);
-  --success-glow: rgba(34, 160, 94, 0.40);
+  --info-bg:      var(--accent-bg);
+  --info-border:  color-mix(in srgb, var(--accent) 30%, transparent);
+  --info-text:    var(--accent-2);
+
+  --success:      var(--ok);
+  --success-bg:   var(--ok-bg);
+  --success-border:#A7F3D0;
+  --success-text: #166534;
+  --success-glow: rgba(21, 128, 61, 0.40);
 
   /* Project tint palette — used by ProjectCard's accent stripe.
      Light mode picks deeper, more saturated values that read against
@@ -162,10 +200,13 @@ body, body[data-theme="light"] {
   --r-lg:         10px;
   --r-xl:         16px;
 
+  /* Shadows — brandbook "flat-but-physical" with 1px bottom edge */
   --sh-1:         0 1px 0 rgba(15,16,17,0.04), 0 1px 2px rgba(15,16,17,0.05);
   --sh-2:         0 1px 0 rgba(15,16,17,0.04), 0 4px 12px rgba(15,16,17,0.06);
   --sh-3:         0 1px 0 rgba(15,16,17,0.04), 0 12px 28px rgba(15,16,17,0.08);
-  --ring:         0 0 0 3px rgba(31,156,176,0.30);
+  --sh-popup:     0 1px 0 rgba(15,16,17,0.04), 0 8px 24px rgba(15,16,17,0.10);
+  --sh-modal:     0 1px 0 rgba(15,16,17,0.04), 0 24px 60px rgba(15,16,17,0.18);
+  --ring:         0 0 0 1px rgba(31,156,176,0.22);
 
   /* Legacy/cowork token aliases — keep existing components working */
   --surface-0:      var(--surface);
@@ -230,10 +271,26 @@ body[data-theme="dark"] {
 
   --danger:       #F87171;
   --danger-bg:    rgba(248, 113, 113, 0.12);
+  --danger-border:rgba(248, 113, 113, 0.25);
+  --danger-text:  #FCA5A5;
 
-  /* Dark-mode active indicator — neon mint with stronger glow so it
-     reads against the deep-blue surfaces. */
-  --success:      rgb(74, 222, 128);
+  --warning:      #FBBF24;
+  --warning-bg:   rgba(251, 191, 36, 0.12);
+  --warning-border:rgba(251, 191, 36, 0.25);
+  --warning-text: #FDE68A;
+
+  --info-bg:      var(--accent-bg);
+  --info-border:  color-mix(in srgb, var(--accent) 30%, transparent);
+  --info-text:    var(--accent);
+
+  --ok:           rgb(74, 222, 128);
+  --ok-bg:        rgba(74, 222, 128, 0.12);
+  --warn:         #FBBF24;
+  --warn-bg:      rgba(251, 191, 36, 0.12);
+  --success:      var(--ok);
+  --success-bg:   var(--ok-bg);
+  --success-border:rgba(74, 222, 128, 0.25);
+  --success-text: #86EFAC;
   --success-glow: rgba(74, 222, 128, 0.55);
 
   /* Dark-mode project tints — brighter neon-family palette that
@@ -245,10 +302,20 @@ body[data-theme="dark"] {
   --tint-5:       #C4B5FD;  /* lavender */
   --tint-6:       #BEF264;  /* lime */
 
-  --sh-1:         0 1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.4);
-  --sh-2:         0 1px 0 rgba(0,0,0,0.4), 0 6px 18px rgba(0,0,0,0.5);
-  --sh-3:         0 1px 0 rgba(0,0,0,0.4), 0 18px 40px rgba(0,0,0,0.6);
-  --ring:         0 0 0 3px rgba(34, 211, 238, 0.35);
+  --sh-1:         0 1px 3px rgba(0, 0, 0, 0.20);
+  --sh-2:         0 2px 10px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.12);
+  --sh-3:         0 6px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --sh-popup:     0 8px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --sh-modal:     0 24px 60px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.12);
+  --ring:         0 0 0 1px rgba(34, 211, 238, 0.28);
+
+  /* Frost — remap to dark ink tones so sidebar text, nav items,
+     composer placeholder, and section labels stay readable. */
+  --frost-800: var(--ink);
+  --frost-700: var(--ink-2);
+  --frost-600: var(--ink-3);
+  --frost-500: var(--ink-4);
+  --frost-400: var(--ink-4);
 
   /* Legacy/cowork aliases — onto the same surfaces as the guideline */
   --surface-0:      var(--surface);
@@ -301,6 +368,16 @@ body[data-theme="dark"] em {
 
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Base micro-interaction: smooth transitions on all interactive elements.
+   Individual rules can override with more specific transition properties. */
+button, a, [role="button"], input, select, textarea,
+.nav-item, .recent-item, .icon-btn, .btn, .meta-pill,
+.artifact-card, .rail-panel {
+  transition: background 0.15s ease, color 0.15s ease,
+              border-color 0.15s ease, box-shadow 0.15s ease,
+              opacity 0.15s ease;
+}
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 body {
   font-family: var(--font-sans);
@@ -422,6 +499,34 @@ a[href],
   to { transform: rotate(360deg); }
 }
 
+/* ─── Streaming text fade-in ─────────────────────────────────────────────── */
+/* Word-level: individual words fade in as they stream. React reconciliation
+   preserves existing <span> elements (keyed by index) so only newly
+   appended words play the animation. */
+@keyframes stream-word-fade {
+  from { opacity: 0; filter: blur(2px); }
+  to   { opacity: 1; filter: blur(0px); }
+}
+.stream-word {
+  animation: stream-word-fade 0.32s ease-out both;
+}
+
+/* Block-level: non-text elements (code blocks, tables, blockquotes, hrs)
+   slide + fade in when they first appear during streaming. Text-bearing
+   elements (p, h1-h3, li) use word-level animation instead. */
+@keyframes stream-block-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.markdown-content.is-streaming > *:not(p):not(h1):not(h2):not(h3):not(ul):not(ol) {
+  animation: stream-block-fade 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-word { animation: none !important; }
+  .markdown-content.is-streaming > * { animation: none !important; }
+}
+
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 .typing-dot { animation: typing 1.2s ease-in-out infinite; }
 
@@ -532,12 +637,12 @@ a[href],
   background: var(--surface-0);
   border: 1px solid var(--border-01);
   border-radius: 14px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 6px 18px -8px rgba(0,0,0,0.10);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 4px 12px -6px rgba(0,0,0,0.06);
   transition: border-color .15s, box-shadow .15s;
 }
 .composer-wrap.focused {
   border-color: var(--primary-300);
-  box-shadow: 0 0 0 3px rgba(31,156,176,0.15), 0 6px 18px -8px rgba(0,0,0,0.12);
+  box-shadow: 0 0 0 3px rgba(31,156,176,0.12), 0 4px 12px -6px rgba(0,0,0,0.06);
 }
 /* In-fence indicator — caret sits inside a fenced code block. Subtle
    accent-tinted inner stripe on the left edge plus a soft body wash, so
@@ -547,14 +652,14 @@ a[href],
   background: color-mix(in srgb, var(--accent) 4%, var(--surface-0));
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 6px 18px -8px rgba(0, 0, 0, 0.10);
+    0 1px 3px rgba(0, 0, 0, 0.03),
+    0 4px 12px -6px rgba(0, 0, 0, 0.06);
 }
 .composer-wrap.focused.in-fence {
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    0 0 0 3px rgba(31, 156, 176, 0.15),
-    0 6px 18px -8px rgba(0, 0, 0, 0.12);
+    0 0 0 3px rgba(31, 156, 176, 0.12),
+    0 4px 12px -6px rgba(0, 0, 0, 0.06);
 }
 /* Font, line-height, and padding MUST match the textarea exactly — both
    consume the same custom properties from .composer-input-shell so any
@@ -566,11 +671,21 @@ a[href],
   font-size: var(--composer-font-size);
   line-height: var(--composer-line-height);
   color: var(--text-strong);
+  /* The pixel-aligned highlight overlay (.composer-textarea-overlay) sits
+     behind this textarea and renders the *visible* text in colour (plain text,
+     inline-code, fence markers, and /skill-name mentions). So the textarea's
+     own glyphs must be invisible — fill transparent — while the caret stays
+     visible via caret-color. Without this the opaque textarea text covers the
+     overlay and every token reads as flat ink. */
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text-strong);
   padding: var(--composer-padding);
   min-height: 56px; max-height: 220px;
   user-select: text;
 }
-.composer-textarea::placeholder { color: var(--frost-500); }
+/* Placeholder must opt back IN to a visible fill (the rule above made all
+   textarea glyphs transparent). */
+.composer-textarea::placeholder { color: var(--frost-500); -webkit-text-fill-color: var(--frost-500); }
 
 /* Source-mode highlight overlay.
    The textarea is the real input — the overlay sits behind it and
@@ -613,7 +728,10 @@ a[href],
   overflow: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  color: transparent;
+  /* The overlay is now the VISIBLE text layer (the textarea's fill is
+     transparent). Plain text renders in the normal ink; segment classes
+     (.overlay-inline-code / -fence-marker / -slash-mention) tint their runs. */
+  color: var(--text-strong);
   background: transparent;
   border: 0;
   user-select: none;
@@ -648,6 +766,13 @@ a[href],
   background: color-mix(in srgb, rgb(232, 132, 110) 16%, transparent);
   color: color-mix(in srgb, rgb(232, 132, 110) 70%, var(--ink));
   border-radius: 3px;
+}
+/* Skill mention (/skill-name) — plain text (no backticks, no chip), coloured a
+   little darker than the brand accent so it reads as a mention. COLOUR ONLY:
+   no padding/weight/border/background (they'd shift char widths and break the
+   overlay's char-for-char alignment with the textarea). */
+.overlay-slash-mention {
+  color: color-mix(in srgb, var(--accent) 82%, #000);
 }
 .composer-textarea-overlay::-webkit-scrollbar { display: none; }
 
@@ -824,7 +949,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   align-items: center;
   gap: 10px;
   padding: 0 18px;
-  border-bottom: 1px solid #e8e6df;
+  border-bottom: 1px solid var(--line);
   background: #fff;
   flex-shrink: 0;
 }
@@ -897,8 +1022,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-subnav {
-  background: #fafaf7;
-  border-right: 1px solid #e8e6e1;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
   padding: 18px 14px;
   display: flex;
   flex-direction: column;
@@ -972,7 +1097,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   height: 34px;
   padding: 0 15px;
   border-radius: 8px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   background: #fff;
   color: #1a1a1a;
   font-size: 13px;
@@ -1060,7 +1185,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   align-items: center;
   gap: 18px;
   padding: 18px 22px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: #fff;
   text-align: left;
@@ -1068,7 +1193,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-home-card:hover {
-  background: #fafaf7;
+  background: var(--bg);
 }
 
 .customize-home-card.active {
@@ -1112,7 +1237,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-middle-pane {
-  border-right: 1px solid #e8e6df;
+  border-right: 1px solid var(--line);
 }
 
 .customize-pane-header {
@@ -1283,9 +1408,9 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 .customize-drive-card,
 .customize-form-card {
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fafaf7;
+  background: var(--bg);
 }
 
 .customize-drive-card {
@@ -1328,8 +1453,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   gap: 12px;
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid #e8e6df;
-  background: #fafaf7;
+  border: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .customize-saved-title {
@@ -1370,7 +1495,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .customize-search-input input {
   width: 100%;
   height: 40px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
   color: #1a1a1a;
@@ -1381,16 +1506,13 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 .customize-input:focus,
 .customize-search-input input:focus {
-  border-color: #cfcac0;
-  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.08);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
 }
-/* WCAG 2.4.7 / 2.4.11 — the 8% alpha glow above is too faint for a
-   focus indicator. Keyboard users get a solid ring; mouse focus keeps
-   the subtle glow. */
 .customize-input:focus-visible,
 .customize-search-input input:focus-visible {
-  outline: 2px solid var(--accent, #2f6fed);
-  outline-offset: 2px;
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .customize-field small {
@@ -1436,8 +1558,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  background: #f5f3ee;
-  border: 1px solid #e8e6df;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1719,7 +1841,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   min-width: 130px;
   height: 38px;
   padding: 0 14px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
   color: #1a1a1a;
@@ -1757,7 +1879,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 .customize-directory-card {
   padding: 18px 20px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: #fff;
   cursor: pointer;
@@ -1806,7 +1928,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  border: 1px solid #e8e6df;
+  border: 1px solid var(--line);
   background: #fff;
   display: inline-flex;
   align-items: center;
@@ -2031,9 +2153,9 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 
 /* ─── Artifact card ──────────────────────────────────────────────────────── */
 .artifact-card {
-  margin-top: 12px; border: 1px solid var(--border-01);
+  margin-top: 12px; border: 1px solid var(--line);
   border-radius: 12px; background: var(--surface-0);
-  overflow: hidden; box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 .artifact-head {
   display: flex; align-items: center; gap: 10px;
@@ -2363,13 +2485,11 @@ body:not([data-theme="dark"]) .btn-primary {
   border-color: var(--accent);
   box-shadow: var(--ring);
 }
-/* WCAG 2.4.7 / 2.4.11 — the soft alpha ring above can fall under 3:1
-   non-text contrast against the surface. focus-visible promotes a
-   solid outline so keyboard focus is always unambiguous. */
+/* WCAG 2.4.7 — keyboard focus gets a slightly stronger ring */
 .field-input:focus-visible,
 .field-textarea:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .field-input:disabled,
 .field-textarea:disabled {
@@ -2702,12 +2822,10 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
 /* Footer status bar */
 .anton-sidebar__footer {
   border-top: 1px solid var(--line);
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  /* Footer inherits the sidebar surface so the pill reads as part of the
-     panel rather than sitting on a darker tray. */
+  gap: 6px;
   background: transparent;
 }
 .status-pill {
@@ -2808,6 +2926,31 @@ body[data-theme="dark"] .status-pill.is-busy .status-text__live {
 }
 .anton-sidebar__footer-actions { display: flex; gap: 4px; }
 
+.anton-sidebar__footer-settings {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  text-align: left;
+}
+.anton-sidebar__footer-settings:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.anton-sidebar__footer-settings.is-on {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
 /* Small chrome button (used in footer + sidebar header where 22px is tight) */
 .chrome-btn--small {
   width: 22px; height: 22px;
@@ -2829,6 +2972,15 @@ body[data-theme="dark"] .chrome-btn--small:hover {
   color: var(--accent);
   background: transparent;
   box-shadow: 0 0 16px rgba(34,211,238,0.25);
+}
+.chrome-btn--small.is-on {
+  color: var(--accent, #5d9287);
+  background: color-mix(in srgb, var(--accent, #5d9287) 10%, transparent);
+}
+body[data-theme="dark"] .chrome-btn--small.is-on {
+  color: var(--accent);
+  background: transparent;
+  box-shadow: 0 0 14px rgba(34,211,238,0.30);
 }
 
 /* Server (backend) toggle in the sidebar footer. Neutral by default in
@@ -2959,26 +3111,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .sidebar-overlay-wrap .app-sidebar .recent-item {
   justify-content: revert !important;
   padding: revert !important;
-}
-
-/* ─── Segmented control ──────────────────────────────────────────────────── */
-.segmented {
-  display: inline-flex;
-  background: var(--stone-100);
-  border: 1px solid var(--border-01);
-  border-radius: 8px; padding: 2px;
-}
-.segmented button {
-  height: 28px; padding: 0 12px;
-  border: 0; border-radius: 6px;
-  font-size: 12.5px; font-weight: 500; line-height: 1;
-  background: transparent; color: var(--frost-700);
-  transition: background .1s, color .1s, box-shadow .1s;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.segmented button.active {
-  background: var(--surface-0); color: var(--text-strong);
-  box-shadow: var(--shadow-sm);
 }
 
 /* ─── Toggle ─────────────────────────────────────────────────────────────── */
@@ -3275,18 +3407,16 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 .schedule-form input:focus,
 .schedule-form textarea:focus,
 .schedule-form select:focus {
-  border-color: var(--primary-300);
-  box-shadow: 0 0 0 3px rgba(31,156,176,0.12);
+  border-color: var(--accent);
+  box-shadow: var(--ring);
 }
-/* WCAG 2.4.7 / 2.4.11 — the 12% alpha glow above is too faint for a
-   keyboard focus indicator. focus-visible adds a solid ring. */
 .dialog-input:focus-visible,
 .dialog-textarea:focus-visible,
 .schedule-form input:focus-visible,
 .schedule-form textarea:focus-visible,
 .schedule-form select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .dialog-textarea {
   min-height: 140px; resize: vertical; margin-top: 8px;
@@ -3298,8 +3428,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
 }
 .dialog-error {
   margin-top: 8px; padding: 8px 10px; border-radius: 8px;
-  background: #FFF7F4; border: 1px solid #F0C2B5;
-  color: #8F321A; font-size: 12.5px;
+  background: var(--danger-bg); border: 1px solid var(--danger-border);
+  color: var(--danger-text); font-size: 12.5px;
 }
 .dialog-empty {
   padding: 12px; color: var(--frost-600); font-size: 12.5px;
@@ -3409,8 +3539,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    wrapper, not the input, so the rounded surface stays intact.
    WCAG 2.4.7 / 2.4.11. */
 .focus-within-ring:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .search-results {
   max-height: 560px; overflow: auto; padding: 8px;
@@ -3496,7 +3626,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   display: none;
 }
 .rail-panel {
-  border: 1px solid var(--border-01); border-radius: 10px;
+  border: 1px solid var(--line); border-radius: 10px;
   background: var(--surface-0); padding: 12px;
 }
 .rail-title {
@@ -3536,8 +3666,8 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    each schedule card / row instead of an actionable banner. */
 .schedule-form {
   margin: 20px 28px 0; padding: 14px;
-  border: 1px solid var(--border-01); border-radius: 12px;
-  background: var(--surface-0); box-shadow: var(--shadow-sm);
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface-0);
 }
 .schedule-grid {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3842,19 +3972,19 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
    (home, project prompt) so controls land in the same place inside the card. */
 .chat-floating-composer .composer-wrap {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: 18px;
   /* 10px horizontal + textarea side padding = same 18px text inset as
      .composer-textarea on home; toolbar is flush on the bottom so the card
      doesn't pick up a double band (toolbar pb + wrap pb). */
-  padding: 14px 10px 12px;
+  padding: 16px 14px 12px;
   /* Subtle all-around lift — replaces the heavier downward shadow we
      used to pair with the bottom gradient mask. With the mask gone, a
      soft even glow reads as "floating panel" without darkening the
      gravity field below. */
   box-shadow:
-    0 1px 2px rgba(15, 16, 17, 0.04),
-    0 4px 14px rgba(15, 16, 17, 0.06);
+    0 2px 4px rgba(15, 16, 17, 0.05),
+    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 /* Override the shared metrics on the shell so the textarea and overlay
    stay coupled. Font-family still ships on each child because it's not
@@ -3864,9 +3994,9 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   /* 10px (wrap) + 8px = 18px body inset — matches home .composer-textarea.
      Tighter bottom than default textarea: toolbar supplies top spacing so we
      don't stack 12px + 10px and leave a tall band under the input line. */
-  --composer-font-size: 14px;
-  --composer-line-height: 1.45;
-  --composer-padding: 2px 8px 6px;
+  --composer-font-size: 15px;
+  --composer-line-height: 1.5;
+  --composer-padding: 4px 8px 8px;
 }
 .chat-floating-composer .composer-textarea {
   font-family: var(--font-body);
@@ -4644,39 +4774,42 @@ body[data-theme="dark"] .mshell__drawer-title {
   box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
   user-select: text;
 }
-/* Action toolbar — always present, subtle at rest, brightens on bubble-
-   or self-hover. The previous opacity:0 + pointer-events:none default
-   broke clickability: buttons sit at right:-32px, outside `.user-turn`'s
-   bounding box, so the cursor couldn't reach them without losing the
-   parent's :hover. Keeping them always interactive (with a low-opacity
-   resting state) sidesteps that entirely. `has-meta` lifts the button
-   above the "you · time" line; `is-stacked` adds another row when both
-   Edit and Trash are visible. */
-.user-turn-action {
-  position: absolute;
-  right: -32px;
-  bottom: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 0;
-  background: transparent;
+/* ─── Shared turn-action toolbar ──────────────────────────────────────────
+   Horizontal row of icon buttons below both user and assistant messages.
+   Hidden at rest, revealed on hover of the parent turn. `.is-last` keeps
+   the most recent exchange's toolbar always visible (Claude pattern). */
+.turn-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
   color: var(--ink-4);
-  display: inline-grid;
-  place-items: center;
-  cursor: pointer;
-  opacity: 0.55;
-  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+  opacity: 0;
+  transition: opacity 140ms ease;
 }
-.user-turn:hover .user-turn-action,
-.user-turn-action:hover,
-.user-turn-action:focus-visible {
+.turn-actions.is-last { opacity: 1; }
+.user-turn:hover .turn-actions,
+.answer-turn:hover .turn-actions,
+.turn-actions:focus-within {
   opacity: 1;
 }
-.user-turn-action:hover { color: var(--accent); }
-.user-turn-action--danger:hover { color: var(--danger); }
-.user-turn-action.has-meta { bottom: 18px; }
-.user-turn-action.is-stacked { bottom: 48px; }
+.turn-action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.turn-action-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--accent);
+}
+.turn-action-btn--danger:hover { color: var(--danger); }
 
 .user-turn-attachment {
   display: flex;
@@ -4699,12 +4832,6 @@ body[data-theme="dark"] .mshell__drawer-title {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--ink-4);
-}
-.user-turn-meta {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-4);
-  letter-spacing: 0.04em;
 }
 
 /* Heading scale inside user-message bubbles — MarkdownContent's defaults
@@ -4737,6 +4864,13 @@ body[data-theme="dark"] .mshell__drawer-title {
   border-radius: 4px;
   padding: 1px 5px;
   word-break: break-word;
+}
+/* Skill mention (/skill-name) in a sent message — plain text (no chip),
+   coloured a little darker than the brand accent + medium weight so it reads
+   as a mention. Matches the composer overlay's .overlay-slash-mention. */
+.anton-skill-mention {
+  color: color-mix(in srgb, var(--accent) 82%, #000);
+  font-weight: 500;
 }
 body[data-theme="light"] .anton-inline-code {
   /* Darker coral on light mode keeps AA contrast against the pale
@@ -4808,8 +4942,8 @@ body[data-theme="light"] .anton-inline-code {
    light) and clears the 3:1 non-text contrast threshold against the
    neighbouring surface tokens. */
 .anton-code-block-copy:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--ink);
 }
@@ -5023,8 +5157,10 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-field-label { font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .channels-req { color: var(--danger, #c0392b); font-style: normal; }
 .channels-set { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,.06); color: var(--ink-4, #8a8a86); }
-.channels-input { padding: 7px 10px; border: 1px solid var(--border-02, rgba(0,0,0,.12)); border-radius: 8px; background: var(--bg, #fff); color: var(--fg); font-size: 13px; }
-.channels-input:focus { outline: none; border-color: var(--accent, #3a7bd5); }
+.channels-input { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; outline: 0; transition: border-color .12s ease, box-shadow .15s ease; }
+.channels-input:hover { border-color: var(--line-2); }
+.channels-input:focus { border-color: var(--accent); box-shadow: var(--ring); }
+.channels-input:focus-visible { outline: 0; box-shadow: 0 0 0 1px var(--accent); }
 .channels-hook { font-size: 12px; color: var(--ink-3, #6b6a66); margin: 12px 0 0; }
 .channels-hook code { font-family: var(--font-mono, monospace); font-size: 11px; word-break: break-all; }
 .channels-note { font-size: 12px; color: var(--ink-4, #8a8a86); margin: 8px 0 0; }
@@ -5047,3 +5183,37 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
 .channels-btn-sm { padding: 5px 10px; font-size: 12px; }
+
+@keyframes step-error-dot-fade {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ─── Artifacts grid — responsive columns (pure CSS, container-query) ───────
+   Column count tracks the ARTIFACTS PANEL width (the .scroll-clean query
+   container), not the viewport — so a narrow panel on a wide screen still
+   gets 2 (or 1) columns. 2 by default, 3 when the panel is wide, 1 when tight.
+   The mobile padding override lives in the max-width:640 block above. */
+.artifacts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+@container (min-width: 1024px) {
+  .artifacts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 600px) {
+  .artifacts-grid { grid-template-columns: 1fr; }
+}
+
+/* Card and list status-cell are each their own query container, with
+   independent thresholds (the card has padding; the cell is the bare pill
+   area). Below each threshold the access chip drops its text label to
+   icon-only (hover keeps it discoverable) so "Unpublished changes" still fits.
+   Class is `cw-artifact-card` (not `artifact-card`) to avoid a legacy
+   `.artifact-card` rule elsewhere in this file. */
+.cw-artifact-card { container-type: inline-size; container-name: artcard; }
+.cw-status-cell  { container-type: inline-size; container-name: statuscell; }
+@container artcard (max-width: 400px)   { .cw-access-label { display: none; } }
+@container statuscell (max-width: 380px) { .cw-access-label { display: none; } }

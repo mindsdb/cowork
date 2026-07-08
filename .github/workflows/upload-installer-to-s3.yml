@@ -91,7 +91,7 @@ jobs:
             REGION="us-east-1"
           fi
           HTTPS_BASE="https://${BUCKET}.s3.${REGION}.amazonaws.com"
-          CDN_BASE="https://downloads.mindsdb.com"
+          CDN_BASE="https://downloads.mindshub.ai"
 
           UPLOADED_KEYS=()
 
@@ -136,7 +136,7 @@ jobs:
           for KEY in "${UPLOADED_KEYS[@]}"; do
             S3_URI="s3://${BUCKET}/${KEY}"
             OBJECT_URL="${HTTPS_BASE}/${KEY}"
-            # CloudFront (downloads.mindsdb.com) fronts the bucket root with no
+            # CloudFront (downloads.mindshub.ai) fronts the bucket root with no
             # path rewriting, so the public URL preserves the full object key.
             CDN_URL="${CDN_BASE}/${KEY}"
             echo "  ${S3_URI}"
@@ -159,7 +159,7 @@ jobs:
             echo ""
             echo "### Public download URLs"
             echo ""
-            echo "These installers are served via CloudFront at https://downloads.mindsdb.com (see \`terraform/newprod/us-east-1/anton/cloudfront.tf\`):"
+            echo "These installers are served via CloudFront at https://downloads.mindshub.ai (see \`terraform/newprod/us-east-1/anton/cloudfront.tf\`):"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
           for KEY in "${UPLOADED_KEYS[@]}"; do

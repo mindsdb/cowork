@@ -1,7 +1,19 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 
+// ENG-439: main resolves a per-OS-user server port and passes it to the
+// renderer process via additionalArguments. Parse it once here so the host
+// abstraction can address our own sidecar instead of a hardcoded 26866.
+function parseServerPort(): number | null {
+  const arg = process.argv.find((a) => a.startsWith('--cowork-server-port='));
+  if (!arg) return null;
+  const port = Number(arg.split('=')[1]);
+  return Number.isInteger(port) && port > 0 ? port : null;
+}
+
 contextBridge.exposeInMainWorld('antontron', {
+  // Resolved loopback server port (ENG-439); null if main didn't pass one.
+  serverPort: parseServerPort(),
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
@@ -66,6 +78,10 @@ contextBridge.exposeInMainWorld('antontron', {
   // Auth (Electron-only)
   getAccessToken: () => ipcRenderer.invoke(IPC.AUTH_GET_ACCESS_TOKEN),
   logout: () => ipcRenderer.invoke(IPC.AUTH_LOGOUT),
+
+  // Keychain preference (Electron-only, mac-relevant)
+  getKeychainPref: () => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_GET),
+  setKeychainPref: (enabled: boolean) => ipcRenderer.invoke(IPC.KEYCHAIN_PREF_SET, enabled),
 
   // Settings / Onboarding
   readSettings: () => ipcRenderer.invoke(IPC.SETTINGS_READ),
