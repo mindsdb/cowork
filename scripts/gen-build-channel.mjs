@@ -19,7 +19,7 @@
 // In dev mode the env var from the Makefile wins and this file is never
 // needed — but it's safe to generate it anyway.
 
-import { mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -45,6 +45,14 @@ if (!appVersion) {
   } catch { /* no tags — leave empty, runtime falls back to package.json */ }
 }
 
+// Effective display version for build artifacts (installer filenames, etc.):
+// the baked app version if we have one, else the package.json SemVer that
+// app.getVersion() would return at runtime. Emitted as a plain-text file so
+// CI names installers with the exact version the app reports — resolved once,
+// here, with no second copy of this logic to drift out of sync.
+const pkgVersion = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')).version;
+const displayVersion = appVersion || pkgVersion;
+
 mkdirSync(outDir, { recursive: true });
 writeFileSync(
   outFile,
@@ -58,6 +66,10 @@ writeFileSync(
   ].join('\n'),
 );
 
+// Single source of truth for the display version, consumed by CI to name
+// installer artifacts (see .github/workflows/build-*.yml "Compute artifact name").
+writeFileSync(join(outDir, 'app-version.gen.txt'), displayVersion + '\n');
+
 console.log(
-  `[gen-build-channel] COWORK_SERVER_REF=${coworkRef || '(unset)'} ANTON_REF=${antonRef || '(unset)'} MINDS_API_URL=${mindsApiUrl || '(unset)'} APP_VERSION=${appVersion || '(package.json default)'}`,
+  `[gen-build-channel] COWORK_SERVER_REF=${coworkRef || '(unset)'} ANTON_REF=${antonRef || '(unset)'} MINDS_API_URL=${mindsApiUrl || '(unset)'} APP_VERSION=${appVersion || '(package.json default)'} DISPLAY_VERSION=${displayVersion}`,
 );
