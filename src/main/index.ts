@@ -1182,7 +1182,7 @@ app.whenReady().then(async () => {
         {
           label: 'Anton Cowork Documentation',
           click: () => {
-            shell.openExternal('https://docs.mindsdb.com');
+            shell.openExternal('https://docs.mindshub.ai/index.html');
           },
         },
         { type: 'separator' },
