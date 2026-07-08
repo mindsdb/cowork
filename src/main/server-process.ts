@@ -64,11 +64,14 @@ function serverOwnerToken(): string {
   return _ownerToken;
 }
 
-// Deterministic per-OS-user port. Stable across launches for a given user
-// (so we still adopt our OWN crash-orphan), distinct between users (so one
-// user's app can't land on another's server). Only used in the packaged app:
-// dev/web reach the server through Vite's proxy / same-origin, which targets
-// the fixed COWORK_SERVER_PORT||26866.
+// Deterministic per-OS-user, per-build-kind port. Stable across launches for a
+// given user+build (so we still adopt our OWN crash-orphan), distinct between
+// users (so one user's app can't land on another's server) AND between builds
+// (prod/preview/stable no longer share ~/.cowork, so they mustn't share a port
+// either — otherwise a non-prod build would perpetually route around prod's
+// server onto a fresh random port and never re-adopt its own orphan). Only
+// used in the packaged app: dev/web reach the server through Vite's proxy /
+// same-origin, which targets the fixed COWORK_SERVER_PORT||26866.
 function preferredServerPort(): number {
   // uid is stable per macOS/Linux account; Windows has no real uid (-1), so
   // fall back to the home dir, which is per-user there.
@@ -79,6 +82,11 @@ function preferredServerPort(): number {
   } catch {
     key = `home:${os.homedir()}`;
   }
+  // Non-prod builds get their own port band. Prod's key is left untouched so an
+  // existing prod install still lands on its historical port and adopts the
+  // orphan a pre-upgrade build may have left behind.
+  const kind = buildKind();
+  if (kind !== 'prod') key = `${key}|kind:${kind}`;
   const digest = crypto.createHash('sha256').update(key).digest();
   return DEFAULT_PORT + (digest.readUInt16BE(0) % PORT_SPAN);
 }
