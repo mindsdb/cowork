@@ -1257,8 +1257,9 @@ function AppCore() {
   const [health, setHealth] = useState({ status: 'offline', anton_available: false });
 
   // Desktop "app installed" — fire once per install, after the backend is up
-  // (health 'ok') and an identity is available. trackAppInstalled self-guards
-  // (localStorage marker + waits for a distinct_id), so re-running is safe.
+  // (health 'ok'). Captured under the anonymous device id if the user hasn't
+  // signed in yet, and merged into the account on first login (ENG-537).
+  // trackAppInstalled self-guards with a localStorage marker, so re-running is safe.
   useEffect(() => {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
