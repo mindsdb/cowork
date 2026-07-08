@@ -33,8 +33,15 @@ export const IPC = {
   KEYCHAIN_PREF_GET: 'keychain:get',
   KEYCHAIN_PREF_SET: 'keychain:set',
 
-  // OAuth — pure PKCE bridge (no MindsHub-specific side effects)
+  // OAuth — PKCE bridge + builtin connector flow
+  OAUTH_CONNECT: 'oauth:connect',
   OAUTH_CANCEL: 'oauth:cancel',
+  // Disconnect a builtin OAuth connection: stops the refresh loop,
+  // deletes the keychain entry, and removes the vault record.
+  KEYCHAIN_REVOKE: 'keychain:revoke',
+  // Fired by the background token-refresh loop when consecutive failures hit
+  // threshold (transient) or a 401 makes the refresh token permanently invalid.
+  OAUTH_REFRESH_ERROR: 'oauth:refresh-error',
 
   // MindsHub — split from oauth:connect so env writes only happen
   // after the user has chosen an LLM path (free users may never

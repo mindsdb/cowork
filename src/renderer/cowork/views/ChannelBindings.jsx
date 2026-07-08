@@ -125,7 +125,7 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
       ) : (
         <table className="channels-route-table">
           <thead>
-            <tr>{channelType ? null : <th>Channel</th>}<th>Chat</th><th>Label</th><th>Trigger</th><th>Project</th><th></th></tr>
+            <tr>{channelType ? null : <th>Channel</th>}<th>Chat</th><th>Label</th><th>Trigger</th><th>Project</th><th>Instructions</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((b) => {
@@ -157,6 +157,12 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
                       <option value="">default</option>
                       {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
+                  </td>
+                  <td>
+                    <textarea className="channels-input channels-input-sm" rows={1}
+                      placeholder="persona / tone for this chat"
+                      value={rowValue(b, 'instructions')}
+                      onChange={(e) => editField(b.id, 'instructions', e.target.value)} />
                   </td>
                   <td className="channels-route-actions">
                     {dirty ? (

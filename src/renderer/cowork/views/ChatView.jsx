@@ -12,10 +12,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph, Message } from '../components/ui';
+import { Message } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
-import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
+import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
@@ -62,6 +63,16 @@ function formatTime(value) {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+// Footer meta under an answer — "Jun 21, 7:39 AM". Date included because
+// the meta is the only per-turn timestamp now that the eyebrow is gone.
+function formatMetaTime(value) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  return `${month} ${d.getDate()}, ${formatTime(d)}`;
 }
 
 function dividerLabel(date = new Date()) {
@@ -389,48 +400,34 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
   );
 }
 
-// OrbitProvider `size` for the chat orb — header slot matches this box.
+// OrbitProvider `size` for the chat orb — WorkingIndicator's anchor
+// box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
-// `slotIdHeader` lets the parent register an orb anchor beside the label
-// (while the request is in flight with no step row / body caret yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel, isLast }) {
-  // Stable id: never use Math.random() here (would churn register every render).
-  const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
+// No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
+// is the single indicator; once done, a hover-only footer (bottom-right)
+// names the agent that answered and when.
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast }) {
   return (
-    <div className="answer-turn" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          {/* Empty box only — orb centers here so it never stacks against glyphs. */}
-          {slotIdHeader ? (
-            <span
-              ref={headerRef}
-              aria-hidden
-              style={{
-                display: 'inline-flex',
-                width: CHAT_ORB_SIZE,
-                height: CHAT_ORB_SIZE,
-                flexShrink: 0,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            />
-          ) : null}
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-            letterSpacing: '0.14em', textTransform: 'uppercase', color: T.ink,
-          }}>{agentLabel || 'Anton'}</span>
-        </div>
-        {time && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
-            {state === 'thinking' ? `${time} · drafting` : time}
-          </span>
-        )}
-      </div>
+    <div
+      className="answer-turn"
+      // marginTop pulls the answer closer to ITS question (the column gap
+      // is sized for the roomier answer → next-question separation).
+      style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: -10, paddingBottom: 4 }}
+    >
       {children}
-      {showActions && state !== 'thinking' && (
-        <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+      {state !== 'thinking' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {showActions && (
+            <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+          )}
+          {/* Agent always named; timestamp joins it when the message has
+              one (streamed turns often don't carry createdAt). */}
+          <span className="turn-meta">
+            {time ? `${time} · ` : ''}{agentLabel || 'Anton'}
+          </span>
+        </div>
       )}
     </div>
   );
@@ -1113,13 +1110,15 @@ export default function ChatView({
   const chatRef = useRef(null);
   const convRef = useRef(null);
 
-  // Orb stays on the ANTON header for the whole streaming turn — it
-  // does not follow scratchpad rows or the body caret (avoids stacking
-  // against streaming markdown).
+  // The orb anchors to the WorkingIndicator box (pre-step placeholder,
+  // then the ThinkingBlock header) while the turn is in its thinking
+  // phase. Once body text streams the StreamCursor takes over as the
+  // moving part, and when the turn is done the hover meta replaces it —
+  // exactly one in-progress indicator at any moment.
   const orbView = useMemo(() => {
     if (!streamingMsg) return { state: null, activeSlot: null };
     const status = streamingMsg.streamStatus;
-    if (status === 'done') return { state: 'done', activeSlot: 'header:streaming' };
+    if (status === 'done' || status === 'streaming') return { state: null, activeSlot: null };
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
@@ -1522,14 +1521,8 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
-                      }}>
-                        <StreamCursor />
-                        <span>{m._label || 'Thinking…'}</span>
-                      </div>
+                    <AnswerTurn key={i} state="thinking" showActions={false}>
+                      <WorkingIndicator label={m._label || 'Thinking…'} />
                     </AnswerTurn>
                   );
                 }
@@ -1578,7 +1571,7 @@ export default function ChatView({
                 // tokens, or a mid-session exhaustion.
                 if (m.code === 'token_limit') {
                   return (
-                    <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                    <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                       <div style={{
                         border: `1px solid ${T.line}`,
                         background: T.surface,
@@ -1623,7 +1616,7 @@ export default function ChatView({
                   return (
                     <ReconnectCard
                       key={i}
-                      time={formatTime(m.createdAt)}
+                      time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
                       reconnectable={m.reconnectable}
@@ -1632,14 +1625,14 @@ export default function ChatView({
                   );
                 }
                 return (
-                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Message>{m.content}</Message>
                   </AnswerTurn>
                 );
               }
               if (m.role === 'provider_required') {
                 return (
-                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false}>
+                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false}>
                     <div style={{
                       border: `1px solid ${T.line}`,
                       background: T.surface,
@@ -1714,7 +1707,9 @@ export default function ChatView({
                 <AnswerTurn
                   key={i}
                   state="done"
-                  time={formatTime(m.createdAt)}
+                  // Streamed turns rarely carry createdAt — fall back to the
+                  // turn's own start time so the hover meta still has a date.
+                  time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
@@ -1743,12 +1738,13 @@ export default function ChatView({
             })()}
 
             {streamingMsg ? (
-              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} slotIdHeader="header:streaming" agentLabel={harnessLabel(streamingMsg.harness) || agentLabel}>
+              <AnswerTurn state="thinking" showActions={false}>
                 {streamingMsg.steps?.length > 0 && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
+                    slotId="header:streaming"
                     currentLabel={(() => {
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
                       return active?.label || null;
@@ -1761,23 +1757,16 @@ export default function ChatView({
                     step or body chunk landing, the AnswerTurn would
                     otherwise render empty — the user sees the message
                     "appear, vanish, then come back" once scratchpad
-                    output starts. Keep a soft "Thinking…" affordance
-                    visible whenever there are no steps and no body text
-                    yet. */}
+                    output starts. Keep the working indicator visible
+                    whenever there are no steps and no body text yet.
+                    `_placeholderLabel` is set by the pre-first-event
+                    stub in App.jsx `withThinkingPlaceholder` ("Creating
+                    task…" for new tasks, "Thinking…" for replies). */}
                 {!streamingMsg.steps?.length && !streamingMsg.content && (
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
-                  }}>
-                    <StreamCursor />
-                    {/* `_placeholderLabel` is set by the pre-first-
-                        event stub in App.jsx `withThinkingPlaceholder`
-                        ("Creating task…" for new tasks, "Thinking…"
-                        for replies). Once flushStreamingMessage runs
-                        on the first SSE event, the new streaming row
-                        has no label and falls back to "Thinking…". */}
-                    <span>{streamingMsg._placeholderLabel || 'Thinking…'}</span>
-                  </div>
+                  <WorkingIndicator
+                    slotId="header:streaming"
+                    label={streamingMsg._placeholderLabel || 'Thinking…'}
+                  />
                 )}
                 {streamingMsg.content && (
                   <div style={{ position: 'relative' }}>
@@ -1789,14 +1778,8 @@ export default function ChatView({
                 <StepSkills steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
-              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
-                }}>
-                  <StreamCursor />
-                  <span>streaming…</span>
-                </div>
+              <AnswerTurn state="thinking" showActions={false}>
+                <WorkingIndicator label="Streaming…" />
               </AnswerTurn>
             )}
           </div>
@@ -1902,6 +1885,7 @@ export default function ChatView({
             models={model ? [model] : []}
             attachments={attachments}
             connectors={connectors}
+            onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}

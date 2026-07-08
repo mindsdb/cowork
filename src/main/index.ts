@@ -7,14 +7,21 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
-import { maybeUpdateServer, setUpdateNotifier } from './server-updater';
+import { setUpdateNotifier } from './server-updater';
+import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
+import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
+import { OAUTH_CREDENTIALS } from './credentials';
+import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections } from './token-refresh';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession } from './minds-auth';
+import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
+import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
-import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome } from './cowork-home';
+import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
+import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
+import { getAppDisplayVersion } from './server-source';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -22,44 +29,6 @@ function getAntonEnvPath(): string {
 
 function getCoworkStatePath(): string {
   return coworkStatePath();
-}
-
-function readEnvFile(): Record<string, string> {
-  const envPath = getAntonEnvPath();
-  const vars: Record<string, string> = {};
-  if (!fs.existsSync(envPath)) return vars;
-  const content = fs.readFileSync(envPath, 'utf-8');
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx > 0) {
-      vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
-    }
-  }
-  return vars;
-}
-
-// Server bearer token (COWORK_AUTH_TOKEN) for the loopback API when the server
-// runs with COWORK_REQUIRE_AUTH=true. Read once and cached for the server's
-// lifetime; the SERVER_RESTART handler clears it so a token a freshly-restarted
-// server generated is picked up. `undefined` = not yet read, `null` = no token
-// (auth disabled). The token stays in the main process — it's injected into
-// requests by the webRequest hook in createWindow and never handed to the
-// renderer.
-let cachedAuthToken: string | null | undefined;
-
-function getServerAuthToken(): string | null {
-  if (cachedAuthToken === undefined) {
-    const raw = readEnvFile()['COWORK_AUTH_TOKEN'];
-    cachedAuthToken = raw ? raw.trim().replace(/^["']|["']$/g, '') : null;
-  }
-  return cachedAuthToken;
-}
-
-function authHeader(): Record<string, string> {
-  const token = getServerAuthToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function clearStoredProviderState(): void {
@@ -574,8 +543,142 @@ function setupIPC() {
     return true;
   });
 
-  ipcMain.handle('oauth:connect', async (_event, opts) => {
-    return oauthConnect(opts || {});
+  ipcMain.handle(IPC.OAUTH_CONNECT, async (_event, opts) => {
+    const o = opts || {};
+
+    // Builtin flow: renderer passes { engine, name } only.
+    // Main owns the full flow — credentials never leave this process.
+    if (o.engine && !o.authUrl) {
+      const engine: string = o.engine;
+      const labelName: string = o.name || '';
+      if (!OAUTH_CREDENTIALS[engine]) {
+        return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+      }
+      let clientId: string;
+      let clientSecret: string;
+      try {
+        const credsRes = await fetch(
+          `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+          { headers: authHeader() },
+        );
+        if (!credsRes.ok) {
+          const err = await credsRes.json().catch(() => ({})) as { detail?: string };
+          return { ok: false, reason: err.detail || `OAuth credentials not configured for "${engine}".` };
+        }
+        const credsData = await credsRes.json() as { client_id: string; client_secret: string };
+        clientId = credsData.client_id;
+        clientSecret = credsData.client_secret;
+      } catch {
+        return { ok: false, reason: `Could not fetch OAuth credentials for "${engine}".` };
+      }
+
+      let oauthBlock: Record<string, any>;
+      try {
+        const specRes = await fetch(
+          `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
+          { headers: authHeader() },
+        );
+        if (!specRes.ok) throw new Error(`HTTP ${specRes.status}`);
+        const spec = await specRes.json() as Record<string, any>;
+        const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+        oauthBlock = builtinMethod?.oauth;
+        if (!oauthBlock?.auth_url || !oauthBlock?.token_url || !Array.isArray(oauthBlock?.scopes)) {
+          return { ok: false, reason: `Connector spec for "${engine}" is missing OAuth configuration.` };
+        }
+      } catch {
+        return { ok: false, reason: `Could not load connector spec for "${engine}".` };
+      }
+
+      const pkceResult = await oauthConnect({
+        authUrl: oauthBlock.auth_url,
+        tokenUrl: oauthBlock.token_url,
+        clientId,
+        clientSecret,
+        scopes: oauthBlock.scopes,
+        extraAuthParams: oauthBlock.extra_auth_params,
+      });
+      if (!pkceResult.ok || !pkceResult.access_token || !pkceResult.refresh_token) {
+        return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
+      }
+
+      // Fetch account email from Google userinfo — needed as keychain key
+      // and for the vault record's display name. The token exchange already
+      // succeeded at this point, so retry once on a transient failure rather
+      // than forcing the user to redo the whole consent flow.
+      let accountEmail = '';
+      for (let attempt = 0; attempt < 2 && !accountEmail; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
+        try {
+          const uiRes = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
+            headers: { Authorization: `Bearer ${pkceResult.access_token}` },
+          });
+          if (uiRes.ok) {
+            const ui = await uiRes.json() as { email?: string };
+            accountEmail = ui.email || '';
+          }
+        } catch {}
+      }
+      if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email from Google.' };
+
+      // Store refresh_token in OS keychain — never sent over the network.
+      await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+
+      const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();
+      const tokenUrl: string = oauthBlock.token_url;
+
+      // Persist to vault — refresh_token intentionally excluded.
+      const saveRes = await fetch(
+        `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/save`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
+          body: JSON.stringify({
+            connector_id: engine,
+            method: 'browser_oauth_builtin',
+            name: labelName,
+            values: {
+              access_token: pkceResult.access_token,
+              expires_at: expiresAt,
+              account_email: accountEmail,
+              token_url: tokenUrl,
+              scope: pkceResult.scope || oauthBlock.scopes.join(' '),
+              auth_type: 'oauth',
+            },
+          }),
+        },
+      );
+      if (!saveRes.ok) {
+        // Roll back the keychain write from above — otherwise a live Google
+        // refresh token is orphaned in the OS keychain with no vault record
+        // ever pointing at it.
+        try { await deleteRefreshToken(engine, accountEmail); } catch {}
+        return { ok: false, reason: `Failed to save connection (${saveRes.status}).` };
+      }
+      const saved = await saveRes.json() as { ok: boolean; name?: string };
+      const vaultSlug = saved.name || labelName;
+
+      startRefreshLoop(engine, vaultSlug, accountEmail, expiresAt, tokenUrl);
+      return { ok: true, name: vaultSlug, account_email: accountEmail };
+    }
+
+    // BYOK passthrough: renderer passes full OAuth opts, gets tokens back.
+    return oauthConnect(o);
+  });
+
+  ipcMain.handle(IPC.KEYCHAIN_REVOKE, async (_event, opts) => {
+    const { engine, name, accountEmail } = opts || {};
+    if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    const key = `${engine}:${accountEmail}`;
+    revokedConnections.add(key);
+    stopRefreshLoop(engine, accountEmail);
+    try { await deleteRefreshToken(engine, accountEmail); } catch {}
+    try {
+      await fetch(
+        `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}`,
+        { method: 'DELETE', headers: authHeader() },
+      );
+    } catch {}
+    return { ok: true };
   });
 
   // ── MindsHub onboarding ──────────────────────────────────────
@@ -592,8 +695,8 @@ function setupIPC() {
     // is handled post-login by ensureActiveOrg() in minds-auth.ts.
     const result = await oauthConnect({
       clientId: 'anton-desktop',
-      authUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/auth',
-      tokenUrl: 'https://auth.mindshub.ai/auth/realms/mindsdb/protocol/openid-connect/token',
+      authUrl: KEYCLOAK_AUTH_URL,
+      tokenUrl: KEYCLOAK_TOKEN_URL,
       scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
     });
     if (result.ok && result.access_token) {
@@ -830,7 +933,7 @@ function setupIPC() {
     await stopServer();
     // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
     // the cache so the webRequest hook re-reads it on the next request.
-    cachedAuthToken = undefined;
+    resetServerAuthTokenCache();
     const result = await startServer({});
     if (result.ok) {
       console.log(`[server] restarted on http://127.0.0.1:${result.port}`);
@@ -915,7 +1018,7 @@ function setupIPC() {
       if (provider === 'anthropic') {
         return validateAnthropic(apiKey, model || 'claude-sonnet-4-6');
       } else if (provider === 'minds') {
-        return validateMinds(apiKey, baseUrl || 'https://api.mindshub.ai');
+        return validateMinds(apiKey, baseUrl || MINDS_API_HOST);
       } else if (provider === 'openai-compatible') {
         return validateOpenAICompatible(apiKey, baseUrl || 'https://api.openai.com/v1', model);
       }
@@ -960,31 +1063,15 @@ function setupIPC() {
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
     const uiVersion = getCachedVersion();
     return {
-      app: app.getVersion(),
+      app: getAppDisplayVersion(),
       ui: uiVersion || 'bundled',
     };
   });
 
-  // UI Updates
-  ipcMain.handle(IPC.UI_UPDATE_CHECK, async () => {
-    return checkForUIUpdate();
-  });
-
-  ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
-    console.log('[ui-updater] apply requested via IPC');
-    try {
-      const applied = await applyUIUpdate();
-      console.log(`[ui-updater] apply result: ${applied}`);
-      if (applied && mainWindow) {
-        console.log('[ui-updater] reloading window with new bundle');
-        mainWindow.loadFile(getRendererPath());
-      }
-      return applied;
-    } catch (err) {
-      console.error('[ui-updater] apply failed:', err);
-      throw err;
-    }
-  });
+  // Register UI/server update IPC handlers unconditionally so the renderer
+  // can check/apply in any build (dev, unpackaged, server-down). The gated
+  // boot/periodic polling is started separately by initUpdater().
+  registerUpdateHandlers(() => mainWindow);
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
@@ -995,7 +1082,7 @@ function setupIPC() {
 async function purgeHttpCacheOnUpgrade(): Promise<void> {
   try {
     const markerPath = path.join(app.getPath('userData'), 'cache-purge.json');
-    const current = app.getVersion();
+    const current = getAppDisplayVersion();
     let last = '';
     if (fs.existsSync(markerPath)) {
       try {
@@ -1053,8 +1140,8 @@ app.whenReady().then(async () => {
               click: () => {
                 const uiVersion = getCachedVersion();
                 const versionStr = uiVersion
-                  ? `${app.getVersion()} (UI: ${uiVersion})`
-                  : app.getVersion();
+                  ? `${getAppDisplayVersion()} (UI: ${uiVersion})`
+                  : getAppDisplayVersion();
                 app.setAboutPanelOptions({
                   applicationName: 'MindsHub Cowork',
                   applicationVersion: versionStr,
@@ -1129,6 +1216,20 @@ app.whenReady().then(async () => {
   await resolveServerPort();
   createWindow();
 
+  // Capture renderer readiness NOW, before the async server start —
+  // did-finish-load fires quickly (especially with Vite dev server)
+  // and would be missed if we attached the listener after server boot.
+  const rendererReady = new Promise<void>((resolve) => {
+    if (mainWindow?.webContents.isLoading() === false) {
+      // Already loaded (race: window created and loaded before we got here)
+      setTimeout(resolve, 1500);
+    } else {
+      mainWindow?.webContents.once('did-finish-load', () => {
+        setTimeout(resolve, 1500);
+      });
+    }
+  });
+
   // Boot-time server start. If cowork-server is installed, start it
   // in the background. If not, skip — the renderer's boot flow will
   // route to the setup screen which handles installation.
@@ -1168,85 +1269,26 @@ app.whenReady().then(async () => {
       console.error(`[server] start failed: ${result.reason}`);
     } else {
       console.log(`[server] running on http://127.0.0.1:${result.port}`);
+
+      // Resume refresh loops for Google OAuth connections already in the
+      // vault from prior sessions — fire-and-forget, failures are per-entry.
+      startOrphanRefreshLoops().catch(() => {});
       // Background update check — runs after the server is already
       // serving so users aren't blocked. If a newer version is found
       // on PyPI, stops the server, upgrades, and restarts. Rolls back
       // automatically if the new version fails the health probe.
+
       setUpdateNotifier((payload) => {
         mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
       });
 
-      // Update server first, then check for UI updates. This ensures
-      // the renderer and server stay in sync — both track git HEAD on
-      // main, so updating them in sequence (server → UI) avoids any
-      // window where a new renderer talks to an old server.
-      const serverUpdateDone = maybeUpdateServer().then((updateResult) => {
-        if (updateResult.updated) {
-          console.log(`[server-updater] updated ${updateResult.previousVersion} → ${updateResult.newVersion}`);
-        } else if (updateResult.error) {
-          console.error(`[server-updater] ${updateResult.error}`);
-        }
-      }).catch((err) => {
-        console.error('[server-updater] check failed:', err);
-      });
-
-      // OTA UI update check — only in packaged builds and not in DEV_MODE.
-      // Waits for both the server update AND the renderer to finish loading
-      // so the React app has time to mount its IPC listener.
       const devMode = getDevMode();
-      if (app.isPackaged && !devMode) {
-        const rendererReady = new Promise<void>((resolve) => {
-          mainWindow?.webContents.once('did-finish-load', () => {
-            setTimeout(resolve, 1500);
-          });
-        });
-
-        Promise.all([serverUpdateDone, rendererReady]).then(async () => {
-          try {
-            const updateMode = getUpdateMode();
-            console.log(`[ui-updater] checking for updates (mode: ${updateMode})...`);
-            mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'checking' });
-
-            const online = await hasInternet();
-            if (!online) {
-              console.log('[ui-updater] offline — skipping update check');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'offline' });
-              return;
-            }
-
-            const result = await checkForUIUpdate();
-            if (!result.updateAvailable) {
-              console.log('[ui-updater] up to date');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'up-to-date' });
-              return;
-            }
-
-            console.log(`[ui-updater] new version available: ${result.newVersion}`);
-
-            if (updateMode === 'auto') {
-              console.log('[ui-updater] auto mode — downloading and applying...');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'downloading', version: result.newVersion });
-              const applied = await applyUIUpdate();
-              if (applied && mainWindow) {
-                console.log('[ui-updater] update applied — reloading window');
-                mainWindow.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
-                mainWindow.loadFile(getRendererPath());
-              }
-            } else {
-              console.log('[ui-updater] manual mode — notifying renderer');
-              mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, {
-                phase: 'available',
-                version: result.newVersion,
-              });
-            }
-          } catch (err) {
-            console.error('[ui-updater] startup check failed:', err);
-          }
-        });
+      if (app.isPackaged && !devMode && mainWindow) {
+        initUpdater(() => mainWindow, rendererReady, getUpdateMode);
       } else if (!app.isPackaged) {
-        console.log('[ui-updater] skipped — not a packaged build');
+        console.log('[updater] skipped — not a packaged build');
       } else if (devMode) {
-        console.log(`[ui-updater] skipped — DEV_MODE=${devMode}`);
+        console.log(`[updater] skipped — DEV_MODE=${devMode}`);
       }
     }
   }).catch((err) => {
@@ -1262,6 +1304,48 @@ app.whenReady().then(async () => {
 });
 
 // Tracks whether we've already drained the python child during this
+const OAUTH_ENGINES = new Set(Object.keys(OAUTH_CREDENTIALS));
+
+async function startOrphanRefreshLoops(): Promise<void> {
+  try {
+    const base = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections`;
+    const listRes = await fetch(`${base}/`, { headers: authHeader() });
+    if (!listRes.ok) return;
+    const connections = await listRes.json() as Array<{ engine: string; name: string }>;
+
+    for (const { engine, name } of connections) {
+      if (!OAUTH_ENGINES.has(engine)) continue;
+      try {
+        const detailRes = await fetch(`${base}/${engine}/${name}`, { headers: authHeader() });
+        if (!detailRes.ok) continue;
+        const detail = await detailRes.json() as { method?: string; fields?: Record<string, string> };
+        const fields = detail.fields || {};
+        // Use _method (underscore-prefixed, never masked by the API) rather than
+        // auth_type or token_url which are in secure_keys and come back as sentinels.
+        if (detail.method !== 'browser_oauth_builtin') continue;
+        if (fields.status === 'needs_reconnect') continue;
+        const accountEmail = fields.account_email;
+        const expiresAt = fields.expires_at;
+        if (!accountEmail || !expiresAt) continue;
+        // Fetch token_url from the spec — it's masked in the vault detail response.
+        const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`, { headers: authHeader() });
+        if (!specRes.ok) continue;
+        const spec = await specRes.json() as Record<string, any>;
+        const tokenUrl = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin')?.oauth?.token_url;
+        if (!tokenUrl) continue;
+        const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
+        if (!refreshToken) continue;
+        startRefreshLoop(engine, name, accountEmail, expiresAt, tokenUrl);
+        console.log(`[token-refresh] resumed loop for ${engine}:${accountEmail}`);
+      } catch (err) {
+        console.warn(`[token-refresh] could not resume loop for ${engine}/${name}:`, err);
+      }
+    }
+  } catch (err) {
+    console.warn('[token-refresh] orphan cleanup failed:', err);
+  }
+}
+
 // quit. before-quit can fire multiple times (Cmd+Q, dock quit, force
 // quit menu) — we only want to block on the first occurrence.
 let _quitDrained = false;
@@ -1269,6 +1353,9 @@ let _quitDrained = false;
 async function drainServerForQuit(): Promise<void> {
   if (_quitDrained) return;
   _quitDrained = true;
+  // Stop all OAuth refresh loops before the server shuts down so no
+  // in-flight tick can call PATCH /token against a dead server.
+  stopAllRefreshLoops();
   // Hard ceiling so a wedged python can't pin the quit indefinitely.
   // stopServer's own SIGTERM(3s) + SIGKILL(1.5s) chain stays inside
   // this window, but a misbehaving OS-level process delay could push

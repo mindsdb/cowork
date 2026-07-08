@@ -65,6 +65,7 @@ export default function Composer({
   models,
   attachments = [],
   connectors = [],
+  onNavigateToConnectors,
   onAttachFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
@@ -155,6 +156,12 @@ export default function Composer({
   /** Positioning context for the attach (+) menu — tight box around the + control so the menu aligns with the activator. */
   const attachAnchorRef = useRef(null);
   const attachMenuRef = useRef(null);
+
+  const navigateToConnectors = useCallback(() => {
+    setOpenMenu(null);
+    setConnectorsOpen(false);
+    onNavigateToConnectors?.();
+  }, [onNavigateToConnectors]);
 
   /** Space we want cleared above the + control before opening the menu upward (~menu height + margin). */
   const ATTACH_MENU_TOP_RESERVE_PX = 200;
@@ -871,7 +878,29 @@ export default function Composer({
                       >
                         {connectors.length === 0 ? (
                           <div style={{ padding: '8px 14px', fontSize: 12.5, color: 'var(--frost-600)' }}>
-                            No connectors yet. Add one in Utilities → Datasources.
+                            No connectors yet. Add one in{' '}
+                            {onNavigateToConnectors ? (
+                              <button
+                                type="button"
+                                onClick={navigateToConnectors}
+                                style={{
+                                  margin: 0,
+                                  padding: 0,
+                                  border: 0,
+                                  background: 'transparent',
+                                  color: 'var(--accent)',
+                                  font: 'inherit',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  textUnderlineOffset: 2,
+                                }}
+                              >
+                                Connect Apps and Data
+                              </button>
+                            ) : (
+                              'Connect Apps and Data'
+                            )}
+                            .
                           </div>
                         ) : (
                           connectors.map((c) => {

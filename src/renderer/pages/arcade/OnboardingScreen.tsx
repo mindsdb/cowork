@@ -392,7 +392,7 @@ export default function OnboardingScreen({
     const lines = [
       'ANTON_TERMS_CONSENT=true',
       'ANTON_MINDS_ENABLED=true',
-      'ANTON_MINDS_URL=https://api.mindshub.ai',
+      `ANTON_MINDS_URL=${MINDS_API_BASE}`,
       'ANTON_PLANNING_PROVIDER=minds-cloud',
       'ANTON_CODING_PROVIDER=minds-cloud',
     ];
@@ -422,7 +422,7 @@ export default function OnboardingScreen({
       saveFinal([
         'ANTON_TERMS_CONSENT=true',
         'ANTON_MINDS_ENABLED=true',
-        'ANTON_MINDS_URL=https://api.mindshub.ai',
+        `ANTON_MINDS_URL=${MINDS_API_BASE}`,
         'ANTON_PLANNING_PROVIDER=minds-cloud',
         'ANTON_CODING_PROVIDER=minds-cloud',
       ]);

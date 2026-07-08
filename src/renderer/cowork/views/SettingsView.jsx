@@ -3,13 +3,13 @@ import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
-import { trackHarnessSwapped } from '../lib/analytics';
+import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
-import { MINDS_API_KEY_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
 import ChannelsView from './ChannelsView';
 
@@ -289,8 +289,8 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
             disabled={!canCopy}
             title={
               isDisplayingSentinel ? 'Reveal the key first to copy it'
-              : copied              ? 'Copied'
-              :                       'Copy to clipboard'
+                : copied ? 'Copied'
+                  : 'Copy to clipboard'
             }
             aria-label={copied ? 'Copied to clipboard' : 'Copy key to clipboard'}
             style={canCopy ? btnStyle : { ...btnStyle, opacity: 0.35, cursor: 'not-allowed' }}
@@ -355,7 +355,7 @@ function RelevanceBadge({ status }) {
   const palette = {
     required: { fg: '#E5B57A', bg: 'rgba(229,181,122,0.12)', bd: 'rgba(229,181,122,0.30)', label: 'Required' },
     optional: { fg: 'var(--text-muted)', bg: 'rgba(127,127,127,0.10)', bd: 'var(--border-subtle)', label: 'Optional' },
-    auto:     { fg: 'var(--sage-500, #5d9287)', bg: 'rgba(93,146,135,0.12)', bd: 'rgba(93,146,135,0.30)', label: 'Auto' },
+    auto: { fg: 'var(--sage-500, #5d9287)', bg: 'rgba(93,146,135,0.12)', bd: 'rgba(93,146,135,0.30)', label: 'Auto' },
   }[status];
   if (!palette) return null;
   return (
@@ -444,7 +444,7 @@ function makeEmptyProvider(type) {
   const base = { type, apiKey: '', isDefault: false };
   if (type === 'openai-compatible') base.baseUrl = '';
   if (type === 'minds-cloud') {
-    base.mindsUrl = 'https://api.mindshub.ai';
+    base.mindsUrl = MINDS_API_BASE;
     base.mindsMindName = '';
     base.mindsDatasource = '';
     base.mindsDatasourceEngine = '';
@@ -512,12 +512,12 @@ function CredentialRow({ title, subtitle, status, hasValue, children }) {
 // ───────────────────────── Nav sidebar ─────────────────────────
 
 const NAV_ITEMS = [
-  { id: 'agent',      label: 'Agent',      icon: 'robot'     },
-  { id: 'appearance', label: 'Appearance', icon: 'palette'   },
-  { id: 'channels',   label: 'Channels',   icon: 'chats'     },
-  { id: 'updates',    label: 'Updates',    icon: 'refresh'   },
-  { id: 'backend',    label: 'Backend',    icon: 'database'  },
-  { id: 'account',    label: 'Account',    icon: 'people'    },
+  { id: 'agent', label: 'Agent', icon: 'robot' },
+  { id: 'appearance', label: 'Appearance', icon: 'palette' },
+  { id: 'channels', label: 'Channels', icon: 'chats' },
+  { id: 'updates', label: 'Updates', icon: 'refresh' },
+  { id: 'backend', label: 'Backend', icon: 'database' },
+  { id: 'account', label: 'Account', icon: 'people' },
 ];
 
 function SettingsNav({ section, onSectionChange, serverOnline = true }) {
@@ -635,9 +635,9 @@ export default function SettingsView({
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
 
-  useEffect(() => { getUIVersion().then(setUiVersion).catch(() => {}); }, []);
-  useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => {}); }, []);
-  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => {}); }, []);
+  useEffect(() => { getUIVersion().then(setUiVersion).catch(() => { }); }, []);
+  useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => { }); }, []);
+  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
   useEffect(() => {
     if (section !== 'account') return;
     getAccessToken().then((token) => {
@@ -655,7 +655,7 @@ export default function SettingsView({
           return org?.displayName || org?.name || null;
         })(),
       });
-    }).catch(() => {});
+    }).catch(() => { });
   }, [section]);
 
   // Load diagnostics when Backend section is active
@@ -806,7 +806,7 @@ export default function SettingsView({
     const types = new Set();
     if (modelMode === 'custom') {
       types.add(overrides.planning?.providerType || defaultModeProviderType);
-      types.add(overrides.coding?.providerType   || defaultModeProviderType);
+      types.add(overrides.coding?.providerType || defaultModeProviderType);
     } else {
       types.add(defaultModeProviderType);
     }
@@ -924,7 +924,7 @@ export default function SettingsView({
     const configured = providers.filter(providerConfigured);
     if (configured.length === 0) return;
     didMountVerify.current = true;
-    runProviderTests(configured).catch(() => {});
+    runProviderTests(configured).catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providers]);
 
@@ -1046,6 +1046,9 @@ export default function SettingsView({
       // Swallow — partial logout is still worth recovering from on the
       // boot path, and the reload below puts us back through it.
     }
+    // Rotate the analytics device identity so the next account on this machine
+    // starts anonymous-fresh and merges cleanly (ENG-537).
+    resetDeviceIdentity();
     // Exactly ONE reload must happen, or the two compete and leave the
     // page stuck on this confirm modal (flaky in packaged builds). On
     // Electron the main process drives webContents.reload() itself
@@ -1063,7 +1066,7 @@ export default function SettingsView({
     try {
       const data = await host.serverDiagnostics();
       setDiag(data || null);
-    } catch {}
+    } catch { }
   };
 
   const handleBackendStart = async () => {
@@ -1115,9 +1118,9 @@ export default function SettingsView({
         <span>
           {testing ? 'Testing configuration…'
             : tested ? (configReady ? 'Test passed — provider, model, and credentials look good.' : (configError || 'Test reported a problem.'))
-            : saved ? 'Settings saved.'
-            : configError ? configError
-            : 'Changes apply on save.'}
+              : saved ? 'Settings saved.'
+                : configError ? configError
+                  : 'Changes apply on save.'}
         </span>
       </div>
       <button
@@ -1136,723 +1139,723 @@ export default function SettingsView({
   const renderAgentSection = () => {
     const anyProviderConfigured = providers.some(providerConfigured);
     return (
-    <SettingsSectionPanel footer={renderSaveFooter()}>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ order: anyProviderConfigured ? 2 : 0 }}>
-      <CollapsibleGroup title="LLM Providers">
-        {providers.map((p) => {
-          const configured = providerConfigured(p);
-          const label = typeLabels[p.type] || p.type;
-          const reveal = p.type === 'anthropic' ? 'anthropic'
-            : p.type === 'minds-cloud' ? 'minds'
-            : p.type === 'gemini' ? 'gemini'
-            : p.type === 'openai-compatible' ? 'openai-compatible'
-            : p.type === 'openai' ? 'openai'
-            : null;
-          // Show the persisted/seeded status for any configured provider — a
-          // configured provider reads as connected at startup, not just the one
-          // currently driving a role. Unconfigured rows have nothing to show.
-          const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
-          const status = (p.type === 'minds-cloud' && isSsoConnected) ? 'ok' : configured ? rawStatus : 'untested';
-          const detail = configured ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
-          const friendlyError = (() => {
-            if (!detail) return '';
-            if (detail === 'missing API key') return 'Add an API key on the right.';
-            if (detail === 'missing base URL') return 'Add a base URL on the right.';
-            const m = detail.match(/HTTP (\d{3})/);
-            if (m) {
-              const code = parseInt(m[1], 10);
-              if (code === 401) return 'Unauthorized — the API key was rejected.';
-              if (code === 403) return 'Forbidden — the API key does not have access.';
-              if (code === 404) return 'Endpoint not found — check the base URL.';
-              if (code === 429) return 'Rate limited — try again in a moment.';
-              if (code >= 500) return `Provider is currently unreachable (HTTP ${code}).`;
-              return `Provider rejected the request (HTTP ${code}).`;
-            }
-            if (detail.startsWith('ConnectError') || detail.startsWith('ConnectTimeout')) {
-              return 'Could not reach the provider — network or DNS problem.';
-            }
-            if (detail.startsWith('ReadTimeout') || detail.startsWith('TimeoutException')) {
-              return 'Provider did not respond in time.';
-            }
-            if (detail.startsWith('SSLError') || detail.includes('certificate')) {
-              return 'TLS / certificate problem reaching the provider.';
-            }
-            return detail;
-          })();
-          const statusPillLabel = status === 'ok' ? 'connected'
-            : status === 'fail' ? 'unable to connect'
-            : status === 'testing' ? 'testing…'
-            : configured ? 'not tested'
-            : null;
-          const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
-            : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
-            : status === 'testing' ? 'Testing…'
-            : 'Not tested yet — save settings and run a test to verify.';
-          const statusPillColor = status === 'ok'
-            ? { bg: 'rgba(124,196,182,0.15)', border: 'rgba(124,196,182,0.4)', color: '#7CC4B6' }
-            : status === 'fail'
-            ? { bg: 'rgba(224,112,96,0.15)', border: 'rgba(224,112,96,0.4)', color: '#E07060' }
-            : status === 'testing'
-            ? { bg: 'rgba(229,181,122,0.12)', border: 'rgba(229,181,122,0.35)', color: '#E5B57A' }
-            : configured
-            ? { bg: 'rgba(127,127,127,0.08)', border: 'rgba(127,127,127,0.2)', color: 'var(--text-muted)' }
-            : null;
-          const statusPill = statusPillColor ? (
-            <span
-              title={statusPillTitle}
-              aria-label={statusPillTitle}
-              style={{
-                display: 'inline-flex', alignItems: 'center',
-                padding: '2px 8px', borderRadius: 999,
-                fontSize: 11, fontWeight: 500, letterSpacing: '0.01em',
-                background: statusPillColor.bg,
-                border: `1px solid ${statusPillColor.border}`,
-                color: statusPillColor.color,
-                flexShrink: 0,
-                animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
-              }}
-            >{statusPillLabel}</span>
-          ) : null;
-          // Each provider row is a sub-section in the Providers group,
-          // so every row gets an <h3> for SR heading navigation. Known
-          // types render the label visibly; the openai-compatible row
-          // already shows an editable name input as its title, so the
-          // <h3> uses the `.sr-only` utility (its text is the current
-          // name or a sensible fallback) — keeps the visual unchanged
-          // while making the row reachable by H/4 navigation.
-          const headingBaseStyle = {
-            margin: 0, padding: 0, fontFamily: 'inherit', lineHeight: 1.3,
-            fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
-          };
-          const customHeadingText = p.type === 'openai-compatible'
-            ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
-            : null;
-          const titleNode = (
-            <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              {p.type === 'openai-compatible' ? (() => {
-                const nameEmpty = !(p.name || '').trim();
-                const errorId = `provider-name-error-${p.type}`;
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <h3 className="sr-only">{customHeadingText}</h3>
-                    <input
-                      className="field-input"
-                      value={p.name ?? ''}
-                      onChange={(e) => updateProviderField('openai-compatible', 'name', e.target.value)}
-                      placeholder="Custom provider name"
-                      title="Display name for this custom provider — shown in the model dropdowns below."
-                      aria-label="Custom provider name"
-                      aria-invalid={nameEmpty || undefined}
-                      aria-describedby={nameEmpty ? errorId : undefined}
-                      aria-required="true"
-                      style={{
-                        width: 220, fontSize: 13.5, fontWeight: 600,
-                        borderColor: nameEmpty ? 'rgba(224,112,96,0.55)' : undefined,
-                      }}
-                    />
-                    {nameEmpty && (
-                      <span id={errorId} style={{ fontSize: 10.5, color: '#E07060' }}>Name required</span>
+      <SettingsSectionPanel footer={renderSaveFooter()}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ order: anyProviderConfigured ? 2 : 0 }}>
+            <CollapsibleGroup title="LLM Providers">
+              {providers.map((p) => {
+                const configured = providerConfigured(p);
+                const label = typeLabels[p.type] || p.type;
+                const reveal = p.type === 'anthropic' ? 'anthropic'
+                  : p.type === 'minds-cloud' ? 'minds'
+                    : p.type === 'gemini' ? 'gemini'
+                      : p.type === 'openai-compatible' ? 'openai-compatible'
+                        : p.type === 'openai' ? 'openai'
+                          : null;
+                // Show the persisted/seeded status for any configured provider — a
+                // configured provider reads as connected at startup, not just the one
+                // currently driving a role. Unconfigured rows have nothing to show.
+                const rawStatus = (settings.providerStatus || {})[p.type] || 'untested';
+                const status = (p.type === 'minds-cloud' && isSsoConnected) ? 'ok' : configured ? rawStatus : 'untested';
+                const detail = configured ? ((settings.providerStatusDetails || {})[p.type] || '') : '';
+                const friendlyError = (() => {
+                  if (!detail) return '';
+                  if (detail === 'missing API key') return 'Add an API key on the right.';
+                  if (detail === 'missing base URL') return 'Add a base URL on the right.';
+                  const m = detail.match(/HTTP (\d{3})/);
+                  if (m) {
+                    const code = parseInt(m[1], 10);
+                    if (code === 401) return 'Unauthorized — the API key was rejected.';
+                    if (code === 403) return 'Forbidden — the API key does not have access.';
+                    if (code === 404) return 'Endpoint not found — check the base URL.';
+                    if (code === 429) return 'Rate limited — try again in a moment.';
+                    if (code >= 500) return `Provider is currently unreachable (HTTP ${code}).`;
+                    return `Provider rejected the request (HTTP ${code}).`;
+                  }
+                  if (detail.startsWith('ConnectError') || detail.startsWith('ConnectTimeout')) {
+                    return 'Could not reach the provider — network or DNS problem.';
+                  }
+                  if (detail.startsWith('ReadTimeout') || detail.startsWith('TimeoutException')) {
+                    return 'Provider did not respond in time.';
+                  }
+                  if (detail.startsWith('SSLError') || detail.includes('certificate')) {
+                    return 'TLS / certificate problem reaching the provider.';
+                  }
+                  return detail;
+                })();
+                const statusPillLabel = status === 'ok' ? 'connected'
+                  : status === 'fail' ? 'unable to connect'
+                    : status === 'testing' ? 'testing…'
+                      : configured ? 'not tested'
+                        : null;
+                const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
+                  : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
+                    : status === 'testing' ? 'Testing…'
+                      : 'Not tested yet — save settings and run a test to verify.';
+                const statusPillColor = status === 'ok'
+                  ? { bg: 'rgba(124,196,182,0.15)', border: 'rgba(124,196,182,0.4)', color: '#7CC4B6' }
+                  : status === 'fail'
+                    ? { bg: 'rgba(224,112,96,0.15)', border: 'rgba(224,112,96,0.4)', color: '#E07060' }
+                    : status === 'testing'
+                      ? { bg: 'rgba(229,181,122,0.12)', border: 'rgba(229,181,122,0.35)', color: '#E5B57A' }
+                      : configured
+                        ? { bg: 'rgba(127,127,127,0.08)', border: 'rgba(127,127,127,0.2)', color: 'var(--text-muted)' }
+                        : null;
+                const statusPill = statusPillColor ? (
+                  <span
+                    title={statusPillTitle}
+                    aria-label={statusPillTitle}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      padding: '2px 8px', borderRadius: 999,
+                      fontSize: 11, fontWeight: 500, letterSpacing: '0.01em',
+                      background: statusPillColor.bg,
+                      border: `1px solid ${statusPillColor.border}`,
+                      color: statusPillColor.color,
+                      flexShrink: 0,
+                      animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
+                    }}
+                  >{statusPillLabel}</span>
+                ) : null;
+                // Each provider row is a sub-section in the Providers group,
+                // so every row gets an <h3> for SR heading navigation. Known
+                // types render the label visibly; the openai-compatible row
+                // already shows an editable name input as its title, so the
+                // <h3> uses the `.sr-only` utility (its text is the current
+                // name or a sensible fallback) — keeps the visual unchanged
+                // while making the row reachable by H/4 navigation.
+                const headingBaseStyle = {
+                  margin: 0, padding: 0, fontFamily: 'inherit', lineHeight: 1.3,
+                  fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
+                };
+                const customHeadingText = p.type === 'openai-compatible'
+                  ? ((p.name || '').trim() || 'Custom OpenAI-compatible provider')
+                  : null;
+                const titleNode = (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    {p.type === 'openai-compatible' ? (() => {
+                      const nameEmpty = !(p.name || '').trim();
+                      const errorId = `provider-name-error-${p.type}`;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <h3 className="sr-only">{customHeadingText}</h3>
+                          <input
+                            className="field-input"
+                            value={p.name ?? ''}
+                            onChange={(e) => updateProviderField('openai-compatible', 'name', e.target.value)}
+                            placeholder="Custom provider name"
+                            title="Display name for this custom provider — shown in the model dropdowns below."
+                            aria-label="Custom provider name"
+                            aria-invalid={nameEmpty || undefined}
+                            aria-describedby={nameEmpty ? errorId : undefined}
+                            aria-required="true"
+                            style={{
+                              width: 220, fontSize: 13.5, fontWeight: 600,
+                              borderColor: nameEmpty ? 'rgba(224,112,96,0.55)' : undefined,
+                            }}
+                          />
+                          {nameEmpty && (
+                            <span id={errorId} style={{ fontSize: 10.5, color: '#E07060' }}>Name required</span>
+                          )}
+                        </div>
+                      );
+                    })() : (
+                      <h3 style={headingBaseStyle}>{label}</h3>
                     )}
+                  </span>
+                );
+                // Show the key input when: unconfigured, never tested, or user clicked Edit.
+                // Otherwise the middle column shows the status pill and an Edit button appears.
+                const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
+                const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
+                const iconBtnStyle = {
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 30, height: 30, borderRadius: 8,
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                };
+                return (
+                  <div key={p.type} className="settings-provider-row" style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 380px auto',
+                    gap: 24,
+                    padding: '16px 0',
+                    alignItems: 'flex-start',
+                  }}>
+                    {/* Left: name + description */}
+                    <div>
+                      {titleNode}
+                      {PROVIDER_TYPE_DESC[p.type] && (
+                        <div style={{
+                          fontSize: 12, color: 'var(--text-muted)',
+                          marginTop: 6, maxWidth: 380, lineHeight: 1.45,
+                        }}>
+                          {PROVIDER_TYPE_DESC[p.type]}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Middle: status pill (tested) OR key input (editing / untested) */}
+                    {showKeyInput ? (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {ssoMindsHub ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0' }}>
+                            {statusPill}
+                          </div>
+                        ) : (
+                          <ApiKeyInput
+                            value={p.apiKey ?? ''}
+                            onChange={(v) => updateProviderField(p.type, 'apiKey', v)}
+                            placeholder={
+                              p.type === 'anthropic' ? 'sk-ant-••••••••' :
+                                p.type === 'minds-cloud' ? 'mdb_••••••••' :
+                                  p.type === 'gemini' ? 'AIza••••••••' :
+                                    'sk-••••••••'
+                            }
+                            revealName={reveal}
+                          />
+                        )}
+                        {p.type === 'openai-compatible' && (
+                          <ClearableTextInput
+                            value={p.baseUrl ?? ''}
+                            onChange={(v) => updateProviderField('openai-compatible', 'baseUrl', v)}
+                            placeholder="https://example.com/v1"
+                            ariaLabel="Base URL"
+                          />
+                        )}
+                        {GET_KEY_URL[p.type] && !ssoMindsHub && (
+                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                            Get your API key at{' '}
+                            <a
+                              href={GET_KEY_URL[p.type]}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
+                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                            >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
+                          </div>
+                        )}
+                        {p.type === 'minds-cloud' && !isSsoConnected && (
+                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                            Don't have an account?{' '}
+                            <a
+                              href={MINDS_REGISTER_URL}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              title="Open the MindsHub sign-up page in your browser."
+                              style={{ color: 'var(--accent-500, #7CC4B6)' }}
+                            >Sign up →</a>
+                          </div>
+                        )}
+                        {status === 'fail' && friendlyError && (
+                          <div style={{ fontSize: 11.5, color: '#E07060', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                            <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
+                            <span>{friendlyError}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      // Status pill replaces the key input after a test result
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0', gap: 10 }}>
+                        {status === 'fail' && friendlyError && (
+                          <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
+                        )}
+                        {statusPill}
+                      </div>
+                    )}
+
+                    {/* Right: trash + edit buttons */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 30 }}>
+                      {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
+                        <button
+                          type="button"
+                          onClick={() => removeProvider(p.type)}
+                          title="Remove this provider"
+                          style={{ ...iconBtnStyle, color: '#E07060' }}
+                        >{Ico.trash(13)}</button>
+                      )}
+                      {!showKeyInput && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
+                          title="Edit API key"
+                          style={{ ...iconBtnStyle, color: 'var(--ink-3)' }}
+                        >{Ico.edit(13)}</button>
+                      )}
+                    </div>
                   </div>
                 );
-              })() : (
-                <h3 style={headingBaseStyle}>{label}</h3>
-              )}
-            </span>
-          );
-          // Show the key input when: unconfigured, never tested, or user clicked Edit.
-          // Otherwise the middle column shows the status pill and an Edit button appears.
-          const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
-          const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
-          const iconBtnStyle = {
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 30, height: 30, borderRadius: 8,
-            background: 'transparent',
-            border: '1px solid var(--border-subtle)',
-            cursor: 'pointer',
-          };
-          return (
-            <div key={p.type} className="settings-provider-row" style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 380px auto',
-              gap: 24,
-              padding: '16px 0',
-              alignItems: 'flex-start',
-            }}>
-              {/* Left: name + description */}
-              <div>
-                {titleNode}
-                {PROVIDER_TYPE_DESC[p.type] && (
-                  <div style={{
-                    fontSize: 12, color: 'var(--text-muted)',
-                    marginTop: 6, maxWidth: 380, lineHeight: 1.45,
-                  }}>
-                    {PROVIDER_TYPE_DESC[p.type]}
-                  </div>
-                )}
-              </div>
-
-              {/* Middle: status pill (tested) OR key input (editing / untested) */}
-              {showKeyInput ? (
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {ssoMindsHub ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0' }}>
-                      {statusPill}
-                    </div>
-                  ) : (
-                    <ApiKeyInput
-                      value={p.apiKey ?? ''}
-                      onChange={(v) => updateProviderField(p.type, 'apiKey', v)}
-                      placeholder={
-                        p.type === 'anthropic' ? 'sk-ant-••••••••' :
-                        p.type === 'minds-cloud' ? 'mdb_••••••••' :
-                        p.type === 'gemini' ? 'AIza••••••••' :
-                        'sk-••••••••'
-                      }
-                      revealName={reveal}
-                    />
-                  )}
-                  {p.type === 'openai-compatible' && (
-                    <ClearableTextInput
-                      value={p.baseUrl ?? ''}
-                      onChange={(v) => updateProviderField('openai-compatible', 'baseUrl', v)}
-                      placeholder="https://example.com/v1"
-                      ariaLabel="Base URL"
-                    />
-                  )}
-                  {GET_KEY_URL[p.type] && !ssoMindsHub && (
-                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                      Get your API key at{' '}
-                      <a
-                        href={GET_KEY_URL[p.type]}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        title={`Open ${GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} in your browser.`}
-                        style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                      >{GET_KEY_URL[p.type].replace(/^https?:\/\//, '')} →</a>
-                    </div>
-                  )}
-                  {p.type === 'minds-cloud' && !isSsoConnected && (
-                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                      Don't have an account?{' '}
-                      <a
-                        href={MINDS_REGISTER_URL}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        title="Open the MindsHub sign-up page in your browser."
-                        style={{ color: 'var(--accent-500, #7CC4B6)' }}
-                      >Sign up →</a>
-                    </div>
-                  )}
-                  {status === 'fail' && friendlyError && (
-                    <div style={{ fontSize: 11.5, color: '#E07060', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                      <span style={{ flexShrink: 0, marginTop: 1 }}>{Ico.key ? Ico.key(11) : '!'}</span>
-                      <span>{friendlyError}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // Status pill replaces the key input after a test result
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0', gap: 10 }}>
-                  {status === 'fail' && friendlyError && (
-                    <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
-                  )}
-                  {statusPill}
-                </div>
-              )}
-
-              {/* Right: trash + edit buttons */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 30 }}>
-                {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
-                  <button
-                    type="button"
-                    onClick={() => removeProvider(p.type)}
-                    title="Remove this provider"
-                    style={{ ...iconBtnStyle, color: '#E07060' }}
-                  >{Ico.trash(13)}</button>
-                )}
-                {!showKeyInput && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
-                    title="Edit API key"
-                    style={{ ...iconBtnStyle, color: 'var(--ink-3)' }}
-                  >{Ico.edit(13)}</button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        <div style={{
-          position: 'relative',
-          padding: '14px 0 4px',
-          minHeight: 50,
-        }}>
-          {/* Idle: + Add provider button. Fades + slides down when
+              })}
+              <div style={{
+                position: 'relative',
+                padding: '14px 0 4px',
+                minHeight: 50,
+              }}>
+                {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-          <button
-            className="btn-secondary"
-            onClick={() => setAddPickerOpen(true)}
-            disabled={availableTypesForAdd.length === 0}
-            title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
-            style={{
-              position: 'absolute', top: 14, left: 0,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
-              transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
-              transition: 'opacity 200ms ease, transform 200ms ease',
-              pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
-              cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >{Ico.plus(13)} Add provider</button>
-
-          {/* Open: Choose Provider: <chip> <chip> · Cancel.
-              Fades + slides up from below as it appears. */}
-          <div style={{
-            display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-            opacity: addPickerOpen ? 1 : 0,
-            transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
-            transition: 'opacity 220ms ease, transform 220ms ease',
-            pointerEvents: addPickerOpen ? 'auto' : 'none',
-            position: 'absolute', top: 14, left: 0, right: 0,
-          }}>
-            <strong style={{
-              fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
-            }}>Choose Provider:</strong>
-            {availableTypesForAdd.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => addProviderOfType(t)}
-                className="btn-secondary"
-                title={PROVIDER_TYPE_DESC[t]}
-                style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-              >{typeLabels[t] || t}</button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setAddPickerOpen(false)}
-              title="Hide the provider picker."
-              aria-label="Close provider picker"
-              style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 26, height: 26, marginLeft: 4, borderRadius: 6,
-                background: 'transparent', border: 0,
-                color: 'var(--text-muted)', cursor: 'pointer',
-              }}
-            >{Ico.close(13)}</button>
-          </div>
-        </div>
-      </CollapsibleGroup>
-      </div>
-      <div style={{ order: anyProviderConfigured ? 1 : 0 }}>
-      <CollapsibleGroup title="Agent Models">
-        {(() => {
-          // The default-mode provider is the implicit fallback for
-          // any role that hasn't been explicitly assigned an
-          // override (keyed MindsHub, else first configured).
-          const defaultProvider =
-            providers.find((p) => p.type === defaultModeProviderType) ||
-            providers.find((p) => p.type === 'minds-cloud') ||
-            providers[0];
-          const multipleProviders = providers.length > 1;
-
-          // For each role: render provider selector (when N>1) +
-          // model field. When the user picks a new provider, auto-
-          // fill the role with that provider's recommended default
-          // for the role. Empty overrides fall back to the default
-          // provider's recommended pair.
-          const RoleRow = ({ role, label }) => {
-            const cur = roleOverride(role) || {};
-            // Resolve the effective provider for this role. The server may
-            // store a stale planning_provider (e.g. 'anthropic') that doesn't
-            // match any configured provider card. When that happens, fall back
-            // to defaultModeProviderType (which prefers the actually-configured
-            // provider — MindsHub if available, else first configured).
-            const rawType = roleProviderType(role) || (defaultProvider?.type || '');
-            const rawProvider = providers.find((p) => p.type === rawType);
-            const curType = (rawProvider && providerConfigured(rawProvider))
-              ? rawType
-              : defaultModeProviderType;
-            const providerWasRepointed = curType !== rawType;
-            const fallbackPair = recommendedPair[curType] || ['', ''];
-            const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
-            const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
-            const provider = providers.find((p) => p.type === curType);
-            const modelList = recommendedModels[curType] || [];
-            // Per-model availability (settings.modelEnabled, sourced from MindsHub
-            // /v1/models). A model the user's tier can't use is listed here as
-            // false so we render it greyed + non-selectable — an upgrade prompt.
-            // Absent id ⇒ available (backwards compatible; direct providers have
-            // no such flag).
-            const modelEnabled = settings.modelEnabled || {};
-            const isLocked = (m) => modelEnabled[m] === false;
-            const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
-            const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
-            const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
-            const providerFailDetail = (settings.providerStatusDetails || {})[curType] || '';
-            const isNoCredits = providerFailed && curType === 'minds-cloud'
-              && (providerFailDetail.includes('402')
-                || providerFailDetail.includes('429')
-                || providerFailDetail.toLowerCase().includes('credit')
-                || providerFailDetail.toLowerCase().includes('quota'));
-            const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits;
-            const providerWarnId = `agent-model-${role}-provider`;
-
-            // Reasoning effort — a per-role setting shown beside the model
-            // dropdown, only for models that advertise effort levels
-            // (settings.modelEfforts, sourced from MindsHub /v1/models + the
-            // static direct-provider catalog). Suppressed for the Hermes
-            // harness, which has no effort knob.
-            const effortKey = role === 'planning' ? 'planningReasoningEffort' : 'codingReasoningEffort';
-            const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
-            const effortEntry = (settings.modelEfforts || {})[curModel];
-            const effortOptions = effortEntry?.efforts || [];
-            const savedEffort = settings[effortKey];
-            const effortValue = effortOptions.includes(savedEffort)
-              ? savedEffort
-              : (effortEntry?.default || effortOptions[0] || '');
-            const showEffort = harnessSupportsEffort && effortOptions.length > 0;
-
-            const writeOverride = (next) => {
-              const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
-              const model = next.model || '';
-              const normalized = { providerType, model };
-              setLlmDirty(true);
-              setRoleDriver(role, providerType, model);
-              setSetting('modelOverrides', { ...overrides, [role]: normalized });
-              setSetting('modelMode', 'custom');
-              // Effort is model-specific — drop any stale level so we never
-              // send an effort the newly-selected model doesn't accept.
-              setSetting(effortKey, '');
-            };
-
-            // Plain bold field label. Note: no dotted underline — that reads as
-            // a "hover for a tooltip" affordance, and none is wired here.
-            const fieldLabel = (text) => (
-              <span style={{
-                fontSize: 11, fontWeight: 700, color: 'var(--text-strong)',
-                letterSpacing: '0.02em',
-              }}>{text}:</span>
-            );
-
-            const noCreditsNotice = isNoCredits ? (
-              <div style={{ fontSize: 12, lineHeight: 1.6 }}>
-                <span style={{ color: '#E07060', fontWeight: 600 }}>No credits available. </span>
                 <button
-                  type="button"
-                  onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent, #7CC4B6)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
-                >Top up credits →</button>
-                <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
-              </div>
-            ) : null;
+                  className="btn-secondary"
+                  onClick={() => setAddPickerOpen(true)}
+                  disabled={availableTypesForAdd.length === 0}
+                  title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
+                  style={{
+                    position: 'absolute', top: 14, left: 0,
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    opacity: addPickerOpen ? 0 : (availableTypesForAdd.length === 0 ? 0.45 : 1),
+                    transform: addPickerOpen ? 'translateY(6px)' : 'translateY(0)',
+                    transition: 'opacity 200ms ease, transform 200ms ease',
+                    pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
+                    cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >{Ico.plus(13)} Add provider</button>
 
-            return (
-              <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`} notice={noCreditsNotice}>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {multipleProviders && (
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      {fieldLabel('Provider')}
-                      <select
-                        className="settings-select"
-                        value={curType}
-                        onChange={(e) => {
-                          const t = e.target.value;
-                          const pair = recommendedPair[t] || ['', ''];
-                          const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
-                          setModelInputMode((m) => ({ ...m, [role]: false }));
-                          writeOverride({ providerType: t, model: newModel });
-                        }}
-                        aria-invalid={providerUnusable || undefined}
-                        aria-describedby={providerUnusable ? providerWarnId : undefined}
-                        title={`Choose which provider powers the ${role} role.`}
-                        style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
-                      >
-                        {providers.map((p) => (
-                          <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  {modelList.length > 0 ? (
-                    (() => {
-                      const allowOther = curType !== 'minds-cloud';
-                      const savedIsCustom = !!curModel && !modelList.includes(curModel);
-                      const inputMode = modelInputMode[role] || savedIsCustom;
-                      const selectValue = inputMode ? '__custom__' : curModel;
-                      return (
-                        <label style={{ display: 'grid', gap: 4 }}>
-                          {fieldLabel('Model')}
-                          <select
-                            className="settings-select"
-                            value={selectValue || firstEnabledModel}
-                            onChange={(e) => {
-                              if (e.target.value === '__custom__') {
-                                setModelInputMode((m) => ({ ...m, [role]: true }));
-                                writeOverride({ providerType: curType, model: curModel || '' });
-                              } else {
+                {/* Open: Choose Provider: <chip> <chip> · Cancel.
+              Fades + slides up from below as it appears. */}
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+                  opacity: addPickerOpen ? 1 : 0,
+                  transform: addPickerOpen ? 'translateY(0)' : 'translateY(-6px)',
+                  transition: 'opacity 220ms ease, transform 220ms ease',
+                  pointerEvents: addPickerOpen ? 'auto' : 'none',
+                  position: 'absolute', top: 14, left: 0, right: 0,
+                }}>
+                  <strong style={{
+                    fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
+                  }}>Choose Provider:</strong>
+                  {availableTypesForAdd.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => addProviderOfType(t)}
+                      className="btn-secondary"
+                      title={PROVIDER_TYPE_DESC[t]}
+                      style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
+                    >{typeLabels[t] || t}</button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setAddPickerOpen(false)}
+                    title="Hide the provider picker."
+                    aria-label="Close provider picker"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 26, height: 26, marginLeft: 4, borderRadius: 6,
+                      background: 'transparent', border: 0,
+                      color: 'var(--text-muted)', cursor: 'pointer',
+                    }}
+                  >{Ico.close(13)}</button>
+                </div>
+              </div>
+            </CollapsibleGroup>
+          </div>
+          <div style={{ order: anyProviderConfigured ? 1 : 0 }}>
+            <CollapsibleGroup title="Agent Models">
+              {(() => {
+                // The default-mode provider is the implicit fallback for
+                // any role that hasn't been explicitly assigned an
+                // override (keyed MindsHub, else first configured).
+                const defaultProvider =
+                  providers.find((p) => p.type === defaultModeProviderType) ||
+                  providers.find((p) => p.type === 'minds-cloud') ||
+                  providers[0];
+                const multipleProviders = providers.length > 1;
+
+                // For each role: render provider selector (when N>1) +
+                // model field. When the user picks a new provider, auto-
+                // fill the role with that provider's recommended default
+                // for the role. Empty overrides fall back to the default
+                // provider's recommended pair.
+                const RoleRow = ({ role, label }) => {
+                  const cur = roleOverride(role) || {};
+                  // Resolve the effective provider for this role. The server may
+                  // store a stale planning_provider (e.g. 'anthropic') that doesn't
+                  // match any configured provider card. When that happens, fall back
+                  // to defaultModeProviderType (which prefers the actually-configured
+                  // provider — MindsHub if available, else first configured).
+                  const rawType = roleProviderType(role) || (defaultProvider?.type || '');
+                  const rawProvider = providers.find((p) => p.type === rawType);
+                  const curType = (rawProvider && providerConfigured(rawProvider))
+                    ? rawType
+                    : defaultModeProviderType;
+                  const providerWasRepointed = curType !== rawType;
+                  const fallbackPair = recommendedPair[curType] || ['', ''];
+                  const fallbackModel = fallbackPair[role === 'planning' ? 0 : 1] || '';
+                  const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
+                  const provider = providers.find((p) => p.type === curType);
+                  const modelList = recommendedModels[curType] || [];
+                  // Per-model availability (settings.modelEnabled, sourced from MindsHub
+                  // /v1/models). A model the user's tier can't use is listed here as
+                  // false so we render it greyed + non-selectable — an upgrade prompt.
+                  // Absent id ⇒ available (backwards compatible; direct providers have
+                  // no such flag).
+                  const modelEnabled = settings.modelEnabled || {};
+                  const isLocked = (m) => modelEnabled[m] === false;
+                  const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
+                  const providerUnconfigured = !!curType && !(provider && providerConfigured(provider));
+                  const providerFailed = (settings.providerStatus || {})[curType] === 'fail';
+                  const providerFailDetail = (settings.providerStatusDetails || {})[curType] || '';
+                  const isNoCredits = providerFailed && curType === 'minds-cloud'
+                    && (providerFailDetail.includes('402')
+                      || providerFailDetail.includes('429')
+                      || providerFailDetail.toLowerCase().includes('credit')
+                      || providerFailDetail.toLowerCase().includes('quota'));
+                  const providerUnusable = (providerUnconfigured || providerFailed) && !isNoCredits;
+                  const providerWarnId = `agent-model-${role}-provider`;
+
+                  // Reasoning effort — a per-role setting shown beside the model
+                  // dropdown, only for models that advertise effort levels
+                  // (settings.modelEfforts, sourced from MindsHub /v1/models + the
+                  // static direct-provider catalog). Suppressed for the Hermes
+                  // harness, which has no effort knob.
+                  const effortKey = role === 'planning' ? 'planningReasoningEffort' : 'codingReasoningEffort';
+                  const harnessSupportsEffort = (settings.harness || 'anton') !== 'hermes';
+                  const effortEntry = (settings.modelEfforts || {})[curModel];
+                  const effortOptions = effortEntry?.efforts || [];
+                  const savedEffort = settings[effortKey];
+                  const effortValue = effortOptions.includes(savedEffort)
+                    ? savedEffort
+                    : (effortEntry?.default || effortOptions[0] || '');
+                  const showEffort = harnessSupportsEffort && effortOptions.length > 0;
+
+                  const writeOverride = (next) => {
+                    const providerType = providerValueToType(next.providerType || curType) || 'minds-cloud';
+                    const model = next.model || '';
+                    const normalized = { providerType, model };
+                    setLlmDirty(true);
+                    setRoleDriver(role, providerType, model);
+                    setSetting('modelOverrides', { ...overrides, [role]: normalized });
+                    setSetting('modelMode', 'custom');
+                    // Effort is model-specific — drop any stale level so we never
+                    // send an effort the newly-selected model doesn't accept.
+                    setSetting(effortKey, '');
+                  };
+
+                  // Plain bold field label. Note: no dotted underline — that reads as
+                  // a "hover for a tooltip" affordance, and none is wired here.
+                  const fieldLabel = (text) => (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: 'var(--text-strong)',
+                      letterSpacing: '0.02em',
+                    }}>{text}:</span>
+                  );
+
+                  const noCreditsNotice = isNoCredits ? (
+                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                      <span style={{ color: '#E07060', fontWeight: 600 }}>No credits available. </span>
+                      <button
+                        type="button"
+                        onClick={() => host.openExternal ? host.openExternal(MINDS_BILLING_URL) : window.open(MINDS_BILLING_URL, '_blank')}
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent, #7CC4B6)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit' }}
+                      >Top up credits →</button>
+                      <span style={{ color: 'var(--text-muted)' }}>{' '}or add your own provider and API key below.</span>
+                    </div>
+                  ) : null;
+
+                  return (
+                    <Section title={label} subtitle={`Used for ${role === 'planning' ? 'reasoning, orchestration, and responses' : 'scratchpad code generation'}.`} notice={noCreditsNotice}>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {multipleProviders && (
+                          <label style={{ display: 'grid', gap: 4 }}>
+                            {fieldLabel('Provider')}
+                            <select
+                              className="settings-select"
+                              value={curType}
+                              onChange={(e) => {
+                                const t = e.target.value;
+                                const pair = recommendedPair[t] || ['', ''];
+                                const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
-                                writeOverride({ providerType: curType, model: e.target.value });
-                              }
-                            }}
-                            title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
-                            style={{ width: '100%' }}
-                          >
-                            {modelList.map((m) => (
-                              <option key={m} value={m} disabled={isLocked(m)}>
-                                {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
-                              </option>
-                            ))}
-                            {allowOther && <option value="__custom__">Other…</option>}
-                          </select>
-                          {inputMode && allowOther && (
+                                writeOverride({ providerType: t, model: newModel });
+                              }}
+                              aria-invalid={providerUnusable || undefined}
+                              aria-describedby={providerUnusable ? providerWarnId : undefined}
+                              title={`Choose which provider powers the ${role} role.`}
+                              style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
+                            >
+                              {providers.map((p) => (
+                                <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        {modelList.length > 0 ? (
+                          (() => {
+                            const allowOther = curType !== 'minds-cloud';
+                            const savedIsCustom = !!curModel && !modelList.includes(curModel);
+                            const inputMode = modelInputMode[role] || savedIsCustom;
+                            const selectValue = inputMode ? '__custom__' : curModel;
+                            return (
+                              <label style={{ display: 'grid', gap: 4 }}>
+                                {fieldLabel('Model')}
+                                <select
+                                  className="settings-select"
+                                  value={selectValue || firstEnabledModel}
+                                  onChange={(e) => {
+                                    if (e.target.value === '__custom__') {
+                                      setModelInputMode((m) => ({ ...m, [role]: true }));
+                                      writeOverride({ providerType: curType, model: curModel || '' });
+                                    } else {
+                                      setModelInputMode((m) => ({ ...m, [role]: false }));
+                                      writeOverride({ providerType: curType, model: e.target.value });
+                                    }
+                                  }}
+                                  title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
+                                  style={{ width: '100%' }}
+                                >
+                                  {modelList.map((m) => (
+                                    <option key={m} value={m} disabled={isLocked(m)}>
+                                      {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
+                                    </option>
+                                  ))}
+                                  {allowOther && <option value="__custom__">Other…</option>}
+                                </select>
+                                {inputMode && allowOther && (
+                                  <TextInput
+                                    value={curModel}
+                                    onChange={(v) => writeOverride({ providerType: curType, model: v })}
+                                    placeholder="Type a model id"
+                                    title="Free-form model id sent verbatim to the provider."
+                                  />
+                                )}
+                              </label>
+                            );
+                          })()
+                        ) : (
+                          <label style={{ display: 'grid', gap: 4 }}>
+                            {fieldLabel('Model')}
                             <TextInput
                               value={curModel}
                               onChange={(v) => writeOverride({ providerType: curType, model: v })}
-                              placeholder="Type a model id"
-                              title="Free-form model id sent verbatim to the provider."
+                              placeholder="model-id"
+                              title="Model id sent verbatim to this provider."
                             />
-                          )}
-                        </label>
-                      );
-                    })()
-                  ) : (
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      {fieldLabel('Model')}
-                      <TextInput
-                        value={curModel}
-                        onChange={(v) => writeOverride({ providerType: curType, model: v })}
-                        placeholder="model-id"
-                        title="Model id sent verbatim to this provider."
-                      />
-                    </label>
-                  )}
-                  {showEffort && (
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      {fieldLabel('Reasoning effort')}
-                      <select
-                        className="settings-select"
-                        value={effortValue}
-                        onChange={(e) => { setLlmDirty(true); setSetting(effortKey, e.target.value); }}
-                        title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
-                        style={{ width: '100%', textTransform: 'capitalize' }}
-                      >
-                        {effortOptions.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  {providerUnusable && (
-                    <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
-                      {providerUnconfigured
-                        ? (provider
-                            ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
-                            : 'This provider is not configured. Add it under LLM Providers above.')
-                        : `${providerDisplayName(provider)} failed its last test — check it under LLM Providers above, or pick another provider.`}
-                    </div>
-                  )}
-                </div>
-              </Section>
-            );
-          };
-          return (
-            <>
-              {RoleRow({ role: 'planning', label: 'Planning model' })}
-              {RoleRow({ role: 'coding',   label: 'Coding model' })}
-            </>
-          );
-        })()}
-      </CollapsibleGroup>
-      </div>
-      </div>
+                          </label>
+                        )}
+                        {showEffort && (
+                          <label style={{ display: 'grid', gap: 4 }}>
+                            {fieldLabel('Reasoning effort')}
+                            <select
+                              className="settings-select"
+                              value={effortValue}
+                              onChange={(e) => { setLlmDirty(true); setSetting(effortKey, e.target.value); }}
+                              title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
+                              style={{ width: '100%', textTransform: 'capitalize' }}
+                            >
+                              {effortOptions.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                            </select>
+                          </label>
+                        )}
+                        {providerUnusable && (
+                          <div id={providerWarnId} style={{ fontSize: 11.5, color: '#E07060' }}>
+                            {providerUnconfigured
+                              ? (provider
+                                ? `${providerDisplayName(provider)} isn't configured — add its credentials under LLM Providers above, or pick another provider.`
+                                : 'This provider is not configured. Add it under LLM Providers above.')
+                              : `${providerDisplayName(provider)} failed its last test — check it under LLM Providers above, or pick another provider.`}
+                          </div>
+                        )}
+                      </div>
+                    </Section>
+                  );
+                };
+                return (
+                  <>
+                    {RoleRow({ role: 'planning', label: 'Planning model' })}
+                    {RoleRow({ role: 'coding', label: 'Coding model' })}
+                  </>
+                );
+              })()}
+            </CollapsibleGroup>
+          </div>
+        </div>
 
-      <CollapsibleGroup title="Agent Harness">
-        <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
-          <ToggleGroup
-            value={settings.harness || 'anton'}
-            onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
-            aria-label="Agent harness"
-            options={[
-              { value: 'anton',  label: 'Anton',  'aria-label': 'Use Anton agent',  title: 'Anton — the default AI agent.' },
-              { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
-            ]}
-          />
-        </Section>
-      </CollapsibleGroup>
+        <CollapsibleGroup title="Agent Harness">
+          <Section title="Harness" subtitle={`Which AI agent powers your tasks. ${agentLabel || 'Anton'} is the default; Hermes is an alternative agent with its own tool and memory system.`}>
+            <ToggleGroup
+              value={settings.harness || 'anton'}
+              onValueChange={(v) => { setSetting('harness', v); setLlmDirty(true); }}
+              aria-label="Agent harness"
+              options={[
+                { value: 'anton', label: 'Anton', 'aria-label': 'Use Anton agent', title: 'Anton — the default AI agent.' },
+                { value: 'hermes', label: 'Hermes', 'aria-label': 'Use Hermes agent', title: 'Hermes — alternative agent with independent tools and memory.' },
+              ]}
+            />
+          </Section>
+        </CollapsibleGroup>
 
-      <CollapsibleGroup title="Memory" defaultOpen={false}>
-        <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
-          <ToggleGroup
-            value={settings.memoryMode ?? 'autopilot'}
-            onValueChange={(v) => setSetting('memoryMode', v)}
-            aria-label="Memory mode"
-            options={[
-              { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
-              { value: 'copilot',   label: 'Copilot',   title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
-              { value: 'off',       label: 'Off',       title: 'Disable long-term memory updates.' },
-            ]}
-          />
-        </Section>
-        <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
-          <Switch
-            checked={settings.episodicMemory ?? true}
-            onCheckedChange={(v) => setSetting('episodicMemory', v)}
-            title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
-            aria-label="Episodic memory"
-          />
-        </Section>
-        <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
-          <Switch
-            checked={settings.proactiveDashboards ?? false}
-            onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
-            title="Auto-generate HTML reports from scratchpad output."
-            aria-label="Proactive dashboards"
-          />
-        </Section>
-        <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
-          <Switch
-            checked={settings.actFirst ?? true}
-            onCheckedChange={(v) => setSetting('actFirst', v)}
-            title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
-            aria-label="Act first, ask later"
-          />
-        </Section>
-      </CollapsibleGroup>
-    </SettingsSectionPanel>
-  );
+        <CollapsibleGroup title="Memory" defaultOpen={false}>
+          <Section title="Memory mode" subtitle={`How ${agentLabel || 'Anton'} updates its long-term memory.`}>
+            <ToggleGroup
+              value={settings.memoryMode ?? 'autopilot'}
+              onValueChange={(v) => setSetting('memoryMode', v)}
+              aria-label="Memory mode"
+              options={[
+                { value: 'autopilot', label: 'Autopilot', title: `${agentLabel || 'Anton'} updates long-term memory automatically.` },
+                { value: 'copilot', label: 'Copilot', title: `${agentLabel || 'Anton'} suggests memory updates for you to confirm.` },
+                { value: 'off', label: 'Off', title: 'Disable long-term memory updates.' },
+              ]}
+            />
+          </Section>
+          <Section title="Episodic memory" subtitle="Save conversation history for future recall.">
+            <Switch
+              checked={settings.episodicMemory ?? true}
+              onCheckedChange={(v) => setSetting('episodicMemory', v)}
+              title={`Save conversation history so ${agentLabel || 'Anton'} can recall past tasks.`}
+              aria-label="Episodic memory"
+            />
+          </Section>
+          <Section title="Proactive dashboards" subtitle="Auto-generate HTML reports from scratchpad output.">
+            <Switch
+              checked={settings.proactiveDashboards ?? false}
+              onCheckedChange={(v) => setSetting('proactiveDashboards', v)}
+              title="Auto-generate HTML reports from scratchpad output."
+              aria-label="Proactive dashboards"
+            />
+          </Section>
+          <Section title="Act first, ask later" subtitle="Act on reasonable defaults and state assumptions inline, instead of stopping to ask.">
+            <Switch
+              checked={settings.actFirst ?? true}
+              onCheckedChange={(v) => setSetting('actFirst', v)}
+              title={`${agentLabel || 'Anton'} acts on sensible defaults and surfaces its assumptions as it goes, instead of pausing to ask.`}
+              aria-label="Act first, ask later"
+            />
+          </Section>
+        </CollapsibleGroup>
+      </SettingsSectionPanel>
+    );
   };
 
   const renderAppearanceSection = () => (
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <CollapsibleGroup title="Appearance">
-      <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
-        <ToggleGroup
-          value={theme || 'dark'}
-          onValueChange={(v) => onThemeChange?.(v)}
-          aria-label="Theme"
-          options={[
-            {
-              value: 'light',
-              label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
-              'aria-label': 'Light theme',
-              title: 'Use the light theme.',
-            },
-            {
-              value: 'dark',
-              label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
-              'aria-label': 'Dark theme',
-              title: 'Use the dark theme.',
-            },
-          ]}
-        />
-      </Section>
-      <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-        <ToggleGroup
-          value={normalizeSkin(skin)}
-          onValueChange={(v) => onSkinChange?.(v)}
-          aria-label="Style"
-          options={SKINS.map((s) => ({
-            value: s.id,
-            label: s.icon && Ico[s.icon]
-              ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
-              : s.label,
-            'aria-label': `${s.label} style`,
-            title: s.title,
-          }))}
-        />
-      </Section>
-      {normalizeSkin(skin) === 'custom' && customTheme && (
-        <>
-          <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
-            <input
-              type="color"
-              value={customTheme.accent}
-              onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
-              aria-label="Custom accent color"
-              style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer' }}
-            />
-          </Section>
-          <Section title="Background" subtitle="Pick a base color — surfaces and text shades derive from it — or follow the Light/Dark theme.">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
+          <ToggleGroup
+            value={theme || 'dark'}
+            onValueChange={(v) => onThemeChange?.(v)}
+            aria-label="Theme"
+            options={[
+              {
+                value: 'light',
+                label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.sun(13)} Light</span>),
+                'aria-label': 'Light theme',
+                title: 'Use the light theme.',
+              },
+              {
+                value: 'dark',
+                label: (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico.moon(13)} Dark</span>),
+                'aria-label': 'Dark theme',
+                title: 'Use the dark theme.',
+              },
+            ]}
+          />
+        </Section>
+        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+          <ToggleGroup
+            value={normalizeSkin(skin)}
+            onValueChange={(v) => onSkinChange?.(v)}
+            aria-label="Style"
+            options={SKINS.map((s) => ({
+              value: s.id,
+              label: s.icon && Ico[s.icon]
+                ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
+                : s.label,
+              'aria-label': `${s.label} style`,
+              title: s.title,
+            }))}
+          />
+        </Section>
+        {normalizeSkin(skin) === 'custom' && customTheme && (
+          <>
+            <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
               <input
                 type="color"
-                value={customTheme.bg || (theme === 'light' ? '#fafafa' : '#080d18')}
-                onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.value })}
-                disabled={customTheme.bg === null}
-                aria-label="Custom background color"
-                style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
+                value={customTheme.accent}
+                onChange={(e) => onCustomThemeChange?.({ ...customTheme, accent: e.target.value })}
+                aria-label="Custom accent color"
+                style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer' }}
               />
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+            </Section>
+            <Section title="Background" subtitle="Pick a base color — surfaces and text shades derive from it — or follow the Light/Dark theme.">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <input
-                  type="checkbox"
-                  checked={customTheme.bg === null}
-                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                  type="color"
+                  value={customTheme.bg || (theme === 'light' ? '#fafafa' : '#080d18')}
+                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.value })}
+                  disabled={customTheme.bg === null}
+                  aria-label="Custom background color"
+                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
                 />
-                Follow Light/Dark
-              </label>
-            </div>
-          </Section>
-          <Section title="Corners" subtitle="How sharp the surfaces feel.">
-            <ToggleGroup
-              value={String(customTheme.radius)}
-              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
-              aria-label="Corner radius"
-              options={[
-                { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
-                { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
-                { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
-              ]}
-            />
-          </Section>
-          <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
-            <ToggleGroup
-              value={customTheme.font}
-              onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
-              aria-label="Custom typeface"
-              options={[
-                { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
-                { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
-              ]}
-            />
-          </Section>
-          <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={customTheme.bg === null}
+                    onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                  />
+                  Follow Light/Dark
+                </label>
+              </div>
+            </Section>
+            <Section title="Corners" subtitle="How sharp the surfaces feel.">
+              <ToggleGroup
+                value={String(customTheme.radius)}
+                onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, radius: Number(v) })}
+                aria-label="Corner radius"
+                options={[
+                  { value: '0', label: 'Square', 'aria-label': 'Square corners', title: 'Sharp pixel corners.' },
+                  { value: '6', label: 'Soft', 'aria-label': 'Soft corners', title: 'Gently rounded.' },
+                  { value: '12', label: 'Round', 'aria-label': 'Round corners', title: 'Fully rounded.' },
+                ]}
+              />
+            </Section>
+            <Section title="Typeface" subtitle="Standard UI font, or mono everywhere for the terminal feel.">
+              <ToggleGroup
+                value={customTheme.font}
+                onValueChange={(v) => onCustomThemeChange?.({ ...customTheme, font: v })}
+                aria-label="Custom typeface"
+                options={[
+                  { value: 'standard', label: 'Standard', 'aria-label': 'Standard font', title: 'Inter for UI text.' },
+                  { value: 'mono', label: 'Mono', 'aria-label': 'Mono font', title: 'JetBrains Mono everywhere.' },
+                ]}
+              />
+            </Section>
+            <Section title="Scanlines" subtitle="A faint CRT scanline overlay across the app.">
+              <Switch
+                checked={customTheme.scanlines}
+                onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
+                title="Toggle the CRT scanline overlay."
+                aria-label="Scanline overlay"
+              />
+            </Section>
+          </>
+        )}
+        <Section title="Greeting" subtitle="The line shown when you start a new task.">
+          <TextInput
+            value={settings.greeting}
+            onChange={(v) => setSetting('greeting', v)}
+            title="Shown above the task input when you start a new task."
+            ariaLabel="Greeting text"
+          />
+        </Section>
+        <div className="settings-hide-mobile">
+          <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
             <Switch
-              checked={customTheme.scanlines}
-              onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, scanlines: v })}
-              title="Toggle the CRT scanline overlay."
-              aria-label="Scanline overlay"
+              checked={settings.showDots}
+              onCheckedChange={(v) => setSetting('showDots', v)}
+              title="Toggle the animated grid background."
+              aria-label="Animated background"
             />
           </Section>
-        </>
-      )}
-      <Section title="Greeting" subtitle="The line shown when you start a new task.">
-        <TextInput
-          value={settings.greeting}
-          onChange={(v) => setSetting('greeting', v)}
-          title="Shown above the task input when you start a new task."
-          ariaLabel="Greeting text"
-        />
-      </Section>
-      <div className="settings-hide-mobile">
-        <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
-          <Switch
-            checked={settings.showDots}
-            onCheckedChange={(v) => setSetting('showDots', v)}
-            title="Toggle the animated grid background."
-            aria-label="Animated background"
-          />
-        </Section>
-        <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-          <Switch
-            checked={settings.showCounters !== false}
-            onCheckedChange={(v) => setSetting('showCounters', v)}
-            title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
-            aria-label="Nav-panel counters"
-          />
-        </Section>
-      </div>
-    </CollapsibleGroup>
+          <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
+            <Switch
+              checked={settings.showCounters !== false}
+              onCheckedChange={(v) => setSetting('showCounters', v)}
+              title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
+              aria-label="Nav-panel counters"
+            />
+          </Section>
+        </div>
+      </CollapsibleGroup>
     </SettingsSectionPanel>
   );
 
@@ -1918,7 +1921,7 @@ export default function SettingsView({
             onValueChange={(v) => setSetting('uiUpdateMode', v)}
             aria-label="UI update mode"
             options={[
-              { value: 'auto',   label: 'Auto',   title: 'Download and apply UI updates automatically.' },
+              { value: 'auto', label: 'Auto', title: 'Download and apply UI updates automatically.' },
               { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
             ]}
           />
@@ -1964,11 +1967,11 @@ export default function SettingsView({
       : 'failed';
 
     const STATUS_META = {
-      online:   { title: 'MindsHub backend is running',   subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success, #1F8F5F)', iconBgMix: 'var(--success, #1F8F5F)' },
-      starting: { title: 'MindsHub backend is starting…', subtitle: 'Spawning the local Python server. This usually takes a few seconds.',         iconColor: 'var(--accent)',             iconBgMix: 'var(--accent)'             },
-      stopping: { title: 'MindsHub backend is stopping…', subtitle: 'Waiting for the local Python server to terminate.',                            iconColor: 'var(--ink-3)',              iconBgMix: 'var(--ink-3)'              },
+      online: { title: 'MindsHub backend is running', subtitle: 'The local Python server is responding to /health.', iconColor: 'var(--success, #1F8F5F)', iconBgMix: 'var(--success, #1F8F5F)' },
+      starting: { title: 'MindsHub backend is starting…', subtitle: 'Spawning the local Python server. This usually takes a few seconds.', iconColor: 'var(--accent)', iconBgMix: 'var(--accent)' },
+      stopping: { title: 'MindsHub backend is stopping…', subtitle: 'Waiting for the local Python server to terminate.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' },
       offline: offlineKind === 'stopped'
-        ? { title: 'MindsHub backend is stopped',     subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.',                              iconColor: 'var(--ink-3)',   iconBgMix: 'var(--ink-3)'   }
+        ? { title: 'MindsHub backend is stopped', subtitle: 'You stopped the local Python server. Click "Start backend" below to bring it back up.', iconColor: 'var(--ink-3)', iconBgMix: 'var(--ink-3)' }
         : { title: 'MindsHub backend isn\'t running', subtitle: "The local Python server didn't start. The most recent error and log tail are captured below.", iconColor: 'var(--danger)', iconBgMix: 'var(--danger)' },
     }[state];
 
@@ -2146,7 +2149,7 @@ export default function SettingsView({
             )}
           </div>
           <a
-            href="https://console.mindshub.ai"
+            href={MINDS_CONSOLE_URL}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -2205,7 +2208,7 @@ export default function SettingsView({
           {[
             { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
             { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
-            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z"/></svg>, label: 'Publish & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
+            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Publish & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
             { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
           ].map(({ icon, label, desc, soon }) => (
             <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -2280,16 +2283,16 @@ export default function SettingsView({
         {accountUser && <div style={{ ...CARD, padding: '0 18px 8px' }}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#E07060', background: 'rgba(224,112,96,0.08)', border: '1px solid rgba(224,112,96,0.35)', cursor: loggingOut ? 'progress' : 'pointer', fontFamily: 'inherit', opacity: loggingOut ? 0.7 : 1 }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              {loggingOut ? 'Signing out…' : 'Sign out'}
-            </button>
+              <button type="button" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#E07060', background: 'rgba(224,112,96,0.08)', border: '1px solid rgba(224,112,96,0.35)', cursor: loggingOut ? 'progress' : 'pointer', fontFamily: 'inherit', opacity: loggingOut ? 0.7 : 1 }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                {loggingOut ? 'Signing out…' : 'Sign out'}
+              </button>
             </div>
           </Section>
         </div>}
@@ -2301,12 +2304,12 @@ export default function SettingsView({
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
       <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
 
-      {section === 'agent'      && renderAgentSection()}
+      {section === 'agent' && renderAgentSection()}
       {section === 'appearance' && renderAppearanceSection()}
-      {section === 'channels'   && renderChannelsSection()}
-      {section === 'updates'    && renderUpdatesSection()}
-      {section === 'backend'    && renderBackendSection()}
-      {section === 'account'    && renderAccountSection()}
+      {section === 'channels' && renderChannelsSection()}
+      {section === 'updates' && renderUpdatesSection()}
+      {section === 'backend' && renderBackendSection()}
+      {section === 'account' && renderAccountSection()}
 
       <ConfirmModal
         open={logoutConfirmOpen}
