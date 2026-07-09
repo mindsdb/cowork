@@ -365,7 +365,7 @@ export default function HomeView({
     >
       <h1 className="home-greeting-row" style={{
         fontFamily: 'var(--font-display)',
-        fontSize: 36, fontWeight: 700, letterSpacing: '-0.02em',
+        fontSize: 36, fontWeight: 600, letterSpacing: '-0.02em',
         color: 'var(--text-strong)',
         margin: '0 0 28px',
         width: '100%', maxWidth: 'var(--composer-max-width, 640px)',
