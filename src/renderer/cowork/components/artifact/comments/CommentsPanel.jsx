@@ -1,9 +1,9 @@
 // Comments inbox panel — 1:1 with the published-viewer inbox (Figma 515-2287):
 // a fixed 342px light card floating on the right with 12px insets, holding
-// the header, the Open/Resolved/All segmented tabs (with counts), and the
-// card list. No composer — comments are created on the artifact via comment
-// mode; the full thread opens in the on-artifact popover when a card is
-// clicked.
+// the header, the Open/Resolved/All segmented tabs (with counts), the
+// card list, and a pinned composer for general (unanchored) comments.
+// Anchored comments are created on the artifact via comment mode; the full
+// thread opens in the on-artifact popover when a card is clicked.
 //
 // State (initial load + realtime SSE + mutations) lives in the shared
 // `useArtifactComments` hook, instantiated once in ArtifactViewer so the SAME
@@ -12,12 +12,13 @@
 // ToggleGroup (radiogroup semantics, arrow-key navigation) with the
 // reference's segmented-control skin.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
 import { isoToEpoch } from '../../../lib/commentsReducer';
 import { ConfirmModal } from '../../ConfirmModal';
 import { InboxCard } from './InboxCard';
+import { UnanchoredComposer } from './UnanchoredComposer';
 import { XIcon } from './icons';
 
 // Reference "NewShadow/modal-sm" — the panel's card shadow.
@@ -67,12 +68,14 @@ export function CommentsPanel({
   viewer = null,
   onStatus,
   onDeleteThread,
+  onCreate,
   onClose,
   onHoverThread,
   onLeaveThread,
   onFocusThread,
 }) {
   const [tab, setTab] = useState('open');
+  const listRef = useRef(null);
   // Pending delete confirmation, panel-level so there's ONE modal instance.
   // ConfirmModal instead of window.confirm — the native dialog steals
   // webContents focus in Electron and leaves inputs dead afterwards.
@@ -179,7 +182,8 @@ export function CommentsPanel({
       </BaseToggleGroup>
 
       {/* Card list — scrollbar hugs the panel edge instead of stealing card width. */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-[4px]"
+      <div ref={listRef}
+        className="flex-1 overflow-y-auto flex flex-col gap-[10px] -mr-[10px] pr-[4px]"
         style={{ overscrollBehavior: 'contain' }}>
         {visible.length === 0 && (
           <div className="text-center text-[12px] leading-[16px] text-[#828285] py-[24px]">
@@ -200,6 +204,13 @@ export function CommentsPanel({
           />
         ))}
       </div>
+
+      {/* Pinned composer — general (unanchored) comments, selector: null.
+          New threads are open and sort newest-first, so scroll to top. */}
+      <UnanchoredComposer
+        onCreate={onCreate}
+        onPosted={() => listRef.current?.scrollTo({ top: 0 })}
+      />
 
       <ConfirmModal
         open={!!pendingDelete}

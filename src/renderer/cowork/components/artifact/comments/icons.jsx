@@ -43,3 +43,9 @@ export const InfoIcon = () => (
   </svg>
 );
 
+export const ArrowUpIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M8.16667 12.3333V4M4.16667 8L8.16667 4L12.1667 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+

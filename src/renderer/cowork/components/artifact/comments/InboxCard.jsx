@@ -65,6 +65,9 @@ const UNANCHORED_TIP =
   'This comment isn’t attached to a visible element — the page may have changed '
   + 'since it was left, or it renders differently on your device.';
 
+const GENERAL_TIP =
+  'General comment — not attached to any element on the page.';
+
 const HIDDEN_TIP =
   'This comment is on a part of the page that isn’t shown right now (e.g. another '
   + 'slide or tab) — it’ll reappear when you navigate there.';
@@ -88,6 +91,9 @@ export function InboxCard({
   // 'hidden' (resolves but off-screen — e.g. another slide) gets its own chip.
   const hidden = state === 'hidden';
   const unanchored = !thread.selector || state === 'orphan';
+  // No selector at all = an INTENTIONAL general comment (composer path);
+  // a selector that stopped resolving = version drift — different tooltips.
+  const general = !thread.selector;
   const mine = viewerCanEdit(thread.payload, viewer);
   const nReplies = threadReplies(thread).length;
   const repliesTxt = nReplies ? `${nReplies}${nReplies === 1 ? ' reply' : ' replies'}` : '';
@@ -146,7 +152,7 @@ export function InboxCard({
               </span>
             </Tooltip>
           ) : unanchored ? (
-            <Tooltip content={UNANCHORED_TIP}>
+            <Tooltip content={general ? GENERAL_TIP : UNANCHORED_TIP}>
               <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
                 bg-[#EFEFF0] text-[#69696B] text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />

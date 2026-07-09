@@ -818,8 +818,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             onClose={toggleComments}
           />
         )}
-        {/* The panel is a thread INBOX (summaries + resolve/delete); composing,
-            replying, and editing all happen in the on-artifact popover. */}
+        {/* The panel is a thread INBOX (summaries + resolve/delete) plus a
+            pinned composer for general (unanchored) comments; anchored
+            composing, replying, and editing happen in the on-artifact popover. */}
         {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
           <CommentsPanel
             threads={comments.threads}
@@ -829,6 +830,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             viewer={comments.viewer}
             onStatus={comments.setStatus}
             onDeleteThread={comments.deleteThread}
+            onCreate={comments.create}
             onHoverThread={layer.hlOn}
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}

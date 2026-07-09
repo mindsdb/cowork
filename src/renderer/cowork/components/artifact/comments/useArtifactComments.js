@@ -102,12 +102,14 @@ export function useArtifactComments(userDir, reportId, { enabled = true } = {}) 
   }, [enabled, userDir, reportId, apply]);
 
   const create = useCallback(async ({ selector = null, text }) => {
-    if (!text || !text.trim()) return;
+    if (!text || !text.trim()) return false;
     try {
       const created = await createCommentThread(userDir, reportId, { selector, text: text.trim() });
       apply({ ...created, type: created.type || 'thread.created' });
+      return true;
     } catch (e) {
       setError(e.message || 'Failed to post');
+      return false;
     }
   }, [userDir, reportId, apply]);
 
