@@ -32,10 +32,17 @@ import {
   ANTON_REPO,
 } from './server-source';
 import {
+  isFullCommitSha,
+  parseLsRemote,
+  parseVcsInfo,
+  decideGitUpdate,
+  decidePypiUpdate,
+  type VcsInfo,
+} from './update-logic';
+import {
   PYTHON_RANGE,
   getEnvPath,
   findUv,
-  compareVersions,
   getInstalledVersion,
   isSupportedPython,
 } from './uv-paths';
@@ -66,11 +73,6 @@ function getUvToolsDir(): string {
 // ---------------------------------------------------------------------------
 // Install-source detection (read the tool venv's direct_url.json)
 // ---------------------------------------------------------------------------
-
-interface VcsInfo {
-  commit: string;
-  requestedRevision: string;
-}
 
 /** Locate site-packages inside the cowork-server tool venv. Callers that have
  *  already resolved the tools dir reliably (via `uv tool dir`) should pass it —
@@ -109,10 +111,7 @@ function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
   }
   if (!distInfo || !fs.existsSync(distInfo)) return null;
   try {
-    const data = JSON.parse(fs.readFileSync(distInfo, 'utf-8'));
-    const vcs = data?.vcs_info;
-    if (!vcs?.commit_id) return null;
-    return { commit: vcs.commit_id, requestedRevision: vcs.requested_revision || '' };
+    return parseVcsInfo(fs.readFileSync(distInfo, 'utf-8'));
   } catch {
     return null;
   }
@@ -121,15 +120,11 @@ function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
 /** The HEAD commit a remote ref currently points at. A 40-hex ref is
  *  returned as-is (it IS the commit). Null on any failure. */
 function lsRemote(repo: string, ref: string): Promise<string | null> {
-  if (/^[0-9a-f]{40}$/i.test(ref)) return Promise.resolve(ref.toLowerCase());
+  if (isFullCommitSha(ref)) return Promise.resolve(ref.toLowerCase());
   return new Promise((resolve) => {
     execFile('git', ['ls-remote', repo, ref], { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      // Prefer an exact heads/ or tags/ match; fall back to first line.
-      const lines = stdout.split('\n').filter(Boolean);
-      const pick = lines.find((l) => l.includes(`refs/heads/${ref}`) || l.includes(`refs/tags/${ref}`)) || lines[0];
-      const sha = pick ? pick.split('\t')[0].trim().toLowerCase() : '';
-      resolve(sha || null);
+      resolve(parseLsRemote(stdout, ref));
     });
   });
 }
@@ -295,10 +290,14 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
         lsRemote(COWORK_SERVER_REPO, coworkRef),
         lsRemote(ANTON_REPO, antonRef),
       ]);
-      const coworkChanged = !!coworkRemote && coworkRemote !== coworkVcs.commit.toLowerCase();
-      const antonChanged = !!antonRemote && !!antonVcs && antonRemote !== antonVcs.commit.toLowerCase();
+      const { coworkChanged, needsUpdate } = decideGitUpdate({
+        coworkRemote,
+        antonRemote,
+        coworkVcs,
+        antonVcs,
+      });
       return {
-        updateAvailable: coworkChanged || antonChanged,
+        updateAvailable: needsUpdate,
         currentVersion: coworkVcs.commit.slice(0, 7),
         latestVersion: coworkChanged ? coworkRemote!.slice(0, 7) : coworkVcs.commit.slice(0, 7),
       };
@@ -311,7 +310,7 @@ export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
     ]);
     if (!currentVersion || !latestVersion) return { updateAvailable: false };
     return {
-      updateAvailable: compareVersions(latestVersion, currentVersion) > 0,
+      updateAvailable: decidePypiUpdate(currentVersion, latestVersion).action === 'update',
       currentVersion,
       latestVersion,
     };
@@ -358,10 +357,14 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     lsRemote(ANTON_REPO, antonRef),
   ]);
 
-  const coworkChanged = !!coworkRemote && coworkRemote !== coworkVcs.commit.toLowerCase();
-  const antonChanged = !!antonRemote && !!antonVcs && antonRemote !== antonVcs.commit.toLowerCase();
+  const { coworkChanged, antonChanged, needsUpdate } = decideGitUpdate({
+    coworkRemote,
+    antonRemote,
+    coworkVcs,
+    antonVcs,
+  });
 
-  if (!coworkChanged && !antonChanged) {
+  if (!needsUpdate) {
     console.log(`[server-updater] up to date (git: cowork@${coworkRef}=${coworkVcs.commit.slice(0, 7)}, anton@${antonRef}=${antonVcs?.commit.slice(0, 7) ?? '?'})`);
     return { updated: false };
   }
@@ -407,15 +410,20 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     fetchLatestVersion(),
   ]);
 
-  if (!currentVersion) return { updated: false, error: 'could not determine installed version' };
-  if (!latestVersion) return { updated: false };
-
-  if (compareVersions(latestVersion, currentVersion) <= 0) {
+  const decision = decidePypiUpdate(currentVersion, latestVersion);
+  if (decision.action === 'skip') {
+    return decision.reason === 'unknown-installed-version'
+      ? { updated: false, error: 'could not determine installed version' }
+      : { updated: false };
+  }
+  if (decision.action === 'up-to-date') {
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
   }
 
-  console.log(`[server-updater] update available: ${currentVersion} → ${latestVersion}`);
+  // decision.action === 'update' — from/to are the non-null versions.
+  const { from, to } = decision;
+  console.log(`[server-updater] update available: ${from} → ${to}`);
   const wasRunning = isServerRunning();
   if (wasRunning) await stopServer();
 
@@ -423,22 +431,22 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
   if (!upgrade.ok) {
     console.error('[server-updater] upgrade failed:', upgrade.stderr);
     if (wasRunning) await startServer();
-    return { updated: false, previousVersion: currentVersion, error: upgrade.stderr };
+    return { updated: false, previousVersion: from, error: upgrade.stderr };
   }
 
   const result = await startServer();
   if (!result.ok) {
     console.error('[server-updater] new version failed health check, rolling back...');
-    const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${currentVersion}`]);
+    const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`]);
     if (rollback.ok) {
       await startServer();
-      console.log(`[server-updater] rolled back to ${currentVersion}`);
+      console.log(`[server-updater] rolled back to ${from}`);
     } else {
-      _notify?.({ phase: 'error', critical: true, error: `Server update to ${latestVersion} failed and rollback to ${currentVersion} also failed. Restart the app to recover.` });
+      _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed and rollback to ${from} also failed. Restart the app to recover.` });
     }
-    return { updated: false, previousVersion: currentVersion, newVersion: latestVersion, error: `New version failed to start: ${result.reason}` };
+    return { updated: false, previousVersion: from, newVersion: to, error: `New version failed to start: ${result.reason}` };
   }
 
-  console.log(`[server-updater] successfully updated to ${latestVersion}`);
-  return { updated: true, previousVersion: currentVersion, newVersion: latestVersion };
+  console.log(`[server-updater] successfully updated to ${to}`);
+  return { updated: true, previousVersion: from, newVersion: to };
 }

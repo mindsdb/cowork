@@ -4,7 +4,7 @@ import Ico from './components/Icons';
 import ThemeModal from './components/ThemeModal';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-// OnboardingShell removed — antontron's renderer handles terms/install/
+// OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';

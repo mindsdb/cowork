@@ -5,13 +5,13 @@ import * as fs from 'fs';
 import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
 import { getInstallSpec, COWORK_SERVER_MIN_VERSION } from './server-source';
+import { meetsMinVersion } from './update-logic';
 import {
   PYTHON_RANGE,
   getLocalBin,
   getEnvPath,
   getCoworkServerBinary,
   findUv,
-  compareVersions,
   getInstalledVersion,
 } from './uv-paths';
 
@@ -233,7 +233,7 @@ export async function checkCoworkServerInstalled(): Promise<boolean> {
     console.log('[installer] cowork-server version could not be determined, reinstall needed');
     return false;
   }
-  if (compareVersions(installedVersion, COWORK_SERVER_MIN_VERSION) < 0) {
+  if (!meetsMinVersion(installedVersion, COWORK_SERVER_MIN_VERSION)) {
     console.log(
       `[installer] cowork-server ${installedVersion} is below minimum ${COWORK_SERVER_MIN_VERSION}, needs upgrade`,
     );
