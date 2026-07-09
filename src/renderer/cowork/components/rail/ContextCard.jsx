@@ -1000,7 +1000,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           if (!target || !onRemoveGoogleDriveFile) return;
           setDriveFiles((prev) => prev.filter((f) => f.id !== target.id));
           try {
-            const res = await onRemoveGoogleDriveFile(target.id);
+            const res = await onRemoveGoogleDriveFile(target.id, target._connectionName);
             if (!res?.ok) throw new Error(res?.reason || 'Could not remove file.');
           } catch (err) {
             // eslint-disable-next-line no-console

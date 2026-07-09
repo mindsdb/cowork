@@ -311,6 +311,23 @@ function getIconPath(): string {
 let mainWindow: BrowserWindow | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
 
+// Pulls the desktop app back to the foreground after a browser-based
+// flow (OAuth sign-in/connect, MindsHub login, the Drive Picker) hands
+// control back to us — the OS default browser is frontmost after the
+// redirect, and without this the user is left on the "you can close
+// this tab" page with no indication the app already picked up the
+// result.
+function focusMainWindow() {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      app.focus({ steal: true }); // macOS: steal focus from the browser
+    }
+  } catch {}
+}
+
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   // On macOS the BrowserWindow `icon` option is ignored — the dock shows the
@@ -612,6 +629,7 @@ function setupIPC() {
       if (!pkceResult.ok || !pkceResult.access_token || !pkceResult.refresh_token) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
       }
+      focusMainWindow();
 
       // Fetch account email from Google userinfo — needed as keychain key
       // and for the vault record's display name. The token exchange already
@@ -674,7 +692,9 @@ function setupIPC() {
     }
 
     // BYOK passthrough: renderer passes full OAuth opts, gets tokens back.
-    return oauthConnect(o);
+    const byokResult = await oauthConnect(o);
+    if (byokResult.ok) focusMainWindow();
+    return byokResult;
   });
 
   ipcMain.handle(IPC.OAUTH_PICK_DRIVE_FILES, async (_event, opts) => {
@@ -684,6 +704,7 @@ function setupIPC() {
     if (!access.ok) return access;
     const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, fileIds);
     if (!pickResult.ok) return pickResult;
+    focusMainWindow();
     const newFiles = pickResult.files || [];
     // Nothing new picked (user cancelled) — return the existing persisted
     // list untouched rather than wiping it.
@@ -775,18 +796,7 @@ function setupIPC() {
     if (result.ok && result.access_token) {
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
-      // Pull the desktop app back to the foreground. The SSO flow opens the
-      // OS default browser, which is frontmost after the redirect — without
-      // this the user is left on the "you can close this tab" page and may
-      // not realize the app has signed them in.
-      try {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          if (mainWindow.isMinimized()) mainWindow.restore();
-          mainWindow.show();
-          mainWindow.focus();
-          app.focus({ steal: true }); // macOS: steal focus from the browser
-        }
-      } catch {}
+      focusMainWindow();
     }
     return result;
   });
