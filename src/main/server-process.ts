@@ -126,6 +126,34 @@ let serverStarted = false;
 // (which would race for the same port and the second would fail).
 let pendingStart: Promise<StartServerResult> | null = null;
 
+// A "maintenance window" is any operation that rewrites the cowork-server tool
+// venv on disk (a uv reinstall/upgrade). Spawning the server while one is in
+// flight launches python against a half-written environment, which crashes
+// with a spurious ModuleNotFoundError (observed: a repair reinstall racing a
+// post-onboarding restart). startServer() waits this out before spawning, and
+// the updater wraps its `uv tool install` calls in withServerMaintenance().
+let _maintenanceGate: Promise<void> | null = null;
+
+/** Run `fn` as an exclusive server-maintenance window: startServer() waits
+ *  until it resolves before spawning, and overlapping maintenance serializes.
+ *  Used by the updater around `uv tool install` so a reinstall can't race a
+ *  concurrent server start. */
+export async function withServerMaintenance<T>(fn: () => Promise<T>): Promise<T> {
+  while (_maintenanceGate) await _maintenanceGate;
+  let release!: () => void;
+  _maintenanceGate = new Promise<void>((resolve) => {
+    release = () => {
+      _maintenanceGate = null;
+      resolve();
+    };
+  });
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 // Diagnostics — captured so the renderer can surface them in a help
 // modal when the user wonders why the backend is offline. We keep
 // the most recent start failure reason and a rolling tail of stderr
@@ -369,6 +397,10 @@ export interface StartServerResult {
 }
 
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
+  // Wait out any in-flight venv maintenance (a uv reinstall/upgrade rewriting
+  // the tool venv) — spawning now would launch python against a half-written
+  // environment and crash with a spurious import error.
+  while (_maintenanceGate) await _maintenanceGate;
   if (serverStarted) return { ok: true, port: serverPort };
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.

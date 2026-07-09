@@ -139,6 +139,31 @@ export function decidePypiUpdate(
 }
 
 // ---------------------------------------------------------------------------
+// Boot-recovery: is a start failure a broken install?
+// ---------------------------------------------------------------------------
+
+/** Does a failed-start crash log look like a broken/partial Python install —
+ *  a missing module or an unimportable name — rather than a runtime or data
+ *  failure (a bad Alembic migration, a port clash, missing config)?
+ *
+ *  Only a broken install is fixable by a clean `uv tool install --reinstall`.
+ *  Reinstalling for anything else wastes minutes AND can corrupt an otherwise
+ *  healthy venv when the reinstall races a concurrent start (observed: a repair
+ *  reinstall fired on an Alembic "database ahead" error, then a post-onboarding
+ *  restart spawned python mid-reinstall → spurious ModuleNotFoundError). So the
+ *  boot-recovery path gates the reinstall on this returning true.
+ *
+ *  Matches only the specific import-failure markers CPython emits — not the
+ *  bare word "import", which appears in benign frames like
+ *  `<frozen importlib._bootstrap>` inside an unrelated (e.g. migration) trace. */
+export function looksLikeBrokenInstall(log: string | null | undefined): boolean {
+  if (!log) return false;
+  return /\bModuleNotFoundError\b|\bImportError\b|No module named|cannot import name|\(unknown location\)/.test(
+    log,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // UI OTA manifest
 // ---------------------------------------------------------------------------
 

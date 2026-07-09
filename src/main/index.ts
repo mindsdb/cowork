@@ -1282,9 +1282,13 @@ app.whenReady().then(async () => {
       // 2. Venv on a supported Python but still dead — a corrupt or partially
       //    written environment (e.g. an interrupted upgrade left a dependency
       //    as a bare namespace package that ImportErrors at startup). A clean
-      //    reinstall repairs it. Skip when we just recreated: that already did
-      //    a --force --reinstall, so a second one would be redundant.
-      if (!result.ok && !recreated && await repairServerInstall()) {
+      //    reinstall repairs it. Gated on the crash signature: repairServerInstall
+      //    only reinstalls when the captured stderr looks like a broken install,
+      //    so a migration/port/config failure never triggers a pointless (and
+      //    potentially env-corrupting) reinstall. Skip when we just recreated:
+      //    that already did a --force --reinstall.
+      const failureLog = getServerDiagnostics().recentLog;
+      if (!result.ok && !recreated && await repairServerInstall(failureLog)) {
         console.log('[server] repaired the server environment; retrying start');
         result = await startServer();
       }

@@ -9,6 +9,7 @@ import {
   decideGitUpdate,
   decidePypiUpdate,
   parseUiManifest,
+  looksLikeBrokenInstall,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -247,5 +248,37 @@ describe('parseUiManifest', () => {
     expect(parseUiManifest(JSON.stringify({ ...valid, sha256: 'abc' }))).toBeNull();
     expect(parseUiManifest(JSON.stringify({ ...valid, sha256: SHA + 'ab' }))).toBeNull();
     expect(parseUiManifest(JSON.stringify({ ...valid, sha256: 'zz'.repeat(32) }))).toBeNull();
+  });
+});
+
+describe('looksLikeBrokenInstall', () => {
+  it('matches the import-failure markers a broken/partial venv produces', () => {
+    // The two real incidents this gate is built around.
+    expect(
+      looksLikeBrokenInstall("ImportError: cannot import name 'Doc' from 'annotated_doc' (unknown location)"),
+    ).toBe(true);
+    expect(looksLikeBrokenInstall("ModuleNotFoundError: No module named 'sqlalchemy.util.typing'")).toBe(true);
+    expect(looksLikeBrokenInstall('  File "x.py"\nImportError: bad thing')).toBe(true);
+  });
+
+  it('does NOT match a runtime/data failure that a reinstall cannot fix', () => {
+    // An Alembic "database ahead" trace — note it contains benign frames like
+    // `<frozen importlib._bootstrap>`, which must NOT be mistaken for an import
+    // failure (that false positive is exactly what caused the bad reinstall).
+    const migration = [
+      '  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed',
+      '  File ".../alembic/script/revision.py", line 637, in _revision_for_ident',
+      "alembic.script.revision.ResolutionError: No such revision or branch 'e8b3c5d7a9f1'",
+      "alembic.util.exc.CommandError: Can't locate revision identified by 'e8b3c5d7a9f1'",
+    ].join('\n');
+    expect(looksLikeBrokenInstall(migration)).toBe(false);
+    expect(looksLikeBrokenInstall('[Errno 48] Address already in use')).toBe(false);
+    expect(looksLikeBrokenInstall('Server did not respond on /health within 15000ms.')).toBe(false);
+  });
+
+  it('is false for empty / missing logs (fail safe: no reinstall)', () => {
+    expect(looksLikeBrokenInstall('')).toBe(false);
+    expect(looksLikeBrokenInstall(undefined)).toBe(false);
+    expect(looksLikeBrokenInstall(null)).toBe(false);
   });
 });

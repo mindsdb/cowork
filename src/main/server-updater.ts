@@ -23,7 +23,7 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { startServer, stopServer, isServerRunning } from './server-process';
+import { startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
   getCoworkRef,
@@ -37,6 +37,7 @@ import {
   parseVcsInfo,
   decideGitUpdate,
   decidePypiUpdate,
+  looksLikeBrokenInstall,
   type VcsInfo,
 } from './update-logic';
 import {
@@ -134,14 +135,22 @@ function lsRemote(repo: string, ref: string): Promise<string | null> {
 // ---------------------------------------------------------------------------
 
 function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: string }> {
-  return new Promise((resolve) => {
-    execFile(
-      uv,
-      args,
-      { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed' }, timeout: 180000 },
-      (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
-    );
-  });
+  // Every runUv call is a `uv tool install/upgrade/reinstall` that rewrites the
+  // tool venv on disk. Hold a maintenance window for its duration so
+  // startServer() can't spawn python against a half-written environment (a
+  // concurrent restart racing the reinstall — the spurious ModuleNotFoundError
+  // seen when a repair reinstall overlapped a post-onboarding restart).
+  return withServerMaintenance(
+    () =>
+      new Promise((resolve) => {
+        execFile(
+          uv,
+          args,
+          { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed' }, timeout: 180000 },
+          (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
+        );
+      }),
+  );
 }
 
 /** Reinstall from a git spec (cowork-server + anton at the given refs). */
@@ -261,18 +270,31 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
  * Cost note: if the reinstall does NOT fix the crash (e.g. a genuinely broken
  * published artifact), this will run again on the next launch. That's the same
  * tradeoff `recreateVenvIfUnsupportedPython` already makes — a slow retry beats
- * a permanently dead app, and it self-resolves once upstream is fixed. */
-export async function repairServerInstall(): Promise<boolean> {
+ * a permanently dead app, and it self-resolves once upstream is fixed.
+ *
+ * `failureLog` is the crashed server's captured stderr
+ * (getServerDiagnostics().recentLog). The reinstall only runs when that log
+ * looks like a broken install (a missing module / unimportable name). For a
+ * migration error, port clash, or bad config the reinstall can't help — and an
+ * unnecessary one can corrupt a *healthy* venv if it races a concurrent start
+ * — so we skip it and return false. */
+export async function repairServerInstall(failureLog?: string): Promise<boolean> {
   try {
     const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
     if (disable === '1' || disable === 'true') return false;
+    // Only a broken/partial install is fixable by a reinstall. Anything else
+    // (Alembic "database ahead", port in use, missing env) must NOT trigger one.
+    if (!looksLikeBrokenInstall(failureLog)) {
+      console.log('[server-updater] start failure is not a broken install; skipping repair reinstall');
+      return false;
+    }
     const uv = findUv();
     if (!uv) return false;
     // Resolve the tools dir via uv so source detection uses the real layout;
     // null is fine — reinstallFromSource falls back to the platform heuristic.
     const toolsDir = await uvToolsDir(uv);
 
-    console.warn('[server-updater] server is installed but did not start; attempting a clean reinstall to repair the environment');
+    console.warn('[server-updater] start failure looks like a broken install; attempting a clean reinstall to repair the environment');
     if (isServerRunning()) await stopServer();
 
     const { ok, stderr } = await reinstallFromSource(uv, toolsDir ?? undefined);
