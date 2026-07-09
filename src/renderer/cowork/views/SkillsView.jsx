@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu } from '../components/ui';
+import { Menu, Button } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep } from '../components/ui/Crumb';
 import { Toast } from '../components/ui/Toast';
@@ -249,10 +249,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
         </div>
       </ModalBody>
       <ModalFooter>
-        <button type="button" className="btn-secondary" onClick={handleClose}>Cancel</button>
-        <button type="button" className="btn-primary" disabled={!canSubmit} onClick={submit}>
+        <Button variant="subtle" onClick={handleClose}>Cancel</Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   );
@@ -356,11 +356,11 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
         </div>
       </ModalBody>
       <ModalFooter align="space-between">
-        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        <Button variant="subtle" onClick={onClose}>Cancel</Button>
         {file && (
-          <button type="button" className="btn-primary" disabled={busy} onClick={upload}>
+          <Button variant="primary" disabled={busy} onClick={upload}>
             {busy ? 'Uploading…' : 'Upload'}
-          </button>
+          </Button>
         )}
       </ModalFooter>
     </Modal>
