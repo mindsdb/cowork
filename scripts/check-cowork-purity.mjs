@@ -23,11 +23,10 @@ function scan(dir) {
     if (!EXTENSIONS.has(path.extname(entry.name))) continue;
     const lines = fs.readFileSync(p, 'utf-8').split('\n');
     lines.forEach((line, i) => {
-      // Ignore mentions in line comments (docs may legitimately reference the
-      // bridge name); only code access counts. Block comments are rare enough
-      // that a stray hit there is acceptable noise — keep the guard simple.
-      const code = line.split('//')[0];
-      if (code.includes(NEEDLE)) hits.push(`${p}:${i + 1}: ${line.trim()}`);
+      // Any literal occurrence counts, comments included — lexing "is this a
+      // comment/URL/string?" is how false negatives creep in. Don't mention
+      // the bridge name under cowork/; reference host.ts instead.
+      if (line.includes(NEEDLE)) hits.push(`${p}:${i + 1}: ${line.trim()}`);
     });
   }
 }

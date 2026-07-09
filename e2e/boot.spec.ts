@@ -13,14 +13,10 @@ import path from 'node:path';
 // (no DEV_MODE redirect to a dev server, no consent, no keys), no ui-cache,
 // and the test can never read or write the developer's real profile.
 
-// Console errors that a first boot without a running cowork-server produces
-// legitimately (the renderer probes /api/v1/health before setup). Anything
-// outside this list fails the smoke.
-const BENIGN_CONSOLE = [
-  /ERR_CONNECTION_REFUSED/i,
-  /Failed to load resource/i,
-  /api\/v1\/health/i,
-];
+// The only benign console error on first boot: the health probe against the
+// not-yet-installed server. Broader patterns (e.g. "Failed to load resource")
+// would mask real 404s/missing chunks — the regressions this smoke exists for.
+const BENIGN_CONSOLE = [/ERR_CONNECTION_REFUSED/i];
 
 let app: ElectronApplication;
 let tmpHome: string;
