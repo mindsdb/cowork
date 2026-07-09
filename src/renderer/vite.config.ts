@@ -1,5 +1,6 @@
 import { createLogger, defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
+import babel from '@rolldown/plugin-babel';
 import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
@@ -81,7 +82,10 @@ export default defineConfig({
     // build time, cutting cascade re-renders (e.g. one Sidebar state change
     // re-rendered 68 components before, 12 after). Components it can't
     // prove safe are skipped, so it degrades gracefully.
-    react({ babel: { plugins: ['babel-plugin-react-compiler'] } }),
+    // plugin-react v6 (oxc) dropped the `babel` option; the compiler now
+    // rides @rolldown/plugin-babel with the exported preset.
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webRootRewrite] : []),
   ],
   customLogger: logger,
