@@ -1,20 +1,31 @@
 name: Publish UI Bundle
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/renderer/**'
-      - 'src/shared/**'
-      - 'package.json'
-    tags:
-      - 'ui-v*'
+  # Primary path: the auto-release workflow calls this AFTER it creates the
+  # canonical CalVer tag, passing the exact release version — so the UI bundle
+  # and the prod app installer always publish the SAME version. This replaces
+  # the old `push: main` + git-describe path, which raced tag creation and
+  # could publish a version that differed from the released app.
+  workflow_call:
+    inputs:
+      version:
+        description: 'Exact version to publish (from the auto-release job, e.g. 2.26.7.6.1).'
+        required: true
+        type: string
+    secrets:
+      RELEASES_TOKEN:
+        required: true
+  # Manual re-publish / backfill. Leave version empty to derive from git describe.
   workflow_dispatch:
     inputs:
       version:
         description: 'UI version override (e.g. 2.26.7.6.1) — leave empty to derive the CalVer from git describe'
         required: false
+        type: string
+  # Explicit UI-only release tag.
+  push:
+    tags:
+      - 'ui-v*'
 
 permissions:
   contents: write
@@ -25,10 +36,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so `git describe` can walk to the nearest CalVer tag
-          # (v2.YY.M.D.N) — both here (version step) and inside the renderer
-          # build, which bakes the same describe value into __APP_VERSION__.
-          # A shallow clone can't compute the tag distance. (Mirrors PR #333.)
+          # Full history so the fallback `git describe` (manual dispatch with no
+          # version) can reach the nearest CalVer tag. The normal path receives
+          # the exact release version from the auto-release job, so no describe.
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -38,38 +48,40 @@ jobs:
 
       - run: npm ci
 
-      - name: Build renderer
-        run: npm run build:renderer
-
+      # Resolve the version BEFORE building so it can be baked into the renderer
+      # bundle's __APP_VERSION__ — otherwise Vite falls back to its own git
+      # describe and a workflow_dispatch override (or the release version) never
+      # reaches the running bundle, only latest.json.
       - name: Determine version
         id: version
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            # Manual dispatch with explicit version
-            VER="${{ github.event.inputs.version }}"
+          if [ -n "${{ inputs.version }}" ]; then
+            # workflow_call (auto-release) or workflow_dispatch override — the
+            # canonical release version, identical to the prod app installer.
+            VER="${{ inputs.version }}"
           elif [[ "${GITHUB_REF}" == refs/tags/ui-v* ]]; then
-            # Tag push
+            # Explicit UI-only tag push.
             VER="${GITHUB_REF#refs/tags/ui-v}"
           else
-            # Push to main — use the same CalVer identity as the app. The UI
-            # bundle is built from this same commit, so `git describe` against
-            # the cowork release tags (v2.YY.M.D.N) yields the exact version
-            # baked into the renderer's __APP_VERSION__ (see vite.config.ts).
-            # This makes the UI version date-comparable for the unified version
-            # (ENG-213) and consistent with the App line. On a tagged commit:
-            # clean CalVer (e.g. 2.26.7.6.1); otherwise: distance + short sha
-            # (e.g. 2.26.7.6.1-95-g0472770), which stays unique per commit so
-            # the OTA updater's version comparison still detects new bundles.
-            # Falls back to package.json only when no CalVer tag is reachable.
+            # Edge (manual dispatch with no version): derive the CalVer from git
+            # describe, falling back to package.json + short sha.
             VER=$(git describe --tags --match "v[0-9]*" 2>/dev/null | sed 's/^v//')
             if [ -z "$VER" ]; then
               VER="$(node -p "require('./package.json').version")-$(git rev-parse --short HEAD)"
             fi
           fi
+          VER="${VER#v}"
 
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "tag=ui-v$VER" >> "$GITHUB_OUTPUT"
           echo "Publishing UI version: $VER"
+
+      - name: Build renderer
+        # Bake the resolved version into __APP_VERSION__ so the running bundle
+        # reports the same version as latest.json and the prod app installer.
+        env:
+          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
+        run: npm run build:renderer
 
       - name: Check if version already published
         id: check
