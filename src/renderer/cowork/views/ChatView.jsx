@@ -1,6 +1,6 @@
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
-   Editorial, document-like. Inter body, Josefin display, mono for operator
+   Editorial, document-like. Inter body, Inter Display headings, mono for operator
    metadata. Centered ~720px column, OrbitMorph-led Anton turns, floating
    composer, right rail with collapsible cards.
 
@@ -54,7 +54,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-display, 'Inter Display', 'Inter', sans-serif)";
 const FONT_MONO    = "'JetBrains Mono', monospace";
 const FONT_BODY    = "'Inter', system-ui, sans-serif";
 

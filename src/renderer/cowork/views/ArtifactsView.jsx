@@ -1,6 +1,6 @@
 // Live artifacts page — mirrors the Projects header / filter pattern.
 //
-// Header:    "Live artifacts" Josefin title + Inter subtitle (no CTA —
+// Header:    "Live artifacts" Inter Display title + Inter subtitle (no CTA —
 //            artifacts are produced by Anton, not authored here).
 // Filter:    search (⌘K) · sort pill · count · grid/list toggle.
 // Sort:      default "Published first", then Recent · Oldest · Title · Type.

@@ -1,6 +1,6 @@
 // Task bubble button — used in project view's task list and any
 // future "list of conversations" surface. Inter throughout (no
-// monospace), Josefin reserved for the small "turns" badge if we ever
+// monospace), Inter Display reserved for the small "turns" badge if we ever
 // want to display it as an eyebrow.
 //
 // Hover surfaces a kebab in the right meta column (keeping row width

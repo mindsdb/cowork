@@ -42,7 +42,7 @@ import { MarkdownContent } from '../markdown/MarkdownContent';
 import { host } from '../../../platform/host';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-display, 'Inter Display', 'Inter', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 

@@ -316,7 +316,7 @@ body[data-theme="dark"] .legal-viewer-overlay {
 }
 
 .logo-brand-text {
-  font-family: var(--font-display, "Josefin Sans", system-ui, sans-serif);
+  font-family: var(--font-display, "Inter Display", "Inter", system-ui, sans-serif);
   font-size: 34px;
   font-weight: 700;
   letter-spacing: 0.02em;
