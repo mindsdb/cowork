@@ -114,6 +114,10 @@ jobs:
               json.dump(creds, f)
           "
 
+      - name: Write build config (controls which cowork data home the app uses)
+        shell: bash
+        run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
+
       - name: Build Windows installer (unsigned)
         run: npm run dist:win
         env:

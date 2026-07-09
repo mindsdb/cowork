@@ -148,6 +148,9 @@ jobs:
               json.dump(creds, f)
           "
 
+      - name: Write build config (controls which cowork data home the app uses)
+        run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
+
       - name: Build, sign and notarize pkg
         env:
           CSC_FOR_PULL_REQUEST: "true"
