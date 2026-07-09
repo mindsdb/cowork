@@ -32,6 +32,19 @@ export function getEnvPath(): string {
   return [localBin, cargoBin, currentPath].join(path.delimiter);
 }
 
+/** Materialize uv dependency overrides into a temp requirements file and
+ *  return the env fragment (`{ UV_OVERRIDE }`) that points uv at it. Overrides
+ *  let us repoint a single `[tool.uv.sources]` pin (anton-agent) at another ref
+ *  without uv's version-gated `--no-sources-package` flag, which older uv
+ *  builds reject. Returns `{}` when there are no overrides, so callers can
+ *  spread it unconditionally into the install env. */
+export function writeUvOverrides(overrides: string[]): NodeJS.ProcessEnv {
+  if (!overrides.length) return {};
+  const file = path.join(os.tmpdir(), `cowork-uv-override-${process.pid}.txt`);
+  fs.writeFileSync(file, overrides.join('\n') + '\n', 'utf8');
+  return { UV_OVERRIDE: file };
+}
+
 export function getCoworkServerBinary(): string {
   const ext = process.platform === 'win32' ? '.exe' : '';
   return path.join(getLocalBin(), `cowork-server${ext}`);

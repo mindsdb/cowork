@@ -139,6 +139,67 @@ export function decidePypiUpdate(
 }
 
 // ---------------------------------------------------------------------------
+// Boot-recovery: is a start failure a broken install?
+// ---------------------------------------------------------------------------
+
+/** Does a failed-start crash log look like a broken/partial Python install —
+ *  a missing module or an unimportable name — rather than a runtime or data
+ *  failure (a bad Alembic migration, a port clash, missing config)?
+ *
+ *  Only a broken install is fixable by a clean `uv tool install --reinstall`.
+ *  Reinstalling for anything else wastes minutes AND can corrupt an otherwise
+ *  healthy venv when the reinstall races a concurrent start (observed: a repair
+ *  reinstall fired on an Alembic "database ahead" error, then a post-onboarding
+ *  restart spawned python mid-reinstall → spurious ModuleNotFoundError). So the
+ *  boot-recovery path gates the reinstall on this returning true.
+ *
+ *  Matches only the specific import-failure markers CPython emits — not the
+ *  bare word "import", which appears in benign frames like
+ *  `<frozen importlib._bootstrap>` inside an unrelated (e.g. migration) trace. */
+export function looksLikeBrokenInstall(log: string | null | undefined): boolean {
+  if (!log) return false;
+  return /\bModuleNotFoundError\b|\bImportError\b|No module named|cannot import name|\(unknown location\)/.test(
+    log,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Update-poll apply decision
+// ---------------------------------------------------------------------------
+
+export interface UpdateApplyDecision {
+  applyServer: boolean;
+  applyUi: boolean;
+}
+
+/** Decide what a boot/periodic update poll should actually apply.
+ *
+ *  - A **down server** is a recovery case: apply an available server update
+ *    regardless of update mode or whether this is the boot check — a newer
+ *    build may be what fixes the crash. This is why the boot update check must
+ *    not be gated behind a successful server start.
+ *  - Otherwise updates auto-apply only on the boot check in `auto` mode; a
+ *    `manual` mode or a periodic re-check just surfaces a banner (caller).
+ *
+ *  UI never force-applies on a down server — a dead backend is a server
+ *  problem, and forcing a UI swap + reload mid-recovery adds churn without
+ *  fixing anything. */
+export function decideUpdateApply(input: {
+  serverUpdateAvailable: boolean;
+  uiUpdateAvailable: boolean;
+  serverDown: boolean;
+  isBootCheck: boolean;
+  mode: 'auto' | 'manual';
+}): UpdateApplyDecision {
+  const { serverUpdateAvailable, uiUpdateAvailable, serverDown, isBootCheck, mode } = input;
+  const autoOk = isBootCheck && mode === 'auto';
+  return {
+    applyServer: serverUpdateAvailable && (serverDown || autoOk),
+    applyUi: uiUpdateAvailable && autoOk,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // UI OTA manifest
 // ---------------------------------------------------------------------------
 

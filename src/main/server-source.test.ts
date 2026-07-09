@@ -82,29 +82,28 @@ describe('getCoworkRef / getAntonRef', () => {
 });
 
 describe('getInstallSpec', () => {
-  it('default git install does NOT add a --with arg (regression: the "conflicting URLs" bug)', () => {
+  it('default git install adds NO anton override (regression: the "conflicting URLs" bug)', () => {
     // On the default git channel with anton on `main`, uv must receive NO
-    // `--with anton-agent @ ...` — a second URL requirement for the same
-    // package makes uv abort with "conflicting URLs" and broke every fresh
-    // install. This is the guard for that regression.
+    // anton-agent override — cowork-server's own [tool.uv.sources] pin decides
+    // the anton version. A second URL requirement for the same package makes uv
+    // abort with "conflicting URLs" and broke every fresh install. This is the
+    // guard for that regression.
     const spec = getInstallSpec();
 
     expect(spec.channel).toBe('git');
     expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@main');
-    expect(spec.withArgs).toEqual([]);
+    expect(spec.overrides).toEqual([]);
   });
 
-  it('non-default ANTON_REF injects --no-sources-package + --with as a pair', () => {
-    // The --no-sources-package disables cowork-server's [tool.uv.sources] pin
-    // for anton-agent so the --with becomes the SOLE source — a bare --with
-    // alongside the pin makes uv abort with "conflicting URLs".
+  it('non-default ANTON_REF repoints anton via a uv override (not a flag)', () => {
+    // Overrides replace cowork-server's [tool.uv.sources] anton-agent pin
+    // cleanly (no "conflicting URLs") and are honoured by every uv version —
+    // unlike the per-package `--no-sources-package` flag, which older uv builds
+    // reject with "unexpected argument".
     withEnv({ ANTON_REF: 'feat/x' }, () => {
       const spec = getInstallSpec();
       expect(spec.channel).toBe('git');
-      expect(spec.withArgs).toEqual([
-        '--no-sources-package',
-        'anton-agent',
-        '--with',
+      expect(spec.overrides).toEqual([
         'anton-agent @ git+https://github.com/mindsdb/anton.git@feat/x',
       ]);
     });
@@ -114,16 +113,16 @@ describe('getInstallSpec', () => {
     withEnv({ COWORK_SERVER_REF: 'feat/y' }, () => {
       const spec = getInstallSpec();
       expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@feat/y');
-      expect(spec.withArgs).toEqual([]); // anton still default → still no --with
+      expect(spec.overrides).toEqual([]); // anton still default → no override
     });
   });
 
-  it('pypi channel pins the min version and adds no --with', () => {
+  it('pypi channel pins the min version and adds no override', () => {
     withEnv({ COWORK_SERVER_CHANNEL: 'pypi' }, () => {
       const spec = getInstallSpec();
       expect(spec.channel).toBe('pypi');
       expect(spec.package).toBe(`cowork-server>=${COWORK_SERVER_MIN_VERSION}`);
-      expect(spec.withArgs).toEqual([]);
+      expect(spec.overrides).toEqual([]);
     });
   });
 
@@ -131,7 +130,7 @@ describe('getInstallSpec', () => {
     withEnv({ COWORK_SERVER_CHANNEL: 'pypi', ANTON_REF: 'feat/x' }, () => {
       const spec = getInstallSpec();
       expect(spec.channel).toBe('pypi');
-      expect(spec.withArgs).toEqual([]);
+      expect(spec.overrides).toEqual([]);
     });
   });
 
@@ -159,7 +158,7 @@ describe('getInstallSpec', () => {
           ANTON_PACKAGE: '/local/anton',
         },
         () => {
-          expect(getInstallSpec().withArgs).toEqual(['--with', 'anton-agent @ /local/anton']);
+          expect(getInstallSpec().overrides).toEqual(['anton-agent @ /local/anton']);
         },
       );
     });
@@ -167,9 +166,9 @@ describe('getInstallSpec', () => {
     it('ignores ANTON_PACKAGE when COWORK_SERVER_PACKAGE is not set', () => {
       withEnv({ ANTON_PACKAGE: '/local/anton' }, () => {
         const spec = getInstallSpec();
-        // falls through to the normal git path: no --with, git package
+        // falls through to the normal git path: no override, git package
         expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@main');
-        expect(spec.withArgs).toEqual([]);
+        expect(spec.overrides).toEqual([]);
       });
     });
   });
@@ -179,19 +178,16 @@ describe('getInstallSpec', () => {
       withEnv({ COWORK_SERVER_REF: 'env-ref', ANTON_REF: 'env-anton' }, () => {
         const spec = getInstallSpec({ coworkRef: 'rollback-sha', antonRef: 'anton-sha' });
         expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@rollback-sha');
-        expect(spec.withArgs).toEqual([
-          '--no-sources-package',
-          'anton-agent',
-          '--with',
+        expect(spec.overrides).toEqual([
           'anton-agent @ git+https://github.com/mindsdb/anton.git@anton-sha',
         ]);
       });
     });
 
-    it('opts antonRef=main suppresses --with even when env ANTON_REF is set', () => {
+    it('opts antonRef=main suppresses the override even when env ANTON_REF is set', () => {
       withEnv({ ANTON_REF: 'feat/x' }, () => {
         const spec = getInstallSpec({ antonRef: 'main' });
-        expect(spec.withArgs).toEqual([]);
+        expect(spec.overrides).toEqual([]);
       });
     });
   });

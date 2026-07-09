@@ -6,6 +6,7 @@ import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
 import { getInstallSpec, COWORK_SERVER_MIN_VERSION } from './server-source';
 import { meetsMinVersion } from './update-logic';
+import { withServerMaintenance } from './server-process';
 import {
   PYTHON_RANGE,
   getLocalBin,
@@ -13,6 +14,7 @@ import {
   getCoworkServerBinary,
   findUv,
   getInstalledVersion,
+  writeUvOverrides,
 } from './uv-paths';
 
 interface InstallStep {
@@ -433,11 +435,10 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
 
     const uvBin = findUv() || 'uv';
     const spec = getInstallSpec();
-    sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.withArgs.length ? ` (${spec.withArgs.join(' ')})` : ''}\n`);
+    sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.overrides.length ? ` (override: ${spec.overrides.join(', ')})` : ''}\n`);
     const installArgs = [
       'tool', 'install',
       spec.package,
-      ...spec.withArgs,
       '--force', '--reinstall',
       '--python', PYTHON_RANGE,
     ];
@@ -450,10 +451,15 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
      * outside their activation shell. A uv-managed standalone CPython has no
      * such dependency, and uv fetches it on demand if absent.
      */
-    const uvEnv: NodeJS.ProcessEnv = { UV_PYTHON_PREFERENCE: 'only-managed' };
+    const uvEnv: NodeJS.ProcessEnv = {
+      UV_PYTHON_PREFERENCE: 'only-managed',
+      ...writeUvOverrides(spec.overrides),
+    };
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');
 
-    const installResult = await runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv });
+    const installResult = await withServerMaintenance(
+      () => runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv }),
+    );
     if (abortIfRequested()) return false;
 
     if (installResult.code !== 0) {

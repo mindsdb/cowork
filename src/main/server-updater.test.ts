@@ -10,6 +10,9 @@ vi.mock('./server-process', () => ({
   startServer: vi.fn(async () => ({ ok: true, port: 26866 })),
   stopServer: vi.fn(async () => {}),
   isServerRunning: vi.fn(() => false),
+  // Pass-through: the real one gates startServer during a reinstall; here we
+  // just run the wrapped fn so runUv still invokes execFile.
+  withServerMaintenance: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 vi.mock('fs');
 vi.mock('child_process');
@@ -61,13 +64,17 @@ describe('maybeUpdateServer (orchestration)', () => {
     // Remote state: cowork moved to NEW_COWORK, anton unchanged. All uv
     // install invocations succeed.
     const execCalls: string[][] = [];
+    const installEnvs: (NodeJS.ProcessEnv | undefined)[] = [];
     vi.mocked(cp.execFile).mockImplementation(((
       cmd: string,
       args: string[],
-      _opts: unknown,
+      opts: { env?: NodeJS.ProcessEnv },
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
       execCalls.push([cmd, ...args]);
+      if (cmd !== 'git' && args[0] === 'tool' && args[1] === 'install') {
+        installEnvs.push(opts?.env);
+      }
       if (cmd === 'git') {
         const sha = args[1].includes('cowork-server.git') ? NEW_COWORK : OLD_ANTON;
         cb(null, `${sha}\trefs/heads/main\n`, '');
@@ -88,14 +95,29 @@ describe('maybeUpdateServer (orchestration)', () => {
     expect(result.previousVersion).toBe(OLD_COWORK);
     expect(result.error).toBe('New commit failed to start: health check failed');
 
-    // First install: the configured ref (main). Rollback install: pinned to
-    // the EXACT prior commits — cowork positional, anton via --with. This is
-    // the guarantee that a bad update can never strand the user.
+    // First install: the configured ref (main), no anton override. Rollback
+    // install: pinned to the EXACT prior commits — cowork positional, anton
+    // repointed via a UV_OVERRIDE file (a bad update must never strand the
+    // user). The override goes through the env, not argv, so uv resolves it
+    // without a "conflicting URLs" abort and regardless of its version.
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(2);
     expect(installs[0]).toContain('git+https://github.com/mindsdb/cowork-server.git@main');
     expect(installs[1]).toContain(`git+https://github.com/mindsdb/cowork-server.git@${OLD_COWORK}`);
-    expect(installs[1]).toContain(`anton-agent @ git+https://github.com/mindsdb/anton.git@${OLD_ANTON}`);
+
+    // The initial install carries no override; the rollback sets UV_OVERRIDE.
+    expect(installEnvs[0]?.UV_OVERRIDE).toBeFalsy();
+    expect(installEnvs[1]?.UV_OVERRIDE).toBeTruthy();
+
+    // The rollback's override file was written with the exact prior anton commit.
+    const overrideWrites = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.map((c) => String(c[1]));
+    expect(
+      overrideWrites.some((c) =>
+        c.includes(`anton-agent @ git+https://github.com/mindsdb/anton.git@${OLD_ANTON}`),
+      ),
+    ).toBe(true);
 
     // And the rolled-back server was started again (recovery, not a dead app).
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
@@ -109,15 +131,41 @@ describe('repairServerInstall (orchestration)', () => {
   // every recovery path. repairServerInstall does a clean --force --reinstall on
   // the same source so the boot flow can retry. It never starts the server
   // itself (the caller owns that), and never throws.
+  //
+  // It reinstalls ONLY when the crash log looks like a broken install — a
+  // migration/port/config failure must not trigger a (pointless, possibly
+  // env-corrupting) reinstall.
+  const BROKEN = "ImportError: cannot import name 'Doc' from 'annotated_doc' (unknown location)";
+  const MIGRATION = "alembic.script.revision.ResolutionError: No such revision or branch 'e8b3c5d7a9f1'";
 
   it('is a no-op when COWORK_SERVER_DISABLE_AUTOUPDATE is set', async () => {
     process.env.COWORK_SERVER_DISABLE_AUTOUPDATE = '1';
-    await expect(repairServerInstall()).resolves.toBe(false);
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
+  });
+
+  it('does NOT reinstall for a non-install failure (e.g. an Alembic migration error)', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      cb(null, '', '');
+      return {} as never;
+    }) as never);
+
+    await expect(repairServerInstall(MIGRATION)).resolves.toBe(false);
+    // The gate fires before any uv work — no reinstall, no venv churn.
+    expect(execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install')).toHaveLength(0);
   });
 
   it('returns false (never throws) when uv cannot be found', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
-    await expect(repairServerInstall()).resolves.toBe(false);
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
   });
 
   it('reinstalls from PyPI and returns true when the venv has no vcs_info', async () => {
@@ -142,7 +190,7 @@ describe('repairServerInstall (orchestration)', () => {
       return {} as never;
     }) as never);
 
-    await expect(repairServerInstall()).resolves.toBe(true);
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(true);
 
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(1);
@@ -173,7 +221,7 @@ describe('repairServerInstall (orchestration)', () => {
       return {} as never;
     }) as never);
 
-    await expect(repairServerInstall()).resolves.toBe(true);
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(true);
 
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(1);
@@ -196,6 +244,6 @@ describe('repairServerInstall (orchestration)', () => {
       return {} as never;
     }) as never);
 
-    await expect(repairServerInstall()).resolves.toBe(false);
+    await expect(repairServerInstall(BROKEN)).resolves.toBe(false);
   });
 });
