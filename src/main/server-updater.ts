@@ -150,6 +150,18 @@ function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<
   return runUv(uv, ['tool', 'install', spec.package, ...spec.withArgs, '--force', '--reinstall', '--python', PYTHON_RANGE]);
 }
 
+/** Clean `--force --reinstall` on whatever source the venv actually came from
+ *  (git refs vs. the PyPI package), detected from the tool venv's
+ *  direct_url.json. `--reinstall` rebuilds the environment from scratch, so it
+ *  repairs a corrupt or half-written venv — never clobbering one source onto
+ *  the other. Shared by the unsupported-Python recreate and the boot repair. */
+function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
+  const onGit = !!readVcsInfo('cowork_server', toolsDir);
+  return onGit
+    ? installGit(uv, getCoworkRef(), getAntonRef())
+    : runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
+}
+
 /** `uv tool dir` — its on-disk layout differs across versions/OSes
  *  (e.g. %APPDATA%\uv\tools vs …\uv\data\tools on Windows), so ask uv.
  *  Async so it never blocks the Electron main thread. Null on failure. */
@@ -210,10 +222,7 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
     // Detect the source against the SAME reliably-resolved toolsDir used above,
     // not the platform heuristic — otherwise a git install on a Windows layout
     // the heuristic misses would be wrongly reinstalled from PyPI.
-    const onGit = !!readVcsInfo('cowork_server', toolsDir);
-    const { ok, stderr } = onGit
-      ? await installGit(uv, getCoworkRef(), getAntonRef())
-      : await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
+    const { ok, stderr } = await reinstallFromSource(uv, toolsDir);
     if (!ok) {
       console.error('[server-updater] venv recreate reinstall failed:', stderr);
       return false;
@@ -228,6 +237,50 @@ export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
       return false;
     }
     console.log(`[server-updater] venv recreated on Python ${after ? `${after.major}.${after.minor}` : '(supported)'}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Repair a cowork-server venv that is on a *supported* Python but still fails
+ * to boot — e.g. a partial or interrupted in-place upgrade left a dependency
+ * half-written. The signature case: FastAPI's `annotated-doc` dependency lands
+ * as a bare namespace package (an empty `annotated_doc/` dir), so
+ * `from annotated_doc import Doc` raises `ImportError: ... (unknown location)`
+ * and the server crashes before it can answer /health.
+ *
+ * This is the recovery gap `recreateVenvIfUnsupportedPython` (Python too old)
+ * and `maybeUpdateServer` (only acts on a version *change*) both miss: the
+ * installed version is current, the interpreter is fine, the environment is
+ * simply corrupt. A `--force --reinstall` on the same source rebuilds the venv
+ * from scratch and re-resolves every dependency cleanly. Returns true only when
+ * uv reported success, so the caller knows a retry is worthwhile; the caller
+ * owns the restart. Never throws.
+ *
+ * Cost note: if the reinstall does NOT fix the crash (e.g. a genuinely broken
+ * published artifact), this will run again on the next launch. That's the same
+ * tradeoff `recreateVenvIfUnsupportedPython` already makes — a slow retry beats
+ * a permanently dead app, and it self-resolves once upstream is fixed. */
+export async function repairServerInstall(): Promise<boolean> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return false;
+    const uv = findUv();
+    if (!uv) return false;
+    // Resolve the tools dir via uv so source detection uses the real layout;
+    // null is fine — reinstallFromSource falls back to the platform heuristic.
+    const toolsDir = await uvToolsDir(uv);
+
+    console.warn('[server-updater] server is installed but did not start; attempting a clean reinstall to repair the environment');
+    if (isServerRunning()) await stopServer();
+
+    const { ok, stderr } = await reinstallFromSource(uv, toolsDir ?? undefined);
+    if (!ok) {
+      console.error('[server-updater] repair reinstall failed:', stderr);
+      return false;
+    }
+    console.log('[server-updater] repair reinstall completed; retrying server start');
     return true;
   } catch {
     return false;

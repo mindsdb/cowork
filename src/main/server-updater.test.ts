@@ -15,7 +15,7 @@ vi.mock('fs');
 vi.mock('child_process');
 
 import { startServer } from './server-process';
-import { maybeUpdateServer } from './server-updater';
+import { maybeUpdateServer, repairServerInstall } from './server-updater';
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -99,5 +99,103 @@ describe('maybeUpdateServer (orchestration)', () => {
 
     // And the rolled-back server was started again (recovery, not a dead app).
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('repairServerInstall (orchestration)', () => {
+  // Regression: a venv that's installed, current, and on a supported Python but
+  // still won't boot (corrupt/partial env — e.g. FastAPI's annotated-doc landed
+  // as an empty namespace package that ImportErrors at startup) slipped through
+  // every recovery path. repairServerInstall does a clean --force --reinstall on
+  // the same source so the boot flow can retry. It never starts the server
+  // itself (the caller owns that), and never throws.
+
+  it('is a no-op when COWORK_SERVER_DISABLE_AUTOUPDATE is set', async () => {
+    process.env.COWORK_SERVER_DISABLE_AUTOUPDATE = '1';
+    await expect(repairServerInstall()).resolves.toBe(false);
+  });
+
+  it('returns false (never throws) when uv cannot be found', async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false); // no uv binary anywhere
+    await expect(repairServerInstall()).resolves.toBe(false);
+  });
+
+  it('reinstalls from PyPI and returns true when the venv has no vcs_info', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true); // uv binary + site-packages
+    // No cowork_server dist-info → readVcsInfo returns null → PyPI channel.
+    vi.mocked(fs.readdirSync).mockReturnValue([] as never);
+
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      if (args[0] === 'tool' && args[1] === 'dir') {
+        cb(null, '/fake/uv/tools\n', ''); // uv tool dir
+      } else {
+        cb(null, '', ''); // uv tool install → success
+      }
+      return {} as never;
+    }) as never);
+
+    await expect(repairServerInstall()).resolves.toBe(true);
+
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(1);
+    expect(installs[0]).toContain('cowork-server');
+    expect(installs[0]).toContain('--force');
+    expect(installs[0]).toContain('--reinstall');
+    // Repair does NOT start the server — the boot flow retries start itself.
+    expect(vi.mocked(startServer)).not.toHaveBeenCalled();
+  });
+
+  it('reinstalls from git (exact configured ref) when the venv carries vcs_info', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue(['cowork_server-0.1.12.dist-info'] as never);
+    vi.mocked(fs.readFileSync).mockImplementation(((_p: string) =>
+      JSON.stringify({ vcs_info: { commit_id: 'a'.repeat(40), requested_revision: 'main' } })) as never);
+
+    const execCalls: string[][] = [];
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      execCalls.push([cmd, ...args]);
+      if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/fake/uv/tools\n', '');
+      else cb(null, '', '');
+      return {} as never;
+    }) as never);
+
+    await expect(repairServerInstall()).resolves.toBe(true);
+
+    const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
+    expect(installs).toHaveLength(1);
+    expect(installs[0]).toContain('git+https://github.com/mindsdb/cowork-server.git@main');
+    expect(installs[0]).toContain('--reinstall');
+  });
+
+  it('returns false when the reinstall command fails', async () => {
+    process.env.UV_TOOL_DIR = '/fake/uv/tools';
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([] as never);
+    vi.mocked(cp.execFile).mockImplementation(((
+      cmd: string,
+      args: string[],
+      _opts: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      if (args[0] === 'tool' && args[1] === 'dir') cb(null, '/fake/uv/tools\n', '');
+      else cb(new Error('network error'), '', 'resolution failed'); // install fails
+      return {} as never;
+    }) as never);
+
+    await expect(repairServerInstall()).resolves.toBe(false);
   });
 });
