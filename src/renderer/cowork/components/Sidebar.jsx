@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
@@ -309,38 +309,18 @@ export default function Sidebar({
     return out;
   })();
 
-  // Sized dynamically: measure the available height of the recents
-  // scroll area on mount + on window resize, then divide by an
-  // average row height to pick how many to render inline. Min 5 so
-  // the section never collapses to a single row, max all-of-them.
-  const RECENT_ROW_HEIGHT  = 30;   // single recent-item incl. 1px gap
-  const RECENT_FOOTER_PAD  = 36;   // reserved for the Show-more row
-  const recentsRef = useRef(null);
-  const [recentsHeight, setRecentsHeight] = useState(0);
   // Strict hover state for the Recents heading row only. CSS
   // `:hover` was bleeding (or appearing to bleed) onto the recents
   // list below; pinning this to onMouseEnter/onMouseLeave on the
   // heading div makes the hit area exactly the heading's bounding
   // box and nothing else.
   const [recentsHeadingHover, setRecentsHeadingHover] = useState(false);
-  useLayoutEffect(() => {
-    const el = recentsRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setRecentsHeight(entry.contentRect.height);
-      }
-    });
-    ro.observe(el);
-    setRecentsHeight(el.clientHeight);
-    return () => ro.disconnect();
-  }, []);
-  const inlineRecentCount = (() => {
-    if (recentsHeight <= 0) return 5;
-    const usable = Math.max(0, recentsHeight - RECENT_FOOTER_PAD);
-    return Math.max(5, Math.floor(usable / RECENT_ROW_HEIGHT));
-  })();
-  const recents = recentsAll.slice(0, inlineRecentCount);
+  // Render into the overflow container and let it scroll instead of
+  // slicing the list to whatever fits the viewport (which left older
+  // tasks unreachable). Capped at 100 to match RecentsModal; the
+  // "View all →" link covers anything beyond that.
+  // ponytail: bump the cap or virtualize if row counts get huge.
+  const recents = recentsAll.slice(0, 100);
   // "Show more" hidden for now — kept the modal + state plumbing
   // so we can flip this back on later without rewiring anything.
   const hasMoreRecents = false;
@@ -620,8 +600,8 @@ export default function Sidebar({
             View all →
           </button>
         </div>
-        <div ref={recentsRef} className="scroll-clean" style={{
-          padding: '0 10px', flex: 1, overflowY: 'auto',
+        <div className="scroll-clean" style={{
+          padding: '0 10px', flex: 1, minHeight: 0, overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 1,
         }}>
           {recents.map((t) => {

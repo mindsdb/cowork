@@ -19,7 +19,7 @@
    - Skips directories (webkitGetAsEntry().isDirectory) and dedupes by name
      within a single drop. */
 
-import { useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 
 // Theme-driven font — the 8-bit skin (and others) override --font-body,
 // so the overlay label follows whatever theme the user picked.
@@ -152,8 +152,10 @@ export function useFileDrop({ onFiles, disabled = false } = {}) {
    positioned to cover the (position:relative) zone root. Fade + slight
    scale-in via CSS transition; theme-aware via the same CSS vars the rest
    of the app uses. `label` is the call-to-action; pass `busy` to swap in an
-   "Uploading…" state, and `error` for a transient failure message. */
-export function FileDropOverlay({ active, label, busy = false, error = '' }) {
+   "Uploading…" state, and `error` for a transient failure message.
+   memo: hosts render this inside frequently-updating JSX (Composer re-renders
+   per keystroke), and all props are primitives — skip when nothing changed. */
+export const FileDropOverlay = memo(function FileDropOverlay({ active, label, busy = false, error = '' }) {
   const visible = active || busy || !!error;
   const text = error || (busy ? 'Uploading…' : label);
   return (
@@ -211,4 +213,4 @@ export function FileDropOverlay({ active, label, busy = false, error = '' }) {
       </div>
     </div>
   );
-}
+});

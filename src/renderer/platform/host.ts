@@ -400,14 +400,9 @@ export async function applyUpdate(): Promise<boolean> {
 
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
 
-export interface OAuthConnectOpts {
-  authUrl: string;
-  tokenUrl: string;
-  clientId: string;
-  clientSecret?: string;
-  scopes: string[];
-  extraAuthParams?: Record<string, string>;
-}
+export type OAuthConnectOpts =
+  | { engine: string; name?: string }
+  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string> };
 
 export interface OAuthConnectResult {
   ok: boolean;
@@ -428,6 +423,22 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     return bridge.oauthConnect(opts);
   }
   return { ok: false, reason: 'OAuth IPC flow is Electron-only — use redirect-based OAuth in web.' };
+}
+
+export async function keychainRevoke(engine: string, name: string, accountEmail: string): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.keychainRevoke === 'function') {
+    return bridge.keychainRevoke({ engine, name, accountEmail });
+  }
+  return { ok: false, reason: 'keychainRevoke is Electron-only.' };
+}
+
+export function onOAuthRefreshError(
+  cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void,
+): () => void {
+  if (isElectron && typeof bridge.onOAuthRefreshError === 'function') {
+    return bridge.onOAuthRefreshError(cb);
+  }
+  return () => {};
 }
 
 // Tears down any in-flight loopback OAuth listener so the renderer's
@@ -562,6 +573,8 @@ export const host = {
   setKeychainPref,
   getAccessToken,
   logout,
+  keychainRevoke,
+  onOAuthRefreshError,
 };
 
 export default host;

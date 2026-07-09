@@ -15,7 +15,9 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
-import { coworkHome } from './cowork-home';
+import { coworkHome, buildKind } from './cowork-home';
+import { MINDS_ENV_SLUG } from './minds-urls';
+import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
@@ -62,11 +64,14 @@ function serverOwnerToken(): string {
   return _ownerToken;
 }
 
-// Deterministic per-OS-user port. Stable across launches for a given user
-// (so we still adopt our OWN crash-orphan), distinct between users (so one
-// user's app can't land on another's server). Only used in the packaged app:
-// dev/web reach the server through Vite's proxy / same-origin, which targets
-// the fixed COWORK_SERVER_PORT||26866.
+// Deterministic per-OS-user, per-build-kind port. Stable across launches for a
+// given user+build (so we still adopt our OWN crash-orphan), distinct between
+// users (so one user's app can't land on another's server) AND between builds
+// (prod/preview/stable no longer share ~/.cowork, so they mustn't share a port
+// either — otherwise a non-prod build would perpetually route around prod's
+// server onto a fresh random port and never re-adopt its own orphan). Only
+// used in the packaged app: dev/web reach the server through Vite's proxy /
+// same-origin, which targets the fixed COWORK_SERVER_PORT||26866.
 function preferredServerPort(): number {
   // uid is stable per macOS/Linux account; Windows has no real uid (-1), so
   // fall back to the home dir, which is per-user there.
@@ -77,6 +82,11 @@ function preferredServerPort(): number {
   } catch {
     key = `home:${os.homedir()}`;
   }
+  // Non-prod builds get their own port band. Prod's key is left untouched so an
+  // existing prod install still lands on its historical port and adopts the
+  // orphan a pre-upgrade build may have left behind.
+  const kind = buildKind();
+  if (kind !== 'prod') key = `${key}|kind:${kind}`;
   const digest = crypto.createHash('sha256').update(key).digest();
   return DEFAULT_PORT + (digest.readUInt16BE(0) % PORT_SPAN);
 }
@@ -244,28 +254,6 @@ export function getServerOrigin(): string {
   return `http://${SERVER_HOST}:${serverPort}`;
 }
 
-function getUvPath(): string | null {
-  const localBin = path.join(os.homedir(), '.local', 'bin', 'uv');
-  if (fs.existsSync(localBin)) return localBin;
-  // Check common install paths
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', 'uv');
-  if (fs.existsSync(cargoBin)) return cargoBin;
-  return null;
-}
-
-// Build a PATH with ~/.local/bin and ~/.cargo/bin prepended. Critical
-// for macOS (and to a lesser extent Linux) GUI launches: when MindsHub Cowork.app
-// starts from Finder/Dock, process.env.PATH is the minimal launchd PATH
-// (`/usr/bin:/bin:/usr/sbin:/sbin`) — shell init files aren't read,
-// so `~/.local/bin` (where the installer puts `uv`) is missing.
-function getEnvPath(): string {
-  const localBin = path.join(os.homedir(), '.local', 'bin');
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
-  const currentPath = process.env.PATH || '';
-  const parts = [localBin, cargoBin, currentPath].filter(Boolean);
-  return parts.join(path.delimiter);
-}
-
 // In dev mode, return the sibling cowork-server source directory so we
 // can run `uv run cowork-server` against local source. Returns null when
 // packaged (the installed binary is used instead).
@@ -277,13 +265,9 @@ function getDevServerDir(): string | null {
   return path.join(__dirname, '..', '..', '..', '..', 'cowork-server');
 }
 
-// Locate the installed `cowork-server` binary (installed via
-// `uv tool install cowork-server`). Lives in ~/.local/bin on
-// POSIX, %LOCALAPPDATA%/bin on Windows.
 function getCoworkServerBin(): string | null {
-  const localBin = path.join(os.homedir(), '.local', 'bin');
-  const localCandidate = path.join(localBin, process.platform === 'win32' ? 'cowork-server.exe' : 'cowork-server');
-  if (fs.existsSync(localCandidate)) return localCandidate;
+  const bin = getCoworkServerBinary();
+  if (fs.existsSync(bin)) return bin;
   if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
     const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'cowork-server.exe');
     if (fs.existsSync(winCandidate)) return winCandidate;
@@ -453,7 +437,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 
   if (isDevSource && devDir) {
     // Dev: use uv to run from source so local edits are picked up
-    const uvCmd = getUvPath();
+    const uvCmd = findUv();
     if (!uvCmd) {
       lastStartError = 'uv not found. Install uv first: https://docs.astral.sh/uv/getting-started/installation/';
       return { ok: false, reason: lastStartError };
@@ -474,6 +458,19 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   }
 
   pendingStart = (async (): Promise<StartServerResult> => {
+    // Hand the server the same config home the desktop app uses so both sides
+    // agree — including the per-build isolation (~/.cowork-<kind>) that keeps a
+    // non-prod build off the production SQLite DB (ENG-324). cowork-server
+    // derives every path from COWORK_HOME (see cowork.common.paths).
+    //
+    // Only set it for NON-prod builds. Prod's home is the server's own default
+    // (~/.cowork), so leaving COWORK_HOME unset keeps prod byte-for-byte as
+    // before this change — crucially, cowork-server drops the legacy
+    // ~/.anton/.env fallback whenever COWORK_HOME is present, so setting it for
+    // prod would silently stop consulting that file for un-migrated installs.
+    const kind = buildKind();
+    const dataHome = coworkHome();
+    console.log(`[server] build kind "${kind}" → data home ${dataHome}`);
     const env = {
       ...process.env,
       ...loadBundledServerCredentials(),
@@ -481,10 +478,16 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
+      ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it.
       COWORK_SERVER_OWNER: serverOwnerToken(),
+      // Propagate the client's environment (staging/dev) to the server so its
+      // own env-aware MindsHub defaults resolve to the same host the desktop
+      // build points at. Only set when the build is baked for a non-prod env
+      // and the caller hasn't already pinned ENV explicitly.
+      ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
     };
 
     // detached: true on POSIX puts the child in its own process group so

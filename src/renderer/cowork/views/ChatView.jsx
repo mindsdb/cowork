@@ -12,11 +12,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph, Message } from '../components/ui';
+import { Message } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { PathSelector } from '../components/PathSelector';
-import { OrbitProvider, useOrbitSlot } from '../lib/orbitRegistry';
+import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
+import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText } from '../lib/clipboard';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
@@ -34,6 +35,7 @@ import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
+import { modelLabel } from '../lib/settingsTransform';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -63,6 +65,16 @@ function formatTime(value) {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+// Footer meta under an answer — "Jun 21, 7:39 AM". Date included because
+// the meta is the only per-turn timestamp now that the eyebrow is gone.
+function formatMetaTime(value) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  return `${month} ${d.getDate()}, ${formatTime(d)}`;
 }
 
 function dividerLabel(date = new Date()) {
@@ -390,48 +402,34 @@ function UserTurn({ content, attachments, time, onDelete, onEdit, isLast, projec
   );
 }
 
-// OrbitProvider `size` for the chat orb — header slot matches this box.
+// OrbitProvider `size` for the chat orb — WorkingIndicator's anchor
+// box matches this so the morph centers on it exactly.
 const CHAT_ORB_SIZE = 22;
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
-// `slotIdHeader` lets the parent register an orb anchor beside the label
-// (while the request is in flight with no step row / body caret yet).
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, slotIdHeader, agentLabel, isLast }) {
-  // Stable id: never use Math.random() here (would churn register every render).
-  const headerRef = useOrbitSlot(slotIdHeader ?? '__answer_header_inert__');
+// No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
+// is the single indicator; once done, a hover-only footer (bottom-right)
+// names the agent that answered and when.
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast }) {
   return (
-    <div className="answer-turn" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          {/* Empty box only — orb centers here so it never stacks against glyphs. */}
-          {slotIdHeader ? (
-            <span
-              ref={headerRef}
-              aria-hidden
-              style={{
-                display: 'inline-flex',
-                width: CHAT_ORB_SIZE,
-                height: CHAT_ORB_SIZE,
-                flexShrink: 0,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            />
-          ) : null}
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-            letterSpacing: '0.14em', textTransform: 'uppercase', color: T.ink,
-          }}>{agentLabel || 'Anton'}</span>
-        </div>
-        {time && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: T.ink4, letterSpacing: '0.04em' }}>
-            {state === 'thinking' ? `${time} · drafting` : time}
-          </span>
-        )}
-      </div>
+    <div
+      className="answer-turn"
+      // marginTop pulls the answer closer to ITS question (the column gap
+      // is sized for the roomier answer → next-question separation).
+      style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: -10, paddingBottom: 4 }}
+    >
       {children}
-      {showActions && state !== 'thinking' && (
-        <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+      {state !== 'thinking' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {showActions && (
+            <TurnActions getText={() => copyText || ''} onDelete={onDelete} isLast={isLast} />
+          )}
+          {/* Agent always named; timestamp joins it when the message has
+              one (streamed turns often don't carry createdAt). */}
+          <span className="turn-meta">
+            {time ? `${time} · ` : ''}{agentLabel || 'Anton'}
+          </span>
+        </div>
       )}
     </div>
   );
@@ -926,6 +924,73 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   );
 }
 
+// Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
+// credential is FINE — the gateway rejected the requested MODEL. Two flavors,
+// keyed on the gateway's structured code:
+//
+// - `model_access_denied` — plan gate: the account's tier doesn't include the
+//   model. An upgrade genuinely fixes it, so lead with Upgrade.
+// - `model_disabled` — hedged until the gateway distinguishes tier locks from
+//   admin kill switches everywhere (ENG-596): it can be either, so offer both
+//   Switch-model and Upgrade without promising the upgrade fixes it.
+//
+// The body is the server's curated copy (anton's message, passed through
+// verbatim) — unlike ReconnectCard there's no web-only affordance to work
+// around: Upgrade is just a billing link (host.openExternal window.opens on
+// web), and Switch model routes to Settings on both shells.
+function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
+  // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
+  // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
+  // bare single-token alias ("sonnet") comes back lowercase, and it reads
+  // better capitalized in the title. So capitalize single-word labels only,
+  // leaving anything modelLabel already spaced/cased untouched.
+  const raw = modelLabel(failedModel) || failedModel || 'This model';
+  const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
+  const denied = code === 'model_access_denied';
+  const title = denied
+    ? `${label} isn't included in your plan`
+    : `${label} isn't available right now`;
+
+  const primaryStyle = {
+    border: 'none', background: T.ink, color: 'var(--bg)',
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  };
+  const secondaryStyle = {
+    border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+    borderRadius: 8, padding: '8px 14px',
+    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+  };
+
+  return (
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+      <div style={{
+        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
+        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+          {title}
+        </div>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+          {errorText || 'Switch models in Settings, or upgrade your plan to unlock it.'}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+          <button
+            type="button"
+            onClick={() => host.openExternal(MINDS_BILLING_URL)}
+            style={denied ? primaryStyle : secondaryStyle}
+          >Upgrade plan</button>
+          <button
+            type="button"
+            onClick={() => onOpenSettings?.('agent')}
+            style={denied ? secondaryStyle : primaryStyle}
+          >Switch model</button>
+        </div>
+      </div>
+    </AnswerTurn>
+  );
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
   task,
@@ -1114,13 +1179,15 @@ export default function ChatView({
   const chatRef = useRef(null);
   const convRef = useRef(null);
 
-  // Orb stays on the ANTON header for the whole streaming turn — it
-  // does not follow scratchpad rows or the body caret (avoids stacking
-  // against streaming markdown).
+  // The orb anchors to the WorkingIndicator box (pre-step placeholder,
+  // then the ThinkingBlock header) while the turn is in its thinking
+  // phase. Once body text streams the StreamCursor takes over as the
+  // moving part, and when the turn is done the hover meta replaces it —
+  // exactly one in-progress indicator at any moment.
   const orbView = useMemo(() => {
     if (!streamingMsg) return { state: null, activeSlot: null };
     const status = streamingMsg.streamStatus;
-    if (status === 'done') return { state: 'done', activeSlot: 'header:streaming' };
+    if (status === 'done' || status === 'streaming') return { state: null, activeSlot: null };
     return { state: 'thinking', activeSlot: 'header:streaming' };
   }, [streamingMsg]);
 
@@ -1523,14 +1590,8 @@ export default function ChatView({
                 // silent between user-send and first SSE chunk.
                 if (m.placeholder && !streamingMsg) {
                   return (
-                    <AnswerTurn key={i} state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
-                      }}>
-                        <StreamCursor />
-                        <span>{m._label || 'Thinking…'}</span>
-                      </div>
+                    <AnswerTurn key={i} state="thinking" showActions={false}>
+                      <WorkingIndicator label={m._label || 'Thinking…'} />
                     </AnswerTurn>
                   );
                 }
@@ -1579,7 +1640,7 @@ export default function ChatView({
                 // tokens, or a mid-session exhaustion.
                 if (m.code === 'token_limit') {
                   return (
-                    <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                    <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                       <div style={{
                         border: `1px solid ${T.line}`,
                         background: T.surface,
@@ -1624,7 +1685,7 @@ export default function ChatView({
                   return (
                     <ReconnectCard
                       key={i}
-                      time={formatTime(m.createdAt)}
+                      time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
                       reconnectable={m.reconnectable}
@@ -1632,15 +1693,31 @@ export default function ChatView({
                     />
                   );
                 }
+                // Model-403 mid-conversation: the plan doesn't include the
+                // model (or it's admin-disabled) → offer Upgrade / Switch
+                // model, never "try again".
+                if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
+                  return (
+                    <ModelUnavailableCard
+                      key={i}
+                      time={formatTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                      code={m.code}
+                      failedModel={m.failedModel}
+                      errorText={m.content}
+                    />
+                  );
+                }
                 return (
-                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
+                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Message>{m.content}</Message>
                   </AnswerTurn>
                 );
               }
               if (m.role === 'provider_required') {
                 return (
-                  <AnswerTurn key={i} state="done" time={formatTime(m.createdAt)} showActions={false}>
+                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false}>
                     <div style={{
                       border: `1px solid ${T.line}`,
                       background: T.surface,
@@ -1715,7 +1792,9 @@ export default function ChatView({
                 <AnswerTurn
                   key={i}
                   state="done"
-                  time={formatTime(m.createdAt)}
+                  // Streamed turns rarely carry createdAt — fall back to the
+                  // turn's own start time so the hover meta still has a date.
+                  time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
                   onDelete={() => onDeleteTurn?.(turnIdxForThisBubble)}
                   agentLabel={harnessLabel(m.harness) || 'Agent'}
@@ -1744,12 +1823,13 @@ export default function ChatView({
             })()}
 
             {streamingMsg ? (
-              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} slotIdHeader="header:streaming" agentLabel={harnessLabel(streamingMsg.harness) || agentLabel}>
+              <AnswerTurn state="thinking" showActions={false}>
                 {streamingMsg.steps?.length > 0 && (
                   <ThinkingBlock
                     steps={streamingMsg.steps}
                     startedAt={streamingMsg.startedAt}
                     isActive={streamingMsg.streamStatus !== 'done' && streamingMsg.streamStatus !== 'streaming'}
+                    slotId="header:streaming"
                     currentLabel={(() => {
                       const active = [...(streamingMsg.steps || [])].reverse().find(s => s.status === 'in_progress');
                       return active?.label || null;
@@ -1774,23 +1854,18 @@ export default function ChatView({
                     step or body chunk landing, the AnswerTurn would
                     otherwise render empty — the user sees the message
                     "appear, vanish, then come back" once scratchpad
-                    output starts. Keep a soft "Thinking…" affordance
-                    visible whenever there are no steps and no body text
-                    yet. */}
+                    output starts. Keep the working indicator visible
+                    whenever there are no steps and no body text yet —
+                    but not while a path picker is awaiting the user's
+                    choice (the picker IS the turn's visible state).
+                    `_placeholderLabel` is set by the pre-first-event
+                    stub in App.jsx `withThinkingPlaceholder` ("Creating
+                    task…" for new tasks, "Thinking…" for replies). */}
                 {!streamingMsg.pendingSelection && !streamingMsg.steps?.length && !streamingMsg.content && (
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
-                  }}>
-                    <StreamCursor />
-                    {/* `_placeholderLabel` is set by the pre-first-
-                        event stub in App.jsx `withThinkingPlaceholder`
-                        ("Creating task…" for new tasks, "Thinking…"
-                        for replies). Once flushStreamingMessage runs
-                        on the first SSE event, the new streaming row
-                        has no label and falls back to "Thinking…". */}
-                    <span>{streamingMsg._placeholderLabel || 'Thinking…'}</span>
-                  </div>
+                  <WorkingIndicator
+                    slotId="header:streaming"
+                    label={streamingMsg._placeholderLabel || 'Thinking…'}
+                  />
                 )}
                 {streamingMsg.content && (
                   <div style={{ position: 'relative' }}>
@@ -1802,14 +1877,8 @@ export default function ChatView({
                 <StepSkills steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
-              <AnswerTurn state="thinking" time={formatTime(Date.now())} showActions={false} agentLabel={agentLabel}>
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontFamily: FONT_MONO, fontSize: 11, color: T.ink4,
-                }}>
-                  <StreamCursor />
-                  <span>streaming…</span>
-                </div>
+              <AnswerTurn state="thinking" showActions={false}>
+                <WorkingIndicator label="Streaming…" />
               </AnswerTurn>
             )}
           </div>
@@ -1915,6 +1984,7 @@ export default function ChatView({
             models={model ? [model] : []}
             attachments={attachments}
             connectors={connectors}
+            onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
