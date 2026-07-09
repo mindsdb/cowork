@@ -148,12 +148,16 @@ export interface UIManifest {
   sha256: string;
 }
 
-/** Validate a fetched latest.json body into a UIManifest, or null. */
+/** Validate a fetched latest.json body into a UIManifest, or null.
+ *  Field types are checked (not just presence) — this output drives the OTA
+ *  download + extract, so nothing non-string may pass as validated. */
 export function parseUiManifest(jsonText: string): UIManifest | null {
   try {
     const data = JSON.parse(jsonText);
-    if (!data.version || !data.url || !data.sha256) return null;
-    return data as UIManifest;
+    const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+    if (!isNonEmptyString(data?.version) || !isNonEmptyString(data?.url)) return null;
+    if (typeof data.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(data.sha256)) return null;
+    return { version: data.version, url: data.url, sha256: data.sha256 };
   } catch {
     return null;
   }

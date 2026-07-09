@@ -215,15 +215,37 @@ describe('decidePypiUpdate', () => {
 });
 
 describe('parseUiManifest', () => {
-  it('accepts a complete manifest', () => {
-    const m = { version: '1.2.3', url: 'https://x/ui.tar.gz', sha256: 'abc' };
-    expect(parseUiManifest(JSON.stringify(m))).toEqual(m);
+  const SHA = 'ab'.repeat(32); // 64 hex chars
+  const valid = { version: '1.2.3', url: 'https://x/ui.tar.gz', sha256: SHA };
+
+  it('accepts a complete manifest (sha case-insensitive) and strips extra fields', () => {
+    expect(parseUiManifest(JSON.stringify(valid))).toEqual(valid);
+    expect(parseUiManifest(JSON.stringify({ ...valid, sha256: SHA.toUpperCase() }))).toEqual({
+      ...valid,
+      sha256: SHA.toUpperCase(),
+    });
+    expect(parseUiManifest(JSON.stringify({ ...valid, extra: 'field' }))).toEqual(valid);
   });
 
   it('rejects manifests missing any required field, and malformed JSON', () => {
     expect(parseUiManifest(JSON.stringify({ version: '1', url: 'u' }))).toBeNull();
-    expect(parseUiManifest(JSON.stringify({ version: '1', sha256: 's' }))).toBeNull();
-    expect(parseUiManifest(JSON.stringify({ url: 'u', sha256: 's' }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ version: '1', sha256: SHA }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ url: 'u', sha256: SHA }))).toBeNull();
     expect(parseUiManifest('{oops')).toBeNull();
+    expect(parseUiManifest('null')).toBeNull();
+  });
+
+  it('rejects non-string field types (this output drives the OTA download)', () => {
+    expect(parseUiManifest(JSON.stringify({ ...valid, version: 123 }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, url: ['https://x'] }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, sha256: { hex: SHA } }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, version: '' }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, url: '' }))).toBeNull();
+  });
+
+  it('rejects a sha256 that is not exactly 64 hex chars', () => {
+    expect(parseUiManifest(JSON.stringify({ ...valid, sha256: 'abc' }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, sha256: SHA + 'ab' }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, sha256: 'zz'.repeat(32) }))).toBeNull();
   });
 });
