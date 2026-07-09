@@ -4,7 +4,6 @@ name: Tests (unit)
 
 on:
   pull_request:
-    paths-ignore: ['**/*.md', 'docs/**'] # docs-only PRs skip CI
   push:
     branches: [main]
 
