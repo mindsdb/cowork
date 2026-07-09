@@ -462,8 +462,15 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
     // agree — including the per-build isolation (~/.cowork-<kind>) that keeps a
     // non-prod build off the production SQLite DB (ENG-324). cowork-server
     // derives every path from COWORK_HOME (see cowork.common.paths).
+    //
+    // Only set it for NON-prod builds. Prod's home is the server's own default
+    // (~/.cowork), so leaving COWORK_HOME unset keeps prod byte-for-byte as
+    // before this change — crucially, cowork-server drops the legacy
+    // ~/.anton/.env fallback whenever COWORK_HOME is present, so setting it for
+    // prod would silently stop consulting that file for un-migrated installs.
+    const kind = buildKind();
     const dataHome = coworkHome();
-    console.log(`[server] build kind "${buildKind()}" → data home ${dataHome}`);
+    console.log(`[server] build kind "${kind}" → data home ${dataHome}`);
     const env = {
       ...process.env,
       ...loadBundledServerCredentials(),
@@ -471,7 +478,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
-      COWORK_HOME: dataHome,
+      ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it.
