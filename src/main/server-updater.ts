@@ -46,6 +46,7 @@ import {
   findUv,
   getInstalledVersion,
   isSupportedPython,
+  writeUvOverrides,
 } from './uv-paths';
 
 const PACKAGE_NAME = 'cowork-server';
@@ -134,7 +135,7 @@ function lsRemote(repo: string, ref: string): Promise<string | null> {
 // uv install / upgrade commands
 // ---------------------------------------------------------------------------
 
-function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: string }> {
+function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<{ ok: boolean; stderr: string }> {
   // Every runUv call is a `uv tool install/upgrade/reinstall` that rewrites the
   // tool venv on disk. Hold a maintenance window for its duration so
   // startServer() can't spawn python against a half-written environment (a
@@ -146,7 +147,7 @@ function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: strin
         execFile(
           uv,
           args,
-          { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed' }, timeout: 180000 },
+          { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed', ...extraEnv }, timeout: 180000 },
           (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
         );
       }),
@@ -156,7 +157,11 @@ function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: strin
 /** Reinstall from a git spec (cowork-server + anton at the given refs). */
 function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string }> {
   const spec = getInstallSpec({ coworkRef, antonRef });
-  return runUv(uv, ['tool', 'install', spec.package, ...spec.withArgs, '--force', '--reinstall', '--python', PYTHON_RANGE]);
+  return runUv(
+    uv,
+    ['tool', 'install', spec.package, '--force', '--reinstall', '--python', PYTHON_RANGE],
+    writeUvOverrides(spec.overrides),
+  );
 }
 
 /** Clean `--force --reinstall` on whatever source the venv actually came from

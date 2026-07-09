@@ -64,13 +64,17 @@ describe('maybeUpdateServer (orchestration)', () => {
     // Remote state: cowork moved to NEW_COWORK, anton unchanged. All uv
     // install invocations succeed.
     const execCalls: string[][] = [];
+    const installEnvs: (NodeJS.ProcessEnv | undefined)[] = [];
     vi.mocked(cp.execFile).mockImplementation(((
       cmd: string,
       args: string[],
-      _opts: unknown,
+      opts: { env?: NodeJS.ProcessEnv },
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
       execCalls.push([cmd, ...args]);
+      if (cmd !== 'git' && args[0] === 'tool' && args[1] === 'install') {
+        installEnvs.push(opts?.env);
+      }
       if (cmd === 'git') {
         const sha = args[1].includes('cowork-server.git') ? NEW_COWORK : OLD_ANTON;
         cb(null, `${sha}\trefs/heads/main\n`, '');
@@ -91,14 +95,29 @@ describe('maybeUpdateServer (orchestration)', () => {
     expect(result.previousVersion).toBe(OLD_COWORK);
     expect(result.error).toBe('New commit failed to start: health check failed');
 
-    // First install: the configured ref (main). Rollback install: pinned to
-    // the EXACT prior commits — cowork positional, anton via --with. This is
-    // the guarantee that a bad update can never strand the user.
+    // First install: the configured ref (main), no anton override. Rollback
+    // install: pinned to the EXACT prior commits — cowork positional, anton
+    // repointed via a UV_OVERRIDE file (a bad update must never strand the
+    // user). The override goes through the env, not argv, so uv resolves it
+    // without a "conflicting URLs" abort and regardless of its version.
     const installs = execCalls.filter((c) => c[1] === 'tool' && c[2] === 'install');
     expect(installs).toHaveLength(2);
     expect(installs[0]).toContain('git+https://github.com/mindsdb/cowork-server.git@main');
     expect(installs[1]).toContain(`git+https://github.com/mindsdb/cowork-server.git@${OLD_COWORK}`);
-    expect(installs[1]).toContain(`anton-agent @ git+https://github.com/mindsdb/anton.git@${OLD_ANTON}`);
+
+    // The initial install carries no override; the rollback sets UV_OVERRIDE.
+    expect(installEnvs[0]?.UV_OVERRIDE).toBeFalsy();
+    expect(installEnvs[1]?.UV_OVERRIDE).toBeTruthy();
+
+    // The rollback's override file was written with the exact prior anton commit.
+    const overrideWrites = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.map((c) => String(c[1]));
+    expect(
+      overrideWrites.some((c) =>
+        c.includes(`anton-agent @ git+https://github.com/mindsdb/anton.git@${OLD_ANTON}`),
+      ),
+    ).toBe(true);
 
     // And the rolled-back server was started again (recovery, not a dead app).
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
