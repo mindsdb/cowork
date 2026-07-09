@@ -430,8 +430,8 @@ async function fetchAuthContext(accessToken: string): Promise<{
     console.log(
       '[minds-auth] /authenticate/ status=%s agents.use=%s api_keys.create=%s deploy_agents=%s',
       res.status,
-      ent?.permissions?.agents?.use,
-      ent?.permissions?.api_keys?.create,
+      ent?.permissions?.agents?.use ? 'true' : 'false',
+      ent?.permissions?.api_keys?.create ? 'true' : 'false',
       ent?.allocations?.deploy_agents,
     );
     return { ok: res.ok, status: res.status, body, entitlements: body?.entitlements };
@@ -526,6 +526,20 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
             `Body: ${bodyExcerpt}.`,
         };
       }
+      // Server errors (5xx) or network failures (status 0) — the auth
+      // service is likely temporarily unavailable. Give the user an
+      // actionable message instead of a raw status code.
+      if (provisionCtx.status >= 500 || provisionCtx.status === 0) {
+        const detail = provisionCtx.status === 0
+          ? 'Could not reach the MindsHub authentication service.'
+          : `The MindsHub authentication service returned an error (HTTP ${provisionCtx.status}).`;
+        return {
+          error:
+            `${detail} ` +
+            'This is usually temporary — please try again in a moment. ' +
+            'If the problem persists, you can continue with your own API key instead.',
+        };
+      }
       return {
         error: `Auth-service /authenticate/ returned HTTP ${provisionCtx.status}.`,
       };
@@ -540,8 +554,8 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
       console.warn(
         '[minds-auth] authenticated without HUB entitlement — minting anyway '
         + '(quota enforced at the gateway): agents.use=%s api_keys.create=%s deploy_agents=%s',
-        norm.permissions.agents.use,
-        norm.permissions.api_keys.create,
+        norm.permissions.agents.use ? 'true' : 'false',
+        norm.permissions.api_keys.create ? 'true' : 'false',
         norm.allocations.deploy_agents,
       );
     }

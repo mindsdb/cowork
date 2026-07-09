@@ -39,7 +39,13 @@ import {
   decidePypiUpdate,
   type VcsInfo,
 } from './update-logic';
-import { PYTHON_RANGE, getEnvPath, findUv, getInstalledVersion } from './uv-paths';
+import {
+  PYTHON_RANGE,
+  getEnvPath,
+  findUv,
+  getInstalledVersion,
+  isSupportedPython,
+} from './uv-paths';
 
 const PACKAGE_NAME = 'cowork-server';
 const PYPI_JSON_URL = `https://pypi.org/pypi/${PACKAGE_NAME}/json`;
@@ -68,9 +74,12 @@ function getUvToolsDir(): string {
 // Install-source detection (read the tool venv's direct_url.json)
 // ---------------------------------------------------------------------------
 
-/** Locate site-packages inside the cowork-server tool venv. */
-function sitesPackagesDir(): string | null {
-  const venv = path.join(getUvToolsDir(), 'cowork-server');
+/** Locate site-packages inside the cowork-server tool venv. Callers that have
+ *  already resolved the tools dir reliably (via `uv tool dir`) should pass it —
+ *  otherwise this falls back to the platform heuristic, which can be wrong on
+ *  Windows (%APPDATA%\uv\tools vs …\uv\data\tools across uv versions). */
+function sitesPackagesDir(toolsDir: string = getUvToolsDir()): string | null {
+  const venv = path.join(toolsDir, 'cowork-server');
   // Windows: <venv>/Lib/site-packages ; Unix: <venv>/lib/pythonX.Y/site-packages
   const win = path.join(venv, 'Lib', 'site-packages');
   if (fs.existsSync(win)) return win;
@@ -86,8 +95,8 @@ function sitesPackagesDir(): string | null {
 /** Read git VCS info for an installed dist (e.g. "cowork_server", "anton_agent").
  *  Returns null when the dist was installed from a registry (PyPI) — i.e.
  *  no direct_url.json with vcs_info. */
-function readVcsInfo(distName: string): VcsInfo | null {
-  const sp = sitesPackagesDir();
+function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
+  const sp = sitesPackagesDir(toolsDir);
   if (!sp) return null;
   let distInfo: string | null = null;
   try {
@@ -139,6 +148,90 @@ function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: strin
 function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string }> {
   const spec = getInstallSpec({ coworkRef, antonRef });
   return runUv(uv, ['tool', 'install', spec.package, ...spec.withArgs, '--force', '--reinstall', '--python', PYTHON_RANGE]);
+}
+
+/** `uv tool dir` — its on-disk layout differs across versions/OSes
+ *  (e.g. %APPDATA%\uv\tools vs …\uv\data\tools on Windows), so ask uv.
+ *  Async so it never blocks the Electron main thread. Null on failure. */
+function uvToolsDir(uv: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      uv, ['tool', 'dir'],
+      { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000, encoding: 'utf-8' },
+      (err, stdout) => resolve(err ? null : String(stdout).trim() || null),
+    );
+  });
+}
+
+/** The `major.minor` the cowork-server venv is built on, from its
+ *  pyvenv.cfg. Null when the file or the version line is absent. */
+function readVenvPython(toolsDir: string): { major: number; minor: number } | null {
+  try {
+    const cfg = fs.readFileSync(path.join(toolsDir, 'cowork-server', 'pyvenv.cfg'), 'utf-8');
+    const m = cfg.match(/version_info\s*=\s*(\d+)\.(\d+)/);
+    if (!m) return null;
+    return { major: Number(m[1]), minor: Number(m[2]) };
+  } catch {
+    return null;
+  }
+}
+
+/** Recover a cowork-server venv stranded on an unsupported Python.
+ *
+ * A venv provisioned on Python < 3.12 by an older build keeps getting newer
+ * code pulled into it by in-place git updates; that code fails to *parse* on
+ * 3.11, so the server crashes at import time and never answers /health — and
+ * the normal updater (gated behind a successful start) never runs to fix it.
+ * Read the venv's interpreter from pyvenv.cfg and, if it's outside the
+ * supported range, reinstall on the SAME source the venv came from (mirroring
+ * maybeUpdateServer, so a PyPI install is never clobbered onto git); the
+ * --python pin rebuilds the venv on a supported managed CPython (3.11 → 3.12).
+ * Returns false (no-op) when the interpreter is already fine, can't be
+ * determined, or the reinstall didn't actually move it; the caller owns the
+ * restart. Never throws. */
+export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return false;
+    const uv = findUv();
+    if (!uv) return false;
+    const toolsDir = await uvToolsDir(uv);
+    if (!toolsDir) return false;
+    const before = readVenvPython(toolsDir);
+    if (!before) return false;                                  // can't tell — don't touch it
+    if (isSupportedPython(before.major, before.minor)) return false;
+
+    console.warn(`[server-updater] cowork-server venv on unsupported Python ${before.major}.${before.minor}; recreating`);
+    if (isServerRunning()) await stopServer();
+
+    // Reinstall on the source the venv was actually installed from — the git
+    // channel carries anton refs, PyPI is a plain package spec. Both pin
+    // --python, which is what rebuilds the venv on a supported interpreter.
+    // Detect the source against the SAME reliably-resolved toolsDir used above,
+    // not the platform heuristic — otherwise a git install on a Windows layout
+    // the heuristic misses would be wrongly reinstalled from PyPI.
+    const onGit = !!readVcsInfo('cowork_server', toolsDir);
+    const { ok, stderr } = onGit
+      ? await installGit(uv, getCoworkRef(), getAntonRef())
+      : await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
+    if (!ok) {
+      console.error('[server-updater] venv recreate reinstall failed:', stderr);
+      return false;
+    }
+
+    // Confirm uv actually re-selected the interpreter — this behavior varies by
+    // uv version. If it didn't move, report failure instead of letting the
+    // caller retry against the same broken interpreter.
+    const after = readVenvPython(toolsDir);
+    if (after && !isSupportedPython(after.major, after.minor)) {
+      console.error(`[server-updater] reinstall left venv on Python ${after.major}.${after.minor}; uv did not re-select the interpreter`);
+      return false;
+    }
+    console.log(`[server-updater] venv recreated on Python ${after ? `${after.major}.${after.minor}` : '(supported)'}`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---- PyPI path helpers (release channel) ----------------------------------

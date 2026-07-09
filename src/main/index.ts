@@ -7,7 +7,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
-import { setUpdateNotifier } from './server-updater';
+import { setUpdateNotifier, recreateVenvIfUnsupportedPython } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
@@ -1182,7 +1182,7 @@ app.whenReady().then(async () => {
         {
           label: 'Anton Cowork Documentation',
           click: () => {
-            shell.openExternal('https://docs.mindsdb.com');
+            shell.openExternal('https://docs.mindshub.ai/index.html');
           },
         },
         { type: 'separator' },
@@ -1263,7 +1263,18 @@ app.whenReady().then(async () => {
       }
     }
 
-    const result = await startServer();
+    let result = await startServer();
+    if (!result.ok) {
+      // A venv stranded on an unsupported Python (a pre-3.12 install an
+      // in-place update loaded newer 3.12+ code into) crashes at import time
+      // and never answers /health. Recreate it on a supported interpreter and
+      // retry once before surfacing the error. No-op for any other failure.
+      console.error(`[server] start failed (${result.reason}); checking for a stranded Python venv`);
+      if (await recreateVenvIfUnsupportedPython()) {
+        console.log('[server] recreated venv on a supported Python; retrying start');
+        result = await startServer();
+      }
+    }
     resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
     if (!result.ok) {
       console.error(`[server] start failed: ${result.reason}`);

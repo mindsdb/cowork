@@ -27,6 +27,7 @@ import {
 import { ArtifactViewer } from '../artifact';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
+import { publishBlockedReason } from '../../lib/artifactKinds';
 import { trackArtifactPublished } from '../../lib/analytics';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
@@ -271,6 +272,16 @@ export function WorkingFolderLive({ project, isStreaming }) {
 
   const onTogglePublish = async (a) => {
     if (!a?.path) return;
+    // Stateful fullstack apps can't be published (server-side state the static
+    // publish pipeline can't carry). Block only the publish direction;
+    // unpublish stays allowed in case one was somehow published already.
+    if (!a.publishedUrl) {
+      const blocked = publishBlockedReason(a);
+      if (blocked) {
+        setRowError(blocked);
+        return;
+      }
+    }
     setBusyPath(a.path);
     setRowError('');
     try {
@@ -450,6 +461,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
           const a = rows.find((r) => r.path === openMenuPath);
           if (!a) return null;
           const isPublished = !!a.publishedUrl;
+          // Only the publish direction is blocked; unpublish must stay usable.
+          const publishBlock = !isPublished ? publishBlockedReason(a) : '';
           const openLabel = canOpenLocalFile ? 'Open in OS' : 'Open in new tab';
           return (
             <div
@@ -483,7 +496,8 @@ export function WorkingFolderLive({ project, isStreaming }) {
               <button
                 type="button"
                 className="menu-item"
-                disabled={busyPath === a.path}
+                disabled={busyPath === a.path || !!publishBlock}
+                title={publishBlock || undefined}
                 onClick={(e) => {
                   e.stopPropagation();
                   setOpenMenuPath(null);

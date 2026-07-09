@@ -8,8 +8,18 @@ import * as path from 'path';
 import { parseInstalledVersion } from './update-logic';
 
 // PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
-// Keep in sync with cowork-server requires-python.
-export const PYTHON_RANGE = '>=3.12,<3.14';
+// Keep in sync with cowork-server requires-python. PYTHON_RANGE and the
+// interpreter check below are derived from the same bounds so they can't drift.
+export const PYTHON_MIN: readonly [number, number] = [3, 12];
+export const PYTHON_MAX_EXCL: readonly [number, number] = [3, 14];
+export const PYTHON_RANGE = `>=${PYTHON_MIN[0]}.${PYTHON_MIN[1]},<${PYTHON_MAX_EXCL[0]}.${PYTHON_MAX_EXCL[1]}`;
+
+/** True when a `major.minor` interpreter satisfies PYTHON_RANGE. */
+export function isSupportedPython(major: number, minor: number): boolean {
+  const geMin = major > PYTHON_MIN[0] || (major === PYTHON_MIN[0] && minor >= PYTHON_MIN[1]);
+  const ltMax = major < PYTHON_MAX_EXCL[0] || (major === PYTHON_MAX_EXCL[0] && minor < PYTHON_MAX_EXCL[1]);
+  return geMin && ltMax;
+}
 
 export function getLocalBin(): string {
   return path.join(os.homedir(), '.local', 'bin');
