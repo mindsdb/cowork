@@ -209,6 +209,31 @@ export async function getUIVersion(): Promise<string> {
   return 'web';
 }
 
+export interface VersionInfo {
+  /** Installed Electron shell (App) version — changes only on reinstall. */
+  app: string;
+  /** OTA-activated UI bundle version, or null when running the bundled UI. */
+  ui: string | null;
+  /** Where the running renderer came from. */
+  source: 'bundled' | 'ota' | 'web';
+}
+
+/** Structured version facts for the unified version display (ENG-213). The
+ *  renderer resolves the effective UI version as `ui ?? __APP_VERSION__`. */
+export async function getVersionInfo(): Promise<VersionInfo> {
+  if (isElectron && typeof bridge.getUIVersion === 'function') {
+    const v = await bridge.getUIVersion();
+    if (v && typeof v === 'object') {
+      return {
+        app: String(v.app ?? ''),
+        ui: v.ui != null ? String(v.ui) : null,
+        source: v.source === 'ota' ? 'ota' : 'bundled',
+      };
+    }
+  }
+  return { app: '', ui: null, source: 'web' };
+}
+
 // ---- Onboarding -------------------------------------------------------
 //
 // The cowork SPA mounts the same arcade onboarding screens (TermsScreen
@@ -529,6 +554,7 @@ export const host = {
   showItemInFolder,
   getPathForFile,
   getUIVersion,
+  getVersionInfo,
   readSettings,
   saveSettings,
   restartServer,

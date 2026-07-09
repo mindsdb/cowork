@@ -328,6 +328,29 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean
   });
 }
 
+// One-shot read of the server's reported CalVer (`server_version` from
+// /health). Best-effort — resolves null on any failure. Used by the About
+// panel to fold the server into the unified version (the renderer's Settings
+// view is the authoritative surface and reads the same field directly).
+export function fetchServerVersion(timeoutMs = 800): Promise<string | null> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: SERVER_HOST, port: serverPort, path: '/api/v1/health/', timeout: timeoutMs },
+      (res) => {
+        if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => {
+          try { resolve((JSON.parse(body) as { server_version?: string } | null)?.server_version ?? null); }
+          catch { resolve(null); }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
 // True when resolveServerPort() found a healthy server that proved to be
 // ours; startServer() re-verifies and adopts it instead of spawning.
 let _adoptPlanned = false;
