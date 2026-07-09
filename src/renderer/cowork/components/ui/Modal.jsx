@@ -217,7 +217,7 @@ export function Modal({
 
 // ── Header ────────────────────────────────────────────────────────────
 //
-// Standardised: Inter Display 18px / 600 title, optional Inter 13px
+// Standardised: Inter 18px / 600 title, optional Inter 13px
 // subtitle underneath, X close button flush right. Bottom border
 // `--line`. The id prop pairs with Modal's `labelledBy` so screen
 // readers announce the title.

@@ -159,7 +159,7 @@ function _csvRowsToGfmTable(rows) {
 }
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "var(--font-display, 'Inter Display', 'Inter', sans-serif)";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Ghost icon button shared by every top-bar affordance (folder, reload,

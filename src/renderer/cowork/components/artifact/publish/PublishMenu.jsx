@@ -28,7 +28,7 @@ import {
 } from './AccessChooser';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "var(--font-display, 'Inter Display', 'Inter', sans-serif)";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const ACCESS_LABELS = {

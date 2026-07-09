@@ -1,6 +1,6 @@
 /* Anton Chat — Direction A: Conservative.
    Near-1:1 port of docs/design-guidelines/chat.html (ChatConservative).
-   Editorial, document-like. Inter body, Inter Display headings, mono for operator
+   Editorial, document-like. Inter body, Inter headings, mono for operator
    metadata. Centered ~720px column, OrbitMorph-led Anton turns, floating
    composer, right rail with collapsible cards.
 
@@ -54,7 +54,7 @@ const T = {
   success:  '#1F8F5F',
 };
 
-const FONT_DISPLAY = "var(--font-display, 'Inter Display', 'Inter', sans-serif)";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO    = "'JetBrains Mono', monospace";
 const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
@@ -1379,7 +1379,7 @@ export default function ChatView({
                   style={{
                     flex: '1 1 0', minWidth: 0,
                     fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    letterSpacing: '0', color: T.ink,
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
@@ -1407,7 +1407,7 @@ export default function ChatView({
                   }}
                   style={{
                     fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: T.ink,
+                    letterSpacing: '0', color: T.ink,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     overflowWrap: 'anywhere',
                     minWidth: 0, flex: '0 1 auto',

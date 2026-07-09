@@ -7,7 +7,7 @@ export function Crumb({ label, onClick, title, maxWidth }) {
       style={{
         cursor: 'pointer', background: 'transparent', border: 0,
         fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
+        letterSpacing: '0', color: 'var(--ink-3)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         maxWidth, flexShrink: 1,
         padding: '2px 6px', borderRadius: 5,

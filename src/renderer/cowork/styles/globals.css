@@ -42,12 +42,14 @@
 /* ─── Design System Tokens ───────────────────────────────────────────────── */
 /* ─── Font stack — two families, three jobs ────────────────────────────────
    Per the design guideline:
-     · Inter Display — display/heading role (heroes, taglines, app name moments)
-     · Inter         — every operable surface (H1–H3, body, buttons, lists)
+     · Inter          — every surface, display and body. --font-display and
+                        --font-body both resolve to Inter; the display role is
+                        just Inter at a heavier weight and its own tracking.
      · JetBrains Mono — strings (code, paths, IDs, kbd shortcuts, IDs)
-   Inter Display is Inter's own display optical size, so headings and body
-   share one type family and stay visually consistent at every size. All are
-   bundled at /fonts/ in the public dir (Inter Display faces are declared above). */
+   We use the text cut of Inter (InterVariable, which optical-sizes itself)
+   rather than the Display cut, because every display surface in the app is
+   small UI chrome (13–18px). The Display cut is tuned for 28px+ and reads too
+   heavy and tight at these sizes. All faces are bundled at /fonts/. */
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/JetBrainsMono-400.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/JetBrainsMono-500.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/JetBrainsMono-700.woff2') format('woff2'); }
@@ -59,7 +61,7 @@
      back to its default (Helvetica on macOS), which is exactly the
      "why is my Inter not showing up" symptom. */
   --font-body:    var(--font-sans);
-  --font-display: 'Inter Display', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* Aqua (primary) — palette base, used by both themes */
@@ -2439,7 +2441,7 @@ body:not([data-theme="dark"]) .btn-primary {
 .s-overline    { font-family: var(--font-mono); font-size: 11px;   line-height: 1.6;  font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-3); }
 .s-mono        { font-family: var(--font-mono); font-size: 13px;   line-height: 1.5; color: var(--ink); }
 
-/* ─── Special title — Inter Display (display only) ─────────────────────── */
+/* ─── Special title — Inter (display only) ─────────────────────── */
 .t-special {
   font-family: var(--font-display);
   text-transform: uppercase;
@@ -3744,7 +3746,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    - The chat panel is transparent so the body's gravity-grid shows through.
    - Anton turns use a 32px "axis" rail with the OrbitMorph at the top and a
      1px vertical line threading the response.
-   - Two-family system: Inter Display (display/labels), Inter (body), JetBrains
+   - Two-family system: Inter (display/labels), Inter (body), JetBrains
      Mono (operator metadata: timestamps, model, turn count).
 */
 
@@ -3760,7 +3762,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   gap: 16px;
 }
 
-/* Chat header — Inter Display title + mono meta + rail toggle */
+/* Chat header — Inter title + mono meta + rail toggle */
 .chat-header {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 28px;
