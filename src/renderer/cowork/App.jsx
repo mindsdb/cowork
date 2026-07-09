@@ -2245,7 +2245,12 @@ function AppCore() {
   // Shared by both entry points below (composer chips + project files):
   // resolves the google_drive connection's account email and opens the
   // native Picker. Neither caller downloads/persists anything here.
-  const openGoogleDrivePicker = useCallback(async () => {
+  // `projectName`, when passed, tags any newly-picked files as
+  // belonging to that project (see picked-files.ts / merge_picked_files)
+  // — omit it for flows with no project context (there are none among
+  // the callers below, but connection-details' own "Pick files" button
+  // calls host.pickDriveFiles directly and correctly omits it).
+  const openGoogleDrivePicker = useCallback(async (projectName) => {
     const conn = await resolveGoogleDriveConnection();
     if (!conn) return { ok: false, reason: 'Connect Google Drive first.' };
     let accountEmail = '';
@@ -2256,7 +2261,7 @@ function AppCore() {
       return { ok: false, reason: 'Could not load the Google Drive connection.' };
     }
     if (!accountEmail) return { ok: false, reason: 'Google Drive connection is missing an account email.' };
-    const result = await host.pickDriveFiles('google_drive', conn.name, accountEmail);
+    const result = await host.pickDriveFiles('google_drive', conn.name, accountEmail, undefined, projectName);
     if (!result?.ok) return { ok: false, reason: result?.reason || 'Google Drive picker failed.' };
     // `files` is the connection's full accumulated grant (every file
     // ever picked, for callers like Project files that want to show the
@@ -2266,8 +2271,8 @@ function AppCore() {
     return { ok: true, files: result.files || [], newFiles: result.newFiles || [] };
   }, [resolveGoogleDriveConnection]);
 
-  const addGoogleDriveFiles = useCallback(async () => {
-    const picked = await openGoogleDrivePicker();
+  const addGoogleDriveFiles = useCallback(async (projectName) => {
+    const picked = await openGoogleDrivePicker(projectName);
     if (!picked.ok) return picked;
     const files = picked.newFiles;
     if (files.length === 0) return { ok: true, files: [] };
@@ -2292,23 +2297,31 @@ function AppCore() {
   // file stays in Drive. `openGoogleDrivePicker` already persists the
   // grant server-side (savePickedFiles, inside host.pickDriveFiles's
   // IPC handler), so there's nothing else to do here; the file just
-  // becomes visible as a reference row (see ContextCard).
-  const addGoogleDriveFileReferences = useCallback(async () => {
-    const picked = await openGoogleDrivePicker();
+  // becomes visible as a reference row (see ContextCard). `projectName`
+  // is required here — this is what scopes the file to the project it
+  // was actually added from.
+  const addGoogleDriveFileReferences = useCallback(async (projectName) => {
+    const picked = await openGoogleDrivePicker(projectName);
     if (!picked.ok) return picked;
     return { ok: true, files: picked.files };
   }, [openGoogleDrivePicker]);
 
   // Lets ContextCard show the connection's *current* picked-files list
-  // on mount/refresh, not just right after a fresh pick.
-  const fetchGoogleDriveReferenceFiles = useCallback(async () => {
+  // on mount/refresh, not just right after a fresh pick — scoped to
+  // just the files tagged with this project (see merge_picked_files).
+  // Files picked from connection-details (no project tag) never show
+  // here, by design.
+  const fetchGoogleDriveReferenceFiles = useCallback(async (projectName) => {
     const conn = await resolveGoogleDriveConnection();
     if (!conn) return { ok: true, files: [] };
     try {
       const detail = await fetchSavedConnection('google_drive', conn.name);
       const raw = detail?.fields?.picked_files;
       const files = raw ? JSON.parse(raw) : [];
-      return { ok: true, files: Array.isArray(files) ? files : [] };
+      const scoped = Array.isArray(files)
+        ? files.filter((f) => Array.isArray(f?.projects) && f.projects.includes(projectName))
+        : [];
+      return { ok: true, files: scoped };
     } catch {
       return { ok: true, files: [] };
     }
@@ -2347,22 +2360,29 @@ function AppCore() {
     });
   }, [handleConnectorPicked]);
 
-  // Composer "+" menu entry point.
-  const handleAddGoogleDriveFiles = useCallback(async () => {
+  // Composer "+" menu entry point. `projectName` comes from the
+  // Composer's own `project` prop (Home/Task/Projects all pass one) —
+  // tags the picked file(s) so they also show under that project's
+  // Project files, matching the composer/project-files parity the user
+  // expects. Falls back to `selectedProject`/'general' the same way
+  // handleSendFromHome does, since Home's `project` can be null before
+  // the user has explicitly picked one.
+  const handleAddGoogleDriveFiles = useCallback(async (projectName) => {
+    const effectiveProjectName = projectName || selectedProject?.name || 'general';
     const isConnected = !!(await resolveGoogleDriveConnection());
     if (isConnected) {
-      const res = await addGoogleDriveFiles();
+      const res = await addGoogleDriveFiles(effectiveProjectName);
       if (!res.ok) throw new Error(res.reason || 'Could not add Google Drive files.');
       return;
     }
-    await connectGoogleDriveThenRun(() => addGoogleDriveFiles());
-  }, [resolveGoogleDriveConnection, addGoogleDriveFiles, connectGoogleDriveThenRun]);
+    await connectGoogleDriveThenRun(() => addGoogleDriveFiles(effectiveProjectName));
+  }, [resolveGoogleDriveConnection, addGoogleDriveFiles, connectGoogleDriveThenRun, selectedProject]);
 
   // Project files "+" menu entry point (right-rail Context card).
-  const handleAddGoogleDriveProjectFiles = useCallback(async () => {
+  const handleAddGoogleDriveProjectFiles = useCallback(async (projectName) => {
     const isConnected = !!(await resolveGoogleDriveConnection());
     if (isConnected) {
-      const res = await addGoogleDriveFileReferences();
+      const res = await addGoogleDriveFileReferences(projectName);
       if (!res.ok) throw new Error(res.reason || 'Could not add Google Drive files.');
       return res;
     }
@@ -2371,7 +2391,7 @@ function AppCore() {
     // Drive" once their file references are added.
     const returnToTaskId = currentTask?.id || null;
     await connectGoogleDriveThenRun(async () => {
-      await addGoogleDriveFileReferences();
+      await addGoogleDriveFileReferences(projectName);
       if (returnToTaskId) {
         setActiveTaskId(returnToTaskId);
         setRoute('task');
@@ -3861,6 +3881,9 @@ function AppCore() {
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onAddGoogleDriveProjectFiles={handleAddGoogleDriveProjectFiles}
+            onFetchGoogleDriveProjectFiles={fetchGoogleDriveReferenceFiles}
+            onRemoveGoogleDriveProjectFile={removeGoogleDriveFileReference}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}

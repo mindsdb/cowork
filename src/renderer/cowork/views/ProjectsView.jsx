@@ -661,6 +661,9 @@ function ProjectDetail({
   connectors = [],
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddGoogleDriveProjectFiles,
+  onFetchGoogleDriveProjectFiles,
+  onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -949,7 +952,12 @@ function ProjectDetail({
           </button>
         </div>
         <WorkingFolderBox project={project} />
-        <ContextBox project={project} />
+        <ContextBox
+          project={project}
+          onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
+          onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+        />
         <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
       </aside>
     </div>
@@ -980,6 +988,9 @@ export default function ProjectsView({
   connectors = [],
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddGoogleDriveProjectFiles,
+  onFetchGoogleDriveProjectFiles,
+  onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -1131,6 +1142,9 @@ export default function ProjectsView({
         onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
         onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddGoogleDriveProjectFiles={onAddGoogleDriveProjectFiles}
+        onFetchGoogleDriveProjectFiles={onFetchGoogleDriveProjectFiles}
+        onRemoveGoogleDriveProjectFile={onRemoveGoogleDriveProjectFile}
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}

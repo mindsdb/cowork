@@ -17,6 +17,11 @@ export interface PickedFile {
   // Required by Drive API alongside `id` for many files not owned by the
   // connecting account (link-shared docs especially) — see checkFileAccess.
   resourceKey?: string | null;
+  // Project(s) this file was explicitly added to (composer or a
+  // project's Project files rail) — empty when only ever picked from
+  // connection-details, which has no project context. Drives per-
+  // project scoping of the Project files display.
+  projects?: string[];
 }
 
 export interface FailedPick {

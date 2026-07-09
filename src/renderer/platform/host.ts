@@ -422,6 +422,9 @@ export interface DrivePickerFile {
   iconUrl?: string;
   url?: string;
   resourceKey?: string | null;
+  /** Project(s) this file was explicitly added to — empty/absent when
+   *  only ever picked from connection-details (no project context). */
+  projects?: string[];
 }
 
 export interface FailedDrivePick {
@@ -447,10 +450,13 @@ export interface DrivePickerResult {
 // files it created itself — the Picker is how a user grants access to
 // existing files without widening the OAuth scope. `fileIds`, when
 // known (e.g. from a pasted Drive link), pre-navigates the picker to
-// those files for faster consent.
-export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[]): Promise<DrivePickerResult> {
+// those files for faster consent. `projectName`, when passed, tags any
+// newly-picked files as belonging to that project (see DrivePickerFile);
+// omit it for connection-details' "Pick files" button, which has no
+// project context.
+export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
   if (isElectron && typeof bridge.oauthPickDriveFiles === 'function') {
-    return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds });
+    return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds, projectName });
   }
   return { ok: false, reason: 'Google Picker is Electron-only for now.' };
 }

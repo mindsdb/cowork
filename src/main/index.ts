@@ -678,7 +678,7 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.OAUTH_PICK_DRIVE_FILES, async (_event, opts) => {
-    const { engine, name, accountEmail, fileIds } = opts || {};
+    const { engine, name, accountEmail, fileIds, projectName } = opts || {};
     if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
     const access = await getPickerAccess(engine, accountEmail);
     if (!access.ok) return access;
@@ -696,15 +696,24 @@ function setupIPC() {
     // immediately instead of silently sitting in the list until Anton hits
     // a 403 on it later.
     const { verified, failed } = await verifyPickedFiles(access.accessToken, newFiles);
-    const files = verified.length > 0
-      ? await savePickedFiles(engine, name, verified)
+    // Tag each newly-verified file with the project it was picked for
+    // (e.g. from the composer or a project's Project files rail) so the
+    // Project files display can scope to just that project — untagged
+    // (no projectName passed) when picked from connection-details, which
+    // has no project context. merge_picked_files unions this with
+    // whatever projects an already-picked file was tagged with before.
+    const tagged = projectName
+      ? verified.map((f) => ({ ...f, projects: [projectName] }))
+      : verified;
+    const files = tagged.length > 0
+      ? await savePickedFiles(engine, name, tagged)
       : await getPickedFiles(engine, name);
     // `files` is the connection's full accumulated grant (every file ever
     // picked) — correct for CustomizeView's "everything this app can
     // access" list, but callers that want "what did the user just pick in
-    // THIS session" (e.g. attaching to the current message) need `verified`
+    // THIS session" (e.g. attaching to the current message) need `tagged`
     // on its own, not the merged history.
-    return { ok: true, files, newFiles: verified, failed };
+    return { ok: true, files, newFiles: tagged, failed };
   });
 
   ipcMain.handle(IPC.OAUTH_CANCEL_PICKER, () => {

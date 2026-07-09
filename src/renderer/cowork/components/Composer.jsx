@@ -525,7 +525,7 @@ export default function Composer({
     setGdrivePickerBusy(true);
     setOpenMenu(null);
     try {
-      await Promise.resolve(onAddGoogleDriveFiles());
+      await Promise.resolve(onAddGoogleDriveFiles(project?.name));
     } catch (err) {
       setError(err.message || 'Could not add Google Drive files.');
     } finally {

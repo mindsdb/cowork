@@ -48,7 +48,7 @@ contextBridge.exposeInMainWorld('antontron', {
   },
   // Opens the Google Picker in the OS browser for a builtin OAuth
   // connection and resolves with the files the user selected there.
-  oauthPickDriveFiles: (opts: { engine: string; name: string; accountEmail: string; fileIds?: string[] }) =>
+  oauthPickDriveFiles: (opts: { engine: string; name: string; accountEmail: string; fileIds?: string[]; projectName?: string }) =>
     ipcRenderer.invoke(IPC.OAUTH_PICK_DRIVE_FILES, opts),
   oauthCancelPicker: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL_PICKER),
 

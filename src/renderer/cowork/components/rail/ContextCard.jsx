@@ -428,16 +428,17 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     reloadFiles();
   }, [project?.name, reloadFiles]);
 
-  // Google Drive reference files aren't project-scoped (they live on
-  // the connection's picked_files grant), so this doesn't depend on
-  // `project.name` the way reloadFiles does — just refetch whenever
-  // the card mounts or something asks it to refresh.
+  // Google Drive reference files live on the connection's picked_files
+  // grant, but each entry is tagged with the project(s) it was added
+  // to — App.jsx's fetchGoogleDriveReferenceFiles filters to just this
+  // project, so this does depend on `project.name` the same way
+  // reloadFiles does.
   const reloadDriveFiles = useCallback(() => {
-    if (!onFetchGoogleDriveFiles) { setDriveFiles([]); return; }
-    onFetchGoogleDriveFiles()
+    if (!onFetchGoogleDriveFiles || !project?.name) { setDriveFiles([]); return; }
+    onFetchGoogleDriveFiles(project.name)
       .then((res) => setDriveFiles(Array.isArray(res?.files) ? res.files : []))
       .catch(() => setDriveFiles([]));
-  }, [onFetchGoogleDriveFiles]);
+  }, [onFetchGoogleDriveFiles, project?.name]);
 
   useEffect(() => {
     reloadDriveFiles();
@@ -588,7 +589,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                   onClick: () => {
                     setUploadBusy(true);
                     setUploadError('');
-                    Promise.resolve(onAddGoogleDriveFiles())
+                    Promise.resolve(onAddGoogleDriveFiles(project?.name))
                       .then(() => reloadDriveFiles())
                       .catch((err) => setUploadError(err?.message || 'Could not add Google Drive files.'))
                       .finally(() => setUploadBusy(false));
