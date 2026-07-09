@@ -7,7 +7,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
-import { setUpdateNotifier, recreateVenvIfUnsupportedPython } from './server-updater';
+import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
@@ -1265,13 +1265,27 @@ app.whenReady().then(async () => {
 
     let result = await startServer();
     if (!result.ok) {
-      // A venv stranded on an unsupported Python (a pre-3.12 install an
-      // in-place update loaded newer 3.12+ code into) crashes at import time
-      // and never answers /health. Recreate it on a supported interpreter and
-      // retry once before surfacing the error. No-op for any other failure.
-      console.error(`[server] start failed (${result.reason}); checking for a stranded Python venv`);
-      if (await recreateVenvIfUnsupportedPython()) {
+      // The server is installed but won't boot. Two self-heal paths, tried in
+      // order; each rebuilds the venv with a clean --force --reinstall on the
+      // source it was installed from, then we retry start once.
+      console.error(`[server] start failed (${result.reason}); attempting recovery`);
+
+      // 1. Venv stranded on an unsupported Python (a pre-3.12 install an
+      //    in-place update loaded newer 3.12+ code into) — crashes at import
+      //    time. Recreating it re-selects a supported interpreter.
+      const recreated = await recreateVenvIfUnsupportedPython();
+      if (recreated) {
         console.log('[server] recreated venv on a supported Python; retrying start');
+        result = await startServer();
+      }
+
+      // 2. Venv on a supported Python but still dead — a corrupt or partially
+      //    written environment (e.g. an interrupted upgrade left a dependency
+      //    as a bare namespace package that ImportErrors at startup). A clean
+      //    reinstall repairs it. Skip when we just recreated: that already did
+      //    a --force --reinstall, so a second one would be redundant.
+      if (!result.ok && !recreated && await repairServerInstall()) {
+        console.log('[server] repaired the server environment; retrying start');
         result = await startServer();
       }
     }
