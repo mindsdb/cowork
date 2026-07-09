@@ -6,6 +6,7 @@ import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
 import { getInstallSpec, COWORK_SERVER_MIN_VERSION } from './server-source';
 import { meetsMinVersion } from './update-logic';
+import { withServerMaintenance } from './server-process';
 import {
   PYTHON_RANGE,
   getLocalBin,
@@ -453,7 +454,9 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     const uvEnv: NodeJS.ProcessEnv = { UV_PYTHON_PREFERENCE: 'only-managed' };
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');
 
-    const installResult = await runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv });
+    const installResult = await withServerMaintenance(
+      () => runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv }),
+    );
     if (abortIfRequested()) return false;
 
     if (installResult.code !== 0) {

@@ -17,6 +17,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { coworkHome, buildKind } from './cowork-home';
 import { MINDS_ENV_SLUG } from './minds-urls';
+import { withServerLifecycle } from './server-lifecycle';
 import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
@@ -126,39 +127,20 @@ let serverStarted = false;
 // (which would race for the same port and the second would fail).
 let pendingStart: Promise<StartServerResult> | null = null;
 
-// A "maintenance window" is any operation that rewrites the cowork-server tool
-// venv on disk (a uv reinstall/upgrade). Spawning the server while one is in
-// flight launches python against a half-written environment, which crashes
-// with a spurious ModuleNotFoundError (observed: a repair reinstall racing a
-// post-onboarding restart). startServer() waits this out before spawning, and
-// the updater wraps its `uv tool install` calls in withServerMaintenance().
-let _maintenanceGate: Promise<void> | null = null;
-
-/** Run `fn` as an exclusive server-maintenance window: startServer() waits
- *  until it resolves before spawning, and overlapping maintenance serializes.
- *  Used by the updater around `uv tool install` so a reinstall can't race a
- *  concurrent server start. */
+/**
+ * Run a complete server-maintenance transaction exclusively with starts and
+ * stops. This must be entered before source inspection or a stop/install/start
+ * sequence, rather than only around the `uv` subprocess.
+ */
 export async function withServerMaintenance<T>(fn: () => Promise<T>): Promise<T> {
-  while (_maintenanceGate) await _maintenanceGate;
-  let release!: () => void;
-  _maintenanceGate = new Promise<void>((resolve) => {
-    release = () => {
-      _maintenanceGate = null;
-      resolve();
-    };
-  });
-  try {
-    return await fn();
-  } finally {
-    release();
-  }
+  return withServerLifecycle(fn);
 }
 
 // Diagnostics — captured so the renderer can surface them in a help
 // modal when the user wonders why the backend is offline. We keep
-// the most recent start failure reason and a rolling tail of stderr
-// (latest ~32 KB) since the python crash trace usually lives in the
-// last few lines. Flushed on a successful start.
+// the most recent start failure reason and a rolling tail of stdout/stderr
+// (latest ~32 KB) for the current start attempt; the Python crash trace
+// usually lives in its last few lines.
 const STDERR_BUFFER_BYTES = 32 * 1024;
 let recentStderr = '';
 let lastStartError: string | null = null;
@@ -397,10 +379,10 @@ export interface StartServerResult {
 }
 
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
-  // Wait out any in-flight venv maintenance (a uv reinstall/upgrade rewriting
-  // the tool venv) — spawning now would launch python against a half-written
-  // environment and crash with a spurious import error.
-  while (_maintenanceGate) await _maintenanceGate;
+  return withServerLifecycle(() => startServerUnlocked(opts));
+}
+
+async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
   if (serverStarted) return { ok: true, port: serverPort };
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.
@@ -450,6 +432,10 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   const readyTimeoutMs = opts.readyTimeoutMs ?? (isDevSource ? 180_000 : 15000);
 
   lastStartAt = Date.now();
+  // The repair classifier must only inspect output from this attempt. A prior
+  // failed start may contain an import error while this one fails for an
+  // unrelated reason (migration, port, or config).
+  recentStderr = '';
   // A new start attempt invalidates the prior stop attribution —
   // whether the previous death was intentional or a crash, the
   // user is now asking for a fresh boot. Reset so the next
@@ -623,6 +609,10 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 //   3. Clear the slot regardless — if the OS truly orphaned the child,
 //      we'd rather lose track of it than block app quit forever.
 export async function stopServer(): Promise<void> {
+  return withServerLifecycle(stopServerUnlocked);
+}
+
+async function stopServerUnlocked(): Promise<void> {
   // Allow the next start to re-resolve the port (re-derive the per-user port
   // and re-check whether anything is running there). ENG-439.
   _portResolved = false;
