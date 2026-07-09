@@ -65,8 +65,13 @@ const UNANCHORED_TIP =
   'This comment isn’t attached to a visible element — the page may have changed '
   + 'since it was left, or it renders differently on your device.';
 
+const HIDDEN_TIP =
+  'This comment is on a part of the page that isn’t shown right now (e.g. another '
+  + 'slide or tab) — it’ll reappear when you navigate there.';
+
 export function InboxCard({
   thread,
+  state,      // layer anchor state: 'hidden' | 'orphan' | undefined
   viewer,
   onStatus,
   onRequestDelete, // ({ threadId }) → panel confirms + dispatches
@@ -79,7 +84,10 @@ export function InboxCard({
   // Selector-less threads are unanchored here; the injected layer detects
   // selectors that no longer resolve (version drift) and shows its own orphan
   // notice inside the on-artifact popover.
-  const unanchored = !thread.selector;
+  // 'orphan' (selector no longer resolves) folds into the "unanchored" chip;
+  // 'hidden' (resolves but off-screen — e.g. another slide) gets its own chip.
+  const hidden = state === 'hidden';
+  const unanchored = !thread.selector || state === 'orphan';
   const mine = viewerCanEdit(thread.payload, viewer);
   const nReplies = threadReplies(thread).length;
   const repliesTxt = nReplies ? `${nReplies}${nReplies === 1 ? ' reply' : ' replies'}` : '';
@@ -92,8 +100,8 @@ export function InboxCard({
         'transition-colors hover:bg-[#EFEFF0] [&:has([data-popup-open])]:bg-[#EFEFF0]',
         done ? 'opacity-55' : '',
       ].join(' ')}
-      onMouseEnter={() => !unanchored && onHover?.(thread.id)}
-      onMouseLeave={() => !unanchored && onLeave?.(thread.id)}
+      onMouseEnter={() => !unanchored && !hidden && onHover?.(thread.id)}
+      onMouseLeave={() => !unanchored && !hidden && onLeave?.(thread.id)}
       onClick={() => onFocus?.(thread.id)}
     >
       {/* Head: avatar · name · time (+edited) */}
@@ -126,10 +134,18 @@ export function InboxCard({
       </div>
 
       {/* Foot: reply count · unanchored chip (only when there's something to say). */}
-      {(repliesTxt || unanchored) && (
+      {(repliesTxt || unanchored || hidden) && (
         <div className="flex items-center justify-between min-h-[16px]">
           <span className="text-[12px] leading-[16px] text-[#828285]">{repliesTxt}</span>
-          {unanchored && (
+          {hidden ? (
+            <Tooltip content={HIDDEN_TIP}>
+              <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
+                bg-[#EFEFF0] text-[#69696B] text-[12px] leading-[16px] cursor-default">
+                <InfoIcon />
+                <span>hidden</span>
+              </span>
+            </Tooltip>
+          ) : unanchored ? (
             <Tooltip content={UNANCHORED_TIP}>
               <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
                 bg-[#EFEFF0] text-[#69696B] text-[12px] leading-[16px] cursor-default">
@@ -137,7 +153,7 @@ export function InboxCard({
                 <span>unanchored</span>
               </span>
             </Tooltip>
-          )}
+          ) : null}
         </div>
       )}
 

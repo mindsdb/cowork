@@ -27,6 +27,9 @@ export function useArtifactCommentLayer(
   } = {},
 ) {
   const [mode, setMode] = useState(false); // comment-placement active in the iframe
+  // Per-thread anchor state reported by the layer: id -> 'hidden' | 'orphan'.
+  // Drives the inbox chips ("hidden" / "unanchored").
+  const [anchorStates, setAnchorStates] = useState({});
 
   // Keep the latest values addressable from the (stable) message listener.
   const threadsRef = useRef(threads);
@@ -85,6 +88,11 @@ export function useArtifactCommentLayer(
         case 'edit-reply': h.onEditReply && h.onEditReply(d.id, d.replyId, d.text); break;
         case 'delete-reply': h.onDeleteReply && h.onDeleteReply(d.id, d.replyId); break;
         case 'mode': setMode(!!d.active); break;
+        // Freeze while pins are hidden: "Hide comment" pushes an EMPTY list to
+        // the layer, which then reports an empty state map. Applying it would
+        // flicker the chips away (and re-enable hover) in an open inbox. Keep
+        // the last known states until pins — and the real list — come back.
+        case 'anchor-states': if (markersRef.current) setAnchorStates(d.states || {}); break;
         default: break;
       }
     };
@@ -109,7 +117,7 @@ export function useArtifactCommentLayer(
   const hlOn = useCallback((id) => postToLayer({ type: 'hl-on', commentId: id }), [postToLayer]);
   const hlOff = useCallback((id) => postToLayer({ type: 'hl-off', commentId: id }), [postToLayer]);
 
-  return { mode, onIframeLoad, exitMode, toggleMode, focus, hlOn, hlOff };
+  return { mode, anchorStates, onIframeLoad, exitMode, toggleMode, focus, hlOn, hlOff };
 }
 
 export default useArtifactCommentLayer;

@@ -823,6 +823,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
           <CommentsPanel
             threads={comments.threads}
+            anchorStates={layer.anchorStates}
             error={comments.error}
             expired={comments.expired}
             viewer={comments.viewer}

@@ -61,6 +61,7 @@ const TABS = [
 
 export function CommentsPanel({
   threads = [],
+  anchorStates = {},
   error = '',
   expired = false,
   viewer = null,
@@ -189,6 +190,7 @@ export function CommentsPanel({
           <InboxCard
             key={t.id}
             thread={t}
+            state={anchorStates[t.id]}
             viewer={viewer}
             onStatus={onStatus}
             onRequestDelete={setPendingDelete}
