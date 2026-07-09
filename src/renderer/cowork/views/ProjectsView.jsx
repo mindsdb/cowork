@@ -660,6 +660,7 @@ function ProjectDetail({
   attachments = [],
   connectors = [],
   onAttachFiles,
+  onAddGoogleDriveFiles,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -889,6 +890,7 @@ function ProjectDetail({
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
+              onAddGoogleDriveFiles={onAddGoogleDriveFiles}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
@@ -977,6 +979,7 @@ export default function ProjectsView({
   attachments = [],
   connectors = [],
   onAttachFiles,
+  onAddGoogleDriveFiles,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -1127,6 +1130,7 @@ export default function ProjectsView({
         connectors={connectors}
         onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
+        onAddGoogleDriveFiles={onAddGoogleDriveFiles}
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}

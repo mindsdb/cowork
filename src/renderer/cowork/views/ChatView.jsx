@@ -932,6 +932,7 @@ export default function ChatView({
   attachments,
   connectors,
   onAttachFiles,
+  onAddGoogleDriveFiles,
   disabledConnections,
   onUpdateConnectorMute,
   onRemoveAttachment,
@@ -1887,6 +1888,7 @@ export default function ChatView({
             connectors={connectors}
             onNavigateToConnectors={onNavigateToConnectors}
             onAttachFiles={onAttachFiles}
+            onAddGoogleDriveFiles={onAddGoogleDriveFiles}
             conversationId={task.id}
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}

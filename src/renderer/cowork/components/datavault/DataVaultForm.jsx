@@ -340,7 +340,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
           }}>
             <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>ℹ️</span>
             <span style={{ fontSize: 12.5, color: 'var(--info-text)', lineHeight: 1.55 }}>
-              This connection can access files it created, plus any existing files you pick yourself. Head to this connection's settings and use "Pick Drive files" to grant access to existing files or folders you'd like Cowork to work with.
+              This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Pick Drive files" in this connection's settings.
             </span>
           </div>
         )}

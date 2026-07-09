@@ -26,7 +26,7 @@ import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
-import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
+import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod, subscribe as subscribeDataVaultForm } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host, getAccessToken } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
@@ -119,6 +119,15 @@ function isPendingFileAttachment(a) {
   return !!(a && a.pendingFile instanceof File);
 }
 
+// Google-Drive-picked files aren't uploaded bytes — the agent reads them
+// directly via the connector's persisted `picked_files` grant (see
+// cowork-server's harness integration_guidance), independent of any one
+// message. The chip is a visual confirmation only, so it must never be
+// resolved to an upload or sent as a real attachment id.
+function isReferenceOnlyAttachment(a) {
+  return !!(a && a.source === 'gdrive');
+}
+
 function isAntonConfigError(message, event) {
   const text = String(message || '');
   return (
@@ -140,7 +149,8 @@ function normalizeAntonError(message, event) {
 async function resolveComposerAttachmentsForSend(projectName, sessionId, attachments) {
   const list = Array.isArray(attachments) ? attachments : [];
   const pending = list.filter(isPendingFileAttachment);
-  const rest = list.filter((a) => !isPendingFileAttachment(a));
+  const reference = list.filter(isReferenceOnlyAttachment);
+  const rest = list.filter((a) => !isPendingFileAttachment(a) && !isReferenceOnlyAttachment(a));
   if (pending.length) {
     if (!projectName || !sessionId) {
       throw new Error('Pick a project and use a saved conversation before sending file attachments.');
@@ -154,8 +164,28 @@ async function resolveComposerAttachmentsForSend(projectName, sessionId, attachm
     const files = pending.map((p) => p.pendingFile);
     uploaded = await uploadAttachments(files, { projectName, sessionId });
   }
-  const merged = [...rest, ...uploaded];
-  return { merged, attachmentIds: merged.map((x) => x.id) };
+  // `reference` chips ride along for display (so the sent message's chat
+  // history still shows which Drive files were relevant) but are excluded
+  // from attachmentIds — there is no backend attachment record for them.
+  const resolved = [...rest, ...uploaded];
+  const merged = [...resolved, ...reference];
+  return { merged, attachmentIds: resolved.map((x) => x.id), reference };
+}
+
+// Google-Drive-picked files carry no real attachment id (see
+// isReferenceOnlyAttachment above), so unlike a normal attachment the
+// agent gets no signal at all that a message's "this file" refers to
+// one of them. Named explicitly here so Anton can resolve the
+// reference — same hidden-context pattern as describeConnectFormState.
+function describeGoogleDriveReferenceFiles(reference) {
+  if (!reference?.length) return '';
+  const lines = reference.map((f) => `- ${f.name || 'untitled'} (Drive file id: ${f.driveFileId || f.id})`);
+  return [
+    '[Google Drive files added via the picker for this message — Anton-only context, do not echo back]',
+    'The user just added the following Google Drive file(s). When they refer to "this file"/"these files" '
+      + 'in the message above, they mean these — read them with files.get(fileId=...):',
+    ...lines,
+  ].join('\n');
 }
 
 function normalizeComposerDisabledConnections(list) {
@@ -2186,7 +2216,70 @@ function AppCore() {
       // No registry entry — fall back to the chat-agent flow.
       Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
     }
+    return tempId;
   };
+
+  // Opens the Google Picker for an already-connected google_drive
+  // connection and adds the chosen files as reference-only chips to
+  // whichever composer is currently visible (composerAttachments is
+  // shared across Home/Task/Projects — see resolveComposerAttachmentsForSend).
+  const addGoogleDriveFiles = useCallback(async () => {
+    const conn = connectors.find((c) => c.engine === 'google_drive');
+    if (!conn) return { ok: false, reason: 'Connect Google Drive first.' };
+    let accountEmail = '';
+    try {
+      const detail = await fetchSavedConnection('google_drive', conn.name);
+      accountEmail = detail?.fields?.account_email || '';
+    } catch {
+      return { ok: false, reason: 'Could not load the Google Drive connection.' };
+    }
+    if (!accountEmail) return { ok: false, reason: 'Google Drive connection is missing an account email.' };
+    const result = await host.pickDriveFiles('google_drive', conn.name, accountEmail);
+    if (!result?.ok) return { ok: false, reason: result?.reason || 'Google Drive picker failed.' };
+    const files = result.files || [];
+    if (files.length === 0) return { ok: true, files: [] };
+    setComposerAttachments((prev) => {
+      const seen = new Set(prev.map((a) => a.id));
+      const fresh = files
+        .map((f) => ({
+          id: `gdrive-${f.id}`,
+          source: 'gdrive',
+          name: f.name,
+          mime: f.mimeType,
+          driveFileId: f.id,
+          url: f.url,
+        }))
+        .filter((c) => !seen.has(c.id));
+      return fresh.length ? [...prev, ...fresh] : prev;
+    });
+    return { ok: true, files };
+  }, [connectors]);
+
+  // "+" menu entry point. Already connected → open the picker directly.
+  // Not connected → open the same imperative connect flow the connector
+  // picker uses, then auto-resume into the picker once that form reports
+  // success, so the user doesn't have to click "Add files" twice.
+  const handleAddGoogleDriveFiles = useCallback(async () => {
+    const isConnected = connectors.some((c) => c.engine === 'google_drive');
+    if (isConnected) {
+      const res = await addGoogleDriveFiles();
+      if (!res.ok) throw new Error(res.reason || 'Could not add Google Drive files.');
+      return;
+    }
+    const tempId = await handleConnectorPicked({ id: 'google_drive' });
+    if (!tempId) return;
+    const CONNECT_RESUME_TIMEOUT_MS = 5 * 60 * 1000;
+    let unsubscribe = () => {};
+    const timeoutId = setTimeout(() => unsubscribe(), CONNECT_RESUME_TIMEOUT_MS);
+    unsubscribe = subscribeDataVaultForm(tempId, (spec) => {
+      const engine = spec?.engine || spec?._connector_id;
+      if (!spec?._is_success || engine !== 'google_drive') return;
+      clearTimeout(timeoutId);
+      unsubscribe();
+      addGoogleDriveFiles();
+    });
+  }, [connectors, addGoogleDriveFiles, handleConnectorPicked]);
+
   // Keep the ref synced so the Cmd/Ctrl+N keydown handler always calls
   // the latest newTask closure (which captures fresh setRoute/setTasks).
   useEffect(() => { newTaskRef.current = newTask; });
@@ -2278,7 +2371,7 @@ function AppCore() {
   const handleRemoveAttachment = async (id) => {
     const target = composerAttachments.find((a) => a.id === id);
     setComposerAttachments((prev) => prev.filter((attachment) => attachment.id !== id));
-    if (target?.pendingFile) return;
+    if (target?.pendingFile || isReferenceOnlyAttachment(target)) return;
     try {
       await deleteAttachment(id);
     } catch {
@@ -2368,11 +2461,12 @@ function AppCore() {
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const taskId = hasPendingFiles ? allocateConversationId() : `tmp-${Date.now()}`;
 
-    const { merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
+    const { merged: sendingAttachments, attachmentIds, reference } = await resolveComposerAttachmentsForSend(
       effectiveProjectName,
       hasPendingFiles ? taskId : null,
       rawComposer,
     );
+    const sendText = reference.length ? `${text}\n\n${describeGoogleDriveReferenceFiles(reference)}` : text;
     setComposerAttachments([]);
 
     // Two-phase send so the new-task experience matches the in-chat
@@ -2477,7 +2571,7 @@ function AppCore() {
     trackAgentSessionStarted();
     trackFirstQuery();
     const streamGen = activeStreamGenerationRef.current;
-    const streamNewSessionFn = () => streamNewSession(text, {
+    const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: hasPendingFiles ? taskId : undefined,
       projectName: effectiveProjectName,
       projectPath: effectiveProjectPath,
@@ -2648,9 +2742,9 @@ function AppCore() {
       || null;
     const taskModel = currentTask.model || selectedModel?.id || null;
 
-    let sendingAttachments, attachmentIds;
+    let sendingAttachments, attachmentIds, driveReference;
     try {
-      ({ merged: sendingAttachments, attachmentIds } = await resolveComposerAttachmentsForSend(
+      ({ merged: sendingAttachments, attachmentIds, reference: driveReference } = await resolveComposerAttachmentsForSend(
         taskProjectName,
         id,
         // A drained queued item carries its own attachments; only a
@@ -2749,7 +2843,9 @@ function AppCore() {
      // keeps the original text — Anton-only context, never shown.
     const connectFormState = getDataVaultFormState(id);
     const connectContext = describeConnectFormState(connectFormState);
-    const sendText = connectContext ? `${text}\n\n${connectContext}` : text;
+    const driveContext = describeGoogleDriveReferenceFiles(driveReference);
+    const hiddenContext = [connectContext, driveContext].filter(Boolean).join('\n\n');
+    const sendText = hiddenContext ? `${text}\n\n${hiddenContext}` : text;
 
     // Tag this task as currently streaming so reconcileTaskMessages
     // can distinguish a real in-flight turn from a zombie placeholder.
@@ -3572,6 +3668,7 @@ function AppCore() {
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
+            onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
@@ -3605,6 +3702,7 @@ function AppCore() {
             attachments={composerAttachments}
             connectors={connectors}
             onAttachFiles={handleAttachFiles}
+            onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             disabledConnections={composerDisabledConnections}
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={handleComposerConnectorMute}
@@ -3660,6 +3758,7 @@ function AppCore() {
             connectors={connectors}
             onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
+            onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
