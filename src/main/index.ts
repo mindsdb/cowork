@@ -713,6 +713,23 @@ function setupIPC() {
     const key = `${engine}:${accountEmail}`;
     revokedConnections.add(key);
     stopRefreshLoop(engine, accountEmail);
+    // The refresh_token is the only thing that actually revokes the whole
+    // grant with Google — revoking an access_token (what cowork-server's
+    // own revoke() does below, since the vault never holds refresh_token)
+    // only invalidates that one short-lived token, leaving the underlying
+    // authorization — and any drive.file per-file grants tied to it —
+    // standing indefinitely. Electron is the only place that ever holds
+    // the real refresh_token, so this has to happen here, before it's
+    // deleted from the keychain.
+    try {
+      const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
+      if (refreshToken) {
+        await fetch(`https://oauth2.googleapis.com/revoke?${new URLSearchParams({ token: refreshToken })}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+      }
+    } catch {}
     try { await deleteRefreshToken(engine, accountEmail); } catch {}
     try {
       await fetch(
