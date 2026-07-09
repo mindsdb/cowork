@@ -4,6 +4,13 @@
    remote @import violates our CSP (style-src 'self' 'unsafe-inline').
    JetBrains Mono — the actual mono token — is bundled locally below. */
 
+/* One Inter file: the variable font. It carries an optical-size axis, so with
+   font-optical-sizing: auto (set on the body below) the browser renders the
+   text letterforms at small sizes and the display letterforms at large sizes
+   automatically — no separate 'Inter Display' faces needed. This is rsms's own
+   recommended setup. The static Inter / InterDisplay faces only matter for
+   browsers without variable-font support, which we don't target (Electron +
+   modern web), so they aren't bundled. */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -18,27 +25,6 @@
   font-display: swap;
   src: url('/fonts/InterVariable-Italic.woff2') format('woff2-variations');
 }
-@font-face {
-  font-family: 'Inter Display';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/InterDisplay-Bold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Inter Display';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/InterDisplay-SemiBold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Inter Display';
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url('/fonts/InterDisplay-ExtraBold.woff2') format('woff2');
-}
 /* ─── Design System Tokens ───────────────────────────────────────────────── */
 /* ─── Font stack — two families, three jobs ────────────────────────────────
    Per the design guideline:
@@ -46,10 +32,9 @@
                         --font-body both resolve to Inter; the display role is
                         just Inter at a heavier weight and its own tracking.
      · JetBrains Mono — strings (code, paths, IDs, kbd shortcuts, IDs)
-   We use the text cut of Inter (InterVariable, which optical-sizes itself)
-   rather than the Display cut, because every display surface in the app is
-   small UI chrome (13–18px). The Display cut is tuned for 28px+ and reads too
-   heavy and tight at these sizes. All faces are bundled at /fonts/. */
+   Inter is loaded once as the variable font (see above), which optical-sizes
+   itself, so headings and body share one family and stay consistent at every
+   size. All faces are bundled at /fonts/. */
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/JetBrainsMono-400.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/JetBrainsMono-500.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/JetBrainsMono-700.woff2') format('woff2'); }
@@ -387,6 +372,9 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Let InterVariable pick its optical size from the font-size — text
+     letterforms at small sizes, display letterforms for large headings. */
+  font-optical-sizing: auto;
   /* No background here — kit's gf-theme-{light,dark} on body controls
      window-level bg so the gravity-field canvas remains visible. */
   user-select: none;
