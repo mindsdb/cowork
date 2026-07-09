@@ -20,6 +20,11 @@ jobs:
     uses: ./.github/workflows/build-macos-pkg.yml
     with:
       build_kind: preview
+      # Preview builds test in-flight work, which lands on staging — so pull
+      # cowork-server + anton from staging, not the released main. Without this
+      # a preview build off a PR installs the server from main and can't
+      # validate a PR that needs a matching in-flight server change.
+      server_ref: staging
     secrets: inherit
 
   upload-macos:
@@ -37,6 +42,8 @@ jobs:
     uses: ./.github/workflows/build-windows-installer.yml
     with:
       build_kind: preview
+      # See build-macos above — preview pulls the server from staging.
+      server_ref: staging
     secrets: inherit
 
   upload-windows:
