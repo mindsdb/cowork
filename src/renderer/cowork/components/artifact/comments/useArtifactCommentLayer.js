@@ -9,16 +9,21 @@
 // It pushes the (normalized) comment set down whenever it changes or the layer
 // (re)announces readiness, dispatches the layer's mutation intents to the
 // shared useArtifactComments handlers, and returns imperative controls the
-// viewer/sidebar drive (comment-placement mode, go-to, hover highlight).
+// viewer/toolbar/inbox drive (comment-placement mode, go-to, hover highlight).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { normalizeThreadForLayer } from '../../lib/commentsReducer';
+import { normalizeThreadForLayer } from '../../../lib/commentsReducer';
 
 export function useArtifactCommentLayer(
   iframeRef,
   {
     threads, viewer, enabled, onCreate, onReply, onStatus,
     onEditThread, onDeleteThread, onEditReply, onDeleteReply,
+    // Pin visibility, owned by the comments toolbar's Hide/Show. The injected
+    // layer draws a pin for every thread in the pushed `list`, so we hide pins
+    // WITHOUT a server change by pushing an empty list; showing re-pushes the
+    // real set. Baked into every push so a (re)loading layer can't flash pins.
+    markersVisible = true,
   } = {},
 ) {
   const [mode, setMode] = useState(false); // comment-placement active in the iframe
@@ -28,6 +33,8 @@ export function useArtifactCommentLayer(
   threadsRef.current = threads;
   const viewerRef = useRef(viewer);
   viewerRef.current = viewer;
+  const markersRef = useRef(markersVisible);
+  markersRef.current = markersVisible;
   const handlersRef = useRef({});
   handlersRef.current = {
     onCreate, onReply, onStatus, onEditThread, onDeleteThread, onEditReply, onDeleteReply,
@@ -42,7 +49,9 @@ export function useArtifactCommentLayer(
   const sendList = useCallback(() => {
     postToLayer({
       type: 'list',
-      comments: (threadsRef.current || []).map(normalizeThreadForLayer),
+      comments: markersRef.current
+        ? (threadsRef.current || []).map(normalizeThreadForLayer)
+        : [], // "Hide comment": empty list clears the layer's pins (no server change)
       viewer: viewerRef.current || null,
     });
   }, [postToLayer]);
@@ -83,25 +92,24 @@ export function useArtifactCommentLayer(
     return () => window.removeEventListener('message', onMessage);
   }, [enabled, iframeRef, sendList]);
 
-  // Re-push the list whenever comments change. Best-effort: if the layer isn't
-  // live yet the message is dropped, but its 'ready' announcement will pull the
-  // current set, and every later change re-pushes.
+  // Re-push the list whenever comments OR marker visibility change. Best-effort:
+  // if the layer isn't live yet the message is dropped, but its 'ready'
+  // announcement will pull the current set, and every later change re-pushes.
   useEffect(() => {
     if (enabled) sendList();
-  }, [enabled, threads, sendList]);
+  }, [enabled, threads, markersVisible, sendList]);
 
   // A navigation inside the iframe re-injects the layer (which re-announces
   // 'ready'); re-push best-effort too, in case that message is missed.
   const onIframeLoad = useCallback(() => { if (enabled) sendList(); }, [enabled, sendList]);
 
-  const enterMode = useCallback(() => postToLayer({ type: 'enter-mode' }), [postToLayer]);
   const exitMode = useCallback(() => postToLayer({ type: 'exit-mode' }), [postToLayer]);
   const toggleMode = useCallback(() => postToLayer({ type: mode ? 'exit-mode' : 'enter-mode' }), [postToLayer, mode]);
   const focus = useCallback((id) => postToLayer({ type: 'focus', commentId: id }), [postToLayer]);
   const hlOn = useCallback((id) => postToLayer({ type: 'hl-on', commentId: id }), [postToLayer]);
   const hlOff = useCallback((id) => postToLayer({ type: 'hl-off', commentId: id }), [postToLayer]);
 
-  return { mode, onIframeLoad, enterMode, exitMode, toggleMode, focus, hlOn, hlOff };
+  return { mode, onIframeLoad, exitMode, toggleMode, focus, hlOn, hlOff };
 }
 
 export default useArtifactCommentLayer;

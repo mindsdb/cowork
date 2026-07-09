@@ -27,9 +27,12 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { usePublish } from './publish/usePublish';
 import { PublishMenu } from './publish/PublishMenu';
-import { CommentsPanel } from './CommentsPanel';
-import { useArtifactComments } from './useArtifactComments';
-import { useArtifactCommentLayer } from './useArtifactCommentLayer';
+import {
+  CommentsPanel,
+  CommentsToolbar,
+  useArtifactComments,
+  useArtifactCommentLayer,
+} from './comments';
 
 // Extensions we render inline with the lightweight text preview path
 // (server `/v1/artifacts/preview` → text body). `.md` gets the full
@@ -177,30 +180,44 @@ const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monosp
 // Ghost icon button shared by every top-bar affordance (folder, reload,
 // open-in-browser, kebab, close). forwardRef so it can be the render
 // target of a Base UI Tooltip/Menu trigger (those inject a ref).
+//
+// `active` gives a persistent toggled-on state (accent-tinted fill + accent
+// glyph) that survives mouse-leave — used by the comments switch so it reads
+// as on/off, not just a hover. Hover-idle colors are resolved from `active`
+// so the two states never fight over the inline background.
 const IconButton = forwardRef(function IconButton(
-  { size = 30, disabled = false, style, children, ...rest }, ref,
+  { size = 30, disabled = false, active = false, style, children, ...rest }, ref,
 ) {
+  const idleBg = active ? 'var(--accent-bg)' : 'transparent';
+  const idleFg = active ? 'var(--accent)' : 'var(--ink-3)';
   return (
     <button
       ref={ref}
       type="button"
       disabled={disabled}
+      aria-pressed={active}
       {...rest}
       style={{
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.4 : 1,
-        background: 'transparent', border: 0, color: 'var(--ink-3)',
+        background: idleBg, border: 0, color: idleFg,
         width: size, height: size, borderRadius: 8, flexShrink: 0,
         display: 'inline-grid', placeItems: 'center',
         transition: 'background .12s ease, color .12s ease',
         ...style,
       }}
       onMouseEnter={(e) => {
-        if (!disabled) { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }
+        if (!disabled) {
+          e.currentTarget.style.background = active
+            ? 'color-mix(in srgb, var(--accent) 22%, transparent)'
+            : 'var(--surface-2)';
+          e.currentTarget.style.color = active ? 'var(--accent)' : 'var(--ink)';
+        }
         rest.onMouseEnter?.(e);
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)';
+        e.currentTarget.style.background = idleBg;
+        e.currentTarget.style.color = idleFg;
         rest.onMouseLeave?.(e);
       }}
     >
@@ -270,7 +287,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // Manual-reload counter — bumped by the link-pill reload button to
   // force a fresh mount/fetch even when the artifact's mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
-  const [showComments, setShowComments] = useState(false);
+  // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
+  // shows/hides the floating comments toolbar; the toolbar owns the rest —
+  // comment-placement mode, the inbox sidebar, marker visibility, leaving.
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [markersShown, setMarkersShown] = useState(true);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -290,17 +312,23 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const commentReportId = _akParts.slice(1).join('/') || '';
 
   // Iframe handle + shared comments state. One `useArtifactComments` instance
-  // backs BOTH the sidebar list and the on-artifact marker layer (injected by
+  // backs BOTH the inbox panel and the on-artifact marker layer (injected by
   // cowork-server) — `useArtifactCommentLayer` bridges to that layer over
   // postMessage. Both stay dormant when comments are disabled.
   const iframeRef = useRef(null);
   const comments = useArtifactComments(commentUserDir, commentReportId, {
     enabled: open && commentsEnabled,
   });
+  // The injected layer owns the on-artifact UI (pins, hover highlight, thread
+  // popovers) and reports mode changes; this hook pushes the thread list down
+  // and exposes the imperative controls the toolbar + inbox drive. Marker
+  // visibility rides the pushed list (Hide comment ⇒ empty list ⇒ no pins),
+  // so it works against the layer without a server change.
   const layer = useArtifactCommentLayer(iframeRef, {
     threads: comments.threads,
     viewer: comments.viewer,
     enabled: open && commentsEnabled,
+    markersVisible: commentsOpen && markersShown,
     onCreate: comments.create,
     onReply: comments.reply,
     onStatus: comments.setStatus,
@@ -309,6 +337,18 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     onEditReply: comments.editReply,
     onDeleteReply: comments.deleteReply,
   });
+
+  // One switch for the whole comments chrome. Opening resets to the default
+  // sub-state (markers on, inbox closed); closing also drops the iframe out of
+  // comment-placement mode so no pin cursor lingers on a "plain" preview.
+  const toggleComments = () => {
+    setCommentsOpen((was) => {
+      if (was) layer.exitMode();
+      setInboxOpen(false);
+      setMarkersShown(true);
+      return !was;
+    });
+  };
 
   const isText = _isTextArtifact(artifact);
   const textExt = isText
@@ -632,25 +672,14 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
         {/* Right — publish · more · close */}
         <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+          {/* Single comments switch — everything else (mode, inbox, marker
+              visibility, leaving) lives on the floating CommentsToolbar. */}
           {commentsEnabled && (previewKind === 'static' || previewKind === 'proxy') && (
-            <Tooltip label="Comment on element">
-              <IconButton
-                aria-label="Comment on element"
-                title="Click an element to comment on it"
-                onClick={() => layer.toggleMode()}
-                style={layer.mode ? { color: 'var(--accent)' } : undefined}
-              >
-                {Ico.pin(18)}
-              </IconButton>
-            </Tooltip>
-          )}
-          {commentsEnabled && (
-            <Tooltip label="Comments">
+            <Tooltip content={commentsOpen ? 'Hide comments' : 'Comments'}>
               <IconButton
                 aria-label="Comments"
-                title="Comments"
-                onClick={() => setShowComments((v) => !v)}
-                style={showComments ? { color: 'var(--accent)' } : undefined}
+                onClick={toggleComments}
+                active={commentsOpen}
               >
                 {Ico.chats(18)}
               </IconButton>
@@ -776,23 +805,33 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           </>
         )}
       </div>
-        {showComments && commentsEnabled && commentUserDir && commentReportId && (
+        {/* Comments chrome: the floating toolbar drives everything; the inbox
+            sidebar opens from its tray button. */}
+        {commentsOpen && commentsEnabled && (
+          <CommentsToolbar
+            mode={layer.mode}
+            onToggleMode={layer.toggleMode}
+            inboxOpen={inboxOpen}
+            onToggleInbox={() => setInboxOpen((v) => !v)}
+            markersShown={markersShown}
+            onToggleMarkers={() => setMarkersShown((v) => !v)}
+            onClose={toggleComments}
+          />
+        )}
+        {/* The panel is a thread INBOX (summaries + resolve/delete); composing,
+            replying, and editing all happen in the on-artifact popover. */}
+        {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
           <CommentsPanel
             threads={comments.threads}
             error={comments.error}
             expired={comments.expired}
             viewer={comments.viewer}
-            onCreate={comments.create}
-            onReply={comments.reply}
             onStatus={comments.setStatus}
-            onEditThread={comments.editThread}
             onDeleteThread={comments.deleteThread}
-            onEditReply={comments.editReply}
-            onDeleteReply={comments.deleteReply}
             onHoverThread={layer.hlOn}
             onLeaveThread={layer.hlOff}
             onFocusThread={layer.focus}
-            onClose={() => setShowComments(false)}
+            onClose={() => setInboxOpen(false)}
           />
         )}
       </div>

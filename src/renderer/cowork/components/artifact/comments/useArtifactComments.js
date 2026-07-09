@@ -18,8 +18,8 @@ import {
   listCommentThreads,
   openCommentsStream,
   setCommentThreadStatus,
-} from '../../api';
-import { maxUpdatedAt, upsertThread } from '../../lib/commentsReducer';
+} from '../../../api';
+import { maxUpdatedAt, upsertThread } from '../../../lib/commentsReducer';
 
 export function useArtifactComments(userDir, reportId, { enabled = true } = {}) {
   const [threads, setThreads] = useState([]);
