@@ -60,6 +60,7 @@ interface AntonTronAPI {
     ok: boolean;
     reason?: string;
     files?: Array<{ id: string; name: string; mimeType?: string; iconUrl?: string; url?: string; resourceKey?: string | null }>;
+    newFiles?: Array<{ id: string; name: string; mimeType?: string; iconUrl?: string; url?: string; resourceKey?: string | null }>;
     failed?: Array<{ id: string; name: string; reason: string }>;
   }>;
   oauthCancelPicker: () => Promise<boolean>;

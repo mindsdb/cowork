@@ -933,6 +933,9 @@ export default function ChatView({
   connectors,
   onAttachFiles,
   onAddGoogleDriveFiles,
+  onAddGoogleDriveProjectFiles,
+  onFetchGoogleDriveProjectFiles,
+  onRemoveGoogleDriveProjectFile,
   disabledConnections,
   onUpdateConnectorMute,
   onRemoveAttachment,
@@ -1991,6 +1994,9 @@ export default function ChatView({
           project={project}
           conversationId={task?.id}
           refreshKey={contextRefreshKey}
+          onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
+          onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
         />
       </aside>
 

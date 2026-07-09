@@ -216,9 +216,78 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
   );
 }
 
-export function ContextCard({ project, conversationId, refreshKey = 0 }) {
+// A Google-Drive-picked file, reference-only — no bytes ever land in
+// the project folder. Clicking opens the file in Drive itself rather
+// than the ContextFileModal preview, since there's no local content to
+// show.
+function DriveReferenceRow({ file, onRequestDelete }) {
+  const openInDrive = () => { if (file.url) host.openExternal(file.url); };
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={openInDrive}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInDrive(); } }}
+      title={`Open "${file.name}" in Google Drive`}
+      className={clsx(
+        'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
+        'cursor-pointer transition-colors hover:bg-surface-2',
+        'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
+      )}
+      style={{ gridTemplateColumns: '14px minmax(0,1fr) auto', font: 'inherit' }}
+    >
+      <span className="text-ink-4 inline-flex flex-none">{Ico.googleDrive(13)}</span>
+      <span className="block truncate text-[12.5px] text-ink min-w-0">{file.name || 'untitled'}</span>
+      {/* Both actions show together on hover — unlike ContextFileRow's
+          single age/trash swap, there's no "normal" state content to
+          protect here, so open + delete can just sit side by side. */}
+      <span className={clsx(
+        'inline-flex items-center gap-1 flex-none transition-opacity',
+        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+      )}>
+        <span
+          role="button"
+          tabIndex={-1}
+          aria-hidden
+          title="Open in Google Drive"
+          className="text-ink-4 inline-flex items-center justify-center"
+        >
+          {Ico.externalLink(11)}
+        </span>
+        {onRequestDelete && (
+          <button
+            type="button"
+            aria-label={`Remove ${file.name || 'file'} from project files`}
+            title="Remove from project files"
+            onClick={(e) => {
+              // Don't let the click bubble up to the row — that would
+              // open the file in Drive instead of confirming a delete.
+              e.stopPropagation();
+              onRequestDelete(file);
+            }}
+            className={clsx(
+              'inline-flex items-center justify-center rounded',
+              'text-ink-4 hover:text-danger',
+              'bg-transparent border-0 cursor-pointer p-0',
+            )}
+          >
+            {Ico.trash(13)}
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoogleDriveFiles, onFetchGoogleDriveFiles, onRemoveGoogleDriveFile }) {
   const [sections, setSections] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
+  // Google Drive files the user picked via "Attach Google Drive files"
+  // below — reference-only (name + link), never downloaded. They live
+  // on the connection's picked_files grant, not in the project folder,
+  // so they're tracked separately from `projectFiles` and merged only
+  // at render time.
+  const [driveFiles, setDriveFiles] = useState([]);
   const [sessionAttachments, setSessionAttachments] = useState([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [attachmentsError, setAttachmentsError] = useState(null);
@@ -242,6 +311,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   // drilling up to App.jsx — the delete is internal to the rail
   // and doesn't need to participate in app-level routing.
   const [pendingDeleteFile, setPendingDeleteFile] = useState(null);
+  const [pendingDeleteDriveFile, setPendingDeleteDriveFile] = useState(null);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
@@ -358,6 +428,21 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
     reloadFiles();
   }, [project?.name, reloadFiles]);
 
+  // Google Drive reference files aren't project-scoped (they live on
+  // the connection's picked_files grant), so this doesn't depend on
+  // `project.name` the way reloadFiles does — just refetch whenever
+  // the card mounts or something asks it to refresh.
+  const reloadDriveFiles = useCallback(() => {
+    if (!onFetchGoogleDriveFiles) { setDriveFiles([]); return; }
+    onFetchGoogleDriveFiles()
+      .then((res) => setDriveFiles(Array.isArray(res?.files) ? res.files : []))
+      .catch(() => setDriveFiles([]));
+  }, [onFetchGoogleDriveFiles]);
+
+  useEffect(() => {
+    reloadDriveFiles();
+  }, [reloadDriveFiles, refreshKey]);
+
   const sessionRelevant = conversationId
     && !String(conversationId).startsWith('tmp-')
     && !!project?.name;
@@ -427,6 +512,8 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
 
   const totalMemoryFiles = useMemo(() => ordered.reduce((n, s) => n + s.files.length, 0), [ordered]);
   const hasProjectFiles = projectFiles.length > 0;
+  const hasDriveFiles = driveFiles.length > 0;
+  const hasAnyProjectFiles = hasProjectFiles || hasDriveFiles;
 
   // Suppress the whole card only when there's truly nothing to act
   // on AND no project to upload into. Inside a project we always
@@ -434,7 +521,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
   // upload affordance is reachable on a fresh project too.
   const blockGlobalEmpty = !project?.name
     && totalMemoryFiles === 0
-    && !hasProjectFiles
+    && !hasAnyProjectFiles
     && !sessionRelevant;
 
   // Drag OS files onto the context card to add them as PROJECT files.
@@ -478,24 +565,37 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center justify-between px-1 mb-1">
             <span className="font-display text-[10.5px] font-semibold uppercase tracking-widest text-ink-4">
-              Project files{projectFiles.length > 1 ? ` · ${projectFiles.length}` : ''}
+              Project files{(projectFiles.length + driveFiles.length) > 1 ? ` · ${projectFiles.length + driveFiles.length}` : ''}
             </span>
-            <button
-              type="button"
-              aria-label="Add files to this project"
+            <OverflowMenu
+              icon={Ico.plus(13)}
+              label="Add files to this project"
               title={uploadBusy ? 'Uploading…' : 'Add files to this project'}
               disabled={uploadBusy}
-              onClick={() => fileInputRef.current?.click()}
-              className={clsx(
-                'inline-flex items-center justify-center',
-                'h-5 w-5 rounded',
-                'text-ink-4 hover:text-ink hover:bg-surface-2',
-                'transition-colors bg-transparent border-0 cursor-pointer',
-                'disabled:opacity-50 disabled:cursor-wait',
-              )}
-            >
-              {Ico.plus(13)}
-            </button>
+              width={220}
+              triggerClassName="h-5 w-5 justify-center rounded hover:bg-surface-2"
+              items={[
+                {
+                  id: 'attach-computer',
+                  label: 'Attach files',
+                  icon: Ico.upload(13),
+                  onClick: () => fileInputRef.current?.click(),
+                },
+                onAddGoogleDriveFiles && {
+                  id: 'attach-gdrive',
+                  label: 'Attach Google Drive files',
+                  icon: Ico.googleDrive(13),
+                  onClick: () => {
+                    setUploadBusy(true);
+                    setUploadError('');
+                    Promise.resolve(onAddGoogleDriveFiles())
+                      .then(() => reloadDriveFiles())
+                      .catch((err) => setUploadError(err?.message || 'Could not add Google Drive files.'))
+                      .finally(() => setUploadBusy(false));
+                  },
+                },
+              ].filter(Boolean)}
+            />
           </div>
           {/* Hidden file input — driven by the visible "+" button so
               we get the OS file picker for free. `multiple` matches
@@ -528,7 +628,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
               {uploadError}
             </p>
           )}
-          {!hasProjectFiles && !uploadBusy && (
+          {!hasAnyProjectFiles && !uploadBusy && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -542,13 +642,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
               <span>Add files to give the agent context.</span>
             </button>
           )}
-          {hasProjectFiles && (
+          {hasAnyProjectFiles && (
             <div
               className={clsx(
                 'flex flex-col gap-0.5',
-                projectFiles.length > 10 && 'overflow-y-auto pr-1 scroll-clean',
+                (projectFiles.length + driveFiles.length) > 10 && 'overflow-y-auto pr-1 scroll-clean',
               )}
-              style={projectFiles.length > 10 ? { maxHeight: 220 } : undefined}
+              style={(projectFiles.length + driveFiles.length) > 10 ? { maxHeight: 220 } : undefined}
             >
               {projectFiles.map((f) => (
                 <ContextFileRow
@@ -556,6 +656,13 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
                   file={f}
                   onOpen={() => setOpenFile(f)}
                   onRequestDelete={(file) => setPendingDeleteFile(file)}
+                />
+              ))}
+              {driveFiles.map((f) => (
+                <DriveReferenceRow
+                  key={`gdrive-${f.id}`}
+                  file={f}
+                  onRequestDelete={(file) => setPendingDeleteDriveFile(file)}
                 />
               ))}
             </div>
@@ -870,6 +977,35 @@ export function ContextCard({ project, conversationId, refreshKey = 0 }) {
             setUploadError(err?.message || 'Could not delete file.');
             // Restore by refetching the canonical list from server.
             reloadFiles();
+          }
+        }}
+      />
+
+      {/* Same pattern as the real-file delete above — optimistic
+          remove, reloadDriveFiles() to self-correct on failure. This
+          only revokes our own picked_files bookkeeping; the file
+          itself is untouched in Drive. */}
+      <ConfirmModal
+        open={!!pendingDeleteDriveFile}
+        title={`Remove "${pendingDeleteDriveFile?.name || 'file'}" from project files?`}
+        message="Cowork will no longer have access to this file. The file itself is not affected in Google Drive."
+        confirmLabel="Remove"
+        cancelLabel="Keep"
+        destructive
+        onClose={() => setPendingDeleteDriveFile(null)}
+        onConfirm={async () => {
+          const target = pendingDeleteDriveFile;
+          setPendingDeleteDriveFile(null);
+          if (!target || !onRemoveGoogleDriveFile) return;
+          setDriveFiles((prev) => prev.filter((f) => f.id !== target.id));
+          try {
+            const res = await onRemoveGoogleDriveFile(target.id);
+            if (!res?.ok) throw new Error(res?.reason || 'Could not remove file.');
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[context] remove drive file failed', err);
+            setUploadError(err?.message || 'Could not remove file.');
+            reloadDriveFiles();
           }
         }}
       />

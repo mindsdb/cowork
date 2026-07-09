@@ -433,7 +433,10 @@ export interface FailedDrivePick {
 export interface DrivePickerResult {
   ok: boolean;
   reason?: string;
+  /** The connection's full accumulated grant — every file ever picked. */
   files?: DrivePickerFile[];
+  /** Only the file(s) the user selected in THIS picker session. */
+  newFiles?: DrivePickerFile[];
   failed?: FailedDrivePick[];
 }
 

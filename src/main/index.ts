@@ -688,7 +688,7 @@ function setupIPC() {
     // Nothing new picked (user cancelled) — return the existing persisted
     // list untouched rather than wiping it.
     if (newFiles.length === 0) {
-      return { ok: true, files: await getPickedFiles(engine, name) };
+      return { ok: true, files: await getPickedFiles(engine, name), newFiles: [] };
     }
     // The picker's PICKED callback firing doesn't guarantee Google actually
     // completed the per-file grant — confirm each file is readable with the
@@ -699,7 +699,12 @@ function setupIPC() {
     const files = verified.length > 0
       ? await savePickedFiles(engine, name, verified)
       : await getPickedFiles(engine, name);
-    return { ok: true, files, failed };
+    // `files` is the connection's full accumulated grant (every file ever
+    // picked) — correct for CustomizeView's "everything this app can
+    // access" list, but callers that want "what did the user just pick in
+    // THIS session" (e.g. attaching to the current message) need `verified`
+    // on its own, not the merged history.
+    return { ok: true, files, newFiles: verified, failed };
   });
 
   ipcMain.handle(IPC.OAUTH_CANCEL_PICKER, () => {
