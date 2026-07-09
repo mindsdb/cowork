@@ -1,26 +1,25 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Two projects so main-process tests run in `node` and renderer tests run in
-// `happy-dom` — one `npm test`, correct env per file. See qa.md §4.
-//
-// `setupFiles` is declared in EACH project (not root): in Vitest's projects
-// model, root-level project-scoped options do not reliably merge into
-// projects, so listing it per project guarantees the env scrub runs for
-// main-process tests too — not only renderer.
+// Two projects: main (node env) and renderer (happy-dom).
+// setupFiles must be listed per project — root-level ones don't reach projects.
 export default defineConfig({
   plugins: [react()],
   test: {
-    // Coverage floors: set from MEASURED values
+    // Floors are measured values — raise them as coverage grows, never lower.
+    // `include` = whole src tree, so new untested modules count against them.
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary'],
+      include: ['src/**/*.{ts,tsx,js,jsx}'],
+      exclude: ['**/*.test.*', '**/*.d.ts', 'src/**/main.tsx', 'src/**/*.config.*'],
       thresholds: {
-        statements: 48,
-        branches: 42,
-        lines: 50,
+        statements: 1.6,
+        branches: 1.5,
+        lines: 1.7,
         'src/main/update-logic.ts': { statements: 100, branches: 100 },
         'src/main/server-source.ts': { statements: 100, branches: 90 },
+        'src/renderer/platform/host.ts': { statements: 38, branches: 32 },
       },
     },
     projects: [
