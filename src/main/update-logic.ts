@@ -164,6 +164,42 @@ export function looksLikeBrokenInstall(log: string | null | undefined): boolean 
 }
 
 // ---------------------------------------------------------------------------
+// Update-poll apply decision
+// ---------------------------------------------------------------------------
+
+export interface UpdateApplyDecision {
+  applyServer: boolean;
+  applyUi: boolean;
+}
+
+/** Decide what a boot/periodic update poll should actually apply.
+ *
+ *  - A **down server** is a recovery case: apply an available server update
+ *    regardless of update mode or whether this is the boot check — a newer
+ *    build may be what fixes the crash. This is why the boot update check must
+ *    not be gated behind a successful server start.
+ *  - Otherwise updates auto-apply only on the boot check in `auto` mode; a
+ *    `manual` mode or a periodic re-check just surfaces a banner (caller).
+ *
+ *  UI never force-applies on a down server — a dead backend is a server
+ *  problem, and forcing a UI swap + reload mid-recovery adds churn without
+ *  fixing anything. */
+export function decideUpdateApply(input: {
+  serverUpdateAvailable: boolean;
+  uiUpdateAvailable: boolean;
+  serverDown: boolean;
+  isBootCheck: boolean;
+  mode: 'auto' | 'manual';
+}): UpdateApplyDecision {
+  const { serverUpdateAvailable, uiUpdateAvailable, serverDown, isBootCheck, mode } = input;
+  const autoOk = isBootCheck && mode === 'auto';
+  return {
+    applyServer: serverUpdateAvailable && (serverDown || autoOk),
+    applyUi: uiUpdateAvailable && autoOk,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // UI OTA manifest
 // ---------------------------------------------------------------------------
 

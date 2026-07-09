@@ -10,6 +10,7 @@ import {
   decidePypiUpdate,
   parseUiManifest,
   looksLikeBrokenInstall,
+  decideUpdateApply,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -280,5 +281,44 @@ describe('looksLikeBrokenInstall', () => {
     expect(looksLikeBrokenInstall('')).toBe(false);
     expect(looksLikeBrokenInstall(undefined)).toBe(false);
     expect(looksLikeBrokenInstall(null)).toBe(false);
+  });
+});
+
+describe('decideUpdateApply', () => {
+  const base = {
+    serverUpdateAvailable: true,
+    uiUpdateAvailable: true,
+    serverDown: false,
+    isBootCheck: true,
+    mode: 'auto' as const,
+  };
+
+  it('auto mode boot check applies both server and UI', () => {
+    expect(decideUpdateApply(base)).toEqual({ applyServer: true, applyUi: true });
+  });
+
+  it('manual mode with a healthy server applies nothing (banner only)', () => {
+    expect(decideUpdateApply({ ...base, mode: 'manual' })).toEqual({ applyServer: false, applyUi: false });
+  });
+
+  it('periodic re-check (not boot) applies nothing even in auto mode', () => {
+    expect(decideUpdateApply({ ...base, isBootCheck: false })).toEqual({ applyServer: false, applyUi: false });
+  });
+
+  it('a DOWN server applies an available server update regardless of mode', () => {
+    // The recovery case: manual mode, and even a periodic (non-boot) check.
+    expect(decideUpdateApply({ ...base, serverDown: true, mode: 'manual' }).applyServer).toBe(true);
+    expect(decideUpdateApply({ ...base, serverDown: true, mode: 'manual', isBootCheck: false }).applyServer).toBe(true);
+  });
+
+  it('never force-applies UI just because the server is down', () => {
+    // A dead backend is a server problem; forcing a UI swap adds churn.
+    expect(decideUpdateApply({ ...base, serverDown: true, mode: 'manual' }).applyUi).toBe(false);
+  });
+
+  it('applies nothing when there is nothing to apply, even for a down server', () => {
+    expect(
+      decideUpdateApply({ ...base, serverUpdateAvailable: false, uiUpdateAvailable: false, serverDown: true }),
+    ).toEqual({ applyServer: false, applyUi: false });
   });
 });

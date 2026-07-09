@@ -1294,31 +1294,34 @@ app.whenReady().then(async () => {
       }
     }
     resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
-    if (!result.ok) {
-      console.error(`[server] start failed: ${result.reason}`);
-    } else {
+    if (result.ok) {
       console.log(`[server] running on http://127.0.0.1:${result.port}`);
-
       // Resume refresh loops for Google OAuth connections already in the
       // vault from prior sessions — fire-and-forget, failures are per-entry.
       startOrphanRefreshLoops().catch(() => {});
-      // Background update check — runs after the server is already
-      // serving so users aren't blocked. If a newer version is found
-      // on PyPI, stops the server, upgrades, and restarts. Rolls back
-      // automatically if the new version fails the health probe.
+    } else {
+      console.error(`[server] start failed: ${result.reason}`);
+    }
 
-      setUpdateNotifier((payload) => {
-        mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
-      });
+    // Wire the update checker regardless of whether the server booted. A
+    // server that can't start is the case that MOST needs an update — a newer
+    // build may be exactly what fixes the crash — so the boot check must not be
+    // gated behind a successful start. When the server is down, the poll
+    // applies an available server update even in manual mode (recovery, not a
+    // routine update); a healthy server still honors the auto/manual setting.
+    // maybeUpdateServer rolls back automatically if the new version also fails
+    // its health probe, so this can't strand a previously-working install.
+    setUpdateNotifier((payload) => {
+      mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
+    });
 
-      const devMode = getDevMode();
-      if (app.isPackaged && !devMode && mainWindow) {
-        initUpdater(() => mainWindow, rendererReady, getUpdateMode);
-      } else if (!app.isPackaged) {
-        console.log('[updater] skipped — not a packaged build');
-      } else if (devMode) {
-        console.log(`[updater] skipped — DEV_MODE=${devMode}`);
-      }
+    const devMode = getDevMode();
+    if (app.isPackaged && !devMode && mainWindow) {
+      initUpdater(() => mainWindow, rendererReady, getUpdateMode);
+    } else if (!app.isPackaged) {
+      console.log('[updater] skipped — not a packaged build');
+    } else if (devMode) {
+      console.log(`[updater] skipped — DEV_MODE=${devMode}`);
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);
