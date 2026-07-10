@@ -62,9 +62,10 @@ linux:
   # Avoid the legacy package.json name ("anton") leaking into the package
   # name, /opt path, and binary.
   executableName: mindshub-cowork
+  # No arch list: build for the host arch only. Native modules (keytar)
+  # can't be cross-compiled, so CI builds each arch on its own runner.
   target:
     - target: deb
-      arch: [x64, arm64]
 
 deb:
   packageName: mindshub-cowork

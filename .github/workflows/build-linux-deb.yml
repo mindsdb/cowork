@@ -1,5 +1,9 @@
 name: Build Linux deb
 
+# One job per architecture, each on a native runner: keytar (and any other
+# native module) cannot be cross-compiled, so amd64 and arm64 are built and
+# rebuilt against Electron on their own arch.
+
 on:
   workflow_call:
     inputs:
@@ -7,13 +11,30 @@ on:
         description: preview | stable | prod
         required: true
         type: string
+      server_ref:
+        description: "cowork-server and anton git branch/tag (empty = main)"
+        required: false
+        type: string
+        default: ""
+      minds_api_url:
+        description: "MindsHub API base URL (empty = https://api.mindshub.ai)"
+        required: false
+        type: string
+        default: ""
+      app_version:
+        description: >-
+          App display version baked into the renderer as __APP_VERSION__.
+          Prod builds pass the CalVer release tag (e.g. v2.26.7.1.1).
+          Staging/dev builds omit this and fall back to git describe.
+        required: false
+        type: string
     outputs:
       artifact_name_amd64:
         description: Final amd64 deb file name (uploaded as the artifact name)
-        value: ${{ jobs.build.outputs.artifact_name_amd64 }}
+        value: ${{ jobs.build-amd64.outputs.artifact_name }}
       artifact_name_arm64:
         description: Final arm64 deb file name (uploaded as the artifact name)
-        value: ${{ jobs.build.outputs.artifact_name_arm64 }}
+        value: ${{ jobs.build-arm64.outputs.artifact_name }}
     secrets:
       GOOGLE_DRIVE_CLIENT_ID:
         required: false
@@ -43,14 +64,16 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-amd64:
     runs-on: ubuntu-latest
     outputs:
-      artifact_name_amd64: ${{ steps.name.outputs.artifact_name_amd64 }}
-      artifact_name_arm64: ${{ steps.name.outputs.artifact_name_arm64 }}
+      artifact_name: ${{ steps.name.outputs.artifact_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # gen-build-channel.mjs (prebuild:main) needs tags for git describe.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -87,51 +110,174 @@ jobs:
               json.dump(creds, f)
           "
 
-      # Unsigned, matching the Windows posture pre-signing. The debs MUST be
-      # built on a Linux runner — cross-building from macOS silently produces
-      # corrupt archives (see docs/linux-deb-package.md).
-      - name: Build Linux debs
+      - name: Write build config (controls which cowork data home the app uses)
+        run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
+
+      - name: Build Linux deb (unsigned)
         run: npm run dist:linux
         env:
+          COWORK_SERVER_REF: ${{ inputs.server_ref }}
+          ANTON_REF: ${{ inputs.server_ref }}
+          VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
+          VITE_APP_VERSION: ${{ inputs.app_version }}
           VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
 
-      - name: Compute artifact names
+      - name: Compute artifact name
         id: name
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
+          # gen-build-channel.mjs (prebuild:main) resolves the display version once
+          # during the build and writes it here, so the filename matches the version
+          # the app reports (__APP_VERSION__). Fall back to package.json if absent.
+          VERSION_FILE="src/main/app-version.gen.txt"
+          if [ -s "$VERSION_FILE" ]; then
+            VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
           SHA="${GITHUB_SHA::7}"
+          # Untagged builds carry `git describe`'s <tag>-<N>-g<sha> suffix; the
+          # preview/stable names already append -${SHA}, so strip that suffix to
+          # avoid the commit sha appearing twice. A clean release tag (prod) has
+          # no such suffix, so this is a no-op there.
+          VERSION_FN="$VERSION"
           case "${{ inputs.build_kind }}" in
-            preview) BASE="mindshub-cowork-${VERSION}-preview-${SHA}" ;;
-            stable)  BASE="mindshub-cowork-${VERSION}-stable-${SHA}"  ;;
-            prod)    BASE="mindshub-cowork-${VERSION}" ;;
+            preview|stable) VERSION_FN=$(printf '%s' "$VERSION" | sed -E 's/-[0-9]+-g[0-9a-f]+$//') ;;
+          esac
+          case "${{ inputs.build_kind }}" in
+            preview) NAME="mindshub-cowork-${VERSION_FN}-preview-${SHA}-amd64.deb" ;;
+            stable)  NAME="mindshub-cowork-${VERSION_FN}-stable-${SHA}-amd64.deb"  ;;
+            prod)    NAME="mindshub-cowork-${VERSION}-amd64.deb" ;;
             *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
           esac
-          echo "artifact_name_amd64=${BASE}-amd64.deb" >> "$GITHUB_OUTPUT"
-          echo "artifact_name_arm64=${BASE}-arm64.deb" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Computed artifact names: ${BASE}-amd64.deb ${BASE}-arm64.deb"
+          echo "artifact_name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "Computed artifact name: ${NAME}"
 
-      # One directory per arch: the S3 upload workflow expects an artifact
-      # whose name equals the single file it contains.
-      - name: Stage debs for upload
+      - name: Stage deb for upload
         run: |
           set -euo pipefail
-          VERSION="${{ steps.name.outputs.version }}"
-          mkdir -p out-amd64 out-arm64
-          mv "release/mindshub-cowork_${VERSION}_amd64.deb" "out-amd64/${{ steps.name.outputs.artifact_name_amd64 }}"
-          mv "release/mindshub-cowork_${VERSION}_arm64.deb" "out-arm64/${{ steps.name.outputs.artifact_name_arm64 }}"
+          shopt -s nullglob
+          DEBS=(release/*_amd64.deb)
+          if [ ${#DEBS[@]} -ne 1 ]; then
+            echo "::error::Expected exactly one amd64 deb in release/, found ${#DEBS[@]}"
+            ls -la release || true
+            exit 1
+          fi
+          mkdir -p out
+          mv "${DEBS[0]}" "out/${{ steps.name.outputs.artifact_name }}"
 
-      - name: Upload amd64 deb artifact
+      - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.name.outputs.artifact_name_amd64 }}
-          path: out-amd64/
+          name: ${{ steps.name.outputs.artifact_name }}
+          path: out/
           if-no-files-found: error
 
-      - name: Upload arm64 deb artifact
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      artifact_name: ${{ steps.name.outputs.artifact_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # gen-build-channel.mjs (prebuild:main) needs tags for git describe.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=optional
+
+      - name: Write server credentials
+        env:
+          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
+          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
+          GOOGLE_CALENDAR_CLIENT_ID: ${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}
+          GOOGLE_CALENDAR_CLIENT_SECRET: ${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID }}
+          GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
+          GOOGLE_ANALYTICS_CLIENT_ID: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_ID }}
+          GOOGLE_ANALYTICS_CLIENT_SECRET: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_SECRET }}
+        run: |
+          python3 -c "
+          import os, json
+          creds = {k: os.environ.get(k, '') for k in [
+            'GOOGLE_DRIVE_CLIENT_ID', 'GOOGLE_DRIVE_CLIENT_SECRET',
+            'GOOGLE_CALENDAR_CLIENT_ID', 'GOOGLE_CALENDAR_CLIENT_SECRET',
+            'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
+            'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET',
+            'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
+          ]}
+          with open('server-credentials.json', 'w') as f:
+              json.dump(creds, f)
+          "
+
+      - name: Write build config (controls which cowork data home the app uses)
+        run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
+
+      - name: Build Linux deb (unsigned)
+        run: npm run dist:linux
+        env:
+          COWORK_SERVER_REF: ${{ inputs.server_ref }}
+          ANTON_REF: ${{ inputs.server_ref }}
+          VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
+          VITE_APP_VERSION: ${{ inputs.app_version }}
+          VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN }}
+
+      - name: Compute artifact name
+        id: name
+        run: |
+          set -euo pipefail
+          # gen-build-channel.mjs (prebuild:main) resolves the display version once
+          # during the build and writes it here, so the filename matches the version
+          # the app reports (__APP_VERSION__). Fall back to package.json if absent.
+          VERSION_FILE="src/main/app-version.gen.txt"
+          if [ -s "$VERSION_FILE" ]; then
+            VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          SHA="${GITHUB_SHA::7}"
+          # Untagged builds carry `git describe`'s <tag>-<N>-g<sha> suffix; the
+          # preview/stable names already append -${SHA}, so strip that suffix to
+          # avoid the commit sha appearing twice. A clean release tag (prod) has
+          # no such suffix, so this is a no-op there.
+          VERSION_FN="$VERSION"
+          case "${{ inputs.build_kind }}" in
+            preview|stable) VERSION_FN=$(printf '%s' "$VERSION" | sed -E 's/-[0-9]+-g[0-9a-f]+$//') ;;
+          esac
+          case "${{ inputs.build_kind }}" in
+            preview) NAME="mindshub-cowork-${VERSION_FN}-preview-${SHA}-arm64.deb" ;;
+            stable)  NAME="mindshub-cowork-${VERSION_FN}-stable-${SHA}-arm64.deb"  ;;
+            prod)    NAME="mindshub-cowork-${VERSION}-arm64.deb" ;;
+            *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
+          esac
+          echo "artifact_name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "Computed artifact name: ${NAME}"
+
+      - name: Stage deb for upload
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          DEBS=(release/*_arm64.deb)
+          if [ ${#DEBS[@]} -ne 1 ]; then
+            echo "::error::Expected exactly one arm64 deb in release/, found ${#DEBS[@]}"
+            ls -la release || true
+            exit 1
+          fi
+          mkdir -p out
+          mv "${DEBS[0]}" "out/${{ steps.name.outputs.artifact_name }}"
+
+      - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.name.outputs.artifact_name_arm64 }}
-          path: out-arm64/
+          name: ${{ steps.name.outputs.artifact_name }}
+          path: out/
           if-no-files-found: error

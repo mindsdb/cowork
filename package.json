@@ -31,7 +31,7 @@
     "dist:win:all": "npm run build && electron-builder --win --publish never",
     "release:win:local": "npm run dist:win",
     "rebuild": "electron-rebuild",
-    "dist:linux": "npm run build && electron-builder --linux --publish never --config.npmRebuild=false"
+    "dist:linux": "npm run build && electron-builder --linux --publish never"
 
   },
   "devDependencies": {

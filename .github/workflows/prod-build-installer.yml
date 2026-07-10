@@ -51,6 +51,7 @@ jobs:
     uses: ./.github/workflows/build-linux-deb.yml
     with:
       build_kind: prod
+      app_version: ${{ inputs.tag }}
     secrets: inherit
 
   upload-linux-amd64:

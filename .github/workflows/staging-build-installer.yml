@@ -45,6 +45,8 @@ jobs:
     uses: ./.github/workflows/build-linux-deb.yml
     with:
       build_kind: stable
+      server_ref: staging
+      minds_api_url: https://api.staging.mindshub.ai
     secrets: inherit
 
   upload-linux-amd64:
