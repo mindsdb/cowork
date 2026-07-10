@@ -1,4 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// token-refresh.ts pulls in keychain-service.ts, which imports the native
+// `keytar` module at load time — fine on macOS (Keychain Services), but it
+// requires libsecret on Linux, which CI's runner doesn't have. This test
+// only exercises the pure parseAppIdFromClientId function, so the real
+// keychain module is never needed; mocking it here avoids paying that
+// native-dependency cost just to import the file at all.
+vi.mock('./keychain-service', () => ({
+  getRefreshToken: vi.fn(),
+  setRefreshToken: vi.fn(),
+}));
+
 import { parseAppIdFromClientId } from './token-refresh';
 
 describe('parseAppIdFromClientId', () => {
