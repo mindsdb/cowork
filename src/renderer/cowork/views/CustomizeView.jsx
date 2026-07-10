@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { Button } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
 import ConnectWorkflowView from './ConnectWorkflowView';
@@ -28,14 +29,13 @@ const FONT_MONO    = "var(--font-mono)";
 
 function ConnectButton({ onClick, large = false }) {
   return (
-    <button
-      type="button"
-      className="btn-primary"
+    <Button
+      variant="primary"
       onClick={onClick}
       style={large ? { fontSize: 13.5 } : undefined}
     >
       {Ico.plus(14)} Connect
-    </button>
+    </Button>
   );
 }
 
@@ -485,9 +485,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             </div>
           )}
           {spec && (
-            <button
-              type="button"
-              className="btn-primary"
+            <Button
+              variant="primary"
               onClick={() => {
                 if (!window.confirm(
                   `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
@@ -497,7 +496,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               style={{ width: '100%', justifyContent: 'center' }}
             >
               Reconnect
-            </button>
+            </Button>
           )}
           <button
             type="button"
