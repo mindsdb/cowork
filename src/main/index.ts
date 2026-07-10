@@ -7,7 +7,7 @@ import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
-import { setUpdateNotifier } from './server-updater';
+import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
@@ -299,13 +299,9 @@ function ensureDefaultProject() {
 // ─── Icons ───────────────────────────────────────────────────
 function getIconPath(): string {
   if (app.isPackaged) {
-    // CI swaps assets/icon.png for the dev icon on non-prod builds, so
-    // packaged dev/staging apps get the dev icon through this same path.
     return path.join(process.resourcesPath, 'assets', 'icon.png');
   }
-  // Unpackaged = local dev — use the dev icon so it's distinguishable from
-  // an installed production app.
-  return path.join(__dirname, '..', '..', '..', 'assets', 'icon-dev.png');
+  return path.join(__dirname, '..', '..', '..', 'assets', 'icon.png');
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -330,12 +326,6 @@ function focusMainWindow() {
 
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
-  // On macOS the BrowserWindow `icon` option is ignored — the dock shows the
-  // bundle icon (packaged) or Electron's default (dev). Set it explicitly in
-  // dev so the dev icon actually shows up.
-  if (process.platform === 'darwin' && !app.isPackaged) {
-    app.dock?.setIcon(icon);
-  }
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
   const devMode = getDevMode();
 
@@ -1265,7 +1255,7 @@ app.whenReady().then(async () => {
         {
           label: 'Anton Cowork Documentation',
           click: () => {
-            shell.openExternal('https://docs.mindsdb.com');
+            shell.openExternal('https://docs.mindshub.ai/index.html');
           },
         },
         { type: 'separator' },
@@ -1346,33 +1336,65 @@ app.whenReady().then(async () => {
       }
     }
 
-    const result = await startServer();
-    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
+    let result = await startServer();
     if (!result.ok) {
-      console.error(`[server] start failed: ${result.reason}`);
-    } else {
-      console.log(`[server] running on http://127.0.0.1:${result.port}`);
+      // The server is installed but won't boot. Two self-heal paths, tried in
+      // order; each rebuilds the venv with a clean --force --reinstall on the
+      // source it was installed from, then we retry start once.
+      console.error(`[server] start failed (${result.reason}); attempting recovery`);
 
+      // 1. Venv stranded on an unsupported Python (a pre-3.12 install an
+      //    in-place update loaded newer 3.12+ code into) — crashes at import
+      //    time. Recreating it re-selects a supported interpreter.
+      const recreated = await recreateVenvIfUnsupportedPython();
+      if (recreated) {
+        console.log('[server] recreated venv on a supported Python; retrying start');
+        result = await startServer();
+      }
+
+      // 2. Venv on a supported Python but still dead — a corrupt or partially
+      //    written environment (e.g. an interrupted upgrade left a dependency
+      //    as a bare namespace package that ImportErrors at startup). A clean
+      //    reinstall repairs it. Gated on the crash signature: repairServerInstall
+      //    only reinstalls when the captured stderr looks like a broken install,
+      //    so a migration/port/config failure never triggers a pointless (and
+      //    potentially env-corrupting) reinstall. Skip when we just recreated:
+      //    that already did a --force --reinstall.
+      const failureLog = getServerDiagnostics().recentLog;
+      if (!result.ok && !recreated && await repairServerInstall(failureLog)) {
+        console.log('[server] repaired the server environment; retrying start');
+        result = await startServer();
+      }
+    }
+    resolveBootServer();  // readiness decided — unblock routing before the OTA checks below
+    if (result.ok) {
+      console.log(`[server] running on http://127.0.0.1:${result.port}`);
       // Resume refresh loops for Google OAuth connections already in the
       // vault from prior sessions — fire-and-forget, failures are per-entry.
       startOrphanRefreshLoops().catch(() => {});
-      // Background update check — runs after the server is already
-      // serving so users aren't blocked. If a newer version is found
-      // on PyPI, stops the server, upgrades, and restarts. Rolls back
-      // automatically if the new version fails the health probe.
+    } else {
+      console.error(`[server] start failed: ${result.reason}`);
+    }
 
-      setUpdateNotifier((payload) => {
-        mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
-      });
+    // Wire the update checker regardless of whether the server booted. A
+    // server that can't start is the case that MOST needs an update — a newer
+    // build may be exactly what fixes the crash — so the boot check must not be
+    // gated behind a successful start. When the server is down, the poll
+    // applies an available server update even in manual mode (recovery, not a
+    // routine update); a healthy server still honors the auto/manual setting.
+    // maybeUpdateServer rolls back automatically if the new version also fails
+    // its health probe, so this can't strand a previously-working install.
+    setUpdateNotifier((payload) => {
+      mainWindow?.webContents.send(IPC.SERVER_UPDATE_STATUS, payload);
+    });
 
-      const devMode = getDevMode();
-      if (app.isPackaged && !devMode && mainWindow) {
-        initUpdater(() => mainWindow, rendererReady, getUpdateMode);
-      } else if (!app.isPackaged) {
-        console.log('[updater] skipped — not a packaged build');
-      } else if (devMode) {
-        console.log(`[updater] skipped — DEV_MODE=${devMode}`);
-      }
+    const devMode = getDevMode();
+    if (app.isPackaged && !devMode && mainWindow) {
+      initUpdater(() => mainWindow, rendererReady, getUpdateMode);
+    } else if (!app.isPackaged) {
+      console.log('[updater] skipped — not a packaged build');
+    } else if (devMode) {
+      console.log(`[updater] skipped — DEV_MODE=${devMode}`);
     }
   }).catch((err) => {
     console.error('[server] check-and-start failed:', err);

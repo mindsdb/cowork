@@ -4,7 +4,7 @@ import Ico from './components/Icons';
 import ThemeModal from './components/ThemeModal';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-// OnboardingShell removed — antontron's renderer handles terms/install/
+// OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
@@ -474,6 +474,10 @@ function failedEventMeta(events) {
     message: ev.error || ev.message || '',
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
+    // model-403 (model_access_denied / model_disabled): which model the
+    // gateway rejected, so the card can name it. `failedModel` locally —
+    // "model" is too overloaded in message objects.
+    failedModel: ev.model ?? null,
   };
 }
 
@@ -518,6 +522,7 @@ function hydrateMessagesFromServerEvents(messages) {
           code,
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
+          failedModel: failed?.failedModel ?? null,
         });
       }
     }
@@ -1050,6 +1055,7 @@ function AppCore() {
             code: event?.code,
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
+            failedModel: event?.model ?? null,
           };
       return {
         ...t,
@@ -1292,8 +1298,9 @@ function AppCore() {
   const [health, setHealth] = useState({ status: 'offline', anton_available: false });
 
   // Desktop "app installed" — fire once per install, after the backend is up
-  // (health 'ok') and an identity is available. trackAppInstalled self-guards
-  // (localStorage marker + waits for a distinct_id), so re-running is safe.
+  // (health 'ok'). Captured under the anonymous device id if the user hasn't
+  // signed in yet, and merged into the account on first login (ENG-537).
+  // trackAppInstalled self-guards with a localStorage marker, so re-running is safe.
   useEffect(() => {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);

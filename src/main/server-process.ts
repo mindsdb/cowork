@@ -15,8 +15,9 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
-import { coworkHome } from './cowork-home';
+import { coworkHome, buildKind } from './cowork-home';
 import { MINDS_ENV_SLUG } from './minds-urls';
+import { withServerLifecycle } from './server-lifecycle';
 import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
@@ -64,11 +65,14 @@ function serverOwnerToken(): string {
   return _ownerToken;
 }
 
-// Deterministic per-OS-user port. Stable across launches for a given user
-// (so we still adopt our OWN crash-orphan), distinct between users (so one
-// user's app can't land on another's server). Only used in the packaged app:
-// dev/web reach the server through Vite's proxy / same-origin, which targets
-// the fixed COWORK_SERVER_PORT||26866.
+// Deterministic per-OS-user, per-build-kind port. Stable across launches for a
+// given user+build (so we still adopt our OWN crash-orphan), distinct between
+// users (so one user's app can't land on another's server) AND between builds
+// (prod/preview/stable no longer share ~/.cowork, so they mustn't share a port
+// either — otherwise a non-prod build would perpetually route around prod's
+// server onto a fresh random port and never re-adopt its own orphan). Only
+// used in the packaged app: dev/web reach the server through Vite's proxy /
+// same-origin, which targets the fixed COWORK_SERVER_PORT||26866.
 function preferredServerPort(): number {
   // uid is stable per macOS/Linux account; Windows has no real uid (-1), so
   // fall back to the home dir, which is per-user there.
@@ -79,6 +83,11 @@ function preferredServerPort(): number {
   } catch {
     key = `home:${os.homedir()}`;
   }
+  // Non-prod builds get their own port band. Prod's key is left untouched so an
+  // existing prod install still lands on its historical port and adopts the
+  // orphan a pre-upgrade build may have left behind.
+  const kind = buildKind();
+  if (kind !== 'prod') key = `${key}|kind:${kind}`;
   const digest = crypto.createHash('sha256').update(key).digest();
   return DEFAULT_PORT + (digest.readUInt16BE(0) % PORT_SPAN);
 }
@@ -118,11 +127,20 @@ let serverStarted = false;
 // (which would race for the same port and the second would fail).
 let pendingStart: Promise<StartServerResult> | null = null;
 
+/**
+ * Run a complete server-maintenance transaction exclusively with starts and
+ * stops. This must be entered before source inspection or a stop/install/start
+ * sequence, rather than only around the `uv` subprocess.
+ */
+export async function withServerMaintenance<T>(fn: () => Promise<T>): Promise<T> {
+  return withServerLifecycle(fn);
+}
+
 // Diagnostics — captured so the renderer can surface them in a help
 // modal when the user wonders why the backend is offline. We keep
-// the most recent start failure reason and a rolling tail of stderr
-// (latest ~32 KB) since the python crash trace usually lives in the
-// last few lines. Flushed on a successful start.
+// the most recent start failure reason and a rolling tail of stdout/stderr
+// (latest ~32 KB) for the current start attempt; the Python crash trace
+// usually lives in its last few lines.
 const STDERR_BUFFER_BYTES = 32 * 1024;
 let recentStderr = '';
 let lastStartError: string | null = null;
@@ -361,6 +379,10 @@ export interface StartServerResult {
 }
 
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
+  return withServerLifecycle(() => startServerUnlocked(opts));
+}
+
+async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
   if (serverStarted) return { ok: true, port: serverPort };
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.
@@ -410,6 +432,10 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   const readyTimeoutMs = opts.readyTimeoutMs ?? (isDevSource ? 180_000 : 15000);
 
   lastStartAt = Date.now();
+  // The repair classifier must only inspect output from this attempt. A prior
+  // failed start may contain an import error while this one fails for an
+  // unrelated reason (migration, port, or config).
+  recentStderr = '';
   // A new start attempt invalidates the prior stop attribution —
   // whether the previous death was intentional or a crash, the
   // user is now asking for a fresh boot. Reset so the next
@@ -450,6 +476,19 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
   }
 
   pendingStart = (async (): Promise<StartServerResult> => {
+    // Hand the server the same config home the desktop app uses so both sides
+    // agree — including the per-build isolation (~/.cowork-<kind>) that keeps a
+    // non-prod build off the production SQLite DB (ENG-324). cowork-server
+    // derives every path from COWORK_HOME (see cowork.common.paths).
+    //
+    // Only set it for NON-prod builds. Prod's home is the server's own default
+    // (~/.cowork), so leaving COWORK_HOME unset keeps prod byte-for-byte as
+    // before this change — crucially, cowork-server drops the legacy
+    // ~/.anton/.env fallback whenever COWORK_HOME is present, so setting it for
+    // prod would silently stop consulting that file for un-migrated installs.
+    const kind = buildKind();
+    const dataHome = coworkHome();
+    console.log(`[server] build kind "${kind}" → data home ${dataHome}`);
     const env = {
       ...process.env,
       ...loadBundledServerCredentials(),
@@ -457,6 +496,7 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
+      ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
       // OS user's app sees a mismatch and never adopts it.
@@ -569,6 +609,10 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 //   3. Clear the slot regardless — if the OS truly orphaned the child,
 //      we'd rather lose track of it than block app quit forever.
 export async function stopServer(): Promise<void> {
+  return withServerLifecycle(stopServerUnlocked);
+}
+
+async function stopServerUnlocked(): Promise<void> {
   // Allow the next start to re-resolve the port (re-derive the per-user port
   // and re-check whether anything is running there). ENG-439.
   _portResolved = false;

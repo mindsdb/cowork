@@ -3,6 +3,9 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { parseUiManifest, type UIManifest } from './update-logic';
+
+export type { UIManifest };
 
 // Disable OTA UI updates on staging builds so testers always run the
 // renderer bundled from the branch.  Flip to `false` on main / release.
@@ -10,12 +13,6 @@ const OTA_UI_DISABLED = true;
 
 // Where we read latest.json from — GitHub Pages, no API rate limits
 const MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
-
-export interface UIManifest {
-  version: string;
-  url: string;       // GitHub Release asset download URL
-  sha256: string;
-}
 
 export interface UpdateCheckResult {
   updateAvailable: boolean;
@@ -115,9 +112,7 @@ export async function fetchManifest(): Promise<UIManifest | null> {
   try {
     const res = await httpsGet(MANIFEST_URL);
     if (res.statusCode !== 200) return null;
-    const data = JSON.parse(res.body.toString('utf-8'));
-    if (!data.version || !data.url || !data.sha256) return null;
-    return data as UIManifest;
+    return parseUiManifest(res.body.toString('utf-8'));
   } catch {
     return null;
   }

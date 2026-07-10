@@ -3,7 +3,7 @@ import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
 import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
-import { trackHarnessSwapped } from '../lib/analytics';
+import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
@@ -1046,6 +1046,9 @@ export default function SettingsView({
       // Swallow — partial logout is still worth recovering from on the
       // boot path, and the reload below puts us back through it.
     }
+    // Rotate the analytics device identity so the next account on this machine
+    // starts anonymous-fresh and merges cleanly (ENG-537).
+    resetDeviceIdentity();
     // Exactly ONE reload must happen, or the two compete and leave the
     // page stuck on this confirm modal (flaky in packaged builds). On
     // Electron the main process drives webContents.reload() itself

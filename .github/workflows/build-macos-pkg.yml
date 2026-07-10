@@ -148,13 +148,8 @@ jobs:
               json.dump(creds, f)
           "
 
-      # Non-prod builds get the dev icon so installed dev/staging apps are
-      # visually distinguishable from the production app. Overwriting
-      # assets/icon.png covers electron-builder (icns generation) AND the
-      # packaged runtime, which loads assets/icon.png from resources.
-      - name: Use dev icon for non-prod builds
-        if: inputs.build_kind != 'prod'
-        run: cp assets/icon-dev.png assets/icon.png
+      - name: Write build config (controls which cowork data home the app uses)
+        run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
 
       - name: Build, sign and notarize pkg
         env:
@@ -181,11 +176,27 @@ jobs:
         id: name
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
+          # gen-build-channel.mjs (prebuild:main) resolves the display version once
+          # during the build and writes it here, so the filename matches the version
+          # the app reports (__APP_VERSION__). Fall back to package.json if absent.
+          VERSION_FILE="src/main/app-version.gen.txt"
+          if [ -s "$VERSION_FILE" ]; then
+            VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
           SHA="${GITHUB_SHA::7}"
+          # Untagged builds carry `git describe`'s <tag>-<N>-g<sha> suffix; the
+          # preview/stable names already append -${SHA}, so strip that suffix to
+          # avoid the commit sha appearing twice. A clean release tag (prod) has
+          # no such suffix, so this is a no-op there.
+          VERSION_FN="$VERSION"
           case "${{ inputs.build_kind }}" in
-            preview) NAME="mindshub-cowork-${VERSION}-preview-${SHA}.pkg" ;;
-            stable)  NAME="mindshub-cowork-${VERSION}-stable-${SHA}.pkg"  ;;
+            preview|stable) VERSION_FN=$(printf '%s' "$VERSION" | sed -E 's/-[0-9]+-g[0-9a-f]+$//') ;;
+          esac
+          case "${{ inputs.build_kind }}" in
+            preview) NAME="mindshub-cowork-${VERSION_FN}-preview-${SHA}.pkg" ;;
+            stable)  NAME="mindshub-cowork-${VERSION_FN}-stable-${SHA}.pkg"  ;;
             prod)    NAME="mindshub-cowork-${VERSION}.pkg" ;;
             *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
           esac

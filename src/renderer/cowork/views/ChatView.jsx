@@ -34,6 +34,7 @@ import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
+import { modelLabel } from '../lib/settingsTransform';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -816,6 +817,59 @@ async function waitForServerReady(timeoutMs = 8000) {
 // gateway sees is invalid (revoked / rotated / never provisioned / org drift),
 // so chat calls 401.
 //
+// ── ActionCard: the shared shell for inline "actionable error" cards ───────
+// One chrome for the reconnect / token-limit / model-403 / provider-required
+// cards (previously four byte-identical copies of this scaffolding, drifting
+// one tweak at a time — ENG-650). Callers own copy + button wiring; the shell
+// owns layout and button styling.
+const ACTION_CARD_BTN = {
+  borderRadius: 8, padding: '8px 14px',
+  fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+};
+// bg=ink / text=bg so the label keeps contrast in BOTH themes: light → dark
+// button / light text, dark → light button / dark text. A hardcoded #fff went
+// invisible in dark mode (ink is near-white there → white-on-white).
+const ACTION_CARD_BTN_PRIMARY = {
+  ...ACTION_CARD_BTN, border: 'none', background: T.ink, color: 'var(--bg)',
+};
+const ACTION_CARD_BTN_SECONDARY = {
+  ...ACTION_CARD_BTN, border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
+};
+
+// buttons: [{ label, onClick, primary, disabled, style }] — `style` overlays
+// the base for per-button tweaks (e.g. the reconnect busy state). An empty
+// list hides the row (e.g. reconnect's "done" state).
+function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
+  return (
+    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
+      <div style={{
+        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
+        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+          {title}
+        </div>
+        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
+          {body}
+        </div>
+        {buttons.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            {buttons.map((b, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={b.onClick}
+                disabled={b.disabled}
+                style={{ ...(b.primary ? ACTION_CARD_BTN_PRIMARY : ACTION_CARD_BTN_SECONDARY), ...b.style }}
+              >{b.label}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    </AnswerTurn>
+  );
+}
+
 // For **MindsHub** (`reconnectable`), the fix is to re-provision the key in
 // place via mindshubFinalize (the same step login runs) — no logout. For a
 // **BYOK** provider, only the user can fix their own key, so we point them to
@@ -877,48 +931,67 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
             : `Your ${providerLabel || 'provider'} API key is no longer valid. Update it in Settings to continue.`
       );
 
-  const primaryStyle = {
-    border: 'none', background: T.ink, color: 'var(--bg)',
-    borderRadius: 8, padding: '8px 14px',
-    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500,
-  };
-  const secondaryStyle = {
-    border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
-    borderRadius: 8, padding: '8px 14px',
-    fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-  };
+  return (
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title={title}
+      body={body}
+      buttons={done ? [] : [
+        ...(canReconnect ? [{
+          label: busy ? 'Reconnecting…' : 'Reconnect',
+          onClick: reconnect,
+          primary: true,
+          disabled: busy,
+          style: { cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 },
+        }] : []),
+        // Settings is the primary action when Reconnect isn't available
+        // (BYOK key, or web where the IPC flow doesn't exist).
+        { label: 'Open Settings', onClick: () => onOpenSettings?.('agent'), primary: !canReconnect },
+      ]}
+    />
+  );
+}
+
+// Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
+// credential is FINE — the gateway rejected the requested MODEL. Two flavors,
+// keyed on the gateway's structured code:
+//
+// - `model_access_denied` — plan gate: the account's tier doesn't include the
+//   model. An upgrade genuinely fixes it, so lead with Upgrade.
+// - `model_disabled` — hedged until the gateway distinguishes tier locks from
+//   admin kill switches everywhere (ENG-596): it can be either, so offer both
+//   Switch-model and Upgrade without promising the upgrade fixes it.
+//
+// The body is the server's curated copy (anton's message, passed through
+// verbatim) — unlike ReconnectCard there's no web-only affordance to work
+// around: Upgrade is just a billing link (host.openExternal window.opens on
+// web), and Switch model routes to Settings on both shells.
+function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
+  // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
+  // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
+  // bare single-token alias ("sonnet") comes back lowercase, and it reads
+  // better capitalized in the title. So capitalize single-word labels only,
+  // leaving anything modelLabel already spaced/cased untouched.
+  const raw = modelLabel(failedModel) || failedModel || 'This model';
+  const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
+  const denied = code === 'model_access_denied';
+  const title = denied
+    ? `${label} isn't included in your plan`
+    : `${label} isn't available right now`;
 
   return (
-    <AnswerTurn state="done" time={time} showActions={false} agentLabel={agentLabel}>
-      <div style={{
-        border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
-        padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
-      }}>
-        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
-          {title}
-        </div>
-        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
-          {body}
-        </div>
-        {!done && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-            {canReconnect && (
-              <button
-                type="button"
-                onClick={reconnect}
-                disabled={busy}
-                style={{ ...primaryStyle, cursor: busy ? 'progress' : 'pointer', opacity: busy ? 0.7 : 1 }}
-              >{busy ? 'Reconnecting…' : 'Reconnect'}</button>
-            )}
-            <button
-              type="button"
-              onClick={() => onOpenSettings?.('agent')}
-              style={canReconnect ? secondaryStyle : { ...primaryStyle, cursor: 'pointer' }}
-            >Open Settings</button>
-          </div>
-        )}
-      </div>
-    </AnswerTurn>
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title={title}
+      body={errorText || 'Switch models in Settings, or upgrade your plan to unlock it.'}
+      buttons={[
+        // Plan gate → lead with Upgrade; hedged/disabled → lead with Switch.
+        { label: 'Upgrade plan', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
+        { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
+      ]}
+    />
   );
 }
 
@@ -1575,43 +1648,17 @@ export default function ChatView({
                 // tokens, or a mid-session exhaustion.
                 if (m.code === 'token_limit') {
                   return (
-                    <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
-                      <div style={{
-                        border: `1px solid ${T.line}`,
-                        background: T.surface,
-                        borderRadius: 12,
-                        padding: '16px 18px',
-                        maxWidth: 520,
-                        display: 'flex', flexDirection: 'column', gap: 10,
-                      }}>
-                        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
-                          You're out of credits
-                        </div>
-                        <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
-                          {m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                          <button
-                            type="button"
-                            onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                            style={{
-                              border: 'none', background: T.ink, color: 'var(--bg)',
-                              borderRadius: 8, padding: '8px 14px',
-                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                            }}
-                          >Add credits</button>
-                          <button
-                            type="button"
-                            onClick={() => onOpenSettings?.('agent')}
-                            style={{
-                              border: `1px solid ${T.line}`, background: 'transparent', color: T.ink,
-                              borderRadius: 8, padding: '8px 14px',
-                              fontFamily: FONT_BODY, fontSize: 13, fontWeight: 500, cursor: 'pointer',
-                            }}
-                          >Bring your own keys</button>
-                        </div>
-                      </div>
-                    </AnswerTurn>
+                    <ActionCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      title="You're out of credits"
+                      body={m.content || "You've used your MindsHub credits. Add more to keep using managed models, or bring your own LLM provider key in Settings."}
+                      buttons={[
+                        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                        { label: 'Bring your own keys', onClick: () => onOpenSettings?.('agent') },
+                      ]}
+                    />
                   );
                 }
                 // Provider auth failure mid-conversation → offer Reconnect
@@ -1628,6 +1675,22 @@ export default function ChatView({
                     />
                   );
                 }
+                // Model-403 mid-conversation: the plan doesn't include the
+                // model (or it's admin-disabled) → offer Upgrade / Switch
+                // model, never "try again".
+                if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
+                  return (
+                    <ModelUnavailableCard
+                      key={i}
+                      time={formatTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                      code={m.code}
+                      failedModel={m.failedModel}
+                      errorText={m.content}
+                    />
+                  );
+                }
                 return (
                   <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false} agentLabel={agentLabel}>
                     <Message>{m.content}</Message>
@@ -1636,68 +1699,16 @@ export default function ChatView({
               }
               if (m.role === 'provider_required') {
                 return (
-                  <AnswerTurn key={i} state="done" time={formatMetaTime(m.createdAt)} showActions={false}>
-                    <div style={{
-                      border: `1px solid ${T.line}`,
-                      background: T.surface,
-                      borderRadius: 12,
-                      padding: '16px 18px',
-                      maxWidth: 520,
-                      display: 'flex', flexDirection: 'column', gap: 10,
-                    }}>
-                      <div style={{
-                        fontFamily: FONT_DISPLAY,
-                        fontSize: 15,
-                        letterSpacing: '0.02em',
-                        color: T.ink,
-                      }}>Connect a provider to start chatting</div>
-                      <div style={{
-                        fontFamily: FONT_BODY,
-                        fontSize: 13.5,
-                        lineHeight: 1.55,
-                        color: T.ink2,
-                      }}>
-                        Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings.
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                        <button
-                          type="button"
-                          onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                          style={{
-                            // bg=ink / text=bg so the label keeps contrast in
-                            // BOTH themes: light → dark button / light text,
-                            // dark → light button / dark text. A hardcoded
-                            // #fff went invisible in dark mode (ink is near-
-                            // white there → white-on-white).
-                            border: 'none',
-                            background: T.ink,
-                            color: 'var(--bg)',
-                            borderRadius: 8,
-                            padding: '8px 14px',
-                            fontFamily: FONT_BODY,
-                            fontSize: 13,
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                          }}
-                        >Subscribe with MindsHub</button>
-                        <button
-                          type="button"
-                          onClick={() => onOpenSettings?.('agent')}
-                          style={{
-                            border: `1px solid ${T.line}`,
-                            background: 'transparent',
-                            color: T.ink,
-                            borderRadius: 8,
-                            padding: '8px 14px',
-                            fontFamily: FONT_BODY,
-                            fontSize: 13,
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                          }}
-                        >Open Settings</button>
-                      </div>
-                    </div>
-                  </AnswerTurn>
+                  <ActionCard
+                    key={i}
+                    time={formatMetaTime(m.createdAt)}
+                    title="Connect a provider to start chatting"
+                    body="Cowork needs an LLM provider. Subscribe with MindsHub for managed access, or add your own provider key in Settings."
+                    buttons={[
+                      { label: 'Subscribe with MindsHub', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+                      { label: 'Open Settings', onClick: () => onOpenSettings?.('agent') },
+                    ]}
+                  />
                 );
               }
               assistantTurnIdx += 1;

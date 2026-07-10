@@ -6,7 +6,7 @@
 //
 // Every cowork/* file MUST go through this module instead of touching
 // `window.antontron` directly. This is enforced by a lint guard
-// (`pnpm check:cowork-purity`).
+// (`npm run check:cowork-purity`), which runs in CI.
 //
 // Web fallbacks are intentionally narrow: methods that have a sensible
 // browser equivalent (openExternal → window.open) work; OS-level shell
