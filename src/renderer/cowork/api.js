@@ -1220,11 +1220,14 @@ export async function deleteDatasource(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
-// Removes one file from a connection's persisted `picked_files` grant —
-// the "un-pick" counterpart to the PATCH the Google Picker flow calls.
-// Used by the Project files rail to remove a Drive reference row.
-export async function deletePickedFile(engine, name, fileId) {
-  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}`, { method: 'DELETE' });
+// Untags one file from `project` in a connection's persisted
+// `_picked_files` grant — the "un-pick" counterpart to the PATCH the
+// Google Picker flow calls. Used by the Project files rail to remove a
+// Drive reference row; only removes it from THIS project's rail — if
+// the file is tagged to other projects too, it stays visible there.
+export async function deletePickedFile(engine, name, fileId, project) {
+  const qs = new URLSearchParams({ project });
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
 }
 
 // Modify-flow read: returns the saved connection as

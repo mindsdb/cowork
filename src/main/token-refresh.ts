@@ -238,14 +238,7 @@ export async function getPickerAccess(
     });
     if (!res.ok) return { ok: false, reason: `Token endpoint returned ${res.status}.` };
     const data = await res.json() as { access_token: string; expires_in: number };
-    // PickerBuilder.setAppId() wants the numeric GCP project number, which
-    // is just the leading digits of the OAuth client id
-    // (<project-number>-<hash>.apps.googleusercontent.com) — no separate
-    // credential needed. This is required for Picker to actually attribute
-    // a drive.file per-file grant to this app; without it the PICKED
-    // callback fires normally but no real grant gets created, and every
-    // file (old or freshly picked) 404s as `notFound` when read back.
-    const appId = /^(\d+)-/.exec(clientId)?.[1] || '';
+    const appId = parseAppIdFromClientId(clientId);
     return {
       ok: true,
       accessToken: data.access_token,
@@ -256,6 +249,20 @@ export async function getPickerAccess(
   } catch (err) {
     return { ok: false, reason: `Token exchange failed: ${err}` };
   }
+}
+
+// PickerBuilder.setAppId() wants the numeric GCP project number, which is
+// just the leading digits of the OAuth client id
+// (<project-number>-<hash>.apps.googleusercontent.com) — no separate
+// credential needed. This is required for Picker to actually attribute a
+// drive.file per-file grant to this app; without it the PICKED callback
+// fires normally but no real grant gets created, and every file (old or
+// freshly picked) 404s as `notFound` when read back. Extracted as a pure
+// function so a client-id shape that doesn't match (returning '') is
+// covered by a direct test, not just exercised incidentally through the
+// full network call above.
+export function parseAppIdFromClientId(clientId: string): string {
+  return /^(\d+)-/.exec(clientId)?.[1] || '';
 }
 
 async function patchToken(engine: string, name: string, updates: Record<string, string>): Promise<void> {

@@ -280,6 +280,15 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
   const [saved, setSaved] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pickerState, setPickerState] = useState({ status: 'idle' });
+  // Bumped by both handleCancelPicker AND every new handlePickFiles call, so
+  // a pick attempt's own continuation can tell whether it's still the
+  // active one — a single shared boolean "was cancel ever clicked" flag
+  // let a fast cancel-then-repick have the FIRST attempt's stale resolution
+  // clobber the second attempt's live state, since resetting the flag for
+  // the new attempt made the old attempt's cancelled-check pass too. Must
+  // be declared before the `if (!connection) return null;` below — every
+  // render must call the same hooks (Rules of Hooks).
+  const pickerAttemptRef = useRef(0);
 
   useEffect(() => {
     if (!connection) return;
@@ -294,7 +303,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       setSpec(connSpec);
       setSaved(savedData);
       setLoading(false);
-      const rawPicked = savedData?.fields?.picked_files;
+      const rawPicked = savedData?.fields?._picked_files;
       if (rawPicked) {
         try {
           setPickerState({ status: 'done', files: JSON.parse(rawPicked) });
@@ -330,20 +339,28 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       setPickerState({ status: 'error', reason: 'No account email on file for this connection — try reconnecting.' });
       return;
     }
+    // Claim this attempt's own id — a stale attempt's continuation (below)
+    // checks this against the CURRENT ref value, not a shared "was cancel
+    // ever clicked" boolean, so a fast cancel-then-repick can't have the
+    // first attempt's late resolution clobber the second attempt's state.
+    const attemptId = ++pickerAttemptRef.current;
     setPickerState({ status: 'waiting' });
     try {
       const result = await host.pickDriveFiles(connection.engine, connection.name, accountEmail);
+      if (pickerAttemptRef.current !== attemptId) return; // superseded — cancelled or a newer pick started
       if (!result.ok) {
         setPickerState({ status: 'error', reason: result.reason || 'Could not open the Drive picker.' });
         return;
       }
       setPickerState({ status: 'done', files: result.files || [], failed: result.failed || [] });
     } catch (err) {
+      if (pickerAttemptRef.current !== attemptId) return;
       setPickerState({ status: 'error', reason: err?.message || String(err) });
     }
   };
 
   const handleCancelPicker = () => {
+    pickerAttemptRef.current++; // invalidates the in-flight attempt's eventual resolution
     host.cancelDrivePicker();
     setPickerState({ status: 'idle' });
   };
@@ -359,7 +376,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         || secureKeys.has(f.name) || vaultFields[f.name] === CONNECTIONS_VAULT_KEEP,
     })),
     ...Object.entries(vaultFields)
-      .filter(([k]) => !specKeys.has(k) && k !== 'picked_files')
+      .filter(([k]) => !specKeys.has(k) && k !== '_picked_files')
       .map(([key, value]) => ({
         key,
         label: humanLabel(key),

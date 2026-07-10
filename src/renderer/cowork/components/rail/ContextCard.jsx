@@ -284,7 +284,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   const [projectFiles, setProjectFiles] = useState([]);
   // Google Drive files the user picked via "Attach Google Drive files"
   // below — reference-only (name + link), never downloaded. They live
-  // on the connection's picked_files grant, not in the project folder,
+  // on the connection's _picked_files grant, not in the project folder,
   // so they're tracked separately from `projectFiles` and merged only
   // at render time.
   const [driveFiles, setDriveFiles] = useState([]);
@@ -313,6 +313,12 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
   const [pendingDeleteFile, setPendingDeleteFile] = useState(null);
   const [pendingDeleteDriveFile, setPendingDeleteDriveFile] = useState(null);
   const [uploadBusy, setUploadBusy] = useState(false);
+  // Separate from uploadBusy: the Drive connect-then-pick flow can now take
+  // minutes (waiting on OAuth + the picker), not the near-instant round trip
+  // local uploads are. Gating the whole menu trigger on one shared flag
+  // would disable the unrelated "Attach files" (local) item for that whole
+  // wait — this only disables the "Attach Google Drive files" item itself.
+  const [drivePickerBusy, setDrivePickerBusy] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
   // Mirror state for the Task Uploads section — separate from project
@@ -428,7 +434,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     reloadFiles();
   }, [project?.name, reloadFiles]);
 
-  // Google Drive reference files live on the connection's picked_files
+  // Google Drive reference files live on the connection's _picked_files
   // grant, but each entry is tagged with the project(s) it was added
   // to — App.jsx's fetchGoogleDriveReferenceFiles filters to just this
   // project, so this does depend on `project.name` the same way
@@ -584,15 +590,16 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
                 },
                 onAddGoogleDriveFiles && {
                   id: 'attach-gdrive',
-                  label: 'Attach Google Drive files',
+                  label: drivePickerBusy ? 'Connecting…' : 'Attach Google Drive files',
                   icon: Ico.googleDrive(13),
+                  disabled: drivePickerBusy,
                   onClick: () => {
-                    setUploadBusy(true);
+                    setDrivePickerBusy(true);
                     setUploadError('');
                     Promise.resolve(onAddGoogleDriveFiles(project?.name))
                       .then(() => reloadDriveFiles())
                       .catch((err) => setUploadError(err?.message || 'Could not add Google Drive files.'))
-                      .finally(() => setUploadBusy(false));
+                      .finally(() => setDrivePickerBusy(false));
                   },
                 },
               ].filter(Boolean)}
@@ -984,7 +991,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
 
       {/* Same pattern as the real-file delete above — optimistic
           remove, reloadDriveFiles() to self-correct on failure. This
-          only revokes our own picked_files bookkeeping; the file
+          only revokes our own _picked_files bookkeeping; the file
           itself is untouched in Drive. */}
       <ConfirmModal
         open={!!pendingDeleteDriveFile}
@@ -1000,7 +1007,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
           if (!target || !onRemoveGoogleDriveFile) return;
           setDriveFiles((prev) => prev.filter((f) => f.id !== target.id));
           try {
-            const res = await onRemoveGoogleDriveFile(target.id, target._connectionName);
+            const res = await onRemoveGoogleDriveFile(target.id, target._connectionName, project?.name);
             if (!res?.ok) throw new Error(res?.reason || 'Could not remove file.');
           } catch (err) {
             // eslint-disable-next-line no-console

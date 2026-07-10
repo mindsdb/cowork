@@ -120,7 +120,7 @@ function isPendingFileAttachment(a) {
 }
 
 // Google-Drive-picked files aren't uploaded bytes — the agent reads them
-// directly via the connector's persisted `picked_files` grant (see
+// directly via the connector's persisted `_picked_files` grant (see
 // cowork-server's harness integration_guidance), independent of any one
 // message. The chip is a visual confirmation only, so it must never be
 // resolved to an upload or sent as a real attachment id.
@@ -2238,17 +2238,18 @@ function AppCore() {
     return tempId;
   };
 
-  // Cheap existence check — no account-disambiguation prompt. Used only
-  // to decide whether a "+" menu should route through the "connect"
-  // flow or straight to the (possibly account-picking) action; calling
-  // the full resolver here would pop the picker modal twice for one
-  // click (once for this check, again inside the action itself).
-  const hasAnyGoogleDriveConnection = useCallback(async () => {
+  // Used to decide whether a "+" menu should route through the "connect"
+  // flow or straight to the (possibly account-picking) action. Returns
+  // the matched connections (not just a boolean) so the "already
+  // connected" branch can pass them straight through to
+  // resolveGoogleDriveConnection below instead of it doing a second,
+  // redundant fetchDatasources() round trip right after this one.
+  const fetchGoogleDriveConnections = useCallback(async () => {
     try {
       const { connections } = await fetchDatasources();
-      return (connections || []).some((c) => c.engine === 'google_drive');
+      return (connections || []).filter((c) => c.engine === 'google_drive');
     } catch {
-      return false;
+      return [];
     }
   }, []);
 
@@ -2262,23 +2263,25 @@ function AppCore() {
   ), []);
 
   // Resolves the google_drive connection every Drive helper below
-  // targets. Fetches fresh via fetchDatasources() rather than trusting
-  // the (possibly stale) `connectors` state — a stale/defunct
-  // connection name would silently persist grants/reads against the
-  // wrong record. If more than one google_drive connection exists
-  // (e.g. two Google accounts), prompts the user to choose.
-  const resolveGoogleDriveConnection = useCallback(async () => {
+  // targets. `preFetched`, when passed (by the "already connected"
+  // branch in the handlers below, which just called
+  // fetchGoogleDriveConnections() for its own check), is reused instead
+  // of fetching again — otherwise fetches fresh via fetchDatasources()
+  // rather than trusting the (possibly stale) `connectors` state, since a
+  // stale/defunct connection name would silently persist grants/reads
+  // against the wrong record. If more than one google_drive connection
+  // exists (e.g. two Google accounts), prompts the user to choose.
+  const resolveGoogleDriveConnection = useCallback(async (preFetched) => {
     try {
-      const { connections } = await fetchDatasources();
-      const matches = (connections || []).filter((c) => c.engine === 'google_drive');
+      const matches = preFetched || (await fetchGoogleDriveConnections());
       if (matches.length === 0) return null;
       if (matches.length === 1) return matches[0];
-      matches.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-      return await chooseGoogleDriveConnection(matches);
+      const sorted = [...matches].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      return await chooseGoogleDriveConnection(sorted);
     } catch {
       return null;
     }
-  }, [chooseGoogleDriveConnection]);
+  }, [chooseGoogleDriveConnection, fetchGoogleDriveConnections]);
 
   // Opens the Google Picker for an already-connected google_drive
   // connection and adds the chosen files as reference-only chips to
@@ -2293,9 +2296,11 @@ function AppCore() {
   // — omit it for flows with no project context (there are none among
   // the callers below, but connection-details' own "Pick files" button
   // calls host.pickDriveFiles directly and correctly omits it).
-  const openGoogleDrivePicker = useCallback(async (projectName) => {
-    const conn = await resolveGoogleDriveConnection();
-    // Callers only reach here once hasAnyGoogleDriveConnection() has
+  // `preFetchedConnections`, when passed, skips resolveGoogleDriveConnection's
+  // own fetchDatasources() call — see fetchGoogleDriveConnections above.
+  const openGoogleDrivePicker = useCallback(async (projectName, preFetchedConnections) => {
+    const conn = await resolveGoogleDriveConnection(preFetchedConnections);
+    // Callers only reach here once fetchGoogleDriveConnections() has
     // already confirmed a connection exists, so a null result here
     // means the user dismissed the account-choice modal — not a real
     // failure. `cancelled` lets handleAddGoogleDriveFiles/ProjectFiles
@@ -2319,8 +2324,8 @@ function AppCore() {
     return { ok: true, files: result.files || [], newFiles: result.newFiles || [] };
   }, [resolveGoogleDriveConnection]);
 
-  const addGoogleDriveFiles = useCallback(async (projectName) => {
-    const picked = await openGoogleDrivePicker(projectName);
+  const addGoogleDriveFiles = useCallback(async (projectName, preFetchedConnections) => {
+    const picked = await openGoogleDrivePicker(projectName, preFetchedConnections);
     if (!picked.ok) return picked;
     const files = picked.newFiles;
     if (files.length === 0) return { ok: true, files: [] };
@@ -2348,8 +2353,8 @@ function AppCore() {
   // becomes visible as a reference row (see ContextCard). `projectName`
   // is required here — this is what scopes the file to the project it
   // was actually added from.
-  const addGoogleDriveFileReferences = useCallback(async (projectName) => {
-    const picked = await openGoogleDrivePicker(projectName);
+  const addGoogleDriveFileReferences = useCallback(async (projectName, preFetchedConnections) => {
+    const picked = await openGoogleDrivePicker(projectName, preFetchedConnections);
     if (!picked.ok) return picked;
     return { ok: true, files: picked.files };
   }, [openGoogleDrivePicker]);
@@ -2371,7 +2376,7 @@ function AppCore() {
       const perConnection = await Promise.all(matches.map(async (conn) => {
         try {
           const detail = await fetchSavedConnection('google_drive', conn.name);
-          const raw = detail?.fields?.picked_files;
+          const raw = detail?.fields?._picked_files;
           const files = raw ? JSON.parse(raw) : [];
           if (!Array.isArray(files)) return [];
           return files
@@ -2389,14 +2394,17 @@ function AppCore() {
 
   // "Delete" for a Drive reference row — same user-facing action as
   // deleteProjectFile for a real project file, just against the
-  // connection's picked_files grant instead of the project folder.
+  // connection's _picked_files grant instead of the project folder.
   // `connectionName` comes from the row's `_connectionName` (stamped by
   // fetchGoogleDriveReferenceFiles above) — no account-choice prompt
   // needed here since the row already identifies its own connection.
-  const removeGoogleDriveFileReference = useCallback(async (fileId, connectionName) => {
+  // Only untags `projectName` from the file (server-side) — a file also
+  // tagged to another project stays visible there; see
+  // deletePickedFile/remove_picked_file.
+  const removeGoogleDriveFileReference = useCallback(async (fileId, connectionName, projectName) => {
     if (!connectionName) return { ok: false, reason: 'Google Drive is not connected.' };
     try {
-      await deletePickedFile('google_drive', connectionName, fileId);
+      await deletePickedFile('google_drive', connectionName, fileId, projectName);
       return { ok: true };
     } catch (err) {
       return { ok: false, reason: err?.message || 'Could not remove file.' };
@@ -2415,14 +2423,33 @@ function AppCore() {
     const tempId = await handleConnectorPicked({ id: 'google_drive' });
     if (!tempId) return;
     const CONNECT_RESUME_TIMEOUT_MS = 5 * 60 * 1000;
-    let unsubscribe = () => {};
-    const timeoutId = setTimeout(() => unsubscribe(), CONNECT_RESUME_TIMEOUT_MS);
-    unsubscribe = subscribeDataVaultForm(tempId, (spec) => {
-      const engine = spec?.engine || spec?._connector_id;
-      if (!spec?._is_success || engine !== 'google_drive') return;
-      clearTimeout(timeoutId);
-      unsubscribe();
-      onConnected();
+    // Callers `await` this whole function expecting it to cover the full
+    // connect-then-pick flow (e.g. so they can reload the file list right
+    // after) — resolving as soon as the connect tab merely OPENS, before
+    // OAuth/picking actually finish, made callers reload against a
+    // stale/empty list. Wrap the subscription in a promise so this only
+    // resolves once onConnected() has actually run (or the timeout gives up).
+    await new Promise((resolve, reject) => {
+      let unsubscribe = () => {};
+      const timeoutId = setTimeout(() => { unsubscribe(); resolve(); }, CONNECT_RESUME_TIMEOUT_MS);
+      unsubscribe = subscribeDataVaultForm(tempId, async (spec) => {
+        const engine = spec?.engine || spec?._connector_id;
+        if (!spec?._is_success || engine !== 'google_drive') return;
+        clearTimeout(timeoutId);
+        unsubscribe();
+        // Both the timeout and cancel paths above always resolve — if
+        // onConnected() throws (e.g. an unguarded IPC rejection deep in
+        // openGoogleDrivePicker) this must reject rather than leave the
+        // promise settled by nothing, which would hang the caller's busy
+        // state forever instead of surfacing the error like every other
+        // failure path in this flow does.
+        try {
+          await onConnected();
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
     });
   }, [handleConnectorPicked]);
 
@@ -2435,9 +2462,9 @@ function AppCore() {
   // the user has explicitly picked one.
   const handleAddGoogleDriveFiles = useCallback(async (projectName) => {
     const effectiveProjectName = projectName || selectedProject?.name || 'general';
-    const isConnected = await hasAnyGoogleDriveConnection();
-    if (isConnected) {
-      const res = await addGoogleDriveFiles(effectiveProjectName);
+    const matches = await fetchGoogleDriveConnections();
+    if (matches.length > 0) {
+      const res = await addGoogleDriveFiles(effectiveProjectName, matches);
       // Dismissing the account-choice modal is not an error — don't
       // surface it as one.
       if (res.cancelled) return;
@@ -2445,13 +2472,13 @@ function AppCore() {
       return;
     }
     await connectGoogleDriveThenRun(() => addGoogleDriveFiles(effectiveProjectName));
-  }, [hasAnyGoogleDriveConnection, addGoogleDriveFiles, connectGoogleDriveThenRun, selectedProject]);
+  }, [fetchGoogleDriveConnections, addGoogleDriveFiles, connectGoogleDriveThenRun, selectedProject]);
 
   // Project files "+" menu entry point (right-rail Context card).
   const handleAddGoogleDriveProjectFiles = useCallback(async (projectName) => {
-    const isConnected = await hasAnyGoogleDriveConnection();
-    if (isConnected) {
-      const res = await addGoogleDriveFileReferences(projectName);
+    const matches = await fetchGoogleDriveConnections();
+    if (matches.length > 0) {
+      const res = await addGoogleDriveFileReferences(projectName, matches);
       // Dismissing the account-choice modal is not an error — don't
       // surface it as one.
       if (res.cancelled) return res;
@@ -2469,7 +2496,7 @@ function AppCore() {
         setRoute('task');
       }
     });
-  }, [hasAnyGoogleDriveConnection, addGoogleDriveFileReferences, connectGoogleDriveThenRun, currentTask]);
+  }, [fetchGoogleDriveConnections, addGoogleDriveFileReferences, connectGoogleDriveThenRun, currentTask]);
 
   // Keep the ref synced so the Cmd/Ctrl+N keydown handler always calls
   // the latest newTask closure (which captures fresh setRoute/setTasks).

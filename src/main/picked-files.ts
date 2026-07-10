@@ -100,7 +100,7 @@ export async function getPickedFiles(engine: string, name: string): Promise<Pick
     );
     if (!res.ok) return [];
     const data = await res.json() as { fields?: Record<string, string> };
-    const raw = data.fields?.picked_files;
+    const raw = data.fields?._picked_files;
     if (!raw) return [];
     try { return JSON.parse(raw); } catch { return []; }
   } catch {

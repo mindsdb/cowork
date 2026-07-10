@@ -13,7 +13,7 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
 import { shell } from 'electron';
-import { findFreePort, closeServer, base64UrlEncode } from './oauth-service';
+import { findFreePort, closeServer, base64UrlEncode, startLoopbackServer, raceWithTimeout } from './oauth-service';
 
 export interface DrivePickerFile {
   id: string;
@@ -52,6 +52,14 @@ export async function openDrivePickerFlow(
   appId?: string,
   fileIds?: string[],
 ): Promise<DrivePickerResult> {
+  // A second picker session (e.g. the composer's picker still open when
+  // the user separately opens connection-details' "Select files") would
+  // otherwise silently overwrite _activeAttempt, orphaning the first
+  // session's server/browser tab with no way to cancel it. Only one
+  // picker session can usefully be in flight at a time, so cancel
+  // whichever one is already running before starting a new one.
+  _activeAttempt?.cancel();
+
   let port: number;
   try {
     port = await findFreePort();
@@ -61,11 +69,10 @@ export async function openDrivePickerFlow(
 
   const state = base64UrlEncode(crypto.randomBytes(16));
 
-  let server: http.Server | null = null;
   let rejectResult: ((err: Error) => void) | null = null;
-  const resultPromise = new Promise<DrivePickerFile[]>((resolve, reject) => {
+  const { server, resultPromise } = startLoopbackServer<DrivePickerFile[]>(port, (resolve, reject) => {
     rejectResult = reject;
-    server = http.createServer((req, res) => {
+    return http.createServer((req, res) => {
       try {
         const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
 
@@ -83,6 +90,13 @@ export async function openDrivePickerFlow(
 
         if (url.pathname === '/result' && req.method === 'POST') {
           let body = '';
+          // Without this, an aborted request (tab closed / network drop
+          // mid-transfer) emits an unhandled 'error' on `req`, which Node
+          // throws and crashes the whole Electron main process.
+          req.on('error', (e) => {
+            try { res.statusCode = 400; res.end('Bad request.'); } catch {}
+            reject(e instanceof Error ? e : new Error(String(e)));
+          });
           req.on('data', (chunk) => { body += chunk; });
           req.on('end', () => {
             try {
@@ -111,15 +125,6 @@ export async function openDrivePickerFlow(
         reject(e instanceof Error ? e : new Error(String(e)));
       }
     });
-    server.on('error', (err) => reject(err));
-    server.listen(port, '127.0.0.1');
-  });
-
-  const timeoutPromise = new Promise<DrivePickerFile[]>((_, reject) => {
-    setTimeout(
-      () => reject(new Error(`Picker timed out — no selection received within ${Math.round(PICKER_TIMEOUT_MS / 60000)} minutes.`)),
-      PICKER_TIMEOUT_MS,
-    );
   });
 
   _activeAttempt = {
@@ -129,10 +134,24 @@ export async function openDrivePickerFlow(
     },
   };
 
-  try { await shell.openExternal(`http://127.0.0.1:${port}/?state=${state}`); } catch {}
+  // Unlike oauthConnect's auth URL, this URL has no meaning to paste into
+  // an already-open browser manually — it's only useful if openExternal
+  // actually launches something, so a launch failure should surface
+  // immediately rather than silently waiting out the full PICKER_TIMEOUT_MS.
+  try {
+    await shell.openExternal(`http://127.0.0.1:${port}/?state=${state}`);
+  } catch (e: any) {
+    closeServer(server);
+    _activeAttempt = null;
+    return { ok: false, reason: `Could not open a browser for the Drive picker: ${e?.message || e}` };
+  }
 
   try {
-    const files = await Promise.race([resultPromise, timeoutPromise]);
+    const files = await raceWithTimeout(
+      resultPromise,
+      PICKER_TIMEOUT_MS,
+      `Picker timed out — no selection received within ${Math.round(PICKER_TIMEOUT_MS / 60000)} minutes.`,
+    );
     return { ok: true, files };
   } catch (e: any) {
     return { ok: false, reason: e?.message || 'Drive picker failed.' };
