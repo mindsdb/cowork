@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   getChannel,
   getCoworkRef,
@@ -8,6 +8,13 @@ import {
   COWORK_SERVER_MIN_VERSION,
 } from './server-source';
 import { withEnv } from '../../tests/helpers/env';
+import { buildKind } from './cowork-home';
+
+// server-source lazily `require('./cowork-home')` for the build-kind ref
+// fallback. Mock it so we can drive buildKind() directly — the real one
+// memoizes its result, so an env-based approach can't vary it across tests.
+// Default 'dev' keeps every existing assertion on the `main` default path.
+vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'dev') }));
 
 // getAppDisplayVersion lazily requires electron via bare CJS `require()`,
 // which vi.mock cannot intercept (in Node the electron package resolves to a
@@ -79,6 +86,43 @@ describe('getCoworkRef / getAntonRef', () => {
       expect(getAntonRef()).toBe('main');
     });
   });
+
+  describe('build-kind fallback (no env, no baked ref)', () => {
+    // build-channel.gen doesn't exist in the test env, so with no env set the
+    // resolution reaches _refForBuildKind(), which keys off buildKind().
+    it.each(['preview', 'stable'] as const)('a %s build falls back to staging', (kind) => {
+      vi.mocked(buildKind).mockReturnValue(kind);
+      expect(getCoworkRef()).toBe('staging');
+      expect(getAntonRef()).toBe('staging');
+    });
+
+    it.each(['dev', 'prod'] as const)('a %s build stays on main', (kind) => {
+      vi.mocked(buildKind).mockReturnValue(kind);
+      expect(getCoworkRef()).toBe('main');
+      expect(getAntonRef()).toBe('main');
+    });
+
+    it('an explicit env ref wins over the build-kind fallback', () => {
+      vi.mocked(buildKind).mockReturnValue('stable');
+      withEnv({ COWORK_SERVER_REF: 'feat/z', ANTON_REF: 'feat/a' }, () => {
+        expect(getCoworkRef()).toBe('feat/z');
+        expect(getAntonRef()).toBe('feat/a');
+      });
+    });
+
+    it('falls back to main if buildKind() throws', () => {
+      vi.mocked(buildKind).mockImplementation(() => {
+        throw new Error('electron unavailable');
+      });
+      expect(getCoworkRef()).toBe('main');
+      expect(getAntonRef()).toBe('main');
+    });
+
+    afterEach(() => {
+      vi.mocked(buildKind).mockReset();
+      vi.mocked(buildKind).mockReturnValue('dev');
+    });
+  });
 });
 
 describe('getInstallSpec', () => {
@@ -107,6 +151,21 @@ describe('getInstallSpec', () => {
         'anton-agent @ git+https://github.com/mindsdb/anton.git@feat/x',
       ]);
     });
+  });
+
+  it('a stable build with no env pins cowork-server AND anton to @staging', () => {
+    // The build-kind fallback flows through getInstallSpec: getAntonRef()
+    // returns 'staging' (!= main), so the anton override is emitted too.
+    vi.mocked(buildKind).mockReturnValue('stable');
+    try {
+      const spec = getInstallSpec();
+      expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@staging');
+      expect(spec.overrides).toEqual([
+        'anton-agent @ git+https://github.com/mindsdb/anton.git@staging',
+      ]);
+    } finally {
+      vi.mocked(buildKind).mockReturnValue('dev');
+    }
   });
 
   it('COWORK_SERVER_REF changes the git ref in the package spec', () => {

@@ -22,6 +22,8 @@
 // On the `pypi` channel anton comes from the published wheel's pinned
 // dependency, so ANTON_REF is ignored there.
 
+import { buildKind } from './cowork-home';
+
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
 // export const COWORK_SERVER_BRANCH = 'main';
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
@@ -69,13 +71,11 @@ export function getAppDisplayVersion(): string {
 //
 //   dev/prod → main   preview/stable → staging
 //
-// Lazy + defensive: cowork-home imports electron `app`, and this module must
-// stay importable outside a packaged Electron process (tests, tooling). Any
+// Defensive: buildKind() reaches for electron `app`, and this module must
+// stay usable outside a packaged Electron process (tests, tooling). Any
 // failure resolves to '' so the caller falls through to 'main'.
 function _refForBuildKind(): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { buildKind } = require('./cowork-home') as { buildKind: () => string };
     const kind = buildKind();
     return kind === 'preview' || kind === 'stable' ? 'staging' : '';
   } catch {
