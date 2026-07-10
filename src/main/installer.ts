@@ -2,10 +2,20 @@ import { spawn, execFile } from 'child_process';
 import { BrowserWindow, app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 import { IPC } from '../shared/ipc-channels';
 import { sendEvent } from './analytics';
-import { getInstallSpec } from './server-source';
+import { getInstallSpec, COWORK_SERVER_MIN_VERSION } from './server-source';
+import { meetsMinVersion } from './update-logic';
+import { withServerMaintenance } from './server-process';
+import {
+  PYTHON_RANGE,
+  getLocalBin,
+  getEnvPath,
+  getCoworkServerBinary,
+  findUv,
+  getInstalledVersion,
+  writeUvOverrides,
+} from './uv-paths';
 
 interface InstallStep {
   id: string;
@@ -16,22 +26,6 @@ interface InstallStep {
 interface InstallerOptions {
   shouldAbort?: () => boolean;
 }
-
-// Pinned cowork-server version. Bump this deliberately when shipping a
-// cowork release that requires backend changes. The installer will
-// install at least this version (a minimum floor), picking up any
-// newer compatible releases automatically.
-const COWORK_SERVER_MIN_VERSION = '0.1.10';
-
-// PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
-// Keep in sync with server-updater.ts PYTHON_RANGE and cowork-server requires-python.
-const PYTHON_RANGE = '>=3.12,<3.14';
-
-// The cowork-server (+ anton) install source is centralized in
-// ./server-source so the installer and auto-updater never disagree.
-// Default: git, branch `main`; overridable via COWORK_SERVER_CHANNEL /
-// COWORK_SERVER_REF / ANTON_REF / COWORK_SERVER_PACKAGE.
-
 
 function getSteps(): InstallStep[] {
   const steps: InstallStep[] = [];
@@ -46,55 +40,6 @@ function getSteps(): InstallStep[] {
     { id: 'server', label: 'Start server', status: 'pending' },
   );
   return steps;
-}
-
-function getLocalBin(): string {
-  return path.join(os.homedir(), '.local', 'bin');
-}
-
-function getCoworkServerBinary(): string {
-  const localBin = getLocalBin();
-  if (process.platform === 'win32') {
-    return path.join(localBin, 'cowork-server.exe');
-  }
-  return path.join(localBin, 'cowork-server');
-}
-
-function getUvBinary(): string {
-  const localBin = getLocalBin();
-  if (process.platform === 'win32') {
-    return path.join(localBin, 'uv.exe');
-  }
-  return path.join(localBin, 'uv');
-}
-
-function findUv(): string | null {
-  const explicit = getUvBinary();
-  if (fileExists(explicit)) return explicit;
-
-  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
-    const winCandidate = path.join(process.env.LOCALAPPDATA, 'bin', 'uv.exe');
-    if (fileExists(winCandidate)) return winCandidate;
-  }
-
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', process.platform === 'win32' ? 'uv.exe' : 'uv');
-  if (fileExists(cargoBin)) return cargoBin;
-
-  if (process.platform === 'darwin') {
-    for (const p of ['/opt/homebrew/bin/uv', '/usr/local/bin/uv']) {
-      if (fileExists(p)) return p;
-    }
-  }
-
-  return null;
-}
-
-function getEnvPath(): string {
-  const localBin = getLocalBin();
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
-  const currentPath = process.env.PATH || '';
-  const parts = [localBin, cargoBin, currentPath];
-  return parts.join(path.delimiter);
 }
 
 function canSend(win: BrowserWindow): boolean {
@@ -290,50 +235,13 @@ export async function checkCoworkServerInstalled(): Promise<boolean> {
     console.log('[installer] cowork-server version could not be determined, reinstall needed');
     return false;
   }
-  if (compareVersions(installedVersion, COWORK_SERVER_MIN_VERSION) < 0) {
+  if (!meetsMinVersion(installedVersion, COWORK_SERVER_MIN_VERSION)) {
     console.log(
       `[installer] cowork-server ${installedVersion} is below minimum ${COWORK_SERVER_MIN_VERSION}, needs upgrade`,
     );
     return false;
   }
   return true;
-}
-
-/** Get the installed cowork-server version from `uv tool list`. */
-function getInstalledVersion(): Promise<string | null> {
-  const uvBin = findUv();
-  if (!uvBin) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    // Force plain output. In dev, the launcher (`concurrently`) sets
-    // FORCE_COLOR, which makes `uv tool list` emit ANSI codes — e.g.
-    // `\x1b[1mcowork-server v0.1.6\x1b[0m`. That breaks the start-anchored
-    // regex below, so the version reads as null and verification fails with
-    // a misleading "binary not found". NO_COLOR overrides FORCE_COLOR.
-    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
-    execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
-      if (err) { resolve(null); return; }
-      // Strip any residual ANSI escapes defensively before matching.
-      // eslint-disable-next-line no-control-regex
-      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
-      for (const line of clean.split('\n')) {
-        const match = line.match(/^cowork-server\s+v?([\d.]+)/);
-        if (match) { resolve(match[1]); return; }
-      }
-      resolve(null);
-    });
-  });
-}
-
-/** Compare two X.Y.Z version strings. Returns <0 if a < b, 0 if equal, >0 if a > b. */
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
 }
 
 // Convenience wrapper used by the boot flow IPC. Returns the full
@@ -475,7 +383,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     if (abortIfRequested()) return false;
     setStep('uv', 'running');
     sendLog(win, '\n--- Checking for uv ---\n');
-    let hasUv = await commandExists('uv') || fileExists(getUvBinary());
+    let hasUv = await commandExists('uv') || !!findUv();
 
     if (!hasUv) {
       sendLog(win, 'uv not found. Installing...\n');
@@ -507,7 +415,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
           return false;
         }
       }
-      hasUv = await commandExists('uv') || fileExists(getUvBinary());
+      hasUv = await commandExists('uv') || !!findUv();
       if (!hasUv) {
         setStep('uv', 'error');
         sendLog(win, 'ERROR: uv installation completed but binary not found.\n');
@@ -525,13 +433,12 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
     setStep('cowork-server', 'running');
     sendLog(win, `\n--- Installing cowork-server v${COWORK_SERVER_MIN_VERSION}+ ---\n`);
 
-    const uvBin = fileExists(getUvBinary()) ? getUvBinary() : 'uv';
+    const uvBin = findUv() || 'uv';
     const spec = getInstallSpec();
-    sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.withArgs.length ? ` (${spec.withArgs.join(' ')})` : ''}\n`);
+    sendLog(win, `Source: ${spec.channel} — ${spec.package}${spec.overrides.length ? ` (override: ${spec.overrides.join(', ')})` : ''}\n`);
     const installArgs = [
       'tool', 'install',
       spec.package,
-      ...spec.withArgs,
       '--force', '--reinstall',
       '--python', PYTHON_RANGE,
     ];
@@ -544,10 +451,15 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
      * outside their activation shell. A uv-managed standalone CPython has no
      * such dependency, and uv fetches it on demand if absent.
      */
-    const uvEnv: NodeJS.ProcessEnv = { UV_PYTHON_PREFERENCE: 'only-managed' };
+    const uvEnv: NodeJS.ProcessEnv = {
+      UV_PYTHON_PREFERENCE: 'only-managed',
+      ...writeUvOverrides(spec.overrides),
+    };
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');
 
-    const installResult = await runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv });
+    const installResult = await withServerMaintenance(
+      () => runCommand(uvBin, installArgs, win, { shouldAbort, env: uvEnv }),
+    );
     if (abortIfRequested()) return false;
 
     if (installResult.code !== 0) {

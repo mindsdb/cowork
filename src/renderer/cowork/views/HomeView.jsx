@@ -250,6 +250,8 @@ export default function HomeView({
   disabledConnections = [],
   onUpdateConnectorMute,
   onOpenNewProject,
+  onNavigateToConnectors,
+  onCreateProject,
   configReady, configError, onOpenSettings,
   serverOnline = false, onShowServerHelp,
   skipIntro = false,
@@ -541,6 +543,7 @@ export default function HomeView({
               models={models}
               attachments={attachments}
               connectors={connectors}
+              onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}

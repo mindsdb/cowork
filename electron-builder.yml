@@ -62,6 +62,8 @@ extraResources:
       - "**/*"
   - from: server-credentials.json
     to: server-credentials.json
+  - from: build-config.json
+    to: build-config.json
 
 afterPack: scripts/strip-xattrs.js
 afterSign: scripts/notarize.js

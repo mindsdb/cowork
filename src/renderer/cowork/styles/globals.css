@@ -4773,6 +4773,14 @@ body[data-theme="dark"] .mshell__drawer-title {
   color: var(--ink);
   box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
   user-select: text;
+  /* The bubble is a flex item in a column flex (.user-turn-inner). Without
+     min-width:0 its min-content floor is the widest unbreakable child — a
+     pasted code block / wide table with `white-space: pre` — which lets the
+     bubble grow past the inner's 78% cap and run off the chat column.
+     min-width:0 lets it shrink so the code block's own overflow-x:auto
+     scrolls the long line within the bubble instead. */
+  min-width: 0;
+  max-width: 100%;
 }
 /* ─── Shared turn-action toolbar ──────────────────────────────────────────
    Horizontal row of icon buttons below both user and assistant messages.
@@ -4791,6 +4799,45 @@ body[data-theme="dark"] .mshell__drawer-title {
 .answer-turn:hover .turn-actions,
 .turn-actions:focus-within {
   opacity: 1;
+}
+/* Footer meta bottom-right of an answer — "Jun 21, 7:39 AM · Anton".
+   Hover-only by design (no .is-last exception): the agent + timestamp
+   are reference details, not part of the reading flow. */
+.turn-meta {
+  margin-left: auto;
+  margin-top: 4px; /* matches .turn-actions so both sit on one baseline */
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--ink-4);
+  opacity: 0;
+  transition: opacity 140ms ease;
+  user-select: none;
+}
+.answer-turn:hover .turn-meta,
+.answer-turn:focus-within .turn-meta { opacity: 1; }
+/* The in-flight status label next to the orb — soft left-to-right sheen,
+   the same "alive" read as Claude's thinking label. Numbers inside tick
+   every second, so the JSX pairs this with tabular-nums. */
+@keyframes thinking-shimmer {
+  from { background-position: 150% 0; }
+  to   { background-position: -50% 0; }
+}
+.thinking-shimmer {
+  color: transparent;
+  background-image: linear-gradient(90deg, var(--ink-4) 0%, var(--ink) 50%, var(--ink-4) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: thinking-shimmer 2.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-shimmer {
+    animation: none;
+    color: var(--ink-3);
+    background-image: none;
+  }
 }
 .turn-action-btn {
   width: 28px;

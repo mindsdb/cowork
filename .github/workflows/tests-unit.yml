@@ -1,0 +1,75 @@
+name: Tests (unit)
+
+# Fast PR check: typecheck + unit/component tests + a real renderer build.
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+permissions:
+  contents: read
+
+concurrency: # cancel superseded PR runs; never cancel main
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest # unit/component only — no native/Electron dep
+    timeout-minutes: 10
+    env:
+      COWORK_SERVER_CHANNEL: ''
+      ANTHROPIC_API_KEY: ''
+      OPENAI_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry # self-heal transient install flakes
+        with:
+          command: npm ci
+      - name: Typecheck (main + renderer)
+        run: npm run typecheck
+      - name: Cowork purity guard (no direct bridge access)
+        run: npm run check:cowork-purity
+      - name: Unit + component tests + coverage
+        run: npm run test:coverage
+      - name: Coverage summary
+        # Renders the json-summary into the run's Summary tab. No third-party
+        # action, no extra permissions (qa.md §7 supply-chain stance).
+        if: always()
+        run: |
+          node -e "
+          const s = require('./coverage/coverage-summary.json');
+          const rows = Object.entries(s)
+            .filter(([f]) => f !== 'total')
+            .map(([f, d]) => \`| \${f.replace(process.cwd() + '/', '')} | \${d.statements.pct}% | \${d.branches.pct}% | \${d.lines.pct}% |\`);
+          const t = s.total;
+          console.log('## Coverage');
+          console.log('| File | Stmts | Branch | Lines |');
+          console.log('|---|---|---|---|');
+          console.log(\`| **total** | **\${t.statements.pct}%** | **\${t.branches.pct}%** | **\${t.lines.pct}%** |\`);
+          rows.forEach(r => console.log(r));
+          " >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      - run: npm run build:renderer
