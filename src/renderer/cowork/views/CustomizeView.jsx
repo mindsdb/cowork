@@ -518,7 +518,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                     display: 'flex', flexDirection: 'column', gap: 10,
                   }}>
                     <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
-                      This connection can only read files it created itself. Pick any files below —
+                      This connection can only read files it created itself. Select any files below —
                       including several at once, or whole Shared Drives — to grant access to them too.
                     </div>
                     {pickerState.status === 'waiting' ? (
@@ -556,7 +556,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
                           cursor: 'pointer',
                         }}
                       >
-                        Pick Drive files
+                        Select files from Google Drive
                       </button>
                     )}
                     {pickerState.status === 'error' && (

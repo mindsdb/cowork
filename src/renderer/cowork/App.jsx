@@ -773,6 +773,13 @@ function AppCore() {
   // chooseGoogleDriveConnection and consumed by the modal near the
   // bottom of this component's JSX.
   const [driveAccountChoice, setDriveAccountChoice] = useState(null);
+  // Non-null while confirming that the user wants to connect Google
+  // Drive at all (no google_drive connection exists yet) — { resolve },
+  // set by connectGoogleDriveThenRun and consumed by the ConfirmModal
+  // near the bottom of this component's JSX. Resolves true/false rather
+  // than throwing, matching the account-choice modal's cancel-is-silent
+  // convention.
+  const [driveConnectPrompt, setDriveConnectPrompt] = useState(null);
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
@@ -2397,10 +2404,14 @@ function AppCore() {
   }, []);
 
   // Shared by both "+" menu entry points below: not connected yet →
+  // confirm the user actually wants to leave the app for Google's
+  // connect flow (it opens the OS browser, not an in-app screen), then
   // open the same imperative connect flow the connector picker uses,
   // then auto-resume `onConnected` once that form reports success, so
   // the user doesn't have to click "Add files" a second time.
   const connectGoogleDriveThenRun = useCallback(async (onConnected) => {
+    const confirmed = await new Promise((resolve) => setDriveConnectPrompt({ resolve }));
+    if (!confirmed) return;
     const tempId = await handleConnectorPicked({ id: 'google_drive' });
     if (!tempId) return;
     const CONNECT_RESUME_TIMEOUT_MS = 5 * 60 * 1000;
@@ -4302,6 +4313,18 @@ function AppCore() {
         onConfirm={handleConfirmMove}
       />
 
+      {/* Shown when picking/attaching Google Drive files with no
+          google_drive connection yet — see connectGoogleDriveThenRun. */}
+      <ConfirmModal
+        open={!!driveConnectPrompt}
+        title="Connect Google Drive?"
+        message="You need to connect your Google Drive account to add files from Drive."
+        confirmLabel="Connect"
+        cancelLabel="Cancel"
+        onConfirm={() => { driveConnectPrompt?.resolve(true); setDriveConnectPrompt(null); }}
+        onClose={() => { driveConnectPrompt?.resolve(false); setDriveConnectPrompt(null); }}
+      />
+
       {/* Shown when picking/attaching Google Drive files and more than
           one google_drive connection exists — see chooseGoogleDriveConnection. */}
       <Modal
@@ -4337,7 +4360,7 @@ function AppCore() {
                 onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; }}
               >
                 <span style={{ color: 'var(--ink-3)', display: 'inline-flex', flexShrink: 0 }}>{Ico.googleDrive(16)}</span>
-                <span>{c.displayName || c.name}</span>
+                <span>{c.display_name || c.name}</span>
               </button>
             ))}
           </div>
