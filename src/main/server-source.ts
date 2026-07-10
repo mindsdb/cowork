@@ -59,12 +59,41 @@ export function getAppDisplayVersion(): string {
   return _buildVal('BUILD_APP_VERSION') || app.getVersion();
 }
 
+// Fallback git ref keyed off the build kind, used only when neither an
+// explicit COWORK_SERVER_REF env nor a build-time-baked ref is present. This
+// is the safety net for the failure we hit in the field: a stable/preview
+// build whose baked BUILD_COWORK_SERVER_REF came out empty would otherwise
+// default to `main` and install a cowork-server that lacks the branch's
+// routes (e.g. the OAuth connector endpoints only on staging) — surfacing as
+// a bare 404 "Not Found" when the renderer starts the OAuth flow.
+//
+//   dev/prod → main   preview/stable → staging
+//
+// Lazy + defensive: cowork-home imports electron `app`, and this module must
+// stay importable outside a packaged Electron process (tests, tooling). Any
+// failure resolves to '' so the caller falls through to 'main'.
+function _refForBuildKind(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { buildKind } = require('./cowork-home') as { buildKind: () => string };
+    const kind = buildKind();
+    return kind === 'preview' || kind === 'stable' ? 'staging' : '';
+  } catch {
+    return '';
+  }
+}
+
 export function getCoworkRef(): string {
-  return (process.env.COWORK_SERVER_REF || _buildVal('BUILD_COWORK_SERVER_REF') || 'main').trim() || 'main';
+  return (
+    (process.env.COWORK_SERVER_REF || _buildVal('BUILD_COWORK_SERVER_REF') || _refForBuildKind() || 'main').trim() ||
+    'main'
+  );
 }
 
 export function getAntonRef(): string {
-  return (process.env.ANTON_REF || _buildVal('BUILD_ANTON_REF') || 'main').trim() || 'main';
+  return (
+    (process.env.ANTON_REF || _buildVal('BUILD_ANTON_REF') || _refForBuildKind() || 'main').trim() || 'main'
+  );
 }
 
 export interface InstallSpec {

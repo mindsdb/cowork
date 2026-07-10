@@ -496,6 +496,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
+      // The server builds OAuth redirect URIs from server_origin, which
+      // otherwise defaults to the fixed :26866. Since ENG-439 the packaged
+      // server listens on a per-user derived port, so without this the
+      // redirect points at a dead :26866 and "Allow" lands on an unreachable
+      // page. Pin the origin to the port we actually spawned on. Google does
+      // not validate the port for loopback (127.0.0.1) redirect URIs.
+      COWORK_SERVER_ORIGIN: getServerOrigin(),
       ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another
