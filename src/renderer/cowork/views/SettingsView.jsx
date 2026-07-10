@@ -7,6 +7,7 @@ import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
+import { Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -1123,14 +1124,14 @@ export default function SettingsView({
                   : 'Changes apply on save.'}
         </span>
       </div>
-      <button
-        className="btn-primary" onClick={save}
+      <Button
+        variant="primary" onClick={save}
         disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
         title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}
         style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
       >
         {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
-      </button>
+      </Button>
     </>
   );
 
@@ -1394,8 +1395,8 @@ export default function SettingsView({
               }}>
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-                <button
-                  className="btn-secondary"
+                <Button
+                  variant="subtle"
                   onClick={() => setAddPickerOpen(true)}
                   disabled={availableTypesForAdd.length === 0}
                   title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
@@ -1408,7 +1409,7 @@ export default function SettingsView({
                     pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                     cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                   }}
-                >{Ico.plus(13)} Add provider</button>
+                >{Ico.plus(13)} Add provider</Button>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
@@ -1424,14 +1425,13 @@ export default function SettingsView({
                     fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
                   }}>Choose Provider:</strong>
                   {availableTypesForAdd.map((t) => (
-                    <button
+                    <Button
                       key={t}
-                      type="button"
+                      variant="subtle"
                       onClick={() => addProviderOfType(t)}
-                      className="btn-secondary"
                       title={PROVIDER_TYPE_DESC[t]}
                       style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                    >{typeLabels[t] || t}</button>
+                    >{typeLabels[t] || t}</Button>
                   ))}
                   <button
                     type="button"
