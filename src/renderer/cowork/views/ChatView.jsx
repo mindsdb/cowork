@@ -222,7 +222,7 @@ function ConnectIntroBubble({ title, connector, onHoverChange, modify = false, o
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             <span style={{
               fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-              color: T.ink, letterSpacing: '-0.005em',
+              color: T.ink, letterSpacing: '0',
             }}>{title}</span>
             <span style={{
               fontFamily: FONT_BODY, fontSize: 12.5, color: T.ink3,
@@ -666,7 +666,7 @@ function ArtifactCard({ artifact, onOpen }) {
             all: 'unset',
             cursor: canAct ? 'pointer' : 'not-allowed',
             fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 16, color: T.ink,
-            letterSpacing: '0.01em',
+            letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             display: 'block', minWidth: 0,
             transition: 'color 120ms ease',
@@ -846,7 +846,7 @@ function ActionCard({ time, agentLabel, title, body, buttons = [] }) {
         border: `1px solid ${T.line}`, background: T.surface, borderRadius: 12,
         padding: '16px 18px', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10,
       }}>
-        <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, letterSpacing: '0.02em', color: T.ink }}>
+        <div className="s-h3" style={{ color: T.ink }}>
           {title}
         </div>
         <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, lineHeight: 1.55, color: T.ink2 }}>
@@ -1378,7 +1378,11 @@ export default function ChatView({
                   autoCorrect="off"
                   style={{
                     flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+                    // Match the breadcrumb links (Crumb = 13px) — this is the
+                    // current crumb, so it's a CrumbCurrent sibling in every
+                    // way but its interactivity (click opens the task menu,
+                    // dbl-click edits), hence not the component itself.
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
                     letterSpacing: '0', color: T.ink,
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
@@ -1406,7 +1410,7 @@ export default function ChatView({
                     }
                   }}
                   style={{
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
                     letterSpacing: '0', color: T.ink,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     overflowWrap: 'anywhere',

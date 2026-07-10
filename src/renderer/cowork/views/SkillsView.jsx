@@ -3,7 +3,7 @@ import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
 import { Menu } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Crumb, CrumbSep } from '../components/ui/Crumb';
+import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { Toast } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -466,13 +466,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <Crumb label="Skills" onClick={() => setSelected(null)} />
             <CrumbSep />
-            <span style={{
-              fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '0.04em',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {selected.label}
-            </span>
+            <CrumbCurrent label={selected.label} />
             <div style={{ flex: 1 }} />
             <Toggle checked={selected.enabled ?? true} onChange={async (e) => {
               const next = e.target.checked;

@@ -472,10 +472,9 @@ export default function ContextFileModal({
           padding: '14px 18px',
         }}>
           <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <h2 style={{
+            <h2 className="s-h3" style={{
               margin: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
+              color: 'var(--ink)',
               minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{headerTitle}</h2>
             {headerSubtitle && (

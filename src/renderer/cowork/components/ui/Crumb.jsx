@@ -29,3 +29,24 @@ export function CrumbSep() {
     }}>›</span>
   );
 }
+
+// The trailing "you are here" crumb — the current page. Renders as a
+// sibling of Crumb: SAME size (13) and tracking (0) as the link, so the
+// row reads as one unit; the only differences are colour (ink, not ink-3)
+// and that it isn't a button. Keeping this in one component stops the
+// per-view copies from drifting into different sizes/tracking, which is
+// exactly what had happened (14px + 0.04em here, 13px + 0 on the link).
+export function CrumbCurrent({ label, title, maxWidth, style }) {
+  return (
+    <span
+      title={title || label}
+      style={{
+        fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13,
+        letterSpacing: '0', color: 'var(--ink)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        minWidth: 0, maxWidth, padding: '2px 6px',
+        ...style,
+      }}
+    >{label}</span>
+  );
+}

@@ -66,9 +66,9 @@ const SECTION_PAD = '12px 16px';
 
 function PanelHeader({ title }) {
   return (
-    <div style={{
+    <div className="s-h3" style={{
       padding: '12px 16px', borderBottom: '1px solid var(--line)',
-      fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15, color: 'var(--ink)',
+      color: 'var(--ink)',
     }}>{title}</div>
   );
 }

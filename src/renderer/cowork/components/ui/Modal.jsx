@@ -26,7 +26,6 @@ import { createPortal } from 'react-dom';
 import Ico from '../Icons';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
 
 // Width × max-height. Heights are caps; modals shrink to content.
 // All three stay inside the viewport on the smallest target screen
@@ -234,11 +233,9 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
         {title && (
           <div
             id={id}
+            className="s-h3"
             style={{
-              fontFamily: FONT_DISPLAY,
-              fontSize: 18, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
-              lineHeight: 1.25,
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}
           >{title}</div>

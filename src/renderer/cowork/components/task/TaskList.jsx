@@ -89,9 +89,8 @@ export function TaskList({
           display: 'flex', alignItems: 'baseline', gap: 8,
           marginBottom: 12, paddingLeft: 4,
         }}>
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 16,
-            fontWeight: 600, color: 'var(--ink)', letterSpacing: '-0.005em',
+          <span className="s-h3" style={{
+            color: 'var(--ink)',
           }}>
             {title}
           </span>

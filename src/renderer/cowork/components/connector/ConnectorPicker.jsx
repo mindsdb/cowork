@@ -207,7 +207,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{
           fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14, color: 'var(--ink)',
-          letterSpacing: '-0.005em',
+          letterSpacing: '0',
         }}>{connector.label || connector.id}</span>
         {connector.description && (
           <span style={{
@@ -305,10 +305,9 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
           background: 'var(--surface)',
           flexShrink: 0,
         }}>
-          <h2 id="connector-picker-title" style={{
+          <h2 id="connector-picker-title" className="s-h3" style={{
             margin: 0,
-            fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600,
-            letterSpacing: '-0.005em', color: 'var(--ink)',
+            color: 'var(--ink)',
           }}>Connectors Directory</h2>
           <button
             type="button"

@@ -364,8 +364,15 @@ export default function HomeView({
       }}
     >
       <h1 className="home-greeting-row" style={{
+        // Deliberate exception to the .s-* ladder. This is the home hero,
+        // and the ladder has no rung between s-h1 (28px) and s-display
+        // (44px): 28px is dwarfed by the 42px orb, and 44px wraps the
+        // greeting to two lines in the 640px column. So it sits at a
+        // bespoke 36px, balanced against the orb. Tracking is -0.01em
+        // (not the tighter -0.02em the ladder would give at this size):
+        // Inter at 36px in a long sentence reads cramped at -0.02em.
         fontFamily: 'var(--font-display)',
-        fontSize: 36, fontWeight: 600, letterSpacing: '-0.02em',
+        fontSize: 36, fontWeight: 600, letterSpacing: '-0.01em',
         color: 'var(--text-strong)',
         margin: '0 0 28px',
         width: '100%', maxWidth: 'var(--composer-max-width, 640px)',

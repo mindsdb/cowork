@@ -19,7 +19,6 @@
 //   />
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
 const FONT_MONO    = 'var(--font-mono)';
 
 export function PageHeader({ title, subtitle, eyebrow, actions, subtitleBottom }) {
@@ -40,10 +39,9 @@ export function PageHeader({ title, subtitle, eyebrow, actions, subtitleBottom }
               marginBottom: 2,
             }}>{eyebrow}</div>
           )}
-          <h1 style={{
+          <h1 className="s-h1" style={{
             margin: 0,
-            fontFamily: FONT_DISPLAY, fontSize: 28, fontWeight: 600,
-            letterSpacing: '-0.005em', color: 'var(--ink)',
+            color: 'var(--ink)',
           }}>{title}</h1>
           {subtitle && (
             <p style={{

@@ -206,10 +206,9 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           padding: '16px 18px',
           borderBottom: '1px solid var(--line)',
         }}>
-          <h2 style={{
+          <h2 className="s-h3" style={{
             margin: 0,
-            fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600,
-            letterSpacing: '-0.005em', color: 'var(--ink)',
+            color: 'var(--ink)',
           }}>Start a new project</h2>
           <button
             type="button"
