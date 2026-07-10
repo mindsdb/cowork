@@ -515,6 +515,15 @@ export default function Sidebar({
             active={activeRoute === 'customize'}
             badge={showCounters ? (connectorsCount || null) : null}
           />
+          {/* Channels — connect messaging apps (Telegram/Slack/etc.) so people
+              can talk to the agent from their chats. Web-only: the desktop app
+              surfaces Channels under Settings, but the web shell hides Settings
+              entirely (the Electron-only sidebar footer), so the hosted build
+              needs this standalone entry. Routes to the `channels` key, which
+              App.jsx renders as <ChannelsView />. */}
+          {host.isWeb && (
+            <NavItem icon={Ico.chats(15)} label="Channels" onClick={() => onNavigate('channels')} active={activeRoute === 'channels'} />
+          )}
         </div>
 
         {/* Brain-style nav — visually grouped panel.
