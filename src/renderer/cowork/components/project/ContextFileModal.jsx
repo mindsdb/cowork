@@ -29,6 +29,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Button } from '../ui';
 import {
   readProjectFile,
   writeProjectFile,
@@ -706,14 +707,13 @@ export default function ContextFileModal({
               >Cancel</button>
             )}
             {editing && (
-              <button
-                type="button"
-                className="btn-primary"
+              <Button
+                variant="primary"
                 onClick={save}
                 disabled={busy}
               >
                 {busy ? 'Saving…' : 'Save'}
-              </button>
+              </Button>
             )}
             {!editing && !loading && (
               <button
