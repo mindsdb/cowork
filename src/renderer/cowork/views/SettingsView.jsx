@@ -1607,8 +1607,13 @@ export default function SettingsView({
                                   style={{ width: '100%' }}
                                 >
                                   {showStalePin && (
+                                    // Labeled "legacy — re-select" (not "current") so it reads as
+                                    // an action to take, not a selection: the same model may also
+                                    // appear below as a real "— Upgrade to unlock" row, and a bare
+                                    // "(current)" would look like two identical, already-selected
+                                    // entries (ENG-739 review).
                                     <option value="__stale__" disabled>
-                                      {modelLabel(curModel.replace(/^latest:/, ''))} (current)
+                                      {modelLabel(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)
                                     </option>
                                   )}
                                   {modelList.map((m) => (

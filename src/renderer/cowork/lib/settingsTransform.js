@@ -190,7 +190,14 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
   const savedNotListed = !!curModel && !list.includes(curModel);
   const savedIsCustom = savedNotListed && allowOther;
   const showStalePin = savedNotListed && !allowOther;
-  const inputMode = !!forceCustom || savedIsCustom;
+  // Free-text mode requires a provider that accepts it. Gating on `allowOther`
+  // keeps the invariant "selectValue always matches a rendered option" true
+  // even when `forceCustom` lingers from a prior provider: toggling "Other…"
+  // on Anthropic then repointing to minds-cloud (which renders neither a
+  // `__custom__` option nor a text input) would otherwise wedge the control
+  // into a blank, unwritable select — the same "Saved but not applied" bug via
+  // a different door.
+  const inputMode = (!!forceCustom || savedIsCustom) && allowOther;
   const selectValue = inputMode
     ? '__custom__'
     : (showStalePin ? '__stale__' : curModel);

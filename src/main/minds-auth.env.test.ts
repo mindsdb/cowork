@@ -67,6 +67,10 @@ describe('mindsSignInSettingWrites (DB sync on sign-in)', () => {
     const writes = mindsSignInSettingWrites('mdb_abc', 'https://api.mindshub.ai');
     const keys = writes.map((w) => w.key);
     expect(keys).toEqual(['minds_api_key', 'minds_url', 'planning_provider', 'coding_provider']);
+    // Ordering is load-bearing: the credential MUST be written first so a
+    // failed key write can abort before the provider flips to minds-cloud
+    // (avoids a "provider=minds-cloud + dead key" partial state). ENG-739 review.
+    expect(keys[0]).toBe('minds_api_key');
     // The whole point: neither model row is ever touched on sign-in, so a
     // picker fix (mindshub_air) and an intentional latest:opus both survive.
     expect(keys).not.toContain('planning_model');

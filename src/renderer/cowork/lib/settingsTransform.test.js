@@ -52,6 +52,24 @@ describe('resolveModelPickerValue', () => {
     expect(r.selectValue).toBe('__custom__');
   });
 
+  // ─── ENG-739 review: forceCustom must not wedge a non-allowOther provider ─
+  it('ignores a lingering forceCustom when the provider does not allow free text', () => {
+    // Repro: user toggled "Other…" on Anthropic (forceCustom stays true), then
+    // repointed to minds-cloud (allowOther=false) without a provider onChange to
+    // reset it. minds-cloud renders neither a __custom__ option nor a text input,
+    // so __custom__ would be a blank, unwritable select. Must stay selectable.
+    const r = resolveModelPickerValue('mindshub_air', MINDS_LIST, /* allowOther */ false, /* forceCustom */ true);
+    expect(r.inputMode).toBe(false);
+    expect(r.selectValue).toBe('mindshub_air');
+  });
+
+  it('shows the stale placeholder (not __custom__) for a minds-cloud pin even with forceCustom', () => {
+    const r = resolveModelPickerValue('latest:sonnet', MINDS_LIST, false, /* forceCustom */ true);
+    expect(r.inputMode).toBe(false);
+    expect(r.showStalePin).toBe(true);
+    expect(r.selectValue).toBe('__stale__');
+  });
+
   // ─── edge cases ─────────────────────────────────────────────────────
   it('treats an unset model as directly selectable (no placeholder, no custom)', () => {
     const r = resolveModelPickerValue('', MINDS_LIST, false);

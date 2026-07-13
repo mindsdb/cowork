@@ -738,12 +738,14 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), 'utf-8');
-  // Owner-only perms — this file holds the plaintext API key for the CLI.
-  // Previously the `POST /settings/raw` sync chmod'd it server-side; now that
-  // sign-in writes the DB directly (not via /raw), do it here. `mode` on
-  // writeFileSync only applies to newly-created files, so chmod explicitly.
-  // Best-effort: no-op / unsupported on some filesystems (e.g. Windows).
+  // Owner-only perms — this file holds the plaintext API key for the CLI. The
+  // `mode` option applies when the file is CREATED, closing the window where a
+  // brand-new `.env` would briefly exist world-readable (0644) before a
+  // trailing chmod. Previously the `POST /settings/raw` sync chmod'd it
+  // server-side; sign-in now writes the DB directly (not via /raw), so do it
+  // here. The explicit chmod still covers the pre-existing-file case (`mode` is
+  // ignored on overwrite). Best-effort: unsupported on some filesystems (Windows).
+  fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), { encoding: 'utf-8', mode: 0o600 });
   try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
 
   // Ensure state.json has minds-cloud as the active provider so the server
@@ -791,18 +793,30 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   // Writing only these keys leaves the DB's model rows untouched.
   if (isServerRunning() || isServerStarting()) {
     const port = getServerPort();
+    // Order matters (mindsSignInSettingWrites lists the credential first): if
+    // the minds_api_key write fails, ABORT before flipping the provider to
+    // minds-cloud. provisionAntonApiKey already revoked the old key, so a
+    // partial "provider=minds-cloud + no/stale key" state would leave
+    // config_ready true while every message 401s. Bailing keeps the prior
+    // config intact until the next sign-in retries the whole sequence.
     for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST)) {
+      let ok = false;
       try {
         const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ value }),
         });
+        ok = res.ok;
         if (!res.ok) {
           console.warn(`[minds-auth] settings PUT ${key} returned`, res.status);
         }
       } catch (error) {
         console.warn(`[minds-auth] failed to write ${key} to server DB`, error);
+      }
+      if (!ok && key === 'minds_api_key') {
+        console.warn('[minds-auth] aborting settings sync — credential write failed; leaving prior config intact');
+        break;
       }
     }
 
