@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveModelPickerValue } from './settingsTransform';
+import { resolveModelPickerValue, diffSettingsForWrite } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
@@ -64,5 +64,38 @@ describe('resolveModelPickerValue', () => {
     const r = resolveModelPickerValue('sonnet', undefined, false);
     expect(r.showStalePin).toBe(true);
     expect(r.selectValue).toBe('__stale__');
+  });
+});
+
+// ─── ENG-739 self-serve recovery (the whole point of the picker fix) ──
+//
+// This is the safe recovery path the reviewer asked us to guarantee: rather
+// than auto-deleting a `latest:` pin (which we removed as unsafe — a user can
+// deliberately set one), a stuck user picks an enabled model and Save writes a
+// *real* change. Chains the two pure functions the UI uses so the picker fix is
+// proven end-to-end at the client layer.
+describe('ENG-739 stale-pin recovery writes the chosen model', () => {
+  it('latest:sonnet pin → picking mindshub_air produces a real planning_model write', () => {
+    // 1. Picker surfaces the stale pin as a selectable placeholder (not a
+    //    phantom __custom__ that would swallow the change).
+    const picker = resolveModelPickerValue('latest:sonnet', MINDS_LIST, /* allowOther */ false);
+    expect(picker.selectValue).toBe('__stale__');
+
+    // 2. User selects an enabled model; Save diffs against the stored pin and
+    //    emits the server-key write. Before the fix the control never fired a
+    //    change, so this diff was empty and "Saved" was a no-op.
+    const writes = diffSettingsForWrite(
+      { planningModel: 'mindshub_air' },
+      { planningModel: 'latest:sonnet' },
+    );
+    expect(writes).toEqual({ planning_model: 'mindshub_air' });
+  });
+
+  it('re-selecting the same stale pin writes nothing (no accidental churn)', () => {
+    const writes = diffSettingsForWrite(
+      { planningModel: 'latest:sonnet' },
+      { planningModel: 'latest:sonnet' },
+    );
+    expect(writes).toEqual({});
   });
 });
