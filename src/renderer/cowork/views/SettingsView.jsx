@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, modelLabel, resolveModelPickerValue } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
@@ -1582,9 +1582,12 @@ export default function SettingsView({
                         {modelList.length > 0 ? (
                           (() => {
                             const allowOther = curType !== 'minds-cloud';
-                            const savedIsCustom = !!curModel && !modelList.includes(curModel);
-                            const inputMode = modelInputMode[role] || savedIsCustom;
-                            const selectValue = inputMode ? '__custom__' : curModel;
+                            // See resolveModelPickerValue: keeps the <select> value matched to a
+                            // rendered <option> so picking a model always fires a real change and
+                            // Save writes it — a login-written `latest:` pin no longer wedges the
+                            // control into a no-op "Saved" (ENG-739).
+                            const { showStalePin, inputMode, selectValue } =
+                              resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
@@ -1603,6 +1606,11 @@ export default function SettingsView({
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                                   style={{ width: '100%' }}
                                 >
+                                  {showStalePin && (
+                                    <option value="__stale__" disabled>
+                                      {modelLabel(curModel.replace(/^latest:/, ''))} (current)
+                                    </option>
+                                  )}
                                   {modelList.map((m) => (
                                     <option key={m} value={m} disabled={isLocked(m)}>
                                       {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
