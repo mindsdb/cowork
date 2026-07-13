@@ -90,10 +90,14 @@ describe('getCoworkRef / getAntonRef', () => {
   describe('build-kind fallback (no env, no baked ref)', () => {
     // build-channel.gen doesn't exist in the test env, so with no env set the
     // resolution reaches _refForBuildKind(), which keys off buildKind().
-    it.each(['preview', 'stable'] as const)('a %s build falls back to staging', (kind) => {
+    // The fallback applies to the cowork-server ref ONLY — the anton ref must
+    // stay on `main` so getInstallSpec keeps deferring to cowork-server's own
+    // [tool.uv.sources] pin (regression guard for the spillover that replaced
+    // that pin with anton@staging-HEAD on every stable/preview build).
+    it.each(['preview', 'stable'] as const)('a %s build falls back cowork-server to staging, anton stays main', (kind) => {
       vi.mocked(buildKind).mockReturnValue(kind);
       expect(getCoworkRef()).toBe('staging');
-      expect(getAntonRef()).toBe('staging');
+      expect(getAntonRef()).toBe('main');
     });
 
     it.each(['dev', 'prod'] as const)('a %s build stays on main', (kind) => {
@@ -110,7 +114,7 @@ describe('getCoworkRef / getAntonRef', () => {
       });
     });
 
-    it('falls back to main if buildKind() throws', () => {
+    it('getCoworkRef falls back to main if buildKind() throws', () => {
       vi.mocked(buildKind).mockImplementation(() => {
         throw new Error('electron unavailable');
       });
@@ -153,16 +157,17 @@ describe('getInstallSpec', () => {
     });
   });
 
-  it('a stable build with no env pins cowork-server AND anton to @staging', () => {
-    // The build-kind fallback flows through getInstallSpec: getAntonRef()
-    // returns 'staging' (!= main), so the anton override is emitted too.
+  it('a stable build with no env pins ONLY cowork-server to @staging, anton defers to the pin', () => {
+    // The build-kind fallback flows through getInstallSpec for the cowork-server
+    // ref, but getAntonRef() stays on 'main' — so NO anton override is emitted
+    // and cowork-server's own [tool.uv.sources] pin decides anton. Regression
+    // guard: a fallback on the anton ref would replace that pin with
+    // anton@staging-HEAD, which can mismatch what cowork-server@staging expects.
     vi.mocked(buildKind).mockReturnValue('stable');
     try {
       const spec = getInstallSpec();
       expect(spec.package).toBe('git+https://github.com/mindsdb/cowork-server.git@staging');
-      expect(spec.overrides).toEqual([
-        'anton-agent @ git+https://github.com/mindsdb/anton.git@staging',
-      ]);
+      expect(spec.overrides).toEqual([]);
     } finally {
       vi.mocked(buildKind).mockReturnValue('dev');
     }
