@@ -55,6 +55,35 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
+// Explicitly persist a model chosen during onboarding to the DB (best-effort).
+//
+// ENG-739: model keys were removed from `syncSettingsToDb`'s map so a bulk
+// .env re-sync (login / post-install / web token-refresh) can never re-pin a
+// user who recovered via the picker. Onboarding is a genuine explicit choice,
+// so it writes its model here — the only non-picker path allowed to. A minds
+// onboarding writes no model line (the backend resolves the tier-aware
+// default), so this is a no-op there.
+async function syncOnboardingModels(lines: string[]): Promise<void> {
+  const KEY_MAP: Record<string, string> = {
+    ANTON_PLANNING_MODEL: 'planning_model',
+    ANTON_CODING_MODEL: 'coding_model',
+  };
+  for (const line of lines) {
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const settingKey = KEY_MAP[line.slice(0, eq)];
+    const value = line.slice(eq + 1);
+    if (!settingKey || !value) continue;
+    try {
+      await fetch(`${BASE}/settings/${settingKey}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      });
+    } catch { /* best-effort — the backend's apply_model_defaults still yields a model */ }
+  }
+}
+
 // The provider→validation-target and provider→env-vars mappings are
 // identical whether BYOK runs directly (Stage 1) or as the LLM step after
 // MindsHub (Stage 2). Shared here so the two call sites can't drift (they
@@ -218,6 +247,9 @@ export default function OnboardingScreen({
     lines.push('ANTON_EPISODIC_MEMORY=true');
     await host.saveSettings(lines.join('\n'));
     await syncSettingsToDb(lines);
+    // syncSettingsToDb no longer maps model keys (ENG-739); write the
+    // onboarding model choice explicitly so a BYOK pick still reaches the DB.
+    await syncOnboardingModels(lines);
     await syncHarness(coworker.id);
     setPhase('success');
     setTimeout(onComplete, 2000);
@@ -339,6 +371,9 @@ export default function OnboardingScreen({
     const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
     await host.saveSettings(lines.join('\n'));
     await syncSettingsToDb(lines);
+    // syncSettingsToDb no longer maps model keys (ENG-739); write the
+    // onboarding model choice explicitly so a BYOK pick still reaches the DB.
+    await syncOnboardingModels(lines);
     await syncHarness(coworker.id);
     setPhase('success');
     setTimeout(onComplete, 2000);
