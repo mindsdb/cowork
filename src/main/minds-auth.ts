@@ -653,8 +653,14 @@ const MINDS_KEYS = [
   'ANTON_MINDS_API_KEY',
   'ANTON_PLANNING_PROVIDER',
   'ANTON_CODING_PROVIDER',
-  'ANTON_PLANNING_MODEL',
-  'ANTON_CODING_MODEL',
+  // NOTE: ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT
+  // stripped (ENG-739). They may hold a value the user set deliberately for
+  // the standalone `anton` CLI (e.g. `ANTON_PLANNING_MODEL=latest:opus` via a
+  // hand-edited .env or the settings PUT API). A `latest:` prefix is not
+  // provable provenance, so wiping these on re-login silently mutates the
+  // user's CLI config. Leaving them untouched preserves that config; sign-in
+  // no longer *writes* a model pin, so a fresh user still gets the server's
+  // enabled-aware default.
   'ANTON_ANTHROPIC_API_KEY',
   'ANTON_OPENAI_API_KEY_CUSTOM',
   'ANTON_GEMINI_API_KEY',
@@ -675,18 +681,19 @@ const MINDS_KEYS = [
 // alone, so the OpenAI slot is no longer needed — and leaving it
 // untouched lets a user's own OpenAI key survive login.
 // Pure: given the existing `.env` contents, produce the contents to write on
-// MindsHub sign-in. Strips every prior MINDS_KEYS line (so a stale pin can't
-// survive) and re-adds only the credential + provider keys.
+// MindsHub sign-in. Strips every prior MINDS_KEYS line and re-adds the
+// credential + provider keys with fresh values.
 //
-// Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL. Pinning
+// Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL, and (as of
+// ENG-739) no longer strips them either — MINDS_KEYS omits both model keys, so
+// any model line the user set for the standalone CLI survives re-login. Pinning
 // `latest:sonnet` / `latest:haiku` here (an ENG-436-era guard against
 // deprecated-alias 500s) became fatal once tier gating shipped: it made every
 // sign-in an *explicit* model pick, so the server's enabled-aware default
 // (which only fills an unset model) could never steer a free-tier user to a
 // model their plan allows → first message 403s (ENG-597/ENG-739). Leaving the
-// model unset lets the server resolve the right model per tier (paid →
-// sonnet/haiku, free → first enabled); MINDS_KEYS lists both model keys so
-// re-login strips any stale `.env` pin.
+// model unset for a fresh user lets the server resolve the right model per tier
+// (paid → sonnet/haiku, free → first enabled).
 export function buildMindsEnvContent(existing: string, apiKey: string, host: string): string {
   const lines = existing.split('\n')
     .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
@@ -700,6 +707,27 @@ export function buildMindsEnvContent(existing: string, apiKey: string, host: str
   return lines.filter(Boolean).join('\n') + '\n';
 }
 
+// The DB setting keys a MindsHub sign-in must push, and ONLY these. The
+// server's one-time `.env`→DB migration is sentinel-guarded and won't re-run,
+// so a freshly-minted key / URL / provider selection has to be written
+// explicitly after login. Provider values are the DB enum form (`minds_cloud`,
+// underscore) — same as the picker writes via `PROVIDER_TO_SERVER`.
+//
+// Deliberately excludes planning_model / coding_model (ENG-739). The old sign-
+// in path POSTed the whole `.env` to `/settings/raw`, which re-reads the full
+// `.env` from disk and syncs EVERY recognised key — so a legacy `.env` model
+// line (or a stale login-written `latest:` pin) would clobber a model the user
+// just fixed via the picker, with no way to leave the model untouched. Writing
+// only these keys leaves the DB's model rows (and any picker fix) alone.
+export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ key: string; value: string }> {
+  return [
+    { key: 'minds_api_key', value: apiKey },
+    { key: 'minds_url', value: host },
+    { key: 'planning_provider', value: 'minds_cloud' },
+    { key: 'coding_provider', value: 'minds_cloud' },
+  ];
+}
+
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
   const homeDir = coworkHome();
   // ~/.cowork normally exists by the time SSO finalize runs (the server
@@ -711,6 +739,12 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
   fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), 'utf-8');
+  // Owner-only perms — this file holds the plaintext API key for the CLI.
+  // Previously the `POST /settings/raw` sync chmod'd it server-side; now that
+  // sign-in writes the DB directly (not via /raw), do it here. `mode` on
+  // writeFileSync only applies to newly-created files, so chmod explicitly.
+  // Best-effort: no-op / unsupported on some filesystems (e.g. Windows).
+  try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
 
   // Ensure state.json has minds-cloud as the active provider so the server
   // doesn't default to Anthropic on first boot (state.json may not exist yet
@@ -745,42 +779,48 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   await stopServer();
   await startServer();
 
-  // Sync the .env values we just wrote to the server's SQLite DB.
-  // The one-time .env → DB migration (migrate_env_to_db) is sentinel-
-  // guarded and won't re-run, so credentials written to .env after
-  // initial setup never reach the DB unless we explicitly push them.
-  // POST /api/v1/settings/raw merges and calls sync_env_vars_to_db.
+  // Push the freshly-minted credential + provider selection to the server's
+  // SQLite DB. The one-time .env → DB migration (migrate_env_to_db) is
+  // sentinel-guarded and won't re-run, so values written to .env after initial
+  // setup never reach the DB unless we explicitly push them.
+  //
+  // ENG-739: use individual `PUT /settings/{key}` writes for exactly the
+  // sign-in fields — NOT `POST /settings/raw`. That endpoint re-reads the full
+  // .env from disk and syncs EVERY recognised key, so a legacy/stale model
+  // line in .env would clobber a model the user just fixed via the picker.
+  // Writing only these keys leaves the DB's model rows untouched.
   if (isServerRunning() || isServerStarting()) {
     const port = getServerPort();
-    const envContent = fs.readFileSync(coworkEnvPath(), 'utf-8');
-    try {
-      const syncRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/raw`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: envContent }),
-      });
-      if (!syncRes.ok) {
-        console.warn('[minds-auth] settings/raw sync returned', syncRes.status);
+    for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST)) {
+      try {
+        const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value }),
+        });
+        if (!res.ok) {
+          console.warn(`[minds-auth] settings PUT ${key} returned`, res.status);
+        }
+      } catch (error) {
+        console.warn(`[minds-auth] failed to write ${key} to server DB`, error);
       }
-    } catch (error) {
-      console.warn('[minds-auth] failed to sync .env to server DB', error);
     }
 
-    // Verify the server is actually configured after the sync.
-    // If the sync failed silently (DB not updated), config_ready will
+    // Verify the server is actually configured after the writes.
+    // If the writes failed silently (DB not updated), config_ready will
     // still be false and the user would appear unconfigured after login.
     try {
       const healthRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/health/`);
       if (healthRes.ok) {
         const health = await healthRes.json() as Record<string, unknown>;
         if (!health.config_ready) {
-          console.warn('[minds-auth] config_ready is false after sync — restarting server');
+          console.warn('[minds-auth] config_ready is false after settings writes — restarting server');
           await stopServer();
           await startServer();
         }
       }
     } catch (error) {
-      console.warn('[minds-auth] health check after sync failed:', error);
+      console.warn('[minds-auth] health check after settings writes failed:', error);
     }
   }
 }
