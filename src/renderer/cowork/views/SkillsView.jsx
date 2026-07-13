@@ -376,15 +376,14 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
     { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
   ];
   const trigger = (
-    <button
-      type="button"
-      className="btn-primary"
+    <Button
+      variant="primary"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8, paddingRight: 10 }}
     >
       {Ico.plus(14)}
       <span>Create skill</span>
       <span style={{ display: 'inline-flex', color: 'inherit', opacity: 0.7 }}>{Ico.chevDown(11)}</span>
-    </button>
+    </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;
 }
