@@ -846,8 +846,11 @@ function setupIPC() {
       'ANTON_GEMINI_API_KEY',
       'ANTON_PLANNING_PROVIDER',
       'ANTON_CODING_PROVIDER',
-      'ANTON_PLANNING_MODEL',
-      'ANTON_CODING_MODEL',
+      // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT stripped
+      // on logout (ENG-739). Preserving them on sign-in but deleting them on
+      // sign-out would break the same "a `latest:` value may be a deliberate
+      // choice — never silently mutate it" rule the sign-in path now follows.
+      // A model is CLI-only in .env; the DB (product) is cleared separately.
     ];
     const envPath = getAntonEnvPath();
     if (fs.existsSync(envPath)) {
