@@ -204,7 +204,8 @@ export function AccessChooser({
             fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink)',
           }}>
             <Checkbox checked={draft.orgAllowed}
-              onCheckedChange={(v) => set({ orgAllowed: v })} />
+              onCheckedChange={(v) => set({ orgAllowed: v })}
+              aria-label="Everyone in my organization" />
             Everyone in my organization
           </label>
         </div>

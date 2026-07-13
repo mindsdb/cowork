@@ -7,7 +7,7 @@ import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
-import { Input } from '../components/ui';
+import { Input, Checkbox } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -1785,10 +1785,10 @@ export default function SettingsView({
                   style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
                 />
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={customTheme.bg === null}
-                    onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bg: v ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                    aria-label="Follow Light/Dark"
                   />
                   Follow Light/Dark
                 </label>
