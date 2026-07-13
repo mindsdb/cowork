@@ -4,8 +4,11 @@ Cowork's low-level UI building blocks. Import from the barrel — `index.js` is 
 canonical list of what's exported:
 
 ```js
-import { Button, Input, Textarea, Menu, Modal } from '../components/ui';
+import { Button, Input, Textarea, Menu } from '../components/ui';
 ```
+
+(A few primitives live outside the barrel and are imported by path — e.g.
+`import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal'`.)
 
 Each primitive wraps [Base UI](https://base-ui.com) (unstyled, accessible behaviour)
 and paints it with the existing `.btn` / `.field-*` CSS class systems, so the rendered
