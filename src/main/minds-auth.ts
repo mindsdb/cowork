@@ -674,6 +674,58 @@ const MINDS_KEYS = [
 // the scratchpad, and `check_configured` is satisfied by minds_api_key
 // alone, so the OpenAI slot is no longer needed — and leaving it
 // untouched lets a user's own OpenAI key survive login.
+// Clear login-written model pins (`latest:`-prefixed planning_model /
+// coding_model) from the server DB so the enabled-aware default resolves the
+// right model per tier. Best-effort: a failure here just leaves the (possibly
+// stale) pin in place — it never blocks sign-in.
+async function clearStaleModelPins(port: number): Promise<void> {
+  try {
+    const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/`);
+    if (!res.ok) return;
+    const rows = await res.json() as Array<{ key?: string; value?: unknown }>;
+    const pinned = (Array.isArray(rows) ? rows : []).filter(
+      (r) => (r.key === 'planning_model' || r.key === 'coding_model')
+        && typeof r.value === 'string'
+        && r.value.startsWith('latest:'),
+    );
+    for (const row of pinned) {
+      try {
+        await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${row.key}`, { method: 'DELETE' });
+      } catch (error) {
+        console.warn(`[minds-auth] failed to clear stale ${row.key} pin`, error);
+      }
+    }
+  } catch (error) {
+    console.warn('[minds-auth] failed to check for stale model pins', error);
+  }
+}
+
+// Pure: given the existing `.env` contents, produce the contents to write on
+// MindsHub sign-in. Strips every prior MINDS_KEYS line (so a stale pin can't
+// survive) and re-adds only the credential + provider keys.
+//
+// Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL. Pinning
+// `latest:sonnet` / `latest:haiku` here (an ENG-436-era guard against
+// deprecated-alias 500s) became fatal once tier gating shipped: it made every
+// sign-in an *explicit* model pick, so the server's enabled-aware default
+// (which only fills an unset model) could never steer a free-tier user to a
+// model their plan allows → first message 403s (ENG-597/ENG-739). Leaving the
+// model unset lets the server resolve the right model per tier (paid →
+// sonnet/haiku, free → first enabled); MINDS_KEYS lists both model keys so
+// re-login strips any stale `.env` pin.
+export function buildMindsEnvContent(existing: string, apiKey: string, host: string): string {
+  const lines = existing.split('\n')
+    .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
+  lines.push(
+    'ANTON_MINDS_ENABLED=true',
+    `ANTON_MINDS_URL=${host}`,
+    `ANTON_MINDS_API_KEY=${apiKey}`,
+    'ANTON_PLANNING_PROVIDER=minds-cloud',
+    'ANTON_CODING_PROVIDER=minds-cloud',
+  );
+  return lines.filter(Boolean).join('\n') + '\n';
+}
+
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
   const homeDir = coworkHome();
   // ~/.cowork normally exists by the time SSO finalize runs (the server
@@ -684,18 +736,7 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  const lines = existing.split('\n')
-    .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
-  lines.push(
-    'ANTON_MINDS_ENABLED=true',
-    `ANTON_MINDS_URL=${MINDS_API_HOST}`,
-    `ANTON_MINDS_API_KEY=${apiKey}`,
-    'ANTON_PLANNING_PROVIDER=minds-cloud',
-    'ANTON_CODING_PROVIDER=minds-cloud',
-    'ANTON_PLANNING_MODEL=latest:sonnet',
-    'ANTON_CODING_MODEL=latest:haiku',
-  );
-  fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n', 'utf-8');
+  fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), 'utf-8');
 
   // Ensure state.json has minds-cloud as the active provider so the server
   // doesn't default to Anthropic on first boot (state.json may not exist yet
@@ -750,6 +791,16 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
     } catch (error) {
       console.warn('[minds-auth] failed to sync .env to server DB', error);
     }
+
+    // Heal existing users stuck on a login-written model pin. Dropping the
+    // pin from `.env` (above) is not enough: `sync_env_vars_to_db` skips
+    // absent keys and `/settings/raw` is a key-level merge, so a
+    // `latest:`-prefixed value already in the DB survives forever with no
+    // self-serve recovery. A `latest:`-prefixed model is provably login-
+    // written (the picker and server defaults only ever write bare aliases),
+    // so it is safe to clear — the server then resolves the correct
+    // enabled-aware default per tier (ENG-739).
+    await clearStaleModelPins(port);
 
     // Verify the server is actually configured after the sync.
     // If the sync failed silently (DB not updated), config_ready will
