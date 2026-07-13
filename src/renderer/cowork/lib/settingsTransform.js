@@ -160,6 +160,50 @@ export function recommendedModelOptions(recommendedModels, providerType) {
   return ids.map((id) => ({ id, label: modelLabel(id) }));
 }
 
+// ─── Model picker select-value resolution ───────────────────────────
+
+/**
+ * Resolve the controlled <select> value + mode for the Agent-Models model
+ * picker, given the currently-stored model and the provider's recommended
+ * list. Pure so the desync rule is unit-tested directly (SettingsView.jsx
+ * inlines the JSX around this).
+ *
+ * The invariant this enforces: the returned `selectValue` must always match a
+ * rendered <option>, or selection silently breaks. A stored value that isn't
+ * in `modelList` splits two ways:
+ *
+ *   - `allowOther` provider (anthropic/openai/…): it's a user-typed custom id →
+ *     free-text mode (`__custom__`, with a text input).
+ *   - minds-cloud (no free text): it's a stale pin, e.g. the login-written
+ *     `latest:sonnet` → show it as a disabled placeholder (`__stale__`) so
+ *     re-picking a listed model is a real change event that writes the model.
+ *     Routing it through `__custom__` (never rendered for minds-cloud) is the
+ *     ENG-739 bug: value matches no option → "Saved" changes nothing.
+ *
+ * @param {string} curModel   currently-stored model id ('' when unset)
+ * @param {string[]} modelList provider's recommended model ids
+ * @param {boolean} allowOther whether the provider accepts a free-text id
+ * @param {boolean} forceCustom user has explicitly toggled "Other…" mode
+ */
+export function resolveModelPickerValue(curModel, modelList, allowOther, forceCustom = false) {
+  const list = Array.isArray(modelList) ? modelList : [];
+  const savedNotListed = !!curModel && !list.includes(curModel);
+  const savedIsCustom = savedNotListed && allowOther;
+  const showStalePin = savedNotListed && !allowOther;
+  // Free-text mode requires a provider that accepts it. Gating on `allowOther`
+  // keeps the invariant "selectValue always matches a rendered option" true
+  // even when `forceCustom` lingers from a prior provider: toggling "Other…"
+  // on Anthropic then repointing to minds-cloud (which renders neither a
+  // `__custom__` option nor a text input) would otherwise wedge the control
+  // into a blank, unwritable select — the same "Saved but not applied" bug via
+  // a different door.
+  const inputMode = (!!forceCustom || savedIsCustom) && allowOther;
+  const selectValue = inputMode
+    ? '__custom__'
+    : (showStalePin ? '__stale__' : curModel);
+  return { savedIsCustom, showStalePin, inputMode, selectValue };
+}
+
 // ─── Row → client transform ─────────────────────────────────────────
 
 /**
