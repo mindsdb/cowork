@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message } from '../components/ui';
+import { Message, Button } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
@@ -255,8 +255,8 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                       : selected.scope}
                   </div>
                 </div>
-                <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                <button className="btn-primary" onClick={save}>Save</button>
+                <Button variant="subtle" onClick={() => setEditing(null)}>Cancel</Button>
+                <Button variant="primary" onClick={save}>Save</Button>
               </div>
               <textarea
                 value={draft.content}
@@ -277,8 +277,8 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                       : displayed.scope}
                   </div>
                 </div>
-                <button className="btn-secondary" onClick={() => startEdit(displayed)}>Edit</button>
-                <button className="btn-secondary" onClick={() => remove(displayed)}>Delete</button>
+                <Button variant="subtle" onClick={() => startEdit(displayed)}>Edit</Button>
+                <Button variant="subtle" onClick={() => remove(displayed)}>Delete</Button>
               </div>
               <div style={memoryViewerStyle}>
                 <MarkdownContent
@@ -435,7 +435,7 @@ function ConnectView({ data, setData, setStatus }) {
               <strong style={{ color: 'var(--text-strong)' }}>{conn.displayName || conn.engine}</strong> / {conn.name}
               <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
             </div>
-            <button className="btn-secondary" onClick={() => remove(conn)}>Remove</button>
+            <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
           </div>
         )) : <EmptyState>No data vault connections found.</EmptyState>}
       </div>
@@ -485,12 +485,12 @@ function ConnectView({ data, setData, setStatus }) {
           </div>
         )}
         {validation && <div style={{ fontSize: 12, color: 'var(--frost-700)' }}>{validation}</div>}
-        <button type="button" className="btn-secondary" disabled={!engine.trim() || busy} onClick={validate}>
+        <Button variant="subtle" disabled={!engine.trim() || busy} onClick={validate}>
           {busyAction === 'check' ? 'Checking' : 'Check fields'}
-        </button>
-        <button className="btn-primary" disabled={!engine.trim() || busy}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={!engine.trim() || busy}>
           {busyAction === 'save' ? 'Saving' : 'Save connection'}
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -526,9 +526,9 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
             <div style={{ fontSize: 11.5, color: 'var(--frost-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{artifact.path}</div>
             {artifact.publishedUrl && <div style={{ fontSize: 12, color: 'var(--sage-700)', marginTop: 4, userSelect: 'text' }}>{artifact.publishedUrl}</div>}
           </div>
-          {artifact.publishedUrl && <button className="btn-secondary" onClick={() => navigator.clipboard?.writeText(artifact.publishedUrl)}>Copy URL</button>}
-          {artifact.publishedUrl && <button className="btn-secondary" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</button>}
-          <button className="btn-secondary" disabled={!data.publishReady} onClick={() => publish(artifact)}>Publish</button>
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => navigator.clipboard?.writeText(artifact.publishedUrl)}>Copy URL</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
+          <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Publish</Button>
         </div>
       )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
       {(data.history || []).length > 0 && (

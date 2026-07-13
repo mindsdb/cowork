@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
+import { Button } from './ui';
 
 export default function MoveToProjectModal({ open, task, projects = [], onClose, onConfirm }) {
   const [query, setQuery] = useState('');
@@ -130,10 +131,10 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
         </label>
       </ModalBody>
       <ModalFooter>
-        <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-        <button type="button" className="btn-primary" onClick={submit} disabled={!canConfirm}>
+        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="primary" onClick={submit} disabled={!canConfirm}>
           {busy ? 'Moving…' : destName ? `Move to ${destName}` : 'Move'}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   );

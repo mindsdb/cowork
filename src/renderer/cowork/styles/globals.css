@@ -2354,6 +2354,12 @@ body:not([data-theme="dark"]) .btn-primary {
   padding: 0 12px;
   border-radius: var(--r);
   background: transparent;
+  /* Flat at rest. Legacy .btn-secondary / .btn-ghost were used standalone, so
+     they never matched base .btn's resting box-shadow. The design-system
+     <Button variant="subtle"> emits `btn subtle` (two classes), which DOES
+     match base .btn — so reset the shadow here to keep the variant genuinely
+     borderless and byte-identical to the legacy standalone classes. */
+  box-shadow: none;
   color: var(--fg);
   border: 1px solid transparent;
   font-family: var(--font-sans);
