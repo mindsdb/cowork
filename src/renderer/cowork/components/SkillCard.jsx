@@ -125,8 +125,8 @@ export default function SkillCard({ skill, projectName }) {
           </div>
 
           <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--ink)',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {name}

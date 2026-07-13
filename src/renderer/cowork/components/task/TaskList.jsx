@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 import { TaskCard } from './TaskCard';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 
 const _ts = (raw) => {
   if (!raw) return 0;
@@ -61,7 +61,7 @@ function groupTasks(tasks, schedules, scheduleRunsIndex) {
 
 export function TaskList({
   tasks = [],
-  // Optional title — when present, renders a Josefin "Tasks · N"
+  // Optional title — when present, renders an Inter "Tasks · N"
   // header above the list. Pass null to render just the list.
   title = 'Tasks',
   emptyMessage = 'No tasks yet — start one above.',
@@ -89,9 +89,8 @@ export function TaskList({
           display: 'flex', alignItems: 'baseline', gap: 8,
           marginBottom: 12, paddingLeft: 4,
         }}>
-          <span style={{
-            fontFamily: FONT_DISPLAY, fontSize: 16,
-            fontWeight: 600, color: 'var(--ink)', letterSpacing: '-0.005em',
+          <span className="s-h3" style={{
+            color: 'var(--ink)',
           }}>
             {title}
           </span>

@@ -137,7 +137,7 @@ function TaskRow({
       <div style={{ minWidth: 0 }}>
         <div style={{
           fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em',
+          color: 'var(--ink)', letterSpacing: '0',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{task.title || 'Untitled task'}</div>
         {task.subtitle && task.subtitle !== updated && (
@@ -287,7 +287,7 @@ function ScheduleGroupRow({
       <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{
           fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em',
+          color: 'var(--ink)', letterSpacing: '0',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           minWidth: 0,
         }}>{schedule?.title || latest?.title || 'Scheduled task'}</span>
@@ -643,7 +643,7 @@ function EmptyState() {
       gap: 10,
     }}>
       <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>
+      <div className="s-h3" style={{ color: 'var(--ink)' }}>
         No tasks yet
       </div>
       <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)', maxWidth: 320 }}>

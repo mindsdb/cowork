@@ -160,7 +160,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         <span style={{
           flex: 1, minWidth: 0,
           fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-          letterSpacing: '-0.005em', color: 'var(--ink)',
+          letterSpacing: '0', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }} title={displayName !== name ? name : undefined}>{displayName}</span>
         <span style={{
@@ -229,7 +229,7 @@ function EmptyState({ onConnectNew, agentLabel = 'the agent' }) {
       gap: 14, padding: '40px 24px',
     }}>
       <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+      <div className="s-h3" style={{ color: 'var(--ink)' }}>
         No apps connected yet
       </div>
       <div style={{
@@ -376,9 +376,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             }
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {spec?.label || connection.engine}

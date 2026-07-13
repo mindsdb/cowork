@@ -89,7 +89,7 @@ export default {
       },
       fontFamily: {
         body:    ['Inter', 'system-ui', 'sans-serif'],
-        display: ['"Josefin Sans"', 'sans-serif'],
+        display: ['Inter', 'system-ui', 'sans-serif'],
         mono:    ['"JetBrains Mono"', 'monospace'],
       },
       fontSize: {

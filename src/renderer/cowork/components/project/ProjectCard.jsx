@@ -217,7 +217,7 @@ export function ProjectCard({
             style={{
               flex: 1, minWidth: 0,
               fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
+              letterSpacing: '0', color: 'var(--ink)',
               background: 'var(--surface-2)',
               border: '1px solid var(--accent)',
               borderRadius: 6,
@@ -226,10 +226,9 @@ export function ProjectCard({
             }}
           />
         ) : (
-          <span style={{
+          <span className="s-h3" style={{
             flex: 1, minWidth: 0,
-            fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-            letterSpacing: '-0.005em', color: 'var(--ink)',
+            color: 'var(--ink)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{project.name}</span>
         )}
