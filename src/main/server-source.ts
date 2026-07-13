@@ -70,8 +70,14 @@ export function getAntonRef(): string {
 export interface InstallSpec {
   /** Positional argument to `uv tool install`. */
   package: string;
-  /** Extra args (e.g. `--with <spec>` pairs) appended to the install command. */
-  withArgs: string[];
+  /** Requirement lines to force via a uv overrides file (`UV_OVERRIDE`).
+   *  Used to repoint cowork-server's `[tool.uv.sources]` anton-agent pin at a
+   *  different ref/path. An override REPLACES the requirement, so it wins over
+   *  the sources pin cleanly — no "conflicting URLs" abort like a bare `--with`,
+   *  and, unlike `--no-sources-package`, it is understood by every uv version we
+   *  ship against (older uv builds reject that flag). Empty on the default path.
+   *  Materialized into a temp file by `writeUvOverrides` in uv-paths.ts. */
+  overrides: string[];
   channel: Channel;
 }
 
@@ -82,12 +88,12 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   const explicit = process.env.COWORK_SERVER_PACKAGE;
   if (explicit) {
     const antonPackage = process.env.ANTON_PACKAGE;
-    const withArgs = antonPackage ? ['--with', `${ANTON_PACKAGE} @ ${antonPackage}`] : [];
-    return { package: explicit, withArgs, channel: getChannel() };
+    const overrides = antonPackage ? [`${ANTON_PACKAGE} @ ${antonPackage}`] : [];
+    return { package: explicit, overrides, channel: getChannel() };
   }
 
   if (getChannel() === 'pypi') {
-    return { package: `cowork-server>=${COWORK_SERVER_MIN_VERSION}`, withArgs: [], channel: 'pypi' };
+    return { package: `cowork-server>=${COWORK_SERVER_MIN_VERSION}`, overrides: [], channel: 'pypi' };
   }
 
   // git channel (default)
@@ -101,24 +107,23 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   // along).
   //
   // For a non-default ANTON_REF (e.g. a staging build pinning anton@staging),
-  // we override the ref from HERE rather than in cowork-server. A bare
+  // we repoint the ref from HERE rather than in cowork-server. A bare
   // `--with anton-agent @ git+...` is NOT an override: uv treats it as a
   // *second* URL requirement alongside the sources pin and aborts with
-  // "Requirements contain conflicting URLs for package `anton-agent`" — even
-  // for identical URLs. Pairing it with `--no-sources-package anton-agent`
-  // disables the sources pin for just that package, so the `--with` becomes
-  // the sole source and resolves cleanly.
-  const withArgs =
+  // "Requirements contain conflicting URLs for package `anton-agent`". Feeding
+  // the same requirement through a uv OVERRIDE instead replaces the sources
+  // pin outright and resolves cleanly — and, crucially, overrides are honoured
+  // by every uv version (the per-package `--no-sources-package` flag is not:
+  // older uv builds reject it with "unexpected argument", which broke installs
+  // on machines carrying a stale uv).
+  const overrides =
     antonRef === 'main'
       ? []
-      : [
-          '--no-sources-package', ANTON_PACKAGE,
-          '--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`,
-        ];
+      : [`${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`];
 
   return {
     package: `git+${COWORK_SERVER_REPO}@${coworkRef}`,
-    withArgs,
+    overrides,
     channel: 'git',
   };
 }

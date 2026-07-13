@@ -1,0 +1,22 @@
+{
+  // Typechecks test files + test helpers, which the production configs
+  // (tsconfig.main.json / tsconfig.json) deliberately exclude so they never
+  // land in dist. Reuses the renderer config's DOM libs + bundler resolution;
+  // no rootDir constraint, so tests may import helpers from tests/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  // `extends` inherits the base's `exclude` (["**/*.test.*"]) unless we
+  // redeclare it — which would silently drop every src test file from this
+  // program while include appears to add them. Keep this explicitly empty.
+  "exclude": [],
+  "include": [
+    "tests/**/*.ts",
+    "e2e/**/*.ts",
+    "playwright.config.ts",
+    "src/**/*.d.ts",       // global.d.ts → vite/client (ImportMeta.env, used via host.ts imports)
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
+}

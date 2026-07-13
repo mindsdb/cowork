@@ -4,6 +4,13 @@
    remote @import violates our CSP (style-src 'self' 'unsafe-inline').
    JetBrains Mono — the actual mono token — is bundled locally below. */
 
+/* One Inter file: the variable font. It carries an optical-size axis, so with
+   font-optical-sizing: auto (set on the body below) the browser renders the
+   text letterforms at small sizes and the display letterforms at large sizes
+   automatically — no separate 'Inter Display' faces needed. This is rsms's own
+   recommended setup. The static Inter / InterDisplay faces only matter for
+   browsers without variable-font support, which we don't target (Electron +
+   modern web), so they aren't bundled. */
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -18,40 +25,19 @@
   font-display: swap;
   src: url('/fonts/InterVariable-Italic.woff2') format('woff2-variations');
 }
-@font-face {
-  font-family: 'Inter Display';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/InterDisplay-Bold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Inter Display';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/InterDisplay-SemiBold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Inter Display';
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url('/fonts/InterDisplay-ExtraBold.woff2') format('woff2');
-}
 /* ─── Design System Tokens ───────────────────────────────────────────────── */
-/* ─── Font stack — three fonts, three jobs ─────────────────────────────────
+/* ─── Font stack — two families, three jobs ────────────────────────────────
    Per the design guideline:
-     · Josefin Sans  — display only (heroes, taglines, app name moments)
-     · Inter         — every operable surface (H1–H3, body, buttons, lists)
+     · Inter          — every surface, display and body. --font-display and
+                        --font-body both resolve to Inter; the display role is
+                        just Inter at a heavier weight and its own tracking.
      · JetBrains Mono — strings (code, paths, IDs, kbd shortcuts, IDs)
-   All three are bundled at /fonts/ in the public dir. */
+   Inter is loaded once as the variable font (see above), which optical-sizes
+   itself, so headings and body share one family and stay consistent at every
+   size. All faces are bundled at /fonts/. */
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/JetBrainsMono-400.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/JetBrainsMono-500.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/JetBrainsMono-700.woff2') format('woff2'); }
-@font-face { font-family: 'Josefin Sans';  font-style: normal; font-weight: 300; font-display: swap; src: url('/fonts/JosefinSans-300.woff2') format('woff2'); }
-@font-face { font-family: 'Josefin Sans';  font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/JosefinSans-400.woff2') format('woff2'); }
-@font-face { font-family: 'Josefin Sans';  font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/JosefinSans-700.woff2') format('woff2'); }
 
 :root {
   --font-sans:    'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -60,7 +46,7 @@
      back to its default (Helvetica on macOS), which is exactly the
      "why is my Inter not showing up" symptom. */
   --font-body:    var(--font-sans);
-  --font-display: 'Josefin Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* Aqua (primary) — palette base, used by both themes */
@@ -386,6 +372,9 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Let InterVariable pick its optical size from the font-size — text
+     letterforms at small sizes, display letterforms for large headings. */
+  font-optical-sizing: auto;
   /* No background here — kit's gf-theme-{light,dark} on body controls
      window-level bg so the gravity-field canvas remains visible. */
   user-select: none;
@@ -2172,8 +2161,10 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   border-bottom: 1px solid var(--border-0);
 }
 .page-title {
+  /* On the .s-h1 rung of the Inter ladder (28/600/-0.02em) so page titles
+     match the rest of the app's headings. */
   font-family: var(--font-display);
-  font-size: 26px; font-weight: 700; letter-spacing: -0.015em;
+  font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
   color: var(--text-strong); margin: 0;
 }
 
@@ -2228,7 +2219,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   user-select: none;
   transition:
@@ -2277,7 +2268,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   border: 1px solid currentColor;
   font-family: var(--font-sans);
   font-size: 13px;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   user-select: none;
   transition:
@@ -2368,7 +2359,7 @@ body:not([data-theme="dark"]) .btn-primary {
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   transition:
     background-color .12s ease, border-color .12s ease,
@@ -2440,7 +2431,7 @@ body:not([data-theme="dark"]) .btn-primary {
 .s-overline    { font-family: var(--font-mono); font-size: 11px;   line-height: 1.6;  font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: var(--ink-3); }
 .s-mono        { font-family: var(--font-mono); font-size: 13px;   line-height: 1.5; color: var(--ink); }
 
-/* ─── Special title — Josefin Sans (display only) ─────────────────────── */
+/* ─── Special title — Inter (display only) ─────────────────────── */
 .t-special {
   font-family: var(--font-display);
   text-transform: uppercase;
@@ -2463,7 +2454,7 @@ body:not([data-theme="dark"]) .btn-primary {
   font-family: var(--font-sans);
   font-size: 13.5px;
   font-weight: 400;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   padding: 8px 12px;
   outline: 0;
   transition: border-color .12s ease, box-shadow .15s ease, background .12s ease;
@@ -2644,7 +2635,7 @@ body[data-theme="dark"] .app-sidebar::before {
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 550;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   text-align: left;
   transition: background .12s ease, color .12s ease, border-color .12s ease,
@@ -3745,7 +3736,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
    - The chat panel is transparent so the body's gravity-grid shows through.
    - Anton turns use a 32px "axis" rail with the OrbitMorph at the top and a
      1px vertical line threading the response.
-   - Three-font system: Josefin (display/labels), Inter (body), JetBrains
+   - Two-family system: Inter (display/labels), Inter (body), JetBrains
      Mono (operator metadata: timestamps, model, turn count).
 */
 
@@ -3761,7 +3752,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   gap: 16px;
 }
 
-/* Chat header — Josefin title + mono meta + rail toggle */
+/* Chat header — Inter title + mono meta + rail toggle */
 .chat-header {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 28px;

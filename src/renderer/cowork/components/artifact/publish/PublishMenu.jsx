@@ -28,7 +28,7 @@ import {
 } from './AccessChooser';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const ACCESS_LABELS = {
@@ -66,9 +66,9 @@ const SECTION_PAD = '12px 16px';
 
 function PanelHeader({ title }) {
   return (
-    <div style={{
+    <div className="s-h3" style={{
       padding: '12px 16px', borderBottom: '1px solid var(--line)',
-      fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15, color: 'var(--ink)',
+      color: 'var(--ink)',
     }}>{title}</div>
   );
 }

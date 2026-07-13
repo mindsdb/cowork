@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { parseInstalledVersion } from './update-logic';
 
 // PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
 // Keep in sync with cowork-server requires-python. PYTHON_RANGE and the
@@ -29,6 +30,19 @@ export function getEnvPath(): string {
   const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
   const currentPath = process.env.PATH || '';
   return [localBin, cargoBin, currentPath].join(path.delimiter);
+}
+
+/** Materialize uv dependency overrides into a temp requirements file and
+ *  return the env fragment (`{ UV_OVERRIDE }`) that points uv at it. Overrides
+ *  let us repoint a single `[tool.uv.sources]` pin (anton-agent) at another ref
+ *  without uv's version-gated `--no-sources-package` flag, which older uv
+ *  builds reject. Returns `{}` when there are no overrides, so callers can
+ *  spread it unconditionally into the install env. */
+export function writeUvOverrides(overrides: string[]): NodeJS.ProcessEnv {
+  if (!overrides.length) return {};
+  const file = path.join(os.tmpdir(), `cowork-uv-override-${process.pid}.txt`);
+  fs.writeFileSync(file, overrides.join('\n') + '\n', 'utf8');
+  return { UV_OVERRIDE: file };
 }
 
 export function getCoworkServerBinary(): string {
@@ -63,32 +77,22 @@ export function findUv(): string | null {
   return null;
 }
 
-/** Compare X.Y.Z version strings. Returns <0 if a < b, 0 if equal, >0 if a > b. */
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
+// Pure version comparison lives in update-logic.ts (fully unit-tested,
+// coverage-locked at 100%); re-exported here so uv-paths stays the one-stop
+// import for uv-related helpers.
+export { compareVersions } from './update-logic';
 
 /** Get the installed cowork-server version from `uv tool list`. */
 export function getInstalledVersion(uv?: string): Promise<string | null> {
   const uvBin = uv ?? findUv();
   if (!uvBin) return Promise.resolve(null);
   return new Promise((resolve) => {
+    // NO_COLOR: a forced-color env (concurrently sets FORCE_COLOR in dev)
+    // makes uv emit ANSI codes that break the parser's anchored regex.
     const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
     execFile(uvBin, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      // eslint-disable-next-line no-control-regex
-      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
-      for (const line of clean.split('\n')) {
-        const match = line.match(/^cowork-server\s+v?([\d.]+)/);
-        if (match) { resolve(match[1]); return; }
-      }
-      resolve(null);
+      resolve(parseInstalledVersion(stdout));
     });
   });
 }

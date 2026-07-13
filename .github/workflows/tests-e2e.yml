@@ -1,0 +1,41 @@
+name: Tests (e2e)
+
+# Tier-2 launch smoke (qa.md §5c): build the app, launch the real Electron
+# main + renderer with Playwright, assert a window opens and React mounts
+# with no uncaught errors.
+#
+# NOT a PR gate (qa.md §7): needs a full build + a display (xvfb) and is
+# slower/flakier than unit CI. Nightly + manual dispatch; promote to a
+# required check only after it proves non-flaky.
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # nightly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      - name: Build main + renderer
+        run: npm run build
+      - name: Run Playwright Electron smoke (headless via xvfb)
+        run: xvfb-run --auto-servernum -- npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

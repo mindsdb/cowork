@@ -7,6 +7,8 @@ import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
+import { isServerRunning } from './server-process';
+import { decideUpdateApply } from './update-logic';
 
 const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
@@ -39,13 +41,14 @@ function reload(getWindow: GetWindow) {
   win.loadFile(getRendererPath());
 }
 
-// Apply server (if any) then UI, and reload if either landed. Shared by the
-// manual IPC apply and the auto-mode boot poll.
-async function applyUpdates(getWindow: GetWindow, serverAvailable: boolean, uiAvailable: boolean): Promise<boolean> {
-  if (serverAvailable) await applyServerUpdate();
-  const uiApplied = uiAvailable ? await applyUIUpdate() : false;
-  if (uiApplied || serverAvailable) reload(getWindow);
-  return uiApplied || serverAvailable;
+// Apply server (if requested) then UI, and reload if either landed. Shared by
+// the manual IPC apply and the boot/periodic poll. Args are "apply this",
+// already resolved against update mode + server health by the caller.
+async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
+  if (applyServer) await applyServerUpdate();
+  const uiApplied = applyUi ? await applyUIUpdate() : false;
+  if (uiApplied || applyServer) reload(getWindow);
+  return uiApplied || applyServer;
 }
 
 // Register the update IPC handlers. Called unconditionally at startup so the
@@ -88,8 +91,19 @@ export function initUpdater(
     if (ui.updateAvailable) console.log(`[updater] UI update available: ${ui.newVersion}`);
     if (server.updateAvailable) console.log(`[updater] server update: ${server.currentVersion} → ${server.latestVersion}`);
 
-    if (autoApply && getMode() === 'auto') {
-      await applyUpdates(getWindow, server.updateAvailable, ui.updateAvailable);
+    // A down server turns an "available" server update into a recovery action:
+    // apply it regardless of mode (a newer build may be what fixes the boot).
+    const { applyServer, applyUi } = decideUpdateApply({
+      serverUpdateAvailable: server.updateAvailable,
+      uiUpdateAvailable: ui.updateAvailable,
+      serverDown: !isServerRunning(),
+      isBootCheck: autoApply,
+      mode: getMode(),
+    });
+
+    if (applyServer || applyUi) {
+      if (applyServer && !isServerRunning()) console.log('[updater] server is down — applying server update to recover');
+      await applyUpdates(getWindow, applyServer, applyUi);
     } else {
       sendStatus(getWindow, {
         phase: 'available',
