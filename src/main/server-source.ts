@@ -22,10 +22,13 @@
 // On the `pypi` channel anton comes from the published wheel's pinned
 // dependency, so ANTON_REF is ignored there.
 
-// buildKind is imported eagerly: cowork-home does NOT pull electron at import
-// time (it lazy-requires `app` only inside resolveBuildKind), so this import
-// keeps server-source usable from non-electron tooling/tests. See the lazy
-// require('electron') in cowork-home.ts.
+// buildKind is imported eagerly (not lazy-`require`d). It has to be: buildKind()
+// memoizes its result, so tests must drive it via `vi.mock('./cowork-home')` —
+// and vitest only intercepts a static ESM import, not a dynamic require. A lazy
+// require here would bypass the mock and pull the real (electron-dependent)
+// module. server-source.test.ts mocks cowork-home, so this import never pulls
+// electron under test; in production server-source only runs in the Electron
+// main process anyway.
 import { buildKind } from './cowork-home';
 
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';

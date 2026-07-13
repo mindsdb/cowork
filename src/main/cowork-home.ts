@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { app } from 'electron';
 
 const LEGACY_HOME = path.join(os.homedir(), '.anton');
 
@@ -59,12 +60,6 @@ function resolveBuildKind(): BuildKind {
   if (process.env.COWORK_BUILD_KIND) {
     return normalizeBuildKind(process.env.COWORK_BUILD_KIND, 'COWORK_BUILD_KIND');
   }
-  // Lazy-require electron so this module stays importable from non-electron
-  // tooling/tests. `app` is only consulted here, and only when
-  // COWORK_BUILD_KIND is unset — outside a packaged process the env var (or
-  // the dev default) settles the kind before we ever touch electron.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { app } = require('electron') as typeof import('electron');
   if (!app.isPackaged) return 'dev';
   try {
     const configPath = path.join(process.resourcesPath || '', 'build-config.json');
