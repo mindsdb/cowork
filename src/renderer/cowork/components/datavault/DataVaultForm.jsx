@@ -31,6 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Checkbox } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -140,8 +141,7 @@ function FieldInput({ field, value, onChange, disabled }) {
         fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-2)',
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}>
-        <input
-          type="checkbox"
+        <Checkbox
           // Booleans never carry the sentinel — modify-flow only
           // replaces secret string fields. For booleans the saved
           // value lands directly in `default` and the state mirrors
@@ -149,7 +149,8 @@ function FieldInput({ field, value, onChange, disabled }) {
           // a boolean field renders unchecked.
           checked={!isSentinel && !!value}
           disabled={disabled}
-          onChange={(e) => onChange(e.target.checked)}
+          onCheckedChange={(v) => onChange(v)}
+          aria-label={field.checkbox_label || field.label}
         />
         {field.checkbox_label || field.label}
       </label>

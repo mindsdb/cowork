@@ -16,6 +16,7 @@
 import { RadioGroup } from '@base-ui/react/radio-group';
 import { Radio } from '@base-ui/react/radio';
 import Ico from '../../Icons';
+import { Checkbox } from '../../ui';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -202,8 +203,9 @@ export function AccessChooser({
             display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, cursor: 'pointer',
             fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink)',
           }}>
-            <input type="checkbox" checked={draft.orgAllowed}
-              onChange={(e) => set({ orgAllowed: e.target.checked })} style={{ cursor: 'pointer' }} />
+            <Checkbox checked={draft.orgAllowed}
+              onCheckedChange={(v) => set({ orgAllowed: v })}
+              aria-label="Everyone in my organization" />
             Everyone in my organization
           </label>
         </div>
