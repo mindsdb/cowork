@@ -46,4 +46,12 @@ describe('Button', () => {
     expect(onClick).toHaveBeenCalledTimes(1); // unchanged
     expect(screen.getByRole('button', { name: 'Frozen' })).toBeDisabled();
   });
+
+  it('forwards its ref to the underlying <button> (so it can back a Base UI Menu trigger)', () => {
+    const ref = { current: null };
+    render(<Button ref={ref}>Trigger</Button>);
+    const btn = screen.getByRole('button', { name: 'Trigger' });
+    expect(ref.current).toBe(btn);
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement);
+  });
 });
