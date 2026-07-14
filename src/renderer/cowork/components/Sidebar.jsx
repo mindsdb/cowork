@@ -1,29 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
 import { Spinner } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
+import { timeAgo } from '../lib/formatTime';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
 const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
-
-function timeAgo(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (secs < 60)     return 'just now';
-  if (secs < 3600)   return `${Math.floor(secs / 60)} min ago`;
-  if (secs < 86400)  return `${Math.floor(secs / 3600)} h ago`;
-  if (secs < 172800) return 'Yesterday';
-  if (secs < 604800) return `${Math.floor(secs / 86400)} d ago`;
-  return `${Math.floor(secs / 604800)} w ago`;
-}
 
 function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
   return (
@@ -321,38 +309,18 @@ export default function Sidebar({
     return out;
   })();
 
-  // Sized dynamically: measure the available height of the recents
-  // scroll area on mount + on window resize, then divide by an
-  // average row height to pick how many to render inline. Min 5 so
-  // the section never collapses to a single row, max all-of-them.
-  const RECENT_ROW_HEIGHT  = 30;   // single recent-item incl. 1px gap
-  const RECENT_FOOTER_PAD  = 36;   // reserved for the Show-more row
-  const recentsRef = useRef(null);
-  const [recentsHeight, setRecentsHeight] = useState(0);
   // Strict hover state for the Recents heading row only. CSS
   // `:hover` was bleeding (or appearing to bleed) onto the recents
   // list below; pinning this to onMouseEnter/onMouseLeave on the
   // heading div makes the hit area exactly the heading's bounding
   // box and nothing else.
   const [recentsHeadingHover, setRecentsHeadingHover] = useState(false);
-  useLayoutEffect(() => {
-    const el = recentsRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setRecentsHeight(entry.contentRect.height);
-      }
-    });
-    ro.observe(el);
-    setRecentsHeight(el.clientHeight);
-    return () => ro.disconnect();
-  }, []);
-  const inlineRecentCount = (() => {
-    if (recentsHeight <= 0) return 5;
-    const usable = Math.max(0, recentsHeight - RECENT_FOOTER_PAD);
-    return Math.max(5, Math.floor(usable / RECENT_ROW_HEIGHT));
-  })();
-  const recents = recentsAll.slice(0, inlineRecentCount);
+  // Render into the overflow container and let it scroll instead of
+  // slicing the list to whatever fits the viewport (which left older
+  // tasks unreachable). Capped at 100 to match RecentsModal; the
+  // "View all →" link covers anything beyond that.
+  // ponytail: bump the cap or virtualize if row counts get huge.
+  const recents = recentsAll.slice(0, 100);
   // "Show more" hidden for now — kept the modal + state plumbing
   // so we can flip this back on later without rewiring anything.
   const hasMoreRecents = false;
@@ -632,8 +600,8 @@ export default function Sidebar({
             View all →
           </button>
         </div>
-        <div ref={recentsRef} className="scroll-clean" style={{
-          padding: '0 10px', flex: 1, overflowY: 'auto',
+        <div className="scroll-clean" style={{
+          padding: '0 10px', flex: 1, minHeight: 0, overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 1,
         }}>
           {recents.map((t) => {
@@ -745,57 +713,63 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Footer status — Electron-only. In the hosted web shell the
-            FastAPI process IS the host, so start/stop/diagnostics have
-            no meaning and we drop the entire pill + power button. */}
+        {/* Footer — Electron-only. Web shell omits this entirely since the
+            FastAPI process IS the host (start/stop/diagnostics don't apply).
+
+            Normal state: a settings nav row — no server noise when everything
+            is working fine.
+            Disconnected / busy: the status pill replaces the settings row so
+            the problem is immediately visible. */}
         {!host.isWeb && (
         <div className="anton-sidebar__footer">
-          {/* The whole "backend · <status>" pill is the help affordance
-              now — click anywhere on it to open the server-state modal.
-              Replaces the previous standalone "?" icon, which only
-              appeared when offline and read as visual clutter. */}
-          <button
-            type="button"
-            className={
-              'status-pill is-clickable' +
-              (serverBusy ? ' is-busy' : serverOnline ? ' is-on' : '')
-            }
-            onClick={onShowServerHelp}
-            title="Backend status — click for details"
-            aria-label="Backend status — click for details"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            <span
-              className={
-                'status-dot' +
-                (serverBusy ? ' busy' : serverOnline ? '' : ' offline')
-              }
-            />
-            <span className="status-text">
-              <span className="status-text__faded">backend ·</span>{' '}
-              {serverBusy ? (
-                <>
-                  <span className="status-text__live">{serverBusyKind}</span>{' '}
-                  <Spinner />
-                </>
-              ) : (
-                <span className={serverOnline ? 'status-text__live' : 'status-text__faded'}>
-                  {serverOnline ? 'connected' : 'offline'}
+          {(!serverOnline || serverBusy) ? (
+            <>
+              <button
+                type="button"
+                className={
+                  'status-pill is-clickable' +
+                  (serverBusy ? ' is-busy' : '')
+                }
+                onClick={onShowServerHelp}
+                title="Backend status — click for details"
+                aria-label="Backend status — click for details"
+                style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
+              >
+                <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                <span className="status-text">
+                  <span className="status-text__faded">backend ·</span>{' '}
+                  {serverBusy ? (
+                    <>
+                      <span className="status-text__live">{serverBusyKind}</span>{' '}
+                      <Spinner />
+                    </>
+                  ) : (
+                    <span className="status-text__faded">offline</span>
+                  )}
                 </span>
-              )}
-            </span>
-          </button>
-          <div className="anton-sidebar__footer-actions">
+              </button>
+              <button
+                className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                onClick={() => onNavigate('settings:backend')}
+                title="Settings"
+                aria-label="Settings"
+                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+              >
+                {Ico.settings(13)}
+              </button>
+            </>
+          ) : (
             <button
-              className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
-              onClick={() => onNavigate('settings')}
+              className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+              onClick={() => onNavigate('settings:agent')}
               title="Settings"
               aria-label="Settings"
               style={{ WebkitAppRegion: 'no-drag' }}
             >
-              {Ico.settings(13)}
+              <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+              <span>Settings</span>
             </button>
-          </div>
+          )}
         </div>
         )}
 

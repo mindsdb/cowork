@@ -1,6 +1,6 @@
 // Live artifacts page — mirrors the Projects header / filter pattern.
 //
-// Header:    "Live artifacts" Josefin title + Inter subtitle (no CTA —
+// Header:    "Live artifacts" Inter title + Inter subtitle (no CTA —
 //            artifacts are produced by Anton, not authored here).
 // Filter:    search (⌘K) · sort pill · count · grid/list toggle.
 // Sort:      default "Published first", then Recent · Oldest · Title · Type.
@@ -11,8 +11,8 @@
 // Status dot: cyan = published, green-pulse = live preview, none = local.
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
+import { Toast } from '../components/ui/Toast';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -20,7 +20,7 @@ import {
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { downloadArtifactFile } from '../lib/artifactDownload';
-import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact } from '../lib/artifactKinds';
+import { isHtmlArtifact, isPublishableArtifact, isBackendArtifact, publishBlockedReason } from '../lib/artifactKinds';
 import { trackArtifactPublished } from '../lib/analytics';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
@@ -381,6 +381,9 @@ function ListHeaderRow() {
 function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDownload, onCopyUrl, onPublish, onUnpublish, onUpdate, onDelete, isMacPlatform = false }) {
   const isHtml = isHtmlArtifact(artifact);
   const published = !!artifact.publishedUrl;
+  // Non-empty when this artifact's type may never be published (e.g.
+  // fullstack-stateful-app). Keeps the item visible but disabled.
+  const publishBlock = publishBlockedReason(artifact);
   const items = [
     {
       id: 'open',
@@ -412,11 +415,15 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       icon: Ico.refresh(13),
       onClick: onUpdate,
     },
-    isPublishableArtifact(artifact) && !published && {
+    // Show Publish for blocked types too (e.g. fullstack-stateful-app) so it
+    // renders disabled with a reason tooltip rather than vanishing.
+    !published && (isPublishableArtifact(artifact) || publishBlock) && {
       id: 'publish',
       label: 'Publish',
       icon: Ico.upload(13),
       onClick: onPublish,
+      disabled: !!publishBlock,
+      title: publishBlock || undefined,
     },
     published && {
       id: 'unpublish',
@@ -586,56 +593,12 @@ function EmptyState({ agentLabel = 'the agent' }) {
       gap: 12, padding: '40px 24px',
     }}>
       <span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+      <div className="s-h3" style={{ color: 'var(--ink)' }}>
         No artifacts yet
       </div>
       <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 380, textAlign: 'center' }}>
         When {agentLabel} creates documents, dashboards, or code outputs they'll appear here.
       </div>
-    </div>
-  );
-}
-
-// ─── Toast ───────────────────────────────────────────────────────────────
-//
-// Inline banner that surfaces publish / unpublish results so failures
-// (most commonly a missing ANTON_MINDS_API_KEY) don't disappear into
-// the console. Auto-dismisses after a few seconds; success and error
-// share the layout but have distinct accent / danger tints.
-
-function Toast({ kind, message, onClose }) {
-  if (!message) return null;
-  const isError = kind === 'error';
-  return (
-    <div style={{
-      // Position is owned by the parent wrapper now (fixed overlay),
-      // so this card carries no outer margin.
-      padding: '10px 14px',
-      borderRadius: 8,
-      background: isError
-        ? 'color-mix(in srgb, var(--danger) 12%, var(--surface))'
-        : 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
-      border: `1px solid ${isError ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--accent) 40%, transparent)'}`,
-      color: isError ? 'var(--danger)' : 'var(--ink-2)',
-      display: 'flex', alignItems: 'center', gap: 10,
-      fontFamily: FONT_BODY, fontSize: 12.5,
-    }}>
-      <span style={{ display: 'inline-flex', flexShrink: 0, color: isError ? 'var(--danger)' : 'var(--accent)' }}>
-        {isError ? Ico.alert?.(14) || Ico.trash(14) : Ico.check(14)}
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>{message}</span>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Dismiss"
-        style={{
-          background: 'transparent', border: 0,
-          color: 'var(--ink-3)', cursor: 'pointer',
-          padding: 4, display: 'inline-grid', placeItems: 'center',
-        }}
-      >
-        {Ico.close ? Ico.close(12) : '×'}
-      </button>
     </div>
   );
 }
@@ -700,13 +663,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // ⌘K focuses the search input.
   useCollectionShortcut(searchRef);
 
-  // Auto-dismiss the toast after 5s — long enough to read, short enough
-  // not to linger across navigations.
-  useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(id);
-  }, [toast]);
 
   const updateOne = (updated) => {
     setList((prev) => prev.map((a) => a.path === updated.path ? { ...a, ...updated } : a));
@@ -752,6 +708,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   // a protected artifact pre-fills its existing password.
   const handlePublish = (artifact) => {
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
+    const blocked = publishBlockedReason(artifact);
+    if (blocked) {
+      setToast({ kind: 'error', message: blocked });
+      return Promise.resolve();
+    }
     if (!isPublishableArtifact(artifact)) {
       setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be published.' });
       return Promise.resolve();
@@ -916,23 +877,13 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         subtitleBottom={20}
       />
 
-      {/* Toast is portalled to document.body so it renders after modals
-          in DOM order, which prevents iframes inside modals from
-          compositing on top of it regardless of z-index. */}
-      {createPortal(
-        <div style={{
-          position: 'fixed', top: 24, right: 32, zIndex: 90,
-          pointerEvents: toast?.message ? 'auto' : 'none',
-          maxWidth: 420,
-        }}>
-          <Toast
-            kind={toast?.kind}
-            message={toast?.message}
-            onClose={() => setToast(null)}
-          />
-        </div>,
-        document.body,
-      )}
+      <Toast
+        type={toast?.kind === 'ok' ? 'success' : 'error'}
+        message={toast?.message}
+        onClose={() => setToast(null)}
+        duration={5000}
+        align="right"
+      />
 
       {/* Subtitle → search-row gap. Set to 20px per the design;
           ProjectsView uses 18px because its header has an anchor
@@ -1051,10 +1002,16 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
               onClick: () => handleUnpublish(a),
             });
           } else if (isHtml) {
+            // Forbidden types (e.g. fullstack-stateful-app) keep the item
+            // visible but disabled so the user sees why; handlePublish guards
+            // it too. A disabled item never fires onClick.
+            const blocked = publishBlockedReason(a);
             items.push({
               id: 'publish',
               label: busyA ? 'Publishing…' : 'Publish',
               icon: Ico.power(13),
+              disabled: !!blocked,
+              title: blocked || undefined,
               onClick: () => handlePublish(a),
             });
           }

@@ -55,6 +55,35 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
+// Explicitly persist a model chosen during onboarding to the DB (best-effort).
+//
+// ENG-739: model keys were removed from `syncSettingsToDb`'s map so a bulk
+// .env re-sync (login / post-install / web token-refresh) can never re-pin a
+// user who recovered via the picker. Onboarding is a genuine explicit choice,
+// so it writes its model here — the only non-picker path allowed to. A minds
+// onboarding writes no model line (the backend resolves the tier-aware
+// default), so this is a no-op there.
+async function syncOnboardingModels(lines: string[]): Promise<void> {
+  const KEY_MAP: Record<string, string> = {
+    ANTON_PLANNING_MODEL: 'planning_model',
+    ANTON_CODING_MODEL: 'coding_model',
+  };
+  for (const line of lines) {
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const settingKey = KEY_MAP[line.slice(0, eq)];
+    const value = line.slice(eq + 1);
+    if (!settingKey || !value) continue;
+    try {
+      await fetch(`${BASE}/settings/${settingKey}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      });
+    } catch { /* best-effort — the backend's apply_model_defaults still yields a model */ }
+  }
+}
+
 // The provider→validation-target and provider→env-vars mappings are
 // identical whether BYOK runs directly (Stage 1) or as the LLM step after
 // MindsHub (Stage 2). Shared here so the two call sites can't drift (they
@@ -127,6 +156,7 @@ export default function OnboardingScreen({
   const [phase, setPhase] = useState<Phase>('choose');
   const [errorMsg, setErrorMsg] = useState('');
   const [skippedMinds, setSkippedMinds] = useState(false);
+  const [mindsNoCredits, setMindsNoCredits] = useState(false);
   // Which stage's layout to render. Decoupled from `phase` so the
   // validating spinner shows in the right place without inferring it
   // from whether the API-key field happens to be non-empty.
@@ -217,6 +247,9 @@ export default function OnboardingScreen({
     lines.push('ANTON_EPISODIC_MEMORY=true');
     await host.saveSettings(lines.join('\n'));
     await syncSettingsToDb(lines);
+    // syncSettingsToDb no longer maps model keys (ENG-739); write the
+    // onboarding model choice explicitly so a BYOK pick still reaches the DB.
+    await syncOnboardingModels(lines);
     await syncHarness(coworker.id);
     setPhase('success');
     setTimeout(onComplete, 2000);
@@ -338,6 +371,9 @@ export default function OnboardingScreen({
     const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
     await host.saveSettings(lines.join('\n'));
     await syncSettingsToDb(lines);
+    // syncSettingsToDb no longer maps model keys (ENG-739); write the
+    // onboarding model choice explicitly so a BYOK pick still reaches the DB.
+    await syncOnboardingModels(lines);
     await syncHarness(coworker.id);
     setPhase('success');
     setTimeout(onComplete, 2000);
@@ -373,6 +409,15 @@ export default function OnboardingScreen({
       setErrorMsg(`MindsHub setup failed: ${e?.message || 'Unexpected error. Please try again.'}`);
       return;
     }
+    // No LLM credits — account authenticated but key wasn't provisioned.
+    // Save terms consent and redirect to BYOK so the user can pick a provider.
+    if (finalizeResult.upgradeRequired) {
+      await host.saveSettings('ANTON_TERMS_CONSENT=true');
+      setMindsNoCredits(true);
+      setStep('byok');
+      setPhase('minds-no-llm');
+      return;
+    }
     if (!finalizeResult.ok) {
       setPhase('error');
       setErrorMsg(finalizeResult.reason || 'Failed to set up MindsHub. Please try again.');
@@ -382,7 +427,7 @@ export default function OnboardingScreen({
     const lines = [
       'ANTON_TERMS_CONSENT=true',
       'ANTON_MINDS_ENABLED=true',
-      'ANTON_MINDS_URL=https://api.mindshub.ai',
+      `ANTON_MINDS_URL=${MINDS_API_BASE}`,
       'ANTON_PLANNING_PROVIDER=minds-cloud',
       'ANTON_CODING_PROVIDER=minds-cloud',
     ];
@@ -412,7 +457,7 @@ export default function OnboardingScreen({
       saveFinal([
         'ANTON_TERMS_CONSENT=true',
         'ANTON_MINDS_ENABLED=true',
-        'ANTON_MINDS_URL=https://api.mindshub.ai',
+        `ANTON_MINDS_URL=${MINDS_API_BASE}`,
         'ANTON_PLANNING_PROVIDER=minds-cloud',
         'ANTON_CODING_PROVIDER=minds-cloud',
       ]);
@@ -467,7 +512,9 @@ export default function OnboardingScreen({
               <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
                 {skippedMinds
                   ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to publish to the web).</>
-                  : <>Your MindsHub key is valid and saved for publishing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
+                  : mindsNoCredits
+                    ? <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>
+                    : <>Your MindsHub key is valid and saved for publishing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
               </div>
 
               <button

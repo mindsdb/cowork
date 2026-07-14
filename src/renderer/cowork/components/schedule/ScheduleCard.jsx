@@ -93,10 +93,11 @@ function Pill({ color, label }) {
 
 function CadencePill({ cadence }) {
   const label = {
-    once:   'One-off',
-    hourly: 'Hourly',
-    daily:  'Daily',
-    weekly: 'Weekly',
+    once:     'One-off',
+    hourly:   'Hourly',
+    daily:    'Daily',
+    weekdays: 'Weekdays',
+    weekly:   'Weekly',
   }[cadence] || cadence;
   return (
     <span style={{
@@ -173,9 +174,8 @@ export default function ScheduleCard({
       {/* Title + prompt preview. Title in display font, prompt in body
           font with a 2-line clamp so cards align in the grid. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
-        <div style={{
-          fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '-0.005em', lineHeight: 1.3,
+        <div className="s-h3" style={{
+          color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis',
           display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
         }}>

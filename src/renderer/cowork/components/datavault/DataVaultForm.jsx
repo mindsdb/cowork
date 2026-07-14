@@ -320,9 +320,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
             boxShadow: '0 0 12px var(--success-glow)',
           }}>{Ico.check(20)}</span>
           <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
             }}>{spec.title || 'Connected'}</div>
             {spec.subtitle && (
               <div style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>
@@ -440,9 +439,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
             }}>{spec.title || 'Connect'}</div>
           </div>
         </div>
@@ -843,7 +841,7 @@ function MethodPicker({ methods, onPick, busy }) {
             }}>
               <span style={{
                 fontWeight: 600, fontSize: 13.5, color: 'var(--ink)',
-                letterSpacing: '-0.005em',
+                letterSpacing: '0',
                 minWidth: 0, flex: '1 1 auto',
                 overflowWrap: 'anywhere', wordBreak: 'break-word',
               }}>{m.label || m.id}</span>

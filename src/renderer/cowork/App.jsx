@@ -4,7 +4,7 @@ import Ico from './components/Icons';
 import ThemeModal from './components/ThemeModal';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-// OnboardingShell removed — antontron's renderer handles terms/install/
+// OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
@@ -22,17 +22,18 @@ import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/SettingsView';
 import UtilitiesView from './views/UtilitiesView';
+import SkillsView from './views/SkillsView';
 import SearchModal from './components/SearchModal';
 import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as clearDataVaultForm, patchForm as patchDataVaultForm, getFormState as getDataVaultFormState, setFormState as setDataVaultFormState, getSelectedMethod as getDataVaultSelectedMethod, setSelectedMethod as setDataVaultSelectedMethod } from './components/datavault/formStore';
 import { extractFormSpec } from './components/datavault/parseFormSpec';
-import { host } from '../platform/host';
+import { host, getAccessToken } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
-import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -45,7 +46,7 @@ import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettin
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -422,7 +423,7 @@ function reduceServerEvents(events, fallbackStartedAt) {
   if (!Array.isArray(events) || events.length === 0) return null;
   let state = initialStreamState();
   for (const ev of events) {
-    try { state = reduceStream(state, ev); } catch {}
+    try { state = reduceStream(state, ev, Date.now, { replay: true }); } catch {}
   }
   return {
     steps: state.steps || [],
@@ -438,7 +439,16 @@ function failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
   const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
   if (!ev) return null;
-  return { code: ev.code || null, message: ev.error || ev.message || '' };
+  return {
+    code: ev.code || null,
+    message: ev.error || ev.message || '',
+    reconnectable: ev.reconnectable ?? null,
+    providerLabel: ev.provider_label ?? null,
+    // model-403 (model_access_denied / model_disabled): which model the
+    // gateway rejected, so the card can name it. `failedModel` locally —
+    // "model" is too overloaded in message objects.
+    failedModel: ev.model ?? null,
+  };
 }
 
 // Walk a messages payload from the server and, for any assistant
@@ -480,6 +490,9 @@ function hydrateMessagesFromServerEvents(messages) {
           role: 'error',
           content: normalizeAntonError(errText, { code }),
           code,
+          reconnectable: failed?.reconnectable ?? null,
+          providerLabel: failed?.providerLabel ?? null,
+          failedModel: failed?.failedModel ?? null,
         });
       }
     }
@@ -671,6 +684,26 @@ function appendActivity(messages, event) {
   ];
 }
 
+// How long to wait before the next `GET /schedules/` poll:
+// - close to the soonest due schedule (so a background run shows up promptly)
+// - but never more than MAX (a heartbeat for cross-client changes / clock drift)
+// - and never less than MIN (so an overdue-but-not-yet-processed schedule can't turn into a busy loop).
+// RUN_BUFFER gives the time to actually finish task before we go check.
+const SCHEDULE_POLL_MAX_DELAY_MS = 10 * 60 * 1000;
+const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
+const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
+
+function nextPollDelay(schedules) {
+  const dueTimes = (schedules || [])
+    .filter((s) => s.enabled && s.nextRunAt)
+    .map((s) => new Date(s.nextRunAt).getTime())
+    .filter(Number.isFinite);
+  if (dueTimes.length === 0) return SCHEDULE_POLL_MAX_DELAY_MS;
+  const earliest = Math.min(...dueTimes);
+  const untilDue = earliest - Date.now() + SCHEDULE_POLL_RUN_BUFFER_MS;
+  return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
+}
+
 export default function App() {
   return <AppCore />;
 }
@@ -708,9 +741,11 @@ function AppCore() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
+  const [composerPrefill, setComposerPrefill] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('agent');
+  const [ssoConnected, setSsoConnected] = useState(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -979,7 +1014,14 @@ function AppCore() {
       const displayError = normalizeAntonError(message, event);
       const trailer = configError
         ? { role: 'provider_required' }
-        : { role: 'error', content: displayError, code: event?.code };
+        : {
+            role: 'error',
+            content: displayError,
+            code: event?.code,
+            reconnectable: event?.reconnectable ?? null,
+            providerLabel: event?.provider_label ?? null,
+            failedModel: event?.model ?? null,
+          };
       return {
         ...t,
         status: configError ? 'idle' : 'error',
@@ -1000,7 +1042,7 @@ function AppCore() {
   // cowork-server) — labels derived from ids, never hardcoded. Empty until
   // settings load; the composer then shows just the configured model.
   const models = useMemo(() => {
-    const providerType = providerValueToType(settings.planningProvider) || 'anthropic';
+    const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
     return recommendedModelOptions(settings.recommendedModels, providerType)
       .map((o) => ({ id: o.id, name: o.label, desc: '' }));
   }, [settings.recommendedModels, settings.planningProvider]);
@@ -1221,8 +1263,9 @@ function AppCore() {
   const [health, setHealth] = useState({ status: 'offline', anton_available: false });
 
   // Desktop "app installed" — fire once per install, after the backend is up
-  // (health 'ok') and an identity is available. trackAppInstalled self-guards
-  // (localStorage marker + waits for a distinct_id), so re-running is safe.
+  // (health 'ok'). Captured under the anonymous device id if the user hasn't
+  // signed in yet, and merged into the account on first login (ENG-537).
+  // trackAppInstalled self-guards with a localStorage marker, so re-running is safe.
   useEffect(() => {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
@@ -1230,6 +1273,7 @@ function AppCore() {
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
+  const [refreshErrors, setRefreshErrors] = useState([]); // { engine, name, accountEmail, permanent }
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1345,6 +1389,13 @@ function AppCore() {
   useEffect(() => {
     return host.onUpdateStatus((status) => {
       setUpdateStatus(status);
+    });
+  }, []);
+
+  // Listen for background OAuth refresh failures pushed from main process.
+  useEffect(() => {
+    return host.onOAuthRefreshError((payload) => {
+      setRefreshErrors((prev) => [...prev, { ...payload, id: Date.now() }]);
     });
   }, []);
 
@@ -1762,6 +1813,17 @@ function AppCore() {
     if (isNarrow) setMobileSidebarOpen(false);
     setActiveTaskId(null);
     setComposerAttachments([]);
+    setComposerPrefill(null);
+    setRoute('home');
+  };
+
+  const handleNavigateHomeWithPrefill = (text, projectName) => {
+    setActiveTaskId(null);
+    setComposerAttachments([]);
+    setComposerPrefill({ text, bump: Date.now() });
+    const targetName = projectName || 'general';
+    const proj = projects.find((p) => p.name === targetName);
+    if (proj) setSelectedProject(proj);
     setRoute('home');
   };
 
@@ -2140,8 +2202,27 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => t.status === 'active' ? { ...t, status: 'idle' } : t));
   }, []);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
+  }, [settingsOpen]);
+
+  const handleSsoSignIn = async () => {
+    if (!host.isElectron) return;
+    const loginResult = await host.mindshubLogin();
+    if (!loginResult?.ok) return;
+    await host.mindshubFinalize().catch(() => {});
+    setSsoConnected(true);
+    refreshData();
+  };
+
   const navigate = (key) => {
-    if (key === 'settings') { setSettingsOpen(true); return; }
+    if (key === 'settings' || key.startsWith('settings:')) {
+      const section = key.includes(':') ? key.split(':')[1] : null;
+      if (section) setSettingsSection(section);
+      setSettingsOpen(true);
+      return;
+    }
     if (isNarrow) setMobileSidebarOpen(false);
     if (key === 'artifacts') {
       fetchArtifacts().then((data) => { if (Array.isArray(data)) setArtifacts(data); });
@@ -2401,6 +2482,7 @@ function AppCore() {
       markInFlight(taskId);
     };
     trackAgentSessionStarted();
+    trackFirstQuery();
     const streamGen = activeStreamGenerationRef.current;
     const streamNewSessionFn = () => streamNewSession(text, {
       conversationId: hasPendingFiles ? taskId : undefined,
@@ -2868,7 +2950,7 @@ function AppCore() {
                 status_text: null,
                 form_error: null,
               });
-              trackDataSourceConnected(currentForm._connector_id || currentForm.engine || 'unknown');
+              trackDataSourceConnected(formSpec?._connector_id || formSpec?.engine || currentForm._connector_id || currentForm.engine || name || 'unknown');
             } else if (respStatus === 'retry' || respStatus === 'failed') {
               patchDataVaultForm(cid, {
                 form_id: currentForm.form_id,
@@ -3183,11 +3265,62 @@ function AppCore() {
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
-  const refreshSchedules = async () => {
+  const refreshSchedules = useCallback(async () => {
     const data = await fetchSchedules();
-    setScheduled(data.schedules || []);
+    const list = data.schedules || [];
+    setScheduled(list);
     setScheduleRunsIndex(data.runs_index || {});
-  };
+    return list;
+  }, []);
+
+  // Diffs the full conversation list against known tasks and adds any
+  // unseen ones — catches every new conversation since the last check,
+  // not just the most recent one.
+  const syncNewConversations = useCallback(async () => {
+    const conversations = await fetchConversationList();
+    const known = new Set(tasksRef.current.map((t) => t.id));
+    const unseenIds = conversations.map((c) => c.id).filter((id) => id && !known.has(id));
+    if (unseenIds.length === 0) return;
+    const SYNC_CAP = 50;
+    const toFetch = unseenIds.slice(0, SYNC_CAP);
+    const freshTasks = await Promise.all(toFetch.map((id) => fetchSession(id)));
+    setTasks((prev) => {
+      let next = prev;
+      for (const task of freshTasks) {
+        if (!task || deletedTaskIdsRef.current.has(task.id)) continue;
+        if (next.some((t) => t.id === task.id)) continue;
+        next = [task, ...next];
+      }
+      return next;
+    });
+  }, []);
+
+  // Recomputed whenever an enabled schedule's due time changes — used as
+  // the poll effect's dependency below instead of `scheduled.length`,
+  // which stays the same across an edit/pause/resume
+  const scheduleKey = scheduled
+    .filter((s) => s.enabled)
+    .map((s) => s.nextRunAt)
+    .join(',');
+
+  // Self-adjusting poll (not a fixed interval): reschedules itself after
+  // every tick based on the freshest `nextRunAt`, so an idle app with
+  // schedules due far in the future stays quiet, while one with something
+  // due soon checks close to that moment. Skipped entirely when there are
+  // no schedules at all — nothing to poll for.
+  useEffect(() => {
+    let cancelled = false;
+    let timer = setTimeout(tick, nextPollDelay(scheduled));
+    async function tick() {
+      const list = await refreshSchedules();
+      const known = new Set(tasksRef.current.map((t) => t.id));
+      const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
+      if (hasNewRun) await syncNewConversations();
+      if (cancelled) return;
+      timer = setTimeout(tick, nextPollDelay(list));
+    }
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
   const handleCreateSchedule = async (payload) => {
     await createSchedule(payload);
@@ -3444,6 +3577,7 @@ function AppCore() {
             models={modelOptions}
             attachments={composerAttachments}
             connectors={connectors}
+            onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -3456,6 +3590,7 @@ function AppCore() {
             agentLabel={agentLabel}
             onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
             skipIntro={bootIntroDone}
+            prefill={composerPrefill}
           />
         )}
 
@@ -3530,6 +3665,7 @@ function AppCore() {
             onDeleteProject={handleDeleteProject}
             attachments={composerAttachments}
             connectors={connectors}
+            onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -3658,7 +3794,30 @@ function AppCore() {
 
         {/* Settings modal — rendered over whatever route is active */}
         <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
-          <ModalHeader id="settings-modal-title" title="Settings" onClose={() => setSettingsOpen(false)} />
+          <ModalHeader
+            id="settings-modal-title"
+            title="Settings"
+            onClose={() => setSettingsOpen(false)}
+            right={!ssoConnected && host.isElectron ? (
+              <button
+                type="button"
+                onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
+                title="Sign in with MindsHub to use managed models"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '5px 11px', borderRadius: 7,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'transparent',
+                  color: 'var(--ink-3)',
+                  fontFamily: 'var(--font-body)', fontSize: 12.5,
+                  cursor: 'pointer', flexShrink: 0,
+                  transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+              >Sign in</button>
+            ) : undefined}
+          />
           <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <SettingsView
               settings={settings} setSetting={setSetting} onSave={saveSettings}
@@ -3673,6 +3832,8 @@ function AppCore() {
               serverBusyKind={serverBusyKind}
               onStartServer={handleServerStart}
               onStopServer={handleServerStop}
+              isSsoConnected={ssoConnected}
+              onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
             />
           </ModalBody>
         </Modal>
@@ -3681,7 +3842,8 @@ function AppCore() {
             the canonical surface for connector management (route
             'customize'). UtilitiesView only carries memory / skills /
             publish now. */}
-        {['memory', 'skills', 'publish'].includes(route) && (
+        {route === 'skills' && <SkillsView onCreateWithCowork={handleNavigateHomeWithPrefill} onTryInChat={handleNavigateHomeWithPrefill} />}
+        {['memory', 'publish'].includes(route) && (
           <UtilitiesView
             kind={route}
             project={selectedProject}
@@ -3861,6 +4023,34 @@ function AppCore() {
         onClose={() => setMoveModalTask(null)}
         onConfirm={handleConfirmMove}
       />
+
+      {/* OAuth refresh-error toasts — shown when background token refresh fails */}
+      {refreshErrors.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9000, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 340 }}>
+          {refreshErrors.map((err) => (
+            <div key={err.id} style={{
+              padding: '10px 14px', borderRadius: 8,
+              background: 'var(--surface)',
+              border: `1px solid ${err.permanent ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--warning, #f5a623) 40%, transparent)'}`,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              fontSize: 13, color: 'var(--ink)',
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+            }}>
+              <div style={{ flex: 1, lineHeight: 1.5 }}>
+                {err.permanent
+                  ? <><strong>{err.engine}</strong> connection needs to be reconnected — refresh token expired.</>
+                  : <><strong>{err.engine}</strong> connection refresh failed — retrying automatically.</>}
+              </div>
+              <button
+                type="button"
+                onClick={() => setRefreshErrors((prev) => prev.filter((e) => e.id !== err.id))}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-4)', padding: 0, fontSize: 16, lineHeight: 1, flexShrink: 0 }}
+                aria-label="Dismiss"
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (

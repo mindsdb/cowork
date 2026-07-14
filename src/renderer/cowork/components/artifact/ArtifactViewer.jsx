@@ -19,7 +19,7 @@ import {
   deleteArtifact,
 } from '../../api';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
 import { Menu, Tooltip, Spinner } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
@@ -159,7 +159,7 @@ function _csvRowsToGfmTable(rows) {
 }
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Ghost icon button shared by every top-bar affordance (folder, reload,
@@ -209,7 +209,7 @@ function PreviewPlaceholder() {
       <span style={{
         fontFamily: FONT_DISPLAY, fontWeight: 600,
         fontSize: 'clamp(40px, 9vw, 84px)', color: 'var(--ink)', opacity: 0.06,
-        transform: 'rotate(-12deg)', letterSpacing: '0.04em',
+        transform: 'rotate(-12deg)', letterSpacing: '-0.02em',
         userSelect: 'none', whiteSpace: 'nowrap',
       }}>Preview</span>
       <div style={{
@@ -229,6 +229,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  // Non-empty when this artifact's type may never be published (e.g.
+  // fullstack-stateful-app). Drives the Publish action's disabled state.
+  const publishBlock = publishBlockedReason(artifact);
   // Backend artifacts treat the folder, not the entry html, as the
   // "thing" the user opens in their OS or browser. Prefer the server's
   // `folder` (the artifact's slug dir) — for fullstack apps the primary
@@ -524,9 +527,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
           <div
             id="artifact-viewer-title"
+            className="s-h3"
             title={title}
             style={{
-              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15, color: 'var(--ink)',
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               minWidth: 0, paddingRight: 12,
             }}
@@ -570,7 +574,14 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         {/* Right — publish · more · close */}
         <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
           {publishable && (
-            <PublishMenu controller={pub} disabled={!hasActionPath} disabledReason={disabledReason} />
+            // Block only the Publish direction for forbidden types (e.g.
+            // fullstack-stateful-app); once published, the menu stays usable
+            // so the artifact can still be unpublished.
+            <PublishMenu
+              controller={pub}
+              disabled={!hasActionPath || (!isPublished && !!publishBlock)}
+              disabledReason={(!isPublished && publishBlock) ? publishBlock : disabledReason}
+            />
           )}
           <Menu
             ariaLabel="Artifact actions"

@@ -1,33 +1,45 @@
 import { saveTokens, getRefreshToken } from './token-store';
-import { stopServer, startServer } from './server-process';
+import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
+import { getInstallationId } from './installation-id';
+import {
+  MINDS_API_HOST,
+  MINDS_KEYCLOAK_BASE,
+  MINDS_AUTH_SERVICE_URL as AUTH_SERVICE_URL,
+  MINDS_CONSOLE_HOST,
+} from './minds-urls';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const KEYCLOAK_BASE = 'https://auth.mindshub.ai/auth';
+const KEYCLOAK_BASE = MINDS_KEYCLOAK_BASE;
 const KEYCLOAK_REALM = 'mindsdb';
 // `anton-desktop` is the native Keycloak client used for the loopback
 // PKCE flow in the desktop app.
 const KEYCLOAK_CLIENT_ID = 'anton-desktop';
 const TOKEN_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 
-// Django auth-service that issues MindsHub API keys. The Keycloak JWT
-// alone is NOT a valid LLM credential — the gateway only accepts an
-// `mdb_*` API key minted here. We exchange the JWT for a key once at
-// finalize time and stash the key in ~/.anton/.env; the JWT itself
-// never reaches the LLM gateway.
-const AUTH_SERVICE_URL = 'https://auth.mindshub.ai/v1';
+// Login endpoints for the loopback PKCE flow, derived from the same
+// env-aware base as everything else so the MINDSHUB_LOGIN IPC handler in
+// index.ts never has to hardcode a host.
+export const KEYCLOAK_AUTH_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth`;
+export const KEYCLOAK_TOKEN_URL = TOKEN_URL;
 
-// MindsHub LLM gateway base URL (OpenAI-compatible). Promote to
-// api.mindshub.ai when the desktop app moves to prod.
-const MINDS_LLM_BASE_URL = 'https://api.mindshub.ai/v1';
-
-// Stable name we register the API key under. Listing + deleting any
-// pre-existing entry with this name before creating a new one keeps
-// re-onboarding from leaking ghost keys in the user's account.
+// Base label for the MindsHub API key. ENG-440: keys are minted per
+// device — the full name is `hub:anton:<installation_id>` (see
+// antonKeyName). A single fixed name meant whoever logged in last deleted
+// everyone else's key, silently 401-ing the other devices; per-device
+// names let each install own its own key.
 const ANTON_KEY_NAME = 'hub:anton';
+
+// Per-device key name. Keeping the device id in the name (rather than
+// tracking sessions server-side) fixes the displaced-device bug purely
+// client-side. A cleanup/expiry policy for stale device keys is a
+// deferred follow-up (ENG-440).
+function antonKeyName(): string {
+  return `${ANTON_KEY_NAME}:${getInstallationId()}`;
+}
 
 // Every auth-service / Keycloak request gets a hard deadline. Node's
 // fetch has none by default, so a black-holed connection would hang
@@ -309,11 +321,14 @@ export async function ensureActiveOrg(accessToken: string): Promise<EnsureActive
 // ── API key provisioning ──────────────────────────────────────────
 //
 // Calls the auth-service `/v1/api-keys/` endpoint with the JWT as a
-// Bearer credential, removes any existing key registered under the
-// same name (so re-onboarding doesn't pile up dead keys), then mints a
-// fresh one. The returned `key` is the actual `mdb_*` string the LLM
-// gateway expects. Returns null on any error so callers can surface a
-// user-visible message instead of writing a bad credential to env.
+// Bearer credential. ENG-440: the key is minted under a per-device name
+// (`hub:anton:<installation_id>`), and we remove only a prior key with
+// that exact per-device name before re-minting — so re-onboarding on this
+// machine doesn't pile up dead keys, while a login on a *different* device
+// never revokes this one. The returned `key` is the actual `mdb_*` string
+// the LLM gateway expects. Returns null on any error so callers can
+// surface a user-visible message instead of writing a bad credential to
+// env.
 
 interface ApiKeyRecord {
   key?: string;
@@ -334,19 +349,41 @@ export interface ProvisionResult {
   error?: string;
 }
 
+// Lists every API key on the account, following DRF-style `next`
+// pagination so a key is never missed because it fell off the first page.
+// ENG-440: this matters now that we deliberately let keys accumulate per
+// account (the legacy `hub:anton` is kept, per-device keys add up) — a
+// single-page read could miss this device's own prior `hub:anton:<id>`
+// and mint a duplicate under the same name on every re-onboard. A bare
+// array means the endpoint isn't paginated and is already the full list.
+// Best-effort: any failure returns what we have so far so key creation
+// still proceeds.
 async function listExistingKeys(accessToken: string): Promise<{ name?: string; prefix?: string }[]> {
-  try {
-    const res = await timedFetch(`${AUTH_SERVICE_URL}/api-keys/`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!res.ok) return [];
-    const body = await res.json() as { results?: unknown } | unknown[];
-    if (Array.isArray(body)) return body as { name?: string; prefix?: string }[];
-    const results = (body as { results?: unknown }).results;
-    return Array.isArray(results) ? results as { name?: string; prefix?: string }[] : [];
-  } catch {
-    return [];
+  const collected: { name?: string; prefix?: string }[] = [];
+  let url: string | null = `${AUTH_SERVICE_URL}/api-keys/`;
+  // Hard page cap so a malformed `next` chain can't loop forever.
+  for (let page = 0; url && page < 50; page++) {
+    try {
+      const res = await timedFetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) break;
+      const body = await res.json() as { results?: unknown; next?: unknown } | unknown[];
+      if (Array.isArray(body)) {
+        collected.push(...(body as { name?: string; prefix?: string }[]));
+        break;
+      }
+      const results = (body as { results?: unknown }).results;
+      if (Array.isArray(results)) {
+        collected.push(...(results as { name?: string; prefix?: string }[]));
+      }
+      const next = (body as { next?: unknown }).next;
+      url = typeof next === 'string' && next ? next : null;
+    } catch {
+      break;
+    }
   }
+  return collected;
 }
 
 async function deleteKeyByPrefix(accessToken: string, prefix: string): Promise<void> {
@@ -393,8 +430,8 @@ async function fetchAuthContext(accessToken: string): Promise<{
     console.log(
       '[minds-auth] /authenticate/ status=%s agents.use=%s api_keys.create=%s deploy_agents=%s',
       res.status,
-      ent?.permissions?.agents?.use,
-      ent?.permissions?.api_keys?.create,
+      ent?.permissions?.agents?.use ? 'true' : 'false',
+      ent?.permissions?.api_keys?.create ? 'true' : 'false',
       ent?.allocations?.deploy_agents,
     );
     return { ok: res.ok, status: res.status, body, entitlements: body?.entitlements };
@@ -443,7 +480,7 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     return {
       error:
         'Could not select an active MindsHub organization for this account. ' +
-        'Sign in at console.dev.mindshub.ai once to create or join an organization, then try again.',
+        `Sign in at ${MINDS_CONSOLE_HOST.replace(/^https?:\/\//, '')} once to create or join an organization, then try again.`,
     };
   }
   const accessToken = orgResult.token;
@@ -489,6 +526,20 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
             `Body: ${bodyExcerpt}.`,
         };
       }
+      // Server errors (5xx) or network failures (status 0) — the auth
+      // service is likely temporarily unavailable. Give the user an
+      // actionable message instead of a raw status code.
+      if (provisionCtx.status >= 500 || provisionCtx.status === 0) {
+        const detail = provisionCtx.status === 0
+          ? 'Could not reach the MindsHub authentication service.'
+          : `The MindsHub authentication service returned an error (HTTP ${provisionCtx.status}).`;
+        return {
+          error:
+            `${detail} ` +
+            'This is usually temporary — please try again in a moment. ' +
+            'If the problem persists, you can continue with your own API key instead.',
+        };
+      }
       return {
         error: `Auth-service /authenticate/ returned HTTP ${provisionCtx.status}.`,
       };
@@ -503,8 +554,8 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
       console.warn(
         '[minds-auth] authenticated without HUB entitlement — minting anyway '
         + '(quota enforced at the gateway): agents.use=%s api_keys.create=%s deploy_agents=%s',
-        norm.permissions.agents.use,
-        norm.permissions.api_keys.create,
+        norm.permissions.agents.use ? 'true' : 'false',
+        norm.permissions.api_keys.create ? 'true' : 'false',
         norm.allocations.deploy_agents,
       );
     }
@@ -536,12 +587,16 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
     }
   }
 
-  // Step 1: drop any prior `hub:anton` key so the user's account stays
-  // tidy across re-onboards. Best-effort — listing/deleting failures
-  // shouldn't block creation of a new key.
+  // Step 1: drop only THIS device's prior key so re-onboarding on the same
+  // machine stays tidy. ENG-440: match the exact per-device name and never
+  // the legacy fixed `hub:anton` — deleting a key another (not-yet-upgraded)
+  // device still relies on is precisely the silent-revocation bug we're
+  // fixing. Best-effort — listing/deleting failures shouldn't block creation
+  // of the new key.
+  const keyName = antonKeyName();
   const existing = await listExistingKeys(provisionToken);
   for (const entry of existing) {
-    if (entry?.name === ANTON_KEY_NAME && entry.prefix) {
+    if (entry?.name === keyName && entry.prefix) {
       await deleteKeyByPrefix(provisionToken, entry.prefix);
     }
   }
@@ -558,7 +613,7 @@ export async function provisionAntonApiKey(initialToken: string): Promise<Provis
         Authorization: `Bearer ${provisionToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name: ANTON_KEY_NAME }),
+      body: JSON.stringify({ name: keyName }),
     });
     if (res.ok) {
       const data = await res.json() as ApiKeyRecord;
@@ -598,8 +653,14 @@ const MINDS_KEYS = [
   'ANTON_MINDS_API_KEY',
   'ANTON_PLANNING_PROVIDER',
   'ANTON_CODING_PROVIDER',
-  'ANTON_PLANNING_MODEL',
-  'ANTON_CODING_MODEL',
+  // NOTE: ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT
+  // stripped (ENG-739). They may hold a value the user set deliberately for
+  // the standalone `anton` CLI (e.g. `ANTON_PLANNING_MODEL=latest:opus` via a
+  // hand-edited .env or the settings PUT API). A `latest:` prefix is not
+  // provable provenance, so wiping these on re-login silently mutates the
+  // user's CLI config. Leaving them untouched preserves that config; sign-in
+  // no longer *writes* a model pin, so a fresh user still gets the server's
+  // enabled-aware default.
   'ANTON_ANTHROPIC_API_KEY',
   'ANTON_OPENAI_API_KEY_CUSTOM',
   'ANTON_GEMINI_API_KEY',
@@ -619,6 +680,54 @@ const MINDS_KEYS = [
 // the scratchpad, and `check_configured` is satisfied by minds_api_key
 // alone, so the OpenAI slot is no longer needed — and leaving it
 // untouched lets a user's own OpenAI key survive login.
+// Pure: given the existing `.env` contents, produce the contents to write on
+// MindsHub sign-in. Strips every prior MINDS_KEYS line and re-adds the
+// credential + provider keys with fresh values.
+//
+// Deliberately writes NO ANTON_PLANNING_MODEL / ANTON_CODING_MODEL, and (as of
+// ENG-739) no longer strips them either — MINDS_KEYS omits both model keys, so
+// any model line the user set for the standalone CLI survives re-login. Pinning
+// `latest:sonnet` / `latest:haiku` here (an ENG-436-era guard against
+// deprecated-alias 500s) became fatal once tier gating shipped: it made every
+// sign-in an *explicit* model pick, so the server's enabled-aware default
+// (which only fills an unset model) could never steer a free-tier user to a
+// model their plan allows → first message 403s (ENG-597/ENG-739). Leaving the
+// model unset for a fresh user lets the server resolve the right model per tier
+// (paid → sonnet/haiku, free → first enabled).
+export function buildMindsEnvContent(existing: string, apiKey: string, host: string): string {
+  const lines = existing.split('\n')
+    .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
+  lines.push(
+    'ANTON_MINDS_ENABLED=true',
+    `ANTON_MINDS_URL=${host}`,
+    `ANTON_MINDS_API_KEY=${apiKey}`,
+    'ANTON_PLANNING_PROVIDER=minds-cloud',
+    'ANTON_CODING_PROVIDER=minds-cloud',
+  );
+  return lines.filter(Boolean).join('\n') + '\n';
+}
+
+// The DB setting keys a MindsHub sign-in must push, and ONLY these. The
+// server's one-time `.env`→DB migration is sentinel-guarded and won't re-run,
+// so a freshly-minted key / URL / provider selection has to be written
+// explicitly after login. Provider values are the DB enum form (`minds_cloud`,
+// underscore) — same as the picker writes via `PROVIDER_TO_SERVER`.
+//
+// Deliberately excludes planning_model / coding_model (ENG-739). The old sign-
+// in path POSTed the whole `.env` to `/settings/raw`, which re-reads the full
+// `.env` from disk and syncs EVERY recognised key — so a legacy `.env` model
+// line (or a stale login-written `latest:` pin) would clobber a model the user
+// just fixed via the picker, with no way to leave the model untouched. Writing
+// only these keys leaves the DB's model rows (and any picker fix) alone.
+export function mindsSignInSettingWrites(apiKey: string, host: string): Array<{ key: string; value: string }> {
+  return [
+    { key: 'minds_api_key', value: apiKey },
+    { key: 'minds_url', value: host },
+    { key: 'planning_provider', value: 'minds_cloud' },
+    { key: 'coding_provider', value: 'minds_cloud' },
+  ];
+}
+
 export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void> {
   const homeDir = coworkHome();
   // ~/.cowork normally exists by the time SSO finalize runs (the server
@@ -629,18 +738,15 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
   }
   const envPath = coworkEnvPath();
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  const lines = existing.split('\n')
-    .filter(l => !MINDS_KEYS.some(k => l.startsWith(k + '=')));
-  lines.push(
-    'ANTON_MINDS_ENABLED=true',
-    `ANTON_MINDS_URL=${MINDS_LLM_BASE_URL.replace(/\/v1$/, '')}`,
-    `ANTON_MINDS_API_KEY=${apiKey}`,
-    'ANTON_PLANNING_PROVIDER=minds-cloud',
-    'ANTON_CODING_PROVIDER=minds-cloud',
-    'ANTON_PLANNING_MODEL=latest:sonnet',
-    'ANTON_CODING_MODEL=latest:haiku',
-  );
-  fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n', 'utf-8');
+  // Owner-only perms — this file holds the plaintext API key for the CLI. The
+  // `mode` option applies when the file is CREATED, closing the window where a
+  // brand-new `.env` would briefly exist world-readable (0644) before a
+  // trailing chmod. Previously the `POST /settings/raw` sync chmod'd it
+  // server-side; sign-in now writes the DB directly (not via /raw), so do it
+  // here. The explicit chmod still covers the pre-existing-file case (`mode` is
+  // ignored on overwrite). Best-effort: unsupported on some filesystems (Windows).
+  fs.writeFileSync(envPath, buildMindsEnvContent(existing, apiKey, MINDS_API_HOST), { encoding: 'utf-8', mode: 0o600 });
+  try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
 
   // Ensure state.json has minds-cloud as the active provider so the server
   // doesn't default to Anthropic on first boot (state.json may not exist yet
@@ -674,6 +780,63 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
 
   await stopServer();
   await startServer();
+
+  // Push the freshly-minted credential + provider selection to the server's
+  // SQLite DB. The one-time .env → DB migration (migrate_env_to_db) is
+  // sentinel-guarded and won't re-run, so values written to .env after initial
+  // setup never reach the DB unless we explicitly push them.
+  //
+  // ENG-739: use individual `PUT /settings/{key}` writes for exactly the
+  // sign-in fields — NOT `POST /settings/raw`. That endpoint re-reads the full
+  // .env from disk and syncs EVERY recognised key, so a legacy/stale model
+  // line in .env would clobber a model the user just fixed via the picker.
+  // Writing only these keys leaves the DB's model rows untouched.
+  if (isServerRunning() || isServerStarting()) {
+    const port = getServerPort();
+    // Order matters (mindsSignInSettingWrites lists the credential first): if
+    // the minds_api_key write fails, ABORT before flipping the provider to
+    // minds-cloud. provisionAntonApiKey already revoked the old key, so a
+    // partial "provider=minds-cloud + no/stale key" state would leave
+    // config_ready true while every message 401s. Bailing keeps the prior
+    // config intact until the next sign-in retries the whole sequence.
+    for (const { key, value } of mindsSignInSettingWrites(apiKey, MINDS_API_HOST)) {
+      let ok = false;
+      try {
+        const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value }),
+        });
+        ok = res.ok;
+        if (!res.ok) {
+          console.warn(`[minds-auth] settings PUT ${key} returned`, res.status);
+        }
+      } catch (error) {
+        console.warn(`[minds-auth] failed to write ${key} to server DB`, error);
+      }
+      if (!ok && key === 'minds_api_key') {
+        console.warn('[minds-auth] aborting settings sync — credential write failed; leaving prior config intact');
+        break;
+      }
+    }
+
+    // Verify the server is actually configured after the writes.
+    // If the writes failed silently (DB not updated), config_ready will
+    // still be false and the user would appear unconfigured after login.
+    try {
+      const healthRes = await timedFetch(`http://127.0.0.1:${port}/api/v1/health/`);
+      if (healthRes.ok) {
+        const health = await healthRes.json() as Record<string, unknown>;
+        if (!health.config_ready) {
+          console.warn('[minds-auth] config_ready is false after settings writes — restarting server');
+          await stopServer();
+          await startServer();
+        }
+      }
+    } catch (error) {
+      console.warn('[minds-auth] health check after settings writes failed:', error);
+    }
+  }
 }
 
 let _refreshTimer: NodeJS.Timeout | null = null;

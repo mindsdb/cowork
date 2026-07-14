@@ -6,7 +6,7 @@
 //
 // Every cowork/* file MUST go through this module instead of touching
 // `window.antontron` directly. This is enforced by a lint guard
-// (`pnpm check:cowork-purity`).
+// (`npm run check:cowork-purity`), which runs in CI.
 //
 // Web fallbacks are intentionally narrow: methods that have a sensible
 // browser equivalent (openExternal → window.open) work; OS-level shell
@@ -42,14 +42,18 @@ export function isMac(): boolean {
 // ---- API origin / OAuth redirect ---------------------------------------
 
 // Where the cowork SPA addresses its FastAPI backend.
-//   Electron (file:// or app://) → loopback at the fixed dev port.
+//   Electron (file:// or app://) → loopback at the port main resolved for
+//     THIS OS user and handed us via preload (ENG-439). Falls back to the
+//     legacy fixed port only if the bridge didn't supply one.
 //   Web (http(s)://...)          → same origin (FastAPI serves the SPA).
 export function getApiOrigin(): string {
   if (typeof window === 'undefined') return '';
   const protocol = window.location?.protocol;
-  return protocol === 'file:' || protocol === 'app:'
-    ? `http://127.0.0.1:${ANTON_SERVER_PORT}`
-    : window.location.origin;
+  if (protocol === 'file:' || protocol === 'app:') {
+    const port = isElectron && typeof bridge.serverPort === 'number' ? bridge.serverPort : ANTON_SERVER_PORT;
+    return `http://127.0.0.1:${port}`;
+  }
+  return window.location.origin;
 }
 
 // True when the FastAPI backend the SPA talks to lives on THIS machine
@@ -379,14 +383,9 @@ export async function applyUpdate(): Promise<boolean> {
 
 // ---- OAuth (Electron-only PKCE flow) -----------------------------------
 
-export interface OAuthConnectOpts {
-  authUrl: string;
-  tokenUrl: string;
-  clientId: string;
-  clientSecret?: string;
-  scopes: string[];
-  extraAuthParams?: Record<string, string>;
-}
+export type OAuthConnectOpts =
+  | { engine: string; name?: string }
+  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string> };
 
 export interface OAuthConnectResult {
   ok: boolean;
@@ -407,6 +406,22 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     return bridge.oauthConnect(opts);
   }
   return { ok: false, reason: 'OAuth IPC flow is Electron-only — use redirect-based OAuth in web.' };
+}
+
+export async function keychainRevoke(engine: string, name: string, accountEmail: string): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.keychainRevoke === 'function') {
+    return bridge.keychainRevoke({ engine, name, accountEmail });
+  }
+  return { ok: false, reason: 'keychainRevoke is Electron-only.' };
+}
+
+export function onOAuthRefreshError(
+  cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void,
+): () => void {
+  if (isElectron && typeof bridge.onOAuthRefreshError === 'function') {
+    return bridge.onOAuthRefreshError(cb);
+  }
+  return () => {};
 }
 
 // Tears down any in-flight loopback OAuth listener so the renderer's
@@ -539,6 +554,8 @@ export const host = {
   setKeychainPref,
   getAccessToken,
   logout,
+  keychainRevoke,
+  onOAuthRefreshError,
 };
 
 export default host;

@@ -20,6 +20,54 @@ import {
   TableBody,
 } from './MarkdownTable';
 import { host } from '../../../platform/host';
+import { useSkillNames } from '../../lib/skillsStore';
+
+// remark plugin: colour "/skill-name" mentions in the brand accent. Splits
+// text nodes on a "/name" token at a word boundary whose name matches a known
+// skill (so a path like /usr/bin or "and/or" is never tinted), wrapping the
+// match in a <span class="anton-skill-mention"> via mdast data.hName — which
+// mdast-util-to-hast turns into a real span and rehype-sanitize keeps (span +
+// className are already allowlisted for engram chips). Dependency-free: a
+// small recursive walk instead of pulling in unist-util-visit.
+function remarkSkillMentions(names) {
+  const set = names instanceof Set ? names : new Set(names || []);
+  const splitText = (value) => {
+    const re = /(^|\s)\/([\w-]+)/g;
+    let m;
+    let last = 0;
+    let out = null;
+    while ((m = re.exec(value)) !== null) {
+      if (!set.has(m[2])) continue;
+      out = out || [];
+      const tokenStart = m.index + m[1].length; // index of "/"
+      if (tokenStart > last) out.push({ type: 'text', value: value.slice(last, tokenStart) });
+      out.push({
+        type: 'skillMention',
+        data: { hName: 'span', hProperties: { className: ['anton-skill-mention'] } },
+        children: [{ type: 'text', value: `/${m[2]}` }],
+      });
+      last = tokenStart + m[2].length + 1;
+    }
+    if (out && last < value.length) out.push({ type: 'text', value: value.slice(last) });
+    return out;
+  };
+  const walk = (node) => {
+    if (!node || !Array.isArray(node.children)) return;
+    const next = [];
+    for (const child of node.children) {
+      if (child.type === 'text') {
+        const parts = splitText(child.value);
+        if (parts) next.push(...parts);
+        else next.push(child);
+      } else {
+        if (child.type !== 'code' && child.type !== 'inlineCode') walk(child);
+        next.push(child);
+      }
+    }
+    node.children = next;
+  };
+  return (tree) => { if (set.size > 0) walk(tree); };
+}
 
 // Allowlist of URL schemes our `MarkdownLink` will open. We deliberately
 // do NOT include javascript:, file:, data:, or anything that could
@@ -65,6 +113,33 @@ const sanitizeSchema = {
     href: [...(defaultSchema.protocols?.href || []), 'engram'],
   },
 };
+
+// User messages are typed or pasted into the composer, where the
+// supported way to make a code block is a ``` fence (see the composer's
+// fence handling). Text copied from an already-indented context —
+// nested lists, quoted replies, an editor selection — arrives with a
+// uniform leading indent, which CommonMark then promotes to an
+// *indented* code block. The result is that pasted prose renders as a
+// monospace, non-wrapping card instead of formatted markdown.
+//
+// Strip the indentation common to every non-blank line (textwrap.dedent
+// semantics): the spurious copied-in indent is removed while relative
+// nesting — genuine sub-bullets, indented fence bodies — is preserved.
+// It's a no-op unless *all* non-blank lines share a leading indent, so
+// mixed content is left untouched.
+function _dedentUserText(text) {
+  if (!text || typeof text !== 'string') return text;
+  const lines = text.split('\n');
+  let min = Infinity;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const indent = line.length - line.replace(/^[ \t]+/, '').length;
+    if (indent < min) min = indent;
+    if (min === 0) return text;
+  }
+  if (!Number.isFinite(min) || min === 0) return text;
+  return lines.map((line) => (line.trim() ? line.slice(min) : line)).join('\n');
+}
 
 function _mergeInlineCodeLines(text) {
   if (!text || typeof text !== 'string') return text;
@@ -207,8 +282,8 @@ const _SIZES = {
   default: {
     root: 'markdown-content space-y-4 break-words text-body text-ink-2',
     p: 'font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[20px] font-semibold text-ink mt-6 mb-3',
-    h2: 'font-display text-[17px] font-semibold text-ink mt-5 mb-2',
+    h1: 's-h2 text-ink mt-6 mb-3',
+    h2: 's-h3 text-ink mt-5 mb-2',
     h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-4 mb-1.5',
     ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-2.5',
     ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-2.5',
@@ -220,8 +295,8 @@ const _SIZES = {
   dense: {
     root: 'markdown-content space-y-2 break-words text-[12.5px] leading-[1.65] text-ink-2',
     p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[16px] font-semibold text-ink mt-3.5 mb-1.5 tracking-[-0.005em]',
-    h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5 tracking-[-0.005em]',
+    h1: 's-h3 text-ink mt-3.5 mb-1.5',
+    h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5',
     h3: 'font-display text-[12px] font-semibold uppercase tracking-wider text-ink-3 mt-2.5 mb-1',
     ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
@@ -257,13 +332,25 @@ export function MarkdownContent({
   // `isAssistant` so only LLM output gets that fix-up.
   const normalized = useMemo(
     () => {
-      const merged = isAssistant ? _mergeInlineCodeLines(text) : text;
+      // User turns are pasted/typed: strip a uniform copied-in indent so
+      // CommonMark doesn't promote pasted prose to an indented code block.
+      const source = variant === 'user' ? _dedentUserText(text) : text;
+      const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
       return _renderEngramComments(formNormalized);
     },
-    [text, enableForms, isAssistant],
+    [text, enableForms, isAssistant, variant],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
+
+  // Skill names from the shared store → colour "/mention" tokens. useSkillNames
+  // returns a stable Set rebuilt once per reload in the store, so all instances
+  // share one Set instead of each allocating their own inside useMemo.
+  const skillNames = useSkillNames();
+  const remarkPlugins = useMemo(
+    () => [remarkGfm, [remarkSkillMentions, skillNames]],
+    [skillNames],
+  );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
   // button rendered by MarkdownCode. A single listener at this root survives
@@ -475,7 +562,7 @@ export function MarkdownContent({
   return (
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
         components={components}
       >

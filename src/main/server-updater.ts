@@ -23,7 +23,7 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { startServer, stopServer, isServerRunning } from './server-process';
+import { startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
   getCoworkRef,
@@ -31,54 +31,34 @@ import {
   COWORK_SERVER_REPO,
   ANTON_REPO,
 } from './server-source';
+import {
+  isFullCommitSha,
+  parseLsRemote,
+  parseVcsInfo,
+  decideGitUpdate,
+  decidePypiUpdate,
+  looksLikeBrokenInstall,
+  type VcsInfo,
+} from './update-logic';
+import {
+  PYTHON_RANGE,
+  getEnvPath,
+  findUv,
+  getInstalledVersion,
+  isSupportedPython,
+  writeUvOverrides,
+} from './uv-paths';
 
 const PACKAGE_NAME = 'cowork-server';
 const PYPI_JSON_URL = `https://pypi.org/pypi/${PACKAGE_NAME}/json`;
 const PYPI_TIMEOUT_MS = 5000;
 const DISABLE_VAR = 'COWORK_SERVER_DISABLE_AUTOUPDATE';
 
-// PyO3 (used by pywinpty on Windows) doesn't support 3.14 yet.
-// Keep in sync with installer.ts PYTHON_RANGE and cowork-server requires-python.
-const PYTHON_RANGE = '>=3.12,<3.14';
-
 export interface ServerUpdateResult {
   updated: boolean;
   previousVersion?: string;
   newVersion?: string;
   error?: string;
-}
-
-// ---------------------------------------------------------------------------
-// uv / path helpers
-// ---------------------------------------------------------------------------
-
-function getLocalBin(): string {
-  return path.join(os.homedir(), '.local', 'bin');
-}
-
-function getUvBinary(): string {
-  const localBin = getLocalBin();
-  return path.join(localBin, process.platform === 'win32' ? 'uv.exe' : 'uv');
-}
-
-function findUv(): string | null {
-  const explicit = getUvBinary();
-  if (fs.existsSync(explicit)) return explicit;
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin', 'uv');
-  if (fs.existsSync(cargoBin)) return cargoBin;
-  if (process.platform === 'darwin') {
-    for (const p of ['/opt/homebrew/bin/uv', '/usr/local/bin/uv']) {
-      if (fs.existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
-function getEnvPath(): string {
-  const localBin = getLocalBin();
-  const cargoBin = path.join(os.homedir(), '.cargo', 'bin');
-  const currentPath = process.env.PATH || '';
-  return [localBin, cargoBin, currentPath].join(path.delimiter);
 }
 
 /** uv tools directory (mirrors server-deps.getUvToolsDir). */
@@ -96,14 +76,12 @@ function getUvToolsDir(): string {
 // Install-source detection (read the tool venv's direct_url.json)
 // ---------------------------------------------------------------------------
 
-interface VcsInfo {
-  commit: string;
-  requestedRevision: string;
-}
-
-/** Locate site-packages inside the cowork-server tool venv. */
-function sitesPackagesDir(): string | null {
-  const venv = path.join(getUvToolsDir(), 'cowork-server');
+/** Locate site-packages inside the cowork-server tool venv. Callers that have
+ *  already resolved the tools dir reliably (via `uv tool dir`) should pass it —
+ *  otherwise this falls back to the platform heuristic, which can be wrong on
+ *  Windows (%APPDATA%\uv\tools vs …\uv\data\tools across uv versions). */
+function sitesPackagesDir(toolsDir: string = getUvToolsDir()): string | null {
+  const venv = path.join(toolsDir, 'cowork-server');
   // Windows: <venv>/Lib/site-packages ; Unix: <venv>/lib/pythonX.Y/site-packages
   const win = path.join(venv, 'Lib', 'site-packages');
   if (fs.existsSync(win)) return win;
@@ -119,8 +97,8 @@ function sitesPackagesDir(): string | null {
 /** Read git VCS info for an installed dist (e.g. "cowork_server", "anton_agent").
  *  Returns null when the dist was installed from a registry (PyPI) — i.e.
  *  no direct_url.json with vcs_info. */
-function readVcsInfo(distName: string): VcsInfo | null {
-  const sp = sitesPackagesDir();
+function readVcsInfo(distName: string, toolsDir?: string): VcsInfo | null {
+  const sp = sitesPackagesDir(toolsDir);
   if (!sp) return null;
   let distInfo: string | null = null;
   try {
@@ -135,10 +113,7 @@ function readVcsInfo(distName: string): VcsInfo | null {
   }
   if (!distInfo || !fs.existsSync(distInfo)) return null;
   try {
-    const data = JSON.parse(fs.readFileSync(distInfo, 'utf-8'));
-    const vcs = data?.vcs_info;
-    if (!vcs?.commit_id) return null;
-    return { commit: vcs.commit_id, requestedRevision: vcs.requested_revision || '' };
+    return parseVcsInfo(fs.readFileSync(distInfo, 'utf-8'));
   } catch {
     return null;
   }
@@ -147,15 +122,11 @@ function readVcsInfo(distName: string): VcsInfo | null {
 /** The HEAD commit a remote ref currently points at. A 40-hex ref is
  *  returned as-is (it IS the commit). Null on any failure. */
 function lsRemote(repo: string, ref: string): Promise<string | null> {
-  if (/^[0-9a-f]{40}$/i.test(ref)) return Promise.resolve(ref.toLowerCase());
+  if (isFullCommitSha(ref)) return Promise.resolve(ref.toLowerCase());
   return new Promise((resolve) => {
     execFile('git', ['ls-remote', repo, ref], { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000 }, (err, stdout) => {
       if (err) { resolve(null); return; }
-      // Prefer an exact heads/ or tags/ match; fall back to first line.
-      const lines = stdout.split('\n').filter(Boolean);
-      const pick = lines.find((l) => l.includes(`refs/heads/${ref}`) || l.includes(`refs/tags/${ref}`)) || lines[0];
-      const sha = pick ? pick.split('\t')[0].trim().toLowerCase() : '';
-      resolve(sha || null);
+      resolve(parseLsRemote(stdout, ref));
     });
   });
 }
@@ -164,21 +135,187 @@ function lsRemote(repo: string, ref: string): Promise<string | null> {
 // uv install / upgrade commands
 // ---------------------------------------------------------------------------
 
-function runUv(uv: string, args: string[]): Promise<{ ok: boolean; stderr: string }> {
-  return new Promise((resolve) => {
-    execFile(
-      uv,
-      args,
-      { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed' }, timeout: 180000 },
-      (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
-    );
-  });
+function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promise<{ ok: boolean; stderr: string }> {
+  // Every runUv call is a `uv tool install/upgrade/reinstall` that rewrites the
+  // tool venv on disk. Hold a maintenance window for its duration so
+  // startServer() can't spawn python against a half-written environment (a
+  // concurrent restart racing the reinstall — the spurious ModuleNotFoundError
+  // seen when a repair reinstall overlapped a post-onboarding restart).
+  return withServerMaintenance(
+    () =>
+      new Promise((resolve) => {
+        execFile(
+          uv,
+          args,
+          { env: { ...process.env, PATH: getEnvPath(), UV_PYTHON_PREFERENCE: 'only-managed', ...extraEnv }, timeout: 180000 },
+          (err, _stdout, stderr) => resolve({ ok: !err, stderr: stderr || err?.message || '' }),
+        );
+      }),
+  );
 }
 
 /** Reinstall from a git spec (cowork-server + anton at the given refs). */
 function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string }> {
   const spec = getInstallSpec({ coworkRef, antonRef });
-  return runUv(uv, ['tool', 'install', spec.package, ...spec.withArgs, '--force', '--reinstall', '--python', PYTHON_RANGE]);
+  return runUv(
+    uv,
+    ['tool', 'install', spec.package, '--force', '--reinstall', '--python', PYTHON_RANGE],
+    writeUvOverrides(spec.overrides),
+  );
+}
+
+/** Clean `--force --reinstall` on whatever source the venv actually came from
+ *  (git refs vs. the PyPI package), detected from the tool venv's
+ *  direct_url.json. `--reinstall` rebuilds the environment from scratch, so it
+ *  repairs a corrupt or half-written venv — never clobbering one source onto
+ *  the other. Shared by the unsupported-Python recreate and the boot repair. */
+function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
+  const onGit = !!readVcsInfo('cowork_server', toolsDir);
+  return onGit
+    ? installGit(uv, getCoworkRef(), getAntonRef())
+    : runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
+}
+
+/** `uv tool dir` — its on-disk layout differs across versions/OSes
+ *  (e.g. %APPDATA%\uv\tools vs …\uv\data\tools on Windows), so ask uv.
+ *  Async so it never blocks the Electron main thread. Null on failure. */
+function uvToolsDir(uv: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      uv, ['tool', 'dir'],
+      { env: { ...process.env, PATH: getEnvPath() }, timeout: 10000, encoding: 'utf-8' },
+      (err, stdout) => resolve(err ? null : String(stdout).trim() || null),
+    );
+  });
+}
+
+/** The `major.minor` the cowork-server venv is built on, from its
+ *  pyvenv.cfg. Null when the file or the version line is absent. */
+function readVenvPython(toolsDir: string): { major: number; minor: number } | null {
+  try {
+    const cfg = fs.readFileSync(path.join(toolsDir, 'cowork-server', 'pyvenv.cfg'), 'utf-8');
+    const m = cfg.match(/version_info\s*=\s*(\d+)\.(\d+)/);
+    if (!m) return null;
+    return { major: Number(m[1]), minor: Number(m[2]) };
+  } catch {
+    return null;
+  }
+}
+
+/** Recover a cowork-server venv stranded on an unsupported Python.
+ *
+ * A venv provisioned on Python < 3.12 by an older build keeps getting newer
+ * code pulled into it by in-place git updates; that code fails to *parse* on
+ * 3.11, so the server crashes at import time and never answers /health — and
+ * the normal updater (gated behind a successful start) never runs to fix it.
+ * Read the venv's interpreter from pyvenv.cfg and, if it's outside the
+ * supported range, reinstall on the SAME source the venv came from (mirroring
+ * maybeUpdateServer, so a PyPI install is never clobbered onto git); the
+ * --python pin rebuilds the venv on a supported managed CPython (3.11 → 3.12).
+ * Returns false (no-op) when the interpreter is already fine, can't be
+ * determined, or the reinstall didn't actually move it; the caller owns the
+ * restart. Never throws. */
+export async function recreateVenvIfUnsupportedPython(): Promise<boolean> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return false;
+    const uv = findUv();
+    if (!uv) return false;
+    return await withServerMaintenance(async () => {
+      const toolsDir = await uvToolsDir(uv);
+      if (!toolsDir) return false;
+      const before = readVenvPython(toolsDir);
+      if (!before) return false;                                // can't tell — don't touch it
+      if (isSupportedPython(before.major, before.minor)) return false;
+
+      console.warn(`[server-updater] cowork-server venv on unsupported Python ${before.major}.${before.minor}; recreating`);
+      if (isServerRunning()) await stopServer();
+
+      // Reinstall on the source the venv was actually installed from — the git
+      // channel carries anton refs, PyPI is a plain package spec. Both pin
+      // --python, which is what rebuilds the venv on a supported interpreter.
+      // Detect the source against the SAME reliably-resolved toolsDir used above,
+      // not the platform heuristic — otherwise a git install on a Windows layout
+      // the heuristic misses would be wrongly reinstalled from PyPI.
+      const { ok, stderr } = await reinstallFromSource(uv, toolsDir);
+      if (!ok) {
+        console.error('[server-updater] venv recreate reinstall failed:', stderr);
+        return false;
+      }
+
+      // Confirm uv actually re-selected the interpreter — this behavior varies by
+      // uv version. If it didn't move, report failure instead of letting the
+      // caller retry against the same broken interpreter.
+      const after = readVenvPython(toolsDir);
+      if (after && !isSupportedPython(after.major, after.minor)) {
+        console.error(`[server-updater] reinstall left venv on Python ${after.major}.${after.minor}; uv did not re-select the interpreter`);
+        return false;
+      }
+      console.log(`[server-updater] venv recreated on Python ${after ? `${after.major}.${after.minor}` : '(supported)'}`);
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Repair a cowork-server venv that is on a *supported* Python but still fails
+ * to boot — e.g. a partial or interrupted in-place upgrade left a dependency
+ * half-written. The signature case: FastAPI's `annotated-doc` dependency lands
+ * as a bare namespace package (an empty `annotated_doc/` dir), so
+ * `from annotated_doc import Doc` raises `ImportError: ... (unknown location)`
+ * and the server crashes before it can answer /health.
+ *
+ * This is the recovery gap `recreateVenvIfUnsupportedPython` (Python too old)
+ * and `maybeUpdateServer` (only acts on a version *change*) both miss: the
+ * installed version is current, the interpreter is fine, the environment is
+ * simply corrupt. A `--force --reinstall` on the same source rebuilds the venv
+ * from scratch and re-resolves every dependency cleanly. Returns true only when
+ * uv reported success, so the caller knows a retry is worthwhile; the caller
+ * owns the restart. Never throws.
+ *
+ * Cost note: if the reinstall does NOT fix the crash (e.g. a genuinely broken
+ * published artifact), this will run again on the next launch. That's the same
+ * tradeoff `recreateVenvIfUnsupportedPython` already makes — a slow retry beats
+ * a permanently dead app, and it self-resolves once upstream is fixed.
+ *
+ * `failureLog` is the crashed server's captured stderr
+ * (getServerDiagnostics().recentLog). The reinstall only runs when that log
+ * looks like a broken install (a missing module / unimportable name). For a
+ * migration error, port clash, or bad config the reinstall can't help — and an
+ * unnecessary one can corrupt a *healthy* venv if it races a concurrent start
+ * — so we skip it and return false. */
+export async function repairServerInstall(failureLog?: string): Promise<boolean> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return false;
+    // Only a broken/partial install is fixable by a reinstall. Anything else
+    // (Alembic "database ahead", port in use, missing env) must NOT trigger one.
+    if (!looksLikeBrokenInstall(failureLog)) {
+      console.log('[server-updater] start failure is not a broken install; skipping repair reinstall');
+      return false;
+    }
+    const uv = findUv();
+    if (!uv) return false;
+    return await withServerMaintenance(async () => {
+      // Resolve the tools dir via uv so source detection uses the real layout;
+      // null is fine — reinstallFromSource falls back to the platform heuristic.
+      const toolsDir = await uvToolsDir(uv);
+
+      console.warn('[server-updater] start failure looks like a broken install; attempting a clean reinstall to repair the environment');
+      if (isServerRunning()) await stopServer();
+
+      const { ok, stderr } = await reinstallFromSource(uv, toolsDir ?? undefined);
+      if (!ok) {
+        console.error('[server-updater] repair reinstall failed:', stderr);
+        return false;
+      }
+      console.log('[server-updater] repair reinstall completed; retrying server start');
+      return true;
+    });
+  } catch {
+    return false;
+  }
 }
 
 // ---- PyPI path helpers (release channel) ----------------------------------
@@ -202,36 +339,6 @@ function fetchLatestVersion(): Promise<string | null> {
   });
 }
 
-function getInstalledVersion(uv: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    // Force plain output: a forced-color environment makes `uv tool list`
-    // emit ANSI codes that break the start-anchored regex below. NO_COLOR
-    // overrides FORCE_COLOR. (Mirror of installer.ts getInstalledVersion.)
-    const env = { ...process.env, PATH: getEnvPath(), NO_COLOR: '1' };
-    execFile(uv, ['tool', 'list'], { env, timeout: 10000 }, (err, stdout) => {
-      if (err) { resolve(null); return; }
-      // eslint-disable-next-line no-control-regex
-      const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
-      for (const line of clean.split('\n')) {
-        const match = line.match(/^cowork-server\s+v?([\d.]+)/);
-        if (match) { resolve(match[1]); return; }
-      }
-      resolve(null);
-    });
-  });
-}
-
-/** Compare simple X.Y.Z versions. >0 if a>b. (No pre-release handling.) */
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -240,6 +347,61 @@ let _notify: ((payload: Record<string, unknown>) => void) | null = null;
 
 export function setUpdateNotifier(fn: (payload: Record<string, unknown>) => void): void {
   _notify = fn;
+}
+
+export interface ServerUpdateCheckResult {
+  updateAvailable: boolean;
+  currentVersion?: string;
+  latestVersion?: string;
+}
+
+/** Check whether a server update is available WITHOUT applying it. */
+export async function checkForServerUpdate(): Promise<ServerUpdateCheckResult> {
+  try {
+    const disable = (process.env[DISABLE_VAR] || '').toLowerCase();
+    if (disable === '1' || disable === 'true') return { updateAvailable: false };
+
+    const uv = findUv();
+    if (!uv) return { updateAvailable: false };
+
+    const coworkVcs = readVcsInfo('cowork_server');
+    if (coworkVcs) {
+      // Git channel: compare remote SHA vs installed SHA
+      const coworkRef = getCoworkRef();
+      const antonRef = getAntonRef();
+      const antonVcs = readVcsInfo('anton_agent');
+      const [coworkRemote, antonRemote] = await Promise.all([
+        lsRemote(COWORK_SERVER_REPO, coworkRef),
+        lsRemote(ANTON_REPO, antonRef),
+      ]);
+      const { coworkChanged, needsUpdate } = decideGitUpdate({
+        coworkRemote,
+        antonRemote,
+        coworkVcs,
+        antonVcs,
+      });
+      return {
+        updateAvailable: needsUpdate,
+        currentVersion: coworkVcs.commit.slice(0, 7),
+        latestVersion: coworkChanged ? coworkRemote!.slice(0, 7) : coworkVcs.commit.slice(0, 7),
+      };
+    }
+
+    // PyPI channel: compare version numbers
+    const [currentVersion, latestVersion] = await Promise.all([
+      getInstalledVersion(uv),
+      fetchLatestVersion(),
+    ]);
+    if (!currentVersion || !latestVersion) return { updateAvailable: false };
+    return {
+      updateAvailable: decidePypiUpdate(currentVersion, latestVersion).action === 'update',
+      currentVersion,
+      latestVersion,
+    };
+  } catch (err: any) {
+    console.error('[server-updater] check failed:', err);
+    return { updateAvailable: false };
+  }
 }
 
 export async function maybeUpdateServer(): Promise<ServerUpdateResult> {
@@ -279,45 +441,51 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
     lsRemote(ANTON_REPO, antonRef),
   ]);
 
-  const coworkChanged = !!coworkRemote && coworkRemote !== coworkVcs.commit.toLowerCase();
-  const antonChanged = !!antonRemote && !!antonVcs && antonRemote !== antonVcs.commit.toLowerCase();
+  const { coworkChanged, antonChanged, needsUpdate } = decideGitUpdate({
+    coworkRemote,
+    antonRemote,
+    coworkVcs,
+    antonVcs,
+  });
 
-  if (!coworkChanged && !antonChanged) {
+  if (!needsUpdate) {
     console.log(`[server-updater] up to date (git: cowork@${coworkRef}=${coworkVcs.commit.slice(0, 7)}, anton@${antonRef}=${antonVcs?.commit.slice(0, 7) ?? '?'})`);
     return { updated: false };
   }
 
   console.log(`[server-updater] git update available — cowork:${coworkChanged ? `${coworkVcs.commit.slice(0, 7)}→${coworkRemote!.slice(0, 7)}` : 'same'} anton:${antonChanged ? `${antonVcs!.commit.slice(0, 7)}→${antonRemote!.slice(0, 7)}` : 'same'}`);
 
-  const prevCowork = coworkVcs.commit;
-  const prevAnton = antonVcs?.commit;
+  return withServerMaintenance(async () => {
+    const prevCowork = coworkVcs.commit;
+    const prevAnton = antonVcs?.commit;
 
-  const wasRunning = isServerRunning();
-  if (wasRunning) await stopServer();
+    const wasRunning = isServerRunning();
+    if (wasRunning) await stopServer();
 
-  const upgrade = await installGit(uv, coworkRef, antonRef);
-  if (!upgrade.ok) {
-    console.error('[server-updater] git reinstall failed:', upgrade.stderr);
-    if (wasRunning) await startServer();
-    return { updated: false, previousVersion: prevCowork, error: upgrade.stderr };
-  }
-
-  const result = await startServer();
-  if (!result.ok) {
-    console.error('[server-updater] new commit failed health check, rolling back...');
-    // Rollback by pinning the exact prior commits.
-    const rollback = await installGit(uv, prevCowork, prevAnton);
-    if (rollback.ok) {
-      await startServer();
-      console.log(`[server-updater] rolled back to cowork@${prevCowork.slice(0, 7)}`);
-    } else {
-      _notify?.({ phase: 'error', critical: true, error: `Server update failed and rollback also failed (${rollback.stderr}). Restart the app to recover.` });
+    const upgrade = await installGit(uv, coworkRef, antonRef);
+    if (!upgrade.ok) {
+      console.error('[server-updater] git reinstall failed:', upgrade.stderr);
+      if (wasRunning) await startServer();
+      return { updated: false, previousVersion: prevCowork, error: upgrade.stderr };
     }
-    return { updated: false, previousVersion: prevCowork, error: `New commit failed to start: ${result.reason}` };
-  }
 
-  console.log('[server-updater] git update applied successfully');
-  return { updated: true, previousVersion: prevCowork.slice(0, 7), newVersion: (coworkRemote || prevCowork).slice(0, 7) };
+    const result = await startServer();
+    if (!result.ok) {
+      console.error('[server-updater] new commit failed health check, rolling back...');
+      // Rollback by pinning the exact prior commits.
+      const rollback = await installGit(uv, prevCowork, prevAnton);
+      if (rollback.ok) {
+        await startServer();
+        console.log(`[server-updater] rolled back to cowork@${prevCowork.slice(0, 7)}`);
+      } else {
+        _notify?.({ phase: 'error', critical: true, error: `Server update failed and rollback also failed (${rollback.stderr}). Restart the app to recover.` });
+      }
+      return { updated: false, previousVersion: prevCowork, error: `New commit failed to start: ${result.reason}` };
+    }
+
+    console.log('[server-updater] git update applied successfully');
+    return { updated: true, previousVersion: prevCowork.slice(0, 7), newVersion: (coworkRemote || prevCowork).slice(0, 7) };
+  });
 }
 
 // ---- PyPI channel (release) ------------------------------------------------
@@ -328,38 +496,45 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     fetchLatestVersion(),
   ]);
 
-  if (!currentVersion) return { updated: false, error: 'could not determine installed version' };
-  if (!latestVersion) return { updated: false };
-
-  if (compareVersions(latestVersion, currentVersion) <= 0) {
+  const decision = decidePypiUpdate(currentVersion, latestVersion);
+  if (decision.action === 'skip') {
+    return decision.reason === 'unknown-installed-version'
+      ? { updated: false, error: 'could not determine installed version' }
+      : { updated: false };
+  }
+  if (decision.action === 'up-to-date') {
     console.log(`[server-updater] up to date (installed=${currentVersion}, latest=${latestVersion})`);
     return { updated: false };
   }
 
-  console.log(`[server-updater] update available: ${currentVersion} → ${latestVersion}`);
-  const wasRunning = isServerRunning();
-  if (wasRunning) await stopServer();
+  // decision.action === 'update' — from/to are the non-null versions.
+  const { from, to } = decision;
+  console.log(`[server-updater] update available: ${from} → ${to}`);
+  return withServerMaintenance(async () => {
+    const wasRunning = isServerRunning();
+    if (wasRunning) await stopServer();
 
-  const upgrade = await runUv(uv, ['tool', 'install', '--upgrade', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
-  if (!upgrade.ok) {
-    console.error('[server-updater] upgrade failed:', upgrade.stderr);
-    if (wasRunning) await startServer();
-    return { updated: false, previousVersion: currentVersion, error: upgrade.stderr };
-  }
-
-  const result = await startServer();
-  if (!result.ok) {
-    console.error('[server-updater] new version failed health check, rolling back...');
-    const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${currentVersion}`]);
-    if (rollback.ok) {
-      await startServer();
-      console.log(`[server-updater] rolled back to ${currentVersion}`);
-    } else {
-      _notify?.({ phase: 'error', critical: true, error: `Server update to ${latestVersion} failed and rollback to ${currentVersion} also failed. Restart the app to recover.` });
+    const upgrade = await runUv(uv, ['tool', 'install', '--upgrade', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
+    if (!upgrade.ok) {
+      console.error('[server-updater] upgrade failed:', upgrade.stderr);
+      if (wasRunning) await startServer();
+      return { updated: false, previousVersion: from, error: upgrade.stderr };
     }
-    return { updated: false, previousVersion: currentVersion, newVersion: latestVersion, error: `New version failed to start: ${result.reason}` };
-  }
 
-  console.log(`[server-updater] successfully updated to ${latestVersion}`);
-  return { updated: true, previousVersion: currentVersion, newVersion: latestVersion };
+    const result = await startServer();
+    if (!result.ok) {
+      console.error('[server-updater] new version failed health check, rolling back...');
+      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`]);
+      if (rollback.ok) {
+        await startServer();
+        console.log(`[server-updater] rolled back to ${from}`);
+      } else {
+        _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed and rollback to ${from} also failed. Restart the app to recover.` });
+      }
+      return { updated: false, previousVersion: from, newVersion: to, error: `New version failed to start: ${result.reason}` };
+    }
+
+    console.log(`[server-updater] successfully updated to ${to}`);
+    return { updated: true, previousVersion: from, newVersion: to };
+  });
 }

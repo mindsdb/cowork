@@ -10,13 +10,13 @@
 // keywords / category / description). When the registry grows we
 // can switch to /connectors/match for the natural-language path.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { Modal } from '../ui/Modal';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
 
 // Category → fallback Ico name when a connector doesn't ship its own
 // flat icon. Keep this map small and obvious; "other" → generic puzzle.
@@ -166,7 +166,9 @@ function SelectPill({ label, value, onChange, options }) {
   );
 }
 
-function ConnectorTile({ connector, onPick }) {
+// memo: `filtered` changes on every search keystroke, so the .map recreates
+// every tile element — memo skips tiles whose connector didn't change.
+const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
   return (
     <button
       type="button"
@@ -205,7 +207,7 @@ function ConnectorTile({ connector, onPick }) {
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{
           fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14, color: 'var(--ink)',
-          letterSpacing: '-0.005em',
+          letterSpacing: '0',
         }}>{connector.label || connector.id}</span>
         {connector.description && (
           <span style={{
@@ -216,7 +218,7 @@ function ConnectorTile({ connector, onPick }) {
       </div>
     </button>
   );
-}
+});
 
 export default function ConnectorPicker({ open, onPick, onClose }) {
   const [connectors, setConnectors] = useState([]);
@@ -303,10 +305,9 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
           background: 'var(--surface)',
           flexShrink: 0,
         }}>
-          <h2 id="connector-picker-title" style={{
+          <h2 id="connector-picker-title" className="s-h3" style={{
             margin: 0,
-            fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600,
-            letterSpacing: '-0.005em', color: 'var(--ink)',
+            color: 'var(--ink)',
           }}>Connectors Directory</h2>
           <button
             type="button"

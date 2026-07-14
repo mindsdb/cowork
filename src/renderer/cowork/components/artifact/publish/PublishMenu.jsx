@@ -6,7 +6,8 @@
 //
 //   not published → "Publish to the Web" (access chooser + Publish)
 //   publishing    → button shows a spinner
-//   published     → URL + current access + Unpublish + Update / Up to date
+//   published     → URL + current access + Unpublish + Update button, or an
+//                    "Up to date" status when there is nothing to publish
 //     ├─ Change          → edit access in place (no unpublish→publish)
 //     └─ Change password → focused password change (password mode only)
 //
@@ -27,7 +28,7 @@ import {
 } from './AccessChooser';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const ACCESS_LABELS = {
@@ -45,9 +46,9 @@ function draftFromController(pub) {
   };
 }
 
-// Has the editable draft diverged from what's currently live? Drives the
-// "Update" (enabled) vs "Up to date" (disabled) split in the change-access
-// view, matching the Figma states.
+// Has the editable draft diverged from what's currently live? Decides whether
+// the change-access view shows the "Update" button (changes to publish) or the
+// "Up to date" status (nothing to publish).
 function draftDiffers(draft, current) {
   if (draft.mode !== current.mode) return true;
   if (draft.mode === 'password') return (draft.password || '') !== (current.password || '');
@@ -65,9 +66,9 @@ const SECTION_PAD = '12px 16px';
 
 function PanelHeader({ title }) {
   return (
-    <div style={{
+    <div className="s-h3" style={{
       padding: '12px 16px', borderBottom: '1px solid var(--line)',
-      fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15, color: 'var(--ink)',
+      color: 'var(--ink)',
     }}>{title}</div>
   );
 }
@@ -107,6 +108,22 @@ function FooterButton({ onClick, disabled, primary, busy, busyLabel, children })
       {busy && <Spinner style={{ color: 'currentColor' }} />}
       {busy ? busyLabel : children}
     </button>
+  );
+}
+
+// Calm, non-interactive "synced" status shown in the footer when there is
+// nothing to publish — deliberately not styled as a control, so status reads
+// as status and the action button only appears when there is something to do
+// (ENG-500).
+function UpToDateTag() {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px',
+      fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink-3)',
+    }}>
+      <span style={{ display: 'inline-flex', color: 'var(--ok)' }}>{Ico.check(15)}</span>
+      Up to date
+    </span>
   );
 }
 
@@ -168,17 +185,74 @@ function ErrorRow({ message }) {
   );
 }
 
+// ── Version history ───────────────────────────────────────────────────────
+
+function formatWhen(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// versions are newest-first, so the highest version number is at index 0.
+function versionLabel(v, i, total) {
+  return v.title || `Version ${total - i}`;
+}
+
+function VersionList({ versions, activatingMd5, busy, onActivate }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+      {versions.map((v, i) => {
+        const live = v.isCurrent;
+        const acting = activatingMd5 === v.md5;
+        return (
+          <div key={v.md5 || i} style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
+            background: live ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'var(--surface-2)',
+            border: `1px solid ${live ? 'color-mix(in srgb, var(--accent) 35%, transparent)' : 'var(--line)'}`,
+          }}>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span style={{ display: 'block', fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {versionLabel(v, i, versions.length)}
+              </span>
+              <span style={{ display: 'block', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)', marginTop: 1 }}>
+                {formatWhen(v.publishedAt) || '—'}
+              </span>
+            </span>
+            {live ? (
+              <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 11.5, color: 'var(--accent)' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} /> Live
+              </span>
+            ) : (
+              <button type="button" onClick={() => onActivate(v.md5)} disabled={busy} style={{
+                flexShrink: 0, cursor: busy ? 'not-allowed' : 'pointer',
+                background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 7, padding: '5px 10px',
+                fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12, color: 'var(--ink-2)',
+                display: 'inline-flex', alignItems: 'center', gap: 5, opacity: busy && !acting ? 0.5 : 1,
+              }}>
+                {acting && <Spinner style={{ color: 'currentColor' }} />}
+                {acting ? 'Rolling back…' : 'Make live'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main control ─────────────────────────────────────────────────────────
 
 export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
   const [open, setOpen] = useState(false);
-  // summary | access | password — only meaningful while published.
+  // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
   // Editable access draft for the publish + change-access flows.
   const [draft, setDraft] = useState(() => draftFromController(pub));
   const [pwd, setPwd] = useState({ value: '', reveal: false });
+  const [activatingMd5, setActivatingMd5] = useState('');
 
   // Re-seed the panel each time it opens (and whenever published-state
   // flips underneath it) so it never shows a stale draft.
@@ -189,6 +263,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
     if (isPublished) {
       setView('summary');
       setDraft(draftFromController(pub));
+      pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
       setDraft({ mode: 'public', password: '', emailsText: '', orgAllowed: false });
@@ -217,6 +292,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   const doUnpublish = async () => {
     const ok = await pub.unpublish();
     if (ok) setOpen(false);
+  };
+  const doActivate = async (md5) => {
+    if (pub.busy) return;
+    setActivatingMd5(md5);
+    try { await pub.activate(md5); } finally { setActivatingMd5(''); }
   };
 
   const triggerStyle = {
@@ -286,6 +366,11 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                           <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
                         </div>
                       )}
+                      {pub.versions.length > 1 && (
+                        <div style={{ marginTop: 12 }}>
+                          <LinkButton onClick={() => setView('versions')}>{`Version history (${pub.versions.length})`}</LinkButton>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -322,6 +407,23 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       </div>
                     </>
                   )}
+
+                  {view === 'versions' && (
+                    <>
+                      <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
+                        Version history
+                      </SectionLabel>
+                      <VersionList
+                        versions={pub.versions}
+                        activatingMd5={activatingMd5}
+                        busy={pub.busy}
+                        onActivate={doActivate}
+                      />
+                      <p style={{ margin: '10px 2px 0', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.4 }}>
+                        Making a version live changes what visitors see at your URL. Your workspace files stay as they are.
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <ErrorRow message={pub.error} />
@@ -339,16 +441,22 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       Save
                     </FooterButton>
                   ) : view === 'access' ? (
-                    <FooterButton primary onClick={doApplyAccess}
-                      disabled={pub.busy || !isAccessDraftValid(draft) || !(draftDiffers(draft, current) || pub.modified)}
-                      busy={pub.phase === 'publishing'} busyLabel="Updating…">
-                      {draftDiffers(draft, current) || pub.modified ? 'Update' : 'Up to date'}
+                    (draftDiffers(draft, current) || pub.modified) ? (
+                      <FooterButton primary onClick={doApplyAccess}
+                        disabled={pub.busy || !isAccessDraftValid(draft)}
+                        busy={pub.phase === 'publishing'} busyLabel="Updating…">
+                        Update
+                      </FooterButton>
+                    ) : (
+                      <UpToDateTag />
+                    )
+                  ) : pub.modified ? (
+                    <FooterButton primary onClick={pub.update} disabled={pub.busy}
+                      busy={pub.phase === 'updating'} busyLabel="Updating…">
+                      Update
                     </FooterButton>
                   ) : (
-                    <FooterButton primary onClick={pub.update} disabled={pub.busy || !pub.modified}
-                      busy={pub.phase === 'updating'} busyLabel="Updating…">
-                      {pub.modified ? 'Update' : 'Up to date'}
-                    </FooterButton>
+                    <UpToDateTag />
                   )}
                 </div>
               </>

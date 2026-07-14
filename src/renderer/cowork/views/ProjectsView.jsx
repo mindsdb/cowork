@@ -31,6 +31,7 @@ import {
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
 import { Menu } from '../components/ui';
+import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 
@@ -91,18 +92,6 @@ function usePinnedProjects() {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
-
-function relativeAge(input) {
-  if (!input) return '—';
-  const ts = typeof input === 'number' ? input : Date.parse(input);
-  if (!Number.isFinite(ts)) return '—';
-  const diff = Date.now() - ts;
-  if (diff < 60_000)        return 'just now';
-  if (diff < 3_600_000)     return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000)    return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 function timestampOfProject(project, tasks) {
   const list = (tasks || []).filter((t) =>
@@ -322,7 +311,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
             style={{
               flex: 1, minWidth: 0,
               fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
+              letterSpacing: '0', color: 'var(--ink)',
               background: 'var(--surface-2)',
               border: '1px solid var(--line)',
               borderRadius: 6,
@@ -629,7 +618,7 @@ function EmptyState({ onNewProject }) {
       gap: 14, padding: '40px 24px',
     }}>
       <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+      <div className="s-h3" style={{ color: 'var(--ink)' }}>
         No projects yet
       </div>
       <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 360, textAlign: 'center' }}>
@@ -665,43 +654,6 @@ function SkeletonCard() {
 // where I'd accidentally folded this into the home route — the user
 // wants the in-page detail view to stay.
 
-function Crumb({ label, onClick, title, maxWidth }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      style={{
-        // outline:0 removed for WCAG 2.4.7 — keyboard focus relies on
-        // the global `button:focus:not(:focus-visible) { outline:none }`
-        // rule, which keeps the ring for true keyboard nav.
-        cursor: 'pointer', background: 'transparent', border: 0,
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function CrumbSep() {
-  return (
-    <span aria-hidden="true" style={{
-      color: 'var(--ink-4)', fontFamily: FONT_DISPLAY,
-      fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-      userSelect: 'none',
-    }}>›</span>
-  );
-}
-
 function ProjectDetail({
   project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
@@ -711,6 +663,7 @@ function ProjectDetail({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
+  onNavigateToConnectors,
   // Header kebab + inline rename — lets users rename / reveal / delete
   // the active project without bouncing back to the grid. Pin is
   // intentionally absent: the only pin store today is localStorage on
@@ -850,23 +803,18 @@ function ProjectDetail({
                   autoCorrect="off"
                   style={{
                     flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+                    letterSpacing: '0', color: 'var(--ink)',
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
                   }}
                 />
               ) : (
-                <span
-                  title={project.name}
-                  style={{
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    minWidth: 0, flex: '0 1 auto',
-                  }}
-                >{project.name}</span>
+                <CrumbCurrent
+                  label={project.name}
+                  style={{ flex: '0 1 auto' }}
+                />
               )}
               {!editing && (
                 <button
@@ -934,6 +882,7 @@ function ProjectDetail({
               models={models || []}
               attachments={attachments}
               connectors={connectors}
+              onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
@@ -1026,6 +975,7 @@ export default function ProjectsView({
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
+  onNavigateToConnectors,
   // Forwarded to ProjectDetail's rail Scheduled Tasks card —
   // clicking a row routes to the schedule detail page.
   onOpenSchedule,
@@ -1170,6 +1120,7 @@ export default function ProjectsView({
         onMoveTaskToProject={onMoveTaskToProject}
         attachments={attachments}
         connectors={connectors}
+        onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}

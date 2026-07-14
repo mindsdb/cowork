@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
+import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 
@@ -57,46 +58,6 @@ function formatDuration(ms) {
 
 // ── breadcrumb ──
 //
-// Mirrors ProjectsView's Crumb / CrumbSep so the navigation rhythm
-// (Josefin Sans, 13px buttons, 14px separator + active label, slightly
-// looser letter-spacing) is identical across drilldown surfaces.
-
-function CrumbButton({ label, onClick, title, maxWidth }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title || label}
-      style={{
-        // outline:0 removed for WCAG 2.4.7 — keyboard focus relies on
-        // the global `button:focus:not(:focus-visible) { outline:none }`
-        // rule, which keeps the ring for true keyboard nav.
-        cursor: 'pointer', background: 'transparent', border: 0,
-        fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
-        letterSpacing: '0.04em', color: 'var(--ink-3)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        maxWidth, flexShrink: 1,
-        padding: '2px 6px', borderRadius: 5,
-        transition: 'color 120ms ease, background 120ms ease',
-        WebkitAppRegion: 'no-drag',
-      }}
-      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
-      onMouseOut={(e)  => { e.currentTarget.style.color = 'var(--ink-3)'; e.currentTarget.style.background = 'transparent'; }}
-    >{label}</button>
-  );
-}
-
-function CrumbSep() {
-  return (
-    <span aria-hidden="true" style={{
-      color: 'var(--ink-4)', fontFamily: FONT_DISPLAY,
-      fontSize: 14, lineHeight: 1, padding: '0 2px', flexShrink: 0,
-      userSelect: 'none',
-    }}>›</span>
-  );
-}
-
-
 // ── pills ──
 
 function StatusPill({ task }) {
@@ -398,12 +359,7 @@ export default function ScheduleDetailView({
       }}>
         <CrumbButton label="Scheduled Tasks" onClick={onBack} title="All scheduled tasks" />
         <CrumbSep />
-        <span style={{
-          padding: '2px 6px',
-          fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-          letterSpacing: '0.04em', color: 'var(--ink)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 360,
-        }}>{task.title || 'Untitled schedule'}</span>
+        <CrumbCurrent label={task.title || 'Untitled schedule'} maxWidth={360} />
       </div>
 
       <div className="sched-body" style={{ padding: '6px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -427,9 +383,8 @@ export default function ScheduleDetailView({
         }}>
           <div className="sched-hero-top" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 600,
-                color: 'var(--ink)', letterSpacing: '-0.01em', lineHeight: 1.25,
+              <div className="s-h2" style={{
+                color: 'var(--ink)',
                 overflow: 'hidden', textOverflow: 'ellipsis',
                 display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
               }}>{task.title}</div>
@@ -626,7 +581,7 @@ function SummaryStat({ label, value, hint }) {
       }}>{label}</div>
       <div title={hint || undefined} style={{
         fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-        color: 'var(--ink)', letterSpacing: '-0.005em',
+        color: 'var(--ink)', letterSpacing: '0',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{value}</div>
     </div>
@@ -642,7 +597,7 @@ function Metric({ label, value, color }) {
       }}>{label}</div>
       <div style={{
         fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600,
-        color: color || 'var(--ink)', letterSpacing: '-0.005em',
+        color: color || 'var(--ink)', letterSpacing: '0',
         marginTop: 2,
       }}>{value}</div>
     </div>

@@ -9,7 +9,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
+import { host } from '../../platform/host';
 import ConnectWorkflowView from './ConnectWorkflowView';
 import {
   PageHeader,
@@ -94,7 +95,13 @@ function ConnectionCard({ connection, onDelete, onModify }) {
   const [busy, setBusy] = useState(false);
   const engine = connection.engine || 'unknown';
   const name = connection.name || connection.slug || 'unnamed';
+  // Human-facing title (label or derived identity, e.g. "Support" /
+  // "user@gmail.com"); falls back to the slug. `name` stays the identity used
+  // for disconnect/modify.
+  const displayName =
+    connection.display_name || connection.displayName || name;
   const updated = connection.updated_at || connection.updatedAt || null;
+  const needsReconnect = connection.status === 'needs_reconnect';
 
   const handleRemove = async (e) => {
     e.stopPropagation();
@@ -125,8 +132,12 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background: hover ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${hover ? 'var(--line-2)' : 'var(--line)'}`,
+        background: needsReconnect
+          ? 'color-mix(in srgb, var(--warning, #f5a623) 8%, var(--surface))'
+          : (hover ? 'var(--surface-2)' : 'var(--surface)'),
+        border: needsReconnect
+          ? `1px solid color-mix(in srgb, var(--warning, #f5a623) 45%, transparent)`
+          : `1px solid ${hover ? 'var(--line-2)' : 'var(--line)'}`,
         borderRadius: 10,
         padding: '14px 16px',
         minHeight: 120,
@@ -140,16 +151,18 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{
           display: 'inline-flex', flexShrink: 0,
-          color: 'var(--ink-3)',
-        }}>
-          {Ico.database(14)}
+          color: needsReconnect ? 'var(--warning, #f5a623)' : 'var(--ink-3)',
+        }} title={needsReconnect ? 'Reconnection required' : undefined}>
+          {needsReconnect
+            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>
+            : Ico.database(14)}
         </span>
         <span style={{
           flex: 1, minWidth: 0,
           fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-          letterSpacing: '-0.005em', color: 'var(--ink)',
+          letterSpacing: '0', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{name}</span>
+        }} title={displayName !== name ? name : undefined}>{displayName}</span>
         <span style={{
           flexShrink: 0,
           fontFamily: FONT_MONO, fontSize: 10.5,
@@ -162,6 +175,15 @@ function ConnectionCard({ connection, onDelete, onModify }) {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      {needsReconnect && (
+        <div style={{
+          fontFamily: FONT_BODY, fontSize: 12, fontWeight: 500,
+          color: 'var(--warning, #f5a623)',
+        }}>
+          Reconnection required — click to fix
+        </div>
+      )}
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
@@ -207,7 +229,7 @@ function EmptyState({ onConnectNew, agentLabel = 'the agent' }) {
       gap: 14, padding: '40px 24px',
     }}>
       <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+      <div className="s-h3" style={{ color: 'var(--ink)' }}>
         No apps connected yet
       </div>
       <div style={{
@@ -251,8 +273,6 @@ function MetaRow({ label, value }) {
     </div>
   );
 }
-
-const VAULT_KEEP = '__anton_vault_keep__';
 
 function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect }) {
   const [spec, setSpec] = useState(null);
@@ -300,7 +320,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
       label: f.label || humanLabel(f.name),
       value: vaultFields[f.name] ?? null,
       isSecret: f.secret === true || f.type === 'password'
-        || secureKeys.has(f.name) || vaultFields[f.name] === VAULT_KEEP,
+        || secureKeys.has(f.name) || vaultFields[f.name] === CONNECTIONS_VAULT_KEEP,
     })),
     ...Object.entries(vaultFields)
       .filter(([k]) => !specKeys.has(k))
@@ -308,7 +328,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
         key,
         label: humanLabel(key),
         value,
-        isSecret: secureKeys.has(key) || value === VAULT_KEEP,
+        isSecret: secureKeys.has(key) || value === CONNECTIONS_VAULT_KEEP,
       })),
   ];
 
@@ -356,9 +376,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             }
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {spec?.label || connection.engine}
@@ -454,6 +473,17 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
           display: 'flex', flexDirection: 'column', gap: 8,
           flexShrink: 0,
         }}>
+          {saved?.fields?.status === 'needs_reconnect' && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 7,
+              background: 'color-mix(in srgb, var(--warning, #f5a623) 12%, var(--surface))',
+              border: '1px solid color-mix(in srgb, var(--warning, #f5a623) 35%, transparent)',
+              fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5,
+            }}>
+              <strong style={{ display: 'block', marginBottom: 4 }}>Reconnection required</strong>
+              The refresh token for this connection has expired. Reconnect to restore access, or remove the connection.
+            </div>
+          )}
           {spec && (
             <button
               type="button"
@@ -473,7 +503,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             type="button"
             onClick={() => {
               if (!window.confirm(`Disconnect ${connection.engine}/${connection.name}?`)) return;
-              onDisconnect?.(connection);
+              onDisconnect?.(connection, saved);
               onClose();
             }}
             style={{
@@ -486,7 +516,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               cursor: 'pointer',
             }}
           >
-            Disconnect
+            Remove
           </button>
         </div>
       </div>
@@ -591,8 +621,22 @@ export default function CustomizeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list]);
 
-  const handleDelete = async (connection) => {
+  const handleDelete = async (connection, savedDetail) => {
     try {
+      // For builtin OAuth connections in Electron, keychain:revoke stops the
+      // refresh loop, removes the keychain entry, and deletes the vault record.
+      if (host.isElectron) {
+        const detail = savedDetail || await fetchSavedConnection(connection.engine, connection.name).catch(() => null);
+        const accountEmail = detail?.fields?.account_email;
+        if (detail?.method === 'browser_oauth_builtin' && accountEmail) {
+          await host.keychainRevoke(connection.engine, connection.name, accountEmail);
+          const fresh = await fetchDatasources();
+          const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+          setList(next);
+          onConnectionsSyncedRef.current?.(next);
+          return;
+        }
+      }
       await deleteDatasource(connection.engine, connection.name);
       const fresh = await fetchDatasources();
       const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
@@ -698,8 +742,8 @@ export default function CustomizeView({
         <ConnectionDetailPanel
           connection={selectedConn}
           onClose={() => setSelectedConn(null)}
-          onDisconnect={async (conn) => {
-            await handleDelete(conn);
+          onDisconnect={async (conn, savedDetail) => {
+            await handleDelete(conn, savedDetail);
             setSelectedConn(null);
           }}
           onReconnect={async (conn, spec) => {

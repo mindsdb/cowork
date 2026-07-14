@@ -13,6 +13,8 @@ jobs:
     uses: ./.github/workflows/build-macos-pkg.yml
     with:
       build_kind: stable
+      server_ref: staging
+      minds_api_url: https://api.staging.mindshub.ai
     secrets: inherit
 
   upload-macos:
@@ -27,6 +29,8 @@ jobs:
     uses: ./.github/workflows/build-windows-installer.yml
     with:
       build_kind: stable
+      server_ref: staging
+      minds_api_url: https://api.staging.mindshub.ai
     secrets: inherit
 
   upload-windows:

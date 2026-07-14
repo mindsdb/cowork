@@ -1,7 +1,19 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 
+// ENG-439: main resolves a per-OS-user server port and passes it to the
+// renderer process via additionalArguments. Parse it once here so the host
+// abstraction can address our own sidecar instead of a hardcoded 26866.
+function parseServerPort(): number | null {
+  const arg = process.argv.find((a) => a.startsWith('--cowork-server-port='));
+  if (!arg) return null;
+  const port = Number(arg.split('=')[1]);
+  return Number.isInteger(port) && port > 0 ? port : null;
+}
+
 contextBridge.exposeInMainWorld('antontron', {
+  // Resolved loopback server port (ENG-439); null if main didn't pass one.
+  serverPort: parseServerPort(),
   // Installer
   checkInstall: () => ipcRenderer.invoke(IPC.INSTALL_CHECK),
   startInstall: () => ipcRenderer.invoke(IPC.INSTALL_START),
@@ -15,17 +27,25 @@ contextBridge.exposeInMainWorld('antontron', {
   // Diagnostics — last start error + tail of stdout/stderr. Used
   // by the renderer's "why is the backend offline?" help modal.
   serverDiagnostics: () => ipcRenderer.invoke('server:get-diagnostics'),
-  // PKCE OAuth — main spawns a loopback server + opens the
-  // browser, returns the resulting tokens (or an error reason).
-  oauthConnect: (opts: {
-    authUrl: string;
-    tokenUrl: string;
-    clientId: string;
-    clientSecret?: string;
-    scopes: string[];
-    extraAuthParams?: Record<string, string>;
-  }) => ipcRenderer.invoke('oauth:connect', opts),
+  // PKCE OAuth — accepts either the builtin shape { engine, name } (main
+  // handles credentials + full flow) or the BYOK shape { authUrl, ... }
+  // (returns tokens to renderer). Returns the resulting tokens or an error.
+  oauthConnect: (opts: { engine: string; name?: string } | {
+    authUrl: string; tokenUrl: string; clientId: string;
+    clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>;
+  }) => ipcRenderer.invoke(IPC.OAUTH_CONNECT, opts),
   oauthCancel: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL),
+  // Disconnect a builtin OAuth connection: stops the refresh loop,
+  // removes the keychain entry, and deletes the vault record.
+  keychainRevoke: (opts: { engine: string; name: string; accountEmail: string }) =>
+    ipcRenderer.invoke(IPC.KEYCHAIN_REVOKE, opts),
+  // Fires when the background token-refresh loop encounters a failure.
+  // Returns an unsubscribe function.
+  onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => {
+    const listener = (_: any, payload: any) => cb(payload);
+    ipcRenderer.on(IPC.OAUTH_REFRESH_ERROR, listener);
+    return () => ipcRenderer.removeListener(IPC.OAUTH_REFRESH_ERROR, listener);
+  },
 
   // MindsHub onboarding — see main/index.ts for the rationale on
   // why these are split out from the generic oauth:connect bridge.

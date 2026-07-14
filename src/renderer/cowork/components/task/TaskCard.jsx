@@ -1,6 +1,6 @@
 // Task bubble button — used in project view's task list and any
 // future "list of conversations" surface. Inter throughout (no
-// monospace), Josefin reserved for the small "turns" badge if we ever
+// monospace), Inter reserved for the small "turns" badge if we ever
 // want to display it as an eyebrow.
 //
 // Hover surfaces a kebab in the right meta column (keeping row width
@@ -12,20 +12,9 @@ import { useRef, useState } from 'react';
 import Ico from '../Icons';
 import { TaskMenu } from '../TaskMenu';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
+import { relativeAge } from '../../lib/formatTime';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-
-function relativeAge(value) {
-  if (!value) return '';
-  const d = typeof value === 'string' ? new Date(value) : new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
-  if (secs < 60)    return 'just now';
-  if (secs < 3600)  return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  if (secs < 604800)return `${Math.floor(secs / 86400)}d ago`;
-  return `${Math.floor(secs / 604800)}w ago`;
-}
 
 function turnsCount(task) {
   if (Number.isFinite(task.turns)) return task.turns;

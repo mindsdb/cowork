@@ -329,7 +329,7 @@ function ScheduleListRow({
   const missedRuns = Number(task.missedRuns) || 0;
 
   const cadenceLabel = {
-    once: 'Once', hourly: 'Hourly', daily: 'Daily', weekly: 'Weekly',
+    once: 'Once', hourly: 'Hourly', daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly',
   }[task.cadence] || task.cadence;
 
   const projectName = task.project || task.projectName || '';
@@ -374,7 +374,7 @@ function ScheduleListRow({
         }}>
           <span style={{
             fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '-0.005em',
+            color: 'var(--ink)', letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{task.title || 'Untitled schedule'}</span>
           {/* Missed-runs annotation — shows alongside the title so the
@@ -531,8 +531,7 @@ function EmptyState({ onCreate, agentLabel }) {
       }}>
         {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
       </span>
-      <div style={{
-        fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600,
+      <div className="s-h3" style={{
         color: 'var(--ink)',
       }}>No scheduled tasks yet</div>
       <div style={{

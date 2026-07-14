@@ -17,8 +17,13 @@ const ENV_TO_SETTING: Record<string, string> = {
   ANTON_MINDS_URL: 'minds_url',
   ANTON_PLANNING_PROVIDER: 'planning_provider',
   ANTON_CODING_PROVIDER: 'coding_provider',
-  ANTON_PLANNING_MODEL: 'planning_model',
-  ANTON_CODING_MODEL: 'coding_model',
+  // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are deliberately absent (ENG-739).
+  // This helper runs on every login, post-install, and web token-refresh from
+  // the *full* .env, so mapping the model keys here re-pins a user who just
+  // recovered via the picker (their .env still holds the legacy `latest:` line,
+  // which we now preserve). Models enter the DB only via explicit writes —
+  // the Settings picker, or onboarding's dedicated model PUT. .env model lines
+  // are CLI-only.
   ANTON_MEMORY_MODE: 'memory_mode',
   ANTON_EPISODIC_MEMORY: 'episodic_memory',
 };

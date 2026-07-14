@@ -1,17 +1,19 @@
-// `<Modal>` — single primitive every modal in the app uses.
+// `<Modal>` — single modal primitive every modal in the app uses.
 //
-// Why one primitive: we had three near-identical modals
-// (ConnectorPicker, HowToModal, ArtifactViewer) with subtly different
-// z-index, portal-vs-inline, and header-weight choices. Consolidating
-// removes the drift, sidesteps stacking-context bugs (always portals
-// to <body>), and gives us one place to tune chrome.
+// Built on Base UI's Dialog (@base-ui/react/dialog): the portal, focus trap +
+// restore, body-scroll lock, Esc/outside-press dismissal, and ARIA wiring are
+// Base UI's; the chrome, sizes, z-index layers, and fade are ours — styled to
+// reproduce the previous hand-rolled modal 1:1. Public API is unchanged.
 //
-// Usage:
+// Structure: Dialog.Root > Portal > Backdrop (visual) + Viewport (centering) >
+// Popup (the container). Centering lives on the Viewport's flexbox — NOT a
+// transform — so nested position:fixed menus/tooltips inside a modal keep
+// working (the reason the old container avoided transforms).
+//
+// Usage (unchanged):
 //   <Modal open={open} onClose={close} size="md" layer="default" labelledBy="connect-title">
 //     <ModalHeader id="connect-title" title="Connect a tool" subtitle="…" onClose={close} />
-//     <ModalBody>
-//       …content…
-//     </ModalBody>
+//     <ModalBody> …content… </ModalBody>
 //     <ModalFooter>
 //       <button onClick={close}>Cancel</button>
 //       <button className="btn-primary" onClick={save}>Save</button>
@@ -21,12 +23,10 @@
 // All three slots are optional — pure-content modals can drop the
 // header/footer and put their own chrome inside <ModalBody>.
 
-import { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { Dialog } from '@base-ui/react/dialog';
 import Ico from '../Icons';
 
 const FONT_BODY    = 'var(--font-body)';
-const FONT_DISPLAY = 'var(--font-display)';
 
 // Width × max-height. Heights are caps; modals shrink to content.
 // All three stay inside the viewport on the smallest target screen
@@ -51,29 +51,31 @@ const LAYERS = {
   system:  1200,
 };
 
-// One-shot keyframes for the appearance animation. Mounted at module
-// scope so every Modal instance shares them.
-let _MODAL_KEYFRAMES_INJECTED = false;
-function _ensureKeyframes() {
-  if (_MODAL_KEYFRAMES_INJECTED) return;
+// One-shot appearance styles. Opacity-only (no transform) on purpose — a
+// non-identity `transform` on an ancestor makes it the containing block for
+// `position: fixed` descendants, which broke popovers/menus rendered inside a
+// modal (the ArtifactViewer kebab menu in particular). Driven by Base UI's
+// `data-starting-style` so the fade replays on every open; `data-ending-style`
+// zeroes the transition so close is an instant unmount (matches the previous
+// modal, which had no exit animation).
+let _MODAL_STYLES_INJECTED = false;
+function _ensureModalStyles() {
+  if (_MODAL_STYLES_INJECTED) return;
   if (typeof document === 'undefined') return;
   const style = document.createElement('style');
-  style.setAttribute('data-modal-keyframes', '');
-  // The container animation is opacity-only on purpose. Earlier
-  // versions used `transform: translateY(...)` for a softer entrance,
-  // but a non-identity `transform` on a parent makes it the
-  // containing block for `position: fixed` descendants — which
-  // broke any popover/menu rendered inside the modal (the
-  // ArtifactViewer kebab menu in particular). Keeping transforms
-  // off the modal container preserves viewport-relative positioning
-  // for nested fixed-position elements.
+  style.setAttribute('data-modal-styles', '');
   style.textContent = `
-@keyframes modal-fade-in   { from { opacity: 0; } to { opacity: 1; } }
-@keyframes modal-appear    { from { opacity: 0; } to { opacity: 1; } }
+.cw-modal-backdrop { opacity: 1; transition: opacity 160ms ease-out; }
+.cw-modal-backdrop[data-starting-style] { opacity: 0; }
+.cw-modal-backdrop[data-ending-style]   { transition-duration: 0ms; }
+.cw-modal-popup { opacity: 1; transition: opacity 180ms ease-out; }
+.cw-modal-popup[data-starting-style] { opacity: 0; }
+.cw-modal-popup[data-ending-style]   { transition-duration: 0ms; }
 `;
   document.head.appendChild(style);
-  _MODAL_KEYFRAMES_INJECTED = true;
+  _MODAL_STYLES_INJECTED = true;
 }
+_ensureModalStyles();
 
 
 export function Modal({
@@ -81,143 +83,98 @@ export function Modal({
   onClose,
   size = 'md',
   layer = 'default',
-  // ARIA: id of the element labelling the modal (typically the
-  // ModalHeader's title). If you don't pass either labelledBy or
-  // ariaLabel, screen readers won't announce the modal.
+  // ARIA: id of the element labelling the modal (typically the ModalHeader's
+  // title). If you don't pass either labelledBy or ariaLabel, screen readers
+  // won't announce the modal.
   labelledBy,
   ariaLabel,
-  // Block backdrop-click closing — useful for "in-flight" states
-  // where dismissing would lose work.
+  // Block backdrop-click closing — useful for "in-flight" states where
+  // dismissing would lose work. Maps to Base UI's outside-press dismissal.
   closeOnBackdrop = true,
   closeOnEsc = true,
-  // Lock body scroll while open. Only one modal needs to lock at a
-  // time, so we count nested opens via a module-level ref.
+  // Lock body scroll while open. Base UI reference-counts this across nested
+  // modals; `'trap-focus'` traps focus without locking scroll.
   lockBodyScroll = true,
-  // Optional overrides on the container's dimensions. `width` /
-  // `maxHeight` adjust within the size system. `height` pins the
-  // container to a fixed dimension — needed for surfaces like the
-  // artifact viewer where an iframe inside has to fill the available
-  // vertical space (without an explicit height the flex column
-  // collapses to content).
+  // Optional overrides on the container's dimensions. `width` / `maxHeight`
+  // adjust within the size system. `height` pins the container to a fixed
+  // dimension — needed for surfaces like the artifact viewer where an iframe
+  // inside has to fill the available vertical space.
   width,
   height,
   maxHeight,
   children,
 }) {
-  const containerRef = useRef(null);
-  const previouslyFocusedRef = useRef(null);
-
-  useEffect(() => { _ensureKeyframes(); }, []);
-
-  // Body-scroll lock — count opens so nested modals don't unlock
-  // when the inner one closes.
-  useEffect(() => {
-    if (!open || !lockBodyScroll) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [open, lockBodyScroll]);
-
-  // Esc-to-close.
-  useEffect(() => {
-    if (!open || !closeOnEsc) return undefined;
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, closeOnEsc, onClose]);
-
-  // Focus management — remember what had focus before the modal
-  // opened, restore it on close. Move focus into the modal on open
-  // so keyboard users land in the right place.
-  useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    // Defer one frame so the portal is mounted in the DOM.
-    const id = requestAnimationFrame(() => {
-      const node = containerRef.current;
-      if (!node) return;
-      // Prefer the first auto-focusable child; fall back to the
-      // container itself (which is tabIndex=-1 to be focusable).
-      const target = node.querySelector(
-        'input, textarea, select, button, [tabindex]:not([tabindex="-1"])'
-      );
-      (target || node).focus();
-    });
-    return () => {
-      cancelAnimationFrame(id);
-      const prev = previouslyFocusedRef.current;
-      if (prev && typeof prev.focus === 'function') {
-        try { prev.focus(); } catch {}
-      }
-    };
-  }, [open]);
-
-  if (!open) return null;
-  if (typeof document === 'undefined') return null;
-
   const sz = SIZES[size] || SIZES.md;
   const z  = LAYERS[layer] ?? LAYERS.default;
 
-  const onBackdropMouseDown = (e) => {
-    if (!closeOnBackdrop) return;
-    if (e.target === e.currentTarget) onClose?.();
+  // Base UI calls this on every open/close. We only act on close, and honour
+  // closeOnEsc by ignoring keyboard-driven closes (Esc goes through either the
+  // 'escape-key' reason or the platform CloseWatcher — 'close-watcher' — on
+  // Chromium/Electron). Backdrop opt-out is handled by disablePointerDismissal,
+  // so no outside-press reason fires when closeOnBackdrop is false.
+  const handleOpenChange = (nextOpen, details) => {
+    if (nextOpen) return;
+    const reason = details?.reason;
+    if ((reason === 'escape-key' || reason === 'close-watcher') && !closeOnEsc) return;
+    onClose?.();
   };
 
-  return createPortal(
-    <div
-      role="presentation"
-      onMouseDown={onBackdropMouseDown}
-      style={{
-        position: 'fixed', inset: 0, zIndex: z,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(0,0,0,0.45)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-        animation: 'modal-fade-in 160ms ease-out both',
-        fontFamily: FONT_BODY,
-      }}
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={handleOpenChange}
+      modal={lockBodyScroll ? true : 'trap-focus'}
+      disablePointerDismissal={!closeOnBackdrop}
     >
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={labelledBy || undefined}
-        aria-label={ariaLabel || undefined}
-        tabIndex={-1}
-        // Prevent backdrop-click bubbling from the container's own
-        // mousedown so an internal mousedown that drags out doesn't
-        // close the modal.
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: width || sz.width,
-          ...(height ? { height } : { maxHeight: maxHeight || sz.maxHeight }),
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-          animation: 'modal-appear 180ms ease-out both',
-          outline: 'none',
-        }}
-      >
-        {children}
-      </div>
-    </div>,
-    document.body
+      <Dialog.Portal>
+        <Dialog.Backdrop
+          className="cw-modal-backdrop"
+          style={{
+            position: 'fixed', inset: 0, zIndex: z,
+            background: 'rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(2px)',
+            WebkitBackdropFilter: 'blur(2px)',
+            // Frameless Electron window: keep clicks off the OS drag region.
+            WebkitAppRegion: 'no-drag',
+          }}
+        />
+        <Dialog.Viewport
+          style={{
+            position: 'fixed', inset: 0, zIndex: z,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            WebkitAppRegion: 'no-drag',
+          }}
+        >
+          <Dialog.Popup
+            className="cw-modal-popup"
+            aria-labelledby={labelledBy || undefined}
+            aria-label={ariaLabel || undefined}
+            style={{
+              width: width || sz.width,
+              ...(height ? { height } : { maxHeight: maxHeight || sz.maxHeight }),
+              background: 'var(--surface)',
+              border: '1px solid var(--line)',
+              borderRadius: 14,
+              boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+              display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+              outline: 'none',
+              // Backdrop is now a sibling, not an ancestor — carry the font here.
+              fontFamily: FONT_BODY,
+            }}
+          >
+            {children}
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
 
 // ── Header ────────────────────────────────────────────────────────────
 //
-// Standardised: Josefin Sans 18px / 600 title, optional Inter 13px
+// Standardised: Inter 18px / 600 title, optional Inter 13px
 // subtitle underneath, X close button flush right. Bottom border
 // `--line`. The id prop pairs with Modal's `labelledBy` so screen
 // readers announce the title.
@@ -234,11 +191,9 @@ export function ModalHeader({ id, title, subtitle, onClose, right }) {
         {title && (
           <div
             id={id}
+            className="s-h3"
             style={{
-              fontFamily: FONT_DISPLAY,
-              fontSize: 18, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
-              lineHeight: 1.25,
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}
           >{title}</div>
