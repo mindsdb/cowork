@@ -704,6 +704,11 @@
   border-radius: 6px;
   padding: 10px 12px;
   text-align: left;
+  /* Opt back into text selection: .arc-root sets user-select:none, but
+     users need to copy/paste install errors from these logs (ENG-340). */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .arc-console pre {
