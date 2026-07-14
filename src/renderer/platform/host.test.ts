@@ -169,4 +169,25 @@ describe('electron mode (bridge present)', () => {
     const host = await importHost();
     await expect(host.getVersionInfo()).resolves.toEqual({ app: '', ui: null, source: 'web' });
   });
+
+  it('getVersionInfo normalizes legacy shells that omit `source`', async () => {
+    // Old bundled shape: `ui: 'bundled'` sentinel, no `source`. The sentinel is
+    // not a version → ui null, source bundled (not the literal "bundled").
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.7.6.1', ui: 'bundled' }),
+    };
+    let host = await importHost();
+    await expect(host.getVersionInfo()).resolves.toEqual({
+      app: '2.26.7.6.1', ui: null, source: 'bundled',
+    });
+
+    // Old OTA shape: a real `ui` version but no `source` → infer OTA.
+    (window as unknown as Record<string, unknown>).antontron = {
+      getUIVersion: async () => ({ app: '2.26.7.6.1', ui: '2.26.7.13.1' }),
+    };
+    host = await importHost();
+    await expect(host.getVersionInfo()).resolves.toEqual({
+      app: '2.26.7.6.1', ui: '2.26.7.13.1', source: 'ota',
+    });
+  });
 });

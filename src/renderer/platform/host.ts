@@ -224,11 +224,14 @@ export async function getVersionInfo(): Promise<VersionInfo> {
   if (isElectron && typeof bridge.getUIVersion === 'function') {
     const v = await bridge.getUIVersion();
     if (v && typeof v === 'object') {
-      return {
-        app: String(v.app ?? ''),
-        ui: v.ui != null ? String(v.ui) : null,
-        source: v.source === 'ota' ? 'ota' : 'bundled',
-      };
+      // Normalize across shell versions (an OTA renderer can run on an older
+      // installed shell). Legacy shells return `ui: 'bundled'` (a sentinel,
+      // not a version) and omit `source`. Treat that sentinel as null, and
+      // when `source` is absent infer OTA only if a real UI version is present.
+      const ui = v.ui != null && v.ui !== 'bundled' ? String(v.ui) : null;
+      const source: VersionInfo['source'] =
+        v.source === 'ota' || v.source === 'bundled' ? v.source : ui ? 'ota' : 'bundled';
+      return { app: String(v.app ?? ''), ui, source };
     }
   }
   return { app: '', ui: null, source: 'web' };

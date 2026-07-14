@@ -640,12 +640,20 @@ export default function SettingsView({
   const [accountUser, setAccountUser] = useState(null);
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
+  // Backend (server + agent) versions come from /health, which is only
+  // reachable when the backend is up. Re-read whenever the Updates section is
+  // shown and the backend is online, so versions populate after a cold open or
+  // a start/restart from the Backend section instead of staying blank at mount.
   useEffect(() => {
+    if (section !== 'updates' || !serverOnline) return undefined;
+    let cancelled = false;
     fetchHealth().then((h) => {
+      if (cancelled) return;
       setServerVersion(h?.server_version || '');
       setAntonVersion(h?.anton_version || '');
     }).catch(() => { });
-  }, []);
+    return () => { cancelled = true; };
+  }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
   useEffect(() => {
     if (section !== 'account') return;
@@ -1902,9 +1910,12 @@ export default function SettingsView({
             const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
             // App shell = installed Electron shell (changes only on reinstall).
             const shellVer = versionInfo.app || baked;
-            // Effective UI version = OTA bundle if active, else the running
-            // renderer's baked version. `source` says which.
-            const uiVer = versionInfo.ui || baked;
+            // The running renderer's own baked version is authoritative for the
+            // UI version — it's compiled into whichever bundle actually loaded
+            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
+            // can lag the loaded renderer (OTA off, missing cache, post-
+            // rollback), so it only informs the source label, never the version.
+            const uiVer = baked || versionInfo.ui || '';
             const uiSource = versionInfo.source === 'ota' ? 'OTA'
               : versionInfo.source === 'web' ? 'web' : 'bundled';
             // Unified "content" headline = ISO week of the newest of the
