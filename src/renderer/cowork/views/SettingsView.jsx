@@ -800,8 +800,12 @@ export default function SettingsView({
   const activeProviderTypes = (() => {
     const types = new Set();
     if (modelMode === 'custom') {
-      types.add(overrides.planning?.providerType || defaultModeProviderType);
-      types.add(overrides.coding?.providerType || defaultModeProviderType);
+      // ENG-739: source each role's provider from the canonical field the
+      // server executes (via roleProviderType), not the orphaned
+      // model_overrides — otherwise connectivity tests + the readiness banner
+      // could target a different provider than the picker and the server use.
+      types.add(roleProviderType('planning'));
+      types.add(roleProviderType('coding'));
     } else {
       types.add(defaultModeProviderType);
     }
@@ -1462,7 +1466,6 @@ export default function SettingsView({
                 // for the role. Empty overrides fall back to the default
                 // provider's recommended pair.
                 const RoleRow = ({ role, label }) => {
-                  const cur = roleOverride(role) || {};
                   // Resolve the effective provider for this role. The server may
                   // store a stale planning_provider (e.g. 'anthropic') that doesn't
                   // match any configured provider card. When that happens, fall back
