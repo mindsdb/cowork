@@ -19,7 +19,7 @@ import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefres
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
-import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
+import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
@@ -406,6 +406,17 @@ function createWindow() {
     const rendererPath = getRendererPath();
     console.log(`[main] loading renderer from ${rendererPath}`);
     mainWindow.loadFile(rendererPath);
+    // Boot self-heal: if we're serving an activated OTA bundle and it fails to
+    // load, roll it back and fall back to the app-bundled renderer — a bad
+    // hot-update must not brick launch by re-loading the broken bundle forever.
+    if (isServingOta()) {
+      mainWindow.webContents.once('did-fail-load', (_e, code, _desc, _url, isMainFrame) => {
+        if (!isMainFrame || code === -3) return;
+        console.error('[main] OTA renderer failed to load at boot — rolling back to bundled');
+        rollbackUI();
+        mainWindow?.loadFile(getBundledPath());
+      });
+    }
   }
 
   // DevTools no longer auto-open on launch. Still reachable on demand

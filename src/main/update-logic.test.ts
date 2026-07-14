@@ -11,6 +11,7 @@ import {
   parseUiManifest,
   looksLikeBrokenInstall,
   decideUpdateApply,
+  otaUiEnabled,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -320,5 +321,37 @@ describe('decideUpdateApply', () => {
     expect(
       decideUpdateApply({ ...base, serverUpdateAvailable: false, uiUpdateAvailable: false, serverDown: true }),
     ).toEqual({ applyServer: false, applyUi: false });
+  });
+});
+
+describe('otaUiEnabled', () => {
+  it('is ON only for prod builds by default', () => {
+    expect(otaUiEnabled({ buildKind: 'prod' })).toBe(true);
+    expect(otaUiEnabled({ buildKind: 'stable' })).toBe(false);
+    expect(otaUiEnabled({ buildKind: 'preview' })).toBe(false);
+    expect(otaUiEnabled({ buildKind: 'dev' })).toBe(false);
+  });
+
+  it('fails safe to OFF for an unknown/missing build kind', () => {
+    expect(otaUiEnabled({ buildKind: null })).toBe(false);
+    expect(otaUiEnabled({ buildKind: undefined })).toBe(false);
+    expect(otaUiEnabled({ buildKind: 'something-else' })).toBe(false);
+  });
+
+  it('lets an explicit env override win over the build kind (both directions)', () => {
+    // Force ON even on a non-prod build...
+    for (const v of ['on', 'enable', '1', 'true', 'TRUE', ' On ']) {
+      expect(otaUiEnabled({ buildKind: 'stable', envOverride: v })).toBe(true);
+    }
+    // ...and force OFF even on prod.
+    for (const v of ['off', 'disable', '0', 'false', 'FALSE', ' Off ']) {
+      expect(otaUiEnabled({ buildKind: 'prod', envOverride: v })).toBe(false);
+    }
+  });
+
+  it('ignores a blank/unrecognized override and falls back to build kind', () => {
+    expect(otaUiEnabled({ buildKind: 'prod', envOverride: '' })).toBe(true);
+    expect(otaUiEnabled({ buildKind: 'prod', envOverride: 'maybe' })).toBe(true);
+    expect(otaUiEnabled({ buildKind: 'stable', envOverride: 'maybe' })).toBe(false);
   });
 });

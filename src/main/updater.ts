@@ -5,12 +5,16 @@
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet } from './ui-updater';
+import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI } from './ui-updater';
+import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
 import { decideUpdateApply } from './update-logic';
 
 const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
+// How long a freshly-activated UI bundle has to finish loading before we treat
+// it as broken and roll back. Generous — a cold renderer + slow disk is fine.
+const UI_RELOAD_HEALTH_MS = 15000;
 
 type GetWindow = () => BrowserWindow | null;
 
@@ -41,13 +45,72 @@ function reload(getWindow: GetWindow) {
   win.loadFile(getRendererPath());
 }
 
+// Load `filePath` and resolve true only if the main frame finishes loading
+// within the timeout. A main-frame `did-fail-load` (missing/corrupt bundle
+// assets) or a timeout resolves false — the caller rolls back on false. This
+// is the post-swap health gate (R4) for a hot-updated UI bundle.
+function loadAndVerify(win: BrowserWindow, filePath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      win.webContents.removeListener('did-finish-load', onOk);
+      win.webContents.removeListener('did-fail-load', onFail);
+      resolve(ok);
+    };
+    const onOk = () => finish(true);
+    const onFail = (
+      _e: unknown,
+      errorCode: number,
+      _desc: string,
+      _url: string,
+      isMainFrame: boolean,
+    ) => {
+      // Only the main frame matters; ERR_ABORTED (-3) is a benign superseded
+      // load, not a failure.
+      if (!isMainFrame || errorCode === -3) return;
+      finish(false);
+    };
+    const timer = setTimeout(() => finish(false), UI_RELOAD_HEALTH_MS);
+    win.webContents.on('did-finish-load', onOk);
+    win.webContents.on('did-fail-load', onFail);
+    win.loadFile(filePath);
+  });
+}
+
+// Reload into a freshly-activated UI bundle and verify it loads. If it doesn't,
+// roll the bundle back and reload whatever we fall back to (previous cache or
+// the app-bundled renderer) — a bad hot-update must never brick the window.
+async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
+  const win = liveWindow(getWindow);
+  if (!win) return;
+  win.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'reloading' });
+  if (await loadAndVerify(win, getRendererPath())) return;
+
+  console.error('[updater] new UI bundle failed to load — rolling back');
+  rollbackUI();
+  const win2 = liveWindow(getWindow);
+  if (!win2) return;
+  win2.webContents.send(IPC.UI_UPDATE_STATUS, { phase: 'rolled-back' });
+  // Best-effort: the fallback (previous cache / bundled) should always load.
+  await loadAndVerify(win2, getRendererPath());
+}
+
 // Apply server (if requested) then UI, and reload if either landed. Shared by
 // the manual IPC apply and the boot/periodic poll. Args are "apply this",
 // already resolved against update mode + server health by the caller.
 async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
   if (applyServer) await applyServerUpdate();
   const uiApplied = applyUi ? await applyUIUpdate() : false;
-  if (uiApplied || applyServer) reload(getWindow);
+  if (uiApplied) {
+    // A UI bundle was swapped — verify it loads and roll back if not (R4).
+    await reloadWithUiHealthCheck(getWindow);
+  } else if (applyServer) {
+    // Server-only update: reload the same (unchanged) renderer, no rollback.
+    reload(getWindow);
+  }
   return uiApplied || applyServer;
 }
 
@@ -76,12 +139,18 @@ export function initUpdater(
   getMode: () => 'auto' | 'manual',
 ) {
   async function poll(autoApply: boolean) {
-    if (!await hasInternet()) {
-      console.log('[updater] offline — skipping');
-      return;
-    }
+    // hasInternet() probes the OTA manifest host (GitHub Pages). The server
+    // update lives on different hosts (git remote / PyPI) with its own
+    // fail-safe checks, so a down manifest host must only skip the UI check —
+    // never suppress a server update (which may be the fix a user needs).
+    const manifestReachable = await hasInternet();
+    if (!manifestReachable) console.log('[updater] manifest host unreachable — checking server only');
 
-    const [ui, server] = await Promise.all([checkForUIUpdate(), checkForServerUpdate()]);
+    const uiSkipped: UpdateCheckResult = { updateAvailable: false, applied: false };
+    const [ui, server] = await Promise.all([
+      manifestReachable ? checkForUIUpdate() : Promise.resolve(uiSkipped),
+      checkForServerUpdate(),
+    ]);
 
     if (!ui.updateAvailable && !server.updateAvailable) {
       console.log('[updater] everything up to date');

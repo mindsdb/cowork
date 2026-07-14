@@ -200,6 +200,30 @@ export function decideUpdateApply(input: {
 }
 
 // ---------------------------------------------------------------------------
+// UI OTA enablement (build-channel / env gate)
+// ---------------------------------------------------------------------------
+
+/** Should UI OTA hot-updates run in this build?
+ *
+ *  Replaces the old hardcoded `OTA_UI_DISABLED = true` constant (ENG-670) with
+ *  a channel/env gate so enabling OTA is never a hand-edited source flip:
+ *   - an explicit env override wins, for QA/testing: `OTA_UI=on|off`
+ *     (also accepts 1/true/enable and 0/false/disable);
+ *   - otherwise OTA is ON only for `prod` (release) builds. `preview`/`stable`
+ *     (staging) and `dev` keep their bundled branch-under-test UI, so testers
+ *     always run the renderer built from the branch;
+ *   - an unknown build kind fails safe to OFF — never hot-update blind. */
+export function otaUiEnabled(input: {
+  buildKind: string | null | undefined;
+  envOverride?: string | null;
+}): boolean {
+  const env = (input.envOverride ?? '').trim().toLowerCase();
+  if (env === 'on' || env === 'enable' || env === '1' || env === 'true') return true;
+  if (env === 'off' || env === 'disable' || env === '0' || env === 'false') return false;
+  return input.buildKind === 'prod';
+}
+
+// ---------------------------------------------------------------------------
 // UI OTA manifest
 // ---------------------------------------------------------------------------
 

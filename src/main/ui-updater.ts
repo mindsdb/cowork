@@ -3,13 +3,22 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { parseUiManifest, type UIManifest } from './update-logic';
+import { parseUiManifest, otaUiEnabled, type UIManifest } from './update-logic';
+import { buildKind } from './cowork-home';
 
 export type { UIManifest };
 
-// Disable OTA UI updates on staging builds so testers always run the
-// renderer bundled from the branch.  Flip to `false` on main / release.
-const OTA_UI_DISABLED = true;
+// Whether UI OTA hot-updates run in this build. Gated by build channel + env
+// (see otaUiEnabled) instead of a hardcoded constant (ENG-670): ON for prod
+// releases, OFF for preview/stable (staging) and dev so testers keep the
+// branch-under-test bundled UI. Resolved per-call (cheap) so an env override
+// can flip it without a rebuild; fails safe to OFF if the build kind is
+// unreadable.
+function otaEnabled(): boolean {
+  let kind: string | null = null;
+  try { kind = buildKind(); } catch { kind = null; }
+  return otaUiEnabled({ buildKind: kind, envOverride: process.env.OTA_UI });
+}
 
 // Where we read latest.json from — GitHub Pages, no API rate limits
 const MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
@@ -48,12 +57,21 @@ function getBundledRendererPath(): string {
 
 /** Returns the index.html path to load — cached OTA bundle if available,
  *  otherwise the bundled renderer shipped with the app.
- *  OTA cache is disabled on staging builds to preserve branch-under-test UI. */
+ *  OTA is gated by build channel (preview/stable/dev serve the bundled
+ *  branch-under-test UI; only prod serves an activated OTA bundle). */
 export function getRendererPath(): string {
-  if (OTA_UI_DISABLED) return getBundledRendererPath();
+  if (!otaEnabled()) return getBundledRendererPath();
   const cached = path.join(getCurrentDir(), 'index.html');
   if (fs.existsSync(cached)) return cached;
   return getBundledRendererPath();
+}
+
+/** True when getRendererPath() would serve an activated OTA bundle (not the
+ *  app-bundled renderer). Lets the boot loader roll a bad bundle back if it
+ *  fails to load, instead of re-loading it on every launch. */
+export function isServingOta(): boolean {
+  if (!otaEnabled()) return false;
+  return fs.existsSync(path.join(getCurrentDir(), 'index.html'));
 }
 
 /** Always returns the app-bundled renderer, ignoring any OTA cache. */
@@ -188,8 +206,8 @@ function activateStaged(version: string): void {
  * stages it but does NOT activate (caller decides when to activate).
  */
 export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
-  if (OTA_UI_DISABLED) {
-    console.log('[ui-updater] OTA UI disabled for staging build');
+  if (!otaEnabled()) {
+    console.log('[ui-updater] OTA UI disabled for this build channel');
     return { updateAvailable: false, applied: false };
   }
   const manifest = await fetchManifest();
@@ -208,7 +226,7 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
  * Returns true if the update was applied successfully.
  */
 export async function applyUIUpdate(): Promise<boolean> {
-  if (OTA_UI_DISABLED) return false;
+  if (!otaEnabled()) return false;
   const manifest = await fetchManifest();
   if (!manifest) return false;
 
