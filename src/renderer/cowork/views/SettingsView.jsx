@@ -11,7 +11,7 @@ import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { getVersionInfo, isElectron, getAccessToken } from '../../platform/host';
-import { unifiedVersion } from '../../../shared/version';
+import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
 import ChannelsView from './ChannelsView';
 
 function decodeJwtPayload(token) {
@@ -1907,8 +1907,11 @@ export default function SettingsView({
             const uiVer = versionInfo.ui || baked;
             const uiSource = versionInfo.source === 'ota' ? 'OTA'
               : versionInfo.source === 'web' ? 'web' : 'bundled';
-            // Unified "content" headline = ISO week of the newest of UI + server.
-            const unified = unifiedVersion([uiVer, serverVersion]);
+            // Unified "content" headline = ISO week of the newest of the
+            // hot-updated components (UI + server + agent). App shell is
+            // excluded — it updates via reinstall and is shown on its own line.
+            const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
+            const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
             const rows = [
               ['App shell', shellVer || '—'],
               ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
@@ -1922,6 +1925,14 @@ export default function SettingsView({
                   <span title={unified ? unified.weekOf : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
                     {unified ? unified.label : (shellVer || '—')}
                   </span>
+                  {outOfSync && (
+                    <span
+                      title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
+                      style={{ color: 'var(--warning, #c47f00)', fontSize: 11.5, fontWeight: 600 }}
+                    >
+                      ⚠ out of sync
+                    </span>
+                  )}
                   {unified && (
                     <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>{unified.weekOf}</span>
                   )}

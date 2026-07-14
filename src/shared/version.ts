@@ -104,6 +104,22 @@ export function weekOfLabel(date: Date): string {
   return `Week of ${MONTHS[mon.getUTCMonth()]} ${mon.getUTCDate()}, ${mon.getUTCFullYear()}`;
 }
 
+/** Day-gap between the newest and oldest parseable component. 0 when fewer
+ *  than two parse. Surfaces the version skew the single week label would
+ *  otherwise hide (a component stranded on older code). */
+export function versionSkewDays(raws: (string | null | undefined)[]): number {
+  const times = raws
+    .map(parseCalVer)
+    .filter((v): v is CalVer => v !== null)
+    .map((v) => calverDate(v).getTime());
+  if (times.length < 2) return 0;
+  return Math.round((Math.max(...times) - Math.min(...times)) / 86_400_000);
+}
+
+/** Components more than this many days apart are flagged as out of sync. The
+ *  release train cuts weekly, so a full release behind ≈ 7 days. */
+export const SKEW_WARN_DAYS = 7;
+
 export interface UnifiedVersion {
   /** ISO-week headline, e.g. "2026-W28". */
   label: string;
@@ -111,6 +127,9 @@ export interface UnifiedVersion {
   weekOf: string;
   /** The component the label was derived from. */
   newest: CalVer;
+  /** Day-gap between the newest and oldest component (0 when <2 parse). A gap
+   *  of `SKEW_WARN_DAYS` or more means the single label is hiding a laggard. */
+  skewDays: number;
 }
 
 /** Unified "content" version = ISO week of the newest component, or null when
@@ -119,5 +138,10 @@ export function unifiedVersion(raws: (string | null | undefined)[]): UnifiedVers
   const newest = newestCalVer(raws);
   if (!newest) return null;
   const date = calverDate(newest);
-  return { label: isoWeekLabel(date), weekOf: weekOfLabel(date), newest };
+  return {
+    label: isoWeekLabel(date),
+    weekOf: weekOfLabel(date),
+    newest,
+    skewDays: versionSkewDays(raws),
+  };
 }

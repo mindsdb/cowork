@@ -7,6 +7,7 @@ import {
   weekMonday,
   isoWeekLabel,
   weekOfLabel,
+  versionSkewDays,
   unifiedVersion,
 } from './version';
 
@@ -107,11 +108,37 @@ describe('weekOfLabel', () => {
   });
 });
 
+describe('versionSkewDays', () => {
+  it('measures the day-gap between the newest and oldest component', () => {
+    // Jul 6 vs Jun 29 = 7 days apart.
+    expect(versionSkewDays(['2.26.7.6.1', '0.26.6.29.1'])).toBe(7);
+  });
+
+  it('is 0 when components share a date, ignoring MAJOR/seq/sha', () => {
+    expect(versionSkewDays(['2.26.7.6.1', '0.26.7.6.4.dev40+g82a1da968'])).toBe(0);
+  });
+
+  it('is 0 when fewer than two inputs parse', () => {
+    expect(versionSkewDays(['2.26.7.6.1', '2.0.7', null, 'bundled'])).toBe(0);
+    expect(versionSkewDays([])).toBe(0);
+  });
+
+  it('spans the full range across three components', () => {
+    // oldest Jun 29, newest Jul 6 → 7 regardless of the middle entry.
+    expect(versionSkewDays(['0.26.6.29.1', '2.26.7.2.1', '2.26.7.6.1'])).toBe(7);
+  });
+});
+
 describe('unifiedVersion', () => {
   it('derives the ISO-week headline from the newest component', () => {
     const u = unifiedVersion(['2.26.7.6.1-95-g0472770', '0.26.7.6.4.dev40+g82a1da968']);
-    expect(u).toMatchObject({ label: '2026-W28', weekOf: 'Week of Jul 6, 2026' });
+    expect(u).toMatchObject({ label: '2026-W28', weekOf: 'Week of Jul 6, 2026', skewDays: 0 });
     expect(u?.newest.raw).toBe('0.26.7.6.4.dev40+g82a1da968');
+  });
+
+  it('reports skewDays across the folded-in components (incl. agent)', () => {
+    const u = unifiedVersion(['2.26.7.6.1', '0.26.6.29.1', '2.26.7.6.1']);
+    expect(u).toMatchObject({ label: '2026-W28', skewDays: 7 });
   });
 
   it('returns null when no input parses as CalVer', () => {
