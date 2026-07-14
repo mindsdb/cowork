@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
+import { Button } from '../ui';
 import Ico from '../Icons';
 
 const FONT_BODY = 'var(--font-body)';
@@ -278,14 +279,13 @@ export default function ScheduleTaskModal({
           <button type="button" onClick={onClose} disabled={busy} style={btnSecondary}>
             Cancel
           </button>
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={handleSubmit}
             disabled={busy}
-            className="btn-primary"
           >
             {busy ? 'Saving…' : (isEdit ? 'Save changes' : 'Create')}
-          </button>
+          </Button>
         </div>
       </ModalFooter>
     </Modal>

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph } from '../components/ui';
+import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
@@ -524,17 +524,15 @@ export default function HomeView({
                 <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Subscribe with MindsHub for managed access, or bring your own provider key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  type="button"
-                  className="btn-primary"
+                <Button
+                  variant="primary"
                   onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                >Subscribe</button>
-                <button
-                  type="button"
-                  className="btn-primary"
+                >Subscribe</Button>
+                <Button
+                  variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
-                >Settings</button>
+                >Settings</Button>
               </div>
             </div>
           ) : (

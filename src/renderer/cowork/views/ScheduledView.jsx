@@ -17,6 +17,7 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { Button } from '../components/ui';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
@@ -151,9 +152,9 @@ export default function ScheduledView({
         title="Scheduled Tasks"
         subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
         actions={
-          <button className="btn-primary" onClick={openCreate}>
+          <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
-          </button>
+          </Button>
         }
       />
 
@@ -541,13 +542,13 @@ function EmptyState({ onCreate, agentLabel }) {
       }}>
         {`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
       </div>
-      <button
-        className="btn-primary"
+      <Button
+        variant="primary"
         onClick={onCreate}
         style={{ marginTop: 4 }}
       >
         {Ico.plus(14)} Schedule your first task
-      </button>
+      </Button>
     </div>
   );
 }

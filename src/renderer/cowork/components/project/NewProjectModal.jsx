@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Button } from '../ui';
 import {
   createProject,
   uploadProjectFiles,
@@ -379,15 +380,14 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
               opacity: busy ? 0.5 : 1,
             }}
           >Cancel</button>
-          <button
-            type="button"
-            className="btn-primary"
+          <Button
+            variant="primary"
             onClick={create}
             disabled={busy || !name.trim()}
             style={{ letterSpacing: '0.04em' }}
           >
             {busy ? 'Creating…' : 'CREATE'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

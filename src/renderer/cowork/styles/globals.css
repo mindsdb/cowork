@@ -4597,6 +4597,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   .sched-hero-actions > * { flex: 0 0 auto; }
   /* Run now is the primary action — let it grow to fill the row's
      remaining width so it reads as the dominant CTA. */
+  .sched-hero-actions > .btn.primary,
   .sched-hero-actions > .btn-primary { flex: 1 1 auto; justify-content: center; }
 
   /* Health top row: description on top, metric tiles on their own

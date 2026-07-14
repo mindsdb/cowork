@@ -13,8 +13,9 @@
 //   <Button block>Sign in</Button>
 //   <Button render={<a href="/docs" />}>Docs</Button>    // render as an <a>
 
+import { forwardRef } from 'react';
 import { Button as BaseButton } from '@base-ui/react/button';
-import type { ComponentPropsWithoutRef } from 'react';
+import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 
 export type ButtonVariant = 'default' | 'primary' | 'subtle' | 'tinted' | 'danger';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -35,7 +36,7 @@ export interface ButtonProps
 const VARIANTS = new Set<ButtonVariant>(['default', 'primary', 'subtle', 'tinted', 'danger']);
 const SIZES = new Set<ButtonSize>(['xs', 'sm', 'md', 'lg', 'xl']);
 
-export default function Button({
+const Button = forwardRef<ComponentRef<typeof BaseButton>, ButtonProps>(function Button({
   variant = 'default',
   size = 'md',
   icon = false,
@@ -43,7 +44,7 @@ export default function Button({
   className = '',
   type = 'button',
   ...rest
-}: ButtonProps) {
+}, ref) {
   const v = VARIANTS.has(variant) ? variant : 'default';
   const s = SIZES.has(size) ? size : 'md';
   // Byte-identical to the previous Button.jsx class string. Plain join — NOT
@@ -57,5 +58,12 @@ export default function Button({
     className,
   ].filter(Boolean).join(' ');
 
-  return <BaseButton type={type} className={classes} {...rest} />;
-}
+  // Forward the ref so Base UI can compose onto us: <Menu trigger={<Button/>}>
+  // merges the trigger's props AND ref onto this element to anchor the popup,
+  // and polymorphic `render` (passed via ...rest) keeps working.
+  return <BaseButton ref={ref} type={type} className={classes} {...rest} />;
+});
+
+Button.displayName = 'Button';
+
+export default Button;

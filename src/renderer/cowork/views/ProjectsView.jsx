@@ -30,7 +30,7 @@ import {
   revealProjectInFinder,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
-import { Menu } from '../components/ui';
+import { Button, Menu } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
@@ -133,9 +133,9 @@ function activitySummaryFor(project, tasks) {
 // type, height, padding and accent-glow consistent across pages.
 function NewProjectButton({ onClick }) {
   return (
-    <button type="button" className="btn-primary proj-new-action" onClick={onClick}>
+    <Button variant="primary" className="proj-new-action" onClick={onClick}>
       {Ico.plus(14)} New project
-    </button>
+    </Button>
   );
 }
 

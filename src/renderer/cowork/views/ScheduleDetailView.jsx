@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
 import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
+import { Button } from '../components/ui';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 
@@ -429,16 +430,15 @@ export default function ScheduleDetailView({
               >
                 {Ico.edit ? Ico.edit(13) : null} Edit
               </button>
-              <button
-                type="button"
+              <Button
+                variant="primary"
                 onClick={() => withBusy(() => onRunNow?.(task.id))}
                 disabled={busy}
-                className="btn-primary"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
                 {Ico.send ? Ico.send(13) : null}
                 {busy ? 'Running…' : 'Run now'}
-              </button>
+              </Button>
             </div>
           </div>
 

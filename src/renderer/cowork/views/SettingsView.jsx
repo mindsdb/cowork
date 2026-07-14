@@ -7,6 +7,7 @@ import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
+import { Button, Input, Checkbox } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -122,10 +123,9 @@ function SettingsSectionPanel({ children, footer }) {
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
-    <input
-      className="field-input"
+    <Input
       value={value ?? ''}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(next) => onChange(next)}
       placeholder={placeholder}
       title={title}
       aria-label={ariaLabel}
@@ -142,10 +142,9 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
   const hasValue = v.length > 0;
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        className="field-input"
+      <Input
         value={v}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(next) => onChange(next)}
         placeholder={placeholder}
         aria-label={ariaLabel}
         style={hasValue ? { paddingRight: 36 } : undefined}
@@ -266,11 +265,11 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        className="field-input mono"
+      <Input
+        variant="mono"
         type={show ? 'text' : 'password'}
         value={showSentinelAsMask ? '' : v}
-        onChange={(e) => onInput(e.target.value)}
+        onChange={(next) => onInput(next)}
         placeholder={showSentinelAsMask ? '••••••••••••••••' : (placeholder || '••••••••••••••••••')}
         disabled={disabled}
         autoComplete="off"
@@ -1122,14 +1121,14 @@ export default function SettingsView({
                   : 'Changes apply on save.'}
         </span>
       </div>
-      <button
-        className="btn-primary" onClick={save}
+      <Button
+        variant="primary" onClick={save}
         disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
         title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}
         style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
       >
         {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
-      </button>
+      </Button>
     </>
   );
 
@@ -1238,10 +1237,9 @@ export default function SettingsView({
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <h3 className="sr-only">{customHeadingText}</h3>
-                          <input
-                            className="field-input"
+                          <Input
                             value={p.name ?? ''}
-                            onChange={(e) => updateProviderField('openai-compatible', 'name', e.target.value)}
+                            onChange={(next) => updateProviderField('openai-compatible', 'name', next)}
                             placeholder="Custom provider name"
                             title="Display name for this custom provider — shown in the model dropdowns below."
                             aria-label="Custom provider name"
@@ -1393,8 +1391,8 @@ export default function SettingsView({
               }}>
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-                <button
-                  className="btn-secondary"
+                <Button
+                  variant="subtle"
                   onClick={() => setAddPickerOpen(true)}
                   disabled={availableTypesForAdd.length === 0}
                   title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
@@ -1407,7 +1405,7 @@ export default function SettingsView({
                     pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                     cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                   }}
-                >{Ico.plus(13)} Add provider</button>
+                >{Ico.plus(13)} Add provider</Button>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
@@ -1423,14 +1421,13 @@ export default function SettingsView({
                     fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
                   }}>Choose Provider:</strong>
                   {availableTypesForAdd.map((t) => (
-                    <button
+                    <Button
                       key={t}
-                      type="button"
+                      variant="subtle"
                       onClick={() => addProviderOfType(t)}
-                      className="btn-secondary"
                       title={PROVIDER_TYPE_DESC[t]}
                       style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                    >{typeLabels[t] || t}</button>
+                    >{typeLabels[t] || t}</Button>
                   ))}
                   <button
                     type="button"
@@ -1798,10 +1795,10 @@ export default function SettingsView({
                   style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
                 />
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={customTheme.bg === null}
-                    onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bg: v ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                    aria-label="Follow Light/Dark"
                   />
                   Follow Light/Dark
                 </label>
