@@ -612,6 +612,7 @@ export default function SettingsView({
   section = 'agent',
   onSectionChange,
   isSsoConnected = false,
+  ssoError = '',
   onSsoSignIn,
 }) {
   const [saved, setSaved] = useState(false);
@@ -654,10 +655,13 @@ export default function SettingsView({
     return () => { cancelled = true; };
   }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
+  // Re-runs when the signed-in state flips (ENG-761): previously deps
+  // were [section] only, so signing in while this section was already
+  // open never re-read the token — the card stayed on "Sign in".
   useEffect(() => {
     if (section !== 'account') return;
     getAccessToken().then((token) => {
-      if (!token) return;
+      if (!token) { setAccountUser(null); return; }
       const payload = decodeJwtPayload(token);
       if (!payload) return;
       setAccountUser({
@@ -672,7 +676,7 @@ export default function SettingsView({
         })(),
       });
     }).catch(() => { });
-  }, [section]);
+  }, [section, isSsoConnected]);
 
   // Load diagnostics when Backend section is active
   useEffect(() => {
@@ -2304,6 +2308,21 @@ export default function SettingsView({
             </div>
           ))}
         </div>
+
+        {/* Last sign-in failure (ENG-761) — without this, a failed
+            browser flow left the card looking untouched and the user
+            with no idea anything went wrong. */}
+        {ssoError && (
+          <div role="alert" style={{
+            width: '100%', padding: '10px 14px', borderRadius: 8,
+            fontSize: 12.5, lineHeight: 1.55,
+            color: 'var(--danger, #c0564f)',
+            background: 'color-mix(in srgb, var(--danger, #c0564f) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--danger, #c0564f) 30%, transparent)',
+          }}>
+            Sign-in didn't complete: {ssoError}
+          </div>
+        )}
 
         {/* CTA */}
         <button

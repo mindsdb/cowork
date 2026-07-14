@@ -503,6 +503,18 @@ export async function mindshubGetCachedToken(): Promise<string | null> {
   return null;
 }
 
+// Subscribe to MindsHub session-state changes pushed from the main
+// process (login, silent refresh, logout, session death). Returns an
+// unsubscribe function; no-op in the web shell.
+export function onMindsHubAuthChanged(
+  cb: (payload: { authenticated: boolean }) => void,
+): () => void {
+  if (isElectron && typeof bridge.onMindsHubAuthChanged === 'function') {
+    return bridge.onMindsHubAuthChanged(cb);
+  }
+  return () => {};
+}
+
 // Where the refresh token is stored: macOS keychain (true) or a plaintext
 // file under ~/.cowork (false). Electron-only — the web shell has no local
 // token store, so both wrappers no-op to a safe default.
@@ -579,6 +591,7 @@ export const host = {
   mindshubRefresh,
   mindshubFinalize,
   mindshubGetCachedToken,
+  onMindsHubAuthChanged,
   getKeychainPref,
   setKeychainPref,
   getAccessToken,

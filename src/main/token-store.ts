@@ -1,8 +1,9 @@
-import { safeStorage, app } from 'electron';
+import { safeStorage, app, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { coworkHome } from './cowork-home';
+import { IPC } from '../shared/ipc-channels';
 
 // Persistence for the Keycloak refresh token.
 //
@@ -50,9 +51,19 @@ function writeToken(refreshToken: string): void {
   if (IS_MAC) {
     fs.mkdirSync(coworkHome(), { recursive: true });
     fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
-  } else if (safeStorage.isEncryptionAvailable()) {
-    fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
+    return;
   }
+  if (safeStorage.isEncryptionAvailable()) {
+    fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
+    return;
+  }
+  // safeStorage unavailable (DPAPI/libsecret failure). Previously this
+  // silently persisted NOTHING — the user looked signed in until the
+  // next launch, then showed up as unauthenticated (ENG-761). Fall back
+  // to the same encrypted file macOS uses so the session survives.
+  console.warn('[token-store] safeStorage unavailable — using encrypted-file fallback');
+  fs.mkdirSync(coworkHome(), { recursive: true });
+  fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
 }
 
 function readToken(): string | null {
@@ -61,9 +72,13 @@ function readToken(): string | null {
     if (!fs.existsSync(ENCRYPTED_FILE)) return null;
     return decryptToken(fs.readFileSync(ENCRYPTED_FILE));
   }
-  // Windows/Linux: safeStorage
-  if (!fs.existsSync(KEYCHAIN_FILE) || !safeStorage.isEncryptionAvailable()) return null;
-  return safeStorage.decryptString(fs.readFileSync(KEYCHAIN_FILE));
+  // Windows/Linux: safeStorage, then the encrypted-file fallback written
+  // when safeStorage was unavailable at save time.
+  if (fs.existsSync(KEYCHAIN_FILE) && safeStorage.isEncryptionAvailable()) {
+    return safeStorage.decryptString(fs.readFileSync(KEYCHAIN_FILE));
+  }
+  if (fs.existsSync(ENCRYPTED_FILE)) return decryptToken(fs.readFileSync(ENCRYPTED_FILE));
+  return null;
 }
 
 function deleteTokenFiles(): void {
@@ -76,6 +91,20 @@ function deleteTokenFiles(): void {
 let _accessToken: string | null = null;
 let _expiresAt = 0; // epoch ms
 
+// Push the new auth state to every renderer. token-store is the single
+// choke point every MindsHub auth transition flows through (login,
+// silent refresh, logout, invalid-grant clear), so broadcasting here —
+// rather than at each call site — is what guarantees the UI can never
+// silently disagree with the main process again (ENG-761). Defensive:
+// callable before any window exists and under test mocks.
+function broadcastAuthChanged(authenticated: boolean): void {
+  try {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(IPC.MINDSHUB_AUTH_CHANGED, { authenticated });
+    }
+  } catch { /* no windows yet / test env */ }
+}
+
 export function saveTokens(accessToken: string, expiresInSeconds: number, refreshToken: string): void {
   _accessToken = accessToken;
   _expiresAt = Date.now() + expiresInSeconds * 1000;
@@ -84,6 +113,7 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
       console.warn('[token-store] failed to persist refresh token', e);
     }
   }
+  broadcastAuthChanged(true);
 }
 
 export function getAccessToken(): string | null { return _accessToken; }
@@ -104,6 +134,7 @@ export function clearTokens(): void {
   _accessToken = null;
   _expiresAt = 0;
   deleteTokenFiles();
+  broadcastAuthChanged(false);
 }
 
 // Stub — the keychain toggle in settings calls this, but on macOS we no

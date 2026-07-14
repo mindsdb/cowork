@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -13,8 +13,8 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections } from './token-refresh';
-import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
-import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
+import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
+import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
@@ -701,6 +701,11 @@ function setupIPC() {
       scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
     });
     if (result.ok && result.access_token) {
+      if (!result.refresh_token) {
+        // Session won't survive a restart without it — loud so a failing
+        // machine's log explains the next-launch sign-out (ENG-761).
+        console.warn('[mindshub:login] Keycloak returned no refresh_token — session will not persist across restarts');
+      }
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
       // Pull the desktop app back to the foreground. The SSO flow opens the
@@ -723,9 +728,9 @@ function setupIPC() {
   // touching the env file. Used after Stripe checkout so the renderer
   // can re-decode roles and confirm the user is now paid.
   ipcMain.handle(IPC.MINDSHUB_REFRESH, async () => {
-    const token = await refreshTokensOnly();
-    if (!token) return { ok: false, reason: 'No refresh token or refresh failed.' };
-    return { ok: true, access_token: token };
+    const result = await refreshTokensOnly();
+    if (result.status !== 'ok') return { ok: false, reason: `Token refresh failed (${result.status}).` };
+    return { ok: true, access_token: result.token };
   });
 
   // Commit MindsHub as the LLM provider. The Keycloak JWT alone is
@@ -766,7 +771,19 @@ function setupIPC() {
     return { access_token: getAccessToken() };
   });
 
-  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, () => getAccessToken());
+  // Authoritative "am I signed in?" read. The in-memory token is
+  // process-lifetime only, so right after a launch (or after a missed
+  // refresh window — laptop slept past the timer) it can be empty while
+  // a perfectly valid refresh token sits on disk. Refresh on miss so the
+  // Settings account card reflects the real session instead of showing
+  // an authenticated user as signed out (ENG-761).
+  ipcMain.handle(IPC.AUTH_GET_ACCESS_TOKEN, async () => {
+    const cached = getAccessToken();
+    if (cached && !isAccessTokenExpired()) return cached;
+    if (!getRefreshToken()) return cached;
+    const result = await refreshTokensOnly();
+    return result.status === 'ok' ? result.token : getAccessToken();
+  });
   ipcMain.handle(IPC.AUTH_LOGOUT, async () => {
     // Full sign-out: clear every credential + LLM-config key so the
     // next launch's checkConfigured() returns false and the user is
@@ -1114,6 +1131,15 @@ app.whenReady().then(async () => {
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
 
+  // A machine that slept past the refresh timer wakes with an expired
+  // in-memory token and a timer that fired into the void. Refresh on
+  // resume so the session is live again before the user looks at it
+  // (ENG-761 — the Windows-sleep flavour of "signed in but shows
+  // signed out"). powerMonitor is only usable after app ready.
+  powerMonitor.on('resume', () => {
+    if (getRefreshToken() && isAccessTokenExpired()) void refreshTokensOnly();
+  });
+
   // Purge any plaintext API keys older builds cached to disk (ENG-462).
   // Fire-and-forget: version-gated + idempotent, and current responses send
   // no-store so nothing new re-caches while this runs.
@@ -1274,19 +1300,30 @@ app.whenReady().then(async () => {
     }
     // If MindsHub SSO tokens are stored, silently refresh before the Python
     // server starts — it reads .env at boot and needs a valid JWT.
+    //
+    // ENG-761: destroy local auth state ONLY on a definitive
+    // `invalid_grant` from Keycloak. The old code cleared tokens (and
+    // stripped env credentials) on ANY falsy refresh — so a network
+    // blip at launch (Windows boots the app before the network is up)
+    // permanently signed the user out. A transient failure now keeps
+    // everything; minds-auth retries on its own timer and the next
+    // successful refresh broadcasts the signed-in state to the UI.
     const existingRefresh = getRefreshToken();
     if (existingRefresh) {
-      const ok = await silentRefresh();
-      if (!ok) {
-        // Refresh token expired — clear so checkConfigured() returns false
-        // and the renderer routes back to onboarding.
-        clearTokens();
+      const outcome = await refreshTokensOnly();
+      if (outcome.status === 'invalid_grant') {
+        // Session is dead for real (tokens already cleared by
+        // refreshTokensOnly) — strip stale credentials so
+        // checkConfigured() returns false and the renderer routes
+        // back to onboarding.
         const envPath = getAntonEnvPath();
         if (fs.existsSync(envPath)) {
           const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
             .filter(l => !l.startsWith('ANTON_OPENAI_API_KEY=') && !l.startsWith('ANTON_MINDS_API_KEY='));
           fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
         }
+      } else if (outcome.status !== 'ok') {
+        console.warn('[auth] boot token refresh failed transiently — keeping session, retry scheduled');
       }
     }
 

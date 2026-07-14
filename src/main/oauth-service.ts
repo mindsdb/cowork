@@ -59,6 +59,12 @@ export interface OAuthConnectResult {
 // error instead of an endless spinner.
 const CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 
+// Hard deadline for the code→token exchange. Node's fetch has none by
+// default, so a black-holed connection would hang forever — the browser
+// already shows "You're authorized!" by then, and the app would just
+// never sign in with zero feedback (ENG-761).
+const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
+
 // Tracks the in-flight OAuth attempt so cancelCurrentOAuth() can tear
 // the loopback server down without waiting for the timeout.
 // The desktop SSO flow uses this so the renderer's "Cancel login"
@@ -75,6 +81,12 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   if (!opts?.authUrl || !opts?.tokenUrl || !opts?.clientId) {
     return { ok: false, reason: 'OAuth opts missing authUrl, tokenUrl, or clientId.' };
   }
+
+  // Only one attempt at a time. A dangling previous attempt (double-
+  // click, retry after a hung exchange) would otherwise keep its own
+  // loopback server alive — two live callback ports and whichever tab
+  // the user completes decides which promise wins (ENG-761).
+  cancelCurrentOAuth();
 
   // PKCE: random verifier (43-128 chars), SHA-256 challenge. The
   // verifier is held in this process and only sent during the token
@@ -155,8 +167,9 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     server.listen(port, '127.0.0.1');
   });
 
+  let timeoutHandle: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<string>((_, reject) => {
-    setTimeout(
+    timeoutHandle = setTimeout(
       () => reject(new Error(`OAuth timed out — no callback received within ${Math.round(CALLBACK_TIMEOUT_MS / 60000)} minutes.`)),
       CALLBACK_TIMEOUT_MS,
     );
@@ -184,6 +197,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     _activeAttempt = null;
     return { ok: false, reason: e?.message || 'OAuth flow failed.' };
   } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     // Tiny delay so the success page actually paints in the user's
     // browser before we tear the server down.
     setTimeout(() => closeServer(server), 300);
@@ -205,6 +219,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: tokenBody.toString(),
+      signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
     });
     if (!res.ok) {
       const text = await safeReadText(res);
@@ -220,6 +235,9 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       token_type: typeof data.token_type === 'string' ? data.token_type : undefined,
     };
   } catch (e: any) {
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+      return { ok: false, reason: 'Token exchange timed out — check your network connection and try signing in again.' };
+    }
     return { ok: false, reason: `Token exchange request failed: ${e?.message || e}` };
   }
 }
