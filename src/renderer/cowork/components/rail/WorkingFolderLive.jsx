@@ -19,16 +19,12 @@ import {
   fetchActiveProject,
   fetchArtifacts,
   fetchProjects,
-  publishArtifact,
   unpublishArtifact,
-  publishTargetPath,
   deleteArtifact,
 } from '../../api';
 import { ArtifactViewer } from '../artifact';
 import { ConfirmModal } from '../ConfirmModal';
 import { host } from '../../../platform/host';
-import { publishBlockedReason } from '../../lib/artifactKinds';
-import { trackArtifactPublished } from '../../lib/analytics';
 
 // Map a file extension to a glyph from `Icons.jsx`. Buckets group
 // extensions that read the same at glance — code files all get the
@@ -270,37 +266,6 @@ export function WorkingFolderLive({ project, isStreaming }) {
     }
   };
 
-  const onTogglePublish = async (a) => {
-    if (!a?.path) return;
-    // Stateful fullstack apps can't be published (server-side state the static
-    // publish pipeline can't carry). Block only the publish direction;
-    // unpublish stays allowed in case one was somehow published already.
-    if (!a.publishedUrl) {
-      const blocked = publishBlockedReason(a);
-      if (blocked) {
-        setRowError(blocked);
-        return;
-      }
-    }
-    setBusyPath(a.path);
-    setRowError('');
-    try {
-      if (a.publishedUrl) {
-        await unpublishArtifact(publishTargetPath(a));
-        setRows((prev) => prev.map((r) => r.path === a.path ? { ...r, publishedUrl: '' } : r));
-      } else {
-        const r = await publishArtifact(publishTargetPath(a));
-        const url = r?.url || r?.publishedUrl || '';
-        if (url) trackArtifactPublished(r?.report_id || a.id || '', 'public');
-        setRows((prev) => prev.map((row) => row.path === a.path ? { ...row, publishedUrl: url } : row));
-      }
-    } catch (e) {
-      setRowError(e?.message || 'Publish toggle failed.');
-    } finally {
-      setBusyPath(null);
-    }
-  };
-
   const onDeleteArtifact = async (a) => {
     if (!a?.path) return;
     setBusyPath(a.path);
@@ -460,9 +425,6 @@ export function WorkingFolderLive({ project, isStreaming }) {
         (() => {
           const a = rows.find((r) => r.path === openMenuPath);
           if (!a) return null;
-          const isPublished = !!a.publishedUrl;
-          // Only the publish direction is blocked; unpublish must stay usable.
-          const publishBlock = !isPublished ? publishBlockedReason(a) : '';
           const openLabel = canOpenLocalFile ? 'Open in OS' : 'Open in new tab';
           return (
             <div
@@ -492,25 +454,6 @@ export function WorkingFolderLive({ project, isStreaming }) {
                   {(Ico.externalLink || Ico.upload)(13)}
                 </span>
                 <span>{openLabel}</span>
-              </button>
-              <button
-                type="button"
-                className="menu-item"
-                disabled={busyPath === a.path || !!publishBlock}
-                title={publishBlock || undefined}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpenMenuPath(null);
-                  onTogglePublish(a);
-                }}
-              >
-                <span style={{
-                  display: 'inline-flex',
-                  color: isPublished ? 'var(--accent)' : 'var(--frost-700)',
-                }}>
-                  {Ico.globe ? Ico.globe(13) : Ico.upload(13)}
-                </span>
-                <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
               </button>
               <div style={{ height: 1, background: 'var(--border-0)', margin: '4px 0' }} />
               <button
