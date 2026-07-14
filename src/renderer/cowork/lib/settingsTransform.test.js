@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { resolveModelPickerValue, diffSettingsForWrite } from './settingsTransform';
+import {
+  resolveModelPickerValue,
+  diffSettingsForWrite,
+  effectiveRoleModel,
+  effectiveRoleProvider,
+} from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
 const MINDS_LIST = ['sonnet', 'opus', 'mindshub_air', 'haiku'];
@@ -117,3 +122,44 @@ describe('ENG-739 stale-pin recovery writes the chosen model', () => {
     expect(writes).toEqual({});
   });
 });
+
+describe('effectiveRoleModel / effectiveRoleProvider — canonical fields, never model_overrides (ENG-739 reopen)', () => {
+  // The exact real-hardware divergence captured on the free-tier machine:
+  // the server executes planning_model = latest:sonnet (→ 403 → card), while
+  // model_overrides.planning = mindshub_air (what the old picker displayed as
+  // already-selected → no change → Save disabled → no recovery).
+  const drifted = {
+    modelMode: 'custom',
+    planningModel: 'latest:sonnet',
+    codingModel: 'latest:haiku',
+    planningProvider: 'minds_cloud',
+    codingProvider: 'minds_cloud',
+    modelOverrides: {
+      planning: { providerType: 'minds-cloud', model: 'mindshub_air' },
+      coding: { providerType: 'minds-cloud', model: 'mindshub_air' },
+    },
+  };
+
+  it('returns the executed planning_model (the pin), NOT the model_overrides value', () => {
+    expect(effectiveRoleModel(drifted, 'planning')).toBe('latest:sonnet');
+    expect(effectiveRoleModel(drifted, 'coding')).toBe('latest:haiku');
+  });
+
+  it('feeding the effective model to the picker surfaces the stale placeholder', () => {
+    const picker = resolveModelPickerValue(effectiveRoleModel(drifted, 'planning'), MINDS_LIST, false);
+    expect(picker.showStalePin).toBe(true);
+    expect(picker.selectValue).toBe('__stale__'); // mindshub_air is now a real, savable change
+  });
+
+  it('resolves the provider from the canonical field, mapped to client type', () => {
+    expect(effectiveRoleProvider(drifted, 'planning')).toBe('minds-cloud');
+  });
+
+  it('planning falls back to defaultModel when planningModel is unset', () => {
+    expect(effectiveRoleModel({ defaultModel: 'sonnet' }, 'planning')).toBe('sonnet');
+  });
+
+  it('unset provider defaults to minds-cloud', () => {
+    expect(effectiveRoleProvider({}, 'planning')).toBe('minds-cloud');
+  });
+})

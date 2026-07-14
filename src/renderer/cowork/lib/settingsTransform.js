@@ -86,6 +86,33 @@ export function providerTypeToServerValue(value) {
   return PROVIDER_TO_SERVER[value] || value;
 }
 
+// ─── Effective (server-executed) role config ────────────────────────
+//
+// ENG-739: the model/provider a role ACTUALLY runs on comes from the
+// canonical planning_model / coding_model (+ *_provider) settings — the flat
+// fields cowork-server resolves from at turn time. `model_overrides` is
+// orphaned renderer state the server stopped reading (resolution moved off the
+// nested blob and its reader, cowork/runtime/inference.py, was removed). The
+// picker used to source its "current model" from `model_overrides`, so a stale
+// planning_model pin — e.g. a login-written `latest:sonnet` — was invisible in
+// the picker: it showed the override's model as already-selected, offered no
+// change to save, and a stuck free-tier user had no self-serve recovery. These
+// helpers read the executed field so the pin surfaces (via the stale
+// placeholder in resolveModelPickerValue) and picking an enabled model is a
+// real, savable change — matching what a direct PUT /settings/planning_model
+// does. Never consult `model_overrides` for the current value.
+export function effectiveRoleModel(settings, role) {
+  const s = settings || {};
+  if (role === 'planning') return s.planningModel ?? s.defaultModel ?? '';
+  return s.codingModel ?? '';
+}
+
+export function effectiveRoleProvider(settings, role) {
+  const s = settings || {};
+  const raw = role === 'planning' ? s.planningProvider : s.codingProvider;
+  return providerValueToType(raw) || 'minds-cloud';
+}
+
 // ─── Static metadata ────────────────────────────────────────────────
 
 // Model names are NOT maintained in this repo. The cowork-server
