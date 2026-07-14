@@ -694,6 +694,9 @@ const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
 const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
 
 function nextPollDelay(schedules) {
+  // A run in flight: poll at the floor so the Running state clears soon
+  // after the run finishes — nothing else refreshes it.
+  if ((schedules || []).some((s) => s.running)) return SCHEDULE_POLL_MIN_DELAY_MS;
   const dueTimes = (schedules || [])
     .filter((s) => s.enabled && s.nextRunAt)
     .map((s) => new Date(s.nextRunAt).getTime())
@@ -3295,12 +3298,14 @@ function AppCore() {
     });
   }, []);
 
-  // Recomputed whenever an enabled schedule's due time changes — used as
-  // the poll effect's dependency below instead of `scheduled.length`,
-  // which stays the same across an edit/pause/resume
+  // Recomputed whenever an enabled schedule's due time or running state
+  // changes — used as the poll effect's dependency below instead of
+  // `scheduled.length`, which stays the same across an edit/pause/resume.
+  // The running flag matters: when "Run now" flips it on, the pending long
+  // timer must be replaced with the tight in-flight cadence.
   const scheduleKey = scheduled
-    .filter((s) => s.enabled)
-    .map((s) => s.nextRunAt)
+    .filter((s) => s.enabled || s.running)
+    .map((s) => `${s.nextRunAt}:${s.running ? 1 : 0}`)
     .join(',');
 
   // Self-adjusting poll (not a fixed interval): reschedules itself after

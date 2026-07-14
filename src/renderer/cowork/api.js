@@ -1817,8 +1817,8 @@ export async function runScheduleNow(id) {
 }
 
 export async function fetchScheduleRuns(id, { limit = 100 } = {}) {
-  // Returns { schedule_id, runs: [{ id, scheduleId, startedAt,
-  // finishedAt, durationMs, status, error, sessionId, manual }] }
+  // Returns { runs: [{ id, scheduleId, startedAt, finishedAt, durationMs,
+  // status, error, conversationId, isManual }] }
   // Newest first.
   try {
     return await req(`/schedules/${encodeURIComponent(id)}/runs?limit=${encodeURIComponent(limit)}`);

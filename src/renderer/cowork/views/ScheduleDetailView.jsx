@@ -55,6 +55,13 @@ function formatDuration(ms) {
   return `${m}m ${s}s`;
 }
 
+function runColor(run) {
+  if (run.status === 'running') return 'var(--accent)';
+  if (run.status === 'failed') return 'var(--danger)';
+  if (run.status === 'cancelled') return 'var(--ink-4)';
+  return run.isManual ? 'var(--accent)' : 'var(--success)';
+}
+
 
 // ── breadcrumb ──
 //
@@ -62,6 +69,7 @@ function formatDuration(ms) {
 
 function StatusPill({ task }) {
   const cfg = (() => {
+    if (task.running)   return { label: 'Running',         fg: 'var(--accent)' };
     if (!task.enabled)  return { label: 'Paused',          fg: 'var(--ink-3)' };
     if (task.lastError) return { label: 'Last run failed', fg: 'var(--danger)' };
     return { label: 'Active', fg: 'var(--success)' };
@@ -192,13 +200,11 @@ function HealthSparkline({ runs }) {
         const h = heightFor(run.durationMs);
         const x = i * slot + (slot - barW) / 2;
         const y = H - h;
-        const fill = run.status === 'error'
-          ? 'var(--danger)'
-          : (run.manual ? 'var(--accent)' : 'var(--success)');
+        const fill = runColor(run);
         return (
           <g key={run.id || i}>
             <title>
-              {`${absoluteTime(run.startedAt)} · ${run.status}${run.manual ? ' (manual)' : ''} · ${formatDuration(run.durationMs)}`}
+              {`${absoluteTime(run.startedAt)} · ${run.status}${run.isManual ? ' (manual)' : ''} · ${formatDuration(run.durationMs)}`}
             </title>
             <rect x={x} y={y} width={barW} height={h} rx={2} fill={fill} opacity="0.95" />
           </g>
@@ -214,7 +220,7 @@ function HealthSparkline({ runs }) {
 // ── runs list ──
 
 function RunRow({ run, onOpen }) {
-  const isErr = run.status === 'error';
+  const isErr = run.status === 'failed';
   return (
     <div
       style={{
@@ -229,7 +235,7 @@ function RunRow({ run, onOpen }) {
     >
       <span aria-hidden style={{
         width: 8, height: 8, borderRadius: '50%',
-        background: isErr ? 'var(--danger)' : (run.manual ? 'var(--accent)' : 'var(--success)'),
+        background: runColor(run),
       }} />
       <div style={{ minWidth: 0 }}>
         <div style={{
@@ -237,7 +243,7 @@ function RunRow({ run, onOpen }) {
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }} title={absoluteTime(run.startedAt)}>
           {absoluteTime(run.startedAt) || '—'}
-          {run.manual && <span style={{
+          {run.isManual && <span style={{
             marginLeft: 8, padding: '1px 6px', borderRadius: 4,
             background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
             color: 'var(--accent)',
@@ -256,7 +262,7 @@ function RunRow({ run, onOpen }) {
         fontFamily: FONT_BODY, fontSize: 11.5, color: 'var(--ink-3)',
         whiteSpace: 'nowrap',
       }}>{formatDuration(run.durationMs)}</span>
-      {run.sessionId ? (
+      {run.conversationId ? (
         <button
           type="button"
           onClick={() => onOpen?.(run)}
@@ -306,20 +312,21 @@ export default function ScheduleDetailView({
       .then((data) => setRuns(Array.isArray(data?.runs) ? data.runs : []))
       .catch(() => setRuns([]))
       .finally(() => setLoadingRuns(false));
-  }, [taskId, task?.lastRunAt]);  // refresh when host reports a fresh run
+  }, [taskId, task?.lastRunAt, task?.running]);  // refresh when a run starts or reaches a terminal state
 
   const stats = useMemo(() => {
     if (!runs.length) return { total: 0, success: 0, error: 0, rate: null, avgMs: null };
-    const success = runs.filter((r) => r.status === 'success').length;
-    const errored = runs.length - success;
-    const durations = runs.map((r) => r.durationMs).filter((v) => Number.isFinite(v) && v > 0);
+    const terminalRuns = runs.filter((r) => r.status !== 'running');
+    const success = terminalRuns.filter((r) => r.status === 'success').length;
+    const errored = terminalRuns.filter((r) => r.status === 'failed').length;
+    const durations = terminalRuns.map((r) => r.durationMs).filter((v) => Number.isFinite(v) && v > 0);
     const avgMs = durations.length
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
       : null;
     return {
       total:   runs.length,
       success, error: errored,
-      rate: success / runs.length,
+      rate: terminalRuns.length ? success / terminalRuns.length : null,
       avgMs,
     };
   }, [runs]);
@@ -546,7 +553,7 @@ export default function ScheduleDetailView({
               <RunRow
                 key={run.id || run.startedAt}
                 run={run}
-                onOpen={() => run.sessionId && onOpenRunSession?.(run.sessionId)}
+                onOpen={() => run.conversationId && onOpenRunSession?.(run.conversationId)}
               />
             ))
           )}

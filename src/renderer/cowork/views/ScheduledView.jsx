@@ -322,6 +322,7 @@ function ScheduleListRow({
   const stop = (e) => { e.stopPropagation(); };
 
   const status = (() => {
+    if (task.running) return { label: 'Running', dot: 'var(--accent)' };
     if (!task.enabled) return { label: 'Paused', dot: 'var(--ink-4)' };
     if (task.lastError) return { label: 'Failed', dot: 'var(--danger)' };
     return { label: 'Active', dot: 'var(--success)' };

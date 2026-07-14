@@ -49,6 +49,7 @@ function absoluteTime(iso) {
 }
 
 function StatusPill({ task }) {
+  if (task.running)   return <Pill color="amber" label="Running" />;
   if (!task.enabled)  return <Pill color="muted" label="Paused" />;
   if (task.lastError) return <Pill color="danger" label="Last failed" />;
   return <Pill color="success" label="Active" />;
