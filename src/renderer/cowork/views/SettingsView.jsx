@@ -11,7 +11,8 @@ import { Button, Input, Checkbox } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
+import { getVersionInfo, isElectron, getAccessToken } from '../../platform/host';
+import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
 import ChannelsView from './ChannelsView';
 
 function decodeJwtPayload(token) {
@@ -623,8 +624,11 @@ export default function SettingsView({
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
-  const [uiVersion, setUiVersion] = useState('');
+  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
+  const [antonVersion, setAntonVersion] = useState('');
+  const [showVersionDetails, setShowVersionDetails] = useState(false);
+  const [versionCopied, setVersionCopied] = useState(false);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -634,8 +638,21 @@ export default function SettingsView({
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
 
-  useEffect(() => { getUIVersion().then(setUiVersion).catch(() => { }); }, []);
-  useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => { }); }, []);
+  useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
+  // Backend (server + agent) versions come from /health, which is only
+  // reachable when the backend is up. Re-read whenever the Updates section is
+  // shown and the backend is online, so versions populate after a cold open or
+  // a start/restart from the Backend section instead of staying blank at mount.
+  useEffect(() => {
+    if (section !== 'updates' || !serverOnline) return undefined;
+    let cancelled = false;
+    fetchHealth().then((h) => {
+      if (cancelled) return;
+      setServerVersion(h?.server_version || '');
+      setAntonVersion(h?.anton_version || '');
+    }).catch(() => { });
+    return () => { cancelled = true; };
+  }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
   useEffect(() => {
     if (section !== 'account') return;
@@ -1884,41 +1901,85 @@ export default function SettingsView({
       }}>
         <Section
           title="Current version"
-          subtitle="The app, UI bundle, and server versions currently running."
+          subtitle="The version currently running. Components under the hood are shown in details."
         >
-          <div style={{
-            display: 'flex', flexDirection: 'column', gap: 6,
-            fontFamily: 'var(--font-mono)', fontSize: 12.5,
-            color: 'var(--text-strong)',
-          }}>
-            <span>
-              <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>App</span>
-              {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '—'}
-            </span>
-            {isElectron && uiVersion && uiVersion !== 'bundled' && uiVersion !== 'web' && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                {uiVersion}
-                {uiVersion !== (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '') && (
-                  <span style={{ color: 'var(--text-warning, #c49000)', marginLeft: 6, fontSize: 11 }}>
-                    (differs from app)
+          {(() => {
+            const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
+            // App shell = installed Electron shell (changes only on reinstall).
+            const shellVer = versionInfo.app || baked;
+            // The running renderer's own baked version is authoritative for the
+            // UI version — it's compiled into whichever bundle actually loaded
+            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
+            // can lag the loaded renderer (OTA off, missing cache, post-
+            // rollback), so it only informs the source label, never the version.
+            const uiVer = baked || versionInfo.ui || '';
+            const uiSource = versionInfo.source === 'ota' ? 'OTA'
+              : versionInfo.source === 'web' ? 'web' : 'bundled';
+            // Unified "content" headline = ISO week of the newest of the
+            // hot-updated components (UI + server + agent). App shell is
+            // excluded — it updates via reinstall and is shown on its own line.
+            const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
+            const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
+            const rows = [
+              ['App shell', shellVer || '—'],
+              ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
+              ['Server', serverVersion || '—'],
+              ['Agent', antonVersion || '—'],
+            ];
+            const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: 'var(--text-strong)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <span title={unified ? unified.weekOf : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
+                    {unified ? unified.label : (shellVer || '—')}
+                  </span>
+                  {outOfSync && (
+                    <span
+                      title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
+                      style={{ color: 'var(--warning, #c47f00)', fontSize: 11.5, fontWeight: 600 }}
+                    >
+                      ⚠ out of sync
+                    </span>
+                  )}
+                  {unified && (
+                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>{unified.weekOf}</span>
+                  )}
+                </div>
+                {isElectron && (
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 12 }}>
+                    <span style={{ marginRight: 4 }}>App shell</span>{shellVer || '—'}
                   </span>
                 )}
-              </span>
-            )}
-            {isElectron && uiVersion === 'bundled' && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                bundled
-              </span>
-            )}
-            {serverVersion && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>Server</span>
-                {serverVersion}
-              </span>
-            )}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setShowVersionDetails((v) => !v)}
+                  style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: 11.5 }}
+                >
+                  {showVersionDetails ? 'Hide details' : 'Details'}
+                </button>
+                {showVersionDetails && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-glass)' }}>
+                    {rows.map(([k, v]) => (
+                      <span key={k}>
+                        <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(copyText);
+                        setVersionCopied(true);
+                        setTimeout(() => setVersionCopied(false), 1500);
+                      }}
+                      style={{ alignSelf: 'flex-start', marginTop: 4, background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', color: 'var(--text-strong)', fontSize: 11 }}
+                    >
+                      {versionCopied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </Section>
         <Section
           title="UI updates"

@@ -328,6 +328,38 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean
   });
 }
 
+// One-shot read of the server's /health payload. Best-effort — resolves null
+// on any failure.
+function fetchHealth(timeoutMs = 800): Promise<{ server_version?: string; anton_version?: string } | null> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: SERVER_HOST, port: serverPort, path: '/api/v1/health/', timeout: timeoutMs },
+      (res) => {
+        if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch { resolve(null); }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+// Reported CalVers of both hot-updated backend components in a single /health
+// read, so the About panel can fold server AND agent into the unified version.
+// The renderer's Settings view is the authoritative surface and reads the same
+// fields directly.
+export function fetchServerVersions(timeoutMs = 800): Promise<{ server: string | null; anton: string | null }> {
+  return fetchHealth(timeoutMs).then((h) => ({
+    server: h?.server_version ?? null,
+    anton: h?.anton_version ?? null,
+  }));
+}
+
 // True when resolveServerPort() found a healthy server that proved to be
 // ours; startServer() re-verifies and adopts it instead of spawning.
 let _adoptPlanned = false;
