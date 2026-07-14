@@ -12,6 +12,7 @@ import {
   looksLikeBrokenInstall,
   decideUpdateApply,
   otaUiEnabled,
+  otaCacheIsFresh,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -353,5 +354,24 @@ describe('otaUiEnabled', () => {
     expect(otaUiEnabled({ buildKind: 'prod', envOverride: '' })).toBe(true);
     expect(otaUiEnabled({ buildKind: 'prod', envOverride: 'maybe' })).toBe(true);
     expect(otaUiEnabled({ buildKind: 'stable', envOverride: 'maybe' })).toBe(false);
+  });
+});
+
+describe('otaCacheIsFresh', () => {
+  it('serves the cache only when it is strictly newer than the bundled renderer', () => {
+    expect(otaCacheIsFresh('2.26.7.13.1', '2.26.7.6.1')).toBe(true);
+    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.13.1')).toBe(false); // older cache → bundled wins
+    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.6.1')).toBe(false); // equal → bundled wins
+  });
+
+  it('compares on the CalVer date, not the raw string (git-describe suffix ok)', () => {
+    // A newer cache carrying a git-describe suffix still reads as fresh.
+    expect(otaCacheIsFresh('2.26.7.13.1-4-gabc1234', '2.26.7.6.1')).toBe(true);
+  });
+
+  it('fails safe to bundled when either version is missing or non-CalVer', () => {
+    expect(otaCacheIsFresh(null, '2.26.7.6.1')).toBe(false);
+    expect(otaCacheIsFresh('bundled', '2.26.7.6.1')).toBe(false);
+    expect(otaCacheIsFresh('2.26.7.13.1', '2.0.7')).toBe(false); // legacy pkg.json fallback
   });
 });

@@ -18,10 +18,20 @@ const UI_RELOAD_HEALTH_MS = 15000;
 
 type GetWindow = () => BrowserWindow | null;
 
-async function applyServerUpdate(): Promise<void> {
+// Returns whether the server is in a good state to proceed with a UI update:
+// true if it was updated cleanly or was already current, false if an update was
+// attempted and failed (in which case it has rolled back to the old server).
+async function applyServerUpdate(): Promise<boolean> {
   const result = await maybeUpdateServer();
-  if (result.updated) console.log(`[updater] server updated: ${result.previousVersion} → ${result.newVersion}`);
-  else if (result.error) console.error(`[updater] server update failed: ${result.error}`);
+  if (result.updated) {
+    console.log(`[updater] server updated: ${result.previousVersion} → ${result.newVersion}`);
+    return true;
+  }
+  if (result.error) {
+    console.error(`[updater] server update failed: ${result.error}`);
+    return false;
+  }
+  return true; // already current
 }
 
 // Resolve a live window at the moment of use. The window can be closed
@@ -102,16 +112,20 @@ async function reloadWithUiHealthCheck(getWindow: GetWindow): Promise<void> {
 // the manual IPC apply and the boot/periodic poll. Args are "apply this",
 // already resolved against update mode + server health by the caller.
 async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi: boolean): Promise<boolean> {
-  if (applyServer) await applyServerUpdate();
-  const uiApplied = applyUi ? await applyUIUpdate() : false;
+  const serverOk = applyServer ? await applyServerUpdate() : true;
+  // Never activate a UI bundle on top of a server update that failed (and thus
+  // rolled back to the old server) — the tandem coupling only holds when the
+  // server is current. Defer the UI to the next pass.
+  if (applyUi && !serverOk) console.warn('[updater] server update failed — deferring UI update this pass');
+  const uiApplied = applyUi && serverOk ? await applyUIUpdate() : false;
   if (uiApplied) {
     // A UI bundle was swapped — verify it loads and roll back if not (R4).
     await reloadWithUiHealthCheck(getWindow);
-  } else if (applyServer) {
+  } else if (applyServer && serverOk) {
     // Server-only update: reload the same (unchanged) renderer, no rollback.
     reload(getWindow);
   }
-  return uiApplied || applyServer;
+  return uiApplied || (applyServer && serverOk);
 }
 
 // Register the update IPC handlers. Called unconditionally at startup so the

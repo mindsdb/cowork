@@ -325,6 +325,33 @@ function focusMainWindow() {
   } catch {}
 }
 
+// One-shot self-heal for the boot OTA load: if the activated bundle's main
+// frame fails to load (missing/corrupt assets), roll it back and fall to the
+// app-bundled renderer. Uses `.on()` (not `.once()`) so benign subframe /
+// ERR_ABORTED events don't consume the listener before a real main-frame
+// result; disarms on the first relevant main-frame outcome or a timeout.
+function armOtaBootSelfHeal(win: BrowserWindow) {
+  let done = false;
+  const disarm = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    win.webContents.removeListener('did-finish-load', onOk);
+    win.webContents.removeListener('did-fail-load', onFail);
+  };
+  const onOk = () => disarm();
+  const onFail = (_e: unknown, code: number, _desc: string, _url: string, isMainFrame: boolean) => {
+    if (!isMainFrame || code === -3) return; // subframe / benign abort — stay armed
+    disarm();
+    console.error('[main] OTA renderer failed to load at boot — rolling back to bundled');
+    rollbackUI();
+    if (!win.isDestroyed()) win.loadFile(getBundledPath());
+  };
+  const timer = setTimeout(disarm, 15000);
+  win.webContents.on('did-finish-load', onOk);
+  win.webContents.on('did-fail-load', onFail);
+}
+
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
@@ -405,18 +432,11 @@ function createWindow() {
   } else {
     const rendererPath = getRendererPath();
     console.log(`[main] loading renderer from ${rendererPath}`);
+    // Boot self-heal: arm BEFORE the load (so the result can't be missed) when
+    // serving an activated OTA bundle. A bad hot-update rolls back to the
+    // app-bundled renderer instead of re-loading the broken bundle every launch.
+    if (isServingOta()) armOtaBootSelfHeal(mainWindow);
     mainWindow.loadFile(rendererPath);
-    // Boot self-heal: if we're serving an activated OTA bundle and it fails to
-    // load, roll it back and fall back to the app-bundled renderer — a bad
-    // hot-update must not brick launch by re-loading the broken bundle forever.
-    if (isServingOta()) {
-      mainWindow.webContents.once('did-fail-load', (_e, code, _desc, _url, isMainFrame) => {
-        if (!isMainFrame || code === -3) return;
-        console.error('[main] OTA renderer failed to load at boot — rolling back to bundled');
-        rollbackUI();
-        mainWindow?.loadFile(getBundledPath());
-      });
-    }
   }
 
   // DevTools no longer auto-open on launch. Still reachable on demand

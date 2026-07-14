@@ -3,10 +3,16 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { parseUiManifest, otaUiEnabled, type UIManifest } from './update-logic';
-import { buildKind } from './cowork-home';
+import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, type UIManifest } from './update-logic';
+import { buildKindStrict } from './cowork-home';
+import { getAppDisplayVersion } from './server-source';
 
 export type { UIManifest };
+
+// Cache-metadata schema. Bumping this invalidates every prior cache slot
+// (readSlotVersion returns null), which is exactly what we want if the on-disk
+// format ever changes — a legacy slot must never be served blindly.
+const CACHE_META_SCHEMA = 1;
 
 // Whether UI OTA hot-updates run in this build. Gated by build channel + env
 // (see otaUiEnabled) instead of a hardcoded constant (ENG-670): ON for prod
@@ -15,8 +21,10 @@ export type { UIManifest };
 // can flip it without a rebuild; fails safe to OFF if the build kind is
 // unreadable.
 function otaEnabled(): boolean {
+  // buildKindStrict() returns null (never prod) for a missing/malformed build
+  // kind, so a mispackaged build can't accidentally enable production OTA.
   let kind: string | null = null;
-  try { kind = buildKind(); } catch { kind = null; }
+  try { kind = buildKindStrict(); } catch { kind = null; }
   return otaUiEnabled({ buildKind: kind, envOverride: process.env.OTA_UI });
 }
 
@@ -45,8 +53,50 @@ function getPreviousDir(): string {
   return path.join(getCacheDir(), 'previous');
 }
 
-function getVersionFile(): string {
-  return path.join(getCacheDir(), 'version.json');
+// Per-slot metadata lives INSIDE the slot dir so it travels with the slot on a
+// rename (activate/rollback), unlike a cache-root file that would describe the
+// wrong slot after a rotation.
+function slotMetaFile(dir: string): string {
+  return path.join(dir, '.ota-meta.json');
+}
+
+// Marker for a version we activated and then rolled back, so the boot/poll
+// path won't re-download and re-activate the same failing bundle forever.
+function getRejectedFile(): string {
+  return path.join(getCacheDir(), 'rejected.json');
+}
+
+/** Version recorded inside a cache slot, or null if the slot has no valid
+ *  provenance — missing, wrong schema, or a legacy pre-gate cache. A slot
+ *  without provenance is never trusted or served. */
+function readSlotVersion(dir: string): string | null {
+  try {
+    const data = JSON.parse(fs.readFileSync(slotMetaFile(dir), 'utf-8'));
+    if (data?.schema !== CACHE_META_SCHEMA || typeof data.version !== 'string' || !data.version) return null;
+    return data.version;
+  } catch {
+    return null;
+  }
+}
+
+function getRejectedVersion(): string | null {
+  try {
+    const data = JSON.parse(fs.readFileSync(getRejectedFile(), 'utf-8'));
+    return typeof data?.version === 'string' && data.version ? data.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function recordRejectedVersion(version: string): void {
+  try {
+    fs.mkdirSync(getCacheDir(), { recursive: true });
+    fs.writeFileSync(getRejectedFile(), JSON.stringify({ version }), 'utf-8');
+  } catch { /* best-effort — a re-activation loop is the only downside */ }
+}
+
+function clearRejectedVersion(): void {
+  try { fs.unlinkSync(getRejectedFile()); } catch { /* already absent */ }
 }
 
 function getBundledRendererPath(): string {
@@ -55,23 +105,25 @@ function getBundledRendererPath(): string {
   return path.join(__dirname, '..', '..', 'renderer', 'index.html');
 }
 
-/** Returns the index.html path to load — cached OTA bundle if available,
- *  otherwise the bundled renderer shipped with the app.
- *  OTA is gated by build channel (preview/stable/dev serve the bundled
- *  branch-under-test UI; only prod serves an activated OTA bundle). */
+/** Returns the index.html path to load — an activated OTA bundle when we can
+ *  prove it is safe to serve (see isServingOta), otherwise the app-bundled
+ *  renderer shipped with the app. */
 export function getRendererPath(): string {
-  if (!otaEnabled()) return getBundledRendererPath();
-  const cached = path.join(getCurrentDir(), 'index.html');
-  if (fs.existsSync(cached)) return cached;
-  return getBundledRendererPath();
+  return isServingOta() ? path.join(getCurrentDir(), 'index.html') : getBundledRendererPath();
 }
 
-/** True when getRendererPath() would serve an activated OTA bundle (not the
- *  app-bundled renderer). Lets the boot loader roll a bad bundle back if it
- *  fails to load, instead of re-loading it on every launch. */
+/** True when getRendererPath() would serve an activated OTA bundle. The bundle
+ *  is only served when ALL hold: OTA is enabled for this build channel; the
+ *  `current` slot carries valid provenance; its index.html exists; and its
+ *  version is genuinely newer than the app-bundled renderer (so a fresh
+ *  install, a shell upgrade, or a legacy pre-gate cache can never downgrade the
+ *  UI). Otherwise we fall back to the always-safe bundled renderer. */
 export function isServingOta(): boolean {
   if (!otaEnabled()) return false;
-  return fs.existsSync(path.join(getCurrentDir(), 'index.html'));
+  const cached = readSlotVersion(getCurrentDir());
+  if (!cached) return false;
+  if (!fs.existsSync(path.join(getCurrentDir(), 'index.html'))) return false;
+  return otaCacheIsFresh(cached, getAppDisplayVersion());
 }
 
 /** Always returns the app-bundled renderer, ignoring any OTA cache. */
@@ -79,14 +131,10 @@ export function getBundledPath(): string {
   return getBundledRendererPath();
 }
 
-/** Read the currently cached UI version, or null if none. */
+/** The OTA UI version we are actually serving, or null when serving the
+ *  bundled renderer (so version display reflects what's really running). */
 export function getCachedVersion(): string | null {
-  try {
-    const data = JSON.parse(fs.readFileSync(getVersionFile(), 'utf-8'));
-    return data.version || null;
-  } catch {
-    return null;
-  }
+  return isServingOta() ? readSlotVersion(getCurrentDir()) : null;
 }
 
 function httpsGet(url: string, timeoutMs = 10000): Promise<{ statusCode: number; headers: Record<string, any>; body: Buffer }> {
@@ -191,13 +239,15 @@ function activateStaged(version: string): void {
   const previous = getPreviousDir();
   const staging = getStagingDir();
 
+  // Stamp provenance INTO the staging dir first, so it travels with the rename
+  // and can never describe the wrong slot.
+  fs.writeFileSync(slotMetaFile(staging), JSON.stringify({ schema: CACHE_META_SCHEMA, version }), 'utf-8');
+
   rmDir(previous);
   if (fs.existsSync(current)) {
     fs.renameSync(current, previous);
   }
   fs.renameSync(staging, current);
-  fs.mkdirSync(getCacheDir(), { recursive: true });
-  fs.writeFileSync(getVersionFile(), JSON.stringify({ version }), 'utf-8');
   console.log(`[ui-updater] activated UI ${version}`);
 }
 
@@ -212,6 +262,16 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   }
   const manifest = await fetchManifest();
   if (!manifest) return { updateAvailable: false, applied: false };
+
+  // Quarantine: a version we activated and rolled back stays skipped until the
+  // manifest advances to a different version — otherwise every auto-update boot
+  // re-downloads, re-activates, and re-fails the same bundle.
+  const rejected = getRejectedVersion();
+  if (rejected === manifest.version) {
+    console.log(`[ui-updater] skipping ${manifest.version} — quarantined after a failed activation`);
+    return { updateAvailable: false, applied: false };
+  }
+  if (rejected) clearRejectedVersion(); // manifest moved on — retry allowed
 
   const cached = getCachedVersion();
   if (cached === manifest.version) {
@@ -230,6 +290,10 @@ export async function applyUIUpdate(): Promise<boolean> {
   const manifest = await fetchManifest();
   if (!manifest) return false;
 
+  const rejected = getRejectedVersion();
+  if (rejected === manifest.version) return false; // quarantined (see checkForUIUpdate)
+  if (rejected) clearRejectedVersion();
+
   const cached = getCachedVersion();
   if (cached === manifest.version) return false;
 
@@ -240,15 +304,19 @@ export async function applyUIUpdate(): Promise<boolean> {
   return true;
 }
 
-/** Roll back to previous cached version or bundled UI. */
+/** Roll back the active OTA bundle: quarantine the version we're leaving (so it
+ *  isn't re-activated), restore the previous slot if there is one, otherwise
+ *  fall through to the bundled renderer. Provenance travels with each slot, so
+ *  getCachedVersion() reflects the restored state automatically. */
 export function rollbackUI(): void {
   const current = getCurrentDir();
   const previous = getPreviousDir();
 
+  const failed = readSlotVersion(current);
+  if (failed) recordRejectedVersion(failed);
+
   rmDir(current);
   if (fs.existsSync(previous)) {
     fs.renameSync(previous, current);
-    // Clear version so next boot re-checks
-    try { fs.unlinkSync(getVersionFile()); } catch {}
   }
 }

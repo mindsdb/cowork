@@ -8,6 +8,10 @@
 // verbatim in installer.ts and server-updater.ts with "keep in sync"
 // comments; this module is now the single copy.
 
+// Pure CalVer helpers from the shared version module (no I/O) — used by the
+// OTA cache-freshness decision below.
+import { parseCalVer, compareCalVer } from '../shared/version';
+
 // ---------------------------------------------------------------------------
 // Version comparison
 // ---------------------------------------------------------------------------
@@ -202,6 +206,18 @@ export function decideUpdateApply(input: {
 // ---------------------------------------------------------------------------
 // UI OTA enablement (build-channel / env gate)
 // ---------------------------------------------------------------------------
+
+/** Should we serve an activated OTA cache over the app-bundled renderer?
+ *  Only when the cache is genuinely NEWER than the bundled renderer: a fresh
+ *  install or a shell upgrade ships a newer bundled UI that must win over a
+ *  stale cache, and a legacy pre-gate cache (or any unparseable version) is
+ *  never considered fresh — so it fails safe to the bundled renderer. */
+export function otaCacheIsFresh(cachedVersion: string | null, bundledVersion: string): boolean {
+  const c = parseCalVer(cachedVersion);
+  const b = parseCalVer(bundledVersion);
+  if (!c || !b) return false;
+  return compareCalVer(c, b) > 0;
+}
 
 /** Should UI OTA hot-updates run in this build?
  *
