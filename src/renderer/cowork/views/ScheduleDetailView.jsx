@@ -55,6 +55,13 @@ function formatDuration(ms) {
   return `${m}m ${s}s`;
 }
 
+function runColor(run) {
+  if (run.status === 'running') return 'var(--accent)';
+  if (run.status === 'failed') return 'var(--danger)';
+  if (run.status === 'cancelled') return 'var(--ink-4)';
+  return run.isManual ? 'var(--accent)' : 'var(--success)';
+}
+
 
 // ── breadcrumb ──
 //
@@ -193,11 +200,7 @@ function HealthSparkline({ runs }) {
         const h = heightFor(run.durationMs);
         const x = i * slot + (slot - barW) / 2;
         const y = H - h;
-        const fill = run.status === 'failed'
-          ? 'var(--danger)'
-          : run.status === 'cancelled'
-            ? 'var(--ink-4)'
-            : (run.isManual ? 'var(--accent)' : 'var(--success)');
+        const fill = runColor(run);
         return (
           <g key={run.id || i}>
             <title>
@@ -232,11 +235,7 @@ function RunRow({ run, onOpen }) {
     >
       <span aria-hidden style={{
         width: 8, height: 8, borderRadius: '50%',
-        background: isErr
-          ? 'var(--danger)'
-          : run.status === 'cancelled'
-            ? 'var(--ink-4)'
-            : (run.isManual ? 'var(--accent)' : 'var(--success)'),
+        background: runColor(run),
       }} />
       <div style={{ minWidth: 0 }}>
         <div style={{
@@ -313,20 +312,21 @@ export default function ScheduleDetailView({
       .then((data) => setRuns(Array.isArray(data?.runs) ? data.runs : []))
       .catch(() => setRuns([]))
       .finally(() => setLoadingRuns(false));
-  }, [taskId, task?.lastRunAt]);  // refresh when host reports a fresh run
+  }, [taskId, task?.lastRunAt, task?.running]);  // refresh when a run starts or reaches a terminal state
 
   const stats = useMemo(() => {
     if (!runs.length) return { total: 0, success: 0, error: 0, rate: null, avgMs: null };
-    const success = runs.filter((r) => r.status === 'success').length;
-    const errored = runs.length - success;
-    const durations = runs.map((r) => r.durationMs).filter((v) => Number.isFinite(v) && v > 0);
+    const terminalRuns = runs.filter((r) => r.status !== 'running');
+    const success = terminalRuns.filter((r) => r.status === 'success').length;
+    const errored = terminalRuns.filter((r) => r.status === 'failed').length;
+    const durations = terminalRuns.map((r) => r.durationMs).filter((v) => Number.isFinite(v) && v > 0);
     const avgMs = durations.length
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
       : null;
     return {
       total:   runs.length,
       success, error: errored,
-      rate: success / runs.length,
+      rate: terminalRuns.length ? success / terminalRuns.length : null,
       avgMs,
     };
   }, [runs]);
