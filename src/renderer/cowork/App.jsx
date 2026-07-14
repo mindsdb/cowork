@@ -3356,9 +3356,12 @@ function AppCore() {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
     // Mark it in-flight locally so reconcileTaskMessages doesn't inject
-    // a spurious "got interrupted" prompt before the 5s poll catches up.
+    // a spurious "got interrupted" prompt before the 5s poll catches up,
+    // then navigate straight to the new run so the user sees it stream.
     if (result?.conversation_id) {
       markInFlight(result.conversation_id);
+      setActiveTaskId(result.conversation_id);
+      setRoute('task');
     }
     await refreshSchedules();
     refreshData();
