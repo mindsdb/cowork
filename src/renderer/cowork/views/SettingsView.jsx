@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType, modelLabel, resolveModelPickerValue } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, modelLabel, resolveModelPickerValue, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
@@ -740,21 +740,16 @@ export default function SettingsView({
     if (!override || typeof override !== 'object') return null;
     return { ...override, providerType: providerValueToType(override.providerType) };
   };
-  const canonicalProviderForRole = (role) => providerValueToType(
-    role === 'planning' ? settings.planningProvider : settings.codingProvider,
-  ) || 'minds-cloud';
-  const canonicalModelForRole = (role) => {
-    if (role === 'planning') return settings.planningModel ?? settings.defaultModel ?? '';
-    return settings.codingModel ?? '';
-  };
-  const roleProviderType = (role) => roleOverride(role)?.providerType || canonicalProviderForRole(role);
-  const roleModelValue = (role, fallback = '') => {
-    const override = roleOverride(role);
-    if (override && Object.prototype.hasOwnProperty.call(override, 'model')) {
-      return override.model || '';
-    }
-    return canonicalModelForRole(role) || fallback || '';
-  };
+  const canonicalProviderForRole = (role) => effectiveRoleProvider(settings, role);
+  const canonicalModelForRole = (role) => effectiveRoleModel(settings, role);
+  // ENG-739: resolve the picker's current provider/model from the canonical
+  // fields the SERVER executes, never from `model_overrides`. Sourcing the
+  // current value from the overrides hid a stale planning_model pin
+  // (latest:sonnet) behind the override's model, so the picker showed a model
+  // already-selected, offered no change, and a stuck free-tier user could not
+  // recover. See effectiveRoleModel / effectiveRoleProvider.
+  const roleProviderType = (role) => canonicalProviderForRole(role);
+  const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     const nextModel = model || '';
