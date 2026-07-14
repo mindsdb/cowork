@@ -52,11 +52,9 @@
   /* Aqua (primary) — palette base, used by both themes */
   --primary-50:  #CBF1F9;
   --primary-300: #25BBD3;
-  --primary-400: #1F9CB0;
   --primary-500: #1A8596;
   --primary-600: #146573;
   --primary-700: #115562;
-  --primary-800: #0E4651;
 
   /* Frost */
   --frost-50:  #EBF2F5;
@@ -82,7 +80,6 @@
 
   /* Sage */
   --sage-50:  #D3F9F0;
-  --sage-400: #78BAAC;
   --sage-500: #5D9287;
   --sage-600: #4D7A70;
   --sage-700: #3D6159;
@@ -127,7 +124,6 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
-  --line-soft:    #EFEFED;
   /* Sidebar surface — light mode uses a warmer grey so the OS-drawn
      inactive traffic-light circles (~#a8a8a8) read against it. Dark
      mode follows the regular surface. */
@@ -168,18 +164,6 @@ body, body[data-theme="light"] {
   --success-border:#A7F3D0;
   --success-text: #166534;
   --success-glow: rgba(21, 128, 61, 0.40);
-
-  /* Project tint palette — used by ProjectCard's accent stripe.
-     Light mode picks deeper, more saturated values that read against
-     the white surface. Dark-mode overrides below shift these toward
-     the brighter neon family. Pulled from the design guidelines
-     palettes in docs/design-guidelines/{light,dark}_mode.html. */
-  --tint-1:       #1F9CB0;  /* anton teal */
-  --tint-2:       #2F8A4A;  /* sage */
-  --tint-3:       #B98007;  /* warm amber */
-  --tint-4:       #B91C1C;  /* deep red */
-  --tint-5:       #6B5BA8;  /* iris */
-  --tint-6:       #115562;  /* depth teal */
 
   --r-sm:         4px;
   --r:            6px;
@@ -299,15 +283,6 @@ body[data-theme="dark"] {
   --success-border:rgba(74, 222, 128, 0.25);
   --success-text: #86EFAC;
   --success-glow: rgba(74, 222, 128, 0.55);
-
-  /* Dark-mode project tints — brighter neon-family palette that
-     reads as luminous against the deep navy surfaces. */
-  --tint-1:       #22D3EE;  /* neon cyan (brand accent) */
-  --tint-2:       #6EE7B7;  /* mint */
-  --tint-3:       #E8C58E;  /* warm peach */
-  --tint-4:       #F87171;  /* coral */
-  --tint-5:       #C4B5FD;  /* lavender */
-  --tint-6:       #BEF264;  /* lime */
 
   --sh-1:         0 1px 3px rgba(0, 0, 0, 0.20);
   --sh-2:         0 2px 10px rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.12);
@@ -1207,8 +1182,8 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-home-card.active {
-  border-color: #2f6fed;
-  box-shadow: 0 0 0 1px #2f6fed;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .customize-home-card-icon {
@@ -1617,7 +1592,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   height: 22px;
   border: 0;
   border-radius: 999px;
-  background: #2f80ed;
+  background: var(--accent);
   padding: 2px;
   display: inline-flex;
   justify-content: flex-end;
@@ -3817,7 +3792,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   transition: background .12s, color .12s, border-color .12s;
 }
 .chat-header__rail-toggle.active {
-  border-color: var(--line2, var(--line));
+  border-color: var(--line-2);
   background: var(--surface);
   color: var(--ink);
 }
@@ -3956,7 +3931,7 @@ body[data-theme="dark"] .chat-shell .msg-user {
   width: min(720px, 100%);
   pointer-events: auto;
   background: var(--surface);
-  border: 1px solid var(--line2, var(--line));
+  border: 1px solid var(--line-2);
   border-radius: 18px;
   padding: 14px 16px 12px;
   box-shadow:
