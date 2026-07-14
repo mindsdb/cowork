@@ -13,6 +13,7 @@ import {
   decideUpdateApply,
   otaUiEnabled,
   otaCacheIsFresh,
+  uiServerCompatSkipReason,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -252,6 +253,20 @@ describe('parseUiManifest', () => {
     expect(parseUiManifest(JSON.stringify({ ...valid, sha256: SHA + 'ab' }))).toBeNull();
     expect(parseUiManifest(JSON.stringify({ ...valid, sha256: 'zz'.repeat(32) }))).toBeNull();
   });
+
+  it('picks up an optional min server version (snake_case or camelCase)', () => {
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: '2.26.7.6.1' }))).toEqual({
+      ...valid,
+      minServerVersion: '2.26.7.6.1',
+    });
+    expect(parseUiManifest(JSON.stringify({ ...valid, minServerVersion: '2.26.7.6.1' }))).toEqual({
+      ...valid,
+      minServerVersion: '2.26.7.6.1',
+    });
+    // A non-string / empty constraint is ignored (treated as no constraint).
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: 123 }))).toEqual(valid);
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: '' }))).toEqual(valid);
+  });
 });
 
 describe('looksLikeBrokenInstall', () => {
@@ -373,5 +388,33 @@ describe('otaCacheIsFresh', () => {
     expect(otaCacheIsFresh(null, '2.26.7.6.1')).toBe(false);
     expect(otaCacheIsFresh('bundled', '2.26.7.6.1')).toBe(false);
     expect(otaCacheIsFresh('2.26.7.13.1', '2.0.7')).toBe(false); // legacy pkg.json fallback
+  });
+});
+
+describe('uiServerCompatSkipReason', () => {
+  it('allows when there is no constraint (absent, empty, or non-CalVer floor)', () => {
+    expect(uiServerCompatSkipReason({ serverVersion: '0.26.7.6.4.dev40+g82a1da968' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: '', serverVersion: '0.26.7.6.4' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: null, serverVersion: '0.26.7.6.4' })).toBeNull();
+    // A non-CalVer floor (e.g. the old pre-CalVer 0.1.x) is ignored, not enforced.
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.1.6', serverVersion: '0.26.7.6.4' })).toBeNull();
+  });
+
+  it('allows when the server version is unknown (never block on a check we cannot do)', () => {
+    expect(uiServerCompatSkipReason({ minServerVersion: '2.26.7.6.1', serverVersion: null })).toBeNull();
+  });
+
+  it('withholds when the running server is older than the floor (by CalVer)', () => {
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.4', serverVersion: '0.26.7.6.1' }))
+      .toBe('server 0.26.7.6.1 < required 0.26.7.6.4');
+    // Earlier date is older regardless of a higher seq.
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.5.9' }))
+      .toBe('server 0.26.7.5.9 < required 0.26.7.6.1');
+  });
+
+  it('allows when the server meets or exceeds the floor, tolerating a PEP 440 dev suffix', () => {
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.6.1' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.13.1' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.6.4.dev40+g82a1da968' })).toBeNull();
   });
 });

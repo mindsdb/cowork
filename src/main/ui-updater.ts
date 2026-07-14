@@ -3,9 +3,10 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, type UIManifest } from './update-logic';
+import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, uiServerCompatSkipReason, type UIManifest } from './update-logic';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
+import { fetchServerVersions } from './server-process';
 
 export type { UIManifest };
 
@@ -35,6 +36,7 @@ export interface UpdateCheckResult {
   updateAvailable: boolean;
   applied: boolean;
   newVersion?: string;
+  skippedReason?: string; // set when a bundle was withheld (e.g. server too old)
 }
 
 function getCacheDir(): string {
@@ -251,6 +253,18 @@ function activateStaged(version: string): void {
   console.log(`[ui-updater] activated UI ${version}`);
 }
 
+/** Reason to withhold this UI bundle for server-compat, or null if OK to apply.
+ *  A safety net on top of the server-first update coupling: reads the running
+ *  server version once from /health and delegates the (CalVer) decision to the
+ *  pure helper. No constraint / unknown server never blocks. */
+async function serverCompatSkip(manifest: UIManifest): Promise<string | null> {
+  if (!manifest.minServerVersion) return null;
+  const { server } = await fetchServerVersions().catch(() => ({ server: null }));
+  const reason = uiServerCompatSkipReason({ minServerVersion: manifest.minServerVersion, serverVersion: server });
+  if (reason) console.log(`[ui-updater] withholding UI ${manifest.version}: ${reason}`);
+  return reason;
+}
+
 /**
  * Check for UI updates. If a new version is available, downloads and
  * stages it but does NOT activate (caller decides when to activate).
@@ -278,6 +292,9 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
     return { updateAvailable: false, applied: false };
   }
 
+  const skippedReason = await serverCompatSkip(manifest);
+  if (skippedReason) return { updateAvailable: false, applied: false, skippedReason };
+
   return { updateAvailable: true, applied: false, newVersion: manifest.version };
 }
 
@@ -296,6 +313,10 @@ export async function applyUIUpdate(): Promise<boolean> {
 
   const cached = getCachedVersion();
   if (cached === manifest.version) return false;
+
+  // Defense in depth: re-check compat at apply time (the manual apply path
+  // forces a UI apply without a fresh checkForUIUpdate).
+  if (await serverCompatSkip(manifest)) return false;
 
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;

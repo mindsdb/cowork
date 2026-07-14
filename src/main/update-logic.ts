@@ -247,6 +247,30 @@ export interface UIManifest {
   version: string;
   url: string; // GitHub Release asset download URL
   sha256: string;
+  minServerVersion?: string; // optional CalVer floor: minimum cowork-server this UI needs
+}
+
+/** Should a UI bundle be withheld because the running server is older than it
+ *  requires? A thin, explicit safety net ON TOP OF the server-first update
+ *  coupling — it covers the cases coupling can't: UI-only passes, pinned/PyPI
+ *  server refs that can't roll forward, and publish-order races. Returns a
+ *  human-readable reason to skip, or null to allow.
+ *   - no/absent/non-CalVer floor → allow (opt-in per release; a non-CalVer
+ *     floor is ignored rather than wrongly blocking);
+ *   - unknown server version → allow (never block on a check we can't do);
+ *   - server older than the floor (by CalVer date/seq, MAJOR ignored) → skip. */
+export function uiServerCompatSkipReason(input: {
+  minServerVersion?: string | null;
+  serverVersion: string | null;
+}): string | null {
+  const min = parseCalVer(input.minServerVersion);
+  if (!min) return null;
+  const server = parseCalVer(input.serverVersion);
+  if (!server) return null;
+  if (compareCalVer(server, min) < 0) {
+    return `server ${input.serverVersion} < required ${input.minServerVersion}`;
+  }
+  return null;
 }
 
 /** Validate a fetched latest.json body into a UIManifest, or null.
@@ -258,7 +282,12 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
     const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
     if (!isNonEmptyString(data?.version) || !isNonEmptyString(data?.url)) return null;
     if (typeof data.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(data.sha256)) return null;
-    return { version: data.version, url: data.url, sha256: data.sha256 };
+    const manifest: UIManifest = { version: data.version, url: data.url, sha256: data.sha256 };
+    // Optional server-compat floor. Accept camelCase or the snake_case the
+    // publish workflow writes; a non-string / empty value means no constraint.
+    const msv = data.minServerVersion ?? data.min_server_version;
+    if (isNonEmptyString(msv)) manifest.minServerVersion = msv;
+    return manifest;
   } catch {
     return null;
   }
