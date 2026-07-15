@@ -54,8 +54,6 @@
       trackPointer: true,
       pointerTarget: null,   // element to listen on; defaults to canvas's parent
       maxDpr: 2,             // cap devicePixelRatio for perf
-      intensity: 1,          // global alpha scale for dots/arrows/glow (1 = default;
-                             // <1 makes the field quieter so foreground surfaces pop)
     }, opts || {});
 
     const ctx = canvas.getContext('2d');
@@ -179,7 +177,7 @@
             const u = Math.max(0, Math.min(1, (dist - MID) / (FAR_VANISH - MID)));
             distFade = 1 - (u * u * (3 - 2 * u));
           }
-          const baseA = 0.18 * distFade * o.intensity;
+          const baseA = 0.18 * distFade;
 
           if (arrowness < 0.04) {
             // Pure dot.
@@ -225,7 +223,7 @@
 
       // Whisper-faint glow at the center of mass.
       const grad = ctx.createRadialGradient(cmx, cmy, 0, cmx, cmy, 240);
-      grad.addColorStop(0, palette.glow(0.06 * o.intensity));
+      grad.addColorStop(0, palette.glow(0.06));
       grad.addColorStop(1, palette.glow(0));
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);

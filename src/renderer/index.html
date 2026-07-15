@@ -46,13 +46,9 @@
       // trackPointer:false → field drifts freely on its own; cursor
       // doesn't steer the attractor. The default would steer toward the
       // mouse, which felt distracting once the dots cover the whole window.
-      // intensity:0.6 dials the field back so it reads as ambient texture, not
-      // a pattern that competes with foreground surfaces — the de-bubbled chat
-      // user turn (a soft --surface-2 fill, ENG-787) needs the ground quieter
-      // than it to stay legible. One tunable number; 1 = the field's original weight.
       window.gravityField = window.GravityField.mount(
         document.getElementById('gravity-field-bg'),
-        { theme: 'dark', trackPointer: false, intensity: 0.6 },
+        { theme: 'dark', trackPointer: false },
       );
     </script>
     <script type="module" src="./main.tsx"></script>
