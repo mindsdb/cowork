@@ -41,9 +41,12 @@
     <div id="root"></div>
     <script src="./gravity-field/gravity-field.js"></script>
     <script>
+      // intensity:0.6 keeps the field as ambient texture rather than a pattern
+      // that competes with foreground surfaces (see index.html for the rationale;
+      // pairs with the ENG-787 de-bubbled chat turn). 1 = original weight.
       window.gravityField = window.GravityField.mount(
         document.getElementById('gravity-field-bg'),
-        { theme: 'dark', trackPointer: false },
+        { theme: 'dark', trackPointer: false, intensity: 0.6 },
       );
     </script>
     <script type="module" src="./web-main.tsx"></script>
