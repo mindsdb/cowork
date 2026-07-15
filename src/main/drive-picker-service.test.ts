@@ -91,6 +91,35 @@ describe('openDrivePickerFlow', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('ignores unauthenticated /result POSTs instead of tearing down the flow, and still resolves the real one', async () => {
+    const flowPromise = openDrivePickerFlow('token', 'key');
+    await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
+    const { port, state } = extractPortAndState(openExternalMock.mock.calls[0][0]);
+
+    // Malformed JSON body — same shape any local process (or a page doing
+    // a no-cors POST to this port) could send without knowing `state` at
+    // all. Must not kill the flow: the body is parsed before the state
+    // check, so this has to be handled without ever reaching resolve/reject.
+    await new Promise<void>((resolve, reject) => {
+      const req = http.request(
+        { host: '127.0.0.1', port, path: '/result', method: 'POST', headers: { 'Content-Type': 'application/json' } },
+        (res) => { res.resume(); res.on('end', resolve); },
+      );
+      req.on('error', reject);
+      req.end('not valid json');
+    });
+
+    // Well-formed JSON but the wrong state — same idea, an attacker who
+    // can reach the port but doesn't know the real secret.
+    await postResult(port, 'wrong-state', { files: [{ id: 'evil', name: 'evil' }] });
+
+    // The real tab's post should still land afterward — the flow must
+    // still be alive and waiting.
+    await postResult(port, state, { files: [{ id: 'f1', name: 'Doc 1' }] });
+    const result = await flowPromise;
+    expect(result).toEqual({ ok: true, files: [{ id: 'f1', name: 'Doc 1' }] });
+  });
+
   it('cancels the FIRST picker session (not left orphaned) when a second one starts before the first resolves', async () => {
     const firstFlow = openDrivePickerFlow('token-1', 'key');
     await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalledTimes(1));

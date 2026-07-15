@@ -112,30 +112,40 @@ export async function openDrivePickerFlow(
 
         if (url.pathname === '/result' && req.method === 'POST') {
           let body = '';
-          // Without this, an aborted request (tab closed / network drop
-          // mid-transfer) emits an unhandled 'error' on `req`, which Node
-          // throws and crashes the whole Electron main process.
-          req.on('error', (e) => {
+          // The loopback port is reachable by any local process, and a
+          // page open in the user's browser can POST here too (a
+          // no-cors fetch still sends the request — it just can't read
+          // the response). Until `state` below has been checked, we
+          // have no idea whether a given request came from the tab we
+          // opened, so nothing in this handler may reject()/resolve()
+          // the flow before that check passes — only respond with a
+          // plain HTTP error and keep waiting. Attaching this listener
+          // (regardless of what it does) is what keeps an aborted
+          // request's 'error' event from throwing and crashing the
+          // Electron main process — it doesn't need to reject the flow
+          // to do that.
+          req.on('error', () => {
             try { res.statusCode = 400; res.end('Bad request.'); } catch {}
-            reject(e instanceof Error ? e : new Error(String(e)));
           });
           req.on('data', (chunk) => { body += chunk; });
           req.on('end', () => {
+            let payload: { state?: string; files?: DrivePickerFile[]; cancelled?: boolean };
             try {
-              const payload = JSON.parse(body || '{}') as { state?: string; files?: DrivePickerFile[]; cancelled?: boolean };
-              if (payload.state !== state) {
-                res.statusCode = 403;
-                res.end('Invalid state.');
-                return;
-              }
-              res.statusCode = 200;
-              res.setHeader('Content-Type', 'application/json');
-              res.end('{"ok":true}');
-              resolve(payload.cancelled ? [] : (Array.isArray(payload.files) ? payload.files : []));
-            } catch (e: any) {
-              try { res.statusCode = 400; res.end('Bad request.'); } catch {}
-              reject(e instanceof Error ? e : new Error(String(e)));
+              payload = JSON.parse(body || '{}');
+            } catch {
+              res.statusCode = 400;
+              res.end('Bad request.');
+              return;
             }
+            if (payload.state !== state) {
+              res.statusCode = 403;
+              res.end('Invalid state.');
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end('{"ok":true}');
+            resolve(payload.cancelled ? [] : (Array.isArray(payload.files) ? payload.files : []));
           });
           return;
         }
