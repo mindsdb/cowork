@@ -3545,7 +3545,10 @@ function AppCore() {
           connectorsCount={connectors.length}
           activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
           settingsActive={settingsOpen}
-          activeTaskId={activeTaskId}
+          // Only mark a recent as "selected" while actually viewing a task —
+          // activeTaskId persists across navigation, so passing it unconditionally
+          // left the last-opened task highlighted on Projects/Settings/etc.
+          activeTaskId={route === 'task' ? activeTaskId : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
           onNavigate={navigate}
