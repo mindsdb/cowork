@@ -13,10 +13,10 @@ const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
-function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
+function NavItem({ icon, label, active, onClick, badge, comingSoon }) {
   return (
     <button
-      className={`nav-item${active ? ' active' : ''}${compact ? ' compact' : ''}`}
+      className={`nav-item${active ? ' active' : ''}`}
       onClick={comingSoon ? undefined : onClick}
       aria-label={label}
       data-coming-soon={comingSoon ? '' : undefined}
@@ -526,20 +526,16 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Brain-style nav — visually grouped panel.
-            Order: Memories → Skills library → Settings. Labels read
-            as the things the user OWNS (plural collections) rather
-            than the abstract concepts the engine names them after.
-            No heading: the agent name (e.g. "Anton") read as
-            inconsistent branding here, and the bordered panel already
-            sets the group apart on its own. marginTop gives the group
-            a deliberate top gap (matching the breathing room below it,
-            before the Pinned label) in place of the removed heading —
-            a touch tighter than the heading's own footprint, which
-            avoids leaving an empty heading-sized void. */}
-        <div className="anton-group" style={{ marginTop: 18 }}>
-          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} compact />
-          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} compact />
+        {/* Agent — the agent's own brain: what it remembers (Memories)
+            and what it can do (Skills library). Pulled out of the old
+            bordered inset and presented as a labeled group, so it reads
+            as a category alongside Pinned / Recent instead of a drawn
+            box (fewer edges). Labels name what the user OWNS (plural
+            collections) rather than the engine's abstract concepts. */}
+        <div className="section-label">Agent</div>
+        <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty

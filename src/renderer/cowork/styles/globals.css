@@ -2629,51 +2629,50 @@ body[data-theme="dark"] .app-sidebar::before {
 
 /* New task CTA — outlined neon in dark, accent-bordered in light */
 .anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
+/* Neutral primary action — reads as a button (raised surface + hairline +
+   soft token shadow) without spending the accent on it. Teal is reserved
+   for "where you are" / "what's primary in meaning," not the new-task CTA
+   (matches Claude/Codex: New chat is a quiet, clearly-tappable row). */
 .btn-new-task {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
   border-radius: var(--r-8);
+  box-shadow: var(--sh-1);
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 550;
   letter-spacing: 0;
   cursor: pointer;
   text-align: left;
-  transition: background .12s ease, color .12s ease, border-color .12s ease,
+  transition: background .12s ease, border-color .12s ease,
               box-shadow .15s ease, transform .05s ease;
 }
 .btn-new-task:hover {
-  background: var(--accent-bg);
-  color: var(--accent-2);
-  border-color: var(--accent-2);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--surface-2);
+  border-color: var(--line-2);
 }
 .btn-new-task:active { transform: translateY(0.5px); }
 .btn-new-task__label { flex: 1; }
 .btn-new-task .kbd {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--ink-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   padding: 1px 5px;
   border-radius: var(--r-sm);
   font-weight: 500;
 }
-body[data-theme="dark"] .btn-new-task {
-  font-weight: 600;
-  text-shadow: 0 0 10px var(--accent-glow);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-body[data-theme="dark"] .btn-new-task:hover {
-  box-shadow: 0 0 0 1px var(--accent), 0 0 28px var(--accent-glow);
-}
+/* Dark: nudge the fill one surface step up so the button still reads as
+   raised against the navy sidebar (where --surface ≈ the sidebar base). */
+body[data-theme="dark"] .btn-new-task { background: var(--surface-2); }
+body[data-theme="dark"] .btn-new-task:hover { background: var(--surface-3); }
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
@@ -2681,7 +2680,9 @@ body[data-theme="dark"] .btn-new-task:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
+  /* Roomier rows (ENG-640 move 06): a little more height so the rail
+     reads as considered rather than cramped. */
+  padding: 8px 10px;
   height: auto;
   border-radius: var(--r);
   color: var(--ink-2);
@@ -2699,12 +2700,15 @@ body[data-theme="dark"] .btn-new-task:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
+/* Active = "where you are," so it earns the accent: a soft teal tint
+   instead of a generic grey box (ENG-640 move 06). */
 .app-sidebar .nav-item.active {
-  color: var(--ink);
+  color: var(--accent-2);
   font-weight: 550;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  background: var(--accent-bg);
 }
 body[data-theme="dark"] .app-sidebar .nav-item.active {
+  color: var(--accent);
   background: var(--accent-bg);
   text-shadow: 0 0 14px var(--accent-glow);
 }
@@ -2720,9 +2724,6 @@ body[data-theme="dark"] .app-sidebar .nav-item.active::before {
   box-shadow: 0 0 10px var(--accent-glow);
 }
 .app-sidebar .nav-item.active span:first-child { color: var(--accent) !important; }
-
-/* Compact variant (inside Anton group) */
-.app-sidebar .nav-item.compact { padding: 6px 8px; }
 
 /* Section labels */
 .app-sidebar .section-label {
@@ -2752,27 +2753,6 @@ body[data-theme="dark"] .app-sidebar .nav-item.active::before {
 }
 .recents-heading .recents-viewall:hover {
   color: var(--accent);
-}
-
-/* Anton group — visually grouped panel */
-.anton-group {
-  position: relative;
-  margin: 0 10px;
-  padding: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow: hidden;
-}
-body[data-theme="dark"] .anton-group {
-  /* Flat surface — the previous vertical gradient + accent hairline
-     read as decoration on top of an already-distinct panel. The
-     border + surface-2 fill give enough separation from the sidebar
-     base on their own. */
-  background: var(--surface-2);
 }
 
 /* Pinned empty-state */
