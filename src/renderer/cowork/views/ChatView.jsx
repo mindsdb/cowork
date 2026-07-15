@@ -23,6 +23,8 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
+import BrowserActionControls from '../components/browser/BrowserActionControls';
+import StepBrowserResults, { hasActiveBrowserAction, activeBrowserDomain } from '../components/browser/BrowserResults';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -32,6 +34,7 @@ import { normalizeArtifactRecord } from '../lib/artifactPaths';
 import { host, isWeb } from '../../platform/host';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useBrowserControl } from '../hooks/useBrowserControl';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
@@ -1026,6 +1029,8 @@ export default function ChatView({
   onOpenProjectsList,
   onOpenSettings,
   onStop,
+  onBrowserStop,
+  onBrowserTakeOver,
   projects = [],
   sidebarCollapsed = false,
   // Messages the user typed while Anton was mid-turn. Displayed as
@@ -1037,6 +1042,13 @@ export default function ChatView({
 }) {
   const scrollRef = useRef(null);
   const { isNarrow } = useBreakpoint();
+  // Live Browser Control bridge state. The connected bridge carries the real
+  // active domain (host-only, content-free), which is the most reliable source
+  // for the "Browsing {domain}" label — the browser step's tool args do not
+  // include a domain. We prefer this over the step-derived domain and fall back
+  // to it only when the bridge isn't connected (e.g. a replayed historical turn
+  // where the bridge state is no longer live).
+  const { domain: bridgeDomain } = useBrowserControl();
   // Wide: inline grid column. Narrow: fixed overlay from the right.
   const [railOpen, setRailOpen] = useState(true);
   const [railNarrowOpen, setRailNarrowOpen] = useState(false);
@@ -1751,6 +1763,7 @@ export default function ChatView({
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} />
+                  <StepBrowserResults steps={m.steps} />
                 </AnswerTurn>
               );
               });
@@ -1795,6 +1808,14 @@ export default function ChatView({
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
                 <StepSkills steps={streamingMsg.steps} />
+                <StepBrowserResults steps={streamingMsg.steps} />
+                {hasActiveBrowserAction(streamingMsg.steps) && (
+                  <BrowserActionControls
+                    domain={bridgeDomain || activeBrowserDomain(streamingMsg.steps)}
+                    onStop={onBrowserStop || onStop}
+                    onBrowserTakeOver={onBrowserTakeOver}
+                  />
+                )}
               </AnswerTurn>
             ) : isStreaming && (
               <AnswerTurn state="thinking" showActions={false}>

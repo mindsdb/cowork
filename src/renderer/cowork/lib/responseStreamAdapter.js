@@ -1,4 +1,11 @@
-import { trackArtifactBuilt as _trackArtifactBuilt, trackTokenCapHit as _trackTokenCapHit } from './analytics';
+import {
+  trackArtifactBuilt as _trackArtifactBuilt,
+  trackTokenCapHit as _trackTokenCapHit,
+  trackBrowserTaskStarted as _trackBrowserTaskStarted,
+  trackBrowserTaskSucceeded as _trackBrowserTaskSucceeded,
+  trackBrowserTaskFailed as _trackBrowserTaskFailed,
+  trackBrowserResultTime as _trackBrowserResultTime,
+} from './analytics';
 
 // Anton /v1/responses → ThinkingStep adapter.
 //
@@ -50,6 +57,12 @@ export function initialStreamState() {
     error: null,
     /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
     errorCode: null,
+    /** Browser Control task lifecycle bookkeeping (WS5-T2). Set on the first
+     *  browser tool-call step; drives the terminal succeeded/failed + elapsed
+     *  events. `_browserTaskStartedAt` gates the funnel so only turns that used
+     *  the browser fire lifecycle events. */
+    _browserTaskStartedAt: null,
+    _browserActionCount: 0,
   };
 }
 
@@ -144,6 +157,23 @@ function toolCallLabel(name, args) {
   return `${name}: ${short}`;
 }
 
+/** Human-readable label for a Browser Control tool-call step. The LLM authors
+ *  a one-line `progress_message` ("Reading account list", "Opening July
+ *  report"); prefer it, falling back to the action verb so the row is never
+ *  blank. Truncated to keep the step row tidy. Content-free: no URL/text. */
+function browserActionLabel(args = {}) {
+  const msg = typeof args.progress_message === 'string' ? args.progress_message.trim() : '';
+  if (msg) return msg.length > 80 ? msg.slice(0, 77) + '…' : msg;
+  const action = typeof args.action === 'string' ? args.action : '';
+  const verb = {
+    inspect: 'Reading the page',
+    follow_link: 'Following a link',
+    scroll: 'Scrolling the page',
+    wait: 'Waiting for the page',
+  }[action];
+  return verb || 'Browsing';
+}
+
 /** Truncate reasoning text to a short label for the step row. */
 function truncateLabel(text) {
   if (!text) return 'Reasoning…';
@@ -206,9 +236,15 @@ function deriveCellStatus(serverStatus, parsedCell) {
  * @param {() => number} [now] — clock injection for tests
  * @returns {object} new state
  */
-export function reduceStream(state, event, now = Date.now, { replay = false } = {}) {
+export function reduceStream(state, event, now = Date.now, { replay = false, ids } = {}) {
   if (!event || typeof event !== 'object') return state;
   const type = event.type;
+  // Shared, content-free id set for the Browser Control funnel
+  // (installation_id / session_id / task_id). Threaded from the caller so the
+  // lifecycle events fired below (started / succeeded / failed / result-time)
+  // carry the same ids as the connect/approve/stop/takeover events. Undefined
+  // ids are dropped by browserFunnelProps, so replay/tests stay content-free.
+  const funnelIds = ids || undefined;
 
   // Wall-clock timestamp the server stamped on this event. Live
   // streams: equals (≈) Date.now() at arrival. Historical replays:
@@ -233,6 +269,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.completed') {
+    // Browser Control task lifecycle (WS5-T2): only turns that actually used
+    // the browser tool fire the terminal succeeded + elapsed events.
+    if (!replay && state._browserTaskStartedAt) {
+      try {
+        _trackBrowserTaskSucceeded(state._browserActionCount || 0, funnelIds);
+        _trackBrowserResultTime(eventTs - state._browserTaskStartedAt, funnelIds);
+      } catch { /* analytics never breaks streaming */ }
+    }
     return { ...state, steps: closeOpenInspectableSteps(state.steps, eventTs), status: 'done' };
   }
 
@@ -242,6 +286,14 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     if (!replay && event.code === 'token_limit') {
       try { _trackTokenCapHit(); }
       catch { /* analytics must never break streaming */ }
+    }
+    // Browser Control task lifecycle (WS5-T2): a browser turn that failed fires
+    // failed (with the typed code) + elapsed, and never the succeeded event.
+    if (!replay && state._browserTaskStartedAt) {
+      try {
+        _trackBrowserTaskFailed(event.code || 'error', funnelIds);
+        _trackBrowserResultTime(eventTs - state._browserTaskStartedAt, funnelIds);
+      } catch { /* analytics never breaks streaming */ }
     }
     return {
       ...state,
@@ -455,12 +507,17 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const id = `step-${state.steps.length + 1}`;
     const toolName = event.content || 'Tool call';
     const args = event.args || {};
-    const label = toolCallLabel(toolName, args);
+    // Browser Control tool calls get a distinct badge + icon and a readable,
+    // domain-tied progress line (the LLM-authored `progress_message`) rather
+    // than the generic "name: <arg>" label. The step is still a normal
+    // `_isToolCall` step so ThinkingBlock/PhaseProgress render it unchanged.
+    const isBrowser = toolName === 'browser_control';
+    const label = isBrowser ? browserActionLabel(args) : toolCallLabel(toolName, args);
     const step = {
       id,
       label,
-      badge: 'Tool',
-      icon: 'code',
+      badge: isBrowser ? 'Browser' : 'Tool',
+      icon: isBrowser ? 'search' : 'code',
       status: 'in_progress',
       startedAt: eventTs,
       completedAt: null,
@@ -469,11 +526,28 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       result: null,
       _isScratchpad: false,
       _isToolCall: true,
+      _isBrowserAction: isBrowser,
       _scratchpadTabId: null,
       _toolUseId: event.tool_use_id || null,
     };
     // Close any open reasoning step — tool use means thinking is done.
     const steps = closeReasoningStep(state.steps, eventTs);
+    // Browser Control task lifecycle (WS5-T2): count actions, and fire the
+    // start event exactly once on the first browser action of the turn. A
+    // reconnect within the turn reuses the same task_id (App wires the id), so
+    // subsequent starts only bump the count — no double-count.
+    if (isBrowser) {
+      const firstBrowserAction = !state._browserTaskStartedAt;
+      if (firstBrowserAction && !replay) {
+        try { _trackBrowserTaskStarted(funnelIds); } catch { /* analytics never breaks streaming */ }
+      }
+      return {
+        ...state,
+        steps: [...steps, step],
+        _browserTaskStartedAt: state._browserTaskStartedAt ?? eventTs,
+        _browserActionCount: (state._browserActionCount || 0) + 1,
+      };
+    }
     return { ...state, steps: [...steps, step] };
   }
 
@@ -484,13 +558,33 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       completedAt: eventTs,
       output: typeof event.content === 'string' ? event.content.slice(0, 2048) : null,
     };
+    const patchFor = (step) => {
+      // Browser steps: parse the WS3 envelope from the FULL content before the
+      // generic 2048-char truncation above — a large `observed` blob would
+      // otherwise cut the JSON mid-string and the finished action would lose
+      // its terminal card (citations / failure line / stopped note). Only the
+      // small content-free terminal fields are kept; `observed` is transient
+      // answer-path data and is deliberately dropped here.
+      if (step?.badge === 'Browser' && typeof event.content === 'string') {
+        try {
+          const env = JSON.parse(event.content);
+          if (env && typeof env === 'object' && typeof env.status === 'string') {
+            const compact = { status: env.status };
+            if (env.control_state) compact.control_state = env.control_state;
+            if (Array.isArray(env.citations)) compact.citations = env.citations;
+            return { ...patch, browserEnvelope: compact };
+          }
+        } catch { /* non-JSON content — fall through to the generic patch */ }
+      }
+      return patch;
+    };
     if (toolUseId) {
       const idx = state.steps.findIndex(
         (s) => s._toolUseId === toolUseId,
       );
       if (idx !== -1) {
         const updated = state.steps.slice();
-        updated[idx] = { ...state.steps[idx], ...patch };
+        updated[idx] = { ...state.steps[idx], ...patchFor(state.steps[idx]) };
         return { ...state, steps: updated };
       }
     }
@@ -498,7 +592,7 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     const last = state.steps[state.steps.length - 1];
     if (last && last.status === 'in_progress') {
       const updated = state.steps.slice();
-      updated[updated.length - 1] = { ...last, ...patch };
+      updated[updated.length - 1] = { ...last, ...patchFor(last) };
       return { ...state, steps: updated };
     }
     return state;

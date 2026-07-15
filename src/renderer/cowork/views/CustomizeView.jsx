@@ -21,6 +21,7 @@ import {
   SortPill,
   useCollectionShortcut,
 } from '../components/collection';
+import { useBrowserControl } from '../hooks/useBrowserControl';
 
 const FONT_BODY    = "var(--font-body)";
 const FONT_DISPLAY = "var(--font-display)";
@@ -697,6 +698,8 @@ export default function CustomizeView({
   /** Called with the fresh connections array so App can update the sidebar badge + composer list. */
   onConnectionsSynced,
   agentLabel = 'the agent',
+  /** Active conversation id — threaded into the Browser Control approve flow. */
+  activeConversationId = null,
 }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch] = useState('');
@@ -711,6 +714,10 @@ export default function CustomizeView({
   // the App-level route stays at 'customize' so the sidebar's active
   // state is correct throughout.
   const [showWorkflow, setShowWorkflow] = useState(false);
+
+  // Live Browser Control bridge state — surfaces as a real connection card
+  // when the bridge is connected or lost (needs-reconnect warning).
+  const browser = useBrowserControl();
 
   // Fetch fresh on every mount so connections made outside this view
   // (e.g. browser OAuth flow from the chat panel) are always visible.
@@ -786,6 +793,18 @@ export default function CustomizeView({
 
   const handleDelete = async (connection, savedDetail) => {
     try {
+      // Browser Control is a desktop-runtime bridge, not a vault record.
+      // Disconnecting must immediately revoke the CDP bridge, then re-sync so
+      // the card disappears (mirrors the browser_oauth_builtin -> keychainRevoke
+      // path below).
+      if (connection.engine === 'browser_control') {
+        await browser.revoke();
+        const fresh = await fetchDatasources();
+        const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
+        setList(next);
+        onConnectionsSyncedRef.current?.(next);
+        return;
+      }
       // For builtin OAuth connections in Electron, keychain:revoke stops the
       // refresh loop, removes the keychain entry, and deletes the vault record.
       if (host.isElectron) {
@@ -838,11 +857,25 @@ export default function CustomizeView({
 
   const total = list.length;
 
+  // Browser Control renders as a live connection card when the bridge is
+  // connected (ok) or lost (needs_reconnect warning). It is NOT a vault record,
+  // so it's kept out of `list`/`visible` and rendered alongside them.
+  const browserCard =
+    browser.state === 'connected' || browser.state === 'lost'
+      ? {
+          engine: 'browser_control',
+          name: 'browser_control',
+          display_name: 'Browser Control',
+          status: browser.state === 'lost' ? 'needs_reconnect' : 'connected',
+          subtitle: browser.domain,
+        }
+      : null;
+
   // While the workflow is open, hand the whole content area over to it.
   // The workflow has its own header with a "Back" button that calls
   // handleWorkflowClose, which refetches and pops back to the listing.
   if (showWorkflow) {
-    return <ConnectWorkflowView onClose={handleWorkflowClose} />;
+    return <ConnectWorkflowView onClose={handleWorkflowClose} activeConversationId={activeConversationId} />;
   }
 
   return (
@@ -877,7 +910,7 @@ export default function CustomizeView({
         />
       )}
 
-      {total === 0 ? (
+      {total === 0 && !browserCard ? (
         <EmptyState onConnectNew={handleConnectNew} agentLabel={agentLabel} />
       ) : (
         <div style={{
@@ -885,6 +918,13 @@ export default function CustomizeView({
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14,
           marginTop: 18,
         }}>
+          {browserCard && (
+            <ConnectionCard
+              key="browser_control"
+              connection={browserCard}
+              onDelete={handleDelete}
+            />
+          )}
           {visible.map((c) => (
             <ConnectionCard
               key={`${c.engine}-${c.name}`}

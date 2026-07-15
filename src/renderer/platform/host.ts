@@ -567,6 +567,16 @@ export function onMindsHubAuthChanged(
   return () => {};
 }
 
+// Stable, anonymous per-device analytics id (WS5). Electron-only — the web
+// shell has no device id, so callers get null and content-free events simply
+// omit the installation dimension.
+export async function getInstallationId(): Promise<string | null> {
+  if (isElectron && typeof bridge.getInstallationId === 'function') {
+    return (await bridge.getInstallationId()) ?? null;
+  }
+  return null;
+}
+
 // Where the refresh token is stored: macOS keychain (true) or a plaintext
 // file under ~/.cowork (false). Electron-only — the web shell has no local
 // token store, so both wrappers no-op to a safe default.
@@ -601,6 +611,126 @@ export async function logout(): Promise<void> {
   if (isElectron && typeof bridge.logout === 'function') {
     await bridge.logout();
   }
+}
+
+// ── Browser Control bridge (M1, read-only, Electron-only) ───────────────
+//
+// Electron main owns the CDP connection to the user's own Chrome. These
+// wrappers proxy the browser:* IPC channels; the web shell has no desktop
+// bridge, so each returns a graceful unavailable stub (never throws) and
+// onBrowserControlState returns a no-op unsubscriber. Args/results are plain
+// JSON so a future web transport can slot in without touching call sites.
+//
+// Modeled on keychainRevoke / oauthConnect / onOAuthRefreshError.
+
+// The bridge state machine, status, tab, and state-push shapes are owned by
+// the shared contract module (single source of truth, imported by BOTH the
+// Electron main process and — via host.ts — the renderer). Re-export them here
+// so cowork call sites can keep importing them from `host` unchanged.
+export type {
+  BridgeState,
+  BrowserStatusResult,
+  BrowserTab,
+  BridgeStatePayload,
+} from '../../shared/browser-bridge-types';
+import type {
+  BridgeState,
+  BrowserStatusResult,
+  BrowserTab,
+  BridgeStatePayload,
+} from '../../shared/browser-bridge-types';
+
+const WEB_UNAVAILABLE = 'Browser Control requires the desktop app.';
+
+export async function browserControlStatus(): Promise<BrowserStatusResult> {
+  if (isElectron && typeof bridge.browserControlStatus === 'function') {
+    return bridge.browserControlStatus();
+  }
+  return { available: false, state: 'disconnected' };
+}
+
+export async function browserControlListTabs(): Promise<{
+  ok: boolean;
+  tabs: BrowserTab[];
+  reason?: string;
+}> {
+  if (isElectron && typeof bridge.browserControlListTabs === 'function') {
+    return bridge.browserControlListTabs();
+  }
+  return { ok: false, tabs: [], reason: WEB_UNAVAILABLE };
+}
+
+export async function browserControlAttach(
+  targetId: string,
+): Promise<{ ok: boolean; state?: BridgeState; reason?: string }> {
+  if (isElectron && typeof bridge.browserControlAttach === 'function') {
+    return bridge.browserControlAttach(targetId);
+  }
+  return { ok: false, reason: WEB_UNAVAILABLE };
+}
+
+export async function browserControlApprove(): Promise<{
+  ok: boolean;
+  state?: BridgeState;
+  reason?: string;
+}> {
+  if (isElectron && typeof bridge.browserControlApprove === 'function') {
+    return bridge.browserControlApprove();
+  }
+  return { ok: false, reason: WEB_UNAVAILABLE };
+}
+
+export async function browserControlCancelAttach(): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.browserControlCancelAttach === 'function') {
+    return bridge.browserControlCancelAttach();
+  }
+  return { ok: false, reason: WEB_UNAVAILABLE };
+}
+
+// detach/revoke collapse to the same main-side teardown.
+export async function browserControlRevoke(): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.browserControlRevoke === 'function') {
+    return bridge.browserControlRevoke();
+  }
+  return { ok: false, reason: WEB_UNAVAILABLE };
+}
+
+export async function browserControlTakeOver(): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.browserControlTakeOver === 'function') {
+    return bridge.browserControlTakeOver();
+  }
+  return { ok: false, reason: WEB_UNAVAILABLE };
+}
+
+// Keep main in sync with the ACTIVE conversation id (pushed on change, not
+// only at tab-approval time) so the command poller can identify itself to
+// cowork-server: `/browse/bridge/hello` requires a conversation_id (or prior
+// session_id) and 422s an anonymous hello. Pass null to clear the binding.
+export async function browserControlSetConversation(
+  conversationId: string | null,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.browserControlSetConversation === 'function') {
+    return bridge.browserControlSetConversation(conversationId);
+  }
+  return { ok: false, reason: WEB_UNAVAILABLE };
+}
+
+// Signal a user Stop to main LOCALLY (in addition to the server control gate)
+// so the poller gates a command that was handed out just before the Stop.
+// Cleared main-side on the next attach (re-approval = resume).
+export async function browserControlStop(): Promise<{ ok: boolean; reason?: string }> {
+  if (isElectron && typeof bridge.browserControlStop === 'function') {
+    return bridge.browserControlStop();
+  }
+  return { ok: false, reason: WEB_UNAVAILABLE };
+}
+
+// Subscribe to bridge state pushes. Returns an unsubscribe fn (no-op on web).
+export function onBrowserControlState(cb: (payload: BridgeStatePayload) => void): () => void {
+  if (isElectron && typeof bridge.onBrowserState === 'function') {
+    return bridge.onBrowserState(cb);
+  }
+  return () => {};
 }
 
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
@@ -644,6 +774,7 @@ export const host = {
   mindshubFinalize,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
+  getInstallationId,
   getKeychainPref,
   setKeychainPref,
   getAccessToken,
@@ -652,6 +783,16 @@ export const host = {
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,
+  browserControlStatus,
+  browserControlListTabs,
+  browserControlAttach,
+  browserControlApprove,
+  browserControlCancelAttach,
+  browserControlRevoke,
+  browserControlTakeOver,
+  browserControlSetConversation,
+  browserControlStop,
+  onBrowserControlState,
 };
 
 export default host;

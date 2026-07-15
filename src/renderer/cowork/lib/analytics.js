@@ -375,6 +375,109 @@ export function trackHarnessSwapped(from, to) {
   capture('harness_swapped', { from: from || 'unknown', to: to || 'unknown' });
 }
 
+// ── Browser Control funnel (WS5, ENG Browser Control M1) ────────────
+//
+// Content-free product analytics for the read-only Browser Control feature.
+// The ONLY page-derived value ever attached is a registrable host (no path,
+// query, fragment, title, cookies, or form values) — extracted via domainOf.
+// Every event carries a shared id set so the funnel is countable at the
+// installation/session/task level without a PostHog person merge.
+const BROWSER_FUNNEL = 'browser_control_m1';
+
+// Reduce a URL to its host only — strips scheme, path, query, fragment, and
+// any userinfo/port so no page content can leak into analytics. Returns ''
+// for anything unparseable rather than echoing the raw input.
+export function domainOf(url) {
+  if (!url || typeof url !== 'string') return '';
+  const raw = url.trim();
+  if (!raw) return '';
+  try {
+    // Tolerate bare hosts (no scheme) by giving the URL parser something to
+    // anchor on; the parser then discards the placeholder scheme + any path.
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+    return new URL(withScheme).hostname || '';
+  } catch {
+    return '';
+  }
+}
+
+// Normalize the shared id set attached to every browser funnel event. Only the
+// allowlisted, content-free dimensions are carried; undefined ids are dropped.
+function browserFunnelProps(ids = {}, extra = {}) {
+  const props = { funnel: BROWSER_FUNNEL, ...extra };
+  if (ids.installationId) props.installation_id = ids.installationId;
+  if (ids.sessionId) props.session_id = ids.sessionId;
+  if (ids.taskId) props.task_id = ids.taskId;
+  if (ids.actionId) props.action_id = ids.actionId;
+  return props;
+}
+
+// Bridge reached `connected` after the user approved a tab. `os` is the host
+// platform (macOS/Windows) — no domain here (approval carries the domain).
+export function trackBrowserBridgeConnected(os, ids) {
+  capture('browser_bridge_connected', browserFunnelProps(ids, { os: os || 'unknown' }));
+}
+
+// A single tab was approved for a single active domain grant. `domain` is a
+// registrable host only (caller passes domainOf(url) or an already-hostname).
+export function trackBrowserTabApproved(domain, ids) {
+  // Only the sanitized host (or '') is emitted — never the raw input, so a full
+  // URL / path can't leak into analytics if a caller forgets to pre-sanitize.
+  capture('browser_tab_approved', browserFunnelProps(ids, { domain: domainOf(domain) || '' }));
+}
+
+// Bridge recovered from a `lost` state (tab-close / Chrome-restart) back to
+// `connected`. Reuses the same task_id so recovery is not double-counted.
+export function trackBrowserBridgeReconnected(os, ids) {
+  capture('browser_bridge_reconnected', browserFunnelProps(ids, { os: os || 'unknown' }));
+}
+
+// ── Browser Control task lifecycle (WS5-T2) ─────────────────────────
+//
+// Per-turn lifecycle for turns that used the browser tool. Content-free: only
+// action counts, typed error codes, and elapsed timing — never page text,
+// URLs, or form values. Reconnect within a turn reuses the same task_id so a
+// recovered turn is not double-counted.
+
+// First browser tool-call step observed in a turn.
+export function trackBrowserTaskStarted(ids) {
+  capture('browser_task_started', browserFunnelProps(ids));
+}
+
+// Turn that used the browser completed successfully. `actionCount` is the
+// number of browser actions the turn issued (a plain integer, no content).
+export function trackBrowserTaskSucceeded(actionCount, ids) {
+  capture('browser_task_succeeded', browserFunnelProps(ids, {
+    action_count: Number.isFinite(actionCount) ? actionCount : 0,
+  }));
+}
+
+// Turn that used the browser failed. `errorCode` is one of the five canonical
+// BrowserErrorKinds (or the terminal stream error code) — a typed enum only.
+export function trackBrowserTaskFailed(errorCode, ids) {
+  capture('browser_task_failed', browserFunnelProps(ids, {
+    error_code: errorCode || 'unknown',
+  }));
+}
+
+// User stopped a browser turn from the Stop pill.
+export function trackBrowserTaskStopped(ids) {
+  capture('browser_task_stopped', browserFunnelProps(ids));
+}
+
+// User took over the browser tab from the Take over pill.
+export function trackBrowserTaskTakeover(ids) {
+  capture('browser_task_takeover', browserFunnelProps(ids));
+}
+
+// Elapsed wall-clock for a browser turn, fired alongside the terminal
+// succeeded/failed event. `durationMs` is a plain number of milliseconds.
+export function trackBrowserResultTime(durationMs, ids) {
+  capture('browser_result_time', browserFunnelProps(ids, {
+    duration_ms: Number.isFinite(durationMs) ? Math.max(0, Math.round(durationMs)) : 0,
+  }));
+}
+
 // Desktop app installed — fired once per install on the first healthy launch.
 // Captured even before sign-in (under the anonymous device id) so the install
 // is recorded at true install time and merged into the account on first login

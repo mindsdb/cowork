@@ -4,15 +4,28 @@ import {
   fetchIntegrations,
   startConnectorOAuth,
   pollConnectorOAuth,
+  browseControlApprove,
 } from '../api';
 import { trackDataSourceConnected } from '../lib/analytics';
+import { host } from '../../platform/host';
+import { useBrowserControl } from '../hooks/useBrowserControl';
+import BrowserControlBadge from '../components/browser/BrowserControlBadge';
+import BrowserTabPicker from '../components/browser/BrowserTabPicker';
 
 const PAGE_HOME = 'home';
 const PAGE_CONNECTORS = 'connectors';
 
 const DIRECTORY_MODE_CONNECTORS = 'connectors';
 const DIRECTORY_MODE_PLUGINS = 'plugins';
-const DESKTOP_CONNECTOR_IDS = ['anton_chrome', 'control_chrome', 'filesystem'];
+const DESKTOP_CONNECTOR_IDS = ['anton_chrome', 'filesystem'];
+// Row chip label per Browser Control bridge state (used to derive the
+// anton_chrome catalog row from the live bridge state).
+const BROWSER_STATE_CHIP = {
+  connected: 'Connected',
+  lost: 'Lost',
+  'awaiting-approval': 'Awaiting',
+  disconnected: 'Read-only',
+};
 const EXTERNAL_CONNECTOR_IDS = ['github', 'google_drive', 'miro', 'asana', 'cloudflare', 'figma', 'gmail', 'google_calendar', 'hubspot', 'linear', 'notion', 'posthog', 'slack', 'supabase', 'zoominfo'];
 
 const CONNECTOR_LIBRARY = {
@@ -46,19 +59,9 @@ const CONNECTOR_LIBRARY = {
   anton_chrome: {
     id: 'anton_chrome',
     name: 'Browser Control',
-    description: 'Desktop browser control ships directly in the app runtime.',
+    description: 'Let Cowork look things up in your own Chrome while you keep working. It reads the page to answer a task — it never acts on your behalf.',
     style: 'anton',
-    status: 'included',
-    chip: 'Included',
-    action: 'Available',
-  },
-  control_chrome: {
-    id: 'control_chrome',
-    name: 'Control Chrome',
-    description: 'Drive the browser for local tasks and web workflows.',
-    style: 'chrome',
-    status: 'included',
-    action: 'Available',
+    // status/chip/action are derived from the live bridge state at render time.
   },
   filesystem: {
     id: 'filesystem',
@@ -389,20 +392,6 @@ function ConnectorLogo({ id, large = false }) {
     );
   }
 
-  if (id === 'control_chrome') {
-    return (
-      <span className={className} aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" fill="#fff" />
-          <circle cx="12" cy="12" r="4" fill="#4285f4" />
-          <path d="M12 2a10 10 0 0 1 8.66 5H12a5 5 0 0 0-4.58 3.02L3.34 5A10 10 0 0 1 12 2Z" fill="#ea4335" />
-          <path d="M22 12a10 10 0 0 1-13.25 9.46L13 14a5 5 0 0 0 4.42-2.68l3.25-4.32A9.96 9.96 0 0 1 22 12Z" fill="#fbbc05" />
-          <path d="M2 12a10 10 0 0 0 6.75 9.46L13 14a5 5 0 0 1-4.58-3.02L4.34 5A9.98 9.98 0 0 0 2 12Z" fill="#34a853" />
-        </svg>
-      </span>
-    );
-  }
-
   if (id === 'filesystem') {
     return (
       <span className={className} aria-hidden="true">
@@ -505,6 +494,108 @@ function HomePage({ onOpenDirectory }) {
   );
 }
 
+// State-aware detail panel for Browser Control. Replaces the old static
+// "already available" dead-end with the four bridge states (disconnected ->
+// intro + Choose a Chrome tab, awaiting-approval -> Cancel, connected -> active
+// domain + Disconnect, lost -> warning + Reconnect). Copy + treatment match
+// /code/.plans/designs/browser-control-{intro,states}-*.html.
+function BrowserControlDetail({ browser, onChooseTab }) {
+  const { state, domain } = browser;
+
+  return (
+    <div className="customize-empty-detail" data-testid="browser-control-detail">
+      <ConnectorLogo id="anton_chrome" large />
+      <BrowserControlBadge state={state} />
+
+      {state === 'disconnected' && (
+        <>
+          <div className="customize-empty-title">
+            Let Cowork look things up in your own Chrome while you keep working. It reads the page to
+            answer a task — it never acts on your behalf.
+          </div>
+          <div className="customize-empty-note browser-control-caps">
+            <div><strong>What Cowork can do — read-only</strong></div>
+            <ul>
+              <li><strong>Inspect the page</strong> — read the text, links, and structure of the approved tab.</li>
+              <li><strong>Follow approved links</strong> — navigate within the approved domain to pages the task needs.</li>
+              <li><strong>Scroll to read more</strong> — move through long pages to reach the content it needs.</li>
+              <li><strong>Cite what it found</strong> — quote sources and link back to the exact pages it read.</li>
+            </ul>
+            <div><strong>What it will never do</strong></div>
+            <ul>
+              <li>Submit forms, click buttons, or type. No sign-ins, purchases, posts, uploads, or downloads. Reading only.</li>
+              <li>Your login and credentials stay in Chrome — Cowork never sees or stores your passwords, cookies, or credentials. It borrows the one tab you approve, and only that tab.</li>
+            </ul>
+          </div>
+          <button
+            className="customize-primary-btn"
+            type="button"
+            aria-label="Choose a Chrome tab"
+            onClick={onChooseTab}
+          >
+            Choose a Chrome tab
+          </button>
+        </>
+      )}
+
+      {state === 'awaiting-approval' && (
+        <>
+          <div className="customize-empty-title">Waiting for you to pick a Chrome tab…</div>
+          <div className="customize-empty-note">
+            A picker is open. Choose the one tab Cowork may read, or cancel to stay disconnected.
+          </div>
+          <button
+            className="customize-primary-btn"
+            type="button"
+            aria-label="Cancel tab approval"
+            onClick={() => browser.cancelAttach()}
+          >
+            Cancel
+          </button>
+        </>
+      )}
+
+      {state === 'connected' && (
+        <>
+          <div className="customize-empty-title">
+            {domain ? `${domain}` : 'Connected'} — active domain, read-only.
+          </div>
+          <div className="customize-empty-note">
+            Cowork can read pages on this domain while the task runs. Disconnecting ends the approval
+            immediately.
+          </div>
+          <button
+            className="customize-primary-btn"
+            type="button"
+            aria-label="Disconnect Browser Control"
+            onClick={() => browser.revoke()}
+          >
+            Disconnect
+          </button>
+        </>
+      )}
+
+      {state === 'lost' && (
+        <>
+          <div className="customize-empty-title">Connection lost</div>
+          <div className="customize-empty-note">
+            The Chrome tab closed or the bridge dropped. Cowork can&apos;t read the page anymore.
+            Reconnect to keep going.
+          </div>
+          <button
+            className="customize-primary-btn"
+            type="button"
+            aria-label="Reconnect Browser Control"
+            onClick={onChooseTab}
+          >
+            Reconnect
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ConnectorsPage({
   connectorLibrary,
   connectorGroups,
@@ -519,7 +610,10 @@ function ConnectorsPage({
   busyAction,
   status,
   driveAuthPending,
+  browser,
+  onChooseTab,
 }) {
+  const browserSelected = selectedConnector?.id === 'anton_chrome';
   const driveSelected = selectedConnector?.id === 'google_drive';
   const googleOauth = integration?.oauth || {};
   const connectMessage = driveSelected
@@ -614,6 +708,9 @@ function ConnectorsPage({
           </button>
         </div>
 
+        {browserSelected ? (
+          <BrowserControlDetail browser={browser} onChooseTab={onChooseTab} />
+        ) : (
         <div className="customize-empty-detail">
           <ConnectorLogo id={selectedConnector?.id || 'asana'} large />
           <div className="customize-empty-title">
@@ -650,6 +747,7 @@ function ConnectorsPage({
             </div>
           ))}
         </div>
+        )}
       </section>
     </div>
   );
@@ -872,7 +970,7 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
   );
 }
 
-export default function ConnectWorkflowView({ onClose }) {
+export default function ConnectWorkflowView({ onClose, activeConversationId = null }) {
   // Always start on the connectors view — the old "home" overview
   // tab isn't part of this workflow anymore (the Connect Apps and
   // Data page already serves that role with the connection cards).
@@ -885,6 +983,56 @@ export default function ConnectWorkflowView({ onClose }) {
   const [driveAuthStartedAt, setDriveAuthStartedAt] = useState('');
   const [driveAuthState, setDriveAuthState] = useState('');
   const [busyAction, setBusyAction] = useState('');
+
+  // Live Browser Control bridge state (disconnected / awaiting-approval /
+  // connected / lost) + the tab-picker modal that drives approval.
+  const browser = useBrowserControl();
+  const [tabPickerOpen, setTabPickerOpen] = useState(false);
+  const [browserTabs, setBrowserTabs] = useState([]);
+  const [tabsLoading, setTabsLoading] = useState(false);
+
+  const openTabPicker = async () => {
+    setTabPickerOpen(true);
+    setTabsLoading(true);
+    try {
+      const result = await browser.listTabs();
+      setBrowserTabs(result?.tabs || []);
+    } catch {
+      setBrowserTabs([]);
+    } finally {
+      setTabsLoading(false);
+    }
+  };
+
+  const handleApproveTab = async (targetId) => {
+    setTabPickerOpen(false);
+    // Bind the approved tab to the ACTIVE conversation FIRST: main's command
+    // poller needs the conversation id to identify itself on bridge/hello
+    // (the server 422s an anonymous hello), so hand it down before the
+    // attach flips the bridge to connected and the poller wakes up. An
+    // explicit null clears any stale binding (App.jsx also re-syncs the id on
+    // every change, so a later conversation re-binds the approved tab).
+    try {
+      await host.browserControlSetConversation(activeConversationId || null);
+    } catch { /* best effort */ }
+    // Approve locally: attach + approve the CDP session in the main bridge.
+    await browser.attach(targetId);
+    // Tell the server this host is approved so it creates the BrowserSession +
+    // BrowserTabGrant for the approved host. Content-free (host-only domain),
+    // best-effort — the local attach above is the user-visible part; a network
+    // blip must not wedge the picker. The server also learns the domain via the
+    // poller's bridge/hello, so this is belt-and-suspenders for immediacy.
+    // `/browse/control/approve` requires a conversation_id (422 without one),
+    // so skip the server call when no conversation is active — the poller's
+    // conversation-scoped hello covers session creation in that case.
+    const approvedTab = (browserTabs || []).find((t) => t.targetId === targetId);
+    const domain = approvedTab?.domain;
+    if (domain && activeConversationId) {
+      try {
+        await browseControlApprove({ domain, conversationId: activeConversationId });
+      } catch { /* best effort */ }
+    }
+  };
 
   const refresh = async () => {
     const nextCatalog = await fetchIntegrations();
@@ -920,7 +1068,14 @@ export default function ConnectWorkflowView({ onClose }) {
       chip: undefined,
       status: 'planned',
     },
-  }), [googleDriveConnected]);
+    anton_chrome: {
+      ...CONNECTOR_LIBRARY.anton_chrome,
+      // Derive the row chip/status from the live bridge state instead of the
+      // old static "Included" claim.
+      status: browser.state === 'connected' ? 'connected' : 'browser_control',
+      chip: BROWSER_STATE_CHIP[browser.state] || BROWSER_STATE_CHIP.disconnected,
+    },
+  }), [googleDriveConnected, browser.state]);
 
   const connectorGroups = useMemo(() => {
     const connectedExternalIds = EXTERNAL_CONNECTOR_IDS.filter((id) => connectorLibrary[id]?.status === 'connected');
@@ -1060,10 +1215,20 @@ export default function ConnectWorkflowView({ onClose }) {
             busyAction={busyAction}
             status={driveStatus}
             driveAuthPending={driveAuthPending}
+            browser={browser}
+            onChooseTab={openTabPicker}
           />
         )}
 
       </div>
+
+      <BrowserTabPicker
+        open={tabPickerOpen}
+        tabs={browserTabs}
+        loading={tabsLoading}
+        onConfirm={handleApproveTab}
+        onClose={() => setTabPickerOpen(false)}
+      />
 
       {directoryMode && (
         <DirectoryModal

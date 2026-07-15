@@ -1375,6 +1375,11 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   line-height: 1.45;
 }
 
+/* Browser Control capability list (intro panel). */
+.browser-control-caps { text-align: left; }
+.browser-control-caps ul { margin: 6px 0 12px; padding-left: 18px; }
+.browser-control-caps li { margin: 3px 0; }
+
 .customize-drive-head,
 .customize-skill-detail-head {
   display: flex;
@@ -5190,6 +5195,10 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 /* Not connected — inert grey LED. */
 .channels-badge-idle { background: rgba(0,0,0,.06); color: var(--ink-4, #8a8a86); }
 .channels-badge-idle .channels-led { background: var(--ink-4, #8a8a86); }
+
+/* Connection lost — red LED (Browser Control "lost" bridge state). */
+.channels-badge-danger { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.channels-badge-danger .channels-led { background: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent); }
 .channels-agent { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
 .channels-agent-label { font-size: 12px; font-weight: 600; color: var(--fg); }
 /* Segmented tab control for picking the channel agent. */

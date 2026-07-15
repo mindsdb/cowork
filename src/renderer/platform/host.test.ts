@@ -83,6 +83,37 @@ describe('web mode (no bridge)', () => {
     await expect(host.mindshubRefresh()).resolves.toMatchObject({ ok: false });
     await expect(host.mindshubFinalize()).resolves.toMatchObject({ ok: false });
   });
+
+  it('Browser Control degrades gracefully (no desktop bridge on web)', async () => {
+    const host = await importHost();
+    // status: unavailable + disconnected, never throws.
+    await expect(host.browserControlStatus()).resolves.toEqual({
+      available: false,
+      state: 'disconnected',
+    });
+    // listTabs: empty + reason.
+    await expect(host.browserControlListTabs()).resolves.toMatchObject({
+      ok: false,
+      tabs: [],
+    });
+    // attach/approve/cancel/revoke/takeOver: { ok:false, reason }.
+    await expect(host.browserControlAttach('T1')).resolves.toMatchObject({ ok: false });
+    await expect(host.browserControlApprove()).resolves.toMatchObject({ ok: false });
+    await expect(host.browserControlCancelAttach()).resolves.toMatchObject({ ok: false });
+    await expect(host.browserControlRevoke()).resolves.toMatchObject({ ok: false });
+    await expect(host.browserControlTakeOver()).resolves.toMatchObject({ ok: false });
+    await expect(host.browserControlSetConversation('C1')).resolves.toMatchObject({ ok: false });
+    await expect(host.browserControlStop()).resolves.toMatchObject({ ok: false });
+    // onBrowserControlState: no-op unsubscribe fn.
+    const unsub = host.onBrowserControlState(() => {});
+    expect(typeof unsub).toBe('function');
+    expect(() => unsub()).not.toThrow();
+  });
+
+  it('getInstallationId returns null on web (no device id off-desktop)', async () => {
+    const host = await importHost();
+    await expect(host.getInstallationId()).resolves.toBeNull();
+  });
 });
 
 describe('electron mode (bridge present)', () => {
@@ -129,6 +160,52 @@ describe('electron mode (bridge present)', () => {
     await expect(host.serverStart()).resolves.toEqual({ ok: false, reason: 'unsupported' });
     await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
+  });
+
+  it('Browser Control proxies to the bridge and onBrowserControlState delegates', async () => {
+    const browserControlStatus = vi.fn(async () => ({
+      available: true,
+      state: 'connected',
+      domain: 'example.com',
+    }));
+    const browserControlAttach = vi.fn(async () => ({ ok: true, state: 'awaiting-approval' }));
+    const browserControlRevoke = vi.fn(async () => ({ ok: true }));
+    const unsub = vi.fn();
+    const onBrowserState = vi.fn(() => unsub);
+    (window as unknown as Record<string, unknown>).antontron = {
+      browserControlStatus,
+      browserControlAttach,
+      browserControlRevoke,
+      onBrowserState,
+    };
+    const host = await importHost();
+
+    await expect(host.browserControlStatus()).resolves.toMatchObject({
+      available: true,
+      state: 'connected',
+    });
+    await expect(host.browserControlAttach('T9')).resolves.toMatchObject({ ok: true });
+    expect(browserControlAttach).toHaveBeenCalledWith('T9');
+    await expect(host.browserControlRevoke()).resolves.toEqual({ ok: true });
+
+    const cb = () => {};
+    expect(host.onBrowserControlState(cb)).toBe(unsub);
+    expect(onBrowserState).toHaveBeenCalledWith(cb);
+  });
+
+  it('getInstallationId proxies the bridge and coerces missing to null', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {
+      getInstallationId: async () => 'aabbccddeeff0011',
+    };
+    let host = await importHost();
+    await expect(host.getInstallationId()).resolves.toBe('aabbccddeeff0011');
+
+    // Bridge present but the id is unavailable → null (never undefined).
+    (window as unknown as Record<string, unknown>).antontron = {
+      getInstallationId: async () => undefined,
+    };
+    host = await importHost();
+    await expect(host.getInstallationId()).resolves.toBeNull();
   });
 
   it('getUIVersion unwraps both string and {ui, app} object shapes', async () => {

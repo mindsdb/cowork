@@ -625,6 +625,57 @@ export async function cancelResponse(conversationId) {
   }
 }
 
+// ── Browser Control stop / take-over (WS4 control endpoints) ──────────
+//
+// Stop and Take over hit the server's `/browse/control/*` endpoints so the
+// pre-dispatch gate is set within <1s and persisted (survives reconnect),
+// independent of the SSE stream teardown. Both are idempotent and best-effort:
+// a network blip must never leave the Stop button wedged — the local stream
+// teardown (handleStopStream) is the user-visible part regardless.
+// Server-side approval entry point (WS4). When the user approves a Chrome tab
+// in the picker, the server creates the BrowserSession + BrowserTabGrant for
+// the approved host (`domain`, host-only — content-free). Best-effort: a
+// network blip must not wedge the local attach/approve gesture, which is the
+// user-visible part. The main-side CDP attach still happens through host.ts;
+// this only tells the server which host the grant is for.
+export async function browseControlApprove({ domain, conversationId } = {}) {
+  try {
+    return await req('/browse/control/approve', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(domain ? { domain } : null),
+        ...(conversationId ? { conversation_id: conversationId } : null),
+      }),
+    });
+  } catch {
+    return { ok: false };
+  }
+}
+
+export async function browseControlStop(conversationId) {
+  if (!conversationId) return { ok: false };
+  try {
+    return await req('/browse/control/stop', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId }),
+    });
+  } catch {
+    return { ok: false, conversation_id: conversationId };
+  }
+}
+
+export async function browseControlTakeover(conversationId) {
+  if (!conversationId) return { ok: false };
+  try {
+    return await req('/browse/control/takeover', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId }),
+    });
+  } catch {
+    return { ok: false, conversation_id: conversationId };
+  }
+}
+
 export async function unpublishArtifact(path) {
   // Idempotent — server 404 means "no record" which is the desired
   // end state.

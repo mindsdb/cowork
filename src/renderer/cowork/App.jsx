@@ -44,10 +44,11 @@ import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetc
          renameConversation, deleteConversation, deleteConversationTurn, moveConversation, moveTaskToProject,
          deleteProject, cancelScratchpad, cancelResponse, fetchConnector,
          fetchSavedConnection, deleteDatasource, deletePickedFile,
+         browseControlStop, browseControlTakeover,
          fetchInFlightStatus, tailInFlight, fetchInFlightList } from './api';
 import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
 import { modelLabel, recommendedModelOptions, providerValueToType } from './lib/settingsTransform';
-import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery } from './lib/analytics';
+import { trackDataSourceConnected, trackArtifactBuilt, trackAgentSessionStarted, trackAppInstalled, trackFirstQuery, trackBrowserBridgeConnected, trackBrowserTabApproved, trackBrowserBridgeReconnected, trackBrowserTaskStopped, trackBrowserTaskTakeover } from './lib/analytics';
 
 // One-of-ten encouraging follow-ups picked when a connect task is
 // created. Reads as a friendly nudge after the connect-intro card —
@@ -810,6 +811,14 @@ function AppCore() {
   // `reconcileTaskMessages` for the cleanup it enables.
   const activeStreamingTaskIdRef = useRef(null);
   const activeStreamGenerationRef = useRef(0);
+  // Content-free installation id for the Browser Control analytics funnel,
+  // resolved once from the host. Held in a ref so the fire-and-forget Stop /
+  // Take-over handlers can attach the shared id set without re-rendering.
+  const installationIdRef = useRef(null);
+  useEffect(() => {
+    if (!host.getInstallationId) return;
+    host.getInstallationId().then((id) => { installationIdRef.current = id || null; }).catch(() => {});
+  }, []);
   const composerMuteLastTaskIdRef = useRef(null);
   const prevRouteForComposerMuteRef = useRef(null);
 
@@ -1027,6 +1036,58 @@ function AppCore() {
       }
     } catch { /* placeholders already stripped */ }
   }, [markInFlightDone]);
+
+  // The conversation whose turn is currently streaming: prefer the live ref,
+  // fall back to scanning for the task that still holds a `_streaming` message.
+  const currentStreamingConversationId = useCallback(() => (
+    activeStreamingTaskIdRef.current
+      || tasksRef.current.find((t) => (t.messages || []).some((m) => m.role === '_streaming'))?.id
+      || null
+  ), []);
+
+  // The shared, content-free id set every Browser Control funnel event carries
+  // (installation_id / session_id / task_id). No page content — only the ids
+  // that let the funnel be stitched together. activeStreamingTaskIdRef is the
+  // conversation currently streaming, which is the browser task.
+  const browserFunnelIds = useCallback(() => {
+    const taskId = activeStreamingTaskIdRef.current || undefined;
+    return {
+      installationId: installationIdRef.current || undefined,
+      sessionId: taskId,
+      taskId,
+    };
+  }, []);
+
+  // Browser Control Stop: fire the server control gate WITHOUT blocking on it,
+  // then tear down the local stream immediately. The gate sets the pre-dispatch
+  // stop within <1s and is persisted (survives reconnect); the local teardown
+  // (handleStopStream) is the user-visible part and must not wait on a slow or
+  // failing network round-trip. Both are idempotent + best-effort.
+  const handleBrowserStop = useCallback(async () => {
+    const cid = currentStreamingConversationId();
+    if (cid) { void browseControlStop(cid).catch(() => { /* best effort */ }); }
+    // Local half of the Stop gate: the server gate above can race a command
+    // that was already handed out to the main-process poller; this flag lets
+    // the poller gate it pre-execution (cleared on the next tab approval).
+    // Awaited (unlike the network call above): local IPC is fast and setting
+    // the flag BEFORE the stream teardown closes the scheduling window where
+    // a handed-out command could still slip through.
+    try { await host.browserControlStop?.(); } catch { /* main bridge may be down */ }
+    try { trackBrowserTaskStopped(browserFunnelIds()); } catch { /* analytics never blocks */ }
+    await handleStopStream();
+  }, [handleStopStream, currentStreamingConversationId, browserFunnelIds]);
+
+  // Browser Control Take over: mark the session taken_over on the server (pauses
+  // command dispatch) and hand the Chrome tab back via the main bridge, both
+  // fire-and-forget, then stop the local stream immediately without waiting on
+  // the network / IPC round-trips.
+  const handleBrowserTakeOver = useCallback(async () => {
+    const cid = currentStreamingConversationId();
+    if (cid) { void browseControlTakeover(cid).catch(() => { /* best effort */ }); }
+    void Promise.resolve(host.browserControlTakeOver?.()).catch(() => { /* main bridge may be down */ });
+    try { trackBrowserTaskTakeover(browserFunnelIds()); } catch { /* analytics never blocks */ }
+    await handleStopStream();
+  }, [handleStopStream, currentStreamingConversationId, browserFunnelIds]);
 
   const handleStreamError = useCallback(async (taskIds, cid, message, event) => {
     if (event?.code === 'cancelled') return;
@@ -1312,6 +1373,61 @@ function AppCore() {
   useEffect(() => {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
+
+  // Browser Control funnel instrumentation (WS5-T1). Subscribe to the bridge
+  // state push and fire content-free product events at the connect, tab-
+  // approval, and lost→connected recovery transitions. All ids come from
+  // host/session state; the only page-derived value is the registrable host.
+  // A ref tracks the previous state so we can tell a first connect apart from
+  // a reconnect (lost → connected) and reuse the same task_id across recovery.
+  const browserBridgePrevStateRef = useRef('disconnected');
+  useEffect(() => {
+    if (!host.isElectron) return undefined;
+    let cancelled = false;
+    let installationId = null;
+    host.getInstallationId().then((id) => { if (!cancelled) installationId = id; }).catch(() => {});
+    const os = host.getPlatform();
+    const unsubscribe = host.onBrowserControlState((payload) => {
+      if (!payload || !payload.state) return;
+      const prev = browserBridgePrevStateRef.current;
+      const next = payload.state;
+      const ids = {
+        installationId,
+        sessionId: activeTaskId || undefined,
+        taskId: activeTaskId || undefined,
+      };
+      if (next === 'connected' && prev !== 'connected') {
+        if (prev === 'lost') {
+          trackBrowserBridgeReconnected(os, ids);
+        } else {
+          trackBrowserBridgeConnected(os, ids);
+          if (payload.domain) trackBrowserTabApproved(payload.domain, ids);
+        }
+      }
+      browserBridgePrevStateRef.current = next;
+    });
+    return () => {
+      cancelled = true;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+    // activeTaskId intentionally omitted: it's read fresh at event time via the
+    // closure re-created below only on host identity change (stable in practice).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTaskId]);
+
+  // Keep the Electron main process in sync with the ACTIVE conversation id so
+  // the browser command poller can identify itself on /browse/bridge/hello
+  // (which requires a conversation_id and 404s on temp/non-persisted ids).
+  // Pushed on EVERY change — including tmp→canonical id adoption via
+  // adoptServerId (which calls setActiveTaskId) and clearing on null — not
+  // only at tab-approval time, so an approval that happened before a
+  // conversation existed becomes usable once one is active.
+  useEffect(() => {
+    if (!host.isElectron) return;
+    void Promise.resolve(
+      host.browserControlSetConversation?.(activeTaskId || null),
+    ).catch(() => { /* main bridge may be down */ });
+  }, [activeTaskId]);
 
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
@@ -1726,7 +1842,7 @@ function AppCore() {
                   // possible later if we see network overhead.
       onEvent(ev) {
         if (streamGen !== activeStreamGenerationRef.current) return;
-        streamState = reduceStream(streamState, ev);
+        streamState = reduceStream(streamState, ev, Date.now, { ids: browserFunnelIds() });
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
@@ -2594,7 +2710,7 @@ function AppCore() {
         if (streamGen !== activeStreamGenerationRef.current) return;
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
-        streamState = reduceStream(streamState, ev);
+        streamState = reduceStream(streamState, ev, Date.now, { ids: browserFunnelIds() });
         // Track latest in-progress scratchpad so the Stop button
         // can cancel anton's current cell, not just abort our stream.
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
@@ -2876,7 +2992,7 @@ function AppCore() {
         // fresh id; the new value rides on `response.created`.
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
-        streamState = reduceStream(streamState, ev);
+        streamState = reduceStream(streamState, ev, Date.now, { ids: browserFunnelIds() });
         const open = streamState.steps.find((s) => s.status === 'in_progress' && s._isScratchpad);
         if (open?._scratchpadTabId) activeScratchpadRef.current = open._scratchpadTabId;
         flushSync(() => flushStreaming());
@@ -3030,7 +3146,7 @@ function AppCore() {
       onEvent(ev) {
         const sid = ev?.conversation_id || ev?.response?.conversation_id;
         if (sid) adoptServerId(sid);
-        streamState = reduceStream(streamState, ev);
+        streamState = reduceStream(streamState, ev, Date.now, { ids: browserFunnelIds() });
         // The probe's `data-vault-form-patch` success signal travels
         // inside the SSE body text, but MarkdownCode can't process it
         // (the streaming message has complete=false, and the final
@@ -3736,6 +3852,8 @@ function AppCore() {
             onDeleteTurn={(turnIdx) => handleDeleteTurnRequest(currentTask?.id, turnIdx)}
             onMoveTaskToProject={handleOpenMoveModal}
             onStop={handleStopStream}
+            onBrowserStop={handleBrowserStop}
+            onBrowserTakeOver={handleBrowserTakeOver}
             onSubmitDataVaultForm={handleSubmitDataVaultForm}
             onNavigateToConnectors={() => navigate('customize')}
             onCancelModify={handleCancelModify}
@@ -3911,6 +4029,7 @@ function AppCore() {
             onConnectNew={handleStartConnectChat}
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
+            activeConversationId={activeTaskId}
           />
         )}
 
