@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import * as https from 'https';
+import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -40,8 +41,28 @@ function otaEnabled(): boolean {
   return otaUiEnabled({ buildKind: kind, envOverride: process.env.OTA_UI });
 }
 
-// Where we read latest.json from — GitHub Pages, no API rate limits
-const MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
+// Where we read latest.json from — GitHub Pages, no API rate limits.
+const DEFAULT_MANIFEST_URL = 'https://mindsdb.github.io/antontron-releases/latest.json';
+
+// QA / staging-dogfood seam: COWORK_OTA_MANIFEST_URL repoints the OTA client at
+// a non-prod manifest host (e.g. a local fixture server), so the full
+// check/apply/rollback lifecycle can be exercised without publishing to the
+// real prod manifest. Never set in a shipped prod build. A plaintext http://
+// override is honoured only for loopback (see httpsGet), so a leaked or tampered
+// value can't silently downgrade prod OTA to a cleartext remote fetch.
+function getManifestUrl(): string {
+  return (process.env.COWORK_OTA_MANIFEST_URL || '').trim() || DEFAULT_MANIFEST_URL;
+}
+
+/** Loopback host? Plaintext http is only ever fetched from these. */
+function isLoopbackUrl(u: string): boolean {
+  try {
+    const host = new URL(u).hostname;
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  } catch {
+    return false;
+  }
+}
 
 export interface UpdateCheckResult {
   updateAvailable: boolean;
@@ -170,25 +191,38 @@ export function getCachedVersion(): string | null {
 function httpsGet(url: string, timeoutMs = 10000): Promise<{ statusCode: number; headers: Record<string, any>; body: Buffer }> {
   return new Promise((resolve, reject) => {
     const doGet = (reqUrl: string, redirects: number) => {
-      if (redirects > 5) { reject(new Error('Too many redirects')); return; }
-      const req = https.get(reqUrl, { headers: { 'User-Agent': 'antontron-updater' } }, (res) => {
-        // Follow redirects (GitHub releases use 302)
-        if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
-          doGet(res.headers.location, redirects + 1);
+      try {
+        if (redirects > 5) { reject(new Error('Too many redirects')); return; }
+        // https by default; plaintext http only for a loopback QA fixture host
+        // (see getManifestUrl) — never for a remote host, tampered manifest, or
+        // redirect target.
+        const isHttp = reqUrl.startsWith('http://');
+        if (isHttp && !isLoopbackUrl(reqUrl)) {
+          reject(new Error(`refusing plaintext http fetch from a non-loopback host: ${reqUrl}`));
           return;
         }
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => {
-          resolve({
-            statusCode: res.statusCode ?? 0,
-            headers: res.headers as Record<string, any>,
-            body: Buffer.concat(chunks),
+        const mod = isHttp ? http : https;
+        const req = mod.get(reqUrl, { headers: { 'User-Agent': 'antontron-updater' } }, (res) => {
+          // Follow redirects (GitHub releases use 302)
+          if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+            doGet(res.headers.location, redirects + 1);
+            return;
+          }
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => {
+            resolve({
+              statusCode: res.statusCode ?? 0,
+              headers: res.headers as Record<string, any>,
+              body: Buffer.concat(chunks),
+            });
           });
         });
-      });
-      req.on('error', reject);
-      req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Request timed out')); });
+        req.on('error', reject);
+        req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Request timed out')); });
+      } catch (err) {
+        reject(err);
+      }
     };
     doGet(url, 0);
   });
@@ -197,7 +231,7 @@ function httpsGet(url: string, timeoutMs = 10000): Promise<{ statusCode: number;
 /** Quick connectivity check — can we reach the manifest host? */
 export async function hasInternet(): Promise<boolean> {
   try {
-    const res = await httpsGet(MANIFEST_URL, 5000);
+    const res = await httpsGet(getManifestUrl(), 5000);
     return res.statusCode === 200;
   } catch {
     return false;
@@ -206,7 +240,7 @@ export async function hasInternet(): Promise<boolean> {
 
 export async function fetchManifest(): Promise<UIManifest | null> {
   try {
-    const res = await httpsGet(MANIFEST_URL);
+    const res = await httpsGet(getManifestUrl());
     if (res.statusCode !== 200) return null;
     return parseUiManifest(res.body.toString('utf-8'));
   } catch {
