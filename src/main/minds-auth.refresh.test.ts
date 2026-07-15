@@ -17,9 +17,10 @@ vi.mock('./token-store', () => ({
   saveTokens: vi.fn(),
   getRefreshToken: vi.fn(),
   clearTokens: vi.fn(),
+  getTokenStoreVersion: vi.fn(),
 }));
 
-import { saveTokens, getRefreshToken, clearTokens } from './token-store';
+import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion } from './token-store';
 import { refreshTokensOnly, cancelScheduledRefresh } from './minds-auth';
 
 const mockFetchOnce = (impl: () => Promise<unknown>) => {
@@ -44,6 +45,7 @@ describe('refreshTokensOnly outcome mapping', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     (getRefreshToken as Mock).mockReturnValue('rt-1');
+    (getTokenStoreVersion as Mock).mockReturnValue(0);
     (saveTokens as Mock).mockClear();
     (clearTokens as Mock).mockClear();
   });
@@ -112,6 +114,43 @@ describe('refreshTokensOnly outcome mapping', () => {
     expect(result).toEqual({ status: 'transient' });
     expect(clearTokens).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it('treats a 200 response without an access token as transient', async () => {
+    mockFetchOnce(async () => jsonResponse(200, { expires_in: 300 }));
+    const result = await refreshTokensOnly();
+    expect(result).toEqual({ status: 'transient' });
+    expect(saveTokens).not.toHaveBeenCalled();
+    expect(clearTokens).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it('ignores a success response superseded by logout or a newer login', async () => {
+    let release!: (value: unknown) => void;
+    const response = new Promise((resolve) => { release = resolve; });
+    mockFetchOnce(async () => response);
+
+    const pending = refreshTokensOnly();
+    (getTokenStoreVersion as Mock).mockReturnValue(1);
+    release(jsonResponse(200, { access_token: 'stale-at', refresh_token: 'stale-rt' }));
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(saveTokens).not.toHaveBeenCalled();
+    expect(clearTokens).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not clear a newer session for a superseded invalid_grant', async () => {
+    let release!: (value: unknown) => void;
+    const response = new Promise((resolve) => { release = resolve; });
+    mockFetchOnce(async () => response);
+
+    const pending = refreshTokensOnly();
+    (getTokenStoreVersion as Mock).mockReturnValue(1);
+    release(jsonResponse(400, { error: 'invalid_grant' }));
+
+    await expect(pending).resolves.toEqual({ status: 'superseded' });
+    expect(clearTokens).not.toHaveBeenCalled();
   });
 
   it('converges to signed-in when the retry timer fires after connectivity returns', async () => {

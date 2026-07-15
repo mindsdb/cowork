@@ -109,6 +109,19 @@ describe('oauthConnect', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('rejects a successful exchange response without an access token', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ expires_in: 300 }) })) as unknown as typeof fetch;
+
+    const flow = oauthConnect(OPTS);
+    const authUrl = await nextAuthUrl();
+    await hitCallback(authUrl, { code: 'c', state: authUrl.searchParams.get('state') as string });
+
+    const result = await flow;
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/access token/i);
+  });
+
   it('rejects a callback whose state does not match', async () => {
     const nextAuthUrl = captureAuthUrl();
     const flow = oauthConnect(OPTS);
@@ -142,5 +155,52 @@ describe('oauthConnect', () => {
     const secondResult = await second;
     expect(secondResult.ok).toBe(false);
     expect(secondUrl.searchParams.get('state')).toBeTruthy();
+  });
+
+  // ENG-761 regression: a cancel landing while oauthConnect is still
+  // awaiting shell.openExternal used to reject codePromise before
+  // Promise.race subscribed — an unhandled rejection, which crashes the
+  // Electron main process into the error dialog. (Vitest fails the run
+  // on unhandled rejections, so this test guards the crash itself.)
+  it('resolves cleanly when cancelled during the browser-open gap', async () => {
+    let releaseOpen!: () => void;
+    const openExternal = shell.openExternal as ReturnType<typeof vi.fn>;
+    openExternal.mockReset();
+    openExternal.mockImplementation(() => new Promise<void>((r) => { releaseOpen = r; }));
+
+    const flow = oauthConnect(OPTS);
+    for (let i = 0; i < 200 && openExternal.mock.calls.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    cancelCurrentOAuth();
+    releaseOpen();
+
+    const result = await flow;
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/cancelled/i);
+  });
+
+  it('cancels a previous attempt while its token exchange is pending', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    globalThis.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => (
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      })
+    )) as unknown as typeof fetch;
+
+    const first = oauthConnect(OPTS);
+    const firstUrl = await nextAuthUrl();
+    await hitCallback(firstUrl, { code: 'c', state: firstUrl.searchParams.get('state') as string });
+
+    const second = oauthConnect(OPTS);
+    await expect(first).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+
+    await nextAuthUrl();
+    cancelCurrentOAuth();
+    await expect(second).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
   });
 });

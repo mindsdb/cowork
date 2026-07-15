@@ -89,6 +89,44 @@ describe('token-store persistence', () => {
     expect(store.getRefreshToken()).toBe('written-during-outage');
   });
 
+  it('does not revive an older safeStorage token after a fallback write', async () => {
+    let store = await loadStore('win32');
+    store.saveTokens('at-1', 3600, 'old-dpapi-token');
+
+    h.safeStorageAvailable.value = false;
+    store.saveTokens('at-2', 3600, 'rotated-fallback-token');
+    expect(fs.existsSync(path.join(h.userData, 'mindshub-refresh.bin'))).toBe(false);
+
+    h.safeStorageAvailable.value = true;
+    store = await loadStore('win32');
+    expect(store.getRefreshToken()).toBe('rotated-fallback-token');
+  });
+
+  it('keeps a fresh fallback copy on safeStorage writes so an outage can still read the session', async () => {
+    h.safeStorageAvailable.value = false;
+    let store = await loadStore('win32');
+    store.saveTokens('at-1', 3600, 'fallback-token');
+
+    // safeStorage recovers and stores a newer token; the fallback copy is
+    // refreshed alongside it, never left stale and never deleted.
+    h.safeStorageAvailable.value = true;
+    store.saveTokens('at-2', 3600, 'new-dpapi-token');
+    expect(store.getRefreshToken()).toBe('new-dpapi-token');
+
+    // Next launch during a safeStorage outage still reads the session.
+    h.safeStorageAvailable.value = false;
+    store = await loadStore('win32');
+    expect(store.getRefreshToken()).toBe('new-dpapi-token');
+  });
+
+  it('cleans up a legacy safeStorage file on macOS writes', async () => {
+    const store = await loadStore('darwin');
+    fs.writeFileSync(path.join(h.userData, 'mindshub-refresh.bin'), 'legacy-era-token');
+    store.saveTokens('at', 3600, 'mac-refresh-token');
+    expect(fs.existsSync(path.join(h.userData, 'mindshub-refresh.bin'))).toBe(false);
+    expect(store.getRefreshToken()).toBe('mac-refresh-token');
+  });
+
   it('round-trips through the encrypted file on macOS', async () => {
     const store = await loadStore('darwin');
     store.saveTokens('at', 3600, 'mac-refresh-token');
@@ -116,6 +154,15 @@ describe('token-store auth-changed broadcast', () => {
     const store = await loadStore('win32');
     store.clearTokens();
     expect(h.sendSpy).toHaveBeenCalledWith('mindshub:auth-changed', { authenticated: false });
+  });
+
+  it('increments the store version on save and clear', async () => {
+    const store = await loadStore('win32');
+    const initial = store.getTokenStoreVersion();
+    store.saveTokens('at', 3600, 'rt');
+    expect(store.getTokenStoreVersion()).toBe(initial + 1);
+    store.clearTokens();
+    expect(store.getTokenStoreVersion()).toBe(initial + 2);
   });
 
   it('skips destroyed windows without throwing', async () => {

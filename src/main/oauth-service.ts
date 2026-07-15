@@ -74,7 +74,9 @@ const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
 let _activeAttempt: { cancel: () => void } | null = null;
 
 export function cancelCurrentOAuth(): void {
-  _activeAttempt?.cancel();
+  const attempt = _activeAttempt;
+  _activeAttempt = null;
+  attempt?.cancel();
 }
 
 export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnectResult> {
@@ -87,6 +89,22 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   // loopback server alive — two live callback ports and whichever tab
   // the user completes decides which promise wins (ENG-761).
   cancelCurrentOAuth();
+
+  let server: http.Server | null = null;
+  let rejectCode: ((err: Error) => void) | null = null;
+  let cancelled = false;
+  const exchangeController = new AbortController();
+  const attempt = {
+    cancel: () => {
+      cancelled = true;
+      try { rejectCode?.(new Error('cancelled')); } catch {}
+      exchangeController.abort();
+      closeServer(server);
+    },
+  };
+  // Reserve ownership before the first await. Otherwise two calls that are
+  // both finding a port can each miss the other and create live attempts.
+  _activeAttempt = attempt;
 
   // PKCE: random verifier (43-128 chars), SHA-256 challenge. The
   // verifier is held in this process and only sent during the token
@@ -103,8 +121,11 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   try {
     port = await findFreePort();
   } catch (e: any) {
+    if (_activeAttempt === attempt) _activeAttempt = null;
+    if (cancelled) return { ok: false, reason: 'cancelled' };
     return { ok: false, reason: `Could not bind a loopback port: ${e?.message || e}` };
   }
+  if (cancelled) return { ok: false, reason: 'cancelled' };
 
   const redirectUri = `http://127.0.0.1:${port}/callback`;
 
@@ -124,8 +145,6 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   // Wait for the redirect — server stays up until either the
   // callback fires, the safety timeout elapses, or the renderer
   // cancels the flow (via cancelCurrentOAuth()).
-  let server: http.Server | null = null;
-  let rejectCode: ((err: Error) => void) | null = null;
   const codePromise = new Promise<string>((resolve, reject) => {
     rejectCode = reject;
     server = http.createServer((req, res) => {
@@ -175,15 +194,13 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     );
   });
 
-  // Register cancellation handle so the renderer can tear the flow
-  // down. Bound here (not earlier) so we don't carry stale state
-  // across attempts. Cleared in the finally block below.
-  _activeAttempt = {
-    cancel: () => {
-      try { rejectCode?.(new Error('cancelled')); } catch {}
-      closeServer(server);
-    },
-  };
+  // Promise.race only subscribes AFTER the openExternal await below. A
+  // cancel (double-click, logout, second flow) landing in that gap would
+  // reject codePromise with no listener — an unhandledRejection, which
+  // crashes the main process into Electron's error dialog. Mark both
+  // promises as observed now; the race still receives the rejection.
+  codePromise.catch(() => {});
+  timeoutPromise.catch(() => {});
 
   // Open browser. Even on shell.openExternal failure we still wait —
   // the user may copy-paste the URL manually.
@@ -194,14 +211,13 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     code = await Promise.race([codePromise, timeoutPromise]);
   } catch (e: any) {
     closeServer(server);
-    _activeAttempt = null;
+    if (_activeAttempt === attempt) _activeAttempt = null;
     return { ok: false, reason: e?.message || 'OAuth flow failed.' };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     // Tiny delay so the success page actually paints in the user's
     // browser before we tear the server down.
     setTimeout(() => closeServer(server), 300);
-    _activeAttempt = null;
   }
 
   // Exchange the code for tokens.
@@ -219,26 +235,38 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: tokenBody.toString(),
-      signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
+      signal: AbortSignal.any([
+        AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
+        exchangeController.signal,
+      ]),
     });
+    if (cancelled) return { ok: false, reason: 'cancelled' };
     if (!res.ok) {
       const text = await safeReadText(res);
+      if (cancelled) return { ok: false, reason: 'cancelled' };
       return { ok: false, reason: `Token exchange failed (${res.status}): ${text || 'no body'}` };
     }
     const data = (await res.json()) as Record<string, unknown>;
+    if (cancelled) return { ok: false, reason: 'cancelled' };
+    if (typeof data.access_token !== 'string' || !data.access_token) {
+      return { ok: false, reason: 'Token exchange response did not include an access token.' };
+    }
     return {
       ok: true,
       refresh_token: typeof data.refresh_token === 'string' ? data.refresh_token : undefined,
-      access_token: typeof data.access_token === 'string' ? data.access_token : undefined,
+      access_token: data.access_token,
       expires_in: typeof data.expires_in === 'number' ? data.expires_in : undefined,
       scope: typeof data.scope === 'string' ? data.scope : undefined,
       token_type: typeof data.token_type === 'string' ? data.token_type : undefined,
     };
   } catch (e: any) {
+    if (cancelled) return { ok: false, reason: 'cancelled' };
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
       return { ok: false, reason: 'Token exchange timed out — check your network connection and try signing in again.' };
     }
     return { ok: false, reason: `Token exchange request failed: ${e?.message || e}` };
+  } finally {
+    if (_activeAttempt === attempt) _activeAttempt = null;
   }
 }
 

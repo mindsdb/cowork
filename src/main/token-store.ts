@@ -47,14 +47,37 @@ function decryptToken(data: Buffer): string {
 
 // ── Read / write per platform ───────────────────────────────────────
 
+function writeEncryptedFile(refreshToken: string): void {
+  fs.mkdirSync(coworkHome(), { recursive: true });
+  fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
+}
+
+// ENOENT is the expected case (nothing to remove); anything else means a
+// stale token may survive and shadow a rotated one later — say so.
+function removeStaleStore(file: string): void {
+  try { fs.unlinkSync(file); } catch (e: any) {
+    if (e?.code !== 'ENOENT') console.warn(`[token-store] could not remove stale token store ${file}`, e);
+  }
+}
+
 function writeToken(refreshToken: string): void {
   if (IS_MAC) {
-    fs.mkdirSync(coworkHome(), { recursive: true });
-    fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
+    writeEncryptedFile(refreshToken);
+    // Pre-file-store builds kept the token in safeStorage under userData.
+    // Inert on macOS reads, but don't leave stale credential material behind.
+    removeStaleStore(KEYCHAIN_FILE);
     return;
   }
   if (safeStorage.isEncryptionAvailable()) {
     fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
+    // Refresh the encrypted-file copy too rather than deleting it: on
+    // machines where DPAPI/libsecret flaps, the fallback is the only store
+    // readable during the next outage, and keeping it fresh means a stale
+    // rotated token can never shadow the real one. Best-effort — the
+    // safeStorage write above already persisted the session.
+    try { writeEncryptedFile(refreshToken); } catch (e) {
+      console.warn('[token-store] could not refresh encrypted-file copy', e);
+    }
     return;
   }
   // safeStorage unavailable (DPAPI/libsecret failure). Previously this
@@ -62,8 +85,10 @@ function writeToken(refreshToken: string): void {
   // next launch, then showed up as unauthenticated (ENG-761). Fall back
   // to the same encrypted file macOS uses so the session survives.
   console.warn('[token-store] safeStorage unavailable — using encrypted-file fallback');
-  fs.mkdirSync(coworkHome(), { recursive: true });
-  fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
+  writeEncryptedFile(refreshToken);
+  // Do not let a previously stored DPAPI token take precedence if
+  // safeStorage recovers after the refresh token has rotated.
+  removeStaleStore(KEYCHAIN_FILE);
 }
 
 function readToken(): string | null {
@@ -90,6 +115,7 @@ function deleteTokenFiles(): void {
 
 let _accessToken: string | null = null;
 let _expiresAt = 0; // epoch ms
+let _tokenStoreVersion = 0;
 
 // Push the new auth state to every renderer. token-store is the single
 // choke point every MindsHub auth transition flows through (login,
@@ -106,6 +132,7 @@ function broadcastAuthChanged(authenticated: boolean): void {
 }
 
 export function saveTokens(accessToken: string, expiresInSeconds: number, refreshToken: string): void {
+  _tokenStoreVersion += 1;
   _accessToken = accessToken;
   _expiresAt = Date.now() + expiresInSeconds * 1000;
   if (refreshToken) {
@@ -117,6 +144,10 @@ export function saveTokens(accessToken: string, expiresInSeconds: number, refres
 }
 
 export function getAccessToken(): string | null { return _accessToken; }
+
+// Lets async refreshes detect that login/logout replaced their starting
+// session while the network request was in flight.
+export function getTokenStoreVersion(): number { return _tokenStoreVersion; }
 
 export function isAccessTokenExpired(): boolean {
   return Date.now() > _expiresAt - 60_000; // 60s buffer
@@ -131,6 +162,7 @@ export function getRefreshToken(): string | null {
 }
 
 export function clearTokens(): void {
+  _tokenStoreVersion += 1;
   _accessToken = null;
   _expiresAt = 0;
   deleteTokenFiles();

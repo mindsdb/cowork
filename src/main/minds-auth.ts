@@ -1,4 +1,4 @@
-import { saveTokens, getRefreshToken, clearTokens } from './token-store';
+import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
@@ -60,6 +60,7 @@ export type TokenRefreshResult =
   | { status: 'ok'; token: string }
   | { status: 'no_refresh_token' }
   | { status: 'invalid_grant' }
+  | { status: 'superseded' }
   | { status: 'transient' };
 
 // Refresh tokens only — no env writes, no server restart. Used during
@@ -85,6 +86,7 @@ export function refreshTokensOnly(): Promise<TokenRefreshResult> {
 async function doRefreshTokens(): Promise<TokenRefreshResult> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return { status: 'no_refresh_token' };
+  const tokenStoreVersion = getTokenStoreVersion();
   try {
     const res = await timedFetch(TOKEN_URL, {
       method: 'POST',
@@ -101,6 +103,7 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       // ambiguity (5xx, non-JSON body, rate limit) keeps the token.
       let oauthError = '';
       try { oauthError = String(((await res.json()) as { error?: string })?.error || ''); } catch { /* non-JSON */ }
+      if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
       if ((res.status === 400 || res.status === 401) && oauthError === 'invalid_grant') {
         console.warn('[minds-auth] refresh token rejected (invalid_grant) — clearing session');
         clearTokens();
@@ -111,11 +114,18 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
       scheduleRefreshRetry();
       return { status: 'transient' };
     }
-    const data = await res.json() as { access_token: string; expires_in?: number; refresh_token?: string };
+    const data = await res.json() as { access_token?: unknown; expires_in?: number; refresh_token?: string };
+    if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
+    if (typeof data.access_token !== 'string' || !data.access_token) {
+      console.warn('[minds-auth] token refresh returned no access token — keeping session');
+      scheduleRefreshRetry();
+      return { status: 'transient' };
+    }
     saveTokens(data.access_token, data.expires_in ?? 3600, data.refresh_token ?? refreshToken);
     scheduleRefresh(data.expires_in ?? 3600);
     return { status: 'ok', token: data.access_token };
   } catch (e: any) {
+    if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
     // Network failure / timeout — the token itself is fine. Retry later.
     console.warn('[minds-auth] token refresh unreachable — keeping tokens, will retry:', e?.message || e);
     scheduleRefreshRetry();
@@ -304,6 +314,9 @@ async function switchActiveOrg(accessToken: string, orgId: string): Promise<bool
 // org-aware token. Returns the token string or null — the org-switch
 // loops only care whether they got a usable token.
 async function refreshAfterOrgSwitch(): Promise<string | null> {
+  // An exchange that started before the org switch cannot contain the new
+  // claim. Let it settle, then deliberately start a fresh exchange.
+  if (_inflightRefresh) await _inflightRefresh;
   const result = await refreshTokensOnly();
   return result.status === 'ok' ? result.token : null;
 }

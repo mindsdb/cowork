@@ -14,7 +14,7 @@ import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefresh
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections } from './token-refresh';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
+import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
@@ -729,8 +729,15 @@ function setupIPC() {
   // can re-decode roles and confirm the user is now paid.
   ipcMain.handle(IPC.MINDSHUB_REFRESH, async () => {
     const result = await refreshTokensOnly();
-    if (result.status !== 'ok') return { ok: false, reason: `Token refresh failed (${result.status}).` };
-    return { ok: true, access_token: result.token };
+    if (result.status === 'ok') return { ok: true, access_token: result.token };
+    // Superseded means a newer login/logout won the race while this
+    // refresh was in flight — the store, not this exchange, holds the
+    // truth. Report the current session instead of a false failure.
+    if (result.status === 'superseded') {
+      const current = getAccessToken();
+      if (current) return { ok: true, access_token: current };
+    }
+    return { ok: false, reason: `Token refresh failed (${result.status}).` };
   });
 
   // Commit MindsHub as the LLM provider. The Keycloak JWT alone is
@@ -800,6 +807,12 @@ function setupIPC() {
     // waiting on this IPC. The end-session call has its own 3s
     // timeout regardless, so worst case it tidies up in background.
     endKeycloakSession();
+    cancelScheduledRefresh();
+    // Tear down any sign-in still waiting on its browser tab. Without
+    // this, the loopback server stays armed for up to 3 minutes and
+    // completing that stale tab silently signs the user back in after
+    // an explicit logout.
+    cancelCurrentOAuth();
     clearTokens();
 
     // Clear credentials from the server's SQLite DB (the authoritative
@@ -1322,8 +1335,10 @@ app.whenReady().then(async () => {
             .filter(l => !l.startsWith('ANTON_OPENAI_API_KEY=') && !l.startsWith('ANTON_MINDS_API_KEY='));
           fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
         }
-      } else if (outcome.status !== 'ok') {
+      } else if (outcome.status === 'transient') {
         console.warn('[auth] boot token refresh failed transiently — keeping session, retry scheduled');
+      } else if (outcome.status !== 'ok') {
+        console.warn(`[auth] boot token refresh skipped (${outcome.status}) — keeping session`);
       }
     }
 
