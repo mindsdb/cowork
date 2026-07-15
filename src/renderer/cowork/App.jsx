@@ -1231,7 +1231,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -3779,6 +3779,10 @@ function AppCore() {
           />
         )}
 
+
+        {route === 'channels' && (
+          <ChannelsView />
+        )}
 
         {route === 'customize' && (
           <CustomizeView
