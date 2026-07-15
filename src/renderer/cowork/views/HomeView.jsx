@@ -247,6 +247,7 @@ export default function HomeView({
   activeTasks, onSelectTask, onClearActive,
   onSend, project, onProjectChange, model, onModelChange, projects, models,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
+  onAddGoogleDriveFiles,
   disabledConnections = [],
   onUpdateConnectorMute,
   onNavigateToConnectors,
@@ -549,6 +550,7 @@ export default function HomeView({
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
+              onAddGoogleDriveFiles={onAddGoogleDriveFiles}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}

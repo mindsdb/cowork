@@ -143,6 +143,45 @@ describe('electron mode (bridge present)', () => {
     await expect(host.getUIVersion()).resolves.toBe('2.0.0');
   });
 
+  it('pickDriveFiles delegates to the bridge and returns its result', async () => {
+    const oauthPickDriveFiles = vi.fn(async () => ({ ok: true, files: [], newFiles: [] }));
+    (window as unknown as Record<string, unknown>).antontron = { oauthPickDriveFiles };
+    const host = await importHost();
+
+    const result = await host.pickDriveFiles('google_drive', 'my-conn', 'me@example.com', ['id1'], 'proj-1');
+    expect(oauthPickDriveFiles).toHaveBeenCalledWith({
+      engine: 'google_drive',
+      name: 'my-conn',
+      accountEmail: 'me@example.com',
+      fileIds: ['id1'],
+      projectName: 'proj-1',
+    });
+    expect(result).toEqual({ ok: true, files: [], newFiles: [] });
+  });
+
+  it('pickDriveFiles and cancelDrivePicker fall back to unsupported/no-op on web or a partial bridge', async () => {
+    let host = await importHost(); // no bridge at all → web mode
+    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com')).resolves.toEqual({
+      ok: false,
+      reason: 'Google Picker is Electron-only for now.',
+    });
+    await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
+
+    (window as unknown as Record<string, unknown>).antontron = {}; // bridge present, method missing
+    host = await importHost();
+    await expect(host.pickDriveFiles('google_drive', 'c', 'e@x.com')).resolves.toMatchObject({ ok: false });
+    await expect(host.cancelDrivePicker()).resolves.toBeUndefined();
+  });
+
+  it('cancelDrivePicker calls the bridge when present', async () => {
+    const oauthCancelPicker = vi.fn(async () => {});
+    (window as unknown as Record<string, unknown>).antontron = { oauthCancelPicker };
+    const host = await importHost();
+
+    await host.cancelDrivePicker();
+    expect(oauthCancelPicker).toHaveBeenCalledOnce();
+  });
+  
   it('getVersionInfo reports app/ui/source distinctly (OTA never masks the shell)', async () => {
     // OTA active: ui is the cached bundle, app is the installed shell — kept
     // separate so the App row can't drift to the OTA version (ENG-213 / G1).
