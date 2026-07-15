@@ -5,7 +5,7 @@ import { COWORKERS } from './pages/arcade/CoworkerSelect';
 import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
-import { loadSkin, persistSkin } from './lib/skins';
+import { loadSkin, persistSkin, skinProductName } from './lib/skins';
 import { syncSettingsToDb } from './lib/syncSettings';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
@@ -197,7 +197,7 @@ export default function App() {
         >
           <OrbitMorph state="thinking" size={72} />
           <div className="arc-welcome-title">
-            Welcome to MindsHub Cowork
+            Welcome to {skinProductName(skin)}
           </div>
         </div>
       )}

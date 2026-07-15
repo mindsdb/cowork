@@ -1,0 +1,99 @@
+/* ─── Kinaxis skin — "Maestro by Kinaxis" white-label demo ─────────────────
+   A second styling axis, orthogonal to light/dark (see skin-8bit.css):
+
+     body[data-skin="kinaxis"]                      → brand wordmark + shared
+     body[data-skin="kinaxis"][data-theme="light"]  → light Kinaxis palette
+     body[data-skin="kinaxis"][data-theme="dark"]   → dark Kinaxis palette
+
+   The app is token-driven (globals.css defines --bg/--surface/--ink/--accent/…
+   and every alias derives from them), so re-declaring the core tokens re-skins
+   every view. On top of that we swap the sidebar wordmark ("MindsHub") for the
+   Kinaxis logo, so the app reads as the customer's product.
+
+   Palette — verified against the official Kinaxis Brand Identity Design System
+   v1.0 (see ENG-816):
+     Kinaxis Red    #E30613   (primary accent — used subtly per guidelines)
+     Ontario Teal   #287271
+     Deep Green     #1A4146
+     Midnight Blue  #010233
+     Light Sky Blue #C2F3FF
+   The light-on-dark / dark-on-light pairings are the ones Kinaxis's own
+   accessibility matrix rates WCAG AAA.
+
+   Loaded after globals.css; the [data-skin][data-theme] selectors out-specify
+   the single-attribute theme blocks. */
+
+/* ── Light theme ─────────────────────────────────────────────────────────── */
+body[data-skin='kinaxis'][data-theme='light'] {
+  --bg:         #f4fbfd;
+  --surface:    #ffffff;
+  --surface-2:  #eef8fb;
+  --surface-3:  #dcf1f6;
+  --line:       #cfe8ef;
+  --line-2:     #b9dee8;
+
+  --ink:        #010233; /* midnight blue */
+  --ink-2:      #1a4146; /* deep green */
+  --ink-3:      #3f5b62;
+  --ink-4:      #6b8990;
+  --ink-5:      #b4cdd3;
+
+  /* Kinaxis Red accent, with teal-leaning deeper steps for hover/active. */
+  --accent:     #e30613;
+  --accent-2:   #b3040f; /* darker red */
+  --accent-3:   #287271; /* ontario teal — secondary accent */
+  --accent-bg:  #ffe5e7; /* soft red wash */
+  --accent-glow: rgba(227, 6, 19, 0.25);
+}
+
+/* Keep the window-level background in sync with the skin bg (styles.css
+   otherwise hardcodes a light chrome color). */
+body[data-skin='kinaxis'].gf-theme-light { background: var(--bg); }
+
+/* ── Dark theme ──────────────────────────────────────────────────────────── */
+body[data-skin='kinaxis'][data-theme='dark'] {
+  --bg:         #010233; /* midnight blue, deepest */
+  --surface:    #0a1e2a;
+  --surface-2:  #12313a;
+  --surface-3:  #1a4146; /* deep green */
+  --line:       #24565c;
+  --line-2:     #287271;
+  --sidebar-bg: color-mix(in srgb, var(--surface) 92%, var(--accent));
+
+  --ink:        #ffffff;
+  --ink-2:      #c2f3ff; /* light sky blue */
+  --ink-3:      #9fc7cb;
+  --ink-4:      #6f959c;
+  --ink-5:      #46666d;
+
+  --accent:     #e30613; /* kinaxis red */
+  --accent-2:   #ff4d57;
+  --accent-3:   #348a88; /* teal */
+  --accent-bg:  rgba(227, 6, 19, 0.14);
+  --accent-glow: rgba(227, 6, 19, 0.45);
+
+  --ring:       0 0 0 1px rgba(227, 6, 19, 0.30);
+}
+
+body[data-skin='kinaxis'].gf-theme-dark {
+  background-color: var(--bg);
+}
+
+/* ── Brand wordmark → Kinaxis logo ─────────────────────────────────────────
+   The sidebar renders a text wordmark ("MindsHub"). For the white-label skin
+   we hide the text and show the official Kinaxis logo (red on light, white on
+   dark). Logos live in the static /logos dir (same convention as /fonts). */
+body[data-skin='kinaxis'] .anton-sidebar__wordmark {
+  /* Collapse the "MindsHub" text; the logo is drawn as a background image.
+     (Text stays in the DOM for the accessible name.) */
+  color: transparent;
+  text-shadow: none;
+  width: 112px;
+  height: 16px;
+  background: url('/logos/skins/kinaxis-red.svg') left center / contain
+    no-repeat;
+}
+body[data-skin='kinaxis'][data-theme='dark'] .anton-sidebar__wordmark {
+  background-image: url('/logos/skins/kinaxis-white.svg');
+  text-shadow: none;
+}

@@ -21,11 +21,24 @@ export interface Skin {
   icon?: string;
   /** Tooltip for the Settings segmented option. */
   title: string;
+  /**
+   * Product name shown in UI copy (welcome title, etc.). White-label skins
+   * override it so the app reads as the customer's product. Defaults to the
+   * standard product name when omitted.
+   */
+  productName?: string;
 }
+
+/** The standard product name, used when a skin doesn't override it. */
+export const DEFAULT_PRODUCT_NAME = 'MindsHub Cowork';
 
 export const SKINS: Skin[] = [
   { id: 'normal', label: 'Normal', title: 'Use the standard look.' },
   { id: '8bit', label: '8-Bit', icon: 'gamepad', title: 'Use the retro 8-Bit look.' },
+  // Kinaxis white-label demo skin ("Maestro by Kinaxis") — re-brands colors,
+  // the sidebar wordmark (→ Kinaxis logo, via skin-kinaxis.css) and the
+  // product name. See ENG-816.
+  { id: 'kinaxis', label: 'Kinaxis', title: 'White-label demo: Maestro by Kinaxis.', productName: 'Maestro by Kinaxis' },
   // "Design your own" — token recipe edited in Settings → Appearance,
   // applied as inline body properties (see lib/customTheme.ts).
   { id: 'custom', label: 'Custom', icon: 'palette', title: 'Design your own look.' },
@@ -61,4 +74,9 @@ export function nextSkin(current: string): string {
 
 export function skinLabel(id: string): string {
   return SKINS.find((s) => s.id === id)?.label ?? id;
+}
+
+/** Product name for a skin (white-label skins override the default). */
+export function skinProductName(id: string): string {
+  return SKINS.find((s) => s.id === id)?.productName ?? DEFAULT_PRODUCT_NAME;
 }

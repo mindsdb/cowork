@@ -21,6 +21,7 @@ import { ReactKeycloakProvider } from '@react-keycloak/web';
 import './cowork/styles/tailwind.css';
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
+import './cowork/styles/skin-kinaxis.css';
 import './styles.css';
 import App from './App';
 import { keycloak, scheduleWebTokenRefresh } from './lib/keycloak';

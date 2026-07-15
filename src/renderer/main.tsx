@@ -11,6 +11,7 @@ import './cowork/styles/tailwind.css';
 // legacy var names to the new tokens.
 import './cowork/styles/globals.css';
 import './cowork/styles/skin-8bit.css';
+import './cowork/styles/skin-kinaxis.css';
 import './styles.css';
 import { loadSkin } from './lib/skins';
 
