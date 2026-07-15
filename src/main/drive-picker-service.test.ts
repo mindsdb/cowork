@@ -8,7 +8,7 @@ vi.mock('electron', () => ({
 }));
 
 // Imported after the mock so drive-picker-service picks up the mocked shell.
-const { openDrivePickerFlow, cancelCurrentDrivePicker } = await import('./drive-picker-service');
+const { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } = await import('./drive-picker-service');
 
 function extractPortAndState(url: string): { port: number; state: string } {
   const parsed = new URL(url);
@@ -142,5 +142,41 @@ describe('openDrivePickerFlow', () => {
     // Well under PICKER_TIMEOUT_MS (5 minutes) — this is the whole point of
     // the fix, so a generous but still fast-fail-confirming ceiling.
     expect(elapsedMs).toBeLessThan(5000);
+  });
+
+  it('escapes `<` in the embedded JSON so a value containing `</script>` cannot break out of the inline script', async () => {
+    // JSON.stringify does NOT escape `/`, so without the fix this value
+    // would close the real <script> early and let the injected one run.
+    const malicious = '</script><script>window.__pwned = true;</script>';
+    const flowPromise = openDrivePickerFlow(malicious, 'key');
+    await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
+    const url = openExternalMock.mock.calls[0][0] as string;
+
+    const { body } = await getPickerPage(url);
+    expect(body).not.toContain('</script><script>window.__pwned');
+    expect(body).toContain('\\u003c/script>\\u003cscript>');
+
+    cancelCurrentDrivePicker();
+    await flowPromise;
+  });
+});
+
+describe('isValidDriveFileIds', () => {
+  it('accepts undefined (no pre-navigation requested)', () => {
+    expect(isValidDriveFileIds(undefined)).toBe(true);
+  });
+
+  it('accepts an empty array and real-looking Drive ids', () => {
+    expect(isValidDriveFileIds([])).toBe(true);
+    expect(isValidDriveFileIds(['1a2B3c_-4d', 'AbCd_1234-XYZ'])).toBe(true);
+  });
+
+  it('rejects anything that is not an array of plain alphanumeric/underscore/hyphen strings', () => {
+    expect(isValidDriveFileIds('abc')).toBe(false);
+    expect(isValidDriveFileIds(null)).toBe(false);
+    expect(isValidDriveFileIds([123])).toBe(false);
+    expect(isValidDriveFileIds(['ok', '</script><script>evil()</script>'])).toBe(false);
+    expect(isValidDriveFileIds(['has space'])).toBe(false);
+    expect(isValidDriveFileIds(['../etc/passwd'])).toBe(false);
   });
 });

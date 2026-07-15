@@ -13,7 +13,7 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
-import { openDrivePickerFlow, cancelCurrentDrivePicker } from './drive-picker-service';
+import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
@@ -691,6 +691,7 @@ function setupIPC() {
   ipcMain.handle(IPC.OAUTH_PICK_DRIVE_FILES, async (_event, opts) => {
     const { engine, name, accountEmail, fileIds, projectName } = opts || {};
     if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    if (!isValidDriveFileIds(fileIds)) return { ok: false, reason: 'Invalid file id.' };
     const access = await getPickerAccess(engine, accountEmail);
     if (!access.ok) return access;
     const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, fileIds);

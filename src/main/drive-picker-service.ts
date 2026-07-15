@@ -33,6 +33,18 @@ export interface DrivePickerResult {
 // takes longer than typing credentials on a login form.
 const PICKER_TIMEOUT_MS = 5 * 60 * 1000;
 
+// Real Drive file ids only ever match this shape. `fileIds` comes from the
+// renderer bridge (IPC.OAUTH_PICK_DRIVE_FILES) and ends up interpolated
+// into an inline <script> on the picker page (see pickerPage below) — the
+// IPC handler validates against this before calling openDrivePickerFlow,
+// rather than trusting the caller.
+const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+export function isValidDriveFileIds(fileIds: unknown): fileIds is string[] | undefined {
+  if (fileIds === undefined) return true;
+  return Array.isArray(fileIds) && fileIds.every((id) => typeof id === 'string' && DRIVE_FILE_ID_RE.test(id));
+}
+
 let _activeAttempt: { cancel: () => void } | null = null;
 
 export function cancelCurrentDrivePicker(): void {
@@ -173,6 +185,15 @@ export async function openDrivePickerFlow(
   }
 }
 
+// JSON.stringify doesn't escape `<`, so a value containing `</script>`
+// would close the inline <script> below early and let whatever follows
+// execute on this page (which holds the access token). Replacing every `<`
+// with its unicode escape is a no-op for JSON parsing but makes that
+// impossible.
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
 function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; state: string; fileIds: string[] }): string {
   const { accessToken, apiKey, appId, state, fileIds } = opts;
   return `<!doctype html>
@@ -205,11 +226,11 @@ function pickerPage(opts: { accessToken: string; apiKey: string; appId: string; 
 <script src="https://apis.google.com/js/api.js"></script>
 <script>
 (function () {
-  var STATE = ${JSON.stringify(state)};
-  var ACCESS_TOKEN = ${JSON.stringify(accessToken)};
-  var API_KEY = ${JSON.stringify(apiKey)};
-  var APP_ID = ${JSON.stringify(appId)};
-  var FILE_IDS = ${JSON.stringify(fileIds)};
+  var STATE = ${jsonForScript(state)};
+  var ACCESS_TOKEN = ${jsonForScript(accessToken)};
+  var API_KEY = ${jsonForScript(apiKey)};
+  var APP_ID = ${jsonForScript(appId)};
+  var FILE_IDS = ${jsonForScript(fileIds)};
 
   function setStatus(title, body, isError) {
     var card = document.getElementById('status');
