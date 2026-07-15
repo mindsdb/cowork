@@ -181,6 +181,23 @@ export async function showItemInFolder(path: string): Promise<{ ok: boolean; rea
   return { ok: false, reason: 'unsupported' };
 }
 
+// True when a native OS file/folder picker is available (Electron only). The
+// web shell has no native dialog, so callers fall back to an in-app browser.
+export const canPickPath: boolean =
+  isElectron && typeof (bridge as any)?.pickPath === 'function';
+
+// Open the native OS picker; resolves the chosen absolute path, or
+// { ok: false } when cancelled or unavailable (web).
+export async function pickPath(
+  opts: { kind?: 'file' | 'folder' | 'any'; title?: string; defaultPath?: string } = {},
+): Promise<{ ok: boolean; path?: string; reason?: string }> {
+  if (isElectron && typeof bridge.pickPath === 'function') {
+    const path = await bridge.pickPath(opts);
+    return path ? { ok: true, path } : { ok: false, reason: 'cancelled' };
+  }
+  return { ok: false, reason: 'unsupported' };
+}
+
 // ---- File drop / clipboard ---------------------------------------------
 
 // In Electron, dropped files expose an OS path via webUtils. In web, the
@@ -607,6 +624,8 @@ export const host = {
   openExternal,
   openPath,
   showItemInFolder,
+  canPickPath,
+  pickPath,
   getPathForFile,
   getUIVersion,
   getVersionInfo,

@@ -62,4 +62,9 @@ export const IPC = {
   APP_UI_VERSION: 'app:ui-version',
   OPEN_EXTERNAL: 'app:open-external',
   SHOW_ITEM_IN_FOLDER: 'shell:show-item-in-folder',
+
+  // Native OS file/folder picker (dialog.showOpenDialog). Backs the agent's
+  // select_path browse mode so the user picks via Finder/Explorer instead of
+  // an in-app file tree.
+  DIALOG_PICK_PATH: 'dialog:pick-path',
 } as const;

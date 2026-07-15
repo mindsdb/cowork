@@ -15,6 +15,7 @@ import Composer from '../components/Composer';
 import { Message } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
+import { PathSelector } from '../components/PathSelector';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { OrbitProvider } from '../lib/orbitRegistry';
 import { copyText } from '../lib/clipboard';
@@ -1771,17 +1772,31 @@ export default function ChatView({
                     onActivateStep={(step) => setOpenScratchpadStepId(prefixId(streamingKey, step.id))}
                   />
                 )}
+                {/* Inline disambiguation picker: shown only while the agent's
+                    select_path tool is awaiting a choice. Keyed by requestId so
+                    a new request mounts fresh. The pick is POSTed back into the
+                    paused turn; this lives inside the streaming turn, never as a
+                    separate user/assistant bubble. */}
+                {streamingMsg.pendingSelection && (
+                  <PathSelector
+                    key={streamingMsg.pendingSelection.requestId}
+                    request={streamingMsg.pendingSelection}
+                    conversationId={task.id}
+                  />
+                )}
                 {/* Bridge state: between the first stream event arriving
                     (which strips the activity placeholder) and the first
                     step or body chunk landing, the AnswerTurn would
                     otherwise render empty — the user sees the message
                     "appear, vanish, then come back" once scratchpad
                     output starts. Keep the working indicator visible
-                    whenever there are no steps and no body text yet.
+                    whenever there are no steps and no body text yet —
+                    but not while a path picker is awaiting the user's
+                    choice (the picker IS the turn's visible state).
                     `_placeholderLabel` is set by the pre-first-event
                     stub in App.jsx `withThinkingPlaceholder` ("Creating
                     task…" for new tasks, "Thinking…" for replies). */}
-                {!streamingMsg.steps?.length && !streamingMsg.content && (
+                {!streamingMsg.pendingSelection && !streamingMsg.steps?.length && !streamingMsg.content && (
                   <WorkingIndicator
                     slotId="header:streaming"
                     label={streamingMsg._placeholderLabel || 'Thinking…'}

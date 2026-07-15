@@ -50,6 +50,11 @@ export function initialStreamState() {
     error: null,
     /** Stable failure code from `response.failed` (e.g. 'token_limit'). */
     errorCode: null,
+    /** Pending file/folder disambiguation from the agent's `select_path`
+     *  tool: { requestId, prompt, kind, options[] } while the agent is
+     *  asking, else null. The streaming turn renders it as an inline
+     *  picker; cleared on the user's pick and on any terminal event. */
+    pendingSelection: null,
   };
 }
 
@@ -233,7 +238,12 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
   }
 
   if (type === 'response.completed') {
-    return { ...state, steps: closeOpenInspectableSteps(state.steps, eventTs), status: 'done' };
+    return {
+      ...state,
+      steps: closeOpenInspectableSteps(state.steps, eventTs),
+      status: 'done',
+      pendingSelection: null,
+    };
   }
 
   if (type === 'response.failed') {
@@ -251,6 +261,25 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
       // Stable wire code (e.g. 'token_limit') so the renderer can show a
       // richer affordance — the out-of-credits card — instead of plain text.
       errorCode: event.code || null,
+      pendingSelection: null,
+    };
+  }
+
+  // Agent asked the user to disambiguate a path (the `select_path` tool).
+  // Held as a transient pending request the streaming turn renders inline;
+  // cleared optimistically by the picker on pick, and on the terminal
+  // events above.
+  if (type === 'response.selection.requested') {
+    return {
+      ...state,
+      pendingSelection: {
+        requestId: event.request_id,
+        prompt: event.prompt || 'Select a file or folder.',
+        kind: event.kind || 'any',
+        mode: event.mode === 'browse' ? 'browse' : 'pick',
+        root: event.root || '',
+        options: Array.isArray(event.options) ? event.options : [],
+      },
     };
   }
 

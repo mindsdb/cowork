@@ -625,6 +625,29 @@ export async function cancelResponse(conversationId) {
   }
 }
 
+// Deliver a file/folder pick into the paused, in-flight turn that asked for
+// it (the agent's `select_path` tool). `selection` is the chosen path, or
+// null when the user dismissed the picker. A 404 means nothing is awaiting
+// (turn ended / stale) — harmless, the picker is hidden either way.
+export async function submitPathSelection(conversationId, requestId, selection) {
+  if (!conversationId || !requestId) return null;
+  try {
+    return await req('/responses/selection', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        request_id: requestId,
+        selection: selection ?? null,
+      }),
+    });
+  } catch (err) {
+    if (err?.status === 404) {
+      return { status: 'not_pending', conversation_id: conversationId };
+    }
+    throw err;
+  }
+}
+
 export async function unpublishArtifact(path) {
   // Idempotent — server 404 means "no record" which is the desired
   // end state.
