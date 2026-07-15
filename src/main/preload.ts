@@ -67,6 +67,9 @@ contextBridge.exposeInMainWorld('antontron', {
     return () => ipcRenderer.removeListener(IPC.MINDSHUB_AUTH_CHANGED, listener);
   },
 
+  // Content-free per-device analytics id (WS5). Returns a stable 16-hex string.
+  getInstallationId: () => ipcRenderer.invoke(IPC.INSTALLATION_GET),
+
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),
   showItemInFolder: (p: string) => ipcRenderer.invoke(IPC.SHOW_ITEM_IN_FOLDER, p),
@@ -121,6 +124,29 @@ contextBridge.exposeInMainWorld('antontron', {
     const listener = (_: any, status: { phase: string; version?: string }) => cb(status);
     ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);
     return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
+  },
+
+  // Browser Control bridge (M1, read-only). request/response invokes + a
+  // push-event subscription (onBrowserState) following the onOAuthRefreshError
+  // unsubscribe pattern.
+  browserControlStatus: () => ipcRenderer.invoke(IPC.BROWSER_STATUS),
+  browserControlListTabs: () => ipcRenderer.invoke(IPC.BROWSER_LIST_TABS),
+  browserControlAttach: (targetId: string) => ipcRenderer.invoke(IPC.BROWSER_ATTACH, targetId),
+  browserControlApprove: () => ipcRenderer.invoke(IPC.BROWSER_APPROVE),
+  browserControlCancelAttach: () => ipcRenderer.invoke(IPC.BROWSER_CANCEL_ATTACH),
+  browserControlRevoke: () => ipcRenderer.invoke(IPC.BROWSER_REVOKE),
+  browserControlTakeOver: () => ipcRenderer.invoke(IPC.BROWSER_TAKE_OVER),
+  browserControlSetConversation: (conversationId: string | null) =>
+    ipcRenderer.invoke(IPC.BROWSER_SET_CONVERSATION, conversationId),
+  browserControlStop: () => ipcRenderer.invoke(IPC.BROWSER_STOP),
+  browserInspect: () => ipcRenderer.invoke(IPC.BROWSER_INSPECT),
+  browserNavigate: (href: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, href),
+  browserScroll: (direction: 'down' | 'up') => ipcRenderer.invoke(IPC.BROWSER_SCROLL, direction),
+  browserWait: (ms: number) => ipcRenderer.invoke(IPC.BROWSER_WAIT, ms),
+  onBrowserState: (cb: (payload: unknown) => void) => {
+    const listener = (_: any, payload: any) => cb(payload);
+    ipcRenderer.on(IPC.BROWSER_STATE, listener);
+    return () => ipcRenderer.removeListener(IPC.BROWSER_STATE, listener);
   },
 
   // App

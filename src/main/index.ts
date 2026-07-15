@@ -9,6 +9,9 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
+import { registerBrowserBridgeHandlers, disposeAllBridges } from './browser-bridge';
+import { startBrowserCommandPoller, stopBrowserCommandPoller } from './browser-command-poller';
+import { getInstallationId } from './installation-id';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
@@ -861,6 +864,10 @@ function setupIPC() {
     return { access_token: getAccessToken() };
   });
 
+  // Stable, anonymous per-device id for content-free product analytics
+  // (WS5 Browser Control funnel). Carries no PII — see installation-id.ts.
+  ipcMain.handle(IPC.INSTALLATION_GET, () => getInstallationId());
+
   // Authoritative "am I signed in?" read. The in-memory token is
   // process-lifetime only, so right after a launch (or after a missed
   // refresh window — laptop slept past the timer) it can be empty while
@@ -1194,6 +1201,12 @@ function setupIPC() {
   // can check/apply in any build (dev, unpackaged, server-down). The gated
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
+
+  // Browser Control bridge (M1, read-only): register the browser:* IPC
+  // handlers and start the server↔main command poller. The poller only does
+  // real work once the bridge reaches `connected`; it self-guards otherwise.
+  registerBrowserBridgeHandlers(() => mainWindow);
+  startBrowserCommandPoller();
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
@@ -1550,6 +1563,10 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  // Tear down the Browser Control bridge (close any CDP socket) and stop the
+  // command poller before the server shuts down.
+  stopBrowserCommandPoller();
+  disposeAllBridges();
   // Hard ceiling so a wedged python can't pin the quit indefinitely.
   // stopServer's own SIGTERM(3s) + SIGKILL(1.5s) chain stays inside
   // this window, but a misbehaving OS-level process delay could push
