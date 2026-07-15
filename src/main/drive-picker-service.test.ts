@@ -30,6 +30,18 @@ function postResult(port: number, state: string, body: Record<string, unknown>):
   });
 }
 
+function getPickerPage(url: string): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ statusCode: res.statusCode || 0, headers: res.headers, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 describe('openDrivePickerFlow', () => {
   beforeEach(() => {
     openExternalMock.mockReset();
@@ -97,6 +109,25 @@ describe('openDrivePickerFlow', () => {
     await postResult(port, state, { files: [{ id: 'f2', name: 'Doc 2' }] });
     const secondResult = await secondFlow;
     expect(secondResult).toEqual({ ok: true, files: [{ id: 'f2', name: 'Doc 2' }] });
+  });
+
+  it('serves the token-bearing picker page only once and marks it uncacheable', async () => {
+    const flowPromise = openDrivePickerFlow('token', 'key');
+    await vi.waitFor(() => expect(openExternalMock).toHaveBeenCalled());
+    const url = openExternalMock.mock.calls[0][0] as string;
+
+    const first = await getPickerPage(url);
+    expect(first.statusCode).toBe(200);
+    expect(first.headers['cache-control']).toBe('no-store');
+
+    // Same URL (same state, still within the timeout window) fetched again
+    // — must be rejected instead of re-serving the embedded access token.
+    const second = await getPickerPage(url);
+    expect(second.statusCode).toBe(403);
+
+    cancelCurrentDrivePicker();
+    const result = await flowPromise;
+    expect(result.ok).toBe(false);
   });
 
   it('fails fast when the browser cannot be launched, instead of hanging for the full timeout', async () => {

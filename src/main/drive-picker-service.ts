@@ -68,6 +68,12 @@ export async function openDrivePickerFlow(
   }
 
   const state = base64UrlEncode(crypto.randomBytes(16));
+  // The page served below embeds `accessToken` in plain text. The state
+  // check alone isn't enough to keep it single-serve — it stays valid for
+  // the whole PICKER_TIMEOUT_MS window, so without this flag the token-
+  // bearing HTML could be re-fetched (e.g. from browser history, since
+  // state rides in the URL) any number of times before the server closes.
+  let stateConsumed = false;
 
   let rejectResult: ((err: Error) => void) | null = null;
   const { server, resultPromise } = startLoopbackServer<DrivePickerFile[]>(port, (resolve, reject) => {
@@ -77,13 +83,17 @@ export async function openDrivePickerFlow(
         const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
 
         if (url.pathname === '/' && req.method === 'GET') {
-          if (url.searchParams.get('state') !== state) {
+          if (url.searchParams.get('state') !== state || stateConsumed) {
             res.statusCode = 403;
             res.end('Invalid state.');
             return;
           }
+          stateConsumed = true;
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/html');
+          // The token in this page must never survive in a disk/back-forward
+          // cache once served.
+          res.setHeader('Cache-Control', 'no-store');
           res.end(pickerPage({ accessToken, apiKey, appId: appId || '', state, fileIds: fileIds || [] }));
           return;
         }
