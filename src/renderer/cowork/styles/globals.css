@@ -626,30 +626,38 @@ a[href],
   width: 100%; max-width: var(--composer-max-width, 640px);
   background: var(--surface-0);
   border: 1px solid var(--border-01);
-  border-radius: var(--r-12);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 4px 12px -6px rgba(0,0,0,0.06);
+  /* Calmer composer (ENG-787 move 03): larger radius so it reads as a
+     friendly surface rather than an input box, and the shared token
+     shadow instead of a bespoke double-drop. */
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-1);
   transition: border-color .15s, box-shadow .15s;
 }
 .composer-wrap.focused {
-  border-color: var(--primary-300);
-  box-shadow: 0 0 0 3px rgba(31,156,176,0.12), 0 4px 12px -6px rgba(0,0,0,0.06);
+  /* Quiet focus: the border simply shifts to the accent — no 3px teal
+     glow ring. Keeps the resting shadow so focusing doesn't jump. */
+  border-color: var(--accent);
+  box-shadow: var(--sh-1);
 }
 /* In-fence indicator — caret sits inside a fenced code block. Subtle
    accent-tinted inner stripe on the left edge plus a soft body wash, so
    it layers under the focus ring rather than competing with it. Toggled
    from React based on `fenceCtxAt(value, caretPos) !== null`. */
 .composer-wrap.in-fence {
+  /* The inset accent stripe is the meaningful "caret is inside a fence"
+     signal; pair it with the shared token shadow (move 03) rather than
+     the old bespoke double-drop. */
   background: color-mix(in srgb, var(--accent) 4%, var(--surface-0));
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    0 1px 3px rgba(0, 0, 0, 0.03),
-    0 4px 12px -6px rgba(0, 0, 0, 0.06);
+    var(--sh-1);
 }
 .composer-wrap.focused.in-fence {
+  /* Quiet focus + the fence stripe: accent border, no 3px glow ring. */
+  border-color: var(--accent);
   box-shadow:
     inset 3px 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent),
-    0 0 0 3px rgba(31, 156, 176, 0.12),
-    0 4px 12px -6px rgba(0, 0, 0, 0.06);
+    var(--sh-1);
 }
 /* Font, line-height, and padding MUST match the textarea exactly — both
    consume the same custom properties from .composer-input-shell so any
@@ -4042,10 +4050,13 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
     0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 .chat-floating-composer .composer-wrap.focused {
+  /* Quiet focus (ENG-787 move 03): the accent border is the only focus
+     signal. No 3px teal glow ring; hold the same soft lift as the resting
+     state so the card doesn't jump on focus. */
   border-color: var(--accent);
   box-shadow:
-    0 8px 32px rgba(15, 16, 17, 0.10),
-    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+    0 2px 4px rgba(15, 16, 17, 0.05),
+    0 6px 20px rgba(15, 16, 17, 0.08);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -4762,15 +4773,23 @@ body[data-theme="dark"] .mshell__drawer-title {
   position: relative;
 }
 .user-turn-bubble {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
+  /* De-bubbled (ENG-787 move 01): the right-aligned bordered+shadowed
+     "SMS bubble" is the single most dated element in the chat. Modern AI
+     chat (Claude/Codex) renders the user turn as a quiet tinted block —
+     no hard border, no drop shadow. A --surface-3 fill carries the shape
+     instead; keep the generous rounding so it reads as a friendly block,
+     not an input box. (--surface-2 was too faint against the page + the
+     animated dot field behind it — --surface-3 roughly doubles the
+     separation while staying on the neutral token scale.) */
+  background: var(--surface-3);
+  border: 0;
+  border-radius: 18px;
   padding: 14px 18px;
   font-family: var(--font-body);
   font-size: var(--text-base);
   line-height: 1.55;
   color: var(--ink);
-  box-shadow: 0 1px 0 rgba(15, 16, 17, 0.02);
+  box-shadow: none;
   user-select: text;
   /* The bubble is a flex item in a column flex (.user-turn-inner). Without
      min-width:0 its min-content floor is the widest unbreakable child — a
@@ -4816,6 +4835,14 @@ body[data-theme="dark"] .mshell__drawer-title {
 }
 .answer-turn:hover .turn-meta,
 .answer-turn:focus-within .turn-meta { opacity: 1; }
+/* Answer body rhythm (ENG-787 move 02): a touch more line-height than the
+   shared 14.5px/1.55 body token for calmer long-form reading. Scoped to
+   answer turns so user bubbles, memory previews, and other markdown
+   surfaces keep the tighter default. */
+.answer-turn .markdown-content p,
+.answer-turn .markdown-content li {
+  line-height: 1.7;
+}
 /* The in-flight status label next to the orb — soft left-to-right sheen,
    the same "alive" read as Claude's thinking label. Numbers inside tick
    every second, so the JSX pairs this with tabular-nums. */
