@@ -13,6 +13,7 @@ import {
   decideUpdateApply,
   otaUiEnabled,
   otaCacheIsFresh,
+  uiUpdateIsNewer,
   uiServerCompatSkipReason,
 } from './update-logic';
 
@@ -391,17 +392,42 @@ describe('otaCacheIsFresh', () => {
   });
 });
 
+describe('uiUpdateIsNewer', () => {
+  it('only when strictly newer than the newest of bundled + current cache', () => {
+    // Newer than both → yes.
+    expect(uiUpdateIsNewer('2.26.7.20.1', '2.26.7.6.1', '2.26.7.13.1')).toBe(true);
+    // Equal to the effective installed → no (the fresh-install re-download loop).
+    expect(uiUpdateIsNewer('2.26.7.6.1', '2.26.7.6.1', null)).toBe(false);
+    // Older than the current cache → no (blocks a regressed-manifest downgrade).
+    expect(uiUpdateIsNewer('2.26.7.6.1', '2.26.7.6.1', '2.26.7.13.1')).toBe(false);
+    // Newer than bundled but there's no cache yet → yes.
+    expect(uiUpdateIsNewer('2.26.7.13.1', '2.26.7.6.1', null)).toBe(true);
+  });
+
+  it('unparseable manifest never announces; nothing-parseable-installed treats it as newer', () => {
+    expect(uiUpdateIsNewer('bundled', '2.26.7.6.1', null)).toBe(false);
+    expect(uiUpdateIsNewer('2.26.7.6.1', '2.0.7', null)).toBe(true); // legacy bundled fallback
+  });
+});
+
 describe('uiServerCompatSkipReason', () => {
-  it('allows when there is no constraint (absent, empty, or non-CalVer floor)', () => {
+  it('allows only when no floor is declared (absence is the explicit opt-out)', () => {
     expect(uiServerCompatSkipReason({ serverVersion: '0.26.7.6.4.dev40+g82a1da968' })).toBeNull();
     expect(uiServerCompatSkipReason({ minServerVersion: '', serverVersion: '0.26.7.6.4' })).toBeNull();
     expect(uiServerCompatSkipReason({ minServerVersion: null, serverVersion: '0.26.7.6.4' })).toBeNull();
-    // A non-CalVer floor (e.g. the old pre-CalVer 0.1.x) is ignored, not enforced.
-    expect(uiServerCompatSkipReason({ minServerVersion: '0.1.6', serverVersion: '0.26.7.6.4' })).toBeNull();
   });
 
-  it('allows when the server version is unknown (never block on a check we cannot do)', () => {
-    expect(uiServerCompatSkipReason({ minServerVersion: '2.26.7.6.1', serverVersion: null })).toBeNull();
+  it('fails closed on a declared-but-uninterpretable floor', () => {
+    // A non-CalVer floor we can't compare is not a licence to ship.
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.1.6', serverVersion: '0.26.7.6.4' }))
+      .toBe('invalid min_server_version "0.1.6"');
+  });
+
+  it('fails closed when a floor is declared but the server version is unknown', () => {
+    expect(uiServerCompatSkipReason({ minServerVersion: '2.26.7.6.1', serverVersion: null }))
+      .toBe('server version unknown (need >= 2.26.7.6.1)');
+    expect(uiServerCompatSkipReason({ minServerVersion: '2.26.7.6.1', serverVersion: 'bundled' }))
+      .toBe('server version unknown (need >= 2.26.7.6.1)');
   });
 
   it('withholds when the running server is older than the floor (by CalVer)', () => {

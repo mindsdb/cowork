@@ -3,7 +3,7 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, uiServerCompatSkipReason, type UIManifest } from './update-logic';
+import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, uiUpdateIsNewer, uiServerCompatSkipReason, type UIManifest } from './update-logic';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import { fetchServerVersions } from './server-process';
@@ -12,8 +12,16 @@ export type { UIManifest };
 
 // Cache-metadata schema. Bumping this invalidates every prior cache slot
 // (readSlotVersion returns null), which is exactly what we want if the on-disk
-// format ever changes — a legacy slot must never be served blindly.
-const CACHE_META_SCHEMA = 1;
+// format ever changes — a legacy slot must never be served blindly. Bumped to
+// 2 when the slot began persisting `minServerVersion`, so slot-1 caches (which
+// carried no floor) are re-derived rather than served without their constraint.
+const CACHE_META_SCHEMA = 2;
+
+// Set true once the running server has been verified to satisfy the active
+// slot's persisted server-compat floor THIS session (see verifyServedUiCompat).
+// A constrained cache is not served until this flips — fail-closed, because at
+// boot the server may not be up yet and its compatibility is unknown.
+let _compatVerified = false;
 
 // Whether UI OTA hot-updates run in this build. Gated by build channel + env
 // (see otaUiEnabled) instead of a hardcoded constant (ENG-670): ON for prod
@@ -68,17 +76,28 @@ function getRejectedFile(): string {
   return path.join(getCacheDir(), 'rejected.json');
 }
 
-/** Version recorded inside a cache slot, or null if the slot has no valid
+interface SlotMeta {
+  version: string;
+  minServerVersion?: string; // persisted server-compat floor (CalVer), re-enforced at serve time
+}
+
+/** Metadata recorded inside a cache slot, or null if the slot has no valid
  *  provenance — missing, wrong schema, or a legacy pre-gate cache. A slot
  *  without provenance is never trusted or served. */
-function readSlotVersion(dir: string): string | null {
+function readSlotMeta(dir: string): SlotMeta | null {
   try {
     const data = JSON.parse(fs.readFileSync(slotMetaFile(dir), 'utf-8'));
     if (data?.schema !== CACHE_META_SCHEMA || typeof data.version !== 'string' || !data.version) return null;
-    return data.version;
+    const meta: SlotMeta = { version: data.version };
+    if (typeof data.minServerVersion === 'string' && data.minServerVersion) meta.minServerVersion = data.minServerVersion;
+    return meta;
   } catch {
     return null;
   }
+}
+
+function readSlotVersion(dir: string): string | null {
+  return readSlotMeta(dir)?.version ?? null;
 }
 
 function getRejectedVersion(): string | null {
@@ -122,10 +141,16 @@ export function getRendererPath(): string {
  *  UI). Otherwise we fall back to the always-safe bundled renderer. */
 export function isServingOta(): boolean {
   if (!otaEnabled()) return false;
-  const cached = readSlotVersion(getCurrentDir());
-  if (!cached) return false;
+  const meta = readSlotMeta(getCurrentDir());
+  if (!meta) return false;
   if (!fs.existsSync(path.join(getCurrentDir(), 'index.html'))) return false;
-  return otaCacheIsFresh(cached, getAppDisplayVersion());
+  if (!otaCacheIsFresh(meta.version, getAppDisplayVersion())) return false;
+  // Fail closed: a cache with a persisted server-compat floor is served only
+  // after the running server has been verified to satisfy it this session
+  // (verifyServedUiCompat). At boot the server may not be up yet, so a
+  // constrained cache serves bundled until proven safe.
+  if (meta.minServerVersion && !_compatVerified) return false;
+  return true;
 }
 
 /** Always returns the app-bundled renderer, ignoring any OTA cache. */
@@ -236,14 +261,17 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
 }
 
 /** Activate a staged bundle: current → previous, staging → current. */
-function activateStaged(version: string): void {
+function activateStaged(version: string, minServerVersion?: string): void {
   const current = getCurrentDir();
   const previous = getPreviousDir();
   const staging = getStagingDir();
 
   // Stamp provenance INTO the staging dir first, so it travels with the rename
-  // and can never describe the wrong slot.
-  fs.writeFileSync(slotMetaFile(staging), JSON.stringify({ schema: CACHE_META_SCHEMA, version }), 'utf-8');
+  // and can never describe the wrong slot. Persist the server-compat floor so
+  // it can be re-enforced when the cache is served on a later boot.
+  const meta: SlotMeta & { schema: number } = { schema: CACHE_META_SCHEMA, version };
+  if (minServerVersion) meta.minServerVersion = minServerVersion;
+  fs.writeFileSync(slotMetaFile(staging), JSON.stringify(meta), 'utf-8');
 
   rmDir(previous);
   if (fs.existsSync(current)) {
@@ -287,8 +315,11 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
   }
   if (rejected) clearRejectedVersion(); // manifest moved on — retry allowed
 
-  const cached = getCachedVersion();
-  if (cached === manifest.version) {
+  // Announce only a bundle strictly newer than the effective installed UI (the
+  // newest of the app-bundled renderer and the raw current cache). This stops a
+  // fresh install re-downloading the version it already ships, and blocks a
+  // regressed manifest from downgrading a newer cache.
+  if (!uiUpdateIsNewer(manifest.version, getAppDisplayVersion(), readSlotVersion(getCurrentDir()))) {
     return { updateAvailable: false, applied: false };
   }
 
@@ -311,8 +342,9 @@ export async function applyUIUpdate(): Promise<boolean> {
   if (rejected === manifest.version) return false; // quarantined (see checkForUIUpdate)
   if (rejected) clearRejectedVersion();
 
-  const cached = getCachedVersion();
-  if (cached === manifest.version) return false;
+  // Only apply a bundle strictly newer than the effective installed UI (never
+  // re-activate the shipped version or downgrade a newer cache).
+  if (!uiUpdateIsNewer(manifest.version, getAppDisplayVersion(), readSlotVersion(getCurrentDir()))) return false;
 
   // Defense in depth: re-check compat at apply time (the manual apply path
   // forces a UI apply without a fresh checkForUIUpdate).
@@ -321,7 +353,7 @@ export async function applyUIUpdate(): Promise<boolean> {
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;
 
-  activateStaged(manifest.version);
+  activateStaged(manifest.version, manifest.minServerVersion);
   return true;
 }
 
@@ -340,4 +372,32 @@ export function rollbackUI(): void {
   if (fs.existsSync(previous)) {
     fs.renameSync(previous, current);
   }
+}
+
+/** After the server is up, re-verify that the currently-active OTA slot still
+ *  satisfies its persisted server-compat floor, and open the session gate that
+ *  lets a constrained cache be served. Fail-closed at serve time — but with a
+ *  distinction: a *known-incompatible* slot is rolled back + quarantined, while
+ *  an *unverifiable* one (server down / version unknown) is merely not served
+ *  this session (bundled wins) without quarantining a possibly-fine bundle.
+ *  Returns what happened so the caller can reload if the served bundle changed:
+ *   - 'none'        — OTA off or no valid slot
+ *   - 'verified'    — slot is safe to serve now (gate opened)
+ *   - 'deferred'    — couldn't verify; serve bundled this session, keep the slot
+ *   - 'rolled-back' — slot is incompatible and has been rolled back */
+export async function verifyServedUiCompat(): Promise<'none' | 'verified' | 'deferred' | 'rolled-back'> {
+  if (!otaEnabled()) return 'none';
+  const meta = readSlotMeta(getCurrentDir());
+  if (!meta) return 'none';
+  if (!meta.minServerVersion) { _compatVerified = true; return 'verified'; }
+  const { server } = await fetchServerVersions().catch(() => ({ server: null }));
+  if (!server) {
+    console.warn('[ui-updater] cannot verify OTA cache compat (server version unknown) — serving bundled this session');
+    return 'deferred';
+  }
+  const reason = uiServerCompatSkipReason({ minServerVersion: meta.minServerVersion, serverVersion: server });
+  if (!reason) { _compatVerified = true; return 'verified'; }
+  console.error(`[ui-updater] active OTA cache incompatible with running server: ${reason} — rolling back`);
+  rollbackUI();
+  return 'rolled-back';
 }

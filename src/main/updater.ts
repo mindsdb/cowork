@@ -174,11 +174,20 @@ export function initUpdater(
     if (ui.updateAvailable) console.log(`[updater] UI update available: ${ui.newVersion}`);
     if (server.updateAvailable) console.log(`[updater] server update: ${server.currentVersion} → ${server.latestVersion}`);
 
+    // A UI held back only for server-compat is still a candidate when a server
+    // update is also pending: the server-first apply brings the server current,
+    // and applyUIUpdate re-checks compat against it in the same pass — so a
+    // coordinated release doesn't strand the UI until the next restart.
+    const uiCandidate = ui.updateAvailable || (!!ui.skippedReason && server.updateAvailable);
+    if (ui.skippedReason && server.updateAvailable) {
+      console.log(`[updater] UI deferred for compat (${ui.skippedReason}); will retry after the server update`);
+    }
+
     // A down server turns an "available" server update into a recovery action:
     // apply it regardless of mode (a newer build may be what fixes the boot).
     const { applyServer, applyUi } = decideUpdateApply({
       serverUpdateAvailable: server.updateAvailable,
-      uiUpdateAvailable: ui.updateAvailable,
+      uiUpdateAvailable: uiCandidate,
       serverDown: !isServerRunning(),
       isBootCheck: autoApply,
       mode: getMode(),

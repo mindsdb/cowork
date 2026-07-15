@@ -9,8 +9,8 @@
 // comments; this module is now the single copy.
 
 // Pure CalVer helpers from the shared version module (no I/O) — used by the
-// OTA cache-freshness decision below.
-import { parseCalVer, compareCalVer } from '../shared/version';
+// OTA cache-freshness / update-newer decisions below.
+import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
 
 // ---------------------------------------------------------------------------
 // Version comparison
@@ -219,6 +219,25 @@ export function otaCacheIsFresh(cachedVersion: string | null, bundledVersion: st
   return compareCalVer(c, b) > 0;
 }
 
+/** Is a manifest bundle worth announcing/applying? Only when it is strictly
+ *  newer than the *effective installed UI* — the newest of the app-bundled
+ *  renderer and the raw current-slot cache. This prevents (a) a fresh install
+ *  re-downloading the same version it already ships (bundled == manifest), and
+ *  (b) a regressed manifest downgrading a newer current cache. Unparseable
+ *  manifest → never (can't validate); nothing parseable installed → treat as
+ *  newer (first real cache). */
+export function uiUpdateIsNewer(
+  manifestVersion: string,
+  bundledVersion: string,
+  cachedRawVersion: string | null,
+): boolean {
+  const m = parseCalVer(manifestVersion);
+  if (!m) return false;
+  const installed = newestCalVer([bundledVersion, cachedRawVersion]);
+  if (!installed) return true;
+  return compareCalVer(m, installed) > 0;
+}
+
 /** Should UI OTA hot-updates run in this build?
  *
  *  Replaces the old hardcoded `OTA_UI_DISABLED = true` constant (ENG-670) with
@@ -250,25 +269,32 @@ export interface UIManifest {
   minServerVersion?: string; // optional CalVer floor: minimum cowork-server this UI needs
 }
 
-/** Should a UI bundle be withheld because the running server is older than it
- *  requires? A thin, explicit safety net ON TOP OF the server-first update
- *  coupling — it covers the cases coupling can't: UI-only passes, pinned/PyPI
- *  server refs that can't roll forward, and publish-order races. Returns a
+/** Should a UI bundle be withheld because the running server can't be shown to
+ *  satisfy its declared floor? A safety net ON TOP OF the server-first update
+ *  coupling — it covers what coupling can't: UI-only passes, pinned/PyPI server
+ *  refs that can't roll forward, and publish-order races. Returns a
  *  human-readable reason to skip, or null to allow.
- *   - no/absent/non-CalVer floor → allow (opt-in per release; a non-CalVer
- *     floor is ignored rather than wrongly blocking);
- *   - unknown server version → allow (never block on a check we can't do);
+ *
+ *  A *declared* floor fails CLOSED — the whole point of a declared constraint is
+ *  to protect the user exactly when compatibility is unknown:
+ *   - no/absent floor → allow (absence is the explicit opt-out);
+ *   - floor present but not CalVer → skip (a floor we can't interpret is not a
+ *     licence to ship);
+ *   - floor present but the running server version is unknown/unparseable
+ *     (server down, /health timeout, older server omits server_version) → skip;
  *   - server older than the floor (by CalVer date/seq, MAJOR ignored) → skip. */
 export function uiServerCompatSkipReason(input: {
   minServerVersion?: string | null;
   serverVersion: string | null;
 }): string | null {
-  const min = parseCalVer(input.minServerVersion);
-  if (!min) return null;
+  const minRaw = (input.minServerVersion ?? '').trim();
+  if (!minRaw) return null; // no constraint declared
+  const min = parseCalVer(minRaw);
+  if (!min) return `invalid min_server_version "${minRaw}"`;
   const server = parseCalVer(input.serverVersion);
-  if (!server) return null;
+  if (!server) return `server version unknown (need >= ${minRaw})`;
   if (compareCalVer(server, min) < 0) {
-    return `server ${input.serverVersion} < required ${input.minServerVersion}`;
+    return `server ${input.serverVersion} < required ${minRaw}`;
   }
   return null;
 }

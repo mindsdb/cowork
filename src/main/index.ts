@@ -19,7 +19,7 @@ import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefres
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
-import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
+import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI, verifyServedUiCompat } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
@@ -307,6 +307,9 @@ function getIconPath(): string {
 
 let mainWindow: BrowserWindow | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
+// Whether the boot load served an OTA bundle (vs the app-bundled renderer), so
+// the post-server-up compat verification knows if the served bundle changed.
+let servedOtaAtBoot = false;
 
 // Pulls the desktop app back to the foreground after a browser-based
 // flow (OAuth sign-in/connect, MindsHub login, the Drive Picker) hands
@@ -339,15 +342,21 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
     win.webContents.removeListener('did-finish-load', onOk);
     win.webContents.removeListener('did-fail-load', onFail);
   };
-  const onOk = () => disarm();
-  const onFail = (_e: unknown, code: number, _desc: string, _url: string, isMainFrame: boolean) => {
-    if (!isMainFrame || code === -3) return; // subframe / benign abort — stay armed
+  const recover = (why: string) => {
     disarm();
-    console.error('[main] OTA renderer failed to load at boot — rolling back to bundled');
+    console.error(`[main] OTA renderer ${why} at boot — rolling back to bundled`);
     rollbackUI();
     if (!win.isDestroyed()) win.loadFile(getBundledPath());
   };
-  const timer = setTimeout(disarm, 15000);
+  const onOk = () => disarm();
+  const onFail = (_e: unknown, code: number, _desc: string, _url: string, isMainFrame: boolean) => {
+    if (!isMainFrame || code === -3) return; // subframe / benign abort — stay armed
+    recover('failed to load');
+  };
+  // A bundle that hangs during parse fires neither event; treat the timeout as a
+  // failure and roll back (same 15s the post-swap health check uses), rather
+  // than leaving the user stuck on a hung renderer.
+  const timer = setTimeout(() => { if (!done) recover('did not load within timeout'); }, 15000);
   win.webContents.on('did-finish-load', onOk);
   win.webContents.on('did-fail-load', onFail);
 }
@@ -435,7 +444,8 @@ function createWindow() {
     // Boot self-heal: arm BEFORE the load (so the result can't be missed) when
     // serving an activated OTA bundle. A bad hot-update rolls back to the
     // app-bundled renderer instead of re-loading the broken bundle every launch.
-    if (isServingOta()) armOtaBootSelfHeal(mainWindow);
+    servedOtaAtBoot = isServingOta();
+    if (servedOtaAtBoot) armOtaBootSelfHeal(mainWindow);
     mainWindow.loadFile(rendererPath);
   }
 
@@ -1443,6 +1453,19 @@ app.whenReady().then(async () => {
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
+
+    // Now the server is up (or decided), re-enforce the active OTA cache's
+    // persisted server-compat floor. A constrained cache served bundled at boot
+    // (fail-closed) can be swapped in once verified; an incompatible one is
+    // rolled back. Reload only if what we should serve changed.
+    verifyServedUiCompat().then((outcome) => {
+      if (outcome === 'none' || outcome === 'deferred') return;
+      const changed = outcome === 'rolled-back' || isServingOta() !== servedOtaAtBoot;
+      if (changed && mainWindow && !mainWindow.isDestroyed()) {
+        console.log(`[main] reloading renderer after compat verification (${outcome})`);
+        mainWindow.loadFile(getRendererPath());
+      }
+    }).catch((err) => console.error('[main] compat verification failed:', err));
 
     // Wire the update checker regardless of whether the server booted. A
     // server that can't start is the case that MOST needs an update — a newer
