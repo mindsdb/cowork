@@ -19,8 +19,11 @@ describe('IPC channel contract', () => {
   });
 
   it('every channel is a non-empty "namespace:action" string', () => {
+    // namespace is lowercase/hyphen; action may be lowercase-hyphen OR
+    // camelCase (some Browser Control channels use camelCase actions to match
+    // the wire contract, e.g. browser:cancelAttach / browser:listTabs).
     for (const [key, value] of entries) {
-      expect(value, `IPC.${key}`).toMatch(/^[a-z-]+:[a-z-]+$/);
+      expect(value, `IPC.${key}`).toMatch(/^[a-z-]+:[a-zA-Z-]+$/);
     }
   });
 

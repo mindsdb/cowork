@@ -63,6 +63,37 @@ export const IPC = {
   // hung exchange — leaving the UI stuck on "Sign in" forever).
   MINDSHUB_AUTH_CHANGED: 'mindshub:auth-changed',
 
+  // Browser Control bridge (M1, read-only) — Electron main owns the CDP
+  // connection to the user's own Chrome. Renderer reaches these only through
+  // src/renderer/platform/host.ts (purity gate). BROWSER_STATE is a push
+  // event (webContents.send), the rest are invoke request/response.
+  BROWSER_ATTACH: 'browser:attach',
+  BROWSER_APPROVE: 'browser:approve',
+  BROWSER_DETACH: 'browser:detach',
+  BROWSER_CANCEL_ATTACH: 'browser:cancelAttach',
+  BROWSER_LIST_TABS: 'browser:listTabs',
+  BROWSER_STATUS: 'browser:status',
+  BROWSER_REVOKE: 'browser:revoke',
+  BROWSER_TAKE_OVER: 'browser:takeOver',
+  // Renderer keeps main in sync with the ACTIVE conversation id (on change and
+  // at tab-approval time) so the command poller can identify itself to
+  // cowork-server (bridge/hello requires a conversation_id or session_id; the
+  // session is conversation-scoped).
+  BROWSER_SET_CONVERSATION: 'browser:setConversation',
+  // Renderer signals a user Stop LOCALLY (in addition to the server control
+  // gate) so the poller's pre-execution check can gate a command that was
+  // handed out just before the Stop landed. Cleared on the next attach.
+  BROWSER_STOP: 'browser:stop',
+  BROWSER_INSPECT: 'browser:inspect',
+  BROWSER_NAVIGATE: 'browser:navigate',
+  BROWSER_SCROLL: 'browser:scroll',
+  BROWSER_WAIT: 'browser:wait',
+  BROWSER_STATE: 'browser:state',
+
+  // Instrumentation — stable, anonymous per-device id for content-free
+  // product analytics (Browser Control funnel, WS5). Read-only from renderer.
+  INSTALLATION_GET: 'installation:get',
+
   // App
   APP_READY: 'app:ready',
   APP_GET_PLATFORM: 'app:get-platform',

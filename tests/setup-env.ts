@@ -13,7 +13,7 @@ import { beforeEach } from 'vitest';
 process.env.TZ = 'UTC';
 
 // Prefixes and exact names that must never leak into a test.
-const SCRUB_PREFIXES = ['COWORK_SERVER_', 'ANTON_'];
+const SCRUB_PREFIXES = ['COWORK_SERVER_', 'COWORK_BROWSER_', 'ANTON_'];
 const SCRUB_EXACT = ['DEV_MODE', 'COWORK_ALLOWED_ORIGINS'];
 const SCRUB_SUFFIXES = ['_API_KEY', '_TOKEN', '_SECRET'];
 
