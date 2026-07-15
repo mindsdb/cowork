@@ -309,10 +309,16 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
     if (!isNonEmptyString(data?.version) || !isNonEmptyString(data?.url)) return null;
     if (typeof data.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(data.sha256)) return null;
     const manifest: UIManifest = { version: data.version, url: data.url, sha256: data.sha256 };
-    // Optional server-compat floor. Accept camelCase or the snake_case the
-    // publish workflow writes; a non-string / empty value means no constraint.
+    // Optional server-compat floor (camelCase or the snake_case the publish
+    // workflow writes). The publisher omits the field entirely when no floor is
+    // intended, so a field that is *present but not a valid non-empty string*
+    // is a malformed constraint — reject the whole manifest rather than silently
+    // treat it as unconstrained (that would be a fail-open hole).
     const msv = data.minServerVersion ?? data.min_server_version;
-    if (isNonEmptyString(msv)) manifest.minServerVersion = msv;
+    if (msv !== undefined && msv !== null) {
+      if (!isNonEmptyString(msv)) return null;
+      manifest.minServerVersion = msv;
+    }
     return manifest;
   } catch {
     return null;

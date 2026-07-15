@@ -17,11 +17,14 @@ export type { UIManifest };
 // carried no floor) are re-derived rather than served without their constraint.
 const CACHE_META_SCHEMA = 2;
 
-// Set true once the running server has been verified to satisfy the active
-// slot's persisted server-compat floor THIS session (see verifyServedUiCompat).
-// A constrained cache is not served until this flips — fail-closed, because at
-// boot the server may not be up yet and its compatibility is unknown.
-let _compatVerified = false;
+// The exact slot VERSION whose server-compat floor has been verified satisfied
+// this session — either at apply time (against the just-updated server) or by
+// verifyServedUiCompat() after boot. A constrained slot is served only when its
+// version matches this. Tracking the version (not a global boolean) means the
+// gate can't leak across a slot rotation and opens for the precise slot that
+// passed. null = nothing verified yet (fail-closed: a constrained slot at boot
+// serves bundled until proven compatible).
+let _verifiedCompatVersion: string | null = null;
 
 // Whether UI OTA hot-updates run in this build. Gated by build channel + env
 // (see otaUiEnabled) instead of a hardcoded constant (ENG-670): ON for prod
@@ -146,10 +149,10 @@ export function isServingOta(): boolean {
   if (!fs.existsSync(path.join(getCurrentDir(), 'index.html'))) return false;
   if (!otaCacheIsFresh(meta.version, getAppDisplayVersion())) return false;
   // Fail closed: a cache with a persisted server-compat floor is served only
-  // after the running server has been verified to satisfy it this session
-  // (verifyServedUiCompat). At boot the server may not be up yet, so a
-  // constrained cache serves bundled until proven safe.
-  if (meta.minServerVersion && !_compatVerified) return false;
+  // once THIS slot's version has been verified against the running server (at
+  // apply time or by verifyServedUiCompat). At boot the server may not be up
+  // yet, so a constrained cache serves bundled until proven safe.
+  if (meta.minServerVersion && _verifiedCompatVersion !== meta.version) return false;
   return true;
 }
 
@@ -353,6 +356,11 @@ export async function applyUIUpdate(): Promise<boolean> {
   const ok = await downloadAndStage(manifest);
   if (!ok) return false;
 
+  // serverCompatSkip above verified this version against the current server, so
+  // open the serve-gate for exactly this slot — otherwise the health-checked
+  // reload right after activation would fall back to bundled and "succeed"
+  // without ever loading the new (constrained) bundle.
+  _verifiedCompatVersion = manifest.version;
   activateStaged(manifest.version, manifest.minServerVersion);
   return true;
 }
@@ -374,30 +382,26 @@ export function rollbackUI(): void {
   }
 }
 
-/** After the server is up, re-verify that the currently-active OTA slot still
- *  satisfies its persisted server-compat floor, and open the session gate that
- *  lets a constrained cache be served. Fail-closed at serve time — but with a
- *  distinction: a *known-incompatible* slot is rolled back + quarantined, while
- *  an *unverifiable* one (server down / version unknown) is merely not served
- *  this session (bundled wins) without quarantining a possibly-fine bundle.
- *  Returns what happened so the caller can reload if the served bundle changed:
- *   - 'none'        — OTA off or no valid slot
- *   - 'verified'    — slot is safe to serve now (gate opened)
- *   - 'deferred'    — couldn't verify; serve bundled this session, keep the slot
- *   - 'rolled-back' — slot is incompatible and has been rolled back */
-export async function verifyServedUiCompat(): Promise<'none' | 'verified' | 'deferred' | 'rolled-back'> {
+/** Re-verify the currently-active OTA slot against the running server and open
+ *  the serve-gate for its version if compatible. Called AFTER the updater's
+ *  server-update/recovery pass, so a server that needed upgrading to satisfy the
+ *  floor has already been brought current.
+ *
+ *  Never rolls back or quarantines here: an incompatible or unverifiable slot is
+ *  merely *deferred* (bundled wins this session, the slot is kept intact) — a
+ *  transient old/down server must not permanently reject an otherwise-valid
+ *  cache. Quarantine is reserved for an actual renderer-load failure.
+ *   - 'none'     — OTA off or no valid slot
+ *   - 'verified' — slot satisfies the floor; gate opened for its version
+ *   - 'deferred' — incompatible or unverifiable; serve bundled, keep the slot */
+export async function verifyServedUiCompat(): Promise<'none' | 'verified' | 'deferred'> {
   if (!otaEnabled()) return 'none';
   const meta = readSlotMeta(getCurrentDir());
   if (!meta) return 'none';
-  if (!meta.minServerVersion) { _compatVerified = true; return 'verified'; }
+  if (!meta.minServerVersion) { _verifiedCompatVersion = meta.version; return 'verified'; }
   const { server } = await fetchServerVersions().catch(() => ({ server: null }));
-  if (!server) {
-    console.warn('[ui-updater] cannot verify OTA cache compat (server version unknown) — serving bundled this session');
-    return 'deferred';
-  }
   const reason = uiServerCompatSkipReason({ minServerVersion: meta.minServerVersion, serverVersion: server });
-  if (!reason) { _compatVerified = true; return 'verified'; }
-  console.error(`[ui-updater] active OTA cache incompatible with running server: ${reason} — rolling back`);
-  rollbackUI();
-  return 'rolled-back';
+  if (!reason) { _verifiedCompatVersion = meta.version; return 'verified'; }
+  console.warn(`[ui-updater] active OTA cache not served this session: ${reason}`);
+  return 'deferred';
 }

@@ -264,9 +264,16 @@ describe('parseUiManifest', () => {
       ...valid,
       minServerVersion: '2.26.7.6.1',
     });
-    // A non-string / empty constraint is ignored (treated as no constraint).
-    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: 123 }))).toEqual(valid);
-    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: '' }))).toEqual(valid);
+    // Field absent entirely → unconstrained (the publisher's opt-out).
+    expect(parseUiManifest(JSON.stringify(valid))).toEqual(valid);
+  });
+
+  it('rejects a manifest whose min server version is present but malformed', () => {
+    // A declared-but-invalid floor is an error, not an opt-out — don't silently
+    // ship it as unconstrained.
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: 123 }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: '' }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, minServerVersion: {} }))).toBeNull();
   });
 });
 

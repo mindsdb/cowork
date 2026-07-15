@@ -5,7 +5,7 @@
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI } from './ui-updater';
+import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
@@ -144,6 +144,21 @@ export function registerUpdateHandlers(getWindow: GetWindow) {
   });
 }
 
+// After the boot poll (server now current), re-verify a constrained OTA cache
+// that booted bundled. If it's now compatible, swap it in through the
+// health-checked reload (loadAndVerify + rollback-on-failure), so this
+// post-verification load is protected the same way an apply-time reload is. If
+// still incompatible/unverifiable it stays deferred (bundled) — never rolled
+// back here; only a real renderer-load failure quarantines a bundle.
+async function settleConstrainedCache(getWindow: GetWindow): Promise<void> {
+  if (isServingOta()) return; // already serving an OTA bundle (unconstrained / verified)
+  const outcome = await verifyServedUiCompat();
+  if (outcome === 'verified' && isServingOta()) {
+    console.log('[updater] constrained OTA cache verified against server — activating with health check');
+    await reloadWithUiHealthCheck(getWindow);
+  }
+}
+
 // Start update polling: a boot check (may auto-apply in auto mode) plus a
 // periodic re-check every 4h (banner only, never auto-applies). Gated by the
 // caller to packaged, non-DEV builds.
@@ -211,6 +226,12 @@ export function initUpdater(
   rendererReady.then(async () => {
     console.log(`[updater] boot check (mode: ${getMode()})...`);
     await poll(true).catch(err => console.error('[updater] boot check failed:', err));
+
+    // The boot poll has now brought the server current (server-first). Re-verify
+    // a constrained OTA cache that booted bundled (fail-closed) and, if it's now
+    // compatible, swap it in through the health-checked reload so a corrupt or
+    // hanging bundle still self-heals.
+    await settleConstrainedCache(getWindow).catch(err => console.error('[updater] compat settle failed:', err));
 
     const timer = setInterval(() => {
       console.log(`[updater] periodic check (mode: ${getMode()})...`);
