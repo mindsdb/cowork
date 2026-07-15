@@ -1863,7 +1863,7 @@ export default function SettingsView({
           />
         </Section>
         <div className="settings-hide-mobile">
-          <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
+          <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <Switch
               checked={settings.showDots}
               onCheckedChange={(v) => setSetting('showDots', v)}

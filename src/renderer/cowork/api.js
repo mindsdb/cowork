@@ -1903,7 +1903,9 @@ export const MOCK_DATA = {
     tone: 'balanced',
     defaultModel: 'latest:sonnet',
     autoPin: true,
-    showDots: true,
+    // Flat background by default; opt back into the animated dot grid via
+    // Settings → Personalization → Animated background.
+    showDots: false,
     showCounters: true,
     accentVariant: 'aqua',
     planningProvider: 'minds-cloud',

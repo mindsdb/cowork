@@ -717,7 +717,10 @@ function AppCore() {
     tone: 'balanced',
     defaultModel: 'claude-sonnet-4-6',
     autoPin: true,
-    showDots: true,
+    // Animated dot-grid background off by default — a flat surface reads
+    // calmer and cohesive with the rest of the UI. Users can opt back in
+    // via Settings → Personalization → Animated background.
+    showDots: false,
     showCounters: true,
     accentVariant: 'aqua',
   });
