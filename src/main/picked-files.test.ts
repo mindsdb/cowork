@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { verifyPickedFiles, getPickedFiles, type PickedFile } from './picked-files';
+import { verifyPickedFiles, getPickedFiles, savePickedFiles, type PickedFile } from './picked-files';
 
-function fakeResponse(ok: boolean, body: unknown = {}): Response {
-  return { ok, json: async () => body } as Response;
+function fakeResponse(ok: boolean, body: unknown = {}, status = ok ? 200 : 400): Response {
+  return { ok, status, json: async () => body } as Response;
 }
 
 describe('getPickedFiles', () => {
@@ -62,6 +62,47 @@ describe('getPickedFiles', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     expect(await getPickedFiles('google_drive', 'me@example.com')).toEqual([]);
+  });
+});
+
+describe('savePickedFiles', () => {
+  beforeEach(() => {
+    process.env.COWORK_BUILD_KIND = 'dev';
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns ok:true with the server-merged list on success', async () => {
+    const merged: PickedFile[] = [{ id: 'f1', name: 'Doc 1' }, { id: 'f2', name: 'Doc 2' }];
+    const fetchMock = vi.fn().mockResolvedValue(fakeResponse(true, { files: merged }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await savePickedFiles('google_drive', 'me@example.com', [{ id: 'f2', name: 'Doc 2' }]);
+    expect(result).toEqual({ ok: true, files: merged });
+  });
+
+  // Regression: this used to silently return the (unpersisted) input list
+  // on failure, so the caller couldn't tell the PATCH never landed and
+  // reported success to the renderer anyway.
+  it('returns ok:false (not the unpersisted input) on a non-ok response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fakeResponse(false, {}, 500));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const newFiles: PickedFile[] = [{ id: 'f3', name: 'Doc 3' }];
+    const result = await savePickedFiles('google_drive', 'me@example.com', newFiles);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/500/);
+  });
+
+  it('returns ok:false (not the unpersisted input) when the request throws', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network down'));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const newFiles: PickedFile[] = [{ id: 'f4', name: 'Doc 4' }];
+    const result = await savePickedFiles('google_drive', 'me@example.com', newFiles);
+    expect(result).toEqual({ ok: false, reason: 'network down' });
   });
 });
 

@@ -108,9 +108,17 @@ export async function getPickedFiles(engine: string, name: string): Promise<Pick
   }
 }
 
+export type SavePickedFilesResult =
+  | { ok: true; files: PickedFile[] }
+  | { ok: false; reason: string };
+
 // Merges newly picked files into the connection's persisted list and
-// returns the authoritative merged list from the server.
-export async function savePickedFiles(engine: string, name: string, newFiles: PickedFile[]): Promise<PickedFile[]> {
+// returns the authoritative merged list from the server. Callers must
+// treat `ok: false` as "nothing was actually persisted" — the caller
+// (IPC handler) must not report success to the renderer when this fails,
+// since the UI would otherwise show the files as granted even though the
+// server never recorded them.
+export async function savePickedFiles(engine: string, name: string, newFiles: PickedFile[]): Promise<SavePickedFilesResult> {
   try {
     const res = await fetch(
       `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}/picked-files`,
@@ -120,10 +128,10 @@ export async function savePickedFiles(engine: string, name: string, newFiles: Pi
         body: JSON.stringify({ files: newFiles }),
       },
     );
-    if (!res.ok) return newFiles;
+    if (!res.ok) return { ok: false, reason: `Failed to save picked files (${res.status}).` };
     const data = await res.json() as { files?: PickedFile[] };
-    return data.files || newFiles;
-  } catch {
-    return newFiles;
+    return { ok: true, files: data.files || newFiles };
+  } catch (err: any) {
+    return { ok: false, reason: err?.message || 'Could not save picked files.' };
   }
 }

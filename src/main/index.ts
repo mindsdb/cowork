@@ -14,7 +14,7 @@ import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefresh
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
-import { getPickedFiles, savePickedFiles, verifyPickedFiles } from './picked-files';
+import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore } from './token-store';
 import { silentRefresh, refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
@@ -718,9 +718,18 @@ function setupIPC() {
     const tagged = projectName
       ? verified.map((f) => ({ ...f, projects: [projectName] }))
       : verified;
-    const files = tagged.length > 0
-      ? await savePickedFiles(engine, name, tagged)
-      : await getPickedFiles(engine, name);
+    let files: PickedFile[];
+    if (tagged.length > 0) {
+      const saveResult = await savePickedFiles(engine, name, tagged);
+      // Persistence failing here must surface as a real failure — the
+      // renderer would otherwise show these files as granted/attached
+      // when the server never actually recorded the grant, so a reload
+      // later silently loses them.
+      if (!saveResult.ok) return { ok: false, reason: saveResult.reason, failed };
+      files = saveResult.files;
+    } else {
+      files = await getPickedFiles(engine, name);
+    }
     // `files` is the connection's full accumulated grant (every file ever
     // picked) — correct for CustomizeView's "everything this app can
     // access" list, but callers that want "what did the user just pick in
