@@ -34,7 +34,7 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon }) {
   );
 }
 
-function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, agentLabel }) {
+function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
@@ -61,7 +61,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       style={{ position: 'relative', display: 'flex' }}
       {...hoverProps}
     >
-      <button className="recent-item" onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
+      <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
         <span className="recent-row__title" style={{
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           flex: 1, paddingRight: 8,
@@ -557,6 +557,7 @@ export default function Sidebar({
                   onMoveToProject={onMoveTaskToProject}
                   showTimestamp={showCounters}
                   isActive={activeTaskIds.has(task.id)}
+                  selected={activeTaskId === task.id}
                   agentLabel={agentLabel}
                 />
               ))}
@@ -632,6 +633,7 @@ export default function Sidebar({
                 onMoveToProject={isGroup ? undefined : onMoveTaskToProject}
                 showTimestamp={showCounters}
                 isActive={!isGroup && activeTaskIds.has(t.id)}
+                selected={!isGroup && activeTaskId === t.id}
                 agentLabel={agentLabel}
               />
             );

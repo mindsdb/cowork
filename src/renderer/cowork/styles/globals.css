@@ -124,10 +124,12 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
-  /* Sidebar surface — light mode uses a warmer grey so the OS-drawn
-     inactive traffic-light circles (~#a8a8a8) read against it. Dark
-     mode follows the regular surface. */
-  --sidebar-bg:   #ECECEA;
+  /* Sidebar surface — a light --surface-2 rail (not the muddier
+     --surface-3): keeps the rail clean and lets the accent-bg active
+     tint read as real teal instead of dirtied grey. The macOS inactive
+     traffic-light circles (~#a8a8a8) are darker than this, so they still
+     read against it. */
+  --sidebar-bg:   var(--surface-2);
 
   --ink:          #0E0F10;   /* primary text */
   --ink-2:        #3A3D40;   /* body */
@@ -2629,50 +2631,51 @@ body[data-theme="dark"] .app-sidebar::before {
 
 /* New task CTA — outlined neon in dark, accent-bordered in light */
 .anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
-/* Neutral primary action — reads as a button (raised surface + hairline +
-   soft token shadow) without spending the accent on it. Teal is reserved
-   for "where you are" / "what's primary in meaning," not the new-task CTA
-   (matches Claude/Codex: New chat is a quiet, clearly-tappable row). */
+/* New task — the canonical neutral button from the brand book (.btn
+   default): surface fill, --line-2 hairline, --sh-1 shadow, --r radius,
+   and the snappy .12s/.04s transitions. Clearly a button; teal stays
+   reserved for "where you are," not the CTA. */
 .btn-new-task {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
+  height: 36px;
+  padding: 0 12px;
   background: var(--surface);
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: var(--r-8);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
   box-shadow: var(--sh-1);
   font-family: var(--font-sans);
   font-size: 13px;
-  font-weight: 550;
-  letter-spacing: 0;
+  font-weight: 500;
+  letter-spacing: -0.005em;
   cursor: pointer;
   text-align: left;
   transition: background .12s ease, border-color .12s ease,
-              box-shadow .15s ease, transform .05s ease;
+              box-shadow .12s ease, transform .04s ease;
 }
-.btn-new-task:hover {
-  background: var(--surface-2);
-  border-color: var(--line-2);
-}
-.btn-new-task:active { transform: translateY(0.5px); }
+.btn-new-task:hover { background: var(--surface-2); border-color: var(--line-2); }
+.btn-new-task:active { background: var(--surface-3); transform: translateY(0.5px); }
 .btn-new-task__label { flex: 1; }
 .btn-new-task .kbd {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--ink-4);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  font-size: 11px;
+  color: inherit;
+  background: rgba(15, 16, 17, 0.06);
   padding: 1px 5px;
-  border-radius: var(--r-sm);
+  border-radius: 3px;
   font-weight: 500;
+  opacity: 0.85;
 }
-/* Dark: nudge the fill one surface step up so the button still reads as
-   raised against the navy sidebar (where --surface ≈ the sidebar base). */
-body[data-theme="dark"] .btn-new-task { background: var(--surface-2); }
-body[data-theme="dark"] .btn-new-task:hover { background: var(--surface-3); }
+/* Dark: --surface ≈ the sidebar base, so raise the fill one step and
+   flip the kbd chip to a light wash so it stays legible. */
+body[data-theme="dark"] .btn-new-task { background: var(--surface-3); }
+body[data-theme="dark"] .btn-new-task:hover {
+  background: color-mix(in srgb, var(--ink) 8%, var(--surface-3));
+}
+body[data-theme="dark"] .btn-new-task .kbd { background: rgba(255, 255, 255, 0.10); }
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
@@ -2680,11 +2683,13 @@ body[data-theme="dark"] .btn-new-task:hover { background: var(--surface-3); }
   display: flex;
   align-items: center;
   gap: 10px;
-  /* Roomier rows (ENG-640 move 06): a little more height so the rail
-     reads as considered rather than cramped. */
-  padding: 8px 10px;
-  height: auto;
-  border-radius: var(--r);
+  /* Uniform, roomier rows (ENG-640): a fixed min-height keeps every row
+     the same height whether or not it carries a count badge (the badge
+     was stretching auto-height rows unevenly), and gives the rail a
+     considered rhythm. */
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: var(--r-lg);
   color: var(--ink-2);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -2694,14 +2699,16 @@ body[data-theme="dark"] .btn-new-task:hover { background: var(--surface-3); }
   border: 0;
   width: 100%;
   text-align: left;
-  transition: background .12s, color .12s;
+  /* Snappy hover — the rail should react to the cursor immediately. */
+  transition: background .1s ease, color .1s ease;
 }
 .app-sidebar .nav-item:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
-/* Active = "where you are," so it earns the accent: a soft teal tint
-   instead of a generic grey box (ENG-640 move 06). */
+/* Active = "where you are." A soft accent-bg tint + accent text/icon —
+   no left bar or glow (those read as too much). Now that the rail sits
+   on a lighter --surface-2 ground, the teal tint reads clean. */
 .app-sidebar .nav-item.active {
   color: var(--accent-2);
   font-weight: 550;
@@ -2710,18 +2717,6 @@ body[data-theme="dark"] .btn-new-task:hover { background: var(--surface-3); }
 body[data-theme="dark"] .app-sidebar .nav-item.active {
   color: var(--accent);
   background: var(--accent-bg);
-  text-shadow: 0 0 14px var(--accent-glow);
-}
-.app-sidebar .nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: -10px; top: 6px; bottom: 6px;
-  width: 2px;
-  background: var(--accent);
-  border-radius: var(--r-2);
-}
-body[data-theme="dark"] .app-sidebar .nav-item.active::before {
-  box-shadow: 0 0 10px var(--accent-glow);
 }
 .app-sidebar .nav-item.active span:first-child { color: var(--accent) !important; }
 
@@ -2782,19 +2777,31 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px;
-  height: auto;
-  border-radius: var(--r);
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-8);
   font-family: var(--font-sans);
   font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background .1s ease, color .12s ease;
+  transition: background .1s ease, color .1s ease;
   border: 0; background: transparent; width: 100%; text-align: left;
 }
 .app-sidebar .recent-item:hover {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
+}
+/* Currently-open task — marked with the same accent tint as the active
+   nav item, so "which conversation am I in" reads at a glance. */
+.app-sidebar .recent-item.is-selected,
+.app-sidebar .recent-item.is-selected:hover {
+  background: var(--accent-bg);
+  color: var(--accent-2);
+  font-weight: 500;
+}
+body[data-theme="dark"] .app-sidebar .recent-item.is-selected,
+body[data-theme="dark"] .app-sidebar .recent-item.is-selected:hover {
+  color: var(--accent);
 }
 
 /* Footer status bar */
