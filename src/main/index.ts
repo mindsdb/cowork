@@ -1207,7 +1207,7 @@ app.whenReady().then(async () => {
       role: 'help',
       submenu: [
         {
-          label: 'Anton Cowork Documentation',
+          label: 'MindsHub Cowork Documentation',
           click: () => {
             shell.openExternal('https://docs.mindshub.ai/index.html');
           },
