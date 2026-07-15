@@ -17,6 +17,7 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
+import { Button } from '../components/ui';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
@@ -53,9 +54,7 @@ function saveViewMode(mode) {
 export default function ScheduledView({
   scheduled,
   projects,
-  models,
   selectedProject,
-  selectedModel,
   onCreate,
   onUpdate,
   onDelete,
@@ -97,7 +96,7 @@ export default function ScheduledView({
     const q = (search || '').trim().toLowerCase();
     const matches = (item) => {
       if (!q) return true;
-      const haystack = [item.title, item.prompt, item.projectPath]
+      const haystack = [item.title, item.prompt, item.project, item.projectName]
         .filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     };
@@ -151,9 +150,9 @@ export default function ScheduledView({
         title="Scheduled Tasks"
         subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
         actions={
-          <button className="btn-primary" onClick={openCreate}>
+          <Button variant="primary" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
-          </button>
+          </Button>
         }
       />
 
@@ -250,9 +249,7 @@ export default function ScheduledView({
         onDelete={handleDelete}
         task={editing}
         projects={projects}
-        models={models}
         defaultProjectPath={selectedProject?.path || ''}
-        defaultModelId={selectedModel?.id || ''}
         agentLabel={agentLabel}
       />
     </div>
@@ -322,6 +319,7 @@ function ScheduleListRow({
   const stop = (e) => { e.stopPropagation(); };
 
   const status = (() => {
+    if (task.running) return { label: 'Running', dot: 'var(--accent)' };
     if (!task.enabled) return { label: 'Paused', dot: 'var(--ink-4)' };
     if (task.lastError) return { label: 'Failed', dot: 'var(--danger)' };
     return { label: 'Active', dot: 'var(--success)' };
@@ -374,7 +372,7 @@ function ScheduleListRow({
         }}>
           <span style={{
             fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '-0.005em',
+            color: 'var(--ink)', letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{task.title || 'Untitled schedule'}</span>
           {/* Missed-runs annotation — shows alongside the title so the
@@ -531,8 +529,7 @@ function EmptyState({ onCreate, agentLabel }) {
       }}>
         {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
       </span>
-      <div style={{
-        fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600,
+      <div className="s-h3" style={{
         color: 'var(--ink)',
       }}>No scheduled tasks yet</div>
       <div style={{
@@ -541,13 +538,13 @@ function EmptyState({ onCreate, agentLabel }) {
       }}>
         {`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
       </div>
-      <button
-        className="btn-primary"
+      <Button
+        variant="primary"
         onClick={onCreate}
         style={{ marginTop: 4 }}
       >
         {Ico.plus(14)} Schedule your first task
-      </button>
+      </Button>
     </div>
   );
 }

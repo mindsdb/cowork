@@ -704,6 +704,11 @@
   border-radius: 6px;
   padding: 10px 12px;
   text-align: left;
+  /* Opt back into text selection: .arc-root sets user-select:none, but
+     users need to copy/paste install errors from these logs (ENG-340). */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .arc-console pre {
@@ -1043,11 +1048,11 @@ body[data-arcade-preset="daylight"] .arc-btn:disabled {
 }
 
 /* Welcome orb caption — matches the app's hero greeting (home-greeting-row):
-   var(--font-display) at 36/700/-0.02em, sentence case. The 8-bit skin maps
+   var(--font-display) at 36/600/-0.02em, sentence case. The 8-bit skin maps
    --font-display to its mono face, so this tracks the greeting in every mode. */
 .arc-welcome-title {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 36px;
   letter-spacing: -0.02em;
   text-transform: none;
@@ -1055,12 +1060,12 @@ body[data-arcade-preset="daylight"] .arc-btn:disabled {
 }
 
 /* Standard presets: match the app's hero greeting (home-greeting-row in
-   HomeView): font-display, 36px, weight 700, tight tracking, sentence case —
+   HomeView): font-display, 36px, weight 600, tight tracking, sentence case —
    no arcade tracking/glow. */
 body[data-arcade-preset="midnight"] .arc-hud-title,
 body[data-arcade-preset="daylight"] .arc-hud-title {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 36px;
   letter-spacing: -0.02em;
   text-indent: 0;

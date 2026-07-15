@@ -86,6 +86,33 @@ export function providerTypeToServerValue(value) {
   return PROVIDER_TO_SERVER[value] || value;
 }
 
+// ─── Effective (server-executed) role config ────────────────────────
+//
+// ENG-739: the model/provider a role ACTUALLY runs on comes from the
+// canonical planning_model / coding_model (+ *_provider) settings — the flat
+// fields cowork-server resolves from at turn time. `model_overrides` is
+// orphaned renderer state the server stopped reading (resolution moved off the
+// nested blob and its reader, cowork/runtime/inference.py, was removed). The
+// picker used to source its "current model" from `model_overrides`, so a stale
+// planning_model pin — e.g. a login-written `latest:sonnet` — was invisible in
+// the picker: it showed the override's model as already-selected, offered no
+// change to save, and a stuck free-tier user had no self-serve recovery. These
+// helpers read the executed field so the pin surfaces (via the stale
+// placeholder in resolveModelPickerValue) and picking an enabled model is a
+// real, savable change — matching what a direct PUT /settings/planning_model
+// does. Never consult `model_overrides` for the current value.
+export function effectiveRoleModel(settings, role) {
+  const s = settings || {};
+  if (role === 'planning') return s.planningModel ?? s.defaultModel ?? '';
+  return s.codingModel ?? '';
+}
+
+export function effectiveRoleProvider(settings, role) {
+  const s = settings || {};
+  const raw = role === 'planning' ? s.planningProvider : s.codingProvider;
+  return providerValueToType(raw) || 'minds-cloud';
+}
+
 // ─── Static metadata ────────────────────────────────────────────────
 
 // Model names are NOT maintained in this repo. The cowork-server
@@ -158,6 +185,50 @@ export function modelLabel(id) {
 export function recommendedModelOptions(recommendedModels, providerType) {
   const ids = (recommendedModels && recommendedModels[providerType]) || [];
   return ids.map((id) => ({ id, label: modelLabel(id) }));
+}
+
+// ─── Model picker select-value resolution ───────────────────────────
+
+/**
+ * Resolve the controlled <select> value + mode for the Agent-Models model
+ * picker, given the currently-stored model and the provider's recommended
+ * list. Pure so the desync rule is unit-tested directly (SettingsView.jsx
+ * inlines the JSX around this).
+ *
+ * The invariant this enforces: the returned `selectValue` must always match a
+ * rendered <option>, or selection silently breaks. A stored value that isn't
+ * in `modelList` splits two ways:
+ *
+ *   - `allowOther` provider (anthropic/openai/…): it's a user-typed custom id →
+ *     free-text mode (`__custom__`, with a text input).
+ *   - minds-cloud (no free text): it's a stale pin, e.g. the login-written
+ *     `latest:sonnet` → show it as a disabled placeholder (`__stale__`) so
+ *     re-picking a listed model is a real change event that writes the model.
+ *     Routing it through `__custom__` (never rendered for minds-cloud) is the
+ *     ENG-739 bug: value matches no option → "Saved" changes nothing.
+ *
+ * @param {string} curModel   currently-stored model id ('' when unset)
+ * @param {string[]} modelList provider's recommended model ids
+ * @param {boolean} allowOther whether the provider accepts a free-text id
+ * @param {boolean} forceCustom user has explicitly toggled "Other…" mode
+ */
+export function resolveModelPickerValue(curModel, modelList, allowOther, forceCustom = false) {
+  const list = Array.isArray(modelList) ? modelList : [];
+  const savedNotListed = !!curModel && !list.includes(curModel);
+  const savedIsCustom = savedNotListed && allowOther;
+  const showStalePin = savedNotListed && !allowOther;
+  // Free-text mode requires a provider that accepts it. Gating on `allowOther`
+  // keeps the invariant "selectValue always matches a rendered option" true
+  // even when `forceCustom` lingers from a prior provider: toggling "Other…"
+  // on Anthropic then repointing to minds-cloud (which renders neither a
+  // `__custom__` option nor a text input) would otherwise wedge the control
+  // into a blank, unwritable select — the same "Saved but not applied" bug via
+  // a different door.
+  const inputMode = (!!forceCustom || savedIsCustom) && allowOther;
+  const selectValue = inputMode
+    ? '__custom__'
+    : (showStalePin ? '__stale__' : curModel);
+  return { savedIsCustom, showStalePin, inputMode, selectValue };
 }
 
 // ─── Row → client transform ─────────────────────────────────────────

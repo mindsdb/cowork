@@ -6,7 +6,7 @@ import * as https from 'https';
 import * as http from 'http';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort } from './server-process';
+import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
@@ -24,6 +24,7 @@ import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
+import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 
 function getAntonEnvPath(): string {
   return coworkEnvPath();
@@ -919,8 +920,11 @@ function setupIPC() {
       'ANTON_GEMINI_API_KEY',
       'ANTON_PLANNING_PROVIDER',
       'ANTON_CODING_PROVIDER',
-      'ANTON_PLANNING_MODEL',
-      'ANTON_CODING_MODEL',
+      // ANTON_PLANNING_MODEL / ANTON_CODING_MODEL are intentionally NOT stripped
+      // on logout (ENG-739). Preserving them on sign-in but deleting them on
+      // sign-out would break the same "a `latest:` value may be a deliberate
+      // choice — never silently mutate it" rule the sign-in path now follows.
+      // A model is CLI-only in .env; the DB (product) is cleared separately.
     ];
     const envPath = getAntonEnvPath();
     if (fs.existsSync(envPath)) {
@@ -1134,10 +1138,15 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
+    // `ui` is the OTA-activated bundle version, or null when running the
+    // renderer bundled with the installer. The renderer resolves the effective
+    // UI version (falling back to its own baked __APP_VERSION__) and shows the
+    // source tag; here we just report the raw facts.
     const uiVersion = getCachedVersion();
     return {
       app: getAppDisplayVersion(),
-      ui: uiVersion || 'bundled',
+      ui: uiVersion,
+      source: uiVersion ? 'ota' : 'bundled',
     };
   });
 
@@ -1210,16 +1219,34 @@ app.whenReady().then(async () => {
           submenu: [
             {
               label: 'About MindsHub Cowork',
-              click: () => {
-                const uiVersion = getCachedVersion();
-                const versionStr = uiVersion
-                  ? `${getAppDisplayVersion()} (UI: ${uiVersion})`
-                  : getAppDisplayVersion();
+              click: async () => {
+                // Unified headline = ISO week of the newest hot-updated
+                // component (UI + server + agent); the App shell is shown
+                // separately since it updates via a different channel.
+                // Per-component versions go in credits as a lightweight
+                // diagnostics readout. Mirrors the Settings → Updates panel
+                // (ENG-213).
+                const shell = getAppDisplayVersion();
+                const uiOta = getCachedVersion(); // OTA bundle version, or null when bundled
+                const uiEffective = uiOta || shell;
+                const { server, anton } = await fetchServerVersions().catch(() => ({ server: null, anton: null }));
+                const unified = unifiedVersion([uiEffective, server, anton]);
+
+                const lines = [
+                  `App shell ${shell}`,
+                  `UI ${uiOta ? `${uiOta} (OTA)` : `${shell} (bundled)`}`,
+                ];
+                if (server) lines.push(`Server ${server}`);
+                if (anton) lines.push(`Agent ${anton}`);
+                if (unified && unified.skewDays >= SKEW_WARN_DAYS) {
+                  lines.push(`⚠ components out of sync (${unified.skewDays} days apart)`);
+                }
+
                 app.setAboutPanelOptions({
                   applicationName: 'MindsHub Cowork',
-                  applicationVersion: versionStr,
+                  applicationVersion: unified ? unified.label : shell,
                   copyright: 'By MindsDB',
-                  credits: 'Autonomous AI Coworker\nhttps://mindsdb.com',
+                  credits: `Autonomous AI Coworker\nhttps://mindsdb.com\n\n${lines.join('\n')}`,
                 });
                 app.showAboutPanel();
               },

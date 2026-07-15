@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { OrbitMorph } from '../components/ui';
+import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
@@ -227,7 +227,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
           >
             <span
               className="pulse-dot"
-              style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--primary-400)', marginTop: 7 }}
+              style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--accent)', marginTop: 7 }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>{t.title}</div>
@@ -365,8 +365,15 @@ export default function HomeView({
       }}
     >
       <h1 className="home-greeting-row" style={{
+        // Deliberate exception to the .s-* ladder. This is the home hero,
+        // and the ladder has no rung between s-h1 (28px) and s-display
+        // (44px): 28px is dwarfed by the 42px orb, and 44px wraps the
+        // greeting to two lines in the 640px column. So it sits at a
+        // bespoke 36px, balanced against the orb. Tracking is -0.01em
+        // (not the tighter -0.02em the ladder would give at this size):
+        // Inter at 36px in a long sentence reads cramped at -0.02em.
         fontFamily: 'var(--font-display)',
-        fontSize: 36, fontWeight: 700, letterSpacing: '-0.02em',
+        fontSize: 36, fontWeight: 600, letterSpacing: '-0.01em',
         color: 'var(--text-strong)',
         margin: '0 0 28px',
         width: '100%', maxWidth: 'var(--composer-max-width, 640px)',
@@ -518,17 +525,15 @@ export default function HomeView({
                 <div style={{ fontSize: 12.5, color: 'var(--frost-700)', marginTop: 3 }}>Subscribe with MindsHub for managed access, or bring your own provider key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.</div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  type="button"
-                  className="btn-primary"
+                <Button
+                  variant="primary"
                   onClick={() => host.openExternal(MINDS_BILLING_URL)}
-                >Subscribe</button>
-                <button
-                  type="button"
-                  className="btn-primary"
+                >Subscribe</Button>
+                <Button
+                  variant="primary"
                   onClick={() => onOpenSettings?.('agent')}
                   style={{ background: 'transparent', color: 'var(--primary-700)', border: '1px solid var(--primary-700)' }}
-                >Settings</button>
+                >Settings</Button>
               </div>
             </div>
           ) : (

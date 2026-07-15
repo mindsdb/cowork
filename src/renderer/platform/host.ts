@@ -209,6 +209,34 @@ export async function getUIVersion(): Promise<string> {
   return 'web';
 }
 
+export interface VersionInfo {
+  /** Installed Electron shell (App) version — changes only on reinstall. */
+  app: string;
+  /** OTA-activated UI bundle version, or null when running the bundled UI. */
+  ui: string | null;
+  /** Where the running renderer came from. */
+  source: 'bundled' | 'ota' | 'web';
+}
+
+/** Structured version facts for the unified version display (ENG-213). The
+ *  renderer resolves the effective UI version as `ui ?? __APP_VERSION__`. */
+export async function getVersionInfo(): Promise<VersionInfo> {
+  if (isElectron && typeof bridge.getUIVersion === 'function') {
+    const v = await bridge.getUIVersion();
+    if (v && typeof v === 'object') {
+      // Normalize across shell versions (an OTA renderer can run on an older
+      // installed shell). Legacy shells return `ui: 'bundled'` (a sentinel,
+      // not a version) and omit `source`. Treat that sentinel as null, and
+      // when `source` is absent infer OTA only if a real UI version is present.
+      const ui = v.ui != null && v.ui !== 'bundled' ? String(v.ui) : null;
+      const source: VersionInfo['source'] =
+        v.source === 'ota' || v.source === 'bundled' ? v.source : ui ? 'ota' : 'bundled';
+      return { app: String(v.app ?? ''), ui, source };
+    }
+  }
+  return { app: '', ui: null, source: 'web' };
+}
+
 // ---- Onboarding -------------------------------------------------------
 //
 // The cowork SPA mounts the same arcade onboarding screens (TermsScreen
@@ -581,6 +609,7 @@ export const host = {
   showItemInFolder,
   getPathForFile,
   getUIVersion,
+  getVersionInfo,
   readSettings,
   saveSettings,
   restartServer,

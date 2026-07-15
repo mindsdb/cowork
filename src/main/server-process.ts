@@ -328,6 +328,38 @@ function probeHealthOnce(port: number, timeoutMs: number): Promise<{ ok: boolean
   });
 }
 
+// One-shot read of the server's /health payload. Best-effort — resolves null
+// on any failure.
+function fetchHealth(timeoutMs = 800): Promise<{ server_version?: string; anton_version?: string } | null> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: SERVER_HOST, port: serverPort, path: '/api/v1/health/', timeout: timeoutMs },
+      (res) => {
+        if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch { resolve(null); }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+// Reported CalVers of both hot-updated backend components in a single /health
+// read, so the About panel can fold server AND agent into the unified version.
+// The renderer's Settings view is the authoritative surface and reads the same
+// fields directly.
+export function fetchServerVersions(timeoutMs = 800): Promise<{ server: string | null; anton: string | null }> {
+  return fetchHealth(timeoutMs).then((h) => ({
+    server: h?.server_version ?? null,
+    anton: h?.anton_version ?? null,
+  }));
+}
+
 // True when resolveServerPort() found a healthy server that proved to be
 // ours; startServer() re-verifies and adopts it instead of spawning.
 let _adoptPlanned = false;
@@ -496,6 +528,13 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       PYTHONUNBUFFERED: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
+      // The server builds OAuth redirect URIs from server_origin, which
+      // otherwise defaults to the fixed :26866. Since ENG-439 the packaged
+      // server listens on a per-user derived port, so without this the
+      // redirect points at a dead :26866 and "Allow" lands on an unreachable
+      // page. Pin the origin to the port we actually spawned on. Google does
+      // not validate the port for loopback (127.0.0.1) redirect URIs.
+      COWORK_SERVER_ORIGIN: getServerOrigin(),
       ...(kind !== 'prod' ? { COWORK_HOME: dataHome } : {}),
       // ENG-439: stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and adopt it, while another

@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { Button } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
@@ -29,14 +30,13 @@ const FONT_MONO    = "var(--font-mono)";
 
 function ConnectButton({ onClick, large = false }) {
   return (
-    <button
-      type="button"
-      className="btn-primary"
+    <Button
+      variant="primary"
       onClick={onClick}
       style={large ? { fontSize: 13.5 } : undefined}
     >
       {Ico.plus(14)} Connect
-    </button>
+    </Button>
   );
 }
 
@@ -161,7 +161,7 @@ function ConnectionCard({ connection, onDelete, onModify }) {
         <span style={{
           flex: 1, minWidth: 0,
           fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-          letterSpacing: '-0.005em', color: 'var(--ink)',
+          letterSpacing: '0', color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }} title={displayName !== name ? name : undefined}>{displayName}</span>
         <span style={{
@@ -230,7 +230,7 @@ function EmptyState({ onConnectNew, agentLabel = 'the agent' }) {
       gap: 14, padding: '40px 24px',
     }}>
       <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+      <div className="s-h3" style={{ color: 'var(--ink)' }}>
         No apps connected yet
       </div>
       <div style={{
@@ -429,9 +429,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             }
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {spec?.label || connection.engine}
@@ -650,9 +649,8 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
             </div>
           )}
           {spec && (
-            <button
-              type="button"
-              className="btn-primary"
+            <Button
+              variant="primary"
               onClick={() => {
                 if (!window.confirm(
                   `The existing ${spec.label || connection.engine} connection will be removed and you'll connect it again from scratch. Continue?`
@@ -662,7 +660,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               style={{ width: '100%', justifyContent: 'center' }}
             >
               Reconnect
-            </button>
+            </Button>
           )}
           <button
             type="button"

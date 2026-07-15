@@ -4,19 +4,18 @@
 
 export const MINDS_API_BASE = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai';
 
-// Keycloak host, derived from the SAME base as everything else (api.X →
-// auth.X) so the login flow (keycloak.ts, which imports MINDS_KEYCLOAK_URL)
-// and the sign-up link below can never point at different environments.
-// VITE_KEYCLOAK_URL wins if set; otherwise derive from VITE_MINDS_API_URL;
-// final fallback differs by runtime — web dev uses auth.dev (localhost
-// redirect support), Electron uses prod.
-const isWeb = typeof window !== 'undefined' && window.location.protocol !== 'app:';
-const derivedKeycloakUrl = import.meta.env.VITE_MINDS_API_URL
-  ? import.meta.env.VITE_MINDS_API_URL.replace('://api.', '://auth.') + '/auth'
-  : '';
+// Keycloak host, derived from the SAME resolved base as everything else
+// (api.X → auth.X) so the login flow (keycloak.ts, which imports
+// MINDS_KEYCLOAK_URL) and the sign-up link below can never point at different
+// environments. VITE_KEYCLOAK_URL wins as an explicit override; otherwise we
+// derive from MINDS_API_BASE — the *already-resolved* value, so when
+// VITE_MINDS_API_URL is unset (prod builds don't pass it) auth tracks the same
+// prod fallback the API host uses. Deriving from the resolved base — not a
+// runtime web-vs-Electron guess — is what keeps the two in lockstep: the
+// packaged desktop app serves the renderer over file://, so any protocol-based
+// "isWeb" heuristic misfires and would strand auth on the dev host.
 export const MINDS_KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL
-  || derivedKeycloakUrl
-  || (isWeb ? 'https://auth.dev.mindshub.ai/auth' : 'https://auth.mindshub.ai/auth');
+  || `${MINDS_API_BASE.replace('://api.', '://auth.')}/auth`;
 // Strip only a TRAILING "/auth" — a bare .replace('/auth','') matches the
 // "//auth" inside the domain (https://auth.mindshub.ai) and mangles the
 // URL into "https:/.mindshub.ai/auth", which fails to open.

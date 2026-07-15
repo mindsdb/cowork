@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu } from '../components/ui';
+import { Menu, Button } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Crumb, CrumbSep } from '../components/ui/Crumb';
+import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { Toast } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -249,10 +249,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
         </div>
       </ModalBody>
       <ModalFooter>
-        <button type="button" className="btn-secondary" onClick={handleClose}>Cancel</button>
-        <button type="button" className="btn-primary" disabled={!canSubmit} onClick={submit}>
+        <Button variant="subtle" onClick={handleClose}>Cancel</Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   );
@@ -356,11 +356,11 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
         </div>
       </ModalBody>
       <ModalFooter align="space-between">
-        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        <Button variant="subtle" onClick={onClose}>Cancel</Button>
         {file && (
-          <button type="button" className="btn-primary" disabled={busy} onClick={upload}>
+          <Button variant="primary" disabled={busy} onClick={upload}>
             {busy ? 'Uploading…' : 'Upload'}
-          </button>
+          </Button>
         )}
       </ModalFooter>
     </Modal>
@@ -376,15 +376,14 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
     { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
   ];
   const trigger = (
-    <button
-      type="button"
-      className="btn-primary"
+    <Button
+      variant="primary"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8, paddingRight: 10 }}
     >
       {Ico.plus(14)}
       <span>Create skill</span>
       <span style={{ display: 'inline-flex', color: 'inherit', opacity: 0.7 }}>{Ico.chevDown(11)}</span>
-    </button>
+    </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;
 }
@@ -466,13 +465,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <Crumb label="Skills" onClick={() => setSelected(null)} />
             <CrumbSep />
-            <span style={{
-              fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '0.04em',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {selected.label}
-            </span>
+            <CrumbCurrent label={selected.label} />
             <div style={{ flex: 1 }} />
             <Toggle checked={selected.enabled ?? true} onChange={async (e) => {
               const next = e.target.checked;

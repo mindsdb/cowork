@@ -30,8 +30,8 @@ import {
   revealProjectInFinder,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
-import { Menu } from '../components/ui';
-import { Crumb, CrumbSep } from '../components/ui/Crumb';
+import { Button, Menu } from '../components/ui';
+import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 
@@ -133,9 +133,9 @@ function activitySummaryFor(project, tasks) {
 // type, height, padding and accent-glow consistent across pages.
 function NewProjectButton({ onClick }) {
   return (
-    <button type="button" className="btn-primary proj-new-action" onClick={onClick}>
+    <Button variant="primary" className="proj-new-action" onClick={onClick}>
       {Ico.plus(14)} New project
-    </button>
+    </Button>
   );
 }
 
@@ -311,7 +311,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
             style={{
               flex: 1, minWidth: 0,
               fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
+              letterSpacing: '0', color: 'var(--ink)',
               background: 'var(--surface-2)',
               border: '1px solid var(--line)',
               borderRadius: 6,
@@ -618,7 +618,7 @@ function EmptyState({ onNewProject }) {
       gap: 14, padding: '40px 24px',
     }}>
       <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>
-      <div style={{ fontFamily: FONT_DISPLAY, fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>
+      <div className="s-h3" style={{ color: 'var(--ink)' }}>
         No projects yet
       </div>
       <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 360, textAlign: 'center' }}>
@@ -807,23 +807,18 @@ function ProjectDetail({
                   autoCorrect="off"
                   style={{
                     flex: '1 1 0', minWidth: 0,
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
+                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 13,
+                    letterSpacing: '0', color: 'var(--ink)',
                     background: 'var(--surface-2)',
                     border: '1px solid var(--accent)',
                     borderRadius: 5, padding: '2px 6px', outline: 'none',
                   }}
                 />
               ) : (
-                <span
-                  title={project.name}
-                  style={{
-                    fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14,
-                    letterSpacing: '0.04em', color: 'var(--ink)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    minWidth: 0, flex: '0 1 auto',
-                  }}
-                >{project.name}</span>
+                <CrumbCurrent
+                  label={project.name}
+                  style={{ flex: '0 1 auto' }}
+                />
               )}
               {!editing && (
                 <button

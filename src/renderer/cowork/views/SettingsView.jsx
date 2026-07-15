@@ -2,15 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, modelLabel, resolveModelPickerValue, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
+import { Button, Input, Checkbox } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
+import { getVersionInfo, isElectron, getAccessToken } from '../../platform/host';
+import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
 import ChannelsView from './ChannelsView';
 
 function decodeJwtPayload(token) {
@@ -122,10 +124,9 @@ function SettingsSectionPanel({ children, footer }) {
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
-    <input
-      className="field-input"
+    <Input
       value={value ?? ''}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(next) => onChange(next)}
       placeholder={placeholder}
       title={title}
       aria-label={ariaLabel}
@@ -142,10 +143,9 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
   const hasValue = v.length > 0;
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        className="field-input"
+      <Input
         value={v}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(next) => onChange(next)}
         placeholder={placeholder}
         aria-label={ariaLabel}
         style={hasValue ? { paddingRight: 36 } : undefined}
@@ -266,11 +266,11 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        className="field-input mono"
+      <Input
+        variant="mono"
         type={show ? 'text' : 'password'}
         value={showSentinelAsMask ? '' : v}
-        onChange={(e) => onInput(e.target.value)}
+        onChange={(next) => onInput(next)}
         placeholder={showSentinelAsMask ? '••••••••••••••••' : (placeholder || '••••••••••••••••••')}
         disabled={disabled}
         autoComplete="off"
@@ -624,8 +624,11 @@ export default function SettingsView({
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
-  const [uiVersion, setUiVersion] = useState('');
+  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
+  const [antonVersion, setAntonVersion] = useState('');
+  const [showVersionDetails, setShowVersionDetails] = useState(false);
+  const [versionCopied, setVersionCopied] = useState(false);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -635,8 +638,21 @@ export default function SettingsView({
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
 
-  useEffect(() => { getUIVersion().then(setUiVersion).catch(() => { }); }, []);
-  useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => { }); }, []);
+  useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
+  // Backend (server + agent) versions come from /health, which is only
+  // reachable when the backend is up. Re-read whenever the Updates section is
+  // shown and the backend is online, so versions populate after a cold open or
+  // a start/restart from the Backend section instead of staying blank at mount.
+  useEffect(() => {
+    if (section !== 'updates' || !serverOnline) return undefined;
+    let cancelled = false;
+    fetchHealth().then((h) => {
+      if (cancelled) return;
+      setServerVersion(h?.server_version || '');
+      setAntonVersion(h?.anton_version || '');
+    }).catch(() => { });
+    return () => { cancelled = true; };
+  }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
   useEffect(() => {
     if (section !== 'account') return;
@@ -740,21 +756,16 @@ export default function SettingsView({
     if (!override || typeof override !== 'object') return null;
     return { ...override, providerType: providerValueToType(override.providerType) };
   };
-  const canonicalProviderForRole = (role) => providerValueToType(
-    role === 'planning' ? settings.planningProvider : settings.codingProvider,
-  ) || 'minds-cloud';
-  const canonicalModelForRole = (role) => {
-    if (role === 'planning') return settings.planningModel ?? settings.defaultModel ?? '';
-    return settings.codingModel ?? '';
-  };
-  const roleProviderType = (role) => roleOverride(role)?.providerType || canonicalProviderForRole(role);
-  const roleModelValue = (role, fallback = '') => {
-    const override = roleOverride(role);
-    if (override && Object.prototype.hasOwnProperty.call(override, 'model')) {
-      return override.model || '';
-    }
-    return canonicalModelForRole(role) || fallback || '';
-  };
+  const canonicalProviderForRole = (role) => effectiveRoleProvider(settings, role);
+  const canonicalModelForRole = (role) => effectiveRoleModel(settings, role);
+  // ENG-739: resolve the picker's current provider/model from the canonical
+  // fields the SERVER executes, never from `model_overrides`. Sourcing the
+  // current value from the overrides hid a stale planning_model pin
+  // (latest:sonnet) behind the override's model, so the picker showed a model
+  // already-selected, offered no change, and a stuck free-tier user could not
+  // recover. See effectiveRoleModel / effectiveRoleProvider.
+  const roleProviderType = (role) => canonicalProviderForRole(role);
+  const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     const nextModel = model || '';
@@ -805,8 +816,12 @@ export default function SettingsView({
   const activeProviderTypes = (() => {
     const types = new Set();
     if (modelMode === 'custom') {
-      types.add(overrides.planning?.providerType || defaultModeProviderType);
-      types.add(overrides.coding?.providerType || defaultModeProviderType);
+      // ENG-739: source each role's provider from the canonical field the
+      // server executes (via roleProviderType), not the orphaned
+      // model_overrides — otherwise connectivity tests + the readiness banner
+      // could target a different provider than the picker and the server use.
+      types.add(roleProviderType('planning'));
+      types.add(roleProviderType('coding'));
     } else {
       types.add(defaultModeProviderType);
     }
@@ -1123,14 +1138,14 @@ export default function SettingsView({
                   : 'Changes apply on save.'}
         </span>
       </div>
-      <button
-        className="btn-primary" onClick={save}
+      <Button
+        variant="primary" onClick={save}
         disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
         title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}
         style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
       >
         {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
-      </button>
+      </Button>
     </>
   );
 
@@ -1239,10 +1254,9 @@ export default function SettingsView({
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <h3 className="sr-only">{customHeadingText}</h3>
-                          <input
-                            className="field-input"
+                          <Input
                             value={p.name ?? ''}
-                            onChange={(e) => updateProviderField('openai-compatible', 'name', e.target.value)}
+                            onChange={(next) => updateProviderField('openai-compatible', 'name', next)}
                             placeholder="Custom provider name"
                             title="Display name for this custom provider — shown in the model dropdowns below."
                             aria-label="Custom provider name"
@@ -1394,8 +1408,8 @@ export default function SettingsView({
               }}>
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-                <button
-                  className="btn-secondary"
+                <Button
+                  variant="subtle"
                   onClick={() => setAddPickerOpen(true)}
                   disabled={availableTypesForAdd.length === 0}
                   title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
@@ -1408,7 +1422,7 @@ export default function SettingsView({
                     pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                     cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                   }}
-                >{Ico.plus(13)} Add provider</button>
+                >{Ico.plus(13)} Add provider</Button>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
@@ -1424,14 +1438,13 @@ export default function SettingsView({
                     fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
                   }}>Choose Provider:</strong>
                   {availableTypesForAdd.map((t) => (
-                    <button
+                    <Button
                       key={t}
-                      type="button"
+                      variant="subtle"
                       onClick={() => addProviderOfType(t)}
-                      className="btn-secondary"
                       title={PROVIDER_TYPE_DESC[t]}
                       style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                    >{typeLabels[t] || t}</button>
+                    >{typeLabels[t] || t}</Button>
                   ))}
                   <button
                     type="button"
@@ -1467,7 +1480,6 @@ export default function SettingsView({
                 // for the role. Empty overrides fall back to the default
                 // provider's recommended pair.
                 const RoleRow = ({ role, label }) => {
-                  const cur = roleOverride(role) || {};
                   // Resolve the effective provider for this role. The server may
                   // store a stale planning_provider (e.g. 'anthropic') that doesn't
                   // match any configured provider card. When that happens, fall back
@@ -1582,9 +1594,12 @@ export default function SettingsView({
                         {modelList.length > 0 ? (
                           (() => {
                             const allowOther = curType !== 'minds-cloud';
-                            const savedIsCustom = !!curModel && !modelList.includes(curModel);
-                            const inputMode = modelInputMode[role] || savedIsCustom;
-                            const selectValue = inputMode ? '__custom__' : curModel;
+                            // See resolveModelPickerValue: keeps the <select> value matched to a
+                            // rendered <option> so picking a model always fires a real change and
+                            // Save writes it — a login-written `latest:` pin no longer wedges the
+                            // control into a no-op "Saved" (ENG-739).
+                            const { showStalePin, inputMode, selectValue } =
+                              resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
@@ -1603,6 +1618,16 @@ export default function SettingsView({
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
                                   style={{ width: '100%' }}
                                 >
+                                  {showStalePin && (
+                                    // Labeled "legacy — re-select" (not "current") so it reads as
+                                    // an action to take, not a selection: the same model may also
+                                    // appear below as a real "— Upgrade to unlock" row, and a bare
+                                    // "(current)" would look like two identical, already-selected
+                                    // entries (ENG-739 review).
+                                    <option value="__stale__" disabled>
+                                      {modelLabel(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)
+                                    </option>
+                                  )}
                                   {modelList.map((m) => (
                                     <option key={m} value={m} disabled={isLocked(m)}>
                                       {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
@@ -1787,10 +1812,10 @@ export default function SettingsView({
                   style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
                 />
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={customTheme.bg === null}
-                    onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bg: v ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                    aria-label="Follow Light/Dark"
                   />
                   Follow Light/Dark
                 </label>
@@ -1876,41 +1901,85 @@ export default function SettingsView({
       }}>
         <Section
           title="Current version"
-          subtitle="The app, UI bundle, and server versions currently running."
+          subtitle="The version currently running. Components under the hood are shown in details."
         >
-          <div style={{
-            display: 'flex', flexDirection: 'column', gap: 6,
-            fontFamily: 'var(--font-mono)', fontSize: 12.5,
-            color: 'var(--text-strong)',
-          }}>
-            <span>
-              <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>App</span>
-              {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '—'}
-            </span>
-            {isElectron && uiVersion && uiVersion !== 'bundled' && uiVersion !== 'web' && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                {uiVersion}
-                {uiVersion !== (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '') && (
-                  <span style={{ color: 'var(--text-warning, #c49000)', marginLeft: 6, fontSize: 11 }}>
-                    (differs from app)
+          {(() => {
+            const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
+            // App shell = installed Electron shell (changes only on reinstall).
+            const shellVer = versionInfo.app || baked;
+            // The running renderer's own baked version is authoritative for the
+            // UI version — it's compiled into whichever bundle actually loaded
+            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
+            // can lag the loaded renderer (OTA off, missing cache, post-
+            // rollback), so it only informs the source label, never the version.
+            const uiVer = baked || versionInfo.ui || '';
+            const uiSource = versionInfo.source === 'ota' ? 'OTA'
+              : versionInfo.source === 'web' ? 'web' : 'bundled';
+            // Unified "content" headline = ISO week of the newest of the
+            // hot-updated components (UI + server + agent). App shell is
+            // excluded — it updates via reinstall and is shown on its own line.
+            const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
+            const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
+            const rows = [
+              ['App shell', shellVer || '—'],
+              ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
+              ['Server', serverVersion || '—'],
+              ['Agent', antonVersion || '—'],
+            ];
+            const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: 'var(--text-strong)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <span title={unified ? unified.weekOf : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
+                    {unified ? unified.label : (shellVer || '—')}
+                  </span>
+                  {outOfSync && (
+                    <span
+                      title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
+                      style={{ color: 'var(--warning, #c47f00)', fontSize: 11.5, fontWeight: 600 }}
+                    >
+                      ⚠ out of sync
+                    </span>
+                  )}
+                  {unified && (
+                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>{unified.weekOf}</span>
+                  )}
+                </div>
+                {isElectron && (
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 12 }}>
+                    <span style={{ marginRight: 4 }}>App shell</span>{shellVer || '—'}
                   </span>
                 )}
-              </span>
-            )}
-            {isElectron && uiVersion === 'bundled' && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                bundled
-              </span>
-            )}
-            {serverVersion && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>Server</span>
-                {serverVersion}
-              </span>
-            )}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setShowVersionDetails((v) => !v)}
+                  style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: 11.5 }}
+                >
+                  {showVersionDetails ? 'Hide details' : 'Details'}
+                </button>
+                {showVersionDetails && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-glass)' }}>
+                    {rows.map(([k, v]) => (
+                      <span key={k}>
+                        <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(copyText);
+                        setVersionCopied(true);
+                        setTimeout(() => setVersionCopied(false), 1500);
+                      }}
+                      style={{ alignSelf: 'flex-start', marginTop: 4, background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', color: 'var(--text-strong)', fontSize: 11 }}
+                    >
+                      {versionCopied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </Section>
         <Section
           title="UI updates"

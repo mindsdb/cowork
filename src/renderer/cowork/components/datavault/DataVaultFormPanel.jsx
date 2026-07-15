@@ -675,7 +675,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
             display: 'flex', alignItems: 'center',
             padding: '0 14px',
             fontFamily: FONT_BODY, fontSize: 13, fontWeight: 600,
-            color: 'var(--ink)', letterSpacing: '-0.005em',
+            color: 'var(--ink)', letterSpacing: '0',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             Connect

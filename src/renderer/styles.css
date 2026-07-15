@@ -23,7 +23,6 @@
   --accent-red:    #ff5252;
   --accent-yellow: #ffd740;
   --glow-cyan:     var(--glow);
-  --glow-purple:   var(--glow);
   --sidebar-width: 200px;
   --scrollbar-thumb:       var(--border-strong);
   --scrollbar-thumb-hover: var(--accent-soft);
@@ -316,7 +315,7 @@ body[data-theme="dark"] .legal-viewer-overlay {
 }
 
 .logo-brand-text {
-  font-family: var(--font-display, "Josefin Sans", system-ui, sans-serif);
+  font-family: var(--font-display, "Inter", system-ui, sans-serif);
   font-size: 34px;
   font-weight: 700;
   letter-spacing: 0.02em;

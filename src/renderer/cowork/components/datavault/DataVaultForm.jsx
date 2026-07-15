@@ -31,6 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Checkbox } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -140,8 +141,7 @@ function FieldInput({ field, value, onChange, disabled }) {
         fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-2)',
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}>
-        <input
-          type="checkbox"
+        <Checkbox
           // Booleans never carry the sentinel — modify-flow only
           // replaces secret string fields. For booleans the saved
           // value lands directly in `default` and the state mirrors
@@ -149,7 +149,8 @@ function FieldInput({ field, value, onChange, disabled }) {
           // a boolean field renders unchecked.
           checked={!isSentinel && !!value}
           disabled={disabled}
-          onChange={(e) => onChange(e.target.checked)}
+          onCheckedChange={(v) => onChange(v)}
+          aria-label={field.checkbox_label || field.label}
         />
         {field.checkbox_label || field.label}
       </label>
@@ -320,9 +321,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
             boxShadow: '0 0 12px var(--success-glow)',
           }}>{Ico.check(20)}</span>
           <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
             }}>{spec.title || 'Connected'}</div>
             {spec.subtitle && (
               <div style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>
@@ -440,9 +440,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
             }}>{spec.title || 'Connect'}</div>
           </div>
         </div>
@@ -843,7 +842,7 @@ function MethodPicker({ methods, onPick, busy }) {
             }}>
               <span style={{
                 fontWeight: 600, fontSize: 13.5, color: 'var(--ink)',
-                letterSpacing: '-0.005em',
+                letterSpacing: '0',
                 minWidth: 0, flex: '1 1 auto',
                 overflowWrap: 'anywhere', wordBreak: 'break-word',
               }}>{m.label || m.id}</span>

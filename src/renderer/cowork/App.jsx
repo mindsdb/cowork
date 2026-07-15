@@ -724,6 +724,9 @@ const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
 const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
 
 function nextPollDelay(schedules) {
+  // A run in flight: poll at the floor so the Running state clears soon
+  // after the run finishes — nothing else refreshes it.
+  if ((schedules || []).some((s) => s.running)) return SCHEDULE_POLL_MIN_DELAY_MS;
   const dueTimes = (schedules || [])
     .filter((s) => s.enabled && s.nextRunAt)
     .map((s) => new Date(s.nextRunAt).getTime())
@@ -1273,7 +1276,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | dispatch | customize
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -3602,12 +3605,14 @@ function AppCore() {
     });
   }, []);
 
-  // Recomputed whenever an enabled schedule's due time changes — used as
-  // the poll effect's dependency below instead of `scheduled.length`,
-  // which stays the same across an edit/pause/resume
+  // Recomputed whenever an enabled schedule's due time or running state
+  // changes — used as the poll effect's dependency below instead of
+  // `scheduled.length`, which stays the same across an edit/pause/resume.
+  // The running flag matters: when "Run now" flips it on, the pending long
+  // timer must be replaced with the tight in-flight cadence.
   const scheduleKey = scheduled
-    .filter((s) => s.enabled)
-    .map((s) => s.nextRunAt)
+    .filter((s) => s.enabled || s.running)
+    .map((s) => `${s.nextRunAt}:${s.running ? 1 : 0}`)
     .join(',');
 
   // Self-adjusting poll (not a fixed interval): reschedules itself after
@@ -3658,9 +3663,12 @@ function AppCore() {
     const result = await runScheduleNow(id);
     // The server creates the conversation eagerly and returns its id.
     // Mark it in-flight locally so reconcileTaskMessages doesn't inject
-    // a spurious "got interrupted" prompt before the 5s poll catches up.
+    // a spurious "got interrupted" prompt before the 5s poll catches up,
+    // then navigate straight to the new run so the user sees it stream.
     if (result?.conversation_id) {
       markInFlight(result.conversation_id);
+      setActiveTaskId(result.conversation_id);
+      setRoute('task');
     }
     await refreshSchedules();
     refreshData();
@@ -4095,6 +4103,10 @@ function AppCore() {
           />
         )}
 
+
+        {route === 'channels' && (
+          <ChannelsView />
+        )}
 
         {route === 'customize' && (
           <CustomizeView

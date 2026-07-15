@@ -116,7 +116,7 @@ export default function SkillCard({ skill, projectName }) {
           <div
             aria-hidden="true"
             style={{
-              width: 56, height: 56, borderRadius: 'var(--r-md, 10px)',
+              width: 56, height: 56, borderRadius: 'var(--r-lg)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'var(--accent)', background: 'var(--surface-2)', border: '1px solid var(--line)',
             }}
@@ -125,8 +125,8 @@ export default function SkillCard({ skill, projectName }) {
           </div>
 
           <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--ink)',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {name}
