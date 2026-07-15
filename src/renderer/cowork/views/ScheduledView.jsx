@@ -54,9 +54,7 @@ function saveViewMode(mode) {
 export default function ScheduledView({
   scheduled,
   projects,
-  models,
   selectedProject,
-  selectedModel,
   onCreate,
   onUpdate,
   onDelete,
@@ -98,7 +96,7 @@ export default function ScheduledView({
     const q = (search || '').trim().toLowerCase();
     const matches = (item) => {
       if (!q) return true;
-      const haystack = [item.title, item.prompt, item.projectPath]
+      const haystack = [item.title, item.prompt, item.project, item.projectName]
         .filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     };
@@ -251,9 +249,7 @@ export default function ScheduledView({
         onDelete={handleDelete}
         task={editing}
         projects={projects}
-        models={models}
         defaultProjectPath={selectedProject?.path || ''}
-        defaultModelId={selectedModel?.id || ''}
         agentLabel={agentLabel}
       />
     </div>

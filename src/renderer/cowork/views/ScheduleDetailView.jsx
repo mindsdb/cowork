@@ -288,7 +288,6 @@ function RunRow({ run, onOpen }) {
 export default function ScheduleDetailView({
   task,
   projects = [],
-  models = [],
   onBack,                   // → setRoute('scheduled')
   onOpenRunSession,         // (sessionId) → navigate to that conversation
   onUpdate,                 // (id, payload) → server PUT
@@ -474,8 +473,8 @@ export default function ScheduleDetailView({
             />
             <SummaryStat
               label="Project"
-              value={task.projectPath ? lastSegment(task.projectPath) : '—'}
-              hint={task.projectPath || ''}
+              value={task.project || '—'}
+              hint={task.project || ''}
             />
             <SummaryStat
               label="Model"
@@ -570,7 +569,6 @@ export default function ScheduleDetailView({
         }}
         task={task}
         projects={projects}
-        models={models}
         agentLabel={agentLabel}
       />
     </div>
@@ -609,10 +607,4 @@ function Metric({ label, value, color }) {
       }}>{value}</div>
     </div>
   );
-}
-
-function lastSegment(path) {
-  if (!path) return '';
-  const parts = String(path).split('/').filter(Boolean);
-  return parts[parts.length - 1] || path;
 }
