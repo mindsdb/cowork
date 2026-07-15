@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, uiUpdateIsNewer, uiServerCompatSkipReason, type UIManifest } from './update-logic';
+import { parseCalVer } from '../shared/version';
 import { buildKindStrict } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import { fetchServerVersions } from './server-process';
@@ -39,6 +40,28 @@ function otaEnabled(): boolean {
   let kind: string | null = null;
   try { kind = buildKindStrict(); } catch { kind = null; }
   return otaUiEnabled({ buildKind: kind, envOverride: process.env.OTA_UI });
+}
+
+// One-shot guard against a silent, feature-killing misconfiguration: OTA is
+// enabled but the app-bundled version isn't CalVer (e.g. a build that shipped
+// without a CalVer BUILD_APP_VERSION baked, so getAppDisplayVersion falls back
+// to the package.json SemVer). The freshness gate (otaCacheIsFresh) compares the
+// cache against that version, so a non-CalVer bundled version makes EVERY update
+// fail the "strictly newer than bundled" check — OTA reports success but serves
+// nothing, with no other signal. Warn loudly once so it's diagnosable in the
+// field instead of invisible. Fires only when OTA is on (so it's prod-scoped by
+// construction), from the update entry points.
+let _warnedBundledNotCalVer = false;
+function warnIfBundledVersionNotCalVer(): void {
+  if (_warnedBundledNotCalVer) return;
+  const bundled = getAppDisplayVersion();
+  if (parseCalVer(bundled)) return; // healthy: a CalVer is baked
+  _warnedBundledNotCalVer = true;
+  console.warn(
+    `[ui-updater] OTA is enabled but the bundled app version "${bundled}" is not CalVer ` +
+    `(MAJOR.YY.M.D.SEQ) — the freshness gate will withhold EVERY update, so OTA is inert. ` +
+    `Ensure a CalVer BUILD_APP_VERSION is baked at build time (see gen-build-channel.mjs).`,
+  );
 }
 
 // Where we read latest.json from — GitHub Pages, no API rate limits.
@@ -339,6 +362,7 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
     console.log('[ui-updater] OTA UI disabled for this build channel');
     return { updateAvailable: false, applied: false };
   }
+  warnIfBundledVersionNotCalVer();
   const manifest = await fetchManifest();
   if (!manifest) return { updateAvailable: false, applied: false };
 
@@ -372,6 +396,7 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
  */
 export async function applyUIUpdate(): Promise<boolean> {
   if (!otaEnabled()) return false;
+  warnIfBundledVersionNotCalVer();
   const manifest = await fetchManifest();
   if (!manifest) return false;
 

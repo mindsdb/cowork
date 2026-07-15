@@ -220,3 +220,33 @@ describe('applyUIUpdate (apply-time gate)', () => {
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
   });
 });
+
+describe('bundled-version misconfiguration guard', () => {
+  it('warns exactly once when OTA is enabled but the bundled version is not CalVer', async () => {
+    // A build that shipped without a CalVer BUILD_APP_VERSION baked → the
+    // freshness gate would silently withhold every update. The guard must warn.
+    h.bundled = '2.0.7'; // package.json SemVer fallback — not CalVer
+    h.manifest = { version: '2.26.7.13.1', url: 'https://example.com/ui.tar.gz', sha256: 'a'.repeat(64) };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ui = await loadUpdater();
+
+    await ui.checkForUIUpdate();
+    await ui.applyUIUpdate(); // second entry point — must not warn again (one-shot)
+
+    const hits = warn.mock.calls.filter((c) => String(c[0]).includes('not CalVer'));
+    expect(hits).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it('stays silent when the bundled version is a valid CalVer', async () => {
+    h.bundled = '2.26.7.6.1';
+    h.manifest = null; // guard runs before the manifest fetch, so this is irrelevant
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ui = await loadUpdater();
+
+    await ui.checkForUIUpdate();
+
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('not CalVer'))).toHaveLength(0);
+    warn.mockRestore();
+  });
+});
