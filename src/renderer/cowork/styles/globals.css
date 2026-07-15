@@ -2773,7 +2773,9 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 32px;
+  /* Match .nav-item exactly so nav rows and task/pinned rows read as one
+     consistent list (they were 32 vs 34 — a 2px mismatch that looked off). */
+  min-height: 34px;
   padding: 0 10px;
   border-radius: var(--r-8);
   font-family: var(--font-sans);
