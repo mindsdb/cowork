@@ -4776,10 +4776,12 @@ body[data-theme="dark"] .mshell__drawer-title {
   /* De-bubbled (ENG-787 move 01): the right-aligned bordered+shadowed
      "SMS bubble" is the single most dated element in the chat. Modern AI
      chat (Claude/Codex) renders the user turn as a quiet tinted block —
-     no hard border, no drop shadow. Soft --surface-2 fill carries the
-     shape instead; keep the generous rounding so it reads as a friendly
-     block, not an input box. */
-  background: var(--surface-2);
+     no hard border, no drop shadow. A --surface-3 fill carries the shape
+     instead; keep the generous rounding so it reads as a friendly block,
+     not an input box. (--surface-2 was too faint against the page + the
+     animated dot field behind it — --surface-3 roughly doubles the
+     separation while staying on the neutral token scale.) */
+  background: var(--surface-3);
   border: 0;
   border-radius: 18px;
   padding: 14px 18px;
