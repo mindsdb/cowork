@@ -529,9 +529,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // Force Python UTF-8 mode so cowork-server (and the anton scratchpad it
       // spawns) never fall back to the host code page — e.g. GBK/cp936 on
       // Chinese Windows, which crashes on non-ASCII file reads / output
-      // (ENG-824). Respect an explicit operator override if one is already set.
+      // (ENG-824). UTF-8 mode already makes open()/filesystem/stdio UTF-8 with
+      // the lenient surrogateescape handler; we deliberately do NOT set
+      // PYTHONIOENCODING (a bare value downgrades stdio to strict). Respect an
+      // explicit operator override if one is already set.
       PYTHONUTF8: process.env.PYTHONUTF8 || '1',
-      PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
       // The server builds OAuth redirect URIs from server_origin, which
