@@ -3608,6 +3608,8 @@ function AppCore() {
           agentLabel={agentLabel}
           theme={theme}
           onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          skin={skin}
+          onToggleSkin={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}

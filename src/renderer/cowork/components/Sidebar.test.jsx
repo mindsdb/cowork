@@ -64,4 +64,24 @@ describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
     expect(screen.getByRole('button', { name: 'Switch to dark theme' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
   });
+
+  it('renders the 8-bit skin toggle next to the theme toggle and calls onToggleSkin', () => {
+    hostMock.isWeb = false;
+    const onToggleSkin = vi.fn();
+    render(
+      <Sidebar {...baseProps} serverOnline skin="normal" onToggleSkin={onToggleSkin} />
+    );
+    const toggle = screen.getByRole('button', { name: 'Toggle 8-bit style' });
+    expect(toggle.className).not.toContain('is-on');
+    toggle.click();
+    expect(onToggleSkin).toHaveBeenCalledTimes(1);
+  });
+
+  it('lights the skin toggle when a non-default skin is active', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline skin="8bit" />);
+    expect(
+      screen.getByRole('button', { name: 'Toggle 8-bit style' }).className
+    ).toContain('is-on');
+  });
 });
