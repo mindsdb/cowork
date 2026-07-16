@@ -17,7 +17,7 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Button, CardRow } from '../components/ui';
+import { Button, CardRow, EmptyState } from '../components/ui';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
@@ -150,7 +150,7 @@ export default function ScheduledView({
         title="Scheduled Tasks"
         subtitle={`Local scheduled ${agentLabel} tasks run while MindsHub Cowork is open. Runs that slip while the app is closed are skipped — ${agentLabel} resumes from the next scheduled occurrence.`}
         actions={
-          <Button variant="primary" onClick={openCreate}>
+          <Button variant="solid" onClick={openCreate}>
             {Ico.plus(14)} Schedule task
           </Button>
         }
@@ -199,7 +199,27 @@ export default function ScheduledView({
 
       {/* Body — empty state, grid, or list. */}
       {!scheduled.length ? (
-        <EmptyState onCreate={openCreate} agentLabel={agentLabel} />
+        <EmptyState
+          bordered
+          icon={
+            <span style={{
+              display: 'inline-grid', placeItems: 'center',
+              width: 48, height: 48, borderRadius: 12,
+              background: 'color-mix(in srgb, var(--accent) 12%, var(--surface-2))',
+              color: 'var(--accent)',
+            }}>
+              {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
+            </span>
+          }
+          title="No scheduled tasks yet"
+          description={`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
+          action={
+            <Button variant="solid" onClick={openCreate}>
+              {Ico.plus(14)} Schedule your first task
+            </Button>
+          }
+          style={{ margin: '40px 28px' }}
+        />
       ) : viewMode === 'grid' ? (
         <div style={{
           padding: '8px 28px 28px',
@@ -498,47 +518,5 @@ function RowAction({ icon, label, onClick, busy }) {
         opacity: busy ? 0.6 : 1,
       }}
     >{icon}{label}</button>
-  );
-}
-
-
-// ── Empty state ──
-
-function EmptyState({ onCreate, agentLabel }) {
-  return (
-    <div style={{
-      margin: '40px 28px',
-      padding: '40px 28px',
-      borderRadius: 14,
-      border: '1px dashed var(--line-2)',
-      background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
-      gap: 12,
-    }}>
-      <span style={{
-        display: 'inline-grid', placeItems: 'center',
-        width: 48, height: 48, borderRadius: 12,
-        background: 'color-mix(in srgb, var(--accent) 12%, var(--surface-2))',
-        color: 'var(--accent)',
-      }}>
-        {Ico.schedule ? Ico.schedule(20) : Ico.clock(20)}
-      </span>
-      <div className="s-h3" style={{
-        color: 'var(--ink)',
-      }}>No scheduled tasks yet</div>
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)',
-        maxWidth: 360, lineHeight: 1.5,
-      }}>
-        {`Create a recurring ${agentLabel} task — a Monday digest, an hourly log sweep, a daily KPI snapshot. ${agentLabel} runs them while the desktop app is open.`}
-      </div>
-      <Button
-        variant="primary"
-        onClick={onCreate}
-        style={{ marginTop: 4 }}
-      >
-        {Ico.plus(14)} Schedule your first task
-      </Button>
-    </div>
   );
 }

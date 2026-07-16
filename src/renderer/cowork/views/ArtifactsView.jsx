@@ -14,6 +14,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { Toast } from '../components/ui/Toast';
+import { EmptyState } from '../components/ui/EmptyState';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -568,26 +569,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
   );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────
-
-function EmptyState({ agentLabel = 'the agent' }) {
-  return (
-    <div style={{
-      flex: 1, minHeight: 360,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 12, padding: '40px 24px',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>
-      <div className="s-h3" style={{ color: 'var(--ink)' }}>
-        No artifacts yet
-      </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 380, textAlign: 'center' }}>
-        When {agentLabel} creates documents, dashboards, or code outputs they'll appear here.
-      </div>
-    </div>
-  );
-}
-
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, projects = [], onOpenProject, agentLabel = 'the agent' }) {
@@ -892,7 +873,12 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       )}
 
       {total === 0 ? (
-        <EmptyState agentLabel={agentLabel} />
+        <EmptyState
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>}
+          title="No artifacts yet"
+          description={`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+          style={{ flex: 1 }}
+        />
       ) : effectiveView === 'grid' ? (
         <div className="artifacts-grid" style={{
           // Grid layout (display + responsive columns + gap) lives in CSS

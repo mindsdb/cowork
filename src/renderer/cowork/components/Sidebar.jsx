@@ -99,8 +99,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           <span style={{
             position: 'absolute', inset: 0,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-            fontFamily: 'var(--font-mono)', fontSize: 10,
-            color: 'var(--ink-4)', letterSpacing: '0.02em',
+            fontFamily: 'var(--font-sans)', fontSize: 11,
+            color: 'var(--ink-4)',
             opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
             transition: 'opacity 120ms ease',
             gap: 6,
