@@ -7,6 +7,7 @@ import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb } from './lib/syncSettings';
+import { resolveBootTarget } from './lib/bootTarget';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -122,18 +123,11 @@ export default function App() {
   useEffect(() => {
     async function init() {
       const started = Date.now();
-      let target: Page = 'auth';
-      try {
-        const settings = await host.readSettings();
-        const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalTermsConsent();
-        const { configured } = await host.checkConfigured();
-        if (consented && configured) {
-          const status = await host.checkInstall();
-          target = (!status.antonInstalled || !status.serverDepsReady) ? 'setup' : 'terminal';
-        }
-      } catch {
-        target = 'auth';
-      }
+      // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
+      // readSettings() is best-effort there, so a hosted-web /settings/raw 403
+      // (ENG-817) can't abort the gate and strand a configured instance on the
+      // auth screen; config_ready (health) drives the real decision.
+      const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
       // Keep the welcome orb up briefly so it doesn't flash on fast boots.
       const elapsed = Date.now() - started;
       if (elapsed < WELCOME_MIN_MS) {

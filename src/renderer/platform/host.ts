@@ -253,7 +253,11 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { detail = (await res.json()).detail || detail; } catch {}
-    throw new Error(detail);
+    // Preserve the HTTP status on the error so callers can distinguish the
+    // expected loopback-gate 403 (ENG-817) from real failures (4xx/5xx/network).
+    const err = new Error(detail) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -262,15 +266,37 @@ export async function readSettings(): Promise<Record<string, string>> {
   if (isElectron && typeof bridge.readSettings === 'function') {
     return bridge.readSettings();
   }
-  return fetchJson('/api/v1/settings/raw');
+  // Web: /settings/raw returns unmasked secrets and is loopback-gated
+  // (ENG-457). In the console-hosted deployment the browser's request reaches
+  // cowork-server from the docker bridge, not loopback, so the gate returns
+  // 403 (ENG-817). The DB is authoritative, so for THAT expected 403 we degrade
+  // to empty rather than aborting boot/onboarding. Any other failure (network,
+  // 4xx/5xx, malformed) is a real error and must propagate. (Electron reads via
+  // the IPC bridge above, unaffected.)
+  try {
+    return await fetchJson('/api/v1/settings/raw');
+  } catch (e) {
+    if ((e as { status?: number }).status === 403) return {};
+    throw e;
+  }
 }
 
 export async function saveSettings(content: string): Promise<boolean> {
   if (isElectron && typeof bridge.saveSettings === 'function') {
     return bridge.saveSettings(content);
   }
-  await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
-  return true;
+  // Web: the .env write (/settings/raw) is loopback-gated (ENG-457/ENG-817), so
+  // the expected 403 from the gate is best-effort — return false for it instead
+  // of aborting (the DB write via PUT /settings/:key is the authoritative store).
+  // Any OTHER failure (network, 4xx/5xx) is a real persistence error and must
+  // propagate, so onboarding can't report success over a failed write.
+  try {
+    await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
+    return true;
+  } catch (e) {
+    if ((e as { status?: number }).status === 403) return false;
+    throw e;
+  }
 }
 
 export async function restartServer(): Promise<void> {
