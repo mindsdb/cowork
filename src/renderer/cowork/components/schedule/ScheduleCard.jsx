@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import Ico from '../Icons';
+import { Card } from '../ui';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -138,29 +139,19 @@ export default function ScheduleCard({
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
-      }}
+    <Card
+      as="div"
+      interactive
+      padding="cozy"
+      onActivate={open}
+      // `hover` still drives the action-row opacity reveal below; the card's
+      // own lift/shadow now comes from `.card.interactive:hover` (CSS).
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         position: 'relative',
         display: 'flex', flexDirection: 'column', gap: 10,
-        padding: '14px 16px',
         minHeight: 220,
-        background: 'var(--surface)',
-        border: `1px solid ${hover ? 'var(--accent)' : 'var(--line)'}`,
-        borderRadius: 12,
-        cursor: 'pointer',
-        font: 'inherit', color: 'inherit', textAlign: 'left',
-        outline: 'none',
-        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
-        transform: hover ? 'translateY(-1px)' : 'translateY(0)',
-        boxShadow: hover ? '0 6px 22px rgba(15,16,17,0.06)' : 'none',
       }}
     >
       {/* Top row — cadence pill (left) + status pill (right). */}
@@ -325,7 +316,7 @@ export default function ScheduleCard({
           busy={busy}
         />
       </div>
-    </div>
+    </Card>
   );
 }
 

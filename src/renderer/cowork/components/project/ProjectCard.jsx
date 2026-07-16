@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Card } from '../ui';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
@@ -122,7 +123,7 @@ export function ProjectCard({
   const stats = useProjectStats(project, { tasks, scheduled });
   const summary = activitySummary(project, tasks);
   const active = isProjectActive(project, tasks);
-  const { hovered, revealed, hoverProps } = useRevealOnHover(isMenuOpen);
+  const { revealed, hoverProps } = useRevealOnHover(isMenuOpen);
   const triggerRef = useRef(null);
   const renameInputRef = useRef(null);
 
@@ -143,15 +144,7 @@ export function ProjectCard({
     return () => cancelAnimationFrame(id);
   }, [editing]);
 
-  const handleCardKey = (e) => {
-    if (editing) return; // typing in the input — let the input handle it
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onOpen?.(project);
-    }
-  };
-
-  const handleCardClick = (e) => {
+  const handleCardClick = () => {
     if (editing) return; // ignore card clicks while editing
     onOpen?.(project);
   };
@@ -162,24 +155,18 @@ export function ProjectCard({
   };
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={handleCardClick}
-      onKeyDown={handleCardKey}
+    <Card
+      as="div"
+      interactive={!editing}
+      selected={isSelected || editing}
+      padding="cozy"
+      onActivate={editing ? undefined : handleCardClick}
       {...hoverProps}
       style={{
-        cursor: editing ? 'default' : 'pointer',
-        background: hovered && !editing ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${editing ? 'var(--accent)' : (isSelected ? 'var(--accent)' : (hovered ? 'var(--line-2)' : 'var(--line)'))}`,
-        borderRadius: 10,
-        padding: '14px 16px',
+        cursor: editing ? 'default' : undefined,
         minHeight: 120,
         display: 'flex', flexDirection: 'column', gap: 10,
-        transition: 'background .15s ease, border-color .15s ease',
         position: 'relative',
-        outline: 'none',
-        font: 'inherit', color: 'inherit',
       }}
     >
       {/* Top row — folder + name + pin + ⋯ */}
@@ -340,6 +327,6 @@ export function ProjectCard({
         <D1Stat label="sched" value={stats.schedules} />
         <D1Stat label="art"   value={stats.artifacts} />
       </div>
-    </div>
+    </Card>
   );
 }

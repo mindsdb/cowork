@@ -17,6 +17,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { CardRow } from '../components/ui';
 import {
   PageHeader,
   FilterRow,
@@ -101,22 +102,15 @@ function TaskRow({
   const updated = relAge(task.updatedAt || task.subtitle || task.created_at);
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen?.(task)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(task); } }}
+    <CardRow
+      as="div"
+      onActivate={() => onOpen?.(task)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
         padding: '12px 14px',
-        background: hover ? 'var(--surface)' : 'transparent',
-        cursor: 'pointer',
-        transition: 'background .12s ease',
         alignItems: 'center',
-        outline: 'none',
-        borderRadius: 8,
       }}
     >
       {/* Status dot */}
@@ -220,7 +214,7 @@ function TaskRow({
           {Ico.trash(14)}
         </button>
       </div>
-    </div>
+    </CardRow>
   );
 }
 
@@ -254,26 +248,16 @@ function ScheduleGroupRow({
   const isAnyActive = runs.some((r) => r.status === 'active');
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpenSchedule}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenSchedule?.(); } }}
+    <CardRow
+      as="div"
+      className="grouped"
+      onActivate={onOpenSchedule}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
         padding: '12px 14px',
-        // Group rows get a slightly tinted bg so they read as a
-        // distinct unit from the lone-task rows around them.
-        background: hover
-          ? 'var(--surface)'
-          : 'color-mix(in srgb, var(--accent) 4%, transparent)',
-        cursor: 'pointer',
-        transition: 'background .12s ease',
         alignItems: 'center',
-        outline: 'none',
-        borderRadius: 8,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -374,7 +358,7 @@ function ScheduleGroupRow({
           {Ico.externalLink(13)}
         </button>
       </div>
-    </div>
+    </CardRow>
   );
 }
 

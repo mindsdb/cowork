@@ -12,6 +12,7 @@
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { Card } from '../components/ui/Card';
 import { Toast } from '../components/ui/Toast';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
@@ -251,32 +252,16 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   };
 
   return (
-    <div
+    <Card
+      as="div"
+      interactive
+      padding="none"
       className="cw-artifact-card"
-      role="button"
-      tabIndex={0}
       {...hoverProps}
-      onClick={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
-      onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
+      onActivate={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
       style={{
-        cursor: 'pointer',
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
-        transition: 'border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 28px rgba(15,16,17,0.08)';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02)';
-        e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
@@ -341,7 +326,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
         }}>{artifact.updated || '—'}</span>
       </div>
-    </div>
+    </Card>
   );
 }
 
