@@ -148,8 +148,14 @@ let deps: BridgeDeps = {
 
 // Handle to the Chrome process WE spawned (null when Chrome was already
 // running on the port, or we haven't launched it). Used to avoid double-launch
-// and to tear our managed Chrome down on dispose.
+// and to tear our managed Chrome down on dispose. Cleared when the child exits
+// (see defaultSpawnChrome) or when ensureManagedChrome finds the debug port
+// dead past the startup window, so a killed/crashed Chrome gets respawned.
 let managedChrome: { dispose: () => void } | null = null;
+// When the current managedChrome was spawned. A dead port during this window
+// just means Chrome is still starting — don't kill and respawn it.
+let managedChromeSpawnedAt = 0;
+const CHROME_STARTUP_WINDOW_MS = 15000;
 
 // Test-only: override HTTP/WS transport. Returns a restore fn.
 export function __setBridgeDeps(next: Partial<BridgeDeps>): () => void {
@@ -185,6 +191,7 @@ export function __resetBridgeForTest(): void {
     /* ignore */
   }
   managedChrome = null;
+  managedChromeSpawnedAt = 0;
   getWindowRef = () => null;
   bridgeStateListeners.clear();
   conversationId = null;
@@ -207,17 +214,25 @@ function defaultResolveChrome(): string | null {
 
 // Default Chrome spawner: detached child_process.spawn so Chrome outlives a
 // transient main-process hiccup. Returns a disposer that kills the child.
+// Clears `managedChrome` when the child exits (killed/crashed) so the next
+// connect attempt respawns instead of waiting on a dead process forever.
 function defaultSpawnChrome(chromePath: string, args: string[]): { dispose: () => void } {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { spawn } = require('child_process') as typeof import('child_process');
   const child = spawn(chromePath, args, { detached: true, stdio: 'ignore' });
   child.on('error', () => { /* surfaced by the port-wait failing */ });
+  child.on('exit', () => {
+    // Our managed Chrome died — drop the stale handle so ensureManagedChrome
+    // spawns a replacement (only if the handle still points at THIS child).
+    if (managedChrome === handle) managedChrome = null;
+  });
   try { child.unref(); } catch { /* ignore */ }
-  return {
+  const handle = {
     dispose: () => {
       try { child.kill(); } catch { /* ignore */ }
     },
   };
+  return handle;
 }
 
 // Default port probe: GET /json/version succeeds only if a DevTools endpoint is
@@ -250,7 +265,9 @@ function sleep(ms: number): Promise<void> {
 // tolerant of "already running on the port":
 //   1. If the port already answers, reuse it (user or a prior launch) — do NOT
 //      spawn a second Chrome.
-//   2. Otherwise resolve the Chrome binary and SPAWN it with launchArgs()
+//   2. If a previously spawned Chrome is past its startup window but the port
+//      is dead, it was killed/crashed — drop the stale handle (respawn next).
+//   3. Otherwise resolve the Chrome binary and SPAWN it with launchArgs()
 //      (persistent --user-data-dir debug profile), then poll the port until it
 //      accepts, up to a bounded timeout.
 // Returns { ok } — on failure the connect flow surfaces a graceful reason and
@@ -263,7 +280,19 @@ export async function ensureManagedChrome(): Promise<{ ok: boolean; reason?: str
   // (1) Already up on the port — reuse it.
   if (await probe(base)) return { ok: true };
 
-  // (2) Resolve + spawn our managed Chrome (once).
+  // (2) The port is dead. If we still hold a handle to a previously spawned
+  // Chrome that is PAST its startup window, that Chrome was killed or crashed
+  // (the default spawner also clears the handle on child 'exit', but a hung/
+  // zombie process or an injected spawner may not fire it) — dispose the stale
+  // handle so we respawn below instead of polling a port that will never
+  // answer until app restart. A handle still inside the startup window is a
+  // Chrome we JUST spawned that hasn't opened the port yet: keep it and poll.
+  if (managedChrome && Date.now() - managedChromeSpawnedAt > CHROME_STARTUP_WINDOW_MS) {
+    try { managedChrome.dispose(); } catch { /* ignore */ }
+    managedChrome = null;
+  }
+
+  // (3) Resolve + spawn our managed Chrome (unless one is still starting up).
   if (!managedChrome) {
     const chromePath = d('resolveChrome')();
     if (!chromePath) {
@@ -273,6 +302,7 @@ export async function ensureManagedChrome(): Promise<{ ok: boolean; reason?: str
       };
     }
     managedChrome = d('spawnChrome')(chromePath, launchArgs(port, debugUserDataDir()));
+    managedChromeSpawnedAt = Date.now();
   }
 
   // Poll the port until Chrome's DevTools endpoint accepts (bounded).
@@ -650,6 +680,11 @@ export async function navigateApprovedLink(href: string): Promise<BrowserActionR
     const observed = await extractObserved();
     const landedHost = registrableHost(observed.url || '');
     if (landedHost && landedHost !== target.domain) {
+      // A same-site link redirected OFF the approved site. The tab is now
+      // sitting on an unapproved host — the grant must NOT stay live, or a
+      // later command would run against the off-domain page without
+      // reapproval. Drop to lost (requires re-approval) before reporting.
+      handleLost('The page redirected to a different site, so the approval no longer applies.');
       return {
         status: 'navigation_failed',
         action: 'navigate',
@@ -733,6 +768,7 @@ export function disposeAllBridges(): void {
     /* ignore */
   }
   managedChrome = null;
+  managedChromeSpawnedAt = 0;
 }
 
 // ── IPC wiring ───────────────────────────────────────────────────────────

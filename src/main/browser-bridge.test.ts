@@ -161,6 +161,25 @@ describe('browser-bridge read-only primitives', () => {
     expect(r.status).toBe('navigation_failed');
   });
 
+  it('revokes the approval when a same-site link REDIRECTS off-domain', async () => {
+    // codex P1: the link passes the same-site gate, but the server redirects
+    // to a different registrable host. The old grant must NOT stay live for a
+    // tab now sitting on an unapproved site — the bridge drops to lost
+    // (requires re-approval) in addition to reporting navigation_failed.
+    await connect();
+    await bridge.inspect(); // populate lastLinks
+    const socket = FakeCdpSocket.instances[0];
+    // After Page.navigate, the page read-back reports an off-domain landing.
+    socket.page = { ...socket.page, url: 'https://evil.example.org/landing' };
+    const r = await bridge.navigateApprovedLink('https://docs.example.com/api/charges');
+    expect(r.status).toBe('navigation_failed');
+    expect(r.reason).toMatch(/leaves the approved site/);
+    expect(bridge.currentState()).toBe('lost');
+    // A later command must NOT run against the off-domain page.
+    const after = await bridge.inspect();
+    expect(after.status).toBe('bridge_disconnected');
+  });
+
   it('scroll returns ok with a viewport read-back', async () => {
     await connect();
     const r = await bridge.scroll('down');
@@ -270,6 +289,70 @@ describe('browser-bridge managed Chrome launch (listTabs)', () => {
     restore2();
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/Chrome/i);
+  });
+
+  it('respawns managed Chrome after the spawned one dies (codex P2)', async () => {
+    // First connect flow spawns Chrome; then that Chrome is killed/crashes
+    // (port dead again, past the startup window). The stale handle must be
+    // disposed and a NEW Chrome spawned — not a 10s wait on a dead process.
+    vi.useFakeTimers();
+    const spawned: { dispose: () => void; disposed: boolean }[] = [];
+    // Port comes up on the first poll after each spawn, and goes down again
+    // when the current spawn is "killed" between listTabs calls.
+    let portUp = false;
+    const restore2 = bridge.__setBridgeDeps({
+      listTargets: async () => [TARGET],
+      resolveChrome: () => '/path/to/google-chrome',
+      spawnChrome: () => {
+        const handle = {
+          disposed: false,
+          dispose: () => {
+            handle.disposed = true;
+          },
+        };
+        spawned.push(handle);
+        portUp = true; // Chrome opens its port
+        return handle;
+      },
+      probeDebugPort: async () => portUp,
+    });
+    const first = await bridge.listTabs();
+    expect(first.ok).toBe(true);
+    expect(spawned).toHaveLength(1);
+
+    // Kill the managed Chrome: port dead, and time passes beyond the startup
+    // window so a dead port means "died", not "still starting".
+    portUp = false;
+    await vi.advanceTimersByTimeAsync(20000);
+
+    const second = await bridge.listTabs();
+    restore2();
+    expect(second.ok).toBe(true);
+    expect(spawned).toHaveLength(2); // a replacement was spawned
+    expect(spawned[0].disposed).toBe(true); // stale handle torn down
+  });
+
+  it('does not kill a just-spawned Chrome that is still starting up', async () => {
+    vi.useFakeTimers();
+    let spawnCount = 0;
+    let probes = 0;
+    const restore2 = bridge.__setBridgeDeps({
+      listTargets: async () => [TARGET],
+      resolveChrome: () => '/path/to/google-chrome',
+      spawnChrome: () => {
+        spawnCount++;
+        return { dispose: () => {} };
+      },
+      // Slow startup: the port only answers from the third probe on
+      // (reuse-probe, then first poll fail, then success).
+      probeDebugPort: async () => ++probes >= 3,
+    });
+    const resultPromise = bridge.listTabs();
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await resultPromise;
+    restore2();
+    expect(result.ok).toBe(true);
+    expect(spawnCount).toBe(1); // never killed + respawned mid-startup
   });
 });
 
