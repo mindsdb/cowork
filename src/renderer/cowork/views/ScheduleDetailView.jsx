@@ -14,28 +14,12 @@ import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/C
 import { Button } from '../components/ui';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
+import { relativeTime } from '../lib/formatTime';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
 
 // ── time helpers ──
-
-function relativeTime(iso) {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '—';
-  const now = Date.now();
-  const diff = t - now;
-  const abs = Math.abs(diff);
-  const minute = 60_000, hour = 60 * minute, day = 24 * hour;
-  let value, unit;
-  if (abs < minute)        { value = Math.round(abs / 1000);  unit = 's'; }
-  else if (abs < hour)     { value = Math.round(abs / minute); unit = 'm'; }
-  else if (abs < day)      { value = Math.round(abs / hour);   unit = 'h'; }
-  else if (abs < 30 * day) { value = Math.round(abs / day);    unit = 'd'; }
-  else return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  return diff >= 0 ? `in ${value}${unit}` : `${value}${unit} ago`;
-}
 
 function absoluteTime(iso) {
   if (!iso) return '';
@@ -463,12 +447,12 @@ export default function ScheduleDetailView({
           }}>
             <SummaryStat
               label="Next run"
-              value={task.enabled ? relativeTime(task.nextRunAt) : 'Paused'}
+              value={task.enabled ? (relativeTime(task.nextRunAt) ?? '—') : 'Paused'}
               hint={absoluteTime(task.nextRunAt)}
             />
             <SummaryStat
               label="Last run"
-              value={task.lastRunAt ? relativeTime(task.lastRunAt) : '—'}
+              value={task.lastRunAt ? (relativeTime(task.lastRunAt) ?? '—') : '—'}
               hint={absoluteTime(task.lastRunAt)}
             />
             <SummaryStat

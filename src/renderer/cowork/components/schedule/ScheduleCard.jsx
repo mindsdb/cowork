@@ -11,33 +11,10 @@
 import { useState } from 'react';
 import Ico from '../Icons';
 import { Card } from '../ui';
+import { relativeTime } from '../../lib/formatTime';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
-
-// Format an ISO timestamp into a relative phrase ("in 3 hours", "5
-// minutes ago"). Fall back to a clean date if it's far away. Keep it
-// punchy — cards are scannable, not paragraphs.
-function relativeTime(iso) {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '—';
-  const now = Date.now();
-  const diff = t - now; // negative = past
-  const abs = Math.abs(diff);
-  const minute = 60_000, hour = 60 * minute, day = 24 * hour;
-  let value, unit;
-  if (abs < minute)        { value = Math.round(abs / 1000);  unit = 's'; }
-  else if (abs < hour)     { value = Math.round(abs / minute); unit = 'm'; }
-  else if (abs < day)      { value = Math.round(abs / hour);   unit = 'h'; }
-  else if (abs < 30 * day) { value = Math.round(abs / day);    unit = 'd'; }
-  else {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short', day: 'numeric',
-    });
-  }
-  return diff >= 0 ? `in ${value}${unit}` : `${value}${unit} ago`;
-}
 
 function absoluteTime(iso) {
   if (!iso) return '';
@@ -250,12 +227,12 @@ export default function ScheduleCard({
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {task.enabled
-            ? <>Next run · <strong style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{relativeTime(task.nextRunAt)}</strong></>
+            ? <>Next run · <strong style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{relativeTime(task.nextRunAt) ?? '—'}</strong></>
             : <>Paused</>}
         </span>
         {task.lastRunAt && (
           <span title={absoluteTime(task.lastRunAt)} style={{ color: 'var(--ink-4)' }}>
-            Last · {relativeTime(task.lastRunAt)}
+            Last · {relativeTime(task.lastRunAt) ?? '—'}
           </span>
         )}
       </div>
