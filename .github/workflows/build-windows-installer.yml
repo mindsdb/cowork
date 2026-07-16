@@ -57,7 +57,8 @@ on:
         required: false
       GOOGLE_ANALYTICS_CLIENT_SECRET:
         required: false
-
+      GOOGLE_PICKER_API_KEY:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
@@ -100,6 +101,7 @@ jobs:
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ANALYTICS_CLIENT_ID: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_ID }}
           GOOGLE_ANALYTICS_CLIENT_SECRET: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_SECRET }}
+          GOOGLE_PICKER_API_KEY: ${{ secrets.GOOGLE_PICKER_API_KEY }}
         run: |
           python -c "
           import os, json
@@ -109,6 +111,7 @@ jobs:
             'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
             'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET',
             'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
+            'GOOGLE_PICKER_API_KEY',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)
