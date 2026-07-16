@@ -30,8 +30,8 @@ const SORT_OPTIONS = [
 ];
 
 const VIEW_OPTIONS = [
-  { value: 'grid', label: 'Grid', icon: Ico.grid(12) },
-  { value: 'list', label: 'List', icon: Ico.list(12) }
+  { value: 'grid', label: 'Grid', icon: Ico.grid(13) },
+  { value: 'list', label: 'List', icon: Ico.list(13) }
 ];
 
 // Match the storage-key convention used by ArtifactsView /
@@ -169,7 +169,7 @@ export default function ScheduledView({
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} size="sm" aria-label="View" options={VIEW_OPTIONS} />}
+          view={<ToggleGroup value={viewMode} onValueChange={setViewMode} size="md" aria-label="View" options={VIEW_OPTIONS} />}
           counts={
             <>
               {(search || '').trim().length > 0

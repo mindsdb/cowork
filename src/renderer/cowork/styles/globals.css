@@ -124,6 +124,13 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
+  /* Selected segment in a ToggleGroup / segmented control. The surface ramp
+     inverts between themes (light: --surface is the *lightest*; dark:
+     --surface-3 is), so the token that lifts the pill above the --surface-2
+     track differs per theme. Light = --surface + the shared elevation shadow;
+     the old --surface-3 (darker than the track here) sank into it. */
+  --toggle-selected-bg:     var(--surface);
+  --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
   /* Sidebar surface — a light --surface-2 rail (not the muddier
      --surface-3): keeps the rail clean and lets the accent-bg active
      tint read as real teal instead of dirtied grey. The macOS inactive
@@ -247,6 +254,10 @@ body[data-theme="dark"] {
   --surface-3:    #1A2640;
   --line:         #1E2A44;
   --line-2:       #2A3957;
+  /* Dark keeps the raised-surface approach: --surface-3 already sits
+     *lighter* than the --surface-2 track, so the active pill lifts. */
+  --toggle-selected-bg:     var(--surface-3);
+  --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
   /* Sidebar base — a hint of cyan over the surface navy, sized
      small enough that the panel still reads as part of the same
      dark family as the rest of the app. The ::before halo at the
