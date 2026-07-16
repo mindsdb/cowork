@@ -180,6 +180,11 @@ describe('hostMatchesGrant (cross-repo conformance table)', () => {
     ['https://user:pass@sub.example.com/', 'example.com', true],
     ['HTTPS://WWW.EXAMPLE.COM', 'example.com', true],
     ['https://notexample.com', 'example.com', false],
+    // A grant can never be a bare public suffix: the URL's registrable host
+    // (foo.github.io / bank.co.uk) is more specific than the suffix, so
+    // exact-equality matching refuses it — no special-casing needed.
+    ['https://foo.github.io/docs', 'github.io', false],
+    ['https://bank.co.uk/login', 'co.uk', false],
   ];
 
   it.each(table)('hostMatchesGrant(%j, %j) === %j', (url, grant, expected) => {
