@@ -719,12 +719,17 @@ export async function browserControlSetConversation(
 // so the poller gates a command that was handed out just before the Stop.
 // `conversationId` is the conversation the Stop TARGETED — main pins it in
 // the latch so its self-ack can never stop a conversation the user switched
-// to later. Main clears the latch once the server gate is confirmed.
+// to later. `stopId` is the SAME idempotency token the renderer sent in its
+// own /browse/control/stop POST — main's self-ack re-POST carries it so the
+// server treats it as a pure ack of this Stop, never a re-stop of a session
+// a fresh turn already resumed. Main clears the latch once the server gate
+// is confirmed.
 export async function browserControlStop(
   conversationId?: string | null,
+  stopId?: string | null,
 ): Promise<{ ok: boolean; reason?: string }> {
   if (isElectron && typeof bridge.browserControlStop === 'function') {
-    return bridge.browserControlStop(conversationId ?? null);
+    return bridge.browserControlStop(conversationId ?? null, stopId ?? null);
   }
   return { ok: false, reason: WEB_UNAVAILABLE };
 }

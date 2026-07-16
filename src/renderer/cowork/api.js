@@ -652,12 +652,19 @@ export async function browseControlApprove({ domain, conversationId } = {}) {
   }
 }
 
-export async function browseControlStop(conversationId) {
+// `stopId` is a client-generated idempotency token for THIS Stop press. The
+// same token also travels over IPC to main, whose poller re-POSTs this
+// endpoint as its ack — the server dedupes on stop_id so that re-POST can
+// never re-stop a session a fresh user turn has already resumed.
+export async function browseControlStop(conversationId, stopId) {
   if (!conversationId) return { ok: false };
   try {
     return await req('/browse/control/stop', {
       method: 'POST',
-      body: JSON.stringify({ conversation_id: conversationId }),
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        ...(stopId ? { stop_id: stopId } : null),
+      }),
     });
   } catch {
     return { ok: false, conversation_id: conversationId };

@@ -1065,7 +1065,12 @@ function AppCore() {
   // failing network round-trip. Both are idempotent + best-effort.
   const handleBrowserStop = useCallback(async () => {
     const cid = currentStreamingConversationId();
-    if (cid) { void browseControlStop(cid).catch(() => { /* best effort */ }); }
+    // One idempotency token per Stop press, shared by the network POST and
+    // the IPC latch: main's poller re-POSTs the stop as its ack, and the
+    // server dedupes on stop_id so that re-POST confirms THIS Stop instead
+    // of re-stopping a session a fresh user turn already resumed.
+    const stopId = crypto.randomUUID();
+    if (cid) { void browseControlStop(cid, stopId).catch(() => { /* best effort */ }); }
     // Local half of the Stop gate: the server gate above can race a command
     // that was already handed out to the main-process poller; this latch lets
     // the poller gate it pre-execution (cleared main-side once the server
@@ -1074,7 +1079,7 @@ function AppCore() {
     // Awaited (unlike the network call above): local IPC is fast and setting
     // the latch BEFORE the stream teardown closes the scheduling window where
     // a handed-out command could still slip through.
-    try { await host.browserControlStop?.(cid); } catch { /* main bridge may be down */ }
+    try { await host.browserControlStop?.(cid, stopId); } catch { /* main bridge may be down */ }
     try { trackBrowserTaskStopped(browserFunnelIds()); } catch { /* analytics never blocks */ }
     await handleStopStream();
   }, [handleStopStream, currentStreamingConversationId, browserFunnelIds]);

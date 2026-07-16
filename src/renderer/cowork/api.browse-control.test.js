@@ -62,6 +62,13 @@ describe('browseControlStop / browseControlTakeover', () => {
     expect(body).toEqual({ conversation_id: 'c1' });
   });
 
+  it('stop includes the stop_id idempotency token when provided', async () => {
+    // The same token also travels over IPC to main — the server dedupes on
+    // it so main's ack re-POST can never re-stop a resumed session.
+    await browseControlStop('c1', 'stop-uuid-1');
+    expect(lastCall().body).toEqual({ conversation_id: 'c1', stop_id: 'stop-uuid-1' });
+  });
+
   it('takeover POSTs conversation_id to /api/v1/browse/control/takeover', async () => {
     await browseControlTakeover('c1');
     const { url, body } = lastCall();
