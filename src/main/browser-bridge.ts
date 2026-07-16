@@ -27,6 +27,7 @@ import {
   type BrowserStatusResult,
   type ObservedResult,
   type ObservedLink,
+  hostMatchesGrant,
   isReadonlyCdpMethod,
   registrableHost,
 } from '../shared/browser-bridge-types';
@@ -83,43 +84,58 @@ export function getConversationId(): string | null {
   return conversationId;
 }
 
-// Local user-Stop signal. Stop/resume lifecycle: the SERVER is the single
-// source of truth. The renderer's Stop button sets the SERVER control gate
-// (POST /browse/control/stop) — while stopped the server hands out NO
-// commands — and a fresh user turn resumes it server-side
+// Local user-Stop latch. THE canonical Stop-lifecycle description lives here
+// (the poller's comments point at this block).
+//
+// Stop/resume lifecycle: the SERVER is the single source of truth. Stop sets
+// the SERVER control gate (POST /browse/control/stop) — while stopped the
+// server hands out NO commands — and a fresh user turn resumes it server-side
 // (resume_on_new_turn). Re-approval is required only after
 // take-over/lost/revoke, never after Stop.
 //
 // This local latch exists ONLY to close the hand-out→execute race: a command
-// the server handed to the wire just before the Stop landed (Stop leaves the
+// the server handed to the wire before its stop gate was set (Stop leaves the
 // bridge connected, so the poller's currentState() re-check can't catch it).
-// It records WHEN Stop was pressed (a timestamp, set via IPC BROWSER_STOP);
-// the poller compares it against when its long-poll started and gates only
-// commands that could predate the stop, then clears the latch. It must NEVER
-// gate post-resume commands — those come from a server whose gate was already
-// stopped and then resumed by a new turn. Also cleared on attach()/dispose as
-// belt-and-braces.
+// `requestedAt` is set immediately on IPC BROWSER_STOP (Stop takes effect
+// locally in <1s). The renderer also POSTs /browse/control/stop, but it does
+// so fire-and-forget — the server gate is only KNOWN to be set once an ack is
+// recorded, so the MAIN process re-POSTs the (idempotent) stop from the
+// poller each cycle while un-acked and records `ackAt` when a 2xx lands
+// (main-owned ack: no dependence on the renderer's POST succeeding).
+//
+// The poller gates every handed-out command while the latch is armed
+// (requestedAt set, no ack yet). The ack is awaited BEFORE the poll in the
+// same single-in-flight loop, so once acked, any command a later poll returns
+// was necessarily handed out by a server whose gate had already been set —
+// i.e. resumed by a fresh user turn — and the latch is cleared and the
+// command executes. The latch must never outlive its ack to gate post-resume
+// commands (that was the old bug: a boolean latch persisted until
+// re-approval). Also cleared on attach()/dispose as belt-and-braces.
 let stopRequestedAt: number | null = null;
+let stopAckAt: number | null = null;
 
 export function requestStop(): void {
   stopRequestedAt = Date.now();
+  // A fresh Stop needs a fresh server ack — the previous gate may have been
+  // resumed since.
+  stopAckAt = null;
 }
 
-// Was Stop pressed at-or-after `sinceMs`? Used by the poller to detect the
-// raced case: a stop that landed while its long-poll was outstanding.
-export function isStopRequestedSince(sinceMs: number): boolean {
-  return stopRequestedAt !== null && stopRequestedAt >= sinceMs;
+// Record that the server confirmed (2xx) its stop gate is set. No-op when no
+// Stop is latched (a stray ack must not fabricate a latch state).
+export function ackStopRequest(): void {
+  if (stopRequestedAt !== null) stopAckAt = Date.now();
 }
 
-// Is any un-cleared Stop latched at all (regardless of timing)?
-export function isStopRequested(): boolean {
-  return stopRequestedAt !== null;
+export function getStopLatch(): { requestedAt: number | null; ackAt: number | null } {
+  return { requestedAt: stopRequestedAt, ackAt: stopAckAt };
 }
 
-// The latch's raced-case job is done (the poller gated or safely bypassed
-// it); post-resume commands must flow freely.
+// The latch's raced-case job is done (the server gate is known set and the
+// poller finished a post-ack cycle); post-resume commands must flow freely.
 export function clearStopRequest(): void {
   stopRequestedAt = null;
+  stopAckAt = null;
 }
 
 // Main-side bridge-state subscribers (e.g. the command poller). Distinct from
@@ -218,6 +234,7 @@ export function __resetBridgeForTest(): void {
   bridgeStateListeners.clear();
   conversationId = null;
   stopRequestedAt = null;
+  stopAckAt = null;
 }
 
 async function defaultListTargets(base: string): Promise<CdpTarget[]> {
@@ -409,6 +426,7 @@ export async function attach(
   // Belt-and-braces: a fresh approval starts a clean session, so any stale
   // Stop latch is meaningless (resume itself is server-side, on a new turn).
   stopRequestedAt = null;
+  stopAckAt = null;
   // New approval supersedes any in-flight approve() awaiting connect.
   approvalGeneration += 1;
   pendingApproval = { targetId, cancel: () => {} };
@@ -490,6 +508,8 @@ export async function approve(): Promise<{ ok: boolean; state: BridgeState; reas
       if (!frame.url) return;
       const host = registrableHost(frame.url);
       // Empty host (about:blank etc.) — ignore, no cross-host expansion.
+      // (Deliberately NOT hostMatchesGrant: transient hostless frames are
+      // tolerated here; the post-read verification fails them closed.)
       if (host && host !== approvedTarget.domain) {
         handleLost('The tab navigated to a different site, so the approval no longer applies.');
       }
@@ -651,8 +671,15 @@ async function extractObserved(): Promise<ObservedResult> {
 // client-side redirect) between the frameNavigated listener firing and the
 // readback — the grant is for the approved domain ONLY, so an off-domain
 // observation is discarded, the bridge drops to lost (re-approval required),
-// and the caller gets a refusal instead of unapproved-site content. Returns
-// the refusal result, or null when the observation is on-grant.
+// and the caller gets a refusal instead of unapproved-site content.
+//
+// FAIL CLOSED on hostless URLs: when observed.url IS present but yields no
+// registrable host (file:///…, data:…, about:blank), the tab left the
+// approved site — refuse, don't approve. (This is why the check is spelled
+// out here instead of using hostMatchesGrant: the helper's empty-host-refuses
+// semantics match, but the missing-url pass below does not.) Only an ABSENT
+// observed.url passes unverified — extraction gave nothing to check.
+// Returns the refusal result, or null when the observation is on-grant.
 function verifyObservedOnApprovedDomain(
   action: BrowserActionType,
   observed: ObservedResult,
@@ -660,23 +687,20 @@ function verifyObservedOnApprovedDomain(
   const target = approvedTarget;
   if (!target || !observed.url) return null;
   const host = registrableHost(observed.url);
-  if (!host || host === target.domain) return null;
+  if (host === target.domain) return null;
   // Keep the per-action status mapping: a navigate that LANDED off-domain is
   // a failed navigation; any other primitive observing off-domain content is
   // a permission refusal.
-  const reason =
-    action === 'navigate'
-      ? 'That link leaves the approved site.'
-      : 'The tab is on a different site than the one you approved.';
+  const offSiteReason = 'The tab is on a different site than the one you approved.';
   handleLost(
     action === 'navigate'
       ? 'The page redirected to a different site, so the approval no longer applies.'
-      : 'The tab is on a different site than the one you approved.',
+      : offSiteReason,
   );
   return {
     status: action === 'navigate' ? 'navigation_failed' : 'permission_denied',
     action,
-    reason,
+    reason: action === 'navigate' ? 'That link leaves the approved site.' : offSiteReason,
   };
 }
 
@@ -710,7 +734,7 @@ export async function navigateApprovedLink(href: string): Promise<BrowserActionR
       reason: 'That link is not one of the links found on the approved page.',
     };
   }
-  if (registrableHost(href) !== target.domain) {
+  if (!hostMatchesGrant(href, target.domain)) {
     return {
       status: 'navigation_failed',
       action: 'navigate',
@@ -799,6 +823,7 @@ export function disposeAllBridges(): void {
   bridgeState = 'disconnected';
   conversationId = null;
   stopRequestedAt = null;
+  stopAckAt = null;
   // Tear down the Chrome WE launched (app quit / full drain). If Chrome was
   // already running on the port when we attached, managedChrome is null and we
   // leave the user's own Chrome alone.

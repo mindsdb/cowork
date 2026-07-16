@@ -26,7 +26,8 @@ import {
   wait,
   onBridgeStateChange,
   getConversationId,
-  isStopRequestedSince,
+  getStopLatch,
+  ackStopRequest,
   clearStopRequest,
 } from './browser-bridge';
 import {
@@ -85,13 +86,13 @@ type ExecFns = {
   // (bridge/hello requires a conversation_id — or a prior session_id — to
   // identify the session; the server 422s an anonymous hello).
   conversationId: typeof getConversationId;
-  // Local user-Stop latch (set via IPC BROWSER_STOP, timestamped). Checked
-  // pre-execution AGAINST THE POLL START TIME so a command handed out just
-  // before the Stop landed is gated even though the local bridge stays
-  // connected (Stop, unlike Take-over, does not detach). Never gates a
-  // command from a poll that started after the stop — the server (the
-  // stop/resume authority) already had its gate set and then resumed.
-  stopRequestedSince: typeof isStopRequestedSince;
+  // Local user-Stop latch accessors (see the canonical lifecycle comment on
+  // the latch in browser-bridge.ts). The poller confirms the server gate
+  // (ackStop after a 2xx on the idempotent /browse/control/stop), gates
+  // handed-out commands while the latch is armed-but-unacked or the poll
+  // predates the ack, and clears the latch once a post-ack poll completes.
+  stopLatch: typeof getStopLatch;
+  ackStop: typeof ackStopRequest;
   clearStopRequest: typeof clearStopRequest;
 };
 
@@ -167,7 +168,8 @@ function defaultExec(): ExecFns {
     currentState,
     status: bridgeStatus,
     conversationId: getConversationId,
-    stopRequestedSince: isStopRequestedSince,
+    stopLatch: getStopLatch,
+    ackStop: ackStopRequest,
     clearStopRequest,
   };
 }
@@ -354,9 +356,33 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
     // session-keyed endpoints would 422, so wait for the next cycle.
     if (!sessionId) return 'idle';
 
-    // Snapshot when this long-poll starts: the local Stop latch below gates a
-    // returned command only if Stop was pressed AFTER this instant (the
-    // raced case — the command may have been handed out pre-stop).
+    // Local Stop latch (canonical lifecycle comment: browser-bridge.ts).
+    // Main-owned ack: while the latch is armed but un-acked, confirm the
+    // server gate ourselves by POSTing the idempotent /browse/control/stop —
+    // the renderer's own POST is fire-and-forget, so only OUR recorded 2xx
+    // proves the gate is set. Until then the latch gates every handed-out
+    // command (the command may have been handed to the wire pre-gate).
+    const preLatch = cfg.exec.stopLatch();
+    if (preLatch.requestedAt !== null && preLatch.ackAt === null) {
+      const stopConversationId = cfg.exec.conversationId();
+      if (stopConversationId) {
+        const ack = await postJson('/browse/control/stop', {
+          conversation_id: stopConversationId,
+        });
+        if (ack?.ok) cfg.exec.ackStop();
+      }
+    }
+
+    // Snapshot when this long-poll starts. A command from a poll that started
+    // AFTER the ack was necessarily handed out by a server whose gate had
+    // already been set — i.e. resumed by a fresh user turn — so only then may
+    // the latch clear.
+    //
+    // Residual millisecond race, documented honestly: the ack proves the gate
+    // was set when the 2xx landed, but a command already on the wire from an
+    // earlier hand-out could in principle straddle the ack/poll boundary
+    // within the same millisecond. The server also re-checks its gate after
+    // long-poll wakeup, so this local latch is defense-in-depth only.
     const pollStartedAt = Date.now();
     const res = await postJson('/browse/commands/next', { session_id: sessionId });
     if (!res || !res.ok) {
@@ -365,57 +391,53 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
       if (res?.status === 404) clearSession();
       return 'error';
     }
+    // Re-read the latch: requestStop (or a fresh Stop resetting the ack) may
+    // have fired while the long-poll was outstanding.
+    const latch = cfg.exec.stopLatch();
+    const stopArmed = latch.requestedAt !== null;
+    // The raced window is provably closed only when the server gate was
+    // KNOWN set (acked) before this poll began. `>=` is correct: the ack is
+    // awaited BEFORE pollStartedAt is snapshotted (program order), so equal
+    // millisecond timestamps still mean ack-then-poll; a fresh Stop during
+    // the outstanding poll resets ackAt to null and re-gates.
+    const stopWindowClosed = stopArmed && latch.ackAt !== null && pollStartedAt >= latch.ackAt;
     const body = (await res.json()) as { command?: BridgeCommand | null } | null;
     const cmd = body?.command ?? null;
     if (!cmd || !cmd.command_id) {
-      // An empty poll that STARTED after the stop proves the raced window is
-      // closed (the server, which is stopped, handed nothing to this wire) —
-      // drop the stale latch so it can never gate a later post-resume cycle.
-      // The server gate alone keeps a Stop with no new turn stopped.
-      if (!cfg.exec.stopRequestedSince(pollStartedAt)) cfg.exec.clearStopRequest();
+      // An empty post-ack poll proves the raced window is closed (the
+      // stopped server handed nothing to this wire) — drop the latch so it
+      // can never gate a later post-resume cycle. The server gate alone
+      // keeps a Stop with no new turn stopped.
+      if (stopWindowClosed) cfg.exec.clearStopRequest();
       return 'idle';
     }
 
     // Take-over / lost gate. Take-over detaches the bridge in main (state !=
     // connected), so re-checking here catches a take-over that landed while
     // the long-poll above was outstanding. We still report a result so the
-    // server isn't left waiting on a command it handed out.
+    // server isn't left waiting on a command it handed out. (Stop does not
+    // flow through this branch — it leaves the bridge connected.)
     if (cfg.exec.currentState() !== 'connected') {
       helloSent = false;
       const gated = buildResultPayload(cmd.command_id, {
         status: 'bridge_disconnected',
         action: cmd.action_type,
-        reason: 'The browser was stopped or handed back before this action ran.',
+        reason: 'The browser was handed back before this action ran.',
       });
       await postJson(`/browse/commands/${cmd.command_id}/result`, gated);
       await reportBridgeState();
       return 'idle';
     }
 
-    // Local Stop latch — raced case ONLY. The SERVER is the stop/resume
-    // authority: its control gate (POST /browse/control/stop) hands out
-    // nothing while stopped and resumes on a fresh user turn. Stop leaves the
-    // local bridge connected, so the one thing the server gate cannot catch
-    // is a command it handed to the wire just before the stop landed — i.e. a
-    // Stop pressed AFTER this poll started. Gate that command (still
-    // reporting a result so the server isn't left waiting) and clear the
-    // latch: its raced-case job is done, and the server hands out nothing
-    // further while stopped.
-    //
-    // If the Stop predates this poll's start, any command the poll returned
-    // was necessarily handed out by a server whose gate had already been set
-    // and then resumed by a new turn — clear the stale latch and execute
-    // normally. The latch must never gate post-resume commands (that was the
-    // old bug: a boolean latch outlived the server-side resume and refused
-    // every command until re-approval).
-    //
-    // Residual millisecond race, documented honestly: if the stop POST is
-    // processed by the server slightly AFTER this poll started but the local
-    // requestStop() fired slightly BEFORE pollStartedAt, one pre-stop command
-    // could theoretically execute. The server also re-checks its gate after
-    // long-poll wakeup, so this local latch is defense-in-depth only.
-    if (cfg.exec.stopRequestedSince(pollStartedAt)) {
-      cfg.exec.clearStopRequest();
+    // Stop gate: while the latch is armed and the raced window is not yet
+    // provably closed (no ack, or this poll started at/before the ack), the
+    // command may predate the server gate — refuse it (still reporting a
+    // result so the server isn't left waiting) and KEEP the latch: only a
+    // post-ack poll may clear it. Once closed, the command is post-resume by
+    // construction: clear the latch and execute normally (the old boolean
+    // latch outlived the server-side resume and refused every command until
+    // re-approval — never regress to that).
+    if (stopArmed && !stopWindowClosed) {
       const gated = buildResultPayload(cmd.command_id, {
         status: 'bridge_disconnected',
         action: cmd.action_type,
@@ -424,9 +446,7 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
       await postJson(`/browse/commands/${cmd.command_id}/result`, gated);
       return 'idle';
     }
-    // Any latch set before this poll started is stale (server already
-    // resumed) — drop it so it can never gate a later cycle.
-    cfg.exec.clearStopRequest();
+    if (stopWindowClosed) cfg.exec.clearStopRequest();
 
     const result = await executeCommand(cmd);
     await postJson(

@@ -30,6 +30,10 @@ class FakeBrowseServer {
   helloBodies: Record<string, unknown>[] = [];
   states: Record<string, unknown>[] = [];
   results: Record<string, unknown>[] = [];
+  stops: Record<string, unknown>[] = [];
+  // When true, /browse/control/stop fails (e.g. transient network error) —
+  // the poller must keep gating until an ack lands.
+  failStops = false;
   rejections: { path: string; detail: string }[] = [];
   sessionId = 'SESS-1';
   // Session ids the server no longer knows (restart / cleanup) — any
@@ -97,6 +101,13 @@ class FakeBrowseServer {
       this.states.push(body);
       return jsonRes({ session_id: body.session_id, bridge_state: body.bridge_state });
     }
+    if (path === '/browse/control/stop') {
+      // _ControlRequest: conversation_id is required. Idempotent gate-set.
+      if (!body.conversation_id) return this.reject(path, 'conversation_id is required');
+      if (this.failStops) return errRes(503, 'unavailable');
+      this.stops.push(body);
+      return jsonRes({ ok: true, control_state: 'stopped' });
+    }
     if (path === '/browse/commands/next') {
       // _CommandsNextRequest: session_id is required.
       if (!body.session_id) return this.reject(path, 'session_id is required');
@@ -159,26 +170,41 @@ function fakeExec(overrides: Partial<Record<string, unknown>> = {}) {
     currentState: vi.fn(() => 'connected' as const),
     status: vi.fn(() => ({ available: true, state: 'connected' as const, domain: 'shop.example.com' })),
     conversationId: vi.fn(() => 'CONV-1'),
-    stopRequestedSince: vi.fn(() => false),
+    stopLatch: vi.fn(() => ({ requestedAt: null, ackAt: null })),
+    ackStop: vi.fn(),
     clearStopRequest: vi.fn(),
     ...overrides,
   };
 }
 
-// A stateful fake of the bridge's Stop latch (timestamped, self-clearing) so
-// tests exercise the real latch lifecycle instead of a canned boolean.
+// A stateful fake of the bridge's Stop latch (timestamped + server-acked,
+// self-clearing) so tests exercise the real latch lifecycle instead of a
+// canned boolean. Mirrors browser-bridge.ts requestStop/ackStopRequest/
+// getStopLatch/clearStopRequest.
 function fakeStopLatch() {
-  let stopRequestedAt: number | null = null;
+  let requestedAt: number | null = null;
+  let ackAt: number | null = null;
   return {
     requestStop(at: number = Date.now()): void {
-      stopRequestedAt = at;
+      requestedAt = at;
+      ackAt = null;
     },
     isSet(): boolean {
-      return stopRequestedAt !== null;
+      return requestedAt !== null;
     },
-    stopRequestedSince: vi.fn((sinceMs: number) => stopRequestedAt !== null && stopRequestedAt >= sinceMs),
+    isAcked(): boolean {
+      return ackAt !== null;
+    },
+    setAck(at: number): void {
+      ackAt = at;
+    },
+    stopLatch: vi.fn(() => ({ requestedAt, ackAt })),
+    ackStop: vi.fn(() => {
+      if (requestedAt !== null) ackAt = Date.now();
+    }),
     clearStopRequest: vi.fn(() => {
-      stopRequestedAt = null;
+      requestedAt = null;
+      ackAt = null;
     }),
   };
 }
@@ -294,12 +320,13 @@ describe('browser-command-poller', () => {
     expect(server.states[0]).toEqual({ session_id: 'SESS-1', bridge_state: 'disconnected' });
   });
 
-  it('gates a raced command (Stop landed while the long-poll was outstanding) and clears the latch', async () => {
+  it('gates a raced pre-ack command (Stop landed while the long-poll was outstanding) and keeps the latch', async () => {
     // Guarantee (a) Stop <1s: Stop, unlike Take-over, does NOT detach the
     // local bridge — currentState() stays 'connected'. A command the server
-    // handed to the wire just before the Stop landed must still be refused:
-    // the stop fires DURING the outstanding /commands/next long-poll, i.e.
-    // after pollStartedAt, so the latch gates it.
+    // handed to the wire just before the Stop gate was set must still be
+    // refused: the Stop fires DURING the outstanding /commands/next
+    // long-poll, so no ack exists yet and the latch gates it. The latch must
+    // NOT clear — only a post-ack poll may clear it.
     const server = new FakeBrowseServer();
     server.queueCommand({ command_id: 'C-RACED', action_type: 'inspect', session_id: 'SESS-1' });
     const latch = fakeStopLatch();
@@ -310,7 +337,8 @@ describe('browser-command-poller', () => {
       return baseFetch(url, init);
     }) as unknown as typeof fetch;
     const exec = fakeExec({
-      stopRequestedSince: latch.stopRequestedSince,
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
       clearStopRequest: latch.clearStopRequest,
     });
 
@@ -323,24 +351,61 @@ describe('browser-command-poller', () => {
     expect(server.results).toHaveLength(1);
     expect(server.results[0].command_id).toBe('C-RACED');
     expect(server.results[0].result_code).toBe('timeout');
-    // The latch's raced-case job is done: it is cleared, never persisting
-    // to gate a later (post-resume) command.
-    expect(latch.clearStopRequest).toHaveBeenCalled();
+    // The latch stays armed: the server gate is not yet known set (no ack).
+    expect(latch.clearStopRequest).not.toHaveBeenCalled();
+    expect(latch.isSet()).toBe(true);
+  });
+
+  it('cannot clear the latch before the server acks the stop — keeps gating on ack failure', async () => {
+    // The renderer's own /browse/control/stop POST is fire-and-forget; the
+    // latch may only clear once MAIN's own re-POST got a 2xx. While the ack
+    // keeps failing, every handed-out command is refused and the latch
+    // survives across cycles — even though the polls started after the Stop.
+    const server = new FakeBrowseServer();
+    server.failStops = true;
+    server.queueCommand({ command_id: 'C-PRE-ACK-1', action_type: 'inspect', session_id: 'SESS-1' });
+    server.queueCommand({ command_id: 'C-PRE-ACK-2', action_type: 'inspect', session_id: 'SESS-1' });
+    const latch = fakeStopLatch();
+    latch.requestStop(Date.now() - 50); // Stop pressed before the polls start
+    const exec = fakeExec({
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
+      clearStopRequest: latch.clearStopRequest,
+    });
+
+    for (const id of ['C-PRE-ACK-1', 'C-PRE-ACK-2']) {
+      expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('idle');
+      expect(latch.isSet()).toBe(true);
+      expect(server.results.at(-1)).toMatchObject({ command_id: id, result_code: 'timeout' });
+    }
+    expect(exec.inspect).not.toHaveBeenCalled();
+    expect(latch.clearStopRequest).not.toHaveBeenCalled();
+
+    // Once the ack lands, the next cycle's command is post-resume and runs.
+    server.failStops = false;
+    server.queueCommand({ command_id: 'C-POST-ACK', action_type: 'inspect', session_id: 'SESS-1' });
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('command');
+    expect(server.stops).toHaveLength(1);
+    expect(server.stops[0]).toEqual({ conversation_id: 'CONV-1' });
+    expect(exec.inspect).toHaveBeenCalled();
+    expect(server.results.at(-1)).toMatchObject({ command_id: 'C-POST-ACK', result_code: 'ok' });
     expect(latch.isSet()).toBe(false);
   });
 
-  it('executes a post-resume command normally when the Stop predates the poll', async () => {
+  it('executes a post-resume command normally once the stop was acked before the poll', async () => {
     // The SERVER is the stop/resume authority: it resumes stopped → active
-    // on a fresh user turn. A poll that STARTED after the Stop can only
-    // return a command a resumed server handed out — the stale local latch
-    // must not gate it (the old boolean latch did, refusing every command
-    // as bridge_disconnected until re-approval).
+    // on a fresh user turn. A poll that STARTED after the server gate was
+    // KNOWN set (acked) can only return a command a resumed server handed
+    // out — the stale local latch must not gate it (the old boolean latch
+    // did, refusing every command as bridge_disconnected until re-approval).
     const server = new FakeBrowseServer();
     server.queueCommand({ command_id: 'C-RESUMED', action_type: 'inspect', session_id: 'SESS-1' });
     const latch = fakeStopLatch();
-    latch.requestStop(Date.now() - 50); // Stop pressed well before this poll starts
+    latch.requestStop(Date.now() - 100);
+    latch.setAck(Date.now() - 50); // gate confirmed before this poll starts
     const exec = fakeExec({
-      stopRequestedSince: latch.stopRequestedSince,
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
       clearStopRequest: latch.clearStopRequest,
     });
 
@@ -358,14 +423,17 @@ describe('browser-command-poller', () => {
 
   it('a Stop with no new turn stays stopped: the server hands out nothing and clearing the latch runs nothing', async () => {
     // Guarantee (b): after Stop with NO subsequent user turn the server gate
-    // (the single source of truth) hands out no commands. The post-stop poll
-    // returns empty, the stale local latch is dropped (it never persists
-    // across poll cycles once a post-stop poll completed), and nothing runs.
+    // (the single source of truth) hands out no commands. Main acks the stop
+    // itself, the post-ack poll returns empty, the stale local latch is
+    // dropped (it never persists across poll cycles once a post-ack poll
+    // completed), and nothing runs.
     const server = new FakeBrowseServer(); // nothing queued — server is stopped
     const latch = fakeStopLatch();
-    latch.requestStop(Date.now() - 50);
+    latch.requestStop(Date.now() - 100);
+    latch.setAck(Date.now() - 50);
     const exec = fakeExec({
-      stopRequestedSince: latch.stopRequestedSince,
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
       clearStopRequest: latch.clearStopRequest,
     });
 
@@ -375,7 +443,7 @@ describe('browser-command-poller', () => {
     // Nothing executed, nothing reported — stopped stays stopped.
     expect(exec.inspect).not.toHaveBeenCalled();
     expect(server.results).toHaveLength(0);
-    // The latch never persists once a post-stop poll completed.
+    // The latch never persists once a post-ack poll completed.
     expect(latch.isSet()).toBe(false);
 
     // A later cycle (e.g. after a server-side resume) is not gated by any

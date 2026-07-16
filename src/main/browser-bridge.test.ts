@@ -414,6 +414,38 @@ describe('browser-bridge domain-grant immutability', () => {
     expect(bridge.currentState()).toBe('lost');
   });
 
+  // FAIL CLOSED on hostless readback URLs: file:///, data:, about:blank have
+  // no registrable host — the tab left the approved site, so the observation
+  // must be refused, never returned as approved content.
+  for (const hostlessUrl of ['about:blank', 'file:///tmp/x.html', 'data:text/html,hi']) {
+    it(`inspect readback on ${hostlessUrl} is refused + lost (fail closed)`, async () => {
+      await connect();
+      FakeCdpSocket.instances[0].page = { ...FakeCdpSocket.instances[0].page, url: hostlessUrl };
+      const r = await bridge.inspect();
+      expect(r.status).toBe('permission_denied');
+      expect(r.observed).toBeUndefined();
+      expect(bridge.currentState()).toBe('lost');
+    });
+
+    it(`scroll readback on ${hostlessUrl} is refused + lost (fail closed)`, async () => {
+      await connect();
+      FakeCdpSocket.instances[0].page = { ...FakeCdpSocket.instances[0].page, url: hostlessUrl };
+      const r = await bridge.scroll('down');
+      expect(r.status).toBe('permission_denied');
+      expect(r.observed).toBeUndefined();
+      expect(bridge.currentState()).toBe('lost');
+    });
+
+    it(`wait readback on ${hostlessUrl} is refused + lost (fail closed)`, async () => {
+      await connect();
+      FakeCdpSocket.instances[0].page = { ...FakeCdpSocket.instances[0].page, url: hostlessUrl };
+      const r = await bridge.wait(0);
+      expect(r.status).toBe('permission_denied');
+      expect(r.observed).toBeUndefined();
+      expect(bridge.currentState()).toBe('lost');
+    });
+  }
+
   it('a grant under a multi-label suffix does NOT extend to sibling sites (github.io)', async () => {
     // PSL isolation end-to-end: approving foo.github.io must not let the
     // bridge follow a link to bar.github.io — they are unrelated sites that
@@ -527,31 +559,44 @@ describe('browser-bridge conversation binding lifecycle', () => {
 });
 
 describe('browser-bridge local Stop latch', () => {
-  it('records WHEN Stop was pressed so the poller can gate only raced commands', () => {
+  it('records WHEN Stop was pressed, un-acked until the server confirms its gate', () => {
     const before = Date.now();
-    expect(bridge.isStopRequested()).toBe(false);
+    expect(bridge.getStopLatch()).toEqual({ requestedAt: null, ackAt: null });
     bridge.requestStop();
-    expect(bridge.isStopRequested()).toBe(true);
-    // The latch answers "was Stop pressed at-or-after t?" — true for a poll
-    // that started before the stop (raced), false for one started after.
-    expect(bridge.isStopRequestedSince(before)).toBe(true);
-    expect(bridge.isStopRequestedSince(Date.now() + 1)).toBe(false);
+    const latch = bridge.getStopLatch();
+    expect(latch.requestedAt).toBeGreaterThanOrEqual(before);
+    expect(latch.ackAt).toBeNull();
   });
 
-  it('is cleared by clearStopRequest (the poller after a post-stop poll cycle)', () => {
+  it('ackStopRequest records the server-gate confirmation; a fresh Stop resets it', () => {
     bridge.requestStop();
+    bridge.ackStopRequest();
+    expect(bridge.getStopLatch().ackAt).not.toBeNull();
+    // A new Stop needs a new ack — the previous gate may have been resumed.
+    bridge.requestStop();
+    expect(bridge.getStopLatch().requestedAt).not.toBeNull();
+    expect(bridge.getStopLatch().ackAt).toBeNull();
+  });
+
+  it('a stray ack with no Stop latched must not fabricate latch state', () => {
+    bridge.ackStopRequest();
+    expect(bridge.getStopLatch()).toEqual({ requestedAt: null, ackAt: null });
+  });
+
+  it('is cleared by clearStopRequest (the poller after a post-ack poll cycle)', () => {
+    bridge.requestStop();
+    bridge.ackStopRequest();
     bridge.clearStopRequest();
-    expect(bridge.isStopRequested()).toBe(false);
-    expect(bridge.isStopRequestedSince(0)).toBe(false);
+    expect(bridge.getStopLatch()).toEqual({ requestedAt: null, ackAt: null });
   });
 
   it('is cleared belt-and-braces by a fresh attach and by disposeAllBridges', async () => {
     bridge.requestStop();
     await bridge.attach('TAB-1');
-    expect(bridge.isStopRequested()).toBe(false);
+    expect(bridge.getStopLatch().requestedAt).toBeNull();
 
     bridge.requestStop();
     bridge.disposeAllBridges();
-    expect(bridge.isStopRequested()).toBe(false);
+    expect(bridge.getStopLatch().requestedAt).toBeNull();
   });
 });
