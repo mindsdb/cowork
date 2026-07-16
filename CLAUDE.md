@@ -46,12 +46,45 @@ npm run build:web   # → dist/renderer-web/
 ### Type checking
 
 ```sh
-# Main process (Electron/Node)
-npx tsc -p tsconfig.main.json --noEmit
-
-# Renderer (React/Vite) — tsc doesn't emit, Vite handles bundling
-npx tsc --noEmit
+npm run typecheck   # main (tsconfig.main.json) + renderer (tsconfig.json) + tests (tsconfig.test.json)
 ```
+
+### Testing
+
+Vitest runs two projects — `main`
+(node env, `src/main` + `src/shared`) and `renderer` (happy-dom env,
+`src/renderer`). Tests are **colocated** (`foo.test.ts` beside `foo.ts`);
+shared setup lives in `tests/` (autouse env scrub, `TZ=UTC`, network deny —
+`fetch` throws unless a test installs its own mock).
+
+```sh
+npm test                     # unit + component (fast, no Electron/network)
+npm run test:watch           # local TDD loop
+npm run test:coverage        # + enforces coverage floors (vitest.config.ts)
+npm run test:e2e             # Playwright Electron boot smoke (needs npm run build)
+npm run check:cowork-purity  # no direct window.antontron outside platform/host.ts
+```
+
+**Norms:**
+
+- **A PR that fixes a bug adds a regression test for it. A PR that adds logic
+  adds tests for that logic.** Decision logic goes in pure functions
+  (`src/main/update-logic.ts` pattern) tested directly; orchestration gets at
+  most 1–2 integration-style tests with mocks.
+- Coverage floors in [vitest.config.ts](vitest.config.ts) are **ratcheted from
+  measured values — raise them when coverage grows, never lower them to make a
+  failing PR pass**. `update-logic.ts` and `server-source.ts` are locked at
+  100%.
+- Never touch `window.antontron` inside `src/renderer/cowork/` — go through
+  [src/renderer/platform/host.ts](src/renderer/platform/host.ts). CI enforces
+  this.
+- Test files never ship: production tsconfigs exclude `**/*.test.*`; keep it
+  that way.
+- CI: `tests-unit.yml` gates PRs (typecheck + purity + coverage + renderer
+  build); `pack-smoke.yml` and `tests-e2e.yml` run nightly, non-blocking.
+- The IPC channel map is snapshot-locked
+  (`src/shared/__snapshots__/`) — renaming a channel is a **breaking protocol
+  change** (OTA renderers can lag main), not a refactor.
 
 ### Python server
 

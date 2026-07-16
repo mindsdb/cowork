@@ -114,6 +114,33 @@ const sanitizeSchema = {
   },
 };
 
+// User messages are typed or pasted into the composer, where the
+// supported way to make a code block is a ``` fence (see the composer's
+// fence handling). Text copied from an already-indented context —
+// nested lists, quoted replies, an editor selection — arrives with a
+// uniform leading indent, which CommonMark then promotes to an
+// *indented* code block. The result is that pasted prose renders as a
+// monospace, non-wrapping card instead of formatted markdown.
+//
+// Strip the indentation common to every non-blank line (textwrap.dedent
+// semantics): the spurious copied-in indent is removed while relative
+// nesting — genuine sub-bullets, indented fence bodies — is preserved.
+// It's a no-op unless *all* non-blank lines share a leading indent, so
+// mixed content is left untouched.
+function _dedentUserText(text) {
+  if (!text || typeof text !== 'string') return text;
+  const lines = text.split('\n');
+  let min = Infinity;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const indent = line.length - line.replace(/^[ \t]+/, '').length;
+    if (indent < min) min = indent;
+    if (min === 0) return text;
+  }
+  if (!Number.isFinite(min) || min === 0) return text;
+  return lines.map((line) => (line.trim() ? line.slice(min) : line)).join('\n');
+}
+
 function _mergeInlineCodeLines(text) {
   if (!text || typeof text !== 'string') return text;
   // Trailing-whitespace tolerant: a line that's just `code` followed by
@@ -305,11 +332,14 @@ export function MarkdownContent({
   // `isAssistant` so only LLM output gets that fix-up.
   const normalized = useMemo(
     () => {
-      const merged = isAssistant ? _mergeInlineCodeLines(text) : text;
+      // User turns are pasted/typed: strip a uniform copied-in indent so
+      // CommonMark doesn't promote pasted prose to an indented code block.
+      const source = variant === 'user' ? _dedentUserText(text) : text;
+      const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
       return _renderEngramComments(formNormalized);
     },
-    [text, enableForms, isAssistant],
+    [text, enableForms, isAssistant, variant],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
 

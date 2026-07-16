@@ -2,13 +2,24 @@
 // cowork SPA views (billing/API-key links), so every external MindsHub
 // destination is derived in one place from the two VITE_ overrides.
 
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'https://auth.mindshub.ai/auth';
+export const MINDS_API_BASE = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai';
+
+// Keycloak host, derived from the SAME resolved base as everything else
+// (api.X → auth.X) so the login flow (keycloak.ts, which imports
+// MINDS_KEYCLOAK_URL) and the sign-up link below can never point at different
+// environments. VITE_KEYCLOAK_URL wins as an explicit override; otherwise we
+// derive from MINDS_API_BASE — the *already-resolved* value, so when
+// VITE_MINDS_API_URL is unset (prod builds don't pass it) auth tracks the same
+// prod fallback the API host uses. Deriving from the resolved base — not a
+// runtime web-vs-Electron guess — is what keeps the two in lockstep: the
+// packaged desktop app serves the renderer over file://, so any protocol-based
+// "isWeb" heuristic misfires and would strand auth on the dev host.
+export const MINDS_KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL
+  || `${MINDS_API_BASE.replace('://api.', '://auth.')}/auth`;
 // Strip only a TRAILING "/auth" — a bare .replace('/auth','') matches the
 // "//auth" inside the domain (https://auth.mindshub.ai) and mangles the
 // URL into "https:/.mindshub.ai/auth", which fails to open.
-const KEYCLOAK_BASE = KEYCLOAK_URL.replace(/\/auth\/?$/, '');
-
-export const MINDS_API_BASE = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai';
+const KEYCLOAK_BASE = MINDS_KEYCLOAK_URL.replace(/\/auth\/?$/, '');
 
 // Single source of truth for the MindsHub console. Flip to
 // https://console.mindshub.ai when the desktop app moves to prod.

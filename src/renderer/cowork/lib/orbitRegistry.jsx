@@ -73,12 +73,19 @@ export function OrbitProvider({
   const [, forceRender] = useState(0);
   useEffect(() => { forceRender((n) => n + 1); }, []);
 
+  // Bumped whenever a slot element mounts/unmounts so the position
+  // recomputes even when the SAME slot id moves between elements
+  // (e.g. `header:streaming` jumps from the pre-step placeholder to
+  // the ThinkingBlock header once steps arrive).
+  const [slotVersion, setSlotVersion] = useState(0);
+
   const register = useCallback((id, el) => {
     if (el == null) {
       slotsRef.current.delete(id);
     } else {
       slotsRef.current.set(id, el);
     }
+    setSlotVersion((n) => n + 1);
   }, []);
 
   const compute = useCallback(() => {
@@ -103,11 +110,12 @@ export function OrbitProvider({
     });
   }, [activeSlot, canvasRef, size]);
 
-  // Recompute when active slot id changes or the size changes. Also
-  // wire up listeners so the orb tracks layout reflows.
+  // Recompute when the active slot id, the size, or any registered
+  // slot element changes. Also wire up listeners below so the orb
+  // tracks layout reflows.
   useLayoutEffect(() => {
     compute();
-  }, [compute]);
+  }, [compute, slotVersion]);
 
   useEffect(() => {
     const onResize = () => compute();

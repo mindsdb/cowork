@@ -1,12 +1,10 @@
 import Keycloak from 'keycloak-js';
+import { MINDS_KEYCLOAK_URL } from './mindsUrls';
 
-// Web uses dev Keycloak (localhost support for npm run dev:web).
-// Electron uses prod Keycloak. Both can be overridden via VITE_KEYCLOAK_URL.
-const isWeb = typeof window !== 'undefined' && window.location.protocol !== 'app:';
-const defaultKeycloakUrl = isWeb
-  ? 'https://auth.dev.mindshub.ai/auth'
-  : 'https://auth.mindshub.ai/auth';
-const keycloakUrl = import.meta.env.VITE_KEYCLOAK_URL || defaultKeycloakUrl;
+// Single source of truth for the Keycloak host lives in mindsUrls.ts so the
+// login flow and the sign-up link (MINDS_REGISTER_URL) always agree on the
+// environment (prod / staging / dev).
+const keycloakUrl = MINDS_KEYCLOAK_URL;
 
 // Base URL without query params for Keycloak redirect (Keycloak validates strictly)
 const redirectUri = typeof window !== 'undefined'

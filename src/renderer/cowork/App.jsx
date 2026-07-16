@@ -4,7 +4,7 @@ import Ico from './components/Icons';
 import ThemeModal from './components/ThemeModal';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
-// OnboardingShell removed — antontron's renderer handles terms/install/
+// OnboardingShell removed — the desktop shell's renderer handles terms/install/
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
@@ -33,7 +33,7 @@ import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
-import { fetchSessions, fetchSession, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchConversationList, fetchProjects, fetchArtifacts, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments,
@@ -444,6 +444,10 @@ function failedEventMeta(events) {
     message: ev.error || ev.message || '',
     reconnectable: ev.reconnectable ?? null,
     providerLabel: ev.provider_label ?? null,
+    // model-403 (model_access_denied / model_disabled): which model the
+    // gateway rejected, so the card can name it. `failedModel` locally —
+    // "model" is too overloaded in message objects.
+    failedModel: ev.model ?? null,
   };
 }
 
@@ -488,6 +492,7 @@ function hydrateMessagesFromServerEvents(messages) {
           code,
           reconnectable: failed?.reconnectable ?? null,
           providerLabel: failed?.providerLabel ?? null,
+          failedModel: failed?.failedModel ?? null,
         });
       }
     }
@@ -677,6 +682,26 @@ function appendActivity(messages, event) {
       state: 'running',
     },
   ];
+}
+
+// How long to wait before the next `GET /schedules/` poll:
+// - close to the soonest due schedule (so a background run shows up promptly)
+// - but never more than MAX (a heartbeat for cross-client changes / clock drift)
+// - and never less than MIN (so an overdue-but-not-yet-processed schedule can't turn into a busy loop).
+// RUN_BUFFER gives the time to actually finish task before we go check.
+const SCHEDULE_POLL_MAX_DELAY_MS = 10 * 60 * 1000;
+const SCHEDULE_POLL_MIN_DELAY_MS = 60 * 1000;
+const SCHEDULE_POLL_RUN_BUFFER_MS = 60 * 1000;
+
+function nextPollDelay(schedules) {
+  const dueTimes = (schedules || [])
+    .filter((s) => s.enabled && s.nextRunAt)
+    .map((s) => new Date(s.nextRunAt).getTime())
+    .filter(Number.isFinite);
+  if (dueTimes.length === 0) return SCHEDULE_POLL_MAX_DELAY_MS;
+  const earliest = Math.min(...dueTimes);
+  const untilDue = earliest - Date.now() + SCHEDULE_POLL_RUN_BUFFER_MS;
+  return Math.min(SCHEDULE_POLL_MAX_DELAY_MS, Math.max(untilDue, SCHEDULE_POLL_MIN_DELAY_MS));
 }
 
 export default function App() {
@@ -995,6 +1020,7 @@ function AppCore() {
             code: event?.code,
             reconnectable: event?.reconnectable ?? null,
             providerLabel: event?.provider_label ?? null,
+            failedModel: event?.model ?? null,
           };
       return {
         ...t,
@@ -1237,8 +1263,9 @@ function AppCore() {
   const [health, setHealth] = useState({ status: 'offline', anton_available: false });
 
   // Desktop "app installed" — fire once per install, after the backend is up
-  // (health 'ok') and an identity is available. trackAppInstalled self-guards
-  // (localStorage marker + waits for a distinct_id), so re-running is safe.
+  // (health 'ok'). Captured under the anonymous device id if the user hasn't
+  // signed in yet, and merged into the account on first login (ENG-537).
+  // trackAppInstalled self-guards with a localStorage marker, so re-running is safe.
   useEffect(() => {
     if (host.isElectron && health.status === 'ok') trackAppInstalled();
   }, [health.status]);
@@ -1246,6 +1273,7 @@ function AppCore() {
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
+  const [refreshErrors, setRefreshErrors] = useState([]); // { engine, name, accountEmail, permanent }
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1361,6 +1389,13 @@ function AppCore() {
   useEffect(() => {
     return host.onUpdateStatus((status) => {
       setUpdateStatus(status);
+    });
+  }, []);
+
+  // Listen for background OAuth refresh failures pushed from main process.
+  useEffect(() => {
+    return host.onOAuthRefreshError((payload) => {
+      setRefreshErrors((prev) => [...prev, { ...payload, id: Date.now() }]);
     });
   }, []);
 
@@ -3230,11 +3265,62 @@ function AppCore() {
     if (Array.isArray(freshProjects)) setProjects(freshProjects);
   };
 
-  const refreshSchedules = async () => {
+  const refreshSchedules = useCallback(async () => {
     const data = await fetchSchedules();
-    setScheduled(data.schedules || []);
+    const list = data.schedules || [];
+    setScheduled(list);
     setScheduleRunsIndex(data.runs_index || {});
-  };
+    return list;
+  }, []);
+
+  // Diffs the full conversation list against known tasks and adds any
+  // unseen ones — catches every new conversation since the last check,
+  // not just the most recent one.
+  const syncNewConversations = useCallback(async () => {
+    const conversations = await fetchConversationList();
+    const known = new Set(tasksRef.current.map((t) => t.id));
+    const unseenIds = conversations.map((c) => c.id).filter((id) => id && !known.has(id));
+    if (unseenIds.length === 0) return;
+    const SYNC_CAP = 50;
+    const toFetch = unseenIds.slice(0, SYNC_CAP);
+    const freshTasks = await Promise.all(toFetch.map((id) => fetchSession(id)));
+    setTasks((prev) => {
+      let next = prev;
+      for (const task of freshTasks) {
+        if (!task || deletedTaskIdsRef.current.has(task.id)) continue;
+        if (next.some((t) => t.id === task.id)) continue;
+        next = [task, ...next];
+      }
+      return next;
+    });
+  }, []);
+
+  // Recomputed whenever an enabled schedule's due time changes — used as
+  // the poll effect's dependency below instead of `scheduled.length`,
+  // which stays the same across an edit/pause/resume
+  const scheduleKey = scheduled
+    .filter((s) => s.enabled)
+    .map((s) => s.nextRunAt)
+    .join(',');
+
+  // Self-adjusting poll (not a fixed interval): reschedules itself after
+  // every tick based on the freshest `nextRunAt`, so an idle app with
+  // schedules due far in the future stays quiet, while one with something
+  // due soon checks close to that moment. Skipped entirely when there are
+  // no schedules at all — nothing to poll for.
+  useEffect(() => {
+    let cancelled = false;
+    let timer = setTimeout(tick, nextPollDelay(scheduled));
+    async function tick() {
+      const list = await refreshSchedules();
+      const known = new Set(tasksRef.current.map((t) => t.id));
+      const hasNewRun = list.some((s) => s.lastResultConversationId && !known.has(s.lastResultConversationId));
+      if (hasNewRun) await syncNewConversations();
+      if (cancelled) return;
+      timer = setTimeout(tick, nextPollDelay(list));
+    }
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [scheduleKey, refreshSchedules, syncNewConversations]);
 
   const handleCreateSchedule = async (payload) => {
     await createSchedule(payload);
@@ -3491,6 +3577,7 @@ function AppCore() {
             models={modelOptions}
             attachments={composerAttachments}
             connectors={connectors}
+            onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -3578,6 +3665,7 @@ function AppCore() {
             onDeleteProject={handleDeleteProject}
             attachments={composerAttachments}
             connectors={connectors}
+            onNavigateToConnectors={() => navigate('customize')}
             onAttachFiles={handleAttachFiles}
             onRemoveAttachment={handleRemoveAttachment}
             disabledConnections={composerDisabledConnections}
@@ -3935,6 +4023,34 @@ function AppCore() {
         onClose={() => setMoveModalTask(null)}
         onConfirm={handleConfirmMove}
       />
+
+      {/* OAuth refresh-error toasts — shown when background token refresh fails */}
+      {refreshErrors.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9000, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 340 }}>
+          {refreshErrors.map((err) => (
+            <div key={err.id} style={{
+              padding: '10px 14px', borderRadius: 8,
+              background: 'var(--surface)',
+              border: `1px solid ${err.permanent ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--warning, #f5a623) 40%, transparent)'}`,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              fontSize: 13, color: 'var(--ink)',
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+            }}>
+              <div style={{ flex: 1, lineHeight: 1.5 }}>
+                {err.permanent
+                  ? <><strong>{err.engine}</strong> connection needs to be reconnected — refresh token expired.</>
+                  : <><strong>{err.engine}</strong> connection refresh failed — retrying automatically.</>}
+              </div>
+              <button
+                type="button"
+                onClick={() => setRefreshErrors((prev) => prev.filter((e) => e.id !== err.id))}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-4)', padding: 0, fontSize: 16, lineHeight: 1, flexShrink: 0 }}
+                aria-label="Dismiss"
+              >×</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (

@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,4 +67,13 @@ jobs:
     uses: ./.github/workflows/prod-build-installer.yml
     with:
       tag: ${{ needs.auto-release.outputs.tag }}
+    secrets: inherit
+
+  # Publish the UI bundle from the SAME release version as the prod installer
+  # above, so OTA users never see a UI version that differs from the app.
+  publish-ui:
+    needs: auto-release
+    uses: ./.github/workflows/publish-ui.yml
+    with:
+      version: ${{ needs.auto-release.outputs.version }}
     secrets: inherit
