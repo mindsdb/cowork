@@ -2447,6 +2447,28 @@ body:not([data-theme="dark"]) .btn-primary {
 .btn.solid:focus-visible {
   box-shadow: 0 0 0 1px var(--accent-solid-ink), 0 0 0 4px var(--glow);
 }
+/* Dark: opaque paint fights the neon material language — dark-mode
+   buttons are made of light, not pigment (the outline+glow grammar
+   above). The solid CTA becomes a luminous fill: translucent accent
+   glass with a neon border and the idle glow, one visible step
+   stronger than .btn.primary's outline-only treatment. Light mode
+   keeps the true opaque solid — fills are native material there. */
+body[data-theme="dark"] .btn.solid {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+body[data-theme="dark"] .btn.solid:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 28px var(--glow);
+}
+body[data-theme="dark"] .btn.solid:active {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+body[data-theme="dark"] .btn.solid:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--glow);
+}
 
 /* Danger */
 .btn.danger {
