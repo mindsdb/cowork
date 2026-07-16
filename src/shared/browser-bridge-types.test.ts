@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  hostMatchesGrant,
   isReadonlyCdpMethod,
   registrableHost,
   toInternalResultCode,
@@ -154,6 +155,40 @@ describe('registrableHost', () => {
     expect(registrableHost('not a url')).toBe('');
     expect(registrableHost('')).toBe('');
     expect(registrableHost('about:blank')).toBe('');
+  });
+
+  it('strips IPv6 brackets so the grant value is the bare address', () => {
+    expect(registrableHost('http://[::1]:8080/x')).toBe('::1');
+  });
+});
+
+// Grant-matching conformance table — MIRRORED VERBATIM in cowork-server's
+// pytest suite so both sides of the wire enforce identical grant semantics.
+// Do NOT change expected values without updating the server-side copy.
+describe('hostMatchesGrant (cross-repo conformance table)', () => {
+  const table: [url: string, grant: string, expected: boolean][] = [
+    ['https://shop.example.com/a?x=1', 'example.com', true],
+    ['https://example.com', 'example.com', true],
+    ['https://app.bank.co.uk/login', 'bank.co.uk', true],
+    ['https://other.co.uk/', 'bank.co.uk', false],
+    ['https://bank.co.uk.evil.com/', 'bank.co.uk', false],
+    ['https://foo.github.io/docs', 'foo.github.io', true],
+    ['https://bar.github.io', 'foo.github.io', false],
+    ['http://[::1]:8080/x', '::1', true],
+    ['http://192.168.0.1/x', '192.168.0.1', true],
+    ['http://localhost:3000/x', 'localhost', true],
+    ['https://user:pass@sub.example.com/', 'example.com', true],
+    ['HTTPS://WWW.EXAMPLE.COM', 'example.com', true],
+    ['https://notexample.com', 'example.com', false],
+  ];
+
+  it.each(table)('hostMatchesGrant(%j, %j) === %j', (url, grant, expected) => {
+    expect(hostMatchesGrant(url, grant)).toBe(expected);
+  });
+
+  it('never matches an unparseable URL or an empty grant', () => {
+    expect(hostMatchesGrant('not a url', 'example.com')).toBe(false);
+    expect(hostMatchesGrant('https://example.com', '')).toBe(false);
   });
 });
 

@@ -278,3 +278,16 @@ export function registrableHost(rawUrl: string): string {
     return '';
   }
 }
+
+// Does `url` fall inside the approved grant? The grant value IS a
+// registrableHost() output (set at approve time), so matching is exact
+// equality on the registrable host — never substring/suffix matching, which
+// would let "bank.co.uk.evil.com" pass a "bank.co.uk" grant. An unparseable
+// URL never matches (registrableHost returns ''). This is the SAME semantics
+// the cowork-server enforces (host_matches_grant); the conformance table in
+// browser-bridge-types.test.ts is mirrored verbatim in its pytest suite.
+export function hostMatchesGrant(url: string, grant: string): boolean {
+  if (!grant) return false;
+  const host = registrableHost(url);
+  return host !== '' && host === grant;
+}
