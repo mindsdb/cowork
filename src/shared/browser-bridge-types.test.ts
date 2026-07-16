@@ -6,13 +6,14 @@ import {
   toServerBridgeState,
   FORBIDDEN_CDP_METHODS,
   READONLY_CDP_DOMAINS,
+  READONLY_CDP_METHODS,
 } from './browser-bridge-types';
 
-// The read-only CDP guard is allowlist-based (WS review item 7): a method is
-// permitted ONLY when its domain is one of the read-only domains AND it is not
-// a forbidden method / write-input-cookie-storage verb. Anything outside the
-// allowlisted domains is refused outright — a blocklist alone would let a new
-// write surface through.
+// The read-only CDP guard is an EXACT-METHOD allowlist (WS review item 7 +
+// codex review): a method is permitted ONLY when it is byte-for-byte one of
+// READONLY_CDP_METHODS. There is no domain-level or verb-heuristic fallback —
+// allowlisted domains like `Runtime` also expose arbitrary-code-execution
+// methods (callFunctionOn, runScript) whose names pass any verb regex.
 describe('isReadonlyCdpMethod (allowlist)', () => {
   it('allows the read-only primitives the bridge uses', () => {
     for (const m of [
@@ -54,6 +55,41 @@ describe('isReadonlyCdpMethod (allowlist)', () => {
     ]) {
       expect(isReadonlyCdpMethod(m), m).toBe(false);
     }
+  });
+
+  it('refuses arbitrary-JS-execution Runtime methods NOT on the exact allowlist', () => {
+    // These live in the allowlisted `Runtime` domain and their names pass a
+    // verb heuristic, but they can execute arbitrary page JavaScript (clicks,
+    // writes, cookie/storage reads). Only exact-method allowlisting blocks
+    // them — this is the codex P1 regression test.
+    for (const m of [
+      'Runtime.callFunctionOn',
+      'Runtime.runScript',
+      'Runtime.compileScript',
+      'Runtime.awaitPromise',
+      'Runtime.queryObjects',
+      'Runtime.globalLexicalScopeNames',
+    ]) {
+      expect(isReadonlyCdpMethod(m), m).toBe(false);
+    }
+  });
+
+  it('refuses even read-only-looking methods that are not enumerated', () => {
+    // The guard has NO domain fallback: an unenumerated getter in an
+    // allowlisted domain is refused until it is added to the exact list.
+    for (const m of ['DOM.getDocument', 'Page.getNavigationHistory', 'Runtime.getProperties']) {
+      expect(isReadonlyCdpMethod(m), m).toBe(false);
+    }
+  });
+
+  it('allows exactly the enumerated methods and nothing else shape-wise', () => {
+    for (const m of READONLY_CDP_METHODS) {
+      expect(isReadonlyCdpMethod(m), m).toBe(true);
+    }
+    // Near-miss variants of allowed methods must not pass.
+    expect(isReadonlyCdpMethod('Runtime.Evaluate')).toBe(false);
+    expect(isReadonlyCdpMethod('Runtime.evaluate ')).toBe(false);
+    expect(isReadonlyCdpMethod('runtime.evaluate')).toBe(false);
   });
 
   it('refuses every explicitly forbidden method', () => {

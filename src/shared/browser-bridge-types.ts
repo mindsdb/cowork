@@ -191,16 +191,16 @@ export function toServerBridgeState(state: BridgeState): ServerBridgeState {
   return state === 'awaiting-approval' ? 'awaiting_approval' : state;
 }
 
-// The read-only CDP domains the bridge is allowed to touch. Any command
-// outside this allowlist (Network.getCookies, Storage.*, Input.*, write
-// surfaces) is refused with `unsupported_action` and never sent to Chrome.
+// The CDP domains the bridge's read-only methods live in. DOCUMENTATION ONLY —
+// membership grants nothing: the guard below allowlists exact method names
+// (see READONLY_CDP_METHODS), never whole domains, because e.g. `Runtime`
+// also contains arbitrary-JS-execution methods (callFunctionOn, runScript).
 export const READONLY_CDP_DOMAINS = ['Page', 'Runtime', 'DOM', 'Accessibility'] as const;
 export type ReadonlyCdpDomain = (typeof READONLY_CDP_DOMAINS)[number];
 
-// CDP methods that are explicitly forbidden even though their domain IS in the
-// read-only allowlist (e.g. Page.setDownloadBehavior lives under the allowed
-// `Page` domain but is a write). These are blocked in ADDITION to the
-// domain-allowlist check. Used by the primitive guard + asserted by tests.
+// High-risk CDP methods asserted by tests to NEVER be sent (cookie/storage
+// reads, input dispatch, download control). Redundant with the exact-method
+// allowlist below — kept as an explicit tripwire list for test assertions.
 export const FORBIDDEN_CDP_METHODS = [
   'Network.getCookies',
   'Network.getAllCookies',
@@ -214,47 +214,42 @@ export const FORBIDDEN_CDP_METHODS = [
   'Input.insertText',
 ] as const;
 
-// Within the allowlisted read-only domains, these method-name fragments still
-// indicate a write / input / consequential surface (e.g. Page.navigate is
-// allowed — the link gate governs it — but Page.setBypassCSP, DOM.setNodeValue,
-// Runtime.evaluate with a side effect are governed elsewhere; here we block the
-// obvious write/input/cookie/storage verbs by name). A method is refused when
-// its domain is outside the allowlist OR its name matches a forbidden verb.
-const FORBIDDEN_METHOD_VERB = /(set|delete|remove|insert|dispatch|create|clear|add|enable[A-Z]|cookie|storage|download|input|type|click|focus|screenshot|print|capture|emulate|write)/i;
-
-// Allowlist-based read-only CDP guard. A method is allowed ONLY when:
-//   1. its domain (the part before the first '.') is in READONLY_CDP_DOMAINS, AND
-//   2. it is not in FORBIDDEN_CDP_METHODS, AND
-//   3. its method name (the part after the domain) does not match a write/input/
-//      cookie/storage verb.
-// The bridge's own read-only primitives (Page.navigate/enable, Runtime.evaluate,
-// Runtime.enable, DOM.enable) are explicitly permitted. Returns true when the
-// method is safe to send.
-const ALLOWED_METHOD_EXCEPTIONS = new Set([
-  'Page.navigate',
+// EXACT-METHOD allowlist: the only CDP methods the bridge is ever allowed to
+// send. There is deliberately NO domain-level or verb-heuristic fallback — an
+// allowlisted domain like `Runtime` still exposes arbitrary-code-execution
+// surfaces (Runtime.callFunctionOn, Runtime.runScript, Runtime.compileScript)
+// whose names pass any verb regex, so anything not enumerated here byte-for-
+// byte is refused. Grow this list one concrete method at a time, never by
+// domain.
+//
+// Runtime.evaluate NOTE: it is enumerated because the bridge's own read-only
+// primitives (inspect/scroll snapshot extraction) send it with BRIDGE-OWNED
+// constant expressions. The expression itself is NOT validated by this guard —
+// any path that would forward an externally-supplied expression must NOT rely
+// on isReadonlyCdpMethod alone and needs its own gate. The M1 bridge has no
+// such path: the server only hands out high-level action types
+// (inspect/navigate/scroll/wait); raw CDP methods/expressions never cross the
+// wire.
+export const READONLY_CDP_METHODS = [
   'Page.enable',
+  'Page.navigate', // targets are governed by the same-site link gate
   'Runtime.enable',
-  'Runtime.evaluate',
+  'Runtime.evaluate', // bridge-owned constant expressions only — see note
   'DOM.enable',
   'Accessibility.enable',
   'Accessibility.getFullAXTree',
   'Accessibility.getRootAXNode',
-]);
+] as const;
 
+const READONLY_CDP_METHOD_SET: ReadonlySet<string> = new Set(READONLY_CDP_METHODS);
+
+// Allowlist-based read-only CDP guard: a method is allowed ONLY when it is one
+// of the exact READONLY_CDP_METHODS. Everything else — including "read-y"
+// methods in allowlisted domains (Runtime.callFunctionOn, Runtime.runScript,
+// DOM.getDocument) — is refused. Returns true when the method is safe to send.
 export function isReadonlyCdpMethod(method: string): boolean {
   if (!method || typeof method !== 'string') return false;
-  const dot = method.indexOf('.');
-  const domain = dot === -1 ? method : method.slice(0, dot);
-  const name = dot === -1 ? '' : method.slice(dot + 1);
-  // Domain must be in the read-only allowlist.
-  if (!(READONLY_CDP_DOMAINS as readonly string[]).includes(domain)) return false;
-  // Explicit forbidden list always wins.
-  if ((FORBIDDEN_CDP_METHODS as readonly string[]).includes(method)) return false;
-  // Explicitly-permitted read-only primitives bypass the verb heuristic.
-  if (ALLOWED_METHOD_EXCEPTIONS.has(method)) return true;
-  // Within an allowlisted domain, reject obvious write/input/cookie verbs.
-  if (FORBIDDEN_METHOD_VERB.test(name)) return false;
-  return true;
+  return READONLY_CDP_METHOD_SET.has(method);
 }
 
 // Returns the registrable host ("example.com") of a URL, or '' when it can't
