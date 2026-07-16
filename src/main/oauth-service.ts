@@ -41,6 +41,14 @@ export interface OAuthConnectOpts {
    * always return a refresh_token.
    */
   extraAuthParams?: Record<string, string>;
+  /**
+   * Fixed loopback port to bind the redirect URI to — required for
+   * providers (Linear, confirmed 2026-07-16) that reject any
+   * redirect_uri not pre-registered exactly, including port. Google
+   * accepts any 127.0.0.1 port, so this is omitted for it. Sourced
+   * from the connector spec's oauth.redirect_port.
+   */
+  redirectPort?: number;
 }
 
 export interface OAuthConnectResult {
@@ -89,9 +97,14 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
 
   let port: number;
   try {
-    port = await findFreePort();
+    port = opts.redirectPort ? await bindFixedPort(opts.redirectPort) : await findFreePort();
   } catch (e: any) {
-    return { ok: false, reason: `Could not bind a loopback port: ${e?.message || e}` };
+    return {
+      ok: false,
+      reason: opts.redirectPort
+        ? `Port ${opts.redirectPort} (required for this connector's redirect URI) is already in use — close whatever's using it and try again.`
+        : `Could not bind a loopback port: ${e?.message || e}`,
+    };
   }
 
   const redirectUri = `http://127.0.0.1:${port}/callback`;
@@ -256,6 +269,23 @@ export function findFreePort(): Promise<number> {
     srv.listen(0, '127.0.0.1', () => {
       const addr = srv.address();
       const port = typeof addr === 'object' && addr ? addr.port : 0;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+// Binds a specific port rather than letting the OS pick one — for
+// providers that require an exact, pre-registered redirect_uri (see
+// OAuthConnectOpts.redirectPort). Rejects if the port's already taken;
+// callers surface that as an actionable "close whatever's using it" error
+// rather than silently falling back to a random port, which would just
+// reproduce the same redirect_uri mismatch against the provider.
+function bindFixedPort(port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(port, '127.0.0.1', () => {
       srv.close(() => resolve(port));
     });
   });

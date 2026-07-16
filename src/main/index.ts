@@ -621,6 +621,7 @@ function setupIPC() {
         clientSecret,
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
+        redirectPort: oauthBlock.redirect_port,
       });
       if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
