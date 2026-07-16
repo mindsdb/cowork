@@ -519,9 +519,6 @@ export default function TasksView({
         subtitle="Every conversation across every project. Sort, filter, and jump straight in."
       />
 
-      {/* Subtitle → search spacer. 32px (was 18) gives the search
-          bar room to breathe under the subtitle on this view. */}
-      <div style={{ height: 32 }} />
 
       {tasks.length > 0 && (
         <FilterRow

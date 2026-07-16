@@ -835,7 +835,6 @@ export default function CustomizeView({
         actions={<ConnectButton onClick={handleConnectNew} />}
       />
 
-      <div style={{ height: 18 }} />
 
       {total > 0 && (
         <FilterRow

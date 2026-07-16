@@ -156,7 +156,6 @@ export default function ScheduledView({
         }
       />
 
-      <div style={{ height: 18 }} />
 
       {scheduled.length > 0 && (
         <FilterRow
