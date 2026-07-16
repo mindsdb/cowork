@@ -334,13 +334,13 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
         {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
           <div style={{
             padding: '10px 12px', borderRadius: 8,
-            background: 'color-mix(in srgb, #f59e0b 10%, var(--surface))',
-            border: '1px solid color-mix(in srgb, #f59e0b 35%, transparent)',
+            background: 'var(--info-bg)',
+            border: '1px solid var(--info-border)',
             display: 'flex', gap: 8, alignItems: 'flex-start',
           }}>
-            <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>⚠️</span>
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
-              <strong>Limited file access:</strong> This connector can only access files created by Cowork within your Google Drive — not your existing files. Full Google Drive access is coming soon.
+            <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>ℹ️</span>
+            <span style={{ fontSize: 12.5, color: 'var(--info-text)', lineHeight: 1.55 }}>
+              This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
             </span>
           </div>
         )}

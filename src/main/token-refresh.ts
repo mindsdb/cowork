@@ -186,6 +186,85 @@ async function tick(engine: string, accountEmail: string, key: string): Promise<
   }
 }
 
+// Mints a fresh access_token + fetches the Picker API key on demand, for
+// handoff to the renderer — the Google Picker widget runs client-side and
+// needs both to let the user browse/select files outside what drive.file
+// has already granted access to. Mirrors tick()'s refresh-token exchange
+// but returns the token instead of writing it to the vault.
+export async function getPickerAccess(
+  engine: string,
+  accountEmail: string,
+): Promise<
+  | { ok: true; accessToken: string; expiresAt: string; apiKey: string; appId: string }
+  | { ok: false; reason: string }
+> {
+  if (!OAUTH_CREDENTIALS[engine]) {
+    return { ok: false, reason: `No OAuth credentials configured for "${engine}".` };
+  }
+
+  let clientId: string;
+  let clientSecret: string;
+  let apiKey: string;
+  try {
+    const credsRes = await fetch(
+      `http://127.0.0.1:${getServerPort()}/api/v1/connectors/oauth/${engine}/credentials`,
+      { headers: authHeader() },
+    );
+    if (!credsRes.ok) return { ok: false, reason: `Credentials endpoint returned ${credsRes.status}.` };
+    const credsData = await credsRes.json() as { client_id: string; client_secret: string; picker_api_key?: string };
+    clientId = credsData.client_id;
+    clientSecret = credsData.client_secret;
+    apiKey = credsData.picker_api_key || '';
+  } catch {
+    return { ok: false, reason: `Could not fetch OAuth credentials for "${engine}".` };
+  }
+  if (!apiKey) {
+    return { ok: false, reason: 'No Google Picker API key configured on the server (GOOGLE_PICKER_API_KEY).' };
+  }
+
+  const refreshToken = await getRefreshToken(engine, accountEmail);
+  if (!refreshToken) return { ok: false, reason: `No refresh token in keychain for ${engine}:${accountEmail}.` };
+
+  try {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+      }).toString(),
+    });
+    if (!res.ok) return { ok: false, reason: `Token endpoint returned ${res.status}.` };
+    const data = await res.json() as { access_token: string; expires_in: number };
+    const appId = parseAppIdFromClientId(clientId);
+    return {
+      ok: true,
+      accessToken: data.access_token,
+      expiresAt: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+      apiKey,
+      appId,
+    };
+  } catch (err) {
+    return { ok: false, reason: `Token exchange failed: ${err}` };
+  }
+}
+
+// PickerBuilder.setAppId() wants the numeric GCP project number, which is
+// just the leading digits of the OAuth client id
+// (<project-number>-<hash>.apps.googleusercontent.com) — no separate
+// credential needed. This is required for Picker to actually attribute a
+// drive.file per-file grant to this app; without it the PICKED callback
+// fires normally but no real grant gets created, and every file (old or
+// freshly picked) 404s as `notFound` when read back. Extracted as a pure
+// function so a client-id shape that doesn't match (returning '') is
+// covered by a direct test, not just exercised incidentally through the
+// full network call above.
+export function parseAppIdFromClientId(clientId: string): string {
+  return /^(\d+)-/.exec(clientId)?.[1] || '';
+}
+
 async function patchToken(engine: string, name: string, updates: Record<string, string>): Promise<void> {
   const url = `http://127.0.0.1:${getServerPort()}/api/v1/connectors/connections/${engine}/${name}/token`;
   const res = await fetch(url, {

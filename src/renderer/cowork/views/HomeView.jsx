@@ -227,7 +227,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
           >
             <span
               className="pulse-dot"
-              style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--primary-400)', marginTop: 7 }}
+              style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: 'var(--accent)', marginTop: 7 }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>{t.title}</div>
@@ -247,6 +247,7 @@ export default function HomeView({
   activeTasks, onSelectTask, onClearActive,
   onSend, project, onProjectChange, model, onModelChange, projects, models,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
+  onAddGoogleDriveFiles,
   disabledConnections = [],
   onUpdateConnectorMute,
   onNavigateToConnectors,
@@ -549,6 +550,7 @@ export default function HomeView({
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
+              onAddGoogleDriveFiles={onAddGoogleDriveFiles}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}

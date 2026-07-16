@@ -145,9 +145,9 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   // Wait for the redirect — server stays up until either the
   // callback fires, the safety timeout elapses, or the renderer
   // cancels the flow (via cancelCurrentOAuth()).
-  const codePromise = new Promise<string>((resolve, reject) => {
+  const { server: loopbackServer, resultPromise: codePromise } = startLoopbackServer<string>(port, (resolve, reject) => {
     rejectCode = reject;
-    server = http.createServer((req, res) => {
+    return http.createServer((req, res) => {
       try {
         const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
         if (url.pathname !== '/callback') {
@@ -182,9 +182,8 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         reject(e);
       }
     });
-    server.on('error', (err) => reject(err));
-    server.listen(port, '127.0.0.1');
   });
+  server = loopbackServer;
 
   let timeoutHandle: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<string>((_, reject) => {
@@ -270,7 +269,37 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   }
 }
 
-function findFreePort(): Promise<number> {
+// Shared loopback-server scaffolding — binds an http.Server around a
+// caller-supplied request handler and wires its resolve/reject into a
+// promise. Used by both oauthConnect (above) and drive-picker-service.ts's
+// openDrivePickerFlow, which otherwise hand-roll the identical
+// server/promise wiring. Each caller keeps its OWN `_activeAttempt`
+// singleton and cancel semantics — independent flows (an OAuth connect and
+// a Drive picker session) can legitimately run concurrently, so that part
+// isn't shared.
+export function startLoopbackServer<T>(
+  port: number,
+  buildServer: (resolve: (value: T) => void, reject: (err: Error) => void) => http.Server,
+): { server: http.Server; resultPromise: Promise<T> } {
+  let server!: http.Server;
+  const resultPromise = new Promise<T>((resolve, reject) => {
+    server = buildServer(resolve, reject);
+    server.on('error', (err) => reject(err));
+    server.listen(port, '127.0.0.1');
+  });
+  return { server, resultPromise };
+}
+
+// Races `promise` against a timeout that rejects with `message` — the
+// shared "safety timeout" shape both loopback flows use.
+export function raceWithTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]);
+}
+
+export function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.unref();
@@ -283,12 +312,12 @@ function findFreePort(): Promise<number> {
   });
 }
 
-function closeServer(server: http.Server | null) {
+export function closeServer(server: http.Server | null) {
   if (!server) return;
   try { server.close(); } catch {}
 }
 
-function base64UrlEncode(buf: Buffer): string {
+export function base64UrlEncode(buf: Buffer): string {
   return buf
     .toString('base64')
     .replace(/=/g, '')

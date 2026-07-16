@@ -25,7 +25,7 @@ function detectSlashToken(text, caret) {
 function AttachmentChip({ attachment, onRemove }) {
   const src = attachment.source || attachment.kind || 'file';
   const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? 'Connector' : isImage ? 'Image' : 'File';
+  const label = src === 'connector' ? 'Connector' : src === 'gdrive' ? 'Google Drive' : isImage ? 'Image' : 'File';
   const status = attachment.pendingFile
     ? 'Queued'
     : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
@@ -39,8 +39,9 @@ function AttachmentChip({ attachment, onRemove }) {
       <span className="attachment-chip-icon">
         {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || 'Image'} />
           : src === 'connector' ? Ico.link(13)
-            : isImage ? Ico.image(13)
-              : Ico.doc(13)}
+            : src === 'gdrive' ? Ico.googleDrive(13)
+              : isImage ? Ico.image(13)
+                : Ico.doc(13)}
       </span>
       <span className="attachment-chip-body">
         <span className="attachment-chip-name">{attachment.name || label}</span>
@@ -67,6 +68,7 @@ export default function Composer({
   connectors = [],
   onNavigateToConnectors,
   onAttachFiles,
+  onAddGoogleDriveFiles,
   /** When set with `onUpdateConnectorMute`, Connectors submenu toggles mute (applied when you send). */
   conversationId = null,
   disabledConnections = [],
@@ -119,6 +121,7 @@ export default function Composer({
   /** Attach menu opens above the composer by default; flip down when clipped (e.g. project view composer at scroll top). */
   const [attachMenuBelow, setAttachMenuBelow] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [gdrivePickerBusy, setGdrivePickerBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
@@ -516,6 +519,20 @@ export default function Composer({
     }
   }
 
+  async function handleAddGoogleDriveFiles() {
+    if (!onAddGoogleDriveFiles || gdrivePickerBusy) return;
+    setError('');
+    setGdrivePickerBusy(true);
+    setOpenMenu(null);
+    try {
+      await Promise.resolve(onAddGoogleDriveFiles(project?.name));
+    } catch (err) {
+      setError(err.message || 'Could not add Google Drive files.');
+    } finally {
+      setGdrivePickerBusy(false);
+    }
+  }
+
   // Drag OS files onto the composer to attach them to the message.
   const { isDragging: filesDragging, dropHandlers: fileDropHandlers } = useFileDrop({
     onFiles: handleAttachFiles,
@@ -856,6 +873,15 @@ export default function Composer({
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
                     {Ico.attach(14)} Attach files or photos
                   </button>
+                  {onAddGoogleDriveFiles && (
+                    <button
+                      className="menu-item"
+                      onClick={handleAddGoogleDriveFiles}
+                      disabled={gdrivePickerBusy}
+                    >
+                      {Ico.googleDrive(14)} {gdrivePickerBusy ? 'Opening Google Drive…' : 'Add files from Google Drive'}
+                    </button>
+                  )}
                   <button
                     className="menu-item"
                     onClick={() => setConnectorsOpen((o) => !o)}

@@ -660,6 +660,10 @@ function ProjectDetail({
   attachments = [],
   connectors = [],
   onAttachFiles,
+  onAddGoogleDriveFiles,
+  onAddGoogleDriveProjectFiles,
+  onFetchGoogleDriveProjectFiles,
+  onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -884,6 +888,7 @@ function ProjectDetail({
               connectors={connectors}
               onNavigateToConnectors={onNavigateToConnectors}
               onAttachFiles={onAttachFiles}
+              onAddGoogleDriveFiles={onAddGoogleDriveFiles}
               onRemoveAttachment={onRemoveAttachment}
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
@@ -942,7 +947,12 @@ function ProjectDetail({
           </button>
         </div>
         <WorkingFolderBox project={project} />
-        <ContextBox project={project} />
+        <ContextBox
+          project={project}
+          onAddGoogleDriveFiles={onAddGoogleDriveProjectFiles}
+          onFetchGoogleDriveFiles={onFetchGoogleDriveProjectFiles}
+          onRemoveGoogleDriveFile={onRemoveGoogleDriveProjectFile}
+        />
         <ScheduledBox items={projectSchedules} onSelect={onOpenSchedule} />
       </aside>
     </div>
@@ -972,6 +982,10 @@ export default function ProjectsView({
   attachments = [],
   connectors = [],
   onAttachFiles,
+  onAddGoogleDriveFiles,
+  onAddGoogleDriveProjectFiles,
+  onFetchGoogleDriveProjectFiles,
+  onRemoveGoogleDriveProjectFile,
   onRemoveAttachment,
   disabledConnections = [],
   onUpdateConnectorMute,
@@ -1122,6 +1136,10 @@ export default function ProjectsView({
         connectors={connectors}
         onNavigateToConnectors={onNavigateToConnectors}
         onAttachFiles={onAttachFiles}
+        onAddGoogleDriveFiles={onAddGoogleDriveFiles}
+        onAddGoogleDriveProjectFiles={onAddGoogleDriveProjectFiles}
+        onFetchGoogleDriveProjectFiles={onFetchGoogleDriveProjectFiles}
+        onRemoveGoogleDriveProjectFile={onRemoveGoogleDriveProjectFile}
         onRemoveAttachment={onRemoveAttachment}
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}

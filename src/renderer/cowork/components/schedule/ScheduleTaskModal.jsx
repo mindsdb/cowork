@@ -2,8 +2,8 @@
 // Used for both create and edit; pass `task` to enable edit mode.
 //
 // Layout: title (full width) → cadence + next-run (two columns) →
-// project + model (two columns) → prompt textarea (full width, the
-// most important field, sits last so it gets the room it needs).
+// project (full width) → status toggle → prompt textarea (full width,
+// the most important field, sits last so it gets the room it needs).
 
 import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
@@ -64,15 +64,13 @@ export default function ScheduleTaskModal({
   open, onClose, onSubmit, onDelete,
   task,                    // when set → edit mode
   projects = [],
-  models = [],
   defaultProjectPath = '',
-  defaultModelId = '',
   busy = false,
   agentLabel,
 }) {
   const isEdit = !!task;
 
-  const [form, setForm] = useState(() => emptyForm({ defaultProjectPath, defaultModelId }));
+  const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -103,6 +101,7 @@ export default function ScheduleTaskModal({
         cadence:     task.cadence || 'once',
         nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
         projectPath: taskProjectPath || defaultProjectPath || '',
+        enabled:     task.enabled !== false,
       });
     } else {
       setForm(emptyForm({ defaultProjectPath }));
@@ -114,6 +113,15 @@ export default function ScheduleTaskModal({
   async function handleSubmit() {
     if (!form.prompt.trim()) {
       setError('A prompt is required.');
+      return;
+    }
+    const nextRunMs = new Date(form.nextRunAt).getTime();
+    if (Number.isNaN(nextRunMs)) {
+      setError('Pick a valid next-run time.');
+      return;
+    }
+    if (nextRunMs <= Date.now()) {
+      setError('Next run must be in the future.');
       return;
     }
     setError('');
@@ -135,7 +143,7 @@ export default function ScheduleTaskModal({
       // model — exposing the picker here let people accidentally
       // pin a stale model id that's no longer valid.
       model:        null,
-      enabled:      task?.enabled !== false,
+      enabled:      form.enabled,
     };
     try {
       await onSubmit(payload, task?.id || null);
@@ -205,6 +213,7 @@ export default function ScheduleTaskModal({
               <input
                 type="datetime-local"
                 value={form.nextRunAt}
+                min={toLocalInput(new Date().toISOString())}
                 onChange={(e) => update('nextRunAt', e.target.value)}
                 style={fieldInput}
               />
@@ -223,6 +232,22 @@ export default function ScheduleTaskModal({
               ))}
             </select>
           </Field>
+
+          <div>
+            <span style={{ ...fieldLabel, display: 'block' }}>Status</span>
+            <label style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink)',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(e) => update('enabled', e.target.checked)}
+              />
+              {form.enabled ? 'Enabled' : 'Paused'}
+            </label>
+          </div>
 
           <Field label="Prompt">
             <textarea
@@ -302,6 +327,7 @@ function emptyForm({ defaultProjectPath }) {
     cadence: 'once',
     nextRunAt: defaultNextRun(),
     projectPath: defaultProjectPath || '',
+    enabled: true,
   };
 }
 

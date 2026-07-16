@@ -4,7 +4,7 @@
 // dev / web are same-origin (proxied), so getApiOrigin() returns the page
 // origin. Routing through host keeps the port in one place.
 
-import { initialStreamState, reduceStream } from './lib/responseStreamAdapter';
+import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
 import {
@@ -1220,6 +1220,16 @@ export async function deleteDatasource(engine, name) {
   return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
+// Untags one file from `project` in a connection's persisted
+// `_picked_files` grant — the "un-pick" counterpart to the PATCH the
+// Google Picker flow calls. Used by the Project files rail to remove a
+// Drive reference row; only removes it from THIS project's rail — if
+// the file is tagged to other projects too, it stays visible there.
+export async function deletePickedFile(engine, name, fileId, project) {
+  const qs = new URLSearchParams({ project });
+  return req(`/connectors/connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}/picked-files/${encodeURIComponent(fileId)}?${qs.toString()}`, { method: 'DELETE' });
+}
+
 // Modify-flow read: returns the saved connection as
 //   {
 //     engine, name, createdAt, updatedAt,
@@ -1903,7 +1913,9 @@ export const MOCK_DATA = {
     tone: 'balanced',
     defaultModel: 'latest:sonnet',
     autoPin: true,
-    showDots: true,
+    // Flat background by default; opt back into the animated dot grid via
+    // Settings → Personalization → Animated background.
+    showDots: false,
     showCounters: true,
     accentVariant: 'aqua',
     planningProvider: 'minds-cloud',
@@ -1962,3 +1974,89 @@ export const MOCK_DATA = {
     },
   ],
 };
+
+// ── Artifact comments (Plan 5) ────────────────────────────────────────────
+// Renderer holds no token; cowork-server attaches the user's MindsHub creds and
+// proxies to the inference backend. Scope is the composite {userDir}/{reportId}.
+
+function _commentsBase(userDir, reportId) {
+  return `/artifact-comments/${encodeURIComponent(userDir)}/${encodeURIComponent(reportId)}`;
+}
+
+export function listCommentThreads(userDir, reportId, status = 'open') {
+  return req(`${_commentsBase(userDir, reportId)}/threads?status=${encodeURIComponent(status)}`);
+}
+
+export function createCommentThread(userDir, reportId, { selector, text }) {
+  return req(`${_commentsBase(userDir, reportId)}/threads`, {
+    method: 'POST',
+    body: JSON.stringify({ selector: selector ?? null, text }),
+  });
+}
+
+export function addCommentReply(userDir, reportId, threadId, text) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function setCommentThreadStatus(userDir, reportId, threadId, status) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function editCommentThread(userDir, reportId, threadId, text) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function deleteCommentThread(userDir, reportId, threadId) {
+  return req(`${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function editCommentReply(userDir, reportId, threadId, replyId, text) {
+  return req(
+    `${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}`,
+    { method: 'PATCH', body: JSON.stringify({ text }) },
+  );
+}
+
+export function deleteCommentReply(userDir, reportId, threadId, replyId) {
+  return req(
+    `${_commentsBase(userDir, reportId)}/threads/${encodeURIComponent(threadId)}/replies/${encodeURIComponent(replyId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+// Open the SSE stream via fetch + iterateSSE (NOT EventSource — the renderer
+// can't set headers and we route through cowork-server). Returns an
+// AbortController; callers call .abort() on unmount. onExpired fires on a
+// terminal 401/403 so the UI can stop instead of reconnecting forever.
+export function openCommentsStream(userDir, reportId, since, { onEvent, onError, onExpired } = {}) {
+  const ctrl = new AbortController();
+  (async () => {
+    const q = since ? `?since=${encodeURIComponent(since)}` : '';
+    const url = `${BASE}${_commentsBase(userDir, reportId)}/stream${q}`;
+    try {
+      const res = await authFetch(url, { headers: { Accept: 'text/event-stream' }, signal: ctrl.signal });
+      if (res.status === 401 || res.status === 403) { onExpired && onExpired(); return; }
+      if (!res.ok || !res.body) { onError && onError(new Error(`stream ${res.status}`)); return; }
+      for await (const ev of iterateSSE(res)) {
+        if (ev && ev.type && String(ev.type).indexOf('thread.') === 0) onEvent && onEvent(ev);
+      }
+      // Stream ended without an abort (proxy/nginx idle-close, server restart) —
+      // signal so the caller can reconnect with the latest `since`.
+      if (!ctrl.signal.aborted) onError && onError(new Error('stream ended'));
+    } catch (e) {
+      if (!ctrl.signal.aborted) onError && onError(e);
+    }
+  })();
+  return ctrl;
+}

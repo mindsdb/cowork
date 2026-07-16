@@ -12,7 +12,9 @@ import { initUpdater, registerUpdateHandlers } from './updater';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
-import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections } from './token-refresh';
+import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
+import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
+import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
 import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
@@ -305,6 +307,23 @@ function getIconPath(): string {
 
 let mainWindow: BrowserWindow | null = null;
 let activeInstall: { cancelled: boolean } | null = null;
+
+// Pulls the desktop app back to the foreground after a browser-based
+// flow (OAuth sign-in/connect, MindsHub login, the Drive Picker) hands
+// control back to us — the OS default browser is frontmost after the
+// redirect, and without this the user is left on the "you can close
+// this tab" page with no indication the app already picked up the
+// result.
+function focusMainWindow() {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      app.focus({ steal: true }); // macOS: steal focus from the browser
+    }
+  } catch {}
+}
 
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
@@ -601,6 +620,7 @@ function setupIPC() {
       if (!pkceResult.ok || !pkceResult.access_token || !pkceResult.refresh_token) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
       }
+      focusMainWindow();
 
       // Fetch account email from Google userinfo — needed as keychain key
       // and for the vault record's display name. The token exchange already
@@ -663,7 +683,64 @@ function setupIPC() {
     }
 
     // BYOK passthrough: renderer passes full OAuth opts, gets tokens back.
-    return oauthConnect(o);
+    const byokResult = await oauthConnect(o);
+    if (byokResult.ok) focusMainWindow();
+    return byokResult;
+  });
+
+  ipcMain.handle(IPC.OAUTH_PICK_DRIVE_FILES, async (_event, opts) => {
+    const { engine, name, accountEmail, fileIds, projectName } = opts || {};
+    if (!engine || !name || !accountEmail) return { ok: false, reason: 'engine, name, and accountEmail are required.' };
+    if (!isValidDriveFileIds(fileIds)) return { ok: false, reason: 'Invalid file id.' };
+    const access = await getPickerAccess(engine, accountEmail);
+    if (!access.ok) return access;
+    const pickResult = await openDrivePickerFlow(access.accessToken, access.apiKey, access.appId, fileIds);
+    if (!pickResult.ok) return pickResult;
+    focusMainWindow();
+    const newFiles = pickResult.files || [];
+    // Nothing new picked (user cancelled) — return the existing persisted
+    // list untouched rather than wiping it.
+    if (newFiles.length === 0) {
+      return { ok: true, files: await getPickedFiles(engine, name), newFiles: [] };
+    }
+    // The picker's PICKED callback firing doesn't guarantee Google actually
+    // completed the per-file grant — confirm each file is readable with the
+    // token we just minted before persisting it, so a broken grant surfaces
+    // immediately instead of silently sitting in the list until Anton hits
+    // a 403 on it later.
+    const { verified, failed } = await verifyPickedFiles(access.accessToken, newFiles);
+    // Tag each newly-verified file with the project it was picked for
+    // (e.g. from the composer or a project's Project files rail) so the
+    // Project files display can scope to just that project — untagged
+    // (no projectName passed) when picked from connection-details, which
+    // has no project context. merge_picked_files unions this with
+    // whatever projects an already-picked file was tagged with before.
+    const tagged = projectName
+      ? verified.map((f) => ({ ...f, projects: [projectName] }))
+      : verified;
+    let files: PickedFile[];
+    if (tagged.length > 0) {
+      const saveResult = await savePickedFiles(engine, name, tagged);
+      // Persistence failing here must surface as a real failure — the
+      // renderer would otherwise show these files as granted/attached
+      // when the server never actually recorded the grant, so a reload
+      // later silently loses them.
+      if (!saveResult.ok) return { ok: false, reason: saveResult.reason, failed };
+      files = saveResult.files;
+    } else {
+      files = await getPickedFiles(engine, name);
+    }
+    // `files` is the connection's full accumulated grant (every file ever
+    // picked) — correct for CustomizeView's "everything this app can
+    // access" list, but callers that want "what did the user just pick in
+    // THIS session" (e.g. attaching to the current message) need `tagged`
+    // on its own, not the merged history.
+    return { ok: true, files, newFiles: tagged, failed };
+  });
+
+  ipcMain.handle(IPC.OAUTH_CANCEL_PICKER, () => {
+    cancelCurrentDrivePicker();
+    return true;
   });
 
   ipcMain.handle(IPC.KEYCHAIN_REVOKE, async (_event, opts) => {
@@ -672,6 +749,23 @@ function setupIPC() {
     const key = `${engine}:${accountEmail}`;
     revokedConnections.add(key);
     stopRefreshLoop(engine, accountEmail);
+    // The refresh_token is the only thing that actually revokes the whole
+    // grant with Google — revoking an access_token (what cowork-server's
+    // own revoke() does below, since the vault never holds refresh_token)
+    // only invalidates that one short-lived token, leaving the underlying
+    // authorization — and any drive.file per-file grants tied to it —
+    // standing indefinitely. Electron is the only place that ever holds
+    // the real refresh_token, so this has to happen here, before it's
+    // deleted from the keychain.
+    try {
+      const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
+      if (refreshToken) {
+        await fetch(`https://oauth2.googleapis.com/revoke?${new URLSearchParams({ token: refreshToken })}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+      }
+    } catch {}
     try { await deleteRefreshToken(engine, accountEmail); } catch {}
     try {
       await fetch(
@@ -708,18 +802,7 @@ function setupIPC() {
       }
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
-      // Pull the desktop app back to the foreground. The SSO flow opens the
-      // OS default browser, which is frontmost after the redirect — without
-      // this the user is left on the "you can close this tab" page and may
-      // not realize the app has signed them in.
-      try {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          if (mainWindow.isMinimized()) mainWindow.restore();
-          mainWindow.show();
-          mainWindow.focus();
-          app.focus({ steal: true }); // macOS: steal focus from the browser
-        }
-      } catch {}
+      focusMainWindow();
     }
     return result;
   });
@@ -1246,7 +1329,7 @@ app.whenReady().then(async () => {
       role: 'help',
       submenu: [
         {
-          label: 'Anton Cowork Documentation',
+          label: 'MindsHub Cowork Documentation',
           click: () => {
             shell.openExternal('https://docs.mindshub.ai/index.html');
           },
