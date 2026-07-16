@@ -139,9 +139,11 @@ contextBridge.exposeInMainWorld('antontron', {
   browserControlSetConversation: (conversationId: string | null) =>
     ipcRenderer.invoke(IPC.BROWSER_SET_CONVERSATION, conversationId),
   // Pass the conversation the Stop TARGETED so main latches that identity
-  // (not whatever conversation is bound by the time the poller acks it).
-  browserControlStop: (conversationId?: string | null) =>
-    ipcRenderer.invoke(IPC.BROWSER_STOP, conversationId ?? null),
+  // (not whatever conversation is bound by the time the poller acks it), and
+  // the renderer's stop_id token so main's self-ack POST is a pure ack of the
+  // SAME Stop the renderer already applied server-side (never a re-stop).
+  browserControlStop: (conversationId?: string | null, stopId?: string | null) =>
+    ipcRenderer.invoke(IPC.BROWSER_STOP, conversationId ?? null, stopId ?? null),
   browserInspect: () => ipcRenderer.invoke(IPC.BROWSER_INSPECT),
   browserNavigate: (href: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, href),
   browserScroll: (direction: 'down' | 'up') => ipcRenderer.invoke(IPC.BROWSER_SCROLL, direction),

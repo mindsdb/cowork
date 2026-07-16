@@ -358,21 +358,29 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
 
     // Local Stop latch (canonical lifecycle comment: browser-bridge.ts).
     // Main-owned ack: while the latch is armed but un-acked, confirm the
-    // server gate ourselves by POSTing the idempotent /browse/control/stop —
-    // the renderer's own POST is fire-and-forget, so only OUR recorded 2xx
-    // proves the gate is set. Until then the latch gates every handed-out
-    // command (the command may have been handed to the wire pre-gate).
+    // server gate ourselves by POSTing /browse/control/stop — the renderer's
+    // own POST is fire-and-forget, so only OUR recorded 2xx proves the gate
+    // is set. Until then the latch gates every handed-out command (the
+    // command may have been handed to the wire pre-gate).
     //
     // The POST targets the LATCH's stored conversation id (captured at Stop
     // time), never the current binding: the user may have switched tasks
     // since, and acking against the new binding would wrongly stop THAT
-    // conversation while confirming nothing about the stopped one. The
+    // conversation while confirming nothing about the stopped one. It also
+    // carries the latch's `stop_id` token so the server can tell "same Stop,
+    // just confirming" (already applied → pure ack, NO re-stop — the session
+    // may legitimately be active again after a fresh-turn resume) from "the
+    // renderer's POST never arrived" (unseen stop_id → set the gate). The
     // generation captured before the POST makes a slow ack for an older Stop
     // a no-op if a fresh Stop lands meanwhile.
     const preLatch = cfg.exec.stopLatch();
     if (preLatch.requestedAt !== null && preLatch.ackAt === null && preLatch.conversationId) {
+      // requestStop always mints a stopId, so the token is always present in
+      // practice; the spread is defensive for a latch that somehow lacks one
+      // (untokened POST = the server's plain gate-set, the old behavior).
       const ack = await postJson('/browse/control/stop', {
         conversation_id: preLatch.conversationId,
+        ...(preLatch.stopId ? { stop_id: preLatch.stopId } : {}),
       });
       if (ack?.ok) cfg.exec.ackStop(preLatch.generation);
     }

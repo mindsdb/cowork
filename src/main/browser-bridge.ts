@@ -99,9 +99,9 @@ export function getConversationId(): string | null {
 // `requestedAt` is set immediately on IPC BROWSER_STOP (Stop takes effect
 // locally in <1s). The renderer also POSTs /browse/control/stop, but it does
 // so fire-and-forget — the server gate is only KNOWN to be set once an ack is
-// recorded, so the MAIN process re-POSTs the (idempotent) stop from the
-// poller each cycle while un-acked and records `ackAt` when a 2xx lands
-// (main-owned ack: no dependence on the renderer's POST succeeding).
+// recorded, so the MAIN process re-POSTs the stop from the poller each cycle
+// while un-acked and records `ackAt` when a 2xx lands (main-owned ack: no
+// dependence on the renderer's POST succeeding).
 //
 // The latch carries IDENTITY and GENERATION, not just timestamps:
 // - `conversationId` pins WHICH conversation the Stop targeted, captured at
@@ -110,6 +110,17 @@ export function getConversationId(): string | null {
 //   every active-task switch, so the poller's self-ack must POST the LATCH's
 //   stored id — using the binding at ack time could stop an unrelated
 //   conversation the user switched to and record a meaningless ack.
+// - `stopId` is the client-generated token for THIS Stop instance (the
+//   renderer mints one and sends it in BOTH its own POST and the IPC; main
+//   mints a fallback if the IPC carried none). The server dedupes on it:
+//   a control/stop POST whose stop_id it has already applied is a PURE
+//   acknowledgement — 2xx WITHOUT re-stopping. Without the token, the
+//   self-ack SET the gate rather than confirming it, so a fresh-turn resume
+//   landing between the Stop and the poller's next cycle got re-stopped by
+//   the ack POST (observed live: stop → resume → dispatch refused
+//   "session stopped" until a second resume). If the renderer's POST was
+//   lost, the server has never seen the stop_id and the ack POST sets the
+//   gate — the intended behavior for that case.
 // - `generation` increments on every requestStop; an ack is accepted only if
 //   its captured generation still matches, so an in-flight ack POST for an
 //   older Stop returning after a fresh Stop can never satisfy the newer one.
@@ -128,6 +139,9 @@ export interface StopLatch {
   // The conversation the Stop targeted (captured at request time), or null
   // when none was known — the poller then has nothing safe to ack against.
   conversationId: string | null;
+  // Client-generated idempotency token for this Stop instance — lets the
+  // server treat the poller's re-POST as a pure ack instead of a re-stop.
+  stopId: string | null;
   // Monotonic per-Stop instance counter for stale-ack rejection.
   generation: number;
 }
@@ -135,20 +149,30 @@ export interface StopLatch {
 let stopRequestedAt: number | null = null;
 let stopAckAt: number | null = null;
 let stopConversationId: string | null = null;
+let stopStopId: string | null = null;
 let stopGeneration = 0;
 
 // Latch a user Stop for `targetConversationId` (the conversation the
 // renderer's Stop targeted; falls back to main's CURRENT binding when the IPC
-// carried none). A fresh Stop needs a fresh server ack — the previous gate
-// may have been resumed since — and bumps the generation so any in-flight
-// ack for an older Stop is rejected as stale.
-export function requestStop(targetConversationId?: string | null): void {
+// carried none). `stopId` is the renderer's idempotency token — the same one
+// it sent in its own fire-and-forget POST; if the IPC carried none (non-
+// renderer callers), main mints one so the poller's ack POST is always
+// tokened and thus never re-stops a freshly-resumed session. A fresh Stop
+// needs a fresh server ack — the previous gate may have been resumed since —
+// and bumps the generation so any in-flight ack for an older Stop is rejected
+// as stale.
+export function requestStop(
+  targetConversationId?: string | null,
+  stopId?: string | null,
+): void {
   stopRequestedAt = Date.now();
   stopAckAt = null;
   stopConversationId =
     typeof targetConversationId === 'string' && targetConversationId
       ? targetConversationId
       : conversationId;
+  stopStopId =
+    typeof stopId === 'string' && stopId ? stopId : globalThis.crypto.randomUUID();
   stopGeneration += 1;
 }
 
@@ -165,6 +189,7 @@ export function getStopLatch(): StopLatch {
     requestedAt: stopRequestedAt,
     ackAt: stopAckAt,
     conversationId: stopConversationId,
+    stopId: stopStopId,
     generation: stopGeneration,
   };
 }
@@ -177,6 +202,7 @@ export function clearStopRequest(): void {
   stopRequestedAt = null;
   stopAckAt = null;
   stopConversationId = null;
+  stopStopId = null;
 }
 
 // Main-side bridge-state subscribers (e.g. the command poller). Distinct from
@@ -277,6 +303,7 @@ export function __resetBridgeForTest(): void {
   stopRequestedAt = null;
   stopAckAt = null;
   stopConversationId = null;
+  stopStopId = null;
   stopGeneration = 0;
 }
 
@@ -897,10 +924,13 @@ export function registerBrowserBridgeHandlers(getWindow: GetWindow): void {
     setConversationId(id);
     return { ok: true };
   });
-  ipcMain.handle(IPC.BROWSER_STOP, (_e: unknown, targetConversationId?: string | null) => {
-    requestStop(targetConversationId);
-    return { ok: true };
-  });
+  ipcMain.handle(
+    IPC.BROWSER_STOP,
+    (_e: unknown, targetConversationId?: string | null, stopId?: string | null) => {
+      requestStop(targetConversationId, stopId);
+      return { ok: true };
+    },
+  );
   ipcMain.handle(IPC.BROWSER_INSPECT, () => inspect());
   ipcMain.handle(IPC.BROWSER_NAVIGATE, (_e: unknown, href: string) => navigateApprovedLink(href));
   ipcMain.handle(IPC.BROWSER_SCROLL, (_e: unknown, direction: 'down' | 'up') => scroll(direction));

@@ -561,12 +561,37 @@ describe('browser-bridge conversation binding lifecycle', () => {
 describe('browser-bridge local Stop latch', () => {
   it('records WHEN Stop was pressed and WHICH conversation it targeted, un-acked until the server confirms', () => {
     const before = Date.now();
-    expect(bridge.getStopLatch()).toMatchObject({ requestedAt: null, ackAt: null, conversationId: null });
+    expect(bridge.getStopLatch()).toMatchObject({
+      requestedAt: null,
+      ackAt: null,
+      conversationId: null,
+      stopId: null,
+    });
     bridge.requestStop('CONV-A');
     const latch = bridge.getStopLatch();
     expect(latch.requestedAt).toBeGreaterThanOrEqual(before);
     expect(latch.ackAt).toBeNull();
     expect(latch.conversationId).toBe('CONV-A');
+  });
+
+  it("stores the renderer's stop_id token so the self-ack POST acks that SAME Stop", () => {
+    // The renderer mints the token and sends it in BOTH its own
+    // /browse/control/stop POST and the IPC — the server dedupes on it, so
+    // the poller's re-POST is a pure ack and can never re-stop a session
+    // that a fresh user turn already resumed.
+    bridge.requestStop('CONV-A', 'STOP-UUID-1');
+    expect(bridge.getStopLatch().stopId).toBe('STOP-UUID-1');
+  });
+
+  it('mints a fallback stop_id when the IPC carried none — the ack POST is always tokened', () => {
+    bridge.requestStop('CONV-A');
+    const first = bridge.getStopLatch().stopId;
+    expect(first).toBeTruthy();
+    // A fresh Stop is a fresh instance: it must get its own token.
+    bridge.requestStop('CONV-A');
+    const second = bridge.getStopLatch().stopId;
+    expect(second).toBeTruthy();
+    expect(second).not.toBe(first);
   });
 
   it('captures the conversation at REQUEST time — falls back to the binding when the IPC carries none', () => {
@@ -607,7 +632,12 @@ describe('browser-bridge local Stop latch', () => {
     bridge.ackStopRequest(generation);
     bridge.clearStopRequest();
     const latch = bridge.getStopLatch();
-    expect(latch).toMatchObject({ requestedAt: null, ackAt: null, conversationId: null });
+    expect(latch).toMatchObject({
+      requestedAt: null,
+      ackAt: null,
+      conversationId: null,
+      stopId: null,
+    });
     // Generation stays monotonic across clears so a stale in-flight ack can
     // never match a future Stop.
     expect(latch.generation).toBe(generation);

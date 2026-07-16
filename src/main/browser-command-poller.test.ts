@@ -34,6 +34,12 @@ class FakeBrowseServer {
   // When true, /browse/control/stop fails (e.g. transient network error) —
   // the poller must keep gating until an ack lands.
   failStops = false;
+  // Server-side control gate + the stop_id tokens it has already applied.
+  // Mirrors the server's idempotent stop: a POST whose stop_id was already
+  // applied is a PURE ack (2xx, state untouched — it may be 'active' again
+  // after a fresh-turn resume); an unseen stop_id sets the gate.
+  controlState: 'active' | 'stopped' = 'active';
+  appliedStopIds = new Set<string>();
   rejections: { path: string; detail: string }[] = [];
   sessionId = 'SESS-1';
   // Session ids the server no longer knows (restart / cleanup) — any
@@ -102,10 +108,18 @@ class FakeBrowseServer {
       return jsonRes({ session_id: body.session_id, bridge_state: body.bridge_state });
     }
     if (path === '/browse/control/stop') {
-      // _ControlRequest: conversation_id is required. Idempotent gate-set.
+      // _ControlRequest: conversation_id is required; stop_id is the
+      // client's idempotency token (see fields above for the semantics).
       if (!body.conversation_id) return this.reject(path, 'conversation_id is required');
       if (this.failStops) return errRes(503, 'unavailable');
       this.stops.push(body);
+      const stopId = typeof body.stop_id === 'string' ? body.stop_id : null;
+      if (stopId && this.appliedStopIds.has(stopId)) {
+        // Already applied — pure acknowledgement, do NOT re-stop.
+        return jsonRes({ ok: true, control_state: this.controlState });
+      }
+      if (stopId) this.appliedStopIds.add(stopId);
+      this.controlState = 'stopped';
       return jsonRes({ ok: true, control_state: 'stopped' });
     }
     if (path === '/browse/commands/next') {
@@ -174,6 +188,7 @@ function fakeExec(overrides: Partial<Record<string, unknown>> = {}) {
       requestedAt: null,
       ackAt: null,
       conversationId: null,
+      stopId: null,
       generation: 0,
     })),
     ackStop: vi.fn(),
@@ -190,12 +205,14 @@ function fakeStopLatch() {
   let requestedAt: number | null = null;
   let ackAt: number | null = null;
   let conversationId: string | null = null;
+  let stopId: string | null = null;
   let generation = 0;
   return {
-    requestStop(cid: string, at: number = Date.now()): void {
+    requestStop(cid: string, at: number = Date.now(), id?: string): void {
       requestedAt = at;
       ackAt = null;
       conversationId = cid;
+      stopId = id ?? `STOP-${generation + 1}`;
       generation += 1;
     },
     isSet(): boolean {
@@ -210,7 +227,7 @@ function fakeStopLatch() {
     generation(): number {
       return generation;
     },
-    stopLatch: vi.fn(() => ({ requestedAt, ackAt, conversationId, generation })),
+    stopLatch: vi.fn(() => ({ requestedAt, ackAt, conversationId, stopId, generation })),
     ackStop: vi.fn((gen: number) => {
       if (requestedAt !== null && gen === generation) ackAt = Date.now();
     }),
@@ -218,6 +235,7 @@ function fakeStopLatch() {
       requestedAt = null;
       ackAt = null;
       conversationId = null;
+      stopId = null;
     }),
   };
 }
@@ -399,7 +417,7 @@ describe('browser-command-poller', () => {
     server.queueCommand({ command_id: 'C-POST-ACK', action_type: 'inspect', session_id: 'SESS-1' });
     expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('command');
     expect(server.stops).toHaveLength(1);
-    expect(server.stops[0]).toEqual({ conversation_id: 'CONV-1' });
+    expect(server.stops[0]).toEqual({ conversation_id: 'CONV-1', stop_id: 'STOP-1' });
     expect(exec.inspect).toHaveBeenCalled();
     expect(server.results.at(-1)).toMatchObject({ command_id: 'C-POST-ACK', result_code: 'ok' });
     expect(latch.isSet()).toBe(false);
@@ -422,10 +440,67 @@ describe('browser-command-poller', () => {
 
     expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('idle');
     // The self-ack targeted A — B was never stopped.
-    expect(server.stops).toEqual([{ conversation_id: 'CONV-A' }]);
+    expect(server.stops).toEqual([{ conversation_id: 'CONV-A', stop_id: 'STOP-1' }]);
     expect(latch.ackStop).toHaveBeenCalledWith(latch.generation());
     // The empty post-ack poll cleared A's latch; B's activity never gated.
     expect(latch.isSet()).toBe(false);
+  });
+
+  it('does NOT re-stop a freshly-resumed session: an already-applied stop_id is a pure ack', async () => {
+    // The live-caught regression: the renderer's Stop (stop_id X) reached
+    // the server and stopped the session; a fresh user turn then resumed it
+    // (stopped → active) BEFORE the poller's next cycle. The poller still
+    // sees the latch armed+un-acked and POSTs control/stop — with the SAME
+    // stop_id X, which the server has already applied, so the POST is a
+    // pure acknowledgement: 2xx, state stays 'active', no re-stop. (The old
+    // untokened POST SET the gate here, refusing the resumed session's next
+    // dispatch until a second resume.)
+    const server = new FakeBrowseServer();
+    const latch = fakeStopLatch();
+    latch.requestStop('CONV-1', Date.now() - 100, 'STOP-X');
+    server.appliedStopIds.add('STOP-X'); // the renderer's own POST landed...
+    server.controlState = 'active'; // ...and a fresh turn already resumed
+    server.queueCommand({ command_id: 'C-RESUMED', action_type: 'inspect', session_id: 'SESS-1' });
+    const exec = fakeExec({
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
+      clearStopRequest: latch.clearStopRequest,
+    });
+
+    // One cycle: the ack POST lands FIRST (pure ack — 2xx, state untouched),
+    // then the poll starts post-ack, so the resumed session's command
+    // executes and the latch clears.
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('command');
+    expect(server.stops).toEqual([{ conversation_id: 'CONV-1', stop_id: 'STOP-X' }]);
+    // THE regression assertion: the resumed session was NOT re-stopped.
+    expect(server.controlState).toBe('active');
+    expect(exec.inspect).toHaveBeenCalled();
+    expect(server.results.at(-1)).toMatchObject({ command_id: 'C-RESUMED', result_code: 'ok' });
+    expect(latch.isSet()).toBe(false);
+  });
+
+  it("sets the gate when the renderer's own stop POST was lost (unseen stop_id)", async () => {
+    // The other half of the idempotent-stop contract: the renderer's
+    // fire-and-forget POST never arrived, so the server has never seen
+    // stop_id X — the poller's ack POST must SET the gate (the pre-token
+    // behavior), because nothing else will.
+    const server = new FakeBrowseServer();
+    const latch = fakeStopLatch();
+    latch.requestStop('CONV-1', Date.now() - 100, 'STOP-X');
+    const exec = fakeExec({
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
+      clearStopRequest: latch.clearStopRequest,
+    });
+
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('idle');
+    expect(server.stops).toEqual([{ conversation_id: 'CONV-1', stop_id: 'STOP-X' }]);
+    // Unseen token → the gate is set and the token recorded.
+    expect(server.controlState).toBe('stopped');
+    expect(server.appliedStopIds.has('STOP-X')).toBe(true);
+    // The 2xx is still a valid ack; the post-ack empty poll clears the latch.
+    expect(latch.isAcked()).toBe(false); // cleared by the same cycle...
+    expect(latch.isSet()).toBe(false); // ...after the poll came back empty
   });
 
   it('ignores a stale ack from an older Stop generation — gating continues until the new ack', async () => {
