@@ -84,6 +84,42 @@ async function syncOnboardingModels(lines: string[]): Promise<void> {
   }
 }
 
+export interface PersistDeps {
+  /** .env write — best-effort in web (loopback-gated, ENG-817), throws on a real error. */
+  saveSettings: (content: string) => Promise<boolean>;
+  /** Authoritative DB write (PUT /settings/:key). Returns false if any key failed. */
+  syncToDb: (lines: string[]) => Promise<boolean>;
+  syncModels: (lines: string[]) => Promise<void>;
+  syncHarness: () => Promise<void>;
+}
+
+// Run the onboarding persist sequence and report whether the config actually
+// landed. The .env write is best-effort (host.saveSettings tolerates the web
+// loopback 403; ENG-817), but the DB write is AUTHORITATIVE — a `false` there
+// means the settings did NOT persist, so onboarding must not advance to
+// success over an unsaved config (raised in ENG-817 review). Exported pure so
+// the success/failure decision is unit-tested without rendering the component.
+export async function persistOnboarding(
+  deps: PersistDeps,
+  lines: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const GENERIC = 'Could not save your settings. Please try again.';
+  try {
+    await deps.saveSettings(lines.join('\n'));
+    const dbOk = await deps.syncToDb(lines);
+    if (!dbOk) {
+      return { ok: false, error: 'Could not save your settings to the server. Please try again.' };
+    }
+    // syncModels writes the model keys the bulk DB sync intentionally skips
+    // (ENG-739); harness records the chosen cartridge. Both best-effort.
+    await deps.syncModels(lines);
+    await deps.syncHarness();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error && e.message ? e.message : GENERIC };
+  }
+}
+
 // The provider→validation-target and provider→env-vars mappings are
 // identical whether BYOK runs directly (Stage 1) or as the LLM step after
 // MindsHub (Stage 2). Shared here so the two call sites can't drift (they
@@ -240,21 +276,36 @@ export default function OnboardingScreen({
     }
   };
 
+  // Persist the built settings lines and advance to success — but only if the
+  // authoritative DB write succeeded. A failed DB sync (or a real .env error)
+  // surfaces as a retryable error instead of advancing to success over an
+  // unsaved config. Shared by every finalize path so they can't drift.
+  const finalizeSettings = async (lines: string[]) => {
+    const res = await persistOnboarding(
+      {
+        saveSettings: (c) => host.saveSettings(c),
+        syncToDb: syncSettingsToDb,
+        syncModels: syncOnboardingModels,
+        syncHarness: () => syncHarness(coworker.id),
+      },
+      lines,
+    );
+    if (!res.ok) {
+      finalizedRef.current = false; // allow a retry
+      setPhase('error');
+      setErrorMsg(res.error);
+      return;
+    }
+    setPhase('success');
+    setTimeout(onComplete, 2000);
+  };
+
   const saveFinal = async (lines: string[]) => {
     if (finalizedRef.current) return; // guard double-finalize (see finalizedRef)
     finalizedRef.current = true;
     lines.push('ANTON_MEMORY_MODE=autopilot');
     lines.push('ANTON_EPISODIC_MEMORY=true');
-    // host.saveSettings is best-effort in web (the .env write is loopback-gated;
-    // the DB is authoritative — see host.ts, ENG-817); it throws only on Electron.
-    await host.saveSettings(lines.join('\n'));
-    await syncSettingsToDb(lines);
-    // syncSettingsToDb no longer maps model keys (ENG-739); write the
-    // onboarding model choice explicitly so a BYOK pick still reaches the DB.
-    await syncOnboardingModels(lines);
-    await syncHarness(coworker.id);
-    setPhase('success');
-    setTimeout(onComplete, 2000);
+    await finalizeSettings(lines);
   };
 
   const handleConnect = async () => {
@@ -371,14 +422,7 @@ export default function OnboardingScreen({
     if (finalizedRef.current) return;
     finalizedRef.current = true;
     const lines = Object.entries(merged).map(([k, v]) => `${k}=${v}`);
-    await host.saveSettings(lines.join('\n'));
-    await syncSettingsToDb(lines);
-    // syncSettingsToDb no longer maps model keys (ENG-739); write the
-    // onboarding model choice explicitly so a BYOK pick still reaches the DB.
-    await syncOnboardingModels(lines);
-    await syncHarness(coworker.id);
-    setPhase('success');
-    setTimeout(onComplete, 2000);
+    await finalizeSettings(lines);
   };
 
   const handleMindsSSO = async () => {
