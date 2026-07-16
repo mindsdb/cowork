@@ -23,6 +23,27 @@ function decodeJwtPayload(token) {
   } catch { return null; }
 }
 
+// Exported for tests. Pure mapping from an access token to the account
+// card's user object; null means "show the sign-in card" — both for a
+// missing token and for one that can't be decoded (a stale identity must
+// never keep rendering over a token we can no longer read, ENG-761).
+export function accountUserFromToken(token) {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  return {
+    name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
+    email: payload.email || null,
+    username: payload.preferred_username || null,
+    sub: payload.sub || null,
+    org: (() => {
+      let org = payload.active_organization ?? payload.organization;
+      if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
+      return org?.displayName || org?.name || null;
+    })(),
+  };
+}
+
 function Section({ title, subtitle, notice, children }) {
   return (
     <div className="settings-section" style={{
@@ -612,6 +633,7 @@ export default function SettingsView({
   section = 'agent',
   onSectionChange,
   isSsoConnected = false,
+  ssoError = '',
   onSsoSignIn,
 }) {
   const [saved, setSaved] = useState(false);
@@ -654,25 +676,20 @@ export default function SettingsView({
     return () => { cancelled = true; };
   }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
+  // Re-runs when the signed-in state flips (ENG-761): previously deps
+  // were [section] only, so signing in while this section was already
+  // open never re-read the token — the card stayed on "Sign in". The
+  // cancelled guard matches the sibling effects: getAccessToken can ride
+  // a slow network refresh, and a stale resolution must not overwrite
+  // what a newer run painted.
   useEffect(() => {
-    if (section !== 'account') return;
+    if (section !== 'account') return undefined;
+    let cancelled = false;
     getAccessToken().then((token) => {
-      if (!token) return;
-      const payload = decodeJwtPayload(token);
-      if (!payload) return;
-      setAccountUser({
-        name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
-        email: payload.email || null,
-        username: payload.preferred_username || null,
-        sub: payload.sub || null,
-        org: (() => {
-          let org = payload.active_organization ?? payload.organization;
-          if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
-          return org?.displayName || org?.name || null;
-        })(),
-      });
+      if (!cancelled) setAccountUser(accountUserFromToken(token));
     }).catch(() => { });
-  }, [section]);
+    return () => { cancelled = true; };
+  }, [section, isSsoConnected]);
 
   // Load diagnostics when Backend section is active
   useEffect(() => {
@@ -2304,6 +2321,21 @@ export default function SettingsView({
             </div>
           ))}
         </div>
+
+        {/* Last sign-in failure (ENG-761) — without this, a failed
+            browser flow left the card looking untouched and the user
+            with no idea anything went wrong. */}
+        {ssoError && (
+          <div role="alert" style={{
+            width: '100%', padding: '10px 14px', borderRadius: 8,
+            fontSize: 12.5, lineHeight: 1.55,
+            color: 'var(--danger, #c0564f)',
+            background: 'color-mix(in srgb, var(--danger, #c0564f) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--danger, #c0564f) 30%, transparent)',
+          }}>
+            Sign-in didn't complete: {ssoError}
+          </div>
+        )}
 
         {/* CTA */}
         <button

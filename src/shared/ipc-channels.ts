@@ -55,6 +55,13 @@ export const IPC = {
   MINDSHUB_REFRESH: 'mindshub:refresh',
   MINDSHUB_FINALIZE: 'mindshub:finalize',
   MINDSHUB_GET_CACHED_TOKEN: 'mindshub:get-cached-token',
+  // Pushed main → renderer whenever the MindsHub token store changes
+  // (login, silent refresh, logout, definitive session death). The
+  // renderer's signed-in indicator subscribes to this instead of
+  // depending solely on the promise of the sign-in call that happened
+  // to initiate the flow (ENG-761: that promise can be lost — reload,
+  // hung exchange — leaving the UI stuck on "Sign in" forever).
+  MINDSHUB_AUTH_CHANGED: 'mindshub:auth-changed',
 
   // App
   APP_READY: 'app:ready',

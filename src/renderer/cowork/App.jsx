@@ -783,6 +783,12 @@ function AppCore() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('agent');
   const [ssoConnected, setSsoConnected] = useState(false);
+  // Last sign-in failure, painted on the Settings account card. Cleared
+  // on retry and on any authenticated push from main (ENG-761).
+  const [ssoError, setSsoError] = useState('');
+  // Re-entry guard: a second "Sign in" click while a browser flow is
+  // already open would spawn a second loopback attempt.
+  const ssoBusyRef = useRef(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -2266,13 +2272,46 @@ function AppCore() {
     getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
   }, [settingsOpen]);
 
+  // Authoritative signed-in state, pushed from the main process on every
+  // token-store transition (login, silent refresh, logout, session
+  // death). The UI no longer depends solely on the promise of whichever
+  // call initiated the sign-in — that promise can be lost (ENG-761)
+  // while the main process is in fact authenticated, or vice versa.
+  useEffect(() => {
+    if (!host.isElectron) return undefined;
+    return host.onMindsHubAuthChanged(({ authenticated }) => {
+      setSsoConnected(!!authenticated);
+      if (authenticated) setSsoError('');
+    });
+  }, []);
+
   const handleSsoSignIn = async () => {
-    if (!host.isElectron) return;
-    const loginResult = await host.mindshubLogin();
-    if (!loginResult?.ok) return;
-    await host.mindshubFinalize().catch(() => {});
-    setSsoConnected(true);
-    refreshData();
+    if (!host.isElectron || ssoBusyRef.current) return;
+    ssoBusyRef.current = true;
+    setSsoError('');
+    try {
+      const loginResult = await host.mindshubLogin();
+      if (!loginResult?.ok) {
+        // ENG-761: this used to silently return — the browser said
+        // "You're authorized!" while the app showed nothing. Surface the
+        // failure where the user will look for it: the account card.
+        setSsoError(String(loginResult?.reason || 'Sign in failed. Please try again.'));
+        setSettingsSection('account');
+        setSettingsOpen(true);
+        return;
+      }
+      // Signed in — flip the UI now; key provisioning below takes several
+      // seconds (org bootstrap + server restart) and is not a sign-in gate.
+      setSsoConnected(true);
+      try {
+        await host.mindshubFinalize();
+      } catch (e) {
+        console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
+      }
+      refreshData();
+    } finally {
+      ssoBusyRef.current = false;
+    }
   };
 
   const navigate = (key) => {
@@ -3916,6 +3955,7 @@ function AppCore() {
               onStartServer={handleServerStart}
               onStopServer={handleServerStop}
               isSsoConnected={ssoConnected}
+              ssoError={ssoError}
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
             />
           </ModalBody>
