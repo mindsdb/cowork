@@ -41,6 +41,8 @@ jobs:
             'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
             'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET',
             'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
+            'GOOGLE_PICKER_API_KEY',
+            'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
           ]
           with open('server-credentials.json', 'w') as f:
               json.dump({k: '' for k in keys}, f)

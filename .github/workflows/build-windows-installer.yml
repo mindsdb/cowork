@@ -57,6 +57,10 @@ on:
         required: false
       GOOGLE_ANALYTICS_CLIENT_SECRET:
         required: false
+      LINEAR_CLIENT_ID:
+        required: false
+      LINEAR_CLIENT_SECRET:
+        required: false
 
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
@@ -100,6 +104,8 @@ jobs:
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ANALYTICS_CLIENT_ID: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_ID }}
           GOOGLE_ANALYTICS_CLIENT_SECRET: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_SECRET }}
+          LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
+          LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
         run: |
           python -c "
           import os, json
@@ -109,6 +115,7 @@ jobs:
             'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
             'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET',
             'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
+            'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)
