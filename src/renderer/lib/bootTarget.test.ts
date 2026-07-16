@@ -14,34 +14,28 @@ function makeHost(over: Partial<BootHost> = {}): BootHost {
 }
 
 describe('resolveBootTarget', () => {
-  // ENG-817 regression: in the hosted web build readSettings() hits the
-  // loopback-gated /settings/raw and 403s. That must NOT abort boot — a
-  // configured instance with local consent still lands in the app, driven by
-  // config_ready, not by the readSettings result.
-  it('routes a configured instance to terminal even when readSettings() rejects (web /raw 403)', async () => {
-    const host = makeHost({
-      readSettings: async () => {
-        throw new Error('HTTP 403');
-      },
-    });
+  // ENG-817 regression: in the hosted web build /settings/raw is loopback-gated
+  // and 403s, so host.readSettings degrades to {} (see host.ts). A configured
+  // instance with local consent must still boot into the app — the empty server
+  // settings must NOT strand it on the auth screen (the original inline logic
+  // treated a readSettings failure as fatal → auth).
+  it('boots a configured instance to terminal when server settings are empty but local consent is set', async () => {
+    const host = makeHost({ readSettings: async () => ({}) });
     expect(await resolveBootTarget(host, /* hasLocalConsent */ true)).toBe('terminal');
   });
 
-  it('still requires config_ready — an unconfigured instance goes to auth despite consent', async () => {
-    const host = makeHost({
-      readSettings: async () => {
-        throw new Error('HTTP 403');
-      },
-      checkConfigured: async () => ({ configured: false, provider: '' }),
-    });
-    expect(await resolveBootTarget(host, true)).toBe('auth');
-  });
-
-  it('honors server-side consent when readSettings succeeds (no local flag)', async () => {
+  it('honors server-side consent when present (no local flag)', async () => {
     const host = makeHost({
       readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
     });
     expect(await resolveBootTarget(host, /* hasLocalConsent */ false)).toBe('terminal');
+  });
+
+  it('still requires config_ready — an unconfigured instance goes to auth despite consent', async () => {
+    const host = makeHost({
+      checkConfigured: async () => ({ configured: false, provider: '' }),
+    });
+    expect(await resolveBootTarget(host, true)).toBe('auth');
   });
 
   it('routes to auth when not consented (no server flag, no local flag)', async () => {
@@ -57,7 +51,19 @@ describe('resolveBootTarget', () => {
     expect(await resolveBootTarget(host, false)).toBe('setup');
   });
 
-  it('routes to auth when the server is unreachable (checkConfigured throws)', async () => {
+  // A genuine failure (Electron IPC bridge error, or the server unreachable)
+  // still routes to auth — only the web loopback-gated read is degraded, and
+  // that happens in host.ts, not here.
+  it('routes to auth when readSettings throws (e.g. Electron bridge failure)', async () => {
+    const host = makeHost({
+      readSettings: async () => {
+        throw new Error('bridge failure');
+      },
+    });
+    expect(await resolveBootTarget(host, true)).toBe('auth');
+  });
+
+  it('routes to auth when checkConfigured throws (server unreachable)', async () => {
     const host = makeHost({
       checkConfigured: async () => {
         throw new Error('network');

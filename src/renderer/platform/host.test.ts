@@ -230,3 +230,36 @@ describe('electron mode (bridge present)', () => {
     });
   });
 });
+
+describe('web settings access — loopback-gated /raw (ENG-817)', () => {
+  // In the console-hosted web build the browser reaches cowork-server from the
+  // docker bridge, not loopback, so /settings/raw 403s. The .env is legacy and
+  // the DB is authoritative, so these reads/writes must degrade, not throw —
+  // otherwise boot/onboarding aborts (ENG-817).
+  function stubGated() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        json: async () => ({ detail: 'local requests only' }),
+      })),
+    );
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('readSettings degrades to {} when /settings/raw 403s', async () => {
+    stubGated();
+    const host = await importHost();
+    await expect(host.readSettings()).resolves.toEqual({});
+  });
+
+  it('saveSettings returns false (does not throw) when /settings/raw 403s', async () => {
+    stubGated();
+    const host = await importHost();
+    await expect(host.saveSettings('ANTON_TERMS_CONSENT=true')).resolves.toBe(false);
+  });
+});

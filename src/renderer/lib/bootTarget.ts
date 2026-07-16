@@ -15,30 +15,24 @@ export interface BootHost {
 /**
  * Decide the first screen after the welcome orb.
  *
- * `readSettings()` is **best-effort**: in the hosted web build it hits the
- * loopback-gated `/settings/raw` and 403s (ENG-817), because the browser's
- * request reaches cowork-server from the Docker bridge, not loopback. A failure
- * there must NOT abort the decision — `config_ready` (checkConfigured/health) is
- * the real readiness signal, and terms consent falls back to the client-side
- * flag. Only a failure of `checkConfigured`/`checkInstall` (server genuinely
- * unreachable) routes to `auth`.
+ * Consent comes from server settings if present, else the client-side
+ * localStorage flag (`hasLocalConsent`, passed in so this stays free of
+ * DOM/global access). `config_ready` (checkConfigured/health) is the real
+ * readiness signal.
  *
- * `hasLocalConsent` is the localStorage terms-consent flag, passed in so this
- * stays free of DOM/global access.
+ * `host.readSettings()` is best-effort **at the host layer**: in the hosted web
+ * build `/settings/raw` is loopback-gated and 403s (ENG-817), so host.ts
+ * degrades it to `{}` rather than throwing — a gated read therefore can't strand
+ * a configured instance on the auth screen. A genuine throw here (Electron IPC
+ * bridge failure, or the server being unreachable) still routes to `auth`.
  */
 export async function resolveBootTarget(
   host: BootHost,
   hasLocalConsent: boolean,
 ): Promise<BootTarget> {
   try {
-    let serverConsent = false;
-    try {
-      const settings = await host.readSettings();
-      serverConsent = settings.ANTON_TERMS_CONSENT === 'true';
-    } catch {
-      /* web: /settings/raw is loopback-gated (ENG-817); use the local flag */
-    }
-    const consented = serverConsent || hasLocalConsent;
+    const settings = await host.readSettings();
+    const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalConsent;
     const { configured } = await host.checkConfigured();
     if (consented && configured) {
       const status = await host.checkInstall();

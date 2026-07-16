@@ -245,16 +245,9 @@ export default function OnboardingScreen({
     finalizedRef.current = true;
     lines.push('ANTON_MEMORY_MODE=autopilot');
     lines.push('ANTON_EPISODIC_MEMORY=true');
-    // The .env write (POST /settings/raw) is loopback-gated and 403s in the
-    // hosted web build (ENG-817); the DB (syncSettingsToDb → PUT /settings/:key)
-    // is authoritative for cowork-server, so a failed .env write must not abort
-    // onboarding. Electron writes .env via the IPC bridge, where a failure is a
-    // real error — so only swallow it on web.
-    try {
-      await host.saveSettings(lines.join('\n'));
-    } catch (e) {
-      if (host.isElectron) throw e;
-    }
+    // host.saveSettings is best-effort in web (the .env write is loopback-gated;
+    // the DB is authoritative — see host.ts, ENG-817); it throws only on Electron.
+    await host.saveSettings(lines.join('\n'));
     await syncSettingsToDb(lines);
     // syncSettingsToDb no longer maps model keys (ENG-739); write the
     // onboarding model choice explicitly so a BYOK pick still reaches the DB.
@@ -421,14 +414,9 @@ export default function OnboardingScreen({
     // No LLM credits — account authenticated but key wasn't provisioned.
     // Save terms consent and redirect to BYOK so the user can pick a provider.
     if (finalizeResult.upgradeRequired) {
-      // Loopback-gated in web (ENG-817); consent is also persisted client-side
-      // on completion (rememberTermsConsent), so don't let a web 403 abort the
-      // flow. Electron writes .env via the bridge, where a failure is real.
-      try {
-        await host.saveSettings('ANTON_TERMS_CONSENT=true');
-      } catch (e) {
-        if (host.isElectron) throw e;
-      }
+      // Best-effort in web (loopback-gated; consent also persists client-side
+      // on completion). See host.saveSettings / ENG-817.
+      await host.saveSettings('ANTON_TERMS_CONSENT=true');
       setMindsNoCredits(true);
       setStep('byok');
       setPhase('minds-no-llm');

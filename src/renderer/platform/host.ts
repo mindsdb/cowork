@@ -262,15 +262,33 @@ export async function readSettings(): Promise<Record<string, string>> {
   if (isElectron && typeof bridge.readSettings === 'function') {
     return bridge.readSettings();
   }
-  return fetchJson('/api/v1/settings/raw');
+  // Web: /settings/raw returns unmasked secrets and is loopback-gated
+  // (ENG-457). In the console-hosted deployment the browser's request reaches
+  // cowork-server from the docker bridge, not loopback, so it 403s (ENG-817).
+  // The DB is authoritative for cowork-server, so reading the legacy .env is
+  // best-effort in web — degrade to empty rather than throwing and aborting
+  // boot/onboarding. (Electron reads via the IPC bridge above, unaffected.)
+  try {
+    return await fetchJson('/api/v1/settings/raw');
+  } catch {
+    return {};
+  }
 }
 
 export async function saveSettings(content: string): Promise<boolean> {
   if (isElectron && typeof bridge.saveSettings === 'function') {
     return bridge.saveSettings(content);
   }
-  await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
-  return true;
+  // Web: the .env write (/settings/raw) is loopback-gated (ENG-457/ENG-817).
+  // Callers pair this with syncSettingsToDb (PUT /settings/:key), the
+  // authoritative store, so a failed .env write is best-effort — return false
+  // instead of throwing so boot/onboarding don't abort on a 403.
+  try {
+    await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function restartServer(): Promise<void> {
