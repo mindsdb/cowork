@@ -18,6 +18,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { CardRow } from '../components/ui';
+import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
   FilterRow,
@@ -41,18 +42,6 @@ const SORT_OPTIONS = [
 // shifting between hover/non-hover so the trash icon doesn't
 // shove the timestamp left when it appears.
 const LIST_GRID = '24px minmax(0, 2.4fr) minmax(0, 1.2fr) 110px 28px';
-
-function relAge(input) {
-  if (!input) return '—';
-  const ts = typeof input === 'number' ? input : Date.parse(input);
-  if (!Number.isFinite(ts)) return '—';
-  const diff = Date.now() - ts;
-  if (diff < 60_000)         return 'just now';
-  if (diff < 3_600_000)      return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000)     return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
@@ -99,7 +88,7 @@ function TaskRow({
   // Prefer the same field the rest of the app uses for "last seen"
   // (updatedAt). Fall back to subtitle (legacy mock-time string)
   // when the server hasn't stamped the conversation yet.
-  const updated = relAge(task.updatedAt || task.subtitle || task.created_at);
+  const updated = relativeAge(task.updatedAt || task.subtitle || task.created_at) || '—';
 
   return (
     <CardRow
@@ -243,7 +232,7 @@ function ScheduleGroupRow({
   const latest = runs.reduce((max, r) =>
     ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
   runs[0]);
-  const updated = relAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt);
+  const updated = relativeAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt) || '—';
 
   const isAnyActive = runs.some((r) => r.status === 'active');
 

@@ -149,6 +149,9 @@ body, body[data-theme="light"] {
   --accent-3:     #0E4651;
   --accent-bg:    #E5F4F7;
   --accent-glow:  rgba(31, 156, 176, 0.30);
+  /* Solid CTA fill; color-mix so custom-skin accent re-tints propagate. */
+  --accent-solid:     color-mix(in srgb, var(--accent) 75%, black);
+  --accent-solid-ink: #FFFFFF;
 
   /* Status — brandbook-aligned */
   --ok:           #15803D;
@@ -277,6 +280,9 @@ body[data-theme="dark"] {
   --accent-3:     rgb(6, 145, 170);
   --accent-bg:    rgba(34, 211, 238, 0.10);
   --accent-glow:  rgba(34, 211, 238, 0.45);
+  /* Solid CTA fill; color-mix so custom-skin accent re-tints propagate. */
+  --accent-solid:     var(--accent);
+  --accent-solid-ink: var(--bg);
 
   --danger:       #F87171;
   --danger-bg:    rgba(248, 113, 113, 0.12);
@@ -2416,6 +2422,26 @@ body:not([data-theme="dark"]) .btn-primary {
   --glow: var(--accent-glow);
   background: var(--accent-bg);
   border-color: currentColor;
+}
+
+/* Solid — the filled CTA. One per page; use for the page's primary action. */
+.btn.solid {
+  --glow: var(--accent-glow);
+  font-weight: 600;
+  background: var(--accent-solid);
+  color: var(--accent-solid-ink);
+  border-color: var(--accent-solid);
+}
+.btn.solid:hover {
+  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+  box-shadow: 0 0 0 1px var(--accent-solid), 0 0 22px var(--glow);
+  text-shadow: none;
+}
+.btn.solid:active {
+  background: color-mix(in srgb, var(--accent-solid) 80%, var(--ink));
+}
+.btn.solid:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent-solid-ink), 0 0 0 4px var(--glow);
 }
 
 /* Danger */

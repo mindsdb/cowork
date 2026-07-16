@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner } from './ui';
+import { Spinner, Kbd } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
-import { timeAgo } from '../lib/formatTime';
+import { relativeAge } from '../lib/formatTime';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
@@ -118,7 +118,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
                 }}
               />
             ) : (
-              showTimestamp ? timeAgo(task.updatedAt || task.subtitle) : ''
+              showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
             )}
           </span>
           <span
@@ -492,7 +492,7 @@ export default function Sidebar({
           >
             <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
             <span className="btn-new-task__label">New task</span>
-            <span className="kbd">{shortcut('N')}</span>
+            <Kbd>{shortcut('N')}</Kbd>
           </button>
         </div>
 
