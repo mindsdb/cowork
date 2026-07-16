@@ -840,7 +840,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         // rhythm — together they make Live Artifacts breathe a touch
         // more than other collection pages, where the action button
         // already anchors the lower edge of the header.
-        subtitleBottom={20}
       />
 
       <Toast

@@ -1161,7 +1161,6 @@ export default function ProjectsView({
         // subtitle and the search bar look smaller in grid than in
         // list. Embedding it as `marginBottom` on the subtitle makes
         // the spacing immune to whatever the body below decides to do.
-        subtitleBottom={20}
       />
 
       <FilterRow
