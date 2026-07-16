@@ -2780,10 +2780,11 @@ body[data-theme="dark"] .app-sidebar::before {
 
 /* New task CTA — outlined neon in dark, accent-bordered in light */
 .anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
-/* New task — the canonical neutral button from the brand book (.btn
-   default): surface fill, --line-2 hairline, --sh-1 shadow, --r radius,
-   and the snappy .12s/.04s transitions. Clearly a button; teal stays
-   reserved for "where you are," not the CTA. */
+/* New task — tinted accent (the .btn.tinted register): an accent wash
+   with accent ink. Louder than a neutral surface — it owns the accent
+   identity and can't be misread as an input — but without the shout of
+   a solid fill, which overpowered the sidebar. Solid stays reserved
+   for page CTAs and the armed send button. */
 .btn-new-task {
   width: 100%;
   display: flex;
@@ -2791,14 +2792,9 @@ body[data-theme="dark"] .app-sidebar::before {
   gap: 10px;
   height: 36px;
   padding: 0 12px;
-  /* Solid accent — the app's global create action joins the solid
-     family (page CTA, armed send button). A filled bar can't be
-     misread as an input, and it sidesteps the white-box-on-warm-gray
-     mismatch the neutral version had. Tokens keep both themes and
-     custom-skin accents correct. */
-  background: var(--accent-solid);
-  color: var(--accent-solid-ink);
-  border: 1px solid var(--accent-solid);
+  background: var(--accent-bg);
+  color: var(--accent-2);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: var(--r);
   box-shadow: var(--sh-1);
   font-family: var(--font-sans);
@@ -2811,12 +2807,11 @@ body[data-theme="dark"] .app-sidebar::before {
               box-shadow .12s ease, transform .04s ease;
 }
 .btn-new-task:hover {
-  /* Mix toward --ink: darkens in light mode, brightens in dark. */
-  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
-  border-color: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+  background: color-mix(in srgb, var(--accent) 16%, var(--accent-bg));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .btn-new-task:active {
-  background: color-mix(in srgb, var(--accent-solid) 80%, var(--ink));
+  background: color-mix(in srgb, var(--accent) 24%, var(--accent-bg));
   transform: translateY(0.5px);
 }
 .btn-new-task__label { flex: 1; font-weight: 600; }
@@ -2824,14 +2819,15 @@ body[data-theme="dark"] .app-sidebar::before {
   font-family: var(--font-mono);
   font-size: 11px;
   color: inherit;
-  /* Ink-tinted wash reads on both themes: white-on-teal (light) and
-     navy-on-cyan (dark) both get a subtle contrast chip. */
-  background: color-mix(in srgb, var(--accent-solid-ink) 16%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
   font-weight: 500;
   opacity: 0.9;
 }
+/* Dark: the wash sits on navy, so the ink steps up to the bright
+   accent for contrast (matches how Pill/Badge accents read in dark). */
+body[data-theme="dark"] .btn-new-task { color: var(--accent); }
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
