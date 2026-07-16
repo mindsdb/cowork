@@ -362,15 +362,19 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
     // the renderer's own POST is fire-and-forget, so only OUR recorded 2xx
     // proves the gate is set. Until then the latch gates every handed-out
     // command (the command may have been handed to the wire pre-gate).
+    //
+    // The POST targets the LATCH's stored conversation id (captured at Stop
+    // time), never the current binding: the user may have switched tasks
+    // since, and acking against the new binding would wrongly stop THAT
+    // conversation while confirming nothing about the stopped one. The
+    // generation captured before the POST makes a slow ack for an older Stop
+    // a no-op if a fresh Stop lands meanwhile.
     const preLatch = cfg.exec.stopLatch();
-    if (preLatch.requestedAt !== null && preLatch.ackAt === null) {
-      const stopConversationId = cfg.exec.conversationId();
-      if (stopConversationId) {
-        const ack = await postJson('/browse/control/stop', {
-          conversation_id: stopConversationId,
-        });
-        if (ack?.ok) cfg.exec.ackStop();
-      }
+    if (preLatch.requestedAt !== null && preLatch.ackAt === null && preLatch.conversationId) {
+      const ack = await postJson('/browse/control/stop', {
+        conversation_id: preLatch.conversationId,
+      });
+      if (ack?.ok) cfg.exec.ackStop(preLatch.generation);
     }
 
     // Snapshot when this long-poll starts. A command from a poll that started

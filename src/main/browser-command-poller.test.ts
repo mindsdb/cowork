@@ -170,24 +170,33 @@ function fakeExec(overrides: Partial<Record<string, unknown>> = {}) {
     currentState: vi.fn(() => 'connected' as const),
     status: vi.fn(() => ({ available: true, state: 'connected' as const, domain: 'shop.example.com' })),
     conversationId: vi.fn(() => 'CONV-1'),
-    stopLatch: vi.fn(() => ({ requestedAt: null, ackAt: null })),
+    stopLatch: vi.fn(() => ({
+      requestedAt: null,
+      ackAt: null,
+      conversationId: null,
+      generation: 0,
+    })),
     ackStop: vi.fn(),
     clearStopRequest: vi.fn(),
     ...overrides,
   };
 }
 
-// A stateful fake of the bridge's Stop latch (timestamped + server-acked,
-// self-clearing) so tests exercise the real latch lifecycle instead of a
-// canned boolean. Mirrors browser-bridge.ts requestStop/ackStopRequest/
-// getStopLatch/clearStopRequest.
+// A stateful fake of the bridge's Stop latch (timestamped + server-acked +
+// identity/generation, self-clearing) so tests exercise the real latch
+// lifecycle instead of a canned boolean. Mirrors browser-bridge.ts
+// requestStop/ackStopRequest/getStopLatch/clearStopRequest.
 function fakeStopLatch() {
   let requestedAt: number | null = null;
   let ackAt: number | null = null;
+  let conversationId: string | null = null;
+  let generation = 0;
   return {
-    requestStop(at: number = Date.now()): void {
+    requestStop(cid: string, at: number = Date.now()): void {
       requestedAt = at;
       ackAt = null;
+      conversationId = cid;
+      generation += 1;
     },
     isSet(): boolean {
       return requestedAt !== null;
@@ -198,13 +207,17 @@ function fakeStopLatch() {
     setAck(at: number): void {
       ackAt = at;
     },
-    stopLatch: vi.fn(() => ({ requestedAt, ackAt })),
-    ackStop: vi.fn(() => {
-      if (requestedAt !== null) ackAt = Date.now();
+    generation(): number {
+      return generation;
+    },
+    stopLatch: vi.fn(() => ({ requestedAt, ackAt, conversationId, generation })),
+    ackStop: vi.fn((gen: number) => {
+      if (requestedAt !== null && gen === generation) ackAt = Date.now();
     }),
     clearStopRequest: vi.fn(() => {
       requestedAt = null;
       ackAt = null;
+      conversationId = null;
     }),
   };
 }
@@ -333,7 +346,7 @@ describe('browser-command-poller', () => {
     const baseFetch = server.fetch;
     const fetchImpl = (async (url: string, init?: RequestInit) => {
       // The Stop lands while this long-poll is on the wire — the raced case.
-      if (new URL(url).pathname.endsWith('/browse/commands/next')) latch.requestStop();
+      if (new URL(url).pathname.endsWith('/browse/commands/next')) latch.requestStop('CONV-1');
       return baseFetch(url, init);
     }) as unknown as typeof fetch;
     const exec = fakeExec({
@@ -366,7 +379,7 @@ describe('browser-command-poller', () => {
     server.queueCommand({ command_id: 'C-PRE-ACK-1', action_type: 'inspect', session_id: 'SESS-1' });
     server.queueCommand({ command_id: 'C-PRE-ACK-2', action_type: 'inspect', session_id: 'SESS-1' });
     const latch = fakeStopLatch();
-    latch.requestStop(Date.now() - 50); // Stop pressed before the polls start
+    latch.requestStop('CONV-1', Date.now() - 50); // Stop pressed before the polls start
     const exec = fakeExec({
       stopLatch: latch.stopLatch,
       ackStop: latch.ackStop,
@@ -392,6 +405,62 @@ describe('browser-command-poller', () => {
     expect(latch.isSet()).toBe(false);
   });
 
+  it('self-acks against the conversation the Stop TARGETED, not the current binding', async () => {
+    // The user stops conversation A, then switches the active task to B
+    // before the self-ack fires. The ack POST must carry A (the latch's
+    // stored id) — POSTing B would wrongly stop B while confirming nothing
+    // about A's gate.
+    const server = new FakeBrowseServer();
+    const latch = fakeStopLatch();
+    latch.requestStop('CONV-A', Date.now() - 50); // Stop targeted A...
+    const exec = fakeExec({
+      conversationId: vi.fn(() => 'CONV-B'), // ...but main is now bound to B
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
+      clearStopRequest: latch.clearStopRequest,
+    });
+
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('idle');
+    // The self-ack targeted A — B was never stopped.
+    expect(server.stops).toEqual([{ conversation_id: 'CONV-A' }]);
+    expect(latch.ackStop).toHaveBeenCalledWith(latch.generation());
+    // The empty post-ack poll cleared A's latch; B's activity never gated.
+    expect(latch.isSet()).toBe(false);
+  });
+
+  it('ignores a stale ack from an older Stop generation — gating continues until the new ack', async () => {
+    // An in-flight ack POST for Stop generation N-1 returns AFTER a fresh
+    // Stop (generation N) reset the ack. The stale ack must no-op: the
+    // command from the next poll stays gated until N's own ack lands.
+    const server = new FakeBrowseServer();
+    const latch = fakeStopLatch();
+    latch.requestStop('CONV-1', Date.now() - 100);
+    const staleGeneration = latch.generation();
+    latch.requestStop('CONV-1', Date.now() - 50); // fresh Stop: generation N
+    latch.ackStop(staleGeneration); // the old POST's ack arrives late
+    expect(latch.isAcked()).toBe(false); // stale ack ignored
+
+    // With the ack path failing, the still-unacked latch keeps gating.
+    server.failStops = true;
+    server.queueCommand({ command_id: 'C-STALE-ACK', action_type: 'inspect', session_id: 'SESS-1' });
+    const exec = fakeExec({
+      stopLatch: latch.stopLatch,
+      ackStop: latch.ackStop,
+      clearStopRequest: latch.clearStopRequest,
+    });
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('idle');
+    expect(exec.inspect).not.toHaveBeenCalled();
+    expect(server.results.at(-1)).toMatchObject({ command_id: 'C-STALE-ACK', result_code: 'timeout' });
+    expect(latch.isSet()).toBe(true);
+
+    // Generation N's own ack (next cycle) unblocks as usual.
+    server.failStops = false;
+    server.queueCommand({ command_id: 'C-NEW-ACK', action_type: 'inspect', session_id: 'SESS-1' });
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('command');
+    expect(server.results.at(-1)).toMatchObject({ command_id: 'C-NEW-ACK', result_code: 'ok' });
+    expect(latch.isSet()).toBe(false);
+  });
+
   it('executes a post-resume command normally once the stop was acked before the poll', async () => {
     // The SERVER is the stop/resume authority: it resumes stopped → active
     // on a fresh user turn. A poll that STARTED after the server gate was
@@ -401,7 +470,7 @@ describe('browser-command-poller', () => {
     const server = new FakeBrowseServer();
     server.queueCommand({ command_id: 'C-RESUMED', action_type: 'inspect', session_id: 'SESS-1' });
     const latch = fakeStopLatch();
-    latch.requestStop(Date.now() - 100);
+    latch.requestStop('CONV-1', Date.now() - 100);
     latch.setAck(Date.now() - 50); // gate confirmed before this poll starts
     const exec = fakeExec({
       stopLatch: latch.stopLatch,
@@ -429,7 +498,7 @@ describe('browser-command-poller', () => {
     // completed), and nothing runs.
     const server = new FakeBrowseServer(); // nothing queued — server is stopped
     const latch = fakeStopLatch();
-    latch.requestStop(Date.now() - 100);
+    latch.requestStop('CONV-1', Date.now() - 100);
     latch.setAck(Date.now() - 50);
     const exec = fakeExec({
       stopLatch: latch.stopLatch,

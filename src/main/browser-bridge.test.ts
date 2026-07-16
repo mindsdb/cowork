@@ -559,43 +559,66 @@ describe('browser-bridge conversation binding lifecycle', () => {
 });
 
 describe('browser-bridge local Stop latch', () => {
-  it('records WHEN Stop was pressed, un-acked until the server confirms its gate', () => {
+  it('records WHEN Stop was pressed and WHICH conversation it targeted, un-acked until the server confirms', () => {
     const before = Date.now();
-    expect(bridge.getStopLatch()).toEqual({ requestedAt: null, ackAt: null });
-    bridge.requestStop();
+    expect(bridge.getStopLatch()).toMatchObject({ requestedAt: null, ackAt: null, conversationId: null });
+    bridge.requestStop('CONV-A');
     const latch = bridge.getStopLatch();
     expect(latch.requestedAt).toBeGreaterThanOrEqual(before);
     expect(latch.ackAt).toBeNull();
+    expect(latch.conversationId).toBe('CONV-A');
   });
 
-  it('ackStopRequest records the server-gate confirmation; a fresh Stop resets it', () => {
+  it('captures the conversation at REQUEST time — falls back to the binding when the IPC carries none', () => {
+    // Stop with no explicit cid: the latch pins main's binding at REQUEST
+    // time, so a later task switch cannot redirect the self-ack.
+    bridge.setConversationId('CONV-A');
     bridge.requestStop();
-    bridge.ackStopRequest();
+    bridge.setConversationId('CONV-B'); // user switched tasks after the Stop
+    expect(bridge.getStopLatch().conversationId).toBe('CONV-A');
+  });
+
+  it('bumps the generation per Stop; an ack only lands for the matching generation', () => {
+    bridge.requestStop('CONV-A');
+    const staleGeneration = bridge.getStopLatch().generation;
+    bridge.ackStopRequest(staleGeneration);
     expect(bridge.getStopLatch().ackAt).not.toBeNull();
     // A new Stop needs a new ack — the previous gate may have been resumed.
-    bridge.requestStop();
-    expect(bridge.getStopLatch().requestedAt).not.toBeNull();
+    bridge.requestStop('CONV-A');
+    const latch = bridge.getStopLatch();
+    expect(latch.generation).toBe(staleGeneration + 1);
+    expect(latch.ackAt).toBeNull();
+    // A slow in-flight ack for the OLD Stop arrives late: must no-op.
+    bridge.ackStopRequest(staleGeneration);
     expect(bridge.getStopLatch().ackAt).toBeNull();
+    // The current generation's own ack still lands.
+    bridge.ackStopRequest(latch.generation);
+    expect(bridge.getStopLatch().ackAt).not.toBeNull();
   });
 
   it('a stray ack with no Stop latched must not fabricate latch state', () => {
-    bridge.ackStopRequest();
-    expect(bridge.getStopLatch()).toEqual({ requestedAt: null, ackAt: null });
+    bridge.ackStopRequest(bridge.getStopLatch().generation);
+    expect(bridge.getStopLatch()).toMatchObject({ requestedAt: null, ackAt: null });
   });
 
-  it('is cleared by clearStopRequest (the poller after a post-ack poll cycle)', () => {
-    bridge.requestStop();
-    bridge.ackStopRequest();
+  it('is cleared by clearStopRequest (the poller after a post-ack poll cycle) without resetting the generation', () => {
+    bridge.requestStop('CONV-A');
+    const generation = bridge.getStopLatch().generation;
+    bridge.ackStopRequest(generation);
     bridge.clearStopRequest();
-    expect(bridge.getStopLatch()).toEqual({ requestedAt: null, ackAt: null });
+    const latch = bridge.getStopLatch();
+    expect(latch).toMatchObject({ requestedAt: null, ackAt: null, conversationId: null });
+    // Generation stays monotonic across clears so a stale in-flight ack can
+    // never match a future Stop.
+    expect(latch.generation).toBe(generation);
   });
 
   it('is cleared belt-and-braces by a fresh attach and by disposeAllBridges', async () => {
-    bridge.requestStop();
+    bridge.requestStop('CONV-A');
     await bridge.attach('TAB-1');
     expect(bridge.getStopLatch().requestedAt).toBeNull();
 
-    bridge.requestStop();
+    bridge.requestStop('CONV-A');
     bridge.disposeAllBridges();
     expect(bridge.getStopLatch().requestedAt).toBeNull();
   });

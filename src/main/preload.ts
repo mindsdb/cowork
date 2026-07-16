@@ -138,7 +138,10 @@ contextBridge.exposeInMainWorld('antontron', {
   browserControlTakeOver: () => ipcRenderer.invoke(IPC.BROWSER_TAKE_OVER),
   browserControlSetConversation: (conversationId: string | null) =>
     ipcRenderer.invoke(IPC.BROWSER_SET_CONVERSATION, conversationId),
-  browserControlStop: () => ipcRenderer.invoke(IPC.BROWSER_STOP),
+  // Pass the conversation the Stop TARGETED so main latches that identity
+  // (not whatever conversation is bound by the time the poller acks it).
+  browserControlStop: (conversationId?: string | null) =>
+    ipcRenderer.invoke(IPC.BROWSER_STOP, conversationId ?? null),
   browserInspect: () => ipcRenderer.invoke(IPC.BROWSER_INSPECT),
   browserNavigate: (href: string) => ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, href),
   browserScroll: (direction: 'down' | 'up') => ipcRenderer.invoke(IPC.BROWSER_SCROLL, direction),

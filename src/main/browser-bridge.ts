@@ -103,6 +103,17 @@ export function getConversationId(): string | null {
 // poller each cycle while un-acked and records `ackAt` when a 2xx lands
 // (main-owned ack: no dependence on the renderer's POST succeeding).
 //
+// The latch carries IDENTITY and GENERATION, not just timestamps:
+// - `conversationId` pins WHICH conversation the Stop targeted, captured at
+//   REQUEST time (passed explicitly over IPC BROWSER_STOP; falls back to
+//   main's binding at request time). Main's conversation binding changes on
+//   every active-task switch, so the poller's self-ack must POST the LATCH's
+//   stored id — using the binding at ack time could stop an unrelated
+//   conversation the user switched to and record a meaningless ack.
+// - `generation` increments on every requestStop; an ack is accepted only if
+//   its captured generation still matches, so an in-flight ack POST for an
+//   older Stop returning after a fresh Stop can never satisfy the newer one.
+//
 // The poller gates every handed-out command while the latch is armed
 // (requestedAt set, no ack yet). The ack is awaited BEFORE the poll in the
 // same single-in-flight loop, so once acked, any command a later poll returns
@@ -111,31 +122,61 @@ export function getConversationId(): string | null {
 // command executes. The latch must never outlive its ack to gate post-resume
 // commands (that was the old bug: a boolean latch persisted until
 // re-approval). Also cleared on attach()/dispose as belt-and-braces.
+export interface StopLatch {
+  requestedAt: number | null;
+  ackAt: number | null;
+  // The conversation the Stop targeted (captured at request time), or null
+  // when none was known — the poller then has nothing safe to ack against.
+  conversationId: string | null;
+  // Monotonic per-Stop instance counter for stale-ack rejection.
+  generation: number;
+}
+
 let stopRequestedAt: number | null = null;
 let stopAckAt: number | null = null;
+let stopConversationId: string | null = null;
+let stopGeneration = 0;
 
-export function requestStop(): void {
+// Latch a user Stop for `targetConversationId` (the conversation the
+// renderer's Stop targeted; falls back to main's CURRENT binding when the IPC
+// carried none). A fresh Stop needs a fresh server ack — the previous gate
+// may have been resumed since — and bumps the generation so any in-flight
+// ack for an older Stop is rejected as stale.
+export function requestStop(targetConversationId?: string | null): void {
   stopRequestedAt = Date.now();
-  // A fresh Stop needs a fresh server ack — the previous gate may have been
-  // resumed since.
   stopAckAt = null;
+  stopConversationId =
+    typeof targetConversationId === 'string' && targetConversationId
+      ? targetConversationId
+      : conversationId;
+  stopGeneration += 1;
 }
 
-// Record that the server confirmed (2xx) its stop gate is set. No-op when no
-// Stop is latched (a stray ack must not fabricate a latch state).
-export function ackStopRequest(): void {
-  if (stopRequestedAt !== null) stopAckAt = Date.now();
+// Record that the server confirmed (2xx) the stop gate for the latch
+// generation the caller captured BEFORE its POST. No-ops when the generation
+// no longer matches (a stale ack for an older Stop) or when no Stop is
+// latched (a stray ack must not fabricate latch state).
+export function ackStopRequest(generation: number): void {
+  if (stopRequestedAt !== null && generation === stopGeneration) stopAckAt = Date.now();
 }
 
-export function getStopLatch(): { requestedAt: number | null; ackAt: number | null } {
-  return { requestedAt: stopRequestedAt, ackAt: stopAckAt };
+export function getStopLatch(): StopLatch {
+  return {
+    requestedAt: stopRequestedAt,
+    ackAt: stopAckAt,
+    conversationId: stopConversationId,
+    generation: stopGeneration,
+  };
 }
 
 // The latch's raced-case job is done (the server gate is known set and the
 // poller finished a post-ack cycle); post-resume commands must flow freely.
+// The generation is NOT reset — it must stay monotonic across clears so a
+// stale in-flight ack can never match a future Stop.
 export function clearStopRequest(): void {
   stopRequestedAt = null;
   stopAckAt = null;
+  stopConversationId = null;
 }
 
 // Main-side bridge-state subscribers (e.g. the command poller). Distinct from
@@ -235,6 +276,8 @@ export function __resetBridgeForTest(): void {
   conversationId = null;
   stopRequestedAt = null;
   stopAckAt = null;
+  stopConversationId = null;
+  stopGeneration = 0;
 }
 
 async function defaultListTargets(base: string): Promise<CdpTarget[]> {
@@ -425,8 +468,7 @@ export async function attach(
   revoked = false;
   // Belt-and-braces: a fresh approval starts a clean session, so any stale
   // Stop latch is meaningless (resume itself is server-side, on a new turn).
-  stopRequestedAt = null;
-  stopAckAt = null;
+  clearStopRequest();
   // New approval supersedes any in-flight approve() awaiting connect.
   approvalGeneration += 1;
   pendingApproval = { targetId, cancel: () => {} };
@@ -822,8 +864,7 @@ export function disposeAllBridges(): void {
   approvalGeneration += 1;
   bridgeState = 'disconnected';
   conversationId = null;
-  stopRequestedAt = null;
-  stopAckAt = null;
+  clearStopRequest();
   // Tear down the Chrome WE launched (app quit / full drain). If Chrome was
   // already running on the port when we attached, managedChrome is null and we
   // leave the user's own Chrome alone.
@@ -856,8 +897,8 @@ export function registerBrowserBridgeHandlers(getWindow: GetWindow): void {
     setConversationId(id);
     return { ok: true };
   });
-  ipcMain.handle(IPC.BROWSER_STOP, () => {
-    requestStop();
+  ipcMain.handle(IPC.BROWSER_STOP, (_e: unknown, targetConversationId?: string | null) => {
+    requestStop(targetConversationId);
     return { ok: true };
   });
   ipcMain.handle(IPC.BROWSER_INSPECT, () => inspect());
