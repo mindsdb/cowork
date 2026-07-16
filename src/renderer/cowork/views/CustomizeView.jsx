@@ -645,7 +645,7 @@ function ConnectionDetailPanel({ connection, onClose, onDisconnect, onReconnect 
               fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5,
             }}>
               <strong style={{ display: 'block', marginBottom: 4 }}>Reconnection required</strong>
-              The refresh token for this connection has expired. Reconnect to restore access, or remove the connection.
+              Access for this connection has expired or was revoked. Reconnect to restore access, or remove the connection.
             </div>
           )}
           {spec && (

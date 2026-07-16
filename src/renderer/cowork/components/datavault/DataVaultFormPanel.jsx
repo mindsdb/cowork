@@ -26,24 +26,18 @@ import { saveConnector, fetchDatasources, startConnectorOAuth, pollConnectorOAut
 import { host } from '../../../platform/host';
 import { trackDataSourceConnected } from '../../lib/analytics';
 
-const ENGINE_TO_OAUTH_SERVICE = {
-  google_drive: 'google-drive',
-  google_calendar: 'google-calendar',
-  gmail: 'gmail',
-  google_ads: 'google-ads',
-  google_analytics_4: 'google-analytics',
-};
-const BROWSER_OAUTH_TITLE = {
-  google_drive: 'Google Drive connected',
-  google_calendar: 'Google Calendar connected',
-  gmail: 'Gmail connected',
-  google_ads: 'Google Ads connected',
-  google_analytics_4: 'Google Analytics connected',
-};
 import { submitDataVaultForm } from '../../api';
 
 const BROWSER_OAUTH_POLL_MS    = 3000;
 const BROWSER_OAUTH_TIMEOUT_MS = 2 * 60 * 1000;
+
+// The web-fallback OAuth routes' "service" slug and the "X connected"
+// success title both come from the connector's own spec (oauth.service_id,
+// label) rather than a hardcoded per-engine map, so any OAuth-builtin
+// connector works here without a code change.
+function getBrowserOAuthMethod(spec) {
+  return (Array.isArray(spec?.methods) ? spec.methods.find((m) => m.id === 'browser_oauth_builtin') : null) || null;
+}
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -169,7 +163,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
           patchForm(conversationId, {
             form_id: formId,
             _is_probing: false,
-            form_error: outcome.error || 'Google sign-in failed. Please try again.',
+            form_error: outcome.error || 'Sign-in failed. Please try again.',
             _is_success: false,
           });
         }
@@ -230,7 +224,8 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
     // required fields (e.g. developer token for Google Ads).
     if (authMethod === 'browser_oauth_builtin' && kind === 'primary') {
       const engine = spec.engine || spec._connector_id || 'google_drive';
-      const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
+      const providerLabel = spec.label || 'Provider';
+      const successTitle = `${providerLabel} connected`;
       setBusy(true);
       setError('');
 
@@ -240,7 +235,7 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
         patchForm(conversationId, {
           form_id: spec.form_id,
           _is_probing: true,
-          status_text: 'Waiting for Google sign-in…',
+          status_text: `Waiting for ${providerLabel} sign-in…`,
           form_error: null,
         });
         try {
@@ -265,16 +260,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
       }
 
       // Web fallback — server-side redirect flow.
-      const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+      const serviceId = getBrowserOAuthMethod(spec)?.oauth?.service_id;
       if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
       try {
         const result = await startConnectorOAuth(serviceId, { extraFields: values || {} });
-        if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+        if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
         window.open(result.authUrl, '_blank');
-        patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
         startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
       } catch (e) {
-        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'Could not start Google sign-in.' });
+        patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || `Could not start ${providerLabel} sign-in.` });
         setBusy(false);
       }
       return;
@@ -852,12 +847,13 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 if (method?.fields?.length) return;
                 // No fields — auto-start immediately on method selection.
                 const engine = spec.engine || spec._connector_id || 'google_drive';
-                const successTitle = BROWSER_OAUTH_TITLE[engine] || 'Connected';
+                const providerLabel = spec.label || 'Provider';
+                const successTitle = `${providerLabel} connected`;
                 setBusy(true);
                 setError('');
 
                 if (host.isElectron) {
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
                   try {
                     const result = await host.oauthConnect({ engine, name: '' });
                     if (!result || result.ok === false) throw new Error(result?.reason || 'OAuth flow failed.');
@@ -873,16 +869,16 @@ export function DataVaultFormPanel({ conversationId, onContinue, onSubmit, onNav
                 }
 
                 // Web fallback
-                const serviceId = ENGINE_TO_OAUTH_SERVICE[engine];
+                const serviceId = method?.oauth?.service_id;
                 if (!serviceId) { setError(`No OAuth configuration for "${engine}".`); setBusy(false); return; }
                 try {
                   const result = await startConnectorOAuth(serviceId);
-                  if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+                  if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${providerLabel} sign-in. Is the server running?`);
                   window.open(result.authUrl, '_blank');
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: 'Waiting for Google sign-in…', form_error: null });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: true, status_text: `Waiting for ${providerLabel} sign-in…`, form_error: null });
                   startBrowserOAuthPoll(result.state, successTitle, spec.form_id);
                 } catch (e) {
-                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || 'Could not start Google sign-in.' });
+                  patchForm(conversationId, { form_id: spec.form_id, _is_probing: false, form_error: e?.message || `Could not start ${providerLabel} sign-in.` });
                   setBusy(false);
                 }
               }}

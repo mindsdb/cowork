@@ -513,37 +513,41 @@ function ConnectorsPage({
   onPageChange,
   onOpenPlugins,
   onOpenDirectory,
-  driveConnections,
+  selectedConnections,
   integration,
-  onStartGoogleDriveAuth,
+  onStartAuth,
   busyAction,
   status,
   driveAuthPending,
 }) {
-  const driveSelected = selectedConnector?.id === 'google_drive';
-  const googleOauth = integration?.oauth || {};
-  const connectMessage = driveSelected
-    ? (driveConnections.length
-        ? 'Ready to use Google Drive.'
-        : 'You are not connected to Google Drive yet.')
-    : `You are not connected to ${selectedConnector?.name} yet.`;
-  const connectLabel = driveConnections.length ? 'Connect another Google Drive' : 'Connect Google Drive';
-  const driveConnectionSummary = driveConnections
+  // Present in the /catalogue response => this connector has a
+  // browser_oauth_builtin method and can be connected from here, generic
+  // over any such connector (not just Google Drive).
+  const oauthConnectable = !!integration;
+  const connectorOauth = integration?.oauth || {};
+  const connectorName = selectedConnector?.name || 'connector';
+  const connectMessage = oauthConnectable
+    ? (selectedConnections.length
+        ? `Ready to use ${connectorName}.`
+        : `You are not connected to ${connectorName} yet.`)
+    : `You are not connected to ${connectorName} yet.`;
+  const connectLabel = selectedConnections.length ? `Connect another ${connectorName}` : `Connect ${connectorName}`;
+  const connectionSummary = selectedConnections
     .map((connection) => connection.label || connection.subtitle || connection.name)
     .filter(Boolean)
     .slice(0, 2)
     .join(', ');
-  const driveHasMoreConnections = driveConnections.length > 2;
+  const hasMoreConnections = selectedConnections.length > 2;
   const detailNotes = [];
 
-  if (driveSelected) {
+  if (oauthConnectable) {
     if (status) {
       detailNotes.push(status);
-    } else if (googleOauth.configError) {
-      detailNotes.push(googleOauth.configError);
-    } else if (driveConnectionSummary) {
+    } else if (connectorOauth.configError) {
+      detailNotes.push(connectorOauth.configError);
+    } else if (connectionSummary) {
       detailNotes.push(
-        `Connected ${driveConnections.length === 1 ? 'account' : 'accounts'}: ${driveConnectionSummary}${driveHasMoreConnections ? ', and more.' : '.'}`,
+        `Connected ${selectedConnections.length === 1 ? 'account' : 'accounts'}: ${connectionSummary}${hasMoreConnections ? ', and more.' : '.'}`,
       );
     }
   } else if (selectedConnector?.status !== 'included') {
@@ -627,20 +631,20 @@ function ConnectorsPage({
             aria-label={
               selectedConnector?.status === 'included'
                 ? `${selectedConnector.name} available`
-                : driveSelected
-                ? 'Connect Google Drive'
+                : oauthConnectable
+                ? `Connect ${connectorName}`
                 : `Connect ${selectedConnector?.name || 'connector'}`
             }
-            onClick={() => driveSelected && onStartGoogleDriveAuth()}
-            disabled={!driveSelected && selectedConnector?.status !== 'included'}
+            onClick={() => oauthConnectable && onStartAuth()}
+            disabled={!oauthConnectable && selectedConnector?.status !== 'included'}
           >
             {selectedConnector?.status === 'included'
               ? 'Available'
-              : driveSelected
+              : oauthConnectable
               ? (busyAction === 'connect'
-                  ? 'Opening Google sign-in...'
+                  ? `Opening ${connectorName} sign-in...`
                   : driveAuthPending
-                  ? 'Waiting for Google sign-in...'
+                  ? `Waiting for ${connectorName} sign-in...`
                   : connectLabel)
               : selectedConnector?.action || 'Connect'}
           </button>
@@ -889,6 +893,9 @@ export default function ConnectWorkflowView({ onClose }) {
   const refresh = async () => {
     const nextCatalog = await fetchIntegrations();
     setCatalog(nextCatalog);
+    if (nextCatalog?.error) {
+      setDriveStatus(nextCatalog.error);
+    }
     return { nextCatalog };
   };
 
@@ -898,29 +905,38 @@ export default function ConnectWorkflowView({ onClose }) {
     });
   }, []);
 
+  // Selected connector's catalogue entry — generic lookup, works for any
+  // OAuth-builtin connector (any id present in the /catalogue response),
+  // not just Google Drive.
+  const selectedIntegration = catalog?.items?.find((item) => item.id === selectedConnectorId) || null;
+  const selectedConnections = selectedIntegration?.connections || [];
+  const selectedConnected = (selectedIntegration?.status === 'connected') || selectedConnections.length > 0;
+
+  // Kept for the Drive Picker section elsewhere in this view, which is
+  // intentionally Google-Drive-specific (drive.file per-file grants).
   const googleDriveIntegration = catalog?.items?.find((item) => item.id === 'google_drive') || null;
   const driveConnections = googleDriveIntegration?.connections || [];
-  const googleDriveConnected = (googleDriveIntegration?.status === 'connected') || driveConnections.length > 0;
 
-  const connectorLibrary = useMemo(() => ({
-    ...CONNECTOR_LIBRARY,
-    google_drive: {
-      ...CONNECTOR_LIBRARY.google_drive,
-      action: googleDriveConnected ? 'Manage' : 'Connect',
-      chip: googleDriveConnected ? 'Connected' : undefined,
-      status: googleDriveConnected ? 'connected' : 'planned',
-    },
-    github: {
-      ...CONNECTOR_LIBRARY.github,
-      chip: undefined,
-      status: 'planned',
-    },
-    miro: {
-      ...CONNECTOR_LIBRARY.miro,
-      chip: undefined,
-      status: 'planned',
-    },
-  }), [googleDriveConnected]);
+  const connectorLibrary = useMemo(() => {
+    const lib = { ...CONNECTOR_LIBRARY };
+    // Any catalogue entry with a matching library card gets its
+    // connect/manage state derived from real connection data — this is
+    // how a new OAuth-builtin connector (Linear, etc.) becomes clickable
+    // here with no further code change once it's in the catalogue.
+    for (const item of catalog?.items || []) {
+      if (!lib[item.id]) continue;
+      const connected = item.status === 'connected' || (item.connections || []).length > 0;
+      lib[item.id] = {
+        ...lib[item.id],
+        action: connected ? 'Manage' : 'Connect',
+        chip: connected ? 'Connected' : undefined,
+        status: connected ? 'connected' : 'planned',
+      };
+    }
+    lib.github = { ...CONNECTOR_LIBRARY.github, chip: undefined, status: 'planned' };
+    lib.miro = { ...CONNECTOR_LIBRARY.miro, chip: undefined, status: 'planned' };
+    return lib;
+  }, [catalog]);
 
   const connectorGroups = useMemo(() => {
     const connectedExternalIds = EXTERNAL_CONNECTOR_IDS.filter((id) => connectorLibrary[id]?.status === 'connected');
@@ -963,20 +979,36 @@ export default function ConnectWorkflowView({ onClose }) {
     setDriveStatus('');
   };
 
-  const launchGoogleDriveAuth = async () => {
+  // Which connector a pending auth attempt belongs to — the poll effect
+  // below needs this since it's no longer always Google Drive.
+  const [pendingEngine, setPendingEngine] = useState('');
+  const [pendingLabel, setPendingLabel] = useState('');
+
+  // Launches the web-fallback OAuth flow for whichever connector is
+  // currently selected — generic over any catalogue entry with a
+  // `serviceId`, not just Google Drive.
+  const launchConnectorAuth = async () => {
+    const serviceId = selectedIntegration?.oauth?.serviceId;
+    const label = selectedConnector?.name || 'connector';
+    if (!serviceId) {
+      setDriveStatus(`No OAuth configuration for "${label}".`);
+      return;
+    }
     try {
       setBusyAction('connect');
       setDriveStatus('');
-      const result = await startConnectorOAuth('google-drive');
-      if (!result?.authUrl || !result?.state) throw new Error('Could not start Google sign-in. Is the server running?');
+      const result = await startConnectorOAuth(serviceId);
+      if (!result?.authUrl || !result?.state) throw new Error(`Could not start ${label} sign-in. Is the server running?`);
+      setPendingEngine(selectedConnectorId);
+      setPendingLabel(label);
       setDriveAuthState(result.state);
       setDriveAuthStartedAt(result.startedAt || new Date().toISOString());
       setDriveAuthPending(true);
-      setDriveStatus('Google sign-in opened in your browser. Finish there, then return here.');
+      setDriveStatus(`${label} sign-in opened in your browser. Finish there, then return here.`);
       window.open(result.authUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
       setDriveAuthPending(false);
-      setDriveStatus(error.message || 'Could not start Google Drive sign-in.');
+      setDriveStatus(error.message || `Could not start ${label} sign-in.`);
     } finally {
       setBusyAction('');
     }
@@ -987,6 +1019,8 @@ export default function ConnectWorkflowView({ onClose }) {
     let cancelled = false;
     let timerId = null;
     const deadline = Date.now() + 2 * 60 * 1000;
+    const label = pendingLabel || 'Connector';
+    const engine = pendingEngine;
 
     const poll = async () => {
       try {
@@ -994,11 +1028,11 @@ export default function ConnectWorkflowView({ onClose }) {
         if (result?.status === 'success') {
           if (!cancelled) {
             setDriveAuthPending(false);
-            setDriveStatus('Google Drive connected.');
+            setDriveStatus(`${label} connected.`);
             // OAuth-proxy connector connected — emit the same data_source_connected
             // ("Connected to Data") signal the vault-save path already fires
             // (ENG-376 / ENG-385).
-            trackDataSourceConnected('google_drive');
+            if (engine) trackDataSourceConnected(engine);
             refresh().catch(() => {});
           }
           return;
@@ -1006,7 +1040,7 @@ export default function ConnectWorkflowView({ onClose }) {
         if (result?.status === 'error') {
           if (!cancelled) {
             setDriveAuthPending(false);
-            setDriveStatus(result.error || 'Google Drive connection failed.');
+            setDriveStatus(result.error || `${label} connection failed.`);
           }
           return;
         }
@@ -1016,7 +1050,7 @@ export default function ConnectWorkflowView({ onClose }) {
       if (cancelled) return;
       if (Date.now() >= deadline) {
         setDriveAuthPending(false);
-        setDriveStatus('Still waiting for Google Drive sign-in. Finish the browser step, then retry if needed.');
+        setDriveStatus(`Still waiting for ${label} sign-in. Finish the browser step, then retry if needed.`);
         return;
       }
       timerId = window.setTimeout(poll, 3000);
@@ -1054,9 +1088,9 @@ export default function ConnectWorkflowView({ onClose }) {
             onPageChange={setPage}
             onOpenPlugins={() => openDirectory(DIRECTORY_MODE_PLUGINS)}
             onOpenDirectory={() => openDirectory(DIRECTORY_MODE_CONNECTORS)}
-            driveConnections={driveConnections}
-            integration={googleDriveIntegration}
-            onStartGoogleDriveAuth={launchGoogleDriveAuth}
+            selectedConnections={selectedConnections}
+            integration={selectedIntegration}
+            onStartAuth={launchConnectorAuth}
             busyAction={busyAction}
             status={driveStatus}
             driveAuthPending={driveAuthPending}
