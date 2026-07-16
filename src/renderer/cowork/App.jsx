@@ -1273,6 +1273,14 @@ function AppCore() {
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
+  // Route-aware gravity-field intensity: dense work surfaces quiet the
+  // light-mode field (gf-quiet + gravity-field.css) so it never competes
+  // with content; the home stage keeps the full ambient motion.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('gf-quiet', route !== 'home');
+    return () => document.body.classList.remove('gf-quiet');
+  }, [route]);
   // Effective collapse state: only honor the user's preference while
   // the route allows it (chat task). Everywhere else the sidebar
   // stays expanded — gives the user permanent access to the nav.
