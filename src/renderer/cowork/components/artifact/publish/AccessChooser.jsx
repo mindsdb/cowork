@@ -19,7 +19,7 @@ import Ico from '../../Icons';
 import { Checkbox } from '../../ui';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const FONT_MONO = "var(--font-mono)";
 
 // Static style objects — hoisted to module scope so they aren't re-created on
 // every render (the values never depend on props).

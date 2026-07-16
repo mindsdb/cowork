@@ -17,7 +17,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { CardRow } from '../components/ui';
+import { CardRow, EmptyState } from '../components/ui';
 import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
@@ -555,7 +555,13 @@ export default function TasksView({
       )}
 
       {tasks.length === 0 ? (
-        <EmptyState />
+        <EmptyState
+          bordered
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>}
+          title="No tasks yet"
+          description="Start a conversation from the home screen — every chat shows up here."
+          style={{ margin: '40px 28px' }}
+        />
       ) : (
         <div style={{ padding: '8px 28px 28px' }}>
           <ListHeaderRow />
@@ -601,27 +607,6 @@ export default function TasksView({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div style={{
-      margin: '40px 28px', padding: '40px 28px',
-      borderRadius: 14,
-      border: '1px dashed var(--line-2)',
-      background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
-      gap: 10,
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>
-      <div className="s-h3" style={{ color: 'var(--ink)' }}>
-        No tasks yet
-      </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)', maxWidth: 320 }}>
-        Start a conversation from the home screen — every chat shows up here.
-      </div>
     </div>
   );
 }

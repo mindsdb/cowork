@@ -29,7 +29,7 @@ import {
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const FONT_MONO = "var(--font-mono)";
 
 const ACCESS_LABELS = {
   public: { icon: Ico.globe, title: 'Public', desc: 'Anyone on the internet with the URL' },
