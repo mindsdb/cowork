@@ -35,7 +35,7 @@ export const THEME_PRESETS: ThemePreset[] = [
     desc: 'The standard look on deep-night surfaces with a neon cyan accent.',
     skin: 'normal', theme: 'dark',
     color: '#c4b5fd',
-    p: { bg: '#080d18', side: '#0E1626', ink: '#F2F6FF', muted: '#8A97AE', accent: '#22D3EE', line: '#2A3957' },
+    p: { bg: '#080d18', side: '#0E1626', ink: '#F2F6FF', muted: '#8A97AE', accent: '#06B6D4', line: '#2A3957' },
     scanlines: false,
   },
   {

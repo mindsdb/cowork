@@ -244,7 +244,7 @@ body, body[data-theme="light"] {
 
 /* ─── Dark mode ──────────────────────────────────────────────────────────
    Tokens follow type-and-buttons-dark.html — deep-night surfaces, neon
-   cyan accent (#22D3EE), readable cool whites, glow on emphasis only. */
+   cyan accent (#06B6D4), readable cool whites, glow on emphasis only. */
 body[data-theme="dark"] {
   /* Dark counterpart of the light block's color-scheme — keeps the
      Windows-drawn <select> popup on dark system chrome so options stay
@@ -275,11 +275,11 @@ body[data-theme="dark"] {
   --ink-4:        #5C6B85;
   --ink-5:        #3A465E;
 
-  --accent:       rgb(34, 211, 238);
-  --accent-2:     rgb(8, 178, 207);
-  --accent-3:     rgb(6, 145, 170);
-  --accent-bg:    rgba(34, 211, 238, 0.10);
-  --accent-glow:  rgba(34, 211, 238, 0.45);
+  --accent:       rgb(6, 182, 212);
+  --accent-2:     rgb(8, 145, 178);
+  --accent-3:     rgb(14, 116, 144);
+  --accent-bg:    rgba(6, 182, 212, 0.10);
+  --accent-glow:  rgba(6, 182, 212, 0.45);
   /* Solid CTA fill; color-mix so custom-skin accent re-tints propagate. */
   --accent-solid:     var(--accent);
   --accent-solid-ink: var(--bg);
@@ -313,7 +313,7 @@ body[data-theme="dark"] {
   --sh-3:         0 6px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
   --sh-popup:     0 8px 24px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.12);
   --sh-modal:     0 24px 60px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.12);
-  --ring:         0 0 0 1px rgba(34, 211, 238, 0.28);
+  --ring:         0 0 0 1px rgba(6, 182, 212, 0.28);
 
   /* Frost — remap to dark ink tones so sidebar text, nav items,
      composer placeholder, and section labels stay readable. */
@@ -344,7 +344,7 @@ body[data-theme="dark"] {
   --accent-strong:  var(--accent-2);
   --glow:           0 0 0 1px var(--accent),
                     0 0 18px var(--accent-glow),
-                    0 4px 24px rgba(34, 211, 238, 0.10);
+                    0 4px 24px rgba(6, 182, 212, 0.10);
   --shadow-sm:      var(--sh-1);
 
   /* Light-only neutrals in :root — list rows, icon buttons, composer tools,
@@ -2771,7 +2771,7 @@ body[data-theme="dark"] .app-sidebar::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% -10%, rgba(34,211,238,0.10), transparent 50%);
+  background: radial-gradient(circle at 50% -10%, rgba(6,182,212,0.10), transparent 50%);
   pointer-events: none;
   z-index: 0;
 }
@@ -3015,8 +3015,8 @@ body[data-theme="dark"] .status-pill.is-on .status-text__live {
 body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
   background: var(--accent);
   box-shadow:
-    0 0 0 3px rgba(34, 211, 238, 0.18),
-    0 0 8px rgba(34, 211, 238, 0.85),
+    0 0 0 3px rgba(6, 182, 212, 0.18),
+    0 0 8px rgba(6, 182, 212, 0.85),
     0 0 18px var(--accent-glow);
 }
 .status-dot.offline {
@@ -3101,7 +3101,7 @@ body[data-theme="dark"] .status-pill.is-busy .status-text__live {
 body[data-theme="dark"] .chrome-btn--small:hover {
   color: var(--accent);
   background: transparent;
-  box-shadow: 0 0 16px rgba(34,211,238,0.25);
+  box-shadow: 0 0 16px rgba(6,182,212,0.25);
 }
 .chrome-btn--small.is-on {
   color: var(--accent, #5d9287);
@@ -3110,7 +3110,7 @@ body[data-theme="dark"] .chrome-btn--small:hover {
 body[data-theme="dark"] .chrome-btn--small.is-on {
   color: var(--accent);
   background: transparent;
-  box-shadow: 0 0 14px rgba(34,211,238,0.30);
+  box-shadow: 0 0 14px rgba(6,182,212,0.30);
 }
 
 /* Server (backend) toggle in the sidebar footer. Neutral by default in
@@ -3164,7 +3164,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .orbit-morph { display: inline-block; line-height: 0; }
 body[data-theme="dark"] .orbit-morph[data-state="thinking"],
 body[data-theme="dark"] .orbit-morph[data-state="done"] {
-  filter: drop-shadow(0 0 calc(var(--om-size, 18px) * 0.18) rgba(34, 211, 238, 0.55));
+  filter: drop-shadow(0 0 calc(var(--om-size, 18px) * 0.18) rgba(6, 182, 212, 0.55));
 }
 .orbit-morph[data-state="idle"] svg { opacity: 0.7; }
 
