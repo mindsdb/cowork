@@ -608,7 +608,7 @@ a[href],
 .section-label {
   font-size: var(--text-xs); font-weight: 600;
   color: var(--frost-600); letter-spacing: 0.02em;
-  padding: 12px 12px 6px;
+  padding: 10px 12px 5px;
 }
 
 .icon-btn {
@@ -2798,7 +2798,7 @@ body[data-theme="dark"] .anton-sidebar__wordmark {
 .app-sidebar > * { position: relative; z-index: 1; }
 
 /* New task CTA — outlined neon in dark, accent-bordered in light */
-.anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
+.anton-sidebar__cta-wrap { padding: 6px 10px 10px; }
 /* New task — tinted accent (the .btn.tinted register): an accent wash
    with accent ink. Louder than a neutral surface — it owns the accent
    identity and can't be misread as an input — but without the shout of
@@ -2854,11 +2854,11 @@ body[data-theme="dark"] .btn-new-task { color: var(--accent); }
   display: flex;
   align-items: center;
   gap: 10px;
-  /* Uniform, roomier rows (ENG-640): a fixed min-height keeps every row
-     the same height whether or not it carries a count badge (the badge
-     was stretching auto-height rows unevenly), and gives the rail a
-     considered rhythm. */
-  min-height: 34px;
+  /* Uniform rows (ENG-640): a fixed min-height keeps every row the
+     same height whether or not it carries a count badge (the badge was
+     stretching auto-height rows unevenly). 31px after the density pass —
+     34 read as too generous for a 13px label. */
+  min-height: 31px;
   padding: 0 10px;
   border-radius: var(--r-lg);
   color: var(--ink-2);
@@ -2945,8 +2945,8 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   justify-content: space-between;
   gap: 8px;
   /* Match .nav-item exactly so nav rows and task/pinned rows read as one
-     consistent list (they were 32 vs 34 — a 2px mismatch that looked off). */
-  min-height: 34px;
+     consistent list (a 2px mismatch here looked off before). */
+  min-height: 31px;
   padding: 0 10px;
   border-radius: var(--r-8);
   font-family: var(--font-sans);
