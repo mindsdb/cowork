@@ -498,7 +498,7 @@ export default function Sidebar({
             onClick={onNewTask}
             title={`New task  (${shortcut('N')})`}
           >
-            <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.plus(14)}</span>
+            <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
             <span className="btn-new-task__label">New task</span>
             <Kbd>{shortcut('N')}</Kbd>
           </button>

@@ -2791,9 +2791,14 @@ body[data-theme="dark"] .app-sidebar::before {
   gap: 10px;
   height: 36px;
   padding: 0 12px;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--line-2);
+  /* Solid accent — the app's global create action joins the solid
+     family (page CTA, armed send button). A filled bar can't be
+     misread as an input, and it sidesteps the white-box-on-warm-gray
+     mismatch the neutral version had. Tokens keep both themes and
+     custom-skin accents correct. */
+  background: var(--accent-solid);
+  color: var(--accent-solid-ink);
+  border: 1px solid var(--accent-solid);
   border-radius: var(--r);
   box-shadow: var(--sh-1);
   font-family: var(--font-sans);
@@ -2806,31 +2811,27 @@ body[data-theme="dark"] .app-sidebar::before {
               box-shadow .12s ease, transform .04s ease;
 }
 .btn-new-task:hover {
-  background: var(--surface-2);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  /* Mix toward --ink: darkens in light mode, brightens in dark. */
+  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+  border-color: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
 }
-.btn-new-task:active { background: var(--surface-3); transform: translateY(0.5px); }
+.btn-new-task:active {
+  background: color-mix(in srgb, var(--accent-solid) 80%, var(--ink));
+  transform: translateY(0.5px);
+}
 .btn-new-task__label { flex: 1; font-weight: 600; }
 .btn-new-task .kbd {
   font-family: var(--font-mono);
   font-size: 11px;
   color: inherit;
-  background: rgba(15, 16, 17, 0.06);
+  /* Ink-tinted wash reads on both themes: white-on-teal (light) and
+     navy-on-cyan (dark) both get a subtle contrast chip. */
+  background: color-mix(in srgb, var(--accent-solid-ink) 16%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
   font-weight: 500;
-  opacity: 0.85;
+  opacity: 0.9;
 }
-/* Dark: --surface ≈ the sidebar base, so raise the fill one step and
-   flip the kbd chip to a light wash so it stays legible. */
-body[data-theme="dark"] .btn-new-task { background: var(--surface-3); }
-body[data-theme="dark"] .btn-new-task:hover {
-  background: color-mix(in srgb, var(--ink) 8%, var(--surface-3));
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
-}
-body[data-theme="dark"] .btn-new-task .kbd { background: rgba(255, 255, 255, 0.10); }
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
