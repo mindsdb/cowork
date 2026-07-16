@@ -19,7 +19,7 @@ import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefres
 import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
-import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion } from './ui-updater';
+import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { coworkHome, coworkEnvPath, coworkStatePath, migrateLegacyHome, readEnvFile } from './cowork-home';
 import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
@@ -325,6 +325,39 @@ function focusMainWindow() {
   } catch {}
 }
 
+// One-shot self-heal for the boot OTA load: if the activated bundle's main
+// frame fails to load (missing/corrupt assets), roll it back and fall to the
+// app-bundled renderer. Uses `.on()` (not `.once()`) so benign subframe /
+// ERR_ABORTED events don't consume the listener before a real main-frame
+// result; disarms on the first relevant main-frame outcome or a timeout.
+function armOtaBootSelfHeal(win: BrowserWindow) {
+  let done = false;
+  const disarm = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    win.webContents.removeListener('did-finish-load', onOk);
+    win.webContents.removeListener('did-fail-load', onFail);
+  };
+  const recover = (why: string) => {
+    disarm();
+    console.error(`[main] OTA renderer ${why} at boot — rolling back to bundled`);
+    rollbackUI();
+    if (!win.isDestroyed()) win.loadFile(getBundledPath());
+  };
+  const onOk = () => disarm();
+  const onFail = (_e: unknown, code: number, _desc: string, _url: string, isMainFrame: boolean) => {
+    if (!isMainFrame || code === -3) return; // subframe / benign abort — stay armed
+    recover('failed to load');
+  };
+  // A bundle that hangs during parse fires neither event; treat the timeout as a
+  // failure and roll back (same 15s the post-swap health check uses), rather
+  // than leaving the user stuck on a hung renderer.
+  const timer = setTimeout(() => { if (!done) recover('did not load within timeout'); }, 15000);
+  win.webContents.on('did-finish-load', onOk);
+  win.webContents.on('did-fail-load', onFail);
+}
+
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
   const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
@@ -405,6 +438,10 @@ function createWindow() {
   } else {
     const rendererPath = getRendererPath();
     console.log(`[main] loading renderer from ${rendererPath}`);
+    // Boot self-heal: arm BEFORE the load (so the result can't be missed) when
+    // serving an activated OTA bundle. A bad hot-update rolls back to the
+    // app-bundled renderer instead of re-loading the broken bundle every launch.
+    if (isServingOta()) armOtaBootSelfHeal(mainWindow);
     mainWindow.loadFile(rendererPath);
   }
 
@@ -1464,6 +1501,9 @@ app.whenReady().then(async () => {
     } else {
       console.error(`[server] start failed: ${result.reason}`);
     }
+    // A constrained OTA cache that booted bundled (fail-closed) is re-verified
+    // and, if compatible, swapped in by the updater's boot check after the
+    // server-update pass — see settleConstrainedCache in updater.ts.
 
     // Wire the update checker regardless of whether the server booted. A
     // server that can't start is the case that MOST needs an update — a newer
