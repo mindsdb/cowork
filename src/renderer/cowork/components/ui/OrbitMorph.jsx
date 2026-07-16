@@ -15,7 +15,7 @@ const NS = 'http://www.w3.org/2000/svg';
 
 const PALETTE = {
   light: { faded: '#6B6F73', accent: '#1F9CB0' },
-  dark:  { faded: '#8A97AE', accent: 'rgb(6, 182, 212)' },
+  dark:  { faded: '#8A97AE', accent: 'rgb(34, 211, 238)' },
 };
 
 const svgEl = (tag, attrs) => {
