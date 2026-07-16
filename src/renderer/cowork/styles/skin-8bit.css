@@ -126,7 +126,7 @@ body[data-skin="8bit"] ::-webkit-scrollbar-thumb {
 body[data-skin="8bit"] ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
 
 /* The floating corner toggles square off with the rest of the skin. */
-body[data-skin="8bit"] .floating-theme-toggle { border-radius: var(--r); }
+body[data-skin="8bit"] .arcade-theme-toggle { border-radius: var(--r); }
 
 /* ── 8-Bit DARK — CRT arcade (matches pages/arcade/arcade.css) ────────── */
 
