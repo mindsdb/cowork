@@ -16,6 +16,16 @@ export interface CustomTheme {
   radius: number;
   font: 'standard' | 'mono';
   scanlines: boolean;
+  /** Sidebar wordmark text, or null to show the default "MindsHub". */
+  navTitle: string | null;
+  /** Sidebar wordmark color (hex), or null to follow the theme's ink color. */
+  navTitleColor: string | null;
+  /** Sidebar logo image (data URI), or null for no logo (text-only wordmark). */
+  navLogo: string | null;
+  /** Show the floating bottom-right light/dark toggle button. */
+  showThemeToggle: boolean;
+  /** Show the floating bottom-right 8-bit style toggle button. */
+  show8bitToggle: boolean;
 }
 
 export const DEFAULT_CUSTOM_THEME: CustomTheme = {
@@ -24,6 +34,11 @@ export const DEFAULT_CUSTOM_THEME: CustomTheme = {
   radius: 6,
   font: 'standard',
   scanlines: false,
+  navTitle: null,
+  navTitleColor: null,
+  navLogo: null,
+  showThemeToggle: true,
+  show8bitToggle: true,
 };
 
 const STORAGE_KEY = 'anton.customTheme';
@@ -39,6 +54,11 @@ export function loadCustomTheme(): CustomTheme {
       radius: Number.isFinite(parsed.radius) ? Math.max(0, Math.min(16, parsed.radius)) : DEFAULT_CUSTOM_THEME.radius,
       font: parsed.font === 'mono' ? 'mono' : 'standard',
       scanlines: Boolean(parsed.scanlines),
+      navTitle: typeof parsed.navTitle === 'string' && parsed.navTitle.trim() ? parsed.navTitle : null,
+      navTitleColor: typeof parsed.navTitleColor === 'string' ? parsed.navTitleColor : null,
+      navLogo: typeof parsed.navLogo === 'string' && parsed.navLogo.trim() ? parsed.navLogo : null,
+      showThemeToggle: typeof parsed.showThemeToggle === 'boolean' ? parsed.showThemeToggle : true,
+      show8bitToggle: typeof parsed.show8bitToggle === 'boolean' ? parsed.show8bitToggle : true,
     };
   } catch {
     return { ...DEFAULT_CUSTOM_THEME };
@@ -145,4 +165,14 @@ export function applyCustomTheme(t: CustomTheme | null): void {
   }
 
   if (t.scanlines) body.classList.add('custom-scanlines');
+}
+
+/**
+ * Apply (or with null, clear) the sidebar wordmark color. Independent of
+ * `applyCustomTheme`/the active skin — the nav title works in every style,
+ * not just "Design your own".
+ */
+export function applyNavTitleColor(color: string | null): void {
+  if (color) document.body.style.setProperty('--nav-title-color', color);
+  else document.body.style.removeProperty('--nav-title-color');
 }

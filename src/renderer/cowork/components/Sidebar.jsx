@@ -209,6 +209,12 @@ export default function Sidebar({
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
   showCounters = true,
+  // Settings → Appearance → Sidebar title. Replaces the "MindsHub"
+  // wordmark; null/empty falls back to the default.
+  navTitle = null,
+  // Settings → Appearance → Sidebar logo. Data-URI image shown before
+  // the wordmark; null shows no logo (text-only, today's default).
+  navLogo = null,
 }) {
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
@@ -461,7 +467,15 @@ export default function Sidebar({
               userSelect: 'none',
             }}
           >·</span>
-          <div className="anton-sidebar__wordmark">MindsHub</div>
+          {navLogo && (
+            <img
+              src={navLogo}
+              alt=""
+              aria-hidden="true"
+              className="anton-sidebar__logo"
+            />
+          )}
+          <div className="anton-sidebar__wordmark">{navTitle || 'MindsHub'}</div>
         </div>
       </div>
 

@@ -30,7 +30,7 @@ import { setForm as setDataVaultForm, getForm as getDataVaultForm, clearForm as 
 import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host, getAccessToken } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
-import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
+import { loadCustomTheme, persistCustomTheme, applyCustomTheme, applyNavTitleColor } from '../lib/customTheme';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -1258,6 +1258,12 @@ function AppCore() {
     persistCustomTheme(customTheme);
     applyCustomTheme(skin === 'custom' ? customTheme : null);
   }, [skin, customTheme]);
+
+  // Sidebar title color — independent of the Custom-skin recipe above so
+  // renaming/recoloring the wordmark works no matter which style is active.
+  useEffect(() => {
+    applyNavTitleColor(customTheme.navTitleColor);
+  }, [customTheme.navTitleColor]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -3551,6 +3557,8 @@ function AppCore() {
           activeTaskId={route === 'task' ? activeTaskId : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
+          navTitle={customTheme.navTitle}
+          navLogo={customTheme.navLogo}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
@@ -3984,6 +3992,8 @@ function AppCore() {
               window.dispatchEvent(new CustomEvent('anton:open-new-project'));
             }, 60);
           }}
+          navTitle={customTheme.navTitle}
+          navLogo={customTheme.navLogo}
         >
           {mainEl}
         </MobileShell>
@@ -4065,28 +4075,32 @@ function AppCore() {
           floating buttons otherwise overlap the Save button there. */}
       {route !== 'settings' && (
         <>
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            aria-label="Toggle colour theme"
-            className="floating-theme-toggle"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-          </button>
+          {customTheme.showThemeToggle !== false && (
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              aria-label="Toggle colour theme"
+              className="floating-theme-toggle"
+              style={{ WebkitAppRegion: 'no-drag' }}
+            >
+              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+            </button>
+          )}
 
           {/* Style toggle — stacked above the theme toggle. Flips directly
               between 8-bit arcade and smooth (like the sun/moon theme
               toggle). The icon shows the destination style. */}
-          <button
-            onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
-            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
-            aria-label="Toggle 8-bit arcade style"
-            className="floating-theme-toggle floating-skin-toggle"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            {Ico.gamepad(15)}
-          </button>
+          {customTheme.show8bitToggle !== false && (
+            <button
+              onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
+              title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
+              aria-label="Toggle 8-bit arcade style"
+              className="floating-theme-toggle floating-skin-toggle"
+              style={{ WebkitAppRegion: 'no-drag' }}
+            >
+              {Ico.gamepad(15)}
+            </button>
+          )}
         </>
       )}
 

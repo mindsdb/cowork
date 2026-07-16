@@ -38,3 +38,35 @@ describe('Sidebar — Channels entry (ENG-720)', () => {
     expect(onNavigate).toHaveBeenCalledWith('channels');
   });
 });
+
+describe('Sidebar — nav title override', () => {
+  it('shows the default "MindsHub" wordmark when no navTitle is set', () => {
+    render(<Sidebar {...baseProps} />);
+    expect(screen.getByText('MindsHub')).toBeInTheDocument();
+  });
+
+  it('shows the custom navTitle in place of "MindsHub" when set', () => {
+    render(<Sidebar {...baseProps} navTitle="Acme Workspace" />);
+    expect(screen.getByText('Acme Workspace')).toBeInTheDocument();
+    expect(screen.queryByText('MindsHub')).toBeNull();
+  });
+
+  it('falls back to "MindsHub" when navTitle is an empty string', () => {
+    render(<Sidebar {...baseProps} navTitle="" />);
+    expect(screen.getByText('MindsHub')).toBeInTheDocument();
+  });
+});
+
+describe('Sidebar — logo override', () => {
+  it('renders no logo image by default', () => {
+    render(<Sidebar {...baseProps} />);
+    expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
+  });
+
+  it('renders the logo image when navLogo is set', () => {
+    render(<Sidebar {...baseProps} navLogo="data:image/png;base64,abc123" />);
+    const img = document.querySelector('.anton-sidebar__logo');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('data:image/png;base64,abc123');
+  });
+});
