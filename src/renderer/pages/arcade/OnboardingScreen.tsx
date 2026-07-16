@@ -559,10 +559,10 @@ export default function OnboardingScreen({
             <>
               <div style={{ fontSize: 11.5, lineHeight: 1.65, letterSpacing: '0.03em', color: 'var(--arc-muted)', textAlign: 'center' }}>
                 {skippedMinds
-                  ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to publish to the web).</>
+                  ? <>Pick an LLM provider to run on. You can connect MindsHub later in Settings → Providers (needed to share to the web).</>
                   : mindsNoCredits
                     ? <>Your MindsHub account has no LLM credits yet. Top up to use managed models — or connect your own provider below.</>
-                    : <>Your MindsHub key is valid and saved for publishing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
+                    : <>Your MindsHub key is valid and saved for sharing and connectors, but it has no LLM credits. Top up — or plug in your own provider below.</>}
               </div>
 
               <button
@@ -695,7 +695,7 @@ export default function OnboardingScreen({
           </div>
 
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {['Smart model routing', 'Secure data connectors', 'Publish/share dashboards'].map((b) => (
+            {['Smart model routing', 'Secure data connectors', 'Share dashboards'].map((b) => (
               <li key={b} style={{ fontSize: 11.5, letterSpacing: '0.05em', color: 'var(--arc-muted)', display: 'flex', gap: 9 }}>
                 <span style={{ color: 'var(--arc-green)', fontWeight: 700 }}>+</span> {b}
               </li>

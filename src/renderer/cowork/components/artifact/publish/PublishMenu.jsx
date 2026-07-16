@@ -4,7 +4,7 @@
 // A Base UI Popover anchored to the trigger, driving the full publish
 // state machine off `usePublish`:
 //
-//   not published → "Publish to the Web" (access chooser + Publish)
+//   not published → "Share to the Web" (access chooser + Share)
 //   publishing    → button shows a spinner
 //   published     → URL + current access + Unpublish + Update button, or an
 //                    "Up to date" status when there is nothing to publish
@@ -315,7 +315,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
         title={disabled ? (disabledReason || undefined) : undefined}
         style={triggerStyle}
       >
-        {isPublished ? (<>Published <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.chevDown(13)}</span></>) : 'Publish'}
+        {isPublished ? (<>Shared <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.chevDown(13)}</span></>) : 'Share'}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={8} style={{ zIndex: 90 }}>
@@ -325,10 +325,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             boxShadow: '0 16px 44px rgba(15,16,17,0.26)', overflow: 'hidden',
             fontFamily: FONT_BODY, outline: 'none',
           }}>
-            {/* NOT PUBLISHED — Publish to the Web */}
+            {/* NOT PUBLISHED — Share to the Web */}
             {!isPublished && (
               <>
-                <PanelHeader title="Publish to the Web" />
+                <PanelHeader title="Share to the Web" />
                 <div style={{ padding: SECTION_PAD }}>
                   <SectionLabel>Who can access your app</SectionLabel>
                   <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} />
@@ -337,8 +337,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
                   <FooterButton primary onClick={doPublish}
                     disabled={pub.busy || !isAccessDraftValid(draft)}
-                    busy={pub.phase === 'publishing'} busyLabel="Publishing">
-                    Publish
+                    busy={pub.phase === 'publishing'} busyLabel="Sharing">
+                    Share
                   </FooterButton>
                 </div>
               </>
@@ -347,7 +347,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             {/* PUBLISHED */}
             {isPublished && (
               <>
-                <PanelHeader title="Published" />
+                <PanelHeader title="Shared" />
 
                 <div style={{ padding: SECTION_PAD, borderBottom: '1px solid var(--line)' }}>
                   <SectionLabel>Website URL</SectionLabel>
@@ -430,8 +430,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
                   <FooterButton onClick={doUnpublish} disabled={pub.busy}
-                    busy={pub.phase === 'unpublishing'} busyLabel="Unpublishing…">
-                    Unpublish
+                    busy={pub.phase === 'unpublishing'} busyLabel="Stopping…">
+                    Stop sharing
                   </FooterButton>
 
                   {view === 'password' ? (

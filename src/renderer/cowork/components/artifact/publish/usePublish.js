@@ -28,8 +28,8 @@ import { trackArtifactPublished } from '../../../lib/analytics';
 // next step; everything else surfaces verbatim.
 function friendlyPublishError(e) {
   const msg = e?.message || String(e);
-  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to publish.';
-  return `Publish failed: ${msg}`;
+  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
+  return `Sharing failed: ${msg}`;
 }
 
 function modeFromArtifact(a) {
@@ -76,7 +76,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setError('');
     try {
       const r = await publishArtifact(targetPath, access);
-      if (!r?.url) throw new Error('Publish returned no URL.');
+      if (!r?.url) throw new Error('Sharing returned no URL.');
       // Server is authoritative (it degrades an empty restricted/password
       // selection back to public); fall back to the requested access.
       const m = r.accessMode || access?.mode || 'public';
@@ -139,7 +139,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, publishedUrl: '' });
       return true;
     } catch (e) {
-      setError(`Unpublish failed: ${e?.message || e}`);
+      setError(`Couldn't stop sharing: ${e?.message || e}`);
       return false;
     } finally {
       setPhase('idle');
