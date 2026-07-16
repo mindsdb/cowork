@@ -1067,12 +1067,14 @@ function AppCore() {
     const cid = currentStreamingConversationId();
     if (cid) { void browseControlStop(cid).catch(() => { /* best effort */ }); }
     // Local half of the Stop gate: the server gate above can race a command
-    // that was already handed out to the main-process poller; this flag lets
-    // the poller gate it pre-execution (cleared on the next tab approval).
+    // that was already handed out to the main-process poller; this latch lets
+    // the poller gate it pre-execution (cleared main-side once the server
+    // gate is confirmed). The cid pins WHICH conversation this Stop targeted,
+    // so main's self-ack can't mis-target a task the user switches to next.
     // Awaited (unlike the network call above): local IPC is fast and setting
-    // the flag BEFORE the stream teardown closes the scheduling window where
+    // the latch BEFORE the stream teardown closes the scheduling window where
     // a handed-out command could still slip through.
-    try { await host.browserControlStop?.(); } catch { /* main bridge may be down */ }
+    try { await host.browserControlStop?.(cid); } catch { /* main bridge may be down */ }
     try { trackBrowserTaskStopped(browserFunnelIds()); } catch { /* analytics never blocks */ }
     await handleStopStream();
   }, [handleStopStream, currentStreamingConversationId, browserFunnelIds]);

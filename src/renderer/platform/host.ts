@@ -717,10 +717,14 @@ export async function browserControlSetConversation(
 
 // Signal a user Stop to main LOCALLY (in addition to the server control gate)
 // so the poller gates a command that was handed out just before the Stop.
-// Cleared main-side on the next attach (re-approval = resume).
-export async function browserControlStop(): Promise<{ ok: boolean; reason?: string }> {
+// `conversationId` is the conversation the Stop TARGETED — main pins it in
+// the latch so its self-ack can never stop a conversation the user switched
+// to later. Main clears the latch once the server gate is confirmed.
+export async function browserControlStop(
+  conversationId?: string | null,
+): Promise<{ ok: boolean; reason?: string }> {
   if (isElectron && typeof bridge.browserControlStop === 'function') {
-    return bridge.browserControlStop();
+    return bridge.browserControlStop(conversationId ?? null);
   }
   return { ok: false, reason: WEB_UNAVAILABLE };
 }
