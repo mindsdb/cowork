@@ -204,6 +204,12 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   agentLabel,
+  // Light/dark theme + toggle handler — the sidebar footer hosts the
+  // theme switch (relocated from the old floating bottom-right button;
+  // see App.jsx). Defaults keep the button harmless if a caller (e.g. a
+  // test) doesn't wire it up.
+  theme = 'dark',
+  onToggleTheme,
   settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
@@ -490,7 +496,7 @@ export default function Sidebar({
             onClick={onNewTask}
             title={`New task  (${shortcut('N')})`}
           >
-            <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
+            <span style={{ display: 'inline-flex', color: 'var(--accent)' }}>{Ico.plus(14)}</span>
             <span className="btn-new-task__label">New task</span>
             <Kbd>{shortcut('N')}</Kbd>
           </button>
@@ -720,65 +726,78 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Footer — Electron-only. Web shell omits this entirely since the
-            FastAPI process IS the host (start/stop/diagnostics don't apply).
+        {/* Footer — always rendered so the theme toggle (relocated here
+            from the old floating bottom-right button) is reachable on
+            both Electron and the hosted web shell. The settings /
+            backend-status controls stay Electron-only: the FastAPI
+            process IS the host on web, so start/stop/diagnostics don't
+            apply and the web shell hides Settings entirely.
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
             Disconnected / busy: the status pill replaces the settings row so
             the problem is immediately visible. */}
-        {!host.isWeb && (
         <div className="anton-sidebar__footer">
-          {(!serverOnline || serverBusy) ? (
-            <>
+          {!host.isWeb && (
+            (!serverOnline || serverBusy) ? (
+              <>
+                <button
+                  type="button"
+                  className={
+                    'status-pill is-clickable' +
+                    (serverBusy ? ' is-busy' : '')
+                  }
+                  onClick={onShowServerHelp}
+                  title="Backend status — click for details"
+                  aria-label="Backend status — click for details"
+                  style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
+                >
+                  <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                  <span className="status-text">
+                    <span className="status-text__faded">backend ·</span>{' '}
+                    {serverBusy ? (
+                      <>
+                        <span className="status-text__live">{serverBusyKind}</span>{' '}
+                        <Spinner />
+                      </>
+                    ) : (
+                      <span className="status-text__faded">offline</span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                  onClick={() => onNavigate('settings:backend')}
+                  title="Settings"
+                  aria-label="Settings"
+                  style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                >
+                  {Ico.settings(13)}
+                </button>
+              </>
+            ) : (
               <button
-                type="button"
-                className={
-                  'status-pill is-clickable' +
-                  (serverBusy ? ' is-busy' : '')
-                }
-                onClick={onShowServerHelp}
-                title="Backend status — click for details"
-                aria-label="Backend status — click for details"
-                style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
-              >
-                <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
-                <span className="status-text">
-                  <span className="status-text__faded">backend ·</span>{' '}
-                  {serverBusy ? (
-                    <>
-                      <span className="status-text__live">{serverBusyKind}</span>{' '}
-                      <Spinner />
-                    </>
-                  ) : (
-                    <span className="status-text__faded">offline</span>
-                  )}
-                </span>
-              </button>
-              <button
-                className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings:backend')}
+                className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+                onClick={() => onNavigate('settings:agent')}
                 title="Settings"
                 aria-label="Settings"
-                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                style={{ WebkitAppRegion: 'no-drag', flex: 1, minWidth: 0 }}
               >
-                {Ico.settings(13)}
+                <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+                <span>Settings</span>
               </button>
-            </>
-          ) : (
-            <button
-              className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
-              onClick={() => onNavigate('settings:agent')}
-              title="Settings"
-              aria-label="Settings"
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
-              <span>Settings</span>
-            </button>
+            )
           )}
+          <button
+            className="chrome-btn--small"
+            onClick={onToggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
+          >
+            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+          </button>
         </div>
-        )}
 
         {/* Version is shown on the Settings page — no need to repeat here. */}
       </div>

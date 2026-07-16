@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
-import ThemeModal from './components/ThemeModal';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -1178,10 +1177,6 @@ function AppCore() {
   // The "design your own" recipe behind the `custom` skin — edited in
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
-
-  // Display modal (theme + 8-bit style), opened from the bottom-right
-  // "gamepad" corner button.
-  const [themeModalOpen, setThemeModalOpen] = useState(false);
 
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
@@ -3611,6 +3606,8 @@ function AppCore() {
           activeTaskId={route === 'task' ? activeTaskId : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
+          theme={theme}
+          onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
@@ -4119,45 +4116,6 @@ function AppCore() {
           setPendingDeleteProject(null);
           await performDeleteProject(p);
         }}
-      />
-
-      {/* Floating theme + display toggles (bottom-right). Hidden on the
-          Settings page — it has its own theme/style controls, and the
-          floating buttons otherwise overlap the Save button there. */}
-      {route !== 'settings' && (
-        <>
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            aria-label="Toggle colour theme"
-            className="floating-theme-toggle"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-          </button>
-
-          {/* Style toggle — stacked above the theme toggle. Flips directly
-              between 8-bit arcade and smooth (like the sun/moon theme
-              toggle). The icon shows the destination style. */}
-          <button
-            onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
-            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
-            aria-label="Toggle 8-bit arcade style"
-            className="floating-theme-toggle floating-skin-toggle"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            {Ico.gamepad(15)}
-          </button>
-        </>
-      )}
-
-      <ThemeModal
-        open={themeModalOpen}
-        onClose={() => setThemeModalOpen(false)}
-        theme={theme}
-        onThemeChange={setTheme}
-        skin={skin}
-        onSkinChange={setSkin}
       />
 
       <MoveToProjectModal

@@ -2801,9 +2801,13 @@ body[data-theme="dark"] .app-sidebar::before {
   transition: background .12s ease, border-color .12s ease,
               box-shadow .12s ease, transform .04s ease;
 }
-.btn-new-task:hover { background: var(--surface-2); border-color: var(--line-2); }
+.btn-new-task:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
 .btn-new-task:active { background: var(--surface-3); transform: translateY(0.5px); }
-.btn-new-task__label { flex: 1; }
+.btn-new-task__label { flex: 1; font-weight: 600; }
 .btn-new-task .kbd {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -2819,6 +2823,8 @@ body[data-theme="dark"] .app-sidebar::before {
 body[data-theme="dark"] .btn-new-task { background: var(--surface-3); }
 body[data-theme="dark"] .btn-new-task:hover {
   background: color-mix(in srgb, var(--ink) 8%, var(--surface-3));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 body[data-theme="dark"] .btn-new-task .kbd { background: rgba(255, 255, 255, 0.10); }
 
@@ -3146,45 +3152,6 @@ body[data-theme="dark"] .server-toggle.is-on:hover {
   color: var(--ink-3);
 }
 .server-help:hover { color: var(--ink); }
-
-/* Floating bottom-right theme toggle. Always reachable, sits above the
-   gravity-field background and clear of the composer. */
-.floating-theme-toggle {
-  position: fixed;
-  right: 18px;
-  bottom: 16px;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-8);
-  color: var(--ink-2);
-  cursor: pointer;
-  z-index: 50;
-  box-shadow: var(--sh-1);
-  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
-}
-.floating-theme-toggle:hover {
-  color: var(--ink);
-  transform: translateY(-1px);
-}
-body[data-theme="dark"] .floating-theme-toggle:hover {
-  color: var(--accent);
-  box-shadow: 0 0 18px rgba(34,211,238,0.3);
-}
-
-/* Skin (Style) toggle — same chrome as the theme toggle, stacked above
-   it in the corner. Lit accent while any non-default skin is active. */
-.floating-skin-toggle {
-  bottom: 54px;
-}
-body:not([data-skin="normal"]) .floating-skin-toggle {
-  color: var(--accent);
-  border-color: var(--accent);
-}
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
    later in the session doesn't re-trigger the last-clicked nav item.
@@ -4648,12 +4615,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* When mobile shell is active, hide the desktop floating theme toggle —
-   the drawer carries the Settings entry. Mobile shell renders only at
-   < 640px, where the desktop floating toggle would overlap the FAB. */
 @media (max-width: 639.98px) {
-  .floating-theme-toggle { display: none; }
-
   /* Project detail (ProjectsView in detail mode) — desktop puts the
      rail (Working folder + Context + Scheduled) in a 320px right
      column. On a phone-width viewport, collapse to a single column
