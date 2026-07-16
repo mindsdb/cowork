@@ -204,12 +204,14 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   agentLabel,
-  // Light/dark theme + toggle handler — the sidebar footer hosts the
-  // theme switch (relocated from the old floating bottom-right button;
-  // see App.jsx). Defaults keep the button harmless if a caller (e.g. a
-  // test) doesn't wire it up.
+  // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
+  // both switches (relocated from the old floating bottom-right
+  // buttons; see App.jsx). Defaults keep the buttons harmless if a
+  // caller (e.g. a test) doesn't wire them up.
   theme = 'dark',
   onToggleTheme,
+  skin = 'normal',
+  onToggleSkin,
   settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
@@ -789,11 +791,20 @@ export default function Sidebar({
             )
           )}
           <button
+            className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
+            onClick={onToggleSkin}
+            title="8-bit style"
+            aria-label="Toggle 8-bit style"
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
+          >
+            {Ico.gamepad(15)}
+          </button>
+          <button
             className="chrome-btn--small"
             onClick={onToggleTheme}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
           >
             {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
           </button>
