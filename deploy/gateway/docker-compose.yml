@@ -8,7 +8,7 @@
 # `cowork/` checkout):
 #
 #     docker build -f cowork/Dockerfile -t cowork:gateway \
-#       --build-arg COWORK_SERVER_VERSION=0.26.7.6.4 .
+#       --build-arg COWORK_SERVER_VERSION=0.26.7.13.3 .
 #
 # Then, from this directory:
 #
@@ -24,6 +24,8 @@
 services:
   cowork:
     image: cowork:gateway
+    # Reaps the entrypoint's short-lived first-boot model-seed worker.
+    init: true
     ports:
       - "26866:26866"
     environment:

@@ -4,7 +4,7 @@
 #     docker build -f cowork/Dockerfile -t cowork:dev .
 #     # Pin a specific version:
 #     docker build -f cowork/Dockerfile -t cowork:dev \
-#       --build-arg COWORK_SERVER_VERSION=0.26.7.6.4 .
+#       --build-arg COWORK_SERVER_VERSION=0.26.7.13.3 .
 #     # Install cowork-server from a git ref instead of PyPI (staging builds):
 #     docker build -f cowork/Dockerfile -t cowork:dev \
 #       --build-arg COWORK_SERVER_REF=staging .
@@ -73,7 +73,7 @@ RUN npm run build:web
 #   docker pull registry.access.redhat.com/ubi9-minimal
 #   docker buildx imagetools inspect registry.access.redhat.com/ubi9-minimal
 # Replace the digest below in BOTH FROM lines.
-FROM registry.access.redhat.com/ubi9-minimal@sha256:5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362 AS py-builder
+FROM registry.access.redhat.com/ubi9-minimal@sha256:062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab AS py-builder
 
 # microdnf is UBI minimal's slim package manager. The update step pulls
 # Red Hat security errata published since the base digest was tagged.
@@ -121,7 +121,7 @@ RUN uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"
 # is what the customer actually pulls, so this digest is the one their
 # Snyk Container / Trivy scan resolves against. Keep both FROM digests in
 # sync when bumping the base.
-FROM registry.access.redhat.com/ubi9-minimal@sha256:5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362 AS runtime
+FROM registry.access.redhat.com/ubi9-minimal@sha256:062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab AS runtime
 
 # OCI labels — visible in registry UI; helps operators match image to commit.
 LABEL org.opencontainers.image.title="cowork"

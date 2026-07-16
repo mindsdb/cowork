@@ -12,7 +12,7 @@ so gateway-issued key prefixes work as-is.
 # 1. Build the image (from the workspace root, one level above cowork/).
 #    Pin the backend release for a reproducible, scannable artifact:
 docker build -f cowork/Dockerfile -t cowork:gateway \
-  --build-arg COWORK_SERVER_VERSION=0.26.7.6.4 .
+  --build-arg COWORK_SERVER_VERSION=0.26.7.13.3 .
 
 # 2. Configure and start (see docker-compose.yml for the options)
 cd cowork/deploy/gateway

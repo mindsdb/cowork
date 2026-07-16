@@ -12,10 +12,10 @@
 # then re-scan and remove any entry whose CVE is now patched in the
 # new base.
 #
-# Last reviewed: 2026-07-02 against
+# Last reviewed: 2026-07-16 against
 #   registry.access.redhat.com/ubi9-minimal@sha256:
-#     5b74fce9d6e629942a0c6dc0f546c193e70d7f974d999a48c948c53dd3d36362
-# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.26.7.6.4
+#     062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab
+# (Red Hat Enterprise Linux 9.8), with the cowork-server 0.26.7.13.3
 # Python closure installed into /opt/venv on python3.12.
 #
 # Current posture: a TRUE scan (no active suppressions) of the shipped
