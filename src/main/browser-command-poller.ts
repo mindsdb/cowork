@@ -26,7 +26,8 @@ import {
   wait,
   onBridgeStateChange,
   getConversationId,
-  isStopRequested,
+  isStopRequestedSince,
+  clearStopRequest,
 } from './browser-bridge';
 import {
   registrableHost,
@@ -84,10 +85,14 @@ type ExecFns = {
   // (bridge/hello requires a conversation_id — or a prior session_id — to
   // identify the session; the server 422s an anonymous hello).
   conversationId: typeof getConversationId;
-  // Local user-Stop flag (set via IPC BROWSER_STOP). Checked pre-execution so
-  // a command handed out just before the Stop landed is gated even though the
-  // local bridge stays connected (Stop, unlike Take-over, does not detach).
-  stopRequested: typeof isStopRequested;
+  // Local user-Stop latch (set via IPC BROWSER_STOP, timestamped). Checked
+  // pre-execution AGAINST THE POLL START TIME so a command handed out just
+  // before the Stop landed is gated even though the local bridge stays
+  // connected (Stop, unlike Take-over, does not detach). Never gates a
+  // command from a poll that started after the stop — the server (the
+  // stop/resume authority) already had its gate set and then resumed.
+  stopRequestedSince: typeof isStopRequestedSince;
+  clearStopRequest: typeof clearStopRequest;
 };
 
 interface PollerConfig {
@@ -162,7 +167,8 @@ function defaultExec(): ExecFns {
     currentState,
     status: bridgeStatus,
     conversationId: getConversationId,
-    stopRequested: isStopRequested,
+    stopRequestedSince: isStopRequestedSince,
+    clearStopRequest,
   };
 }
 
@@ -348,6 +354,10 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
     // session-keyed endpoints would 422, so wait for the next cycle.
     if (!sessionId) return 'idle';
 
+    // Snapshot when this long-poll starts: the local Stop latch below gates a
+    // returned command only if Stop was pressed AFTER this instant (the
+    // raced case — the command may have been handed out pre-stop).
+    const pollStartedAt = Date.now();
     const res = await postJson('/browse/commands/next', { session_id: sessionId });
     if (!res || !res.ok) {
       // Stale session (server restarted / session cleaned up): drop the
@@ -357,18 +367,20 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
     }
     const body = (await res.json()) as { command?: BridgeCommand | null } | null;
     const cmd = body?.command ?? null;
-    if (!cmd || !cmd.command_id) return 'idle';
+    if (!cmd || !cmd.command_id) {
+      // An empty poll that STARTED after the stop proves the raced window is
+      // closed (the server, which is stopped, handed nothing to this wire) —
+      // drop the stale latch so it can never gate a later post-resume cycle.
+      // The server gate alone keeps a Stop with no new turn stopped.
+      if (!cfg.exec.stopRequestedSince(pollStartedAt)) cfg.exec.clearStopRequest();
+      return 'idle';
+    }
 
-    // Local stop / taken-over gate. The long-poll above can block for a while;
-    // a Stop or Take-over that lands AFTER the server handed out this command
-    // but BEFORE we run it must prevent the new action. Take-over detaches the
-    // bridge in main (state != connected), so re-checking here is the reliable
-    // local signal for it; Stop leaves the bridge connected, so it sets the
-    // local stopRequested flag (IPC BROWSER_STOP) instead. We still report a
-    // result so the server isn't left waiting on a command it handed out.
-    // This closes the hand-out→execute race the primitives' own guards can't
-    // (a command that arrived pre-stop).
-    if (cfg.exec.stopRequested() || cfg.exec.currentState() !== 'connected') {
+    // Take-over / lost gate. Take-over detaches the bridge in main (state !=
+    // connected), so re-checking here catches a take-over that landed while
+    // the long-poll above was outstanding. We still report a result so the
+    // server isn't left waiting on a command it handed out.
+    if (cfg.exec.currentState() !== 'connected') {
       helloSent = false;
       const gated = buildResultPayload(cmd.command_id, {
         status: 'bridge_disconnected',
@@ -379,6 +391,42 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
       await reportBridgeState();
       return 'idle';
     }
+
+    // Local Stop latch — raced case ONLY. The SERVER is the stop/resume
+    // authority: its control gate (POST /browse/control/stop) hands out
+    // nothing while stopped and resumes on a fresh user turn. Stop leaves the
+    // local bridge connected, so the one thing the server gate cannot catch
+    // is a command it handed to the wire just before the stop landed — i.e. a
+    // Stop pressed AFTER this poll started. Gate that command (still
+    // reporting a result so the server isn't left waiting) and clear the
+    // latch: its raced-case job is done, and the server hands out nothing
+    // further while stopped.
+    //
+    // If the Stop predates this poll's start, any command the poll returned
+    // was necessarily handed out by a server whose gate had already been set
+    // and then resumed by a new turn — clear the stale latch and execute
+    // normally. The latch must never gate post-resume commands (that was the
+    // old bug: a boolean latch outlived the server-side resume and refused
+    // every command until re-approval).
+    //
+    // Residual millisecond race, documented honestly: if the stop POST is
+    // processed by the server slightly AFTER this poll started but the local
+    // requestStop() fired slightly BEFORE pollStartedAt, one pre-stop command
+    // could theoretically execute. The server also re-checks its gate after
+    // long-poll wakeup, so this local latch is defense-in-depth only.
+    if (cfg.exec.stopRequestedSince(pollStartedAt)) {
+      cfg.exec.clearStopRequest();
+      const gated = buildResultPayload(cmd.command_id, {
+        status: 'bridge_disconnected',
+        action: cmd.action_type,
+        reason: 'The browser was stopped before this action ran.',
+      });
+      await postJson(`/browse/commands/${cmd.command_id}/result`, gated);
+      return 'idle';
+    }
+    // Any latch set before this poll started is stale (server already
+    // resumed) — drop it so it can never gate a later cycle.
+    cfg.exec.clearStopRequest();
 
     const result = await executeCommand(cmd);
     await postJson(

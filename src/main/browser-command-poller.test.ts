@@ -159,8 +159,27 @@ function fakeExec(overrides: Partial<Record<string, unknown>> = {}) {
     currentState: vi.fn(() => 'connected' as const),
     status: vi.fn(() => ({ available: true, state: 'connected' as const, domain: 'shop.example.com' })),
     conversationId: vi.fn(() => 'CONV-1'),
-    stopRequested: vi.fn(() => false),
+    stopRequestedSince: vi.fn(() => false),
+    clearStopRequest: vi.fn(),
     ...overrides,
+  };
+}
+
+// A stateful fake of the bridge's Stop latch (timestamped, self-clearing) so
+// tests exercise the real latch lifecycle instead of a canned boolean.
+function fakeStopLatch() {
+  let stopRequestedAt: number | null = null;
+  return {
+    requestStop(at: number = Date.now()): void {
+      stopRequestedAt = at;
+    },
+    isSet(): boolean {
+      return stopRequestedAt !== null;
+    },
+    stopRequestedSince: vi.fn((sinceMs: number) => stopRequestedAt !== null && stopRequestedAt >= sinceMs),
+    clearStopRequest: vi.fn(() => {
+      stopRequestedAt = null;
+    }),
   };
 }
 
@@ -275,24 +294,95 @@ describe('browser-command-poller', () => {
     expect(server.states[0]).toEqual({ session_id: 'SESS-1', bridge_state: 'disconnected' });
   });
 
-  it('gates a handed-out command when the user pressed Stop (bridge still connected)', async () => {
-    // Stop, unlike Take-over, does NOT detach the local bridge: currentState()
-    // stays 'connected' and only the local stopRequested flag (set via IPC
-    // BROWSER_STOP) records the user's Stop. A command the server handed out
-    // just before the Stop landed must be gated by that flag alone.
+  it('gates a raced command (Stop landed while the long-poll was outstanding) and clears the latch', async () => {
+    // Guarantee (a) Stop <1s: Stop, unlike Take-over, does NOT detach the
+    // local bridge — currentState() stays 'connected'. A command the server
+    // handed to the wire just before the Stop landed must still be refused:
+    // the stop fires DURING the outstanding /commands/next long-poll, i.e.
+    // after pollStartedAt, so the latch gates it.
     const server = new FakeBrowseServer();
-    server.queueCommand({ command_id: 'C-USER-STOP', action_type: 'inspect', session_id: 'SESS-1' });
-    const exec = fakeExec({ stopRequested: vi.fn(() => true) });
+    server.queueCommand({ command_id: 'C-RACED', action_type: 'inspect', session_id: 'SESS-1' });
+    const latch = fakeStopLatch();
+    const baseFetch = server.fetch;
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      // The Stop lands while this long-poll is on the wire — the raced case.
+      if (new URL(url).pathname.endsWith('/browse/commands/next')) latch.requestStop();
+      return baseFetch(url, init);
+    }) as unknown as typeof fetch;
+    const exec = fakeExec({
+      stopRequestedSince: latch.stopRequestedSince,
+      clearStopRequest: latch.clearStopRequest,
+    });
+
+    const outcome = await __pollOnceForTest({ transport, exec, fetchImpl });
+    expect(outcome).toBe('idle');
+    expect(server.rejections).toEqual([]);
+    // The action never ran — the latch gated it despite the connected bridge.
+    expect(exec.inspect).not.toHaveBeenCalled();
+    // The server still gets a result so it isn't left waiting.
+    expect(server.results).toHaveLength(1);
+    expect(server.results[0].command_id).toBe('C-RACED');
+    expect(server.results[0].result_code).toBe('timeout');
+    // The latch's raced-case job is done: it is cleared, never persisting
+    // to gate a later (post-resume) command.
+    expect(latch.clearStopRequest).toHaveBeenCalled();
+    expect(latch.isSet()).toBe(false);
+  });
+
+  it('executes a post-resume command normally when the Stop predates the poll', async () => {
+    // The SERVER is the stop/resume authority: it resumes stopped → active
+    // on a fresh user turn. A poll that STARTED after the Stop can only
+    // return a command a resumed server handed out — the stale local latch
+    // must not gate it (the old boolean latch did, refusing every command
+    // as bridge_disconnected until re-approval).
+    const server = new FakeBrowseServer();
+    server.queueCommand({ command_id: 'C-RESUMED', action_type: 'inspect', session_id: 'SESS-1' });
+    const latch = fakeStopLatch();
+    latch.requestStop(Date.now() - 50); // Stop pressed well before this poll starts
+    const exec = fakeExec({
+      stopRequestedSince: latch.stopRequestedSince,
+      clearStopRequest: latch.clearStopRequest,
+    });
+
+    const outcome = await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch });
+    expect(outcome).toBe('command');
+    expect(server.rejections).toEqual([]);
+    // The command executed normally and reported ok.
+    expect(exec.inspect).toHaveBeenCalled();
+    expect(server.results).toHaveLength(1);
+    expect(server.results[0].command_id).toBe('C-RESUMED');
+    expect(server.results[0].result_code).toBe('ok');
+    // The stale latch was cleared.
+    expect(latch.isSet()).toBe(false);
+  });
+
+  it('a Stop with no new turn stays stopped: the server hands out nothing and clearing the latch runs nothing', async () => {
+    // Guarantee (b): after Stop with NO subsequent user turn the server gate
+    // (the single source of truth) hands out no commands. The post-stop poll
+    // returns empty, the stale local latch is dropped (it never persists
+    // across poll cycles once a post-stop poll completed), and nothing runs.
+    const server = new FakeBrowseServer(); // nothing queued — server is stopped
+    const latch = fakeStopLatch();
+    latch.requestStop(Date.now() - 50);
+    const exec = fakeExec({
+      stopRequestedSince: latch.stopRequestedSince,
+      clearStopRequest: latch.clearStopRequest,
+    });
 
     const outcome = await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch });
     expect(outcome).toBe('idle');
     expect(server.rejections).toEqual([]);
-    // The action never ran — the flag gated it despite the connected bridge.
+    // Nothing executed, nothing reported — stopped stays stopped.
     expect(exec.inspect).not.toHaveBeenCalled();
-    // The server still gets a result so it isn't left waiting.
-    expect(server.results).toHaveLength(1);
-    expect(server.results[0].command_id).toBe('C-USER-STOP');
-    expect(server.results[0].result_code).toBe('timeout');
+    expect(server.results).toHaveLength(0);
+    // The latch never persists once a post-stop poll completed.
+    expect(latch.isSet()).toBe(false);
+
+    // A later cycle (e.g. after a server-side resume) is not gated by any
+    // leftover latch state.
+    server.queueCommand({ command_id: 'C-AFTER', action_type: 'inspect', session_id: 'SESS-1' });
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('command');
+    expect(server.results[0].result_code).toBe('ok');
   });
 
   it('starts polling once a conversation becomes active after a null-at-approval', async () => {

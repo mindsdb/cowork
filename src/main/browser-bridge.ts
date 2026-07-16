@@ -83,21 +83,43 @@ export function getConversationId(): string | null {
   return conversationId;
 }
 
-// Local user-Stop signal. The renderer's Stop button sets the SERVER control
-// gate (POST /browse/control/stop) but leaves the local bridge connected — so
-// a command the server handed out just before the Stop landed would still
-// pass the poller's currentState() re-check. This flag is the local half of
-// that gate: set via IPC when Stop is pressed, checked by the poller before
-// executing any handed-out command, and cleared when a NEW approval starts
-// (attach) — the user re-approving is the "resume" gesture.
-let stopRequested = false;
+// Local user-Stop signal. Stop/resume lifecycle: the SERVER is the single
+// source of truth. The renderer's Stop button sets the SERVER control gate
+// (POST /browse/control/stop) — while stopped the server hands out NO
+// commands — and a fresh user turn resumes it server-side
+// (resume_on_new_turn). Re-approval is required only after
+// take-over/lost/revoke, never after Stop.
+//
+// This local latch exists ONLY to close the hand-out→execute race: a command
+// the server handed to the wire just before the Stop landed (Stop leaves the
+// bridge connected, so the poller's currentState() re-check can't catch it).
+// It records WHEN Stop was pressed (a timestamp, set via IPC BROWSER_STOP);
+// the poller compares it against when its long-poll started and gates only
+// commands that could predate the stop, then clears the latch. It must NEVER
+// gate post-resume commands — those come from a server whose gate was already
+// stopped and then resumed by a new turn. Also cleared on attach()/dispose as
+// belt-and-braces.
+let stopRequestedAt: number | null = null;
 
 export function requestStop(): void {
-  stopRequested = true;
+  stopRequestedAt = Date.now();
 }
 
+// Was Stop pressed at-or-after `sinceMs`? Used by the poller to detect the
+// raced case: a stop that landed while its long-poll was outstanding.
+export function isStopRequestedSince(sinceMs: number): boolean {
+  return stopRequestedAt !== null && stopRequestedAt >= sinceMs;
+}
+
+// Is any un-cleared Stop latched at all (regardless of timing)?
 export function isStopRequested(): boolean {
-  return stopRequested;
+  return stopRequestedAt !== null;
+}
+
+// The latch's raced-case job is done (the poller gated or safely bypassed
+// it); post-resume commands must flow freely.
+export function clearStopRequest(): void {
+  stopRequestedAt = null;
 }
 
 // Main-side bridge-state subscribers (e.g. the command poller). Distinct from
@@ -195,7 +217,7 @@ export function __resetBridgeForTest(): void {
   getWindowRef = () => null;
   bridgeStateListeners.clear();
   conversationId = null;
-  stopRequested = false;
+  stopRequestedAt = null;
 }
 
 async function defaultListTargets(base: string): Promise<CdpTarget[]> {
@@ -384,8 +406,9 @@ export async function attach(
     pendingApproval = null;
   }
   revoked = false;
-  // A fresh approval is the user's "resume" gesture — clear any local Stop.
-  stopRequested = false;
+  // Belt-and-braces: a fresh approval starts a clean session, so any stale
+  // Stop latch is meaningless (resume itself is server-side, on a new turn).
+  stopRequestedAt = null;
   // New approval supersedes any in-flight approve() awaiting connect.
   approvalGeneration += 1;
   pendingApproval = { targetId, cancel: () => {} };
@@ -622,29 +645,50 @@ async function extractObserved(): Promise<ObservedResult> {
   return value ?? {};
 }
 
+// The common post-read domain check EVERY observation-producing primitive
+// (inspect, navigate readback, scroll, wait) must pass before its observed
+// content is returned. The page may have drifted to a different host (e.g. a
+// client-side redirect) between the frameNavigated listener firing and the
+// readback — the grant is for the approved domain ONLY, so an off-domain
+// observation is discarded, the bridge drops to lost (re-approval required),
+// and the caller gets a refusal instead of unapproved-site content. Returns
+// the refusal result, or null when the observation is on-grant.
+function verifyObservedOnApprovedDomain(
+  action: BrowserActionType,
+  observed: ObservedResult,
+): BrowserActionResult | null {
+  const target = approvedTarget;
+  if (!target || !observed.url) return null;
+  const host = registrableHost(observed.url);
+  if (!host || host === target.domain) return null;
+  // Keep the per-action status mapping: a navigate that LANDED off-domain is
+  // a failed navigation; any other primitive observing off-domain content is
+  // a permission refusal.
+  const reason =
+    action === 'navigate'
+      ? 'That link leaves the approved site.'
+      : 'The tab is on a different site than the one you approved.';
+  handleLost(
+    action === 'navigate'
+      ? 'The page redirected to a different site, so the approval no longer applies.'
+      : 'The tab is on a different site than the one you approved.',
+  );
+  return {
+    status: action === 'navigate' ? 'navigation_failed' : 'permission_denied',
+    action,
+    reason,
+  };
+}
+
 // inspect() — read the visible page (text, headings, links, viewport).
 export async function inspect(): Promise<BrowserActionResult> {
   const pre = ensureConnected('inspect');
   if (pre) return pre;
   try {
     const observed = await extractObserved();
-    // The page may have drifted to a different host (e.g. a client-side
-    // redirect) since approval. The grant is for the approved domain ONLY:
-    // discard the observation for a different host and require re-approval
-    // instead of silently reading (and citing) an unapproved site.
-    const target = approvedTarget;
-    if (target && observed.url) {
-      const host = registrableHost(observed.url);
-      if (host && host !== target.domain) {
-        handleLost('The tab is on a different site than the one you approved.');
-        return {
-          status: 'permission_denied',
-          action: 'inspect',
-          reason: 'The tab is on a different site than the one you approved.',
-        };
-      }
-    }
-    if (target) target.lastLinks = observed.links ?? [];
+    const offDomain = verifyObservedOnApprovedDomain('inspect', observed);
+    if (offDomain) return offDomain;
+    if (approvedTarget) approvedTarget.lastLinks = observed.links ?? [];
     return { status: 'ok', action: 'inspect', observed };
   } catch (err) {
     return classifyError('inspect', err);
@@ -676,21 +720,13 @@ export async function navigateApprovedLink(href: string): Promise<BrowserActionR
   try {
     await cdp('Page.navigate', { url: href });
     // Give the page a beat to settle, then read back to verify the domain.
+    // A same-site link may have redirected OFF the approved site: the grant
+    // must NOT stay live then, or a later command would run against the
+    // off-domain page without reapproval — the shared check drops to lost.
     await sleep(400);
     const observed = await extractObserved();
-    const landedHost = registrableHost(observed.url || '');
-    if (landedHost && landedHost !== target.domain) {
-      // A same-site link redirected OFF the approved site. The tab is now
-      // sitting on an unapproved host — the grant must NOT stay live, or a
-      // later command would run against the off-domain page without
-      // reapproval. Drop to lost (requires re-approval) before reporting.
-      handleLost('The page redirected to a different site, so the approval no longer applies.');
-      return {
-        status: 'navigation_failed',
-        action: 'navigate',
-        reason: 'That link leaves the approved site.',
-      };
-    }
+    const offDomain = verifyObservedOnApprovedDomain('navigate', observed);
+    if (offDomain) return offDomain;
     target.lastLinks = observed.links ?? target.lastLinks;
     return { status: 'ok', action: 'navigate', observed };
   } catch (err) {
@@ -710,6 +746,8 @@ export async function scroll(direction: 'down' | 'up' = 'down'): Promise<Browser
     });
     await sleep(150);
     const observed = await extractObserved();
+    const offDomain = verifyObservedOnApprovedDomain('scroll', observed);
+    if (offDomain) return offDomain;
     if (approvedTarget) approvedTarget.lastLinks = observed.links ?? approvedTarget.lastLinks;
     return { status: 'ok', action: 'scroll', observed };
   } catch (err) {
@@ -724,6 +762,8 @@ export async function wait(ms = 1000): Promise<BrowserActionResult> {
   try {
     await sleep(Math.min(Math.max(ms, 0), 10000));
     const observed = await extractObserved();
+    const offDomain = verifyObservedOnApprovedDomain('wait', observed);
+    if (offDomain) return offDomain;
     return { status: 'ok', action: 'wait', observed };
   } catch (err) {
     return classifyError('wait', err);
@@ -758,7 +798,7 @@ export function disposeAllBridges(): void {
   approvalGeneration += 1;
   bridgeState = 'disconnected';
   conversationId = null;
-  stopRequested = false;
+  stopRequestedAt = null;
   // Tear down the Chrome WE launched (app quit / full drain). If Chrome was
   // already running on the port when we attached, managedChrome is null and we
   // leave the user's own Chrome alone.

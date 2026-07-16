@@ -388,6 +388,32 @@ describe('browser-bridge domain-grant immutability', () => {
     expect(bridge.currentState()).toBe('lost');
   });
 
+  it('scroll whose readback lands off-domain returns permission_denied + lost, no observed', async () => {
+    // The readback race on the central security boundary: the page navigated
+    // cross-site between the frameNavigated listener firing and the post-
+    // scroll extraction. The shared post-read check must refuse the
+    // observation and drop the grant.
+    await connect();
+    const socket = FakeCdpSocket.instances[0];
+    socket.page = { ...socket.page, url: 'https://evil.example.org/x' };
+    const r = await bridge.scroll('down');
+    expect(r.status).toBe('permission_denied');
+    expect(r.reason).toMatch(/different site/);
+    expect(r.observed).toBeUndefined();
+    expect(bridge.currentState()).toBe('lost');
+  });
+
+  it('wait whose readback lands off-domain returns permission_denied + lost, no observed', async () => {
+    await connect();
+    const socket = FakeCdpSocket.instances[0];
+    socket.page = { ...socket.page, url: 'https://evil.example.org/x' };
+    const r = await bridge.wait(0);
+    expect(r.status).toBe('permission_denied');
+    expect(r.reason).toMatch(/different site/);
+    expect(r.observed).toBeUndefined();
+    expect(bridge.currentState()).toBe('lost');
+  });
+
   it('a grant under a multi-label suffix does NOT extend to sibling sites (github.io)', async () => {
     // PSL isolation end-to-end: approving foo.github.io must not let the
     // bridge follow a link to bar.github.io — they are unrelated sites that
@@ -477,10 +503,10 @@ describe('browser-bridge onBridgeStateChange', () => {
   });
 });
 
-// Conversation binding + local Stop flag lifecycle (review items 2 & 3 on the
-// server-schema integration fix): the binding must die with the approval so
-// a later approval can never inherit a stale conversation, and the Stop flag
-// must be set by requestStop and cleared by a fresh approval (attach).
+// Conversation binding + local Stop latch lifecycle: the binding must die
+// with the approval so a later approval can never inherit a stale
+// conversation, and the Stop latch (raced-case only — the SERVER owns
+// stop/resume) must be timestamped, clearable, and reset on attach/dispose.
 describe('browser-bridge conversation binding lifecycle', () => {
   it('clears the conversation id on detach (revoke / take-over)', async () => {
     bridge.setConversationId('CONV-1');
@@ -500,17 +526,30 @@ describe('browser-bridge conversation binding lifecycle', () => {
   });
 });
 
-describe('browser-bridge local Stop flag', () => {
-  it('is set by requestStop and cleared by a fresh attach (re-approval = resume)', async () => {
+describe('browser-bridge local Stop latch', () => {
+  it('records WHEN Stop was pressed so the poller can gate only raced commands', () => {
+    const before = Date.now();
     expect(bridge.isStopRequested()).toBe(false);
     bridge.requestStop();
     expect(bridge.isStopRequested()).toBe(true);
-    // A new tab approval is the user's resume gesture.
-    await bridge.attach('TAB-1');
-    expect(bridge.isStopRequested()).toBe(false);
+    // The latch answers "was Stop pressed at-or-after t?" — true for a poll
+    // that started before the stop (raced), false for one started after.
+    expect(bridge.isStopRequestedSince(before)).toBe(true);
+    expect(bridge.isStopRequestedSince(Date.now() + 1)).toBe(false);
   });
 
-  it('is cleared by disposeAllBridges', () => {
+  it('is cleared by clearStopRequest (the poller after a post-stop poll cycle)', () => {
+    bridge.requestStop();
+    bridge.clearStopRequest();
+    expect(bridge.isStopRequested()).toBe(false);
+    expect(bridge.isStopRequestedSince(0)).toBe(false);
+  });
+
+  it('is cleared belt-and-braces by a fresh attach and by disposeAllBridges', async () => {
+    bridge.requestStop();
+    await bridge.attach('TAB-1');
+    expect(bridge.isStopRequested()).toBe(false);
+
     bridge.requestStop();
     bridge.disposeAllBridges();
     expect(bridge.isStopRequested()).toBe(false);
