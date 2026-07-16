@@ -938,15 +938,31 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
 // keyed on the gateway's structured code:
 //
 // - `model_access_denied` — plan gate: the account's tier doesn't include the
-//   model. An upgrade genuinely fixes it, so lead with Upgrade.
-// - `model_disabled` — hedged until the gateway distinguishes tier locks from
-//   admin kill switches everywhere (ENG-596): it can be either, so offer both
-//   Switch-model and Upgrade without promising the upgrade fixes it.
+//   model. An upgrade genuinely fixes it, so lead with Upgrade (+ Switch).
+// - `model_disabled` — admin kill switch: the model is turned off for everyone.
+//   An upgrade can't turn it back on, so offer Switch model ONLY.
+//
+// ENG-649: the earlier ENG-598 hedge also showed Upgrade on `model_disabled`,
+// because until ENG-596 (mindshub_inference #335) + the Statsig `tier_locked`
+// free rule shipped, `model_disabled` could still mean a tier lock. Both are
+// now live in prod (tier locks report `model_access_denied`), so `model_disabled`
+// strictly means kill switch and Upgrade is dropped — showing it would be the
+// wrong-CTA mistake ENG-514 warned about (paying to fix an unpayable problem).
 //
 // The body is the server's curated copy (anton's message, passed through
 // verbatim) — unlike ReconnectCard there's no web-only affordance to work
 // around: Upgrade is just a billing link (host.openExternal window.opens on
 // web), and Switch model routes to Settings on both shells.
+//
+// Which CTAs a model-403 card offers, keyed on the gateway code. Exported so
+// the branch can be regression-tested directly (ENG-649): once `model_disabled`
+// means kill switch, it must NEVER offer 'upgrade' again.
+export function modelUnavailableCtas(code) {
+  // model_access_denied (plan gate) → an upgrade fixes it, so offer both.
+  // model_disabled (admin kill switch) → an upgrade can't fix it, Switch only.
+  return code === 'model_access_denied' ? ['upgrade', 'switch'] : ['switch'];
+}
+
 function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
   // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
   // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
@@ -960,17 +976,24 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
     ? `${label} isn't included in your plan`
     : `${label} isn't available right now`;
 
+  // Plan gate → lead with Upgrade + Switch. Kill switch → Switch only (an
+  // upgrade can't turn a model back on for everyone). Switch is primary
+  // whenever it's the sole/leading action (i.e. not the plan gate).
+  const byKey = {
+    upgrade: { label: 'Upgrade plan', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: true },
+    switch: { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
+  };
+  const buttons = modelUnavailableCtas(code).map((k) => byKey[k]);
+
   return (
     <ActionCard
       time={time}
       agentLabel={agentLabel}
       title={title}
-      body={errorText || 'Switch models in Settings, or upgrade your plan to unlock it.'}
-      buttons={[
-        // Plan gate → lead with Upgrade; hedged/disabled → lead with Switch.
-        { label: 'Upgrade plan', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
-        { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
-      ]}
+      body={errorText || (denied
+        ? 'Switch models in Settings, or upgrade your plan to unlock it.'
+        : 'This model is currently turned off. Switch to another model in Settings.')}
+      buttons={buttons}
     />
   );
 }
