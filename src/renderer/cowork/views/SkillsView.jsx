@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu, Button } from '../components/ui';
+import { Menu, Button, Card } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { Toast } from '../components/ui/Toast';
@@ -17,31 +17,18 @@ function EmptyState({ children }) {
 }
 
 
-const CARD_SHADOW = '0px 0px 0px 0.5px rgba(39,39,42,0.15), 0px 1px 2px rgba(0,0,0,0.05), 0px 0.5px 0px rgba(0,0,0,0.08)';
-
 function SkillGridCard({ skill, onClick }) {
-  const [hovered, setHovered] = useState(false);
   const age = relativeAge(skill.updatedAt);
   const project = skill.projects?.[0] || skill.project;
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <Card
+      as="button"
+      interactive
+      padding="none"
       onClick={() => onClick(skill)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(skill); } }}
       style={{
-        cursor: 'pointer',
-        background: hovered ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${hovered ? 'var(--line-2)' : 'var(--line)'}`,
-        boxShadow: CARD_SHADOW,
-        borderRadius: 8,
         padding: '12px 0 0',
         display: 'flex', flexDirection: 'column', gap: 12,
-        transition: 'background .15s ease',
-        outline: 'none',
-        font: 'inherit', color: 'inherit',
         overflow: 'hidden',
       }}
     >
@@ -52,7 +39,7 @@ function SkillGridCard({ skill, onClick }) {
           <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0, width: 20, height: 20, borderRadius: 4,
-            boxShadow: CARD_SHADOW,
+            boxShadow: 'var(--sh-1)',
             fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 500,
             color: 'var(--ink-3)',
           }}>/</span>
@@ -101,7 +88,7 @@ function SkillGridCard({ skill, onClick }) {
         </span>
         {age && <span>Updated {age}</span>}
       </div>
-    </div>
+    </Card>
   );
 }
 

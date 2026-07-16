@@ -105,11 +105,9 @@ export default function SkillCard({ skill, projectName }) {
     <>
       <Card
         padding="compact"
-        onClick={() => setOpen(true)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true); } }}
-        style={{ cursor: 'pointer', marginTop: 4 }}
+        interactive
+        onActivate={() => setOpen(true)}
+        style={{ marginTop: 4 }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', alignItems: 'center', gap: 14 }}>
           {/* Icon — `cube` distinguishes a skill from the artifact card's doc/sparkle. */}

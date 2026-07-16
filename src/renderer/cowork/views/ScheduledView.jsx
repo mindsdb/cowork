@@ -17,7 +17,7 @@ import {
   useCollectionShortcut,
 } from '../components/collection';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Button } from '../components/ui';
+import { Button, CardRow } from '../components/ui';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
@@ -337,22 +337,16 @@ function ScheduleListRow({
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
+    <CardRow
+      as="div"
+      onActivate={open}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
         padding: '12px 14px',
-        background: hover ? 'var(--surface)' : 'transparent',
         borderBottom: '1px solid var(--line)',
-        cursor: 'pointer',
-        transition: 'background .12s ease',
         alignItems: 'center',
-        outline: 'none',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -462,7 +456,7 @@ function ScheduleListRow({
           : <RowAction icon={Ico.power(12)} label="Resume" onClick={onResume} busy={busy} />}
         <RowAction icon={Ico.edit(12)} label="Edit" onClick={onEdit} busy={busy} />
       </div>
-    </div>
+    </CardRow>
   );
 }
 

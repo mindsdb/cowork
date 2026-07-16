@@ -157,7 +157,7 @@ function AccessSummaryCard({ mode }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
-      padding: '10px 12px', borderRadius: 10,
+      padding: '10px 12px', borderRadius: 'var(--card-radius)',
       background: 'var(--surface-2)', border: '1px solid var(--line)',
     }}>
       <span style={{
@@ -207,9 +207,9 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
         const acting = activatingMd5 === v.md5;
         return (
           <div key={v.md5 || i} style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
-            background: live ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'var(--surface-2)',
-            border: `1px solid ${live ? 'color-mix(in srgb, var(--accent) 35%, transparent)' : 'var(--line)'}`,
+            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 'var(--card-radius-row)',
+            background: live ? 'var(--accent-bg)' : 'var(--surface-2)',
+            border: `1px solid ${live ? 'var(--accent)' : 'var(--line)'}`,
           }}>
             <span style={{ minWidth: 0, flex: 1 }}>
               <span style={{ display: 'block', fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

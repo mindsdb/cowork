@@ -10,6 +10,7 @@
 
 import { useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Card } from '../ui';
 import { TaskMenu } from '../TaskMenu';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
@@ -67,33 +68,15 @@ export function TaskCard({
       style={{ position: 'relative' }}
       {...hoverProps}
     >
-      <button
-        type="button"
-        onClick={onClick}
+      <Card
+        as="div"
+        interactive
+        padding="cozy"
+        onActivate={onClick}
         style={{
-          cursor: 'pointer',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 12,
-          padding: '14px 16px',
           width: '100%',
           display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto',
           gap: 14, alignItems: 'flex-start',
-          textAlign: 'left',
-          font: 'inherit',
-          color: 'inherit',
-          boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-          transition: 'border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease',
-        }}
-        onMouseOver={(e) => {
-          e.currentTarget.style.borderColor = 'var(--accent)';
-          e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 6px 18px rgba(15,16,17,0.06)';
-          e.currentTarget.style.transform = 'translateY(-1px)';
-        }}
-        onMouseOut={(e) => {
-          e.currentTarget.style.borderColor = 'var(--line)';
-          e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02)';
-          e.currentTarget.style.transform = 'translateY(0)';
         }}
       >
         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -202,7 +185,7 @@ export function TaskCard({
             </span>
           )}
         </div>
-      </button>
+      </Card>
 
       <TaskMenu
         task={task}

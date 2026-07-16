@@ -271,7 +271,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
     return (
       <div
         style={{
-          minHeight: 120, borderRadius: 10,
+          minHeight: 120, borderRadius: 'var(--card-radius)',
           padding: '14px 16px',
           background: 'var(--surface)',
           border: '1px solid var(--accent)',
@@ -337,7 +337,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        minHeight: 120, borderRadius: 10,
+        minHeight: 120, borderRadius: 'var(--card-radius)',
         padding: '14px 16px',
         background: 'transparent',
         border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
@@ -632,7 +632,7 @@ function EmptyState({ onNewProject }) {
 function SkeletonCard() {
   return (
     <div style={{
-      minHeight: 120, borderRadius: 10, padding: '14px 16px',
+      minHeight: 120, borderRadius: 'var(--card-radius)', padding: '14px 16px',
       border: '1px solid var(--line)', background: 'var(--surface)',
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
@@ -1246,7 +1246,7 @@ export default function ProjectsView({
             onClick={handleNewProject}
             className="proj-new-tile"
             style={{
-              minHeight: 120, borderRadius: 10,
+              minHeight: 120, borderRadius: 'var(--card-radius)',
               padding: '14px 16px',
               background: 'transparent',
               border: '1px dashed var(--line-2)',

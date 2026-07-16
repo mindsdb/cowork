@@ -168,7 +168,7 @@ function HealthSparkline({ runs }) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: 80, borderRadius: 10,
+        height: 80, borderRadius: 'var(--card-radius)',
         border: '1px dashed var(--line-2)',
         color: 'var(--ink-4)', fontFamily: FONT_BODY, fontSize: 12.5,
       }}>
@@ -231,7 +231,7 @@ function RunRow({ run, onOpen }) {
         padding: '10px 14px',
         background: 'var(--surface)',
         border: '1px solid var(--line)',
-        borderRadius: 10,
+        borderRadius: 'var(--card-radius)',
       }}
     >
       <span aria-hidden style={{
@@ -385,7 +385,7 @@ export default function ScheduleDetailView({
           padding: '18px 22px',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
+          borderRadius: 'var(--card-radius)',
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
           <div className="sched-hero-top" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -488,7 +488,7 @@ export default function ScheduleDetailView({
           padding: '18px 22px',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
+          borderRadius: 'var(--card-radius)',
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
           <div className="sched-health-top" style={{
@@ -543,7 +543,7 @@ export default function ScheduleDetailView({
           </div>
           {runs.length === 0 && !loadingRuns ? (
             <div style={{
-              padding: 18, borderRadius: 10,
+              padding: 18, borderRadius: 'var(--card-radius)',
               border: '1px dashed var(--line-2)',
               color: 'var(--ink-4)', textAlign: 'center', fontSize: 12.5,
             }}>No runs yet. Click <strong>Run now</strong> to fire a manual one.</div>
