@@ -55,7 +55,7 @@ const T = {
 };
 
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-const FONT_MONO    = "'JetBrains Mono', monospace";
+const FONT_MONO    = "var(--font-mono)";
 const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
 // ─── small shared atoms ──────────────────────────────────────────────────

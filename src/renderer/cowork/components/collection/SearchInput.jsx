@@ -4,9 +4,9 @@
 // FilterRow's flex container; pass a custom `placeholder` per view.
 
 import Ico from '../Icons';
+import { Kbd } from '../ui';
 
 const FONT_BODY = 'var(--font-body)';
-const FONT_MONO = 'var(--font-mono)';
 
 export function SearchInput({
   value,
@@ -40,14 +40,7 @@ export function SearchInput({
         }}
       />
       {shortcut && (
-        <span style={{
-          flexShrink: 0,
-          padding: '1px 5px', borderRadius: 3,
-          background: 'var(--surface-3)',
-          border: '1px solid var(--line-2)',
-          fontFamily: FONT_MONO, fontSize: 10,
-          color: 'var(--ink-4)',
-        }}>{shortcut}</span>
+        <Kbd style={{ flexShrink: 0 }}>{shortcut}</Kbd>
       )}
     </div>
   );

@@ -1100,3 +1100,46 @@ body[data-arcade-preset="gameboy"] .arc-btn:disabled,
 body[data-arcade-preset="daylight"] .arc-btn:disabled {
   box-shadow: 0 4px 0 0 rgba(15, 16, 17, 0.22);
 }
+
+/* Floating corner toggles (theme + 8-bit style) shown on the onboarding
+   pages only — CoworkApp hasn't mounted yet here, so there's no sidebar
+   footer to host them (that's where the in-app equivalent lives; see
+   Sidebar.jsx). Uses the app's shared design tokens, not the --arc-*
+   onboarding palette, so it doesn't clash once the user lands in the
+   real app. */
+.arcade-theme-toggle {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-8);
+  color: var(--ink-2);
+  cursor: pointer;
+  z-index: 50;
+  box-shadow: var(--sh-1);
+  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
+}
+.arcade-theme-toggle:hover {
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+body[data-theme="dark"] .arcade-theme-toggle:hover {
+  color: var(--accent);
+  box-shadow: 0 0 18px rgba(34,211,238,0.3);
+}
+
+/* Skin (Style) toggle — same chrome as the theme toggle, stacked above
+   it in the corner. Lit accent while any non-default skin is active. */
+.arcade-skin-toggle {
+  bottom: 54px;
+}
+body:not([data-skin="normal"]) .arcade-skin-toggle {
+  color: var(--accent);
+  border-color: var(--accent);
+}

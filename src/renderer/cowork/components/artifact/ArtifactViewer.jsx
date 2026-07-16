@@ -175,7 +175,7 @@ function _csvRowsToGfmTable(rows) {
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const FONT_MONO = "var(--font-mono)";
 
 // Ghost icon button shared by every top-bar affordance (folder, reload,
 // open-in-browser, kebab, close). forwardRef so it can be the render

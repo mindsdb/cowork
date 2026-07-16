@@ -364,7 +364,7 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
   ];
   const trigger = (
     <Button
-      variant="primary"
+      variant="solid"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8, paddingRight: 10 }}
     >
       {Ico.plus(14)}

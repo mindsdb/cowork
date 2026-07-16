@@ -17,7 +17,8 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { CardRow } from '../components/ui';
+import { CardRow, EmptyState } from '../components/ui';
+import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
   FilterRow,
@@ -41,18 +42,6 @@ const SORT_OPTIONS = [
 // shifting between hover/non-hover so the trash icon doesn't
 // shove the timestamp left when it appears.
 const LIST_GRID = '24px minmax(0, 2.4fr) minmax(0, 1.2fr) 110px 28px';
-
-function relAge(input) {
-  if (!input) return '—';
-  const ts = typeof input === 'number' ? input : Date.parse(input);
-  if (!Number.isFinite(ts)) return '—';
-  const diff = Date.now() - ts;
-  if (diff < 60_000)         return 'just now';
-  if (diff < 3_600_000)      return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000)     return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 function ListHeaderRow() {
   const Cell = ({ children, align }) => (
@@ -99,7 +88,7 @@ function TaskRow({
   // Prefer the same field the rest of the app uses for "last seen"
   // (updatedAt). Fall back to subtitle (legacy mock-time string)
   // when the server hasn't stamped the conversation yet.
-  const updated = relAge(task.updatedAt || task.subtitle || task.created_at);
+  const updated = relativeAge(task.updatedAt || task.subtitle || task.created_at) || '—';
 
   return (
     <CardRow
@@ -243,7 +232,7 @@ function ScheduleGroupRow({
   const latest = runs.reduce((max, r) =>
     ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
   runs[0]);
-  const updated = relAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt);
+  const updated = relativeAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt) || '—';
 
   const isAnyActive = runs.some((r) => r.status === 'active');
 
@@ -530,9 +519,6 @@ export default function TasksView({
         subtitle="Every conversation across every project. Sort, filter, and jump straight in."
       />
 
-      {/* Subtitle → search spacer. 32px (was 18) gives the search
-          bar room to breathe under the subtitle on this view. */}
-      <div style={{ height: 32 }} />
 
       {tasks.length > 0 && (
         <FilterRow
@@ -566,7 +552,13 @@ export default function TasksView({
       )}
 
       {tasks.length === 0 ? (
-        <EmptyState />
+        <EmptyState
+          bordered
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>}
+          title="No tasks yet"
+          description="Start a conversation from the home screen — every chat shows up here."
+          style={{ margin: '40px 28px' }}
+        />
       ) : (
         <div style={{ padding: '8px 28px 28px' }}>
           <ListHeaderRow />
@@ -612,27 +604,6 @@ export default function TasksView({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div style={{
-      margin: '40px 28px', padding: '40px 28px',
-      borderRadius: 14,
-      border: '1px dashed var(--line-2)',
-      background: 'var(--surface)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
-      gap: 10,
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.chats(28)}</span>
-      <div className="s-h3" style={{ color: 'var(--ink)' }}>
-        No tasks yet
-      </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-3)', maxWidth: 320 }}>
-        Start a conversation from the home screen — every chat shows up here.
-      </div>
     </div>
   );
 }
