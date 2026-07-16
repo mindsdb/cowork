@@ -894,8 +894,12 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
 .send-btn:active:not(:disabled) { transform: scale(0.97); }
 .send-btn:disabled {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  color: var(--ink-4);
+  /* Dormant, not dead: the composer is its page's primary action, so the
+     send button keeps a quiet accent wash at rest (the home page would
+     otherwise show zero accent). Deliberately weaker than the armed
+     solid-accent state so it doesn't read as clickable. */
+  background: var(--accent-bg);
+  color: color-mix(in srgb, var(--accent) 60%, transparent);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -4110,8 +4114,9 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   background: color-mix(in srgb, var(--accent) 88%, black);
 }
 .chat-floating-composer .send-btn:disabled {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  color: var(--ink-4);
+  /* Same dormant accent wash as the base .send-btn:disabled. */
+  background: var(--accent-bg);
+  color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   /* Softer than the old 0.55-alpha 32-blur — that was producing a
