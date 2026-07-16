@@ -2789,14 +2789,11 @@ body[data-theme="dark"] .anton-sidebar__wordmark {
 }
 
 /* Cyan halo at the top of the sidebar — only in dark mode. */
-body[data-theme="dark"] .app-sidebar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% -10%, rgba(34,211,238,0.10), transparent 50%);
-  pointer-events: none;
-  z-index: 0;
-}
+/* No decorative halo in the default dark skin: the sidebar's accent
+   voice is the tinted New-task button now — an atmospheric cyan pool
+   behind it just muddied the wash-on-wash. The 3% cyan --sidebar-bg
+   tint keeps the panel in the family. (The 8-bit skin draws its own
+   fainter halo — self-contained in skin-8bit.css.) */
 .app-sidebar { position: relative; }
 .app-sidebar > * { position: relative; z-index: 1; }
 
