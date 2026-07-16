@@ -3277,7 +3277,7 @@ function AppCore() {
     // opens but errors on send, until an app restart (ENG-666). Match by name
     // OR path: the server stamps conv.project = project.name (and project_path
     // = project.path), so this catches every conversation in the project.
-    const doomedTaskIds = tasks
+    const doomedTaskIds = tasksRef.current
       .filter((t) => t.projectName === project.name || t.projectPath === project.path)
       .map((t) => t.id);
     doomedTaskIds.forEach((id) => deletedTaskIdsRef.current.add(id));
