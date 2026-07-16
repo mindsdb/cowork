@@ -1,6 +1,7 @@
 // Relative-time helpers shared across the app.
-// relativeAge: compact "m/h/d ago" + date for older — used by card footers.
-// timeAgo:     "min/h/d/w ago" + "Yesterday" — used by sidebar/recents lists.
+// relativeAge:  compact "m/h/d ago" + date for older — used by card footers.
+// relativeTime: past/future phrasing ("3h ago" / "in 3h") + short date past
+//               30d — used by schedule cards/detail (next-run, last-run).
 
 export function relativeAge(input) {
   if (!input) return null;
@@ -14,15 +15,21 @@ export function relativeAge(input) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export function timeAgo(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (secs < 60)     return 'just now';
-  if (secs < 3600)   return `${Math.floor(secs / 60)} min ago`;
-  if (secs < 86400)  return `${Math.floor(secs / 3600)} h ago`;
-  if (secs < 172800) return 'Yesterday';
-  if (secs < 604800) return `${Math.floor(secs / 86400)} d ago`;
-  return `${Math.floor(secs / 604800)} w ago`;
+export function relativeTime(input) {
+  if (!input) return null;
+  const t = typeof input === 'number' ? input : Date.parse(input);
+  if (!Number.isFinite(t)) return null;
+  const now = Date.now();
+  const diff = t - now; // negative = past
+  const abs = Math.abs(diff);
+  const minute = 60_000, hour = 60 * minute, day = 24 * hour;
+  let value, unit;
+  if (abs < minute)        { value = Math.round(abs / 1000);  unit = 's'; }
+  else if (abs < hour)     { value = Math.round(abs / minute); unit = 'm'; }
+  else if (abs < day)      { value = Math.round(abs / hour);   unit = 'h'; }
+  else if (abs < 30 * day) { value = Math.round(abs / day);    unit = 'd'; }
+  else {
+    return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  return diff >= 0 ? `in ${value}${unit}` : `${value}${unit} ago`;
 }

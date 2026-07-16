@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { relativeAge, timeAgo } from './formatTime';
+import { relativeAge, relativeTime } from './formatTime';
 
 // Both helpers diff against Date.now() — pin the clock so results don't
 // depend on when the suite runs. TZ=UTC comes from tests/setup-env.ts.
@@ -39,23 +39,31 @@ describe('relativeAge', () => {
   });
 });
 
-describe('timeAgo', () => {
-  it('returns empty string for missing input and echoes unparseable input', () => {
-    expect(timeAgo(null)).toBe('');
-    expect(timeAgo('')).toBe('');
-    expect(timeAgo('garbage')).toBe('garbage');
+describe('relativeTime', () => {
+  const secondsAhead = (s) => new Date(NOW.getTime() + s * 1000).toISOString();
+
+  it('returns null for missing or unparseable input', () => {
+    expect(relativeTime(null)).toBeNull();
+    expect(relativeTime(undefined)).toBeNull();
+    expect(relativeTime('garbage')).toBeNull();
   });
 
-  it('buckets: just now → min → h → Yesterday → d → w', () => {
-    expect(timeAgo(secondsAgo(30))).toBe('just now');
-    expect(timeAgo(secondsAgo(5 * 60))).toBe('5 min ago');
-    expect(timeAgo(secondsAgo(3 * 3600))).toBe('3 h ago');
-    expect(timeAgo(secondsAgo(30 * 3600))).toBe('Yesterday'); // 24–48h window
-    expect(timeAgo(secondsAgo(3 * 86400))).toBe('3 d ago');
-    expect(timeAgo(secondsAgo(2 * 604800))).toBe('2 w ago');
+  it('phrases the future as "in Nx"', () => {
+    expect(relativeTime(secondsAhead(5 * 60))).toBe('in 5m');
+    expect(relativeTime(secondsAhead(3 * 3600))).toBe('in 3h');
   });
 
-  it('clamps future timestamps to "just now" instead of negative ages', () => {
-    expect(timeAgo(secondsAgo(-120))).toBe('just now');
+  it('phrases the past as "Nx ago"', () => {
+    expect(relativeTime(secondsAgo(3 * 3600))).toBe('3h ago');
+  });
+
+  it('buckets sub-minute differences into seconds', () => {
+    expect(relativeTime(secondsAgo(30))).toBe('30s ago');
+    expect(relativeTime(secondsAhead(10))).toBe('in 10s');
+  });
+
+  it('falls back to a short date past 30 days (shape, not locale-exact)', () => {
+    expect(relativeTime(secondsAgo(45 * 86400))).toMatch(/\w+ \d{1,2}/);
+    expect(relativeTime(secondsAhead(45 * 86400))).toMatch(/\w+ \d{1,2}/);
   });
 });

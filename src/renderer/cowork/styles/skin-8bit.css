@@ -45,10 +45,16 @@ body[data-skin="8bit"].gf-theme-dark {
 /* Drop the animated gravity-field dots — the arcade backdrop replaces them. */
 body[data-skin="8bit"][data-theme="dark"] .gravity-field { display: none; }
 
-/* Soften the cyan halo at the top of the sidebar (globals.css default is
-   rgba(34,211,238,0.10)) — fainter + tighter falloff for the 8-bit look. */
+/* Faint cyan halo at the top of the sidebar — part of the arcade look.
+   Self-contained: the default dark skin no longer draws a halo, so this
+   rule carries its own pseudo-element structure. */
 body[data-skin="8bit"][data-theme="dark"] .app-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: radial-gradient(circle at 50% -10%, rgba(61,214,245,0.035), transparent 38%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* CRT scanlines over everything. Static (no flicker — this is a work
@@ -126,7 +132,7 @@ body[data-skin="8bit"] ::-webkit-scrollbar-thumb {
 body[data-skin="8bit"] ::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
 
 /* The floating corner toggles square off with the rest of the skin. */
-body[data-skin="8bit"] .floating-theme-toggle { border-radius: var(--r); }
+body[data-skin="8bit"] .arcade-theme-toggle { border-radius: var(--r); }
 
 /* ── 8-Bit DARK — CRT arcade (matches pages/arcade/arcade.css) ────────── */
 

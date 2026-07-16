@@ -102,8 +102,8 @@ export function InboxCard({
   return (
     <div
       className={[
-        'group relative flex flex-col gap-[8px] p-[8px] rounded-[8px] cursor-pointer shrink-0',
-        'transition-colors hover:bg-[#EFEFF0] [&:has([data-popup-open])]:bg-[#EFEFF0]',
+        'group relative flex flex-col gap-[8px] p-[8px] rounded-card-row cursor-pointer shrink-0',
+        'transition-colors hover:bg-surface-2 [&:has([data-popup-open])]:bg-surface-2',
         done ? 'opacity-55' : '',
       ].join(' ')}
       onMouseEnter={() => !unanchored && !hidden && onHover?.(thread.id)}
@@ -114,21 +114,21 @@ export function InboxCard({
       <div className="flex items-center gap-[6px] min-w-0">
         <span className="flex items-center gap-[4px] min-w-0">
           <Avatar email={email} />
-          <span className="text-[14px] font-medium leading-[20px] text-[#202021] truncate">
+          <span className="text-[14px] font-medium leading-[20px] text-ink truncate">
             {displayName(email)}
           </span>
         </span>
-        <span className="text-[14px] leading-[20px] text-[#69696B] whitespace-nowrap">
+        <span className="text-[14px] leading-[20px] text-ink-3 whitespace-nowrap">
           {inboxTimeAgo(thread.created_at || thread.updated_at)}
           {thread.payload?.edited_at && (
-            <span className="text-[11px] text-[#828285]"> (edited)</span>
+            <span className="text-[11px] text-ink-4"> (edited)</span>
           )}
         </span>
       </div>
 
       {/* Text — clamped to 4 lines; the full text lives in the thread popover. */}
       <div
-        className="text-[14px] leading-[20px] text-[#202021] whitespace-pre-wrap break-words"
+        className="text-[14px] leading-[20px] text-ink whitespace-pre-wrap break-words"
         style={{
           display: '-webkit-box',
           WebkitLineClamp: 4,
@@ -142,11 +142,11 @@ export function InboxCard({
       {/* Foot: reply count · unanchored chip (only when there's something to say). */}
       {(repliesTxt || unanchored || hidden) && (
         <div className="flex items-center justify-between min-h-[16px]">
-          <span className="text-[12px] leading-[16px] text-[#828285]">{repliesTxt}</span>
+          <span className="text-[12px] leading-[16px] text-ink-4">{repliesTxt}</span>
           {hidden ? (
             <Tooltip content={HIDDEN_TIP}>
               <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
-                bg-[#EFEFF0] text-[#69696B] text-[12px] leading-[16px] cursor-default">
+                bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
                 <span>hidden</span>
               </span>
@@ -154,7 +154,7 @@ export function InboxCard({
           ) : unanchored ? (
             <Tooltip content={general ? GENERAL_TIP : UNANCHORED_TIP}>
               <span className="inline-flex items-center gap-[4px] px-[2px] rounded-[4px]
-                bg-[#EFEFF0] text-[#69696B] text-[12px] leading-[16px] cursor-default">
+                bg-surface-2 text-ink-3 text-[12px] leading-[16px] cursor-default">
                 <InfoIcon />
                 <span>unanchored</span>
               </span>
@@ -176,7 +176,7 @@ export function InboxCard({
             className={[
               'w-[20px] h-[20px] flex items-center justify-center bg-transparent border-0',
               'cursor-pointer p-0 transition-colors',
-              resolved ? 'text-[#146573]' : 'text-[#828285] hover:text-[#202021]',
+              resolved ? 'text-[#146573]' : 'text-ink-4 hover:text-ink',
             ].join(' ')}
             onClick={() => onStatus?.(thread.id, resolved ? 'open' : 'resolved')}
           >
@@ -189,7 +189,7 @@ export function InboxCard({
             width={145}
             icon={<DotsIcon />}
             triggerClassName="w-[20px] h-[20px] justify-center rounded-[4px]
-              bg-[rgba(32,32,33,0.06)] hover:bg-[rgba(32,32,33,0.14)] text-[#202021]"
+              bg-[rgba(32,32,33,0.06)] hover:bg-[rgba(32,32,33,0.14)] text-ink"
             items={[{
               label: 'Delete',
               icon: Ico.trash(13),

@@ -204,16 +204,20 @@ export default function App() {
 
       {page === 'terminal' && <CoworkApp />}
 
-      {/* Theme + style toggles on the onboarding corner — mirror the in-app
-          floating buttons (CoworkApp has its own; these only show here). The
-          CSS stacks the style toggle above the theme toggle. */}
+      {/* Theme + style toggles on the onboarding corner. CoworkApp hasn't
+          mounted yet on these pages (no sidebar to host them), so the
+          pre-app flow keeps its own floating corner toggles — namespaced
+          `arcade-*` (arcade.css) so they're independent of the in-app
+          sidebar footer toggle (Sidebar.jsx) that replaced the old
+          shared floating-chrome buttons. The CSS stacks the style toggle
+          above the theme toggle. */}
       {isArcadePage && (
         <>
           <button
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
             title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             aria-label="Toggle colour theme"
-            className="floating-theme-toggle"
+            className="arcade-theme-toggle"
             style={{ zIndex: 200 }}
           >
             {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
@@ -222,7 +226,7 @@ export default function App() {
             onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
             title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
             aria-label="Toggle 8-bit arcade style"
-            className="floating-theme-toggle floating-skin-toggle"
+            className="arcade-theme-toggle arcade-skin-toggle"
             style={{ zIndex: 200 }}
           >
             <GamepadIcon size={15} />

@@ -34,7 +34,7 @@ export function RailCard({
     <div style={{
       background: 'var(--surface)',
       border: '1px solid var(--line)',
-      borderRadius: 12,
+      borderRadius: 'var(--card-radius)',
       overflow: 'hidden',
       flexShrink: 0,
     }}>

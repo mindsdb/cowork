@@ -124,6 +124,13 @@ body, body[data-theme="light"] {
   --surface-3:    #ECECEA;
   --line:         #E4E4E1;
   --line-2:       #D4D4D0;
+  /* Selected segment in a ToggleGroup / segmented control. The surface ramp
+     inverts between themes (light: --surface is the *lightest*; dark:
+     --surface-3 is), so the token that lifts the pill above the --surface-2
+     track differs per theme. Light = --surface + the shared elevation shadow;
+     the old --surface-3 (darker than the track here) sank into it. */
+  --toggle-selected-bg:     var(--surface);
+  --toggle-selected-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
   /* Sidebar surface — a light --surface-2 rail (not the muddier
      --surface-3): keeps the rail clean and lets the accent-bg active
      tint read as real teal instead of dirtied grey. The macOS inactive
@@ -142,6 +149,9 @@ body, body[data-theme="light"] {
   --accent-3:     #0E4651;
   --accent-bg:    #E5F4F7;
   --accent-glow:  rgba(31, 156, 176, 0.30);
+  /* Solid CTA fill; color-mix so custom-skin accent re-tints propagate. */
+  --accent-solid:     color-mix(in srgb, var(--accent) 75%, black);
+  --accent-solid-ink: #FFFFFF;
 
   /* Status — brandbook-aligned */
   --ok:           #15803D;
@@ -247,6 +257,10 @@ body[data-theme="dark"] {
   --surface-3:    #1A2640;
   --line:         #1E2A44;
   --line-2:       #2A3957;
+  /* Dark keeps the raised-surface approach: --surface-3 already sits
+     *lighter* than the --surface-2 track, so the active pill lifts. */
+  --toggle-selected-bg:     var(--surface-3);
+  --toggle-selected-shadow: inset 0 0 0 1px var(--line-2);
   /* Sidebar base — a hint of cyan over the surface navy, sized
      small enough that the panel still reads as part of the same
      dark family as the rest of the app. The ::before halo at the
@@ -266,6 +280,9 @@ body[data-theme="dark"] {
   --accent-3:     rgb(6, 145, 170);
   --accent-bg:    rgba(34, 211, 238, 0.10);
   --accent-glow:  rgba(34, 211, 238, 0.45);
+  /* Solid CTA fill; color-mix so custom-skin accent re-tints propagate. */
+  --accent-solid:     var(--accent);
+  --accent-solid-ink: var(--bg);
 
   --danger:       #F87171;
   --danger-bg:    rgba(248, 113, 113, 0.12);
@@ -888,8 +905,12 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
 .send-btn:active:not(:disabled) { transform: scale(0.97); }
 .send-btn:disabled {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  color: var(--ink-4);
+  /* Dormant, not dead: the composer is its page's primary action, so the
+     send button keeps a quiet accent wash at rest (the home page would
+     otherwise show zero accent). Deliberately weaker than the armed
+     solid-accent state so it doesn't read as clickable. */
+  background: var(--accent-bg);
+  color: color-mix(in srgb, var(--accent) 60%, transparent);
   cursor: not-allowed;
   box-shadow: none;
 }
@@ -1197,8 +1218,9 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-home-card.active {
+  /* Selected = accent border only (ENG-791: no bespoke double-ring). */
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--accent-bg);
 }
 
 .customize-home-card-icon {
@@ -1294,7 +1316,7 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   gap: 12px;
   padding: 9px 10px;
   border: 0;
-  border-radius: var(--r-lg);
+  border-radius: var(--card-radius-row);
   background: transparent;
   font-size: var(--text-base);
   color: var(--ink);
@@ -1878,16 +1900,24 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-directory-card {
+  /* Variant C — aligned to the canonical interactive card (ENG-791). */
   padding: 18px 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-12);
-  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background: var(--card-surface);
+  box-shadow: var(--card-shadow-rest);
   cursor: pointer;
-  transition: box-shadow 0.15s;
+  transition: var(--card-transition);
 }
 
 .customize-directory-card:hover {
-  box-shadow: var(--sh-2);
+  box-shadow: var(--card-shadow-hover);
+  transform: translateY(var(--card-lift));
+}
+
+.customize-directory-card:active {
+  box-shadow: var(--card-shadow-rest);
+  transform: translateY(0);
 }
 
 .customize-directory-card-top {
@@ -2398,6 +2428,48 @@ body:not([data-theme="dark"]) .btn-primary {
   border-color: currentColor;
 }
 
+/* Solid — the filled CTA. One per page; use for the page's primary action. */
+.btn.solid {
+  --glow: var(--accent-glow);
+  font-weight: 600;
+  background: var(--accent-solid);
+  color: var(--accent-solid-ink);
+  border-color: var(--accent-solid);
+}
+.btn.solid:hover {
+  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+  box-shadow: 0 0 0 1px var(--accent-solid), 0 0 22px var(--glow);
+  text-shadow: none;
+}
+.btn.solid:active {
+  background: color-mix(in srgb, var(--accent-solid) 80%, var(--ink));
+}
+.btn.solid:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent-solid-ink), 0 0 0 4px var(--glow);
+}
+/* Dark: opaque paint fights the neon material language — dark-mode
+   buttons are made of light, not pigment (the outline+glow grammar
+   above). The solid CTA becomes a luminous fill: translucent accent
+   glass with a neon border and the idle glow, one visible step
+   stronger than .btn.primary's outline-only treatment. Light mode
+   keeps the true opaque solid — fills are native material there. */
+body[data-theme="dark"] .btn.solid {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+body[data-theme="dark"] .btn.solid:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 28px var(--glow);
+}
+body[data-theme="dark"] .btn.solid:active {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+body[data-theme="dark"] .btn.solid:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--glow);
+}
+
 /* Danger */
 .btn.danger {
   --fg:   var(--danger);
@@ -2536,18 +2608,104 @@ body:not([data-theme="dark"]) .btn-primary {
   margin-top: 4px;
 }
 
-/* ─── Card / Bubble surfaces ───────────────────────────────────────────── */
+/* ─── Card system (ENG-791) ─────────────────────────────────────────────
+   One card look for the whole app. Compound modifiers (matching the existing
+   .card.flat / .card.compact convention) let the <Card> primitive build a
+   class string like "card interactive selected cozy". The single hover/active
+   animation is ELEVATION ONLY — lift + soft shadow, neutral border. Accent is
+   reserved for the selected state, never hover.
+
+   Semantic aliases over the themed primitives. Declared on `body` (NOT :root)
+   so the inner var()s resolve against body's per-theme --surface/--line/--sh-*
+   — a :root declaration would resolve them where those primitives don't exist
+   (→ invalid) and every card would fall back to transparent/no-shadow. */
+body {
+  --card-radius:        var(--r-12);   /* 12px — the one card radius        */
+  --card-radius-row:    var(--r-8);    /* 8px  — dense list-row radius       */
+  --card-pad-y:         14px;
+  --card-pad-x:         16px;          /* canonical interactive list/grid pad */
+  --card-surface:       var(--surface);
+  --card-border:        var(--line);
+  --card-shadow-rest:   var(--sh-1);   /* resting + press                    */
+  --card-shadow-hover:  var(--sh-2);   /* elevated hover                     */
+  --card-lift:          -1px;
+  --card-transition:    border-color .15s ease, box-shadow .15s ease,
+                        transform .15s ease, background-color .15s ease;
+}
+
 .card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-1);
+  background: var(--card-surface);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow-rest);
   padding: 24px;
 }
 
-.card.flat { box-shadow: none; }
-.card.compact { padding: 16px; }
-.card.snug    { padding: 12px; }
+.card.flat     { box-shadow: none; }
+.card.compact  { padding: 16px; }
+.card.snug     { padding: 12px; }
+.card.cozy     { padding: var(--card-pad-y) var(--card-pad-x); } /* interactive list/grid default */
+.card.pad-none { padding: 0; }
+
+/* When the card element is a <button>, neutralize the UA button styling. */
+button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
+
+/* Interactive — the single hover/active animation. */
+.card.interactive { cursor: pointer; transition: var(--card-transition); }
+.card.interactive:hover  { box-shadow: var(--card-shadow-hover); transform: translateY(var(--card-lift)); }
+.card.interactive:active { box-shadow: var(--card-shadow-rest); transform: translateY(0); }
+.card.interactive:focus-visible { outline: none; box-shadow: var(--ring), var(--card-shadow-rest); }
+
+/* Selected/active — accent is the selection cue; persists under hover. */
+.card.selected,
+.card.selected:hover { border-color: var(--accent); }
+.card.selected.tinted { background: var(--accent-bg); }
+
+/* Glass variant — keeps the backdrop blur, adopts the shared shell. */
+.card.glass {
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(var(--surface-glass-blur));
+  backdrop-filter: blur(var(--surface-glass-blur));
+}
+
+/* Dashed empty-state / dropzone variant. */
+.card.dashed {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed var(--line-2);
+}
+.card.dashed.interactive:hover {   /* drop-target CTA keeps an accent cue */
+  transform: none;
+  box-shadow: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Interactive list ROW — flat, borderless, bg-on-hover. Its own element class
+   (rows are not .card surfaces). Selected reads as a firmer surface, not accent. */
+.card-row {
+  border: 0;
+  background: transparent;
+  border-radius: var(--card-radius-row);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: background-color .12s ease;
+}
+.card-row:hover         { background: var(--surface-2); }
+.card-row.selected      { background: var(--surface-3); }
+.card-row:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Grouped row — a faint accent resting tint marks it as a distinct unit. */
+.card-row.grouped        { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.card-row.grouped:hover  { background: var(--surface-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .card.interactive:hover,
+  .card.interactive:active,
+  .customize-directory-card:hover,
+  .customize-directory-card:active { transform: none; }
+}
 
 /* Bubble — floating glassy container; slightly translucent so the
    gravity-field shows behind. Radius slightly tighter than .card. */
@@ -2556,7 +2714,7 @@ body:not([data-theme="dark"]) .btn-primary {
   -webkit-backdrop-filter: blur(var(--surface-glass-blur));
   backdrop-filter: blur(var(--surface-glass-blur));
   border: 1px solid var(--line);
-  border-radius: var(--r);
+  border-radius: var(--card-radius);
   box-shadow: var(--sh-2);
 }
 
@@ -2631,23 +2789,21 @@ body[data-theme="dark"] .anton-sidebar__wordmark {
 }
 
 /* Cyan halo at the top of the sidebar — only in dark mode. */
-body[data-theme="dark"] .app-sidebar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% -10%, rgba(34,211,238,0.10), transparent 50%);
-  pointer-events: none;
-  z-index: 0;
-}
+/* No decorative halo in the default dark skin: the sidebar's accent
+   voice is the tinted New-task button now — an atmospheric cyan pool
+   behind it just muddied the wash-on-wash. The 3% cyan --sidebar-bg
+   tint keeps the panel in the family. (The 8-bit skin draws its own
+   fainter halo — self-contained in skin-8bit.css.) */
 .app-sidebar { position: relative; }
 .app-sidebar > * { position: relative; z-index: 1; }
 
 /* New task CTA — outlined neon in dark, accent-bordered in light */
 .anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
-/* New task — the canonical neutral button from the brand book (.btn
-   default): surface fill, --line-2 hairline, --sh-1 shadow, --r radius,
-   and the snappy .12s/.04s transitions. Clearly a button; teal stays
-   reserved for "where you are," not the CTA. */
+/* New task — tinted accent (the .btn.tinted register): an accent wash
+   with accent ink. Louder than a neutral surface — it owns the accent
+   identity and can't be misread as an input — but without the shout of
+   a solid fill, which overpowered the sidebar. Solid stays reserved
+   for page CTAs and the armed send button. */
 .btn-new-task {
   width: 100%;
   display: flex;
@@ -2655,9 +2811,9 @@ body[data-theme="dark"] .app-sidebar::before {
   gap: 10px;
   height: 36px;
   padding: 0 12px;
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--line-2);
+  background: var(--accent-bg);
+  color: var(--accent-2);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: var(--r);
   box-shadow: var(--sh-1);
   font-family: var(--font-sans);
@@ -2669,26 +2825,28 @@ body[data-theme="dark"] .app-sidebar::before {
   transition: background .12s ease, border-color .12s ease,
               box-shadow .12s ease, transform .04s ease;
 }
-.btn-new-task:hover { background: var(--surface-2); border-color: var(--line-2); }
-.btn-new-task:active { background: var(--surface-3); transform: translateY(0.5px); }
-.btn-new-task__label { flex: 1; }
+.btn-new-task:hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--accent-bg));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.btn-new-task:active {
+  background: color-mix(in srgb, var(--accent) 24%, var(--accent-bg));
+  transform: translateY(0.5px);
+}
+.btn-new-task__label { flex: 1; font-weight: 600; }
 .btn-new-task .kbd {
   font-family: var(--font-mono);
   font-size: 11px;
   color: inherit;
-  background: rgba(15, 16, 17, 0.06);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   padding: 1px 5px;
   border-radius: 3px;
   font-weight: 500;
-  opacity: 0.85;
+  opacity: 0.9;
 }
-/* Dark: --surface ≈ the sidebar base, so raise the fill one step and
-   flip the kbd chip to a light wash so it stays legible. */
-body[data-theme="dark"] .btn-new-task { background: var(--surface-3); }
-body[data-theme="dark"] .btn-new-task:hover {
-  background: color-mix(in srgb, var(--ink) 8%, var(--surface-3));
-}
-body[data-theme="dark"] .btn-new-task .kbd { background: rgba(255, 255, 255, 0.10); }
+/* Dark: the wash sits on navy, so the ink steps up to the bright
+   accent for contrast (matches how Pill/Badge accents read in dark). */
+body[data-theme="dark"] .btn-new-task { color: var(--accent); }
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
@@ -3014,45 +3172,6 @@ body[data-theme="dark"] .server-toggle.is-on:hover {
   color: var(--ink-3);
 }
 .server-help:hover { color: var(--ink); }
-
-/* Floating bottom-right theme toggle. Always reachable, sits above the
-   gravity-field background and clear of the composer. */
-.floating-theme-toggle {
-  position: fixed;
-  right: 18px;
-  bottom: 16px;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-8);
-  color: var(--ink-2);
-  cursor: pointer;
-  z-index: 50;
-  box-shadow: var(--sh-1);
-  transition: background .15s, color .15s, transform .15s, box-shadow .2s;
-}
-.floating-theme-toggle:hover {
-  color: var(--ink);
-  transform: translateY(-1px);
-}
-body[data-theme="dark"] .floating-theme-toggle:hover {
-  color: var(--accent);
-  box-shadow: 0 0 18px rgba(34,211,238,0.3);
-}
-
-/* Skin (Style) toggle — same chrome as the theme toggle, stacked above
-   it in the corner. Lit accent while any non-default skin is active. */
-.floating-skin-toggle {
-  bottom: 54px;
-}
-body:not([data-skin="normal"]) .floating-skin-toggle {
-  color: var(--accent);
-  border-color: var(--accent);
-}
 
 /* Hide focus ring on mouse-clicked buttons so a stray Space/Enter
    later in the session doesn't re-trigger the last-clicked nav item.
@@ -3617,7 +3736,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   display: none;
 }
 .rail-panel {
-  border: 1px solid var(--line); border-radius: var(--r-lg);
+  border: 1px solid var(--line); border-radius: var(--card-radius);
   background: var(--surface-0); padding: 12px;
 }
 .rail-title {
@@ -3691,7 +3810,7 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 220px;
   color: var(--frost-600); text-align: center;
-  border: 1px dashed var(--border-02); border-radius: var(--r-12);
+  border: 1px dashed var(--line-2); border-radius: var(--card-radius);
   background: var(--stone-50);
 }
 .empty-state strong { color: var(--text-strong); }
@@ -4022,8 +4141,9 @@ body[data-theme="dark"] .chat-shell .chat-composer-dock > div {
   background: color-mix(in srgb, var(--accent) 88%, black);
 }
 .chat-floating-composer .send-btn:disabled {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  color: var(--ink-4);
+  /* Same dormant accent wash as the base .send-btn:disabled. */
+  background: var(--accent-bg);
+  color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 body[data-theme="dark"] .chat-floating-composer .composer-wrap {
   /* Softer than the old 0.55-alpha 32-blur — that was producing a
@@ -4516,12 +4636,7 @@ body[data-theme="dark"] .mshell__drawer-title {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* When mobile shell is active, hide the desktop floating theme toggle —
-   the drawer carries the Settings entry. Mobile shell renders only at
-   < 640px, where the desktop floating toggle would overlap the FAB. */
 @media (max-width: 639.98px) {
-  .floating-theme-toggle { display: none; }
-
   /* Project detail (ProjectsView in detail mode) — desktop puts the
      rail (Working folder + Context + Scheduled) in a 320px right
      column. On a phone-width viewport, collapse to a single column
@@ -5162,7 +5277,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
    fixed-height Electron shell). */
 .channels-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
 .channels-list { flex: 0 0 250px; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
-.channels-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--r-lg); border: 1px solid transparent; background: transparent; color: var(--fg); font: inherit; cursor: pointer; text-align: left; }
+.channels-list-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: var(--card-radius-row); border: 1px solid transparent; background: transparent; color: var(--fg); font: inherit; cursor: pointer; text-align: left; }
 .channels-list-item:hover:not(.is-active) { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .channels-list-item.is-active { background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: var(--border-02, rgba(0,0,0,.1)); }
 .channels-list-name { flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; min-width: 0; }
@@ -5174,7 +5289,7 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-detail .channels-card { max-width: 640px; }
 .channels-intro { color: var(--ink-3, #6b6a66); margin: 0 0 16px; font-size: 13px; }
 .channels-muted { color: var(--ink-4, #8a8a86); font-size: 13px; }
-.channels-card { border: 1px solid var(--border-02, rgba(0,0,0,.1)); border-radius: var(--r-12); padding: 16px; background: var(--bg-a, transparent); }
+.channels-card { border: 1px solid var(--card-border); border-radius: var(--card-radius); padding: 16px; background: var(--bg-a, transparent); }
 .channels-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .channels-card-head h2 { font-size: var(--text-base); font-weight: 600; margin: 0; }
 .channels-type { font-family: var(--font-mono, monospace); font-size: var(--text-xs); color: var(--ink-4, #8a8a86); }

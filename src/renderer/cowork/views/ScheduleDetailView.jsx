@@ -14,28 +14,12 @@ import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/C
 import { Button } from '../components/ui';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
+import { relativeTime } from '../lib/formatTime';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
 
 // ── time helpers ──
-
-function relativeTime(iso) {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return '—';
-  const now = Date.now();
-  const diff = t - now;
-  const abs = Math.abs(diff);
-  const minute = 60_000, hour = 60 * minute, day = 24 * hour;
-  let value, unit;
-  if (abs < minute)        { value = Math.round(abs / 1000);  unit = 's'; }
-  else if (abs < hour)     { value = Math.round(abs / minute); unit = 'm'; }
-  else if (abs < day)      { value = Math.round(abs / hour);   unit = 'h'; }
-  else if (abs < 30 * day) { value = Math.round(abs / day);    unit = 'd'; }
-  else return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  return diff >= 0 ? `in ${value}${unit}` : `${value}${unit} ago`;
-}
 
 function absoluteTime(iso) {
   if (!iso) return '';
@@ -168,7 +152,7 @@ function HealthSparkline({ runs }) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: 80, borderRadius: 10,
+        height: 80, borderRadius: 'var(--card-radius)',
         border: '1px dashed var(--line-2)',
         color: 'var(--ink-4)', fontFamily: FONT_BODY, fontSize: 12.5,
       }}>
@@ -231,7 +215,7 @@ function RunRow({ run, onOpen }) {
         padding: '10px 14px',
         background: 'var(--surface)',
         border: '1px solid var(--line)',
-        borderRadius: 10,
+        borderRadius: 'var(--card-radius)',
       }}
     >
       <span aria-hidden style={{
@@ -385,7 +369,7 @@ export default function ScheduleDetailView({
           padding: '18px 22px',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
+          borderRadius: 'var(--card-radius)',
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
           <div className="sched-hero-top" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -463,12 +447,12 @@ export default function ScheduleDetailView({
           }}>
             <SummaryStat
               label="Next run"
-              value={task.enabled ? relativeTime(task.nextRunAt) : 'Paused'}
+              value={task.enabled ? (relativeTime(task.nextRunAt) ?? '—') : 'Paused'}
               hint={absoluteTime(task.nextRunAt)}
             />
             <SummaryStat
               label="Last run"
-              value={task.lastRunAt ? relativeTime(task.lastRunAt) : '—'}
+              value={task.lastRunAt ? (relativeTime(task.lastRunAt) ?? '—') : '—'}
               hint={absoluteTime(task.lastRunAt)}
             />
             <SummaryStat
@@ -488,7 +472,7 @@ export default function ScheduleDetailView({
           padding: '18px 22px',
           background: 'var(--surface)',
           border: '1px solid var(--line)',
-          borderRadius: 14,
+          borderRadius: 'var(--card-radius)',
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
           <div className="sched-health-top" style={{
@@ -543,7 +527,7 @@ export default function ScheduleDetailView({
           </div>
           {runs.length === 0 && !loadingRuns ? (
             <div style={{
-              padding: 18, borderRadius: 10,
+              padding: 18, borderRadius: 'var(--card-radius)',
               border: '1px dashed var(--line-2)',
               color: 'var(--ink-4)', textAlign: 'center', fontSize: 12.5,
             }}>No runs yet. Click <strong>Run now</strong> to fire a manual one.</div>

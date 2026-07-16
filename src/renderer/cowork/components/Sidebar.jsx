@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner } from './ui';
+import { Spinner, Kbd } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
-import { timeAgo } from '../lib/formatTime';
+import { relativeAge } from '../lib/formatTime';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
@@ -99,8 +99,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           <span style={{
             position: 'absolute', inset: 0,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-            fontFamily: 'var(--font-mono)', fontSize: 10,
-            color: 'var(--ink-4)', letterSpacing: '0.02em',
+            fontFamily: 'var(--font-sans)', fontSize: 11,
+            color: 'var(--ink-4)',
             opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
             transition: 'opacity 120ms ease',
             gap: 6,
@@ -118,7 +118,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
                 }}
               />
             ) : (
-              showTimestamp ? timeAgo(task.updatedAt || task.subtitle) : ''
+              showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
             )}
           </span>
           <span
@@ -204,6 +204,14 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   agentLabel,
+  // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
+  // both switches (relocated from the old floating bottom-right
+  // buttons; see App.jsx). Defaults keep the buttons harmless if a
+  // caller (e.g. a test) doesn't wire them up.
+  theme = 'dark',
+  onToggleTheme,
+  skin = 'normal',
+  onToggleSkin,
   settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
@@ -492,7 +500,7 @@ export default function Sidebar({
           >
             <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
             <span className="btn-new-task__label">New task</span>
-            <span className="kbd">{shortcut('N')}</span>
+            <Kbd>{shortcut('N')}</Kbd>
           </button>
         </div>
 
@@ -720,65 +728,87 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Footer — Electron-only. Web shell omits this entirely since the
-            FastAPI process IS the host (start/stop/diagnostics don't apply).
+        {/* Footer — always rendered so the theme toggle (relocated here
+            from the old floating bottom-right button) is reachable on
+            both Electron and the hosted web shell. The settings /
+            backend-status controls stay Electron-only: the FastAPI
+            process IS the host on web, so start/stop/diagnostics don't
+            apply and the web shell hides Settings entirely.
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
             Disconnected / busy: the status pill replaces the settings row so
             the problem is immediately visible. */}
-        {!host.isWeb && (
         <div className="anton-sidebar__footer">
-          {(!serverOnline || serverBusy) ? (
-            <>
+          {!host.isWeb && (
+            (!serverOnline || serverBusy) ? (
+              <>
+                <button
+                  type="button"
+                  className={
+                    'status-pill is-clickable' +
+                    (serverBusy ? ' is-busy' : '')
+                  }
+                  onClick={onShowServerHelp}
+                  title="Backend status — click for details"
+                  aria-label="Backend status — click for details"
+                  style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
+                >
+                  <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                  <span className="status-text">
+                    <span className="status-text__faded">backend ·</span>{' '}
+                    {serverBusy ? (
+                      <>
+                        <span className="status-text__live">{serverBusyKind}</span>{' '}
+                        <Spinner />
+                      </>
+                    ) : (
+                      <span className="status-text__faded">offline</span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                  onClick={() => onNavigate('settings:backend')}
+                  title="Settings"
+                  aria-label="Settings"
+                  style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                >
+                  {Ico.settings(13)}
+                </button>
+              </>
+            ) : (
               <button
-                type="button"
-                className={
-                  'status-pill is-clickable' +
-                  (serverBusy ? ' is-busy' : '')
-                }
-                onClick={onShowServerHelp}
-                title="Backend status — click for details"
-                aria-label="Backend status — click for details"
-                style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
-              >
-                <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
-                <span className="status-text">
-                  <span className="status-text__faded">backend ·</span>{' '}
-                  {serverBusy ? (
-                    <>
-                      <span className="status-text__live">{serverBusyKind}</span>{' '}
-                      <Spinner />
-                    </>
-                  ) : (
-                    <span className="status-text__faded">offline</span>
-                  )}
-                </span>
-              </button>
-              <button
-                className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings:backend')}
+                className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+                onClick={() => onNavigate('settings:agent')}
                 title="Settings"
                 aria-label="Settings"
-                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                style={{ WebkitAppRegion: 'no-drag', flex: 1, minWidth: 0 }}
               >
-                {Ico.settings(13)}
+                <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+                <span>Settings</span>
               </button>
-            </>
-          ) : (
-            <button
-              className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
-              onClick={() => onNavigate('settings:agent')}
-              title="Settings"
-              aria-label="Settings"
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
-              <span>Settings</span>
-            </button>
+            )
           )}
+          <button
+            className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
+            onClick={onToggleSkin}
+            title="8-bit style"
+            aria-label="Toggle 8-bit style"
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
+          >
+            {Ico.gamepad(15)}
+          </button>
+          <button
+            className="chrome-btn--small"
+            onClick={onToggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+          >
+            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+          </button>
         </div>
-        )}
 
         {/* Version is shown on the Settings page — no need to repeat here. */}
       </div>
