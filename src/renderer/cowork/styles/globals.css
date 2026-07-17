@@ -2984,6 +2984,13 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   gap: 6px;
   background: transparent;
 }
+.anton-sidebar__footer-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  flex-shrink: 0;
+  background: var(--line);
+}
 .status-pill {
   display: inline-flex;
   align-items: center;

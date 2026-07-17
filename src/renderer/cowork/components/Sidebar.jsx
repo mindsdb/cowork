@@ -806,13 +806,22 @@ export default function Sidebar({
               </button>
             )
           )}
+          {(show8bitToggle || showThemeToggle) && (
+            // Marks these as quick display toggles, not settings — separate
+            // from the Settings/backend-status controls to the left.
+            <span
+              aria-hidden="true"
+              className="anton-sidebar__footer-divider"
+              style={{ WebkitAppRegion: 'no-drag', marginLeft: 'auto' }}
+            />
+          )}
           {show8bitToggle && (
             <button
               className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
               onClick={onToggleSkin}
               title="8-bit style"
               aria-label="Toggle 8-bit style"
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
+              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
               {Ico.gamepad(15)}
             </button>
@@ -823,7 +832,7 @@ export default function Sidebar({
               onClick={onToggleTheme}
               title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: show8bitToggle ? undefined : 'auto' }}
+              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
               {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
             </button>

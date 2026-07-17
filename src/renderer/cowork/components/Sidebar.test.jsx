@@ -96,6 +96,18 @@ describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
     render(<Sidebar {...baseProps} serverOnline show8bitToggle={false} />);
     expect(screen.queryByRole('button', { name: 'Toggle 8-bit style' })).toBeNull();
   });
+
+  it('shows a divider before the toggle group when at least one toggle is visible', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline />);
+    expect(document.querySelector('.anton-sidebar__footer-divider')).not.toBeNull();
+  });
+
+  it('hides the divider when both toggles are hidden', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline showThemeToggle={false} show8bitToggle={false} />);
+    expect(document.querySelector('.anton-sidebar__footer-divider')).toBeNull();
+  });
 });
 
 describe('Sidebar — nav title/logo override', () => {
