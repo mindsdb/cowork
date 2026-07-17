@@ -1855,7 +1855,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 
 .customize-chip-filter,
-.customize-select,
 .customize-tab {
   border: 0;
   background: transparent;
@@ -1877,21 +1876,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.customize-select {
-  min-width: 130px;
-  height: 38px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
-  color: var(--ink);
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  font-size: var(--text-base);
 }
 
 .customize-tab {
