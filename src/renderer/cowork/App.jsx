@@ -1098,7 +1098,11 @@ function AppCore() {
   // available; absent or false is treated as unavailable (never advertise a
   // locked model); an empty map (older backend) also yields [].
   const planEnabledModels = useMemo(() => {
-    if (providerValueToType(settings.planningProvider) !== 'minds-cloud') return [];
+    // Unset provider defaults to minds-cloud, matching the `models` memo above
+    // and effectiveRoleProvider — a fresh minds-cloud user is exactly who this
+    // line targets, so don't let an empty value drop it.
+    const providerType = providerValueToType(settings.planningProvider) || 'minds-cloud';
+    if (providerType !== 'minds-cloud') return [];
     const ids = settings.recommendedModels?.['minds-cloud'] || [];
     const enabled = settings.modelEnabled || {};
     return ids.filter((id) => enabled[id] === true);
