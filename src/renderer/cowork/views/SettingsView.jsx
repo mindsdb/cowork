@@ -1790,18 +1790,24 @@ export default function SettingsView({
   // debounced for text/color inputs so typing doesn't fire a write per
   // keystroke. Per-key status (saving/saved/error) gives the user direct
   // feedback instead of relying on the page-wide Save button, which these
-  // fields no longer participate in (see AutoSaveTag).
+  // fields no longer participate in — there's no Save button on this page
+  // at all (see AutoSaveTag and renderAppearanceSection).
   const [autoSaveStatus, setAutoSaveStatus] = useState({});
   const autoSaveTimersRef = useRef({});
-  const autoSaveClearTimersRef = useRef({});
+  const autoSaveFadeTimersRef = useRef({});
+  const autoSaveRemoveTimersRef = useRef({});
+
+  const AUTO_SAVE_HOLD_MS = 1400; // how long "Saved" stays at full opacity
+  const AUTO_SAVE_FADE_MS = 500;  // opacity transition duration (matches the inline style below)
 
   const autoSaveSetting = (key, value, { debounceMs = 0 } = {}) => {
     setSetting(key, value);
     clearTimeout(autoSaveTimersRef.current[key]);
-    clearTimeout(autoSaveClearTimersRef.current[key]);
+    clearTimeout(autoSaveFadeTimersRef.current[key]);
+    clearTimeout(autoSaveRemoveTimersRef.current[key]);
 
     const commit = async () => {
-      setAutoSaveStatus((prev) => ({ ...prev, [key]: 'saving' }));
+      setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
       try {
         await onSave({ [key]: value });
         // Narrow the "last saved" snapshot to just this field so the
@@ -1811,15 +1817,24 @@ export default function SettingsView({
         // unsaved Provider edit as "Saved" just because Appearance also
         // changed at the same time.
         setLastSavedJson((prev) => patchSavedJson(prev, key, value));
-        setAutoSaveStatus((prev) => ({ ...prev, [key]: 'saved' }));
-        autoSaveClearTimersRef.current[key] = setTimeout(() => {
-          setAutoSaveStatus((prev) => {
-            const { [key]: _drop, ...rest } = prev;
-            return rest;
-          });
-        }, 1800);
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saved', fading: false } }));
+        // Hold at full opacity, then fade out, then unmount — a plain status
+        // message, not a button, and it disappears on its own.
+        autoSaveFadeTimersRef.current[key] = setTimeout(() => {
+          setAutoSaveStatus((prev) => (
+            prev[key]?.state === 'saved' ? { ...prev, [key]: { state: 'saved', fading: true } } : prev
+          ));
+          autoSaveRemoveTimersRef.current[key] = setTimeout(() => {
+            setAutoSaveStatus((prev) => {
+              const { [key]: _drop, ...rest } = prev;
+              return rest;
+            });
+          }, AUTO_SAVE_FADE_MS);
+        }, AUTO_SAVE_HOLD_MS);
       } catch (err) {
-        setAutoSaveStatus((prev) => ({ ...prev, [key]: 'error' }));
+        // Errors don't auto-fade — they stay until the next attempt so a
+        // failed save can't go unnoticed.
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'error', fading: false } }));
         console.warn(`Auto-save failed for ${key}:`, err);
       }
     };
@@ -1833,20 +1848,25 @@ export default function SettingsView({
 
   useEffect(() => () => {
     Object.values(autoSaveTimersRef.current).forEach(clearTimeout);
-    Object.values(autoSaveClearTimersRef.current).forEach(clearTimeout);
+    Object.values(autoSaveFadeTimersRef.current).forEach(clearTimeout);
+    Object.values(autoSaveRemoveTimersRef.current).forEach(clearTimeout);
   }, []);
 
   function AutoSaveTag({ settingKey }) {
     const status = autoSaveStatus[settingKey];
     if (!status) return null;
-    if (status === 'saving') {
-      return <span style={{ fontSize: 11.5, color: 'var(--ink-4)', marginLeft: 8 }}>Saving…</span>;
+    const fadeStyle = {
+      opacity: status.fading ? 0 : 1,
+      transition: `opacity ${AUTO_SAVE_FADE_MS}ms ease`,
+    };
+    if (status.state === 'saving') {
+      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ink-4)', marginLeft: 8 }}>Saving…</span>;
     }
-    if (status === 'error') {
-      return <span style={{ fontSize: 11.5, color: 'var(--danger, #e5484d)', marginLeft: 8 }}>Couldn't save</span>;
+    if (status.state === 'error') {
+      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--danger, #e5484d)', marginLeft: 8 }}>Couldn't save</span>;
     }
     return (
-      <span style={{ fontSize: 11.5, color: 'var(--ok, #3aa876)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ok, #3aa876)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         {Ico.check(11)} Saved
       </span>
     );
@@ -1871,7 +1891,10 @@ export default function SettingsView({
   };
 
   const renderAppearanceSection = () => (
-    <SettingsSectionPanel footer={renderSaveFooter()}>
+    // No Save footer here — every control on this page auto-saves itself
+    // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
+    // be dead weight that always reads "Saved" and never does anything.
+    <SettingsSectionPanel>
       <CollapsibleGroup title="Appearance">
         <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
           <ToggleGroup

@@ -97,6 +97,15 @@ describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
     expect(screen.queryByRole('button', { name: 'Toggle 8-bit style' })).toBeNull();
   });
 
+  // Flipping this toggle sets skin straight to '8bit'/'normal', which would
+  // silently discard an active Custom theme recipe (it only applies while
+  // skin === 'custom') — so it must not be reachable in that state.
+  it('hides the 8-bit toggle when the Custom skin is active, even if show8bitToggle is true', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline show8bitToggle skin="custom" />);
+    expect(screen.queryByRole('button', { name: 'Toggle 8-bit style' })).toBeNull();
+  });
+
   it('shows a divider before the toggle group when at least one toggle is visible', () => {
     hostMock.isWeb = false;
     render(<Sidebar {...baseProps} serverOnline />);

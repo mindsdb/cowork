@@ -354,6 +354,12 @@ export default function Sidebar({
     })
     .slice(0, 8);
 
+  // The 8-bit toggle flips `skin` straight to '8bit'/'normal' — while a
+  // custom theme is active that would silently discard it (the CustomTheme
+  // recipe only applies when skin === 'custom'), so hide the toggle rather
+  // than let a quick sidebar button reset a whole theme.
+  const effectiveShow8bitToggle = show8bitToggle && skin !== 'custom';
+
   return (
     <aside
       className={`app-sidebar${collapsed ? ' collapsed' : ''}`}
@@ -806,7 +812,7 @@ export default function Sidebar({
               </button>
             )
           )}
-          {(show8bitToggle || showThemeToggle) && (
+          {(effectiveShow8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.
             <span
@@ -815,7 +821,7 @@ export default function Sidebar({
               style={{ WebkitAppRegion: 'no-drag', marginLeft: 'auto' }}
             />
           )}
-          {show8bitToggle && (
+          {effectiveShow8bitToggle && (
             <button
               className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
               onClick={onToggleSkin}
