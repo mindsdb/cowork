@@ -1090,15 +1090,19 @@ function AppCore() {
   }, [settings.recommendedModels, settings.planningProvider]);
   // The MindsHub-tiered models the account can actually use, in menu order —
   // feeds the "Available on your plan" line on the model-403 card (ENG-649 /
-  // ENG-598). Tier gating (model_access_denied) only comes from minds-cloud, so
-  // that's the list to offer. `modelEnabled[id] === true` = available; absent or
-  // false is treated as unavailable here (never advertise a locked model), and
-  // an empty map (older backend) yields [] so the card drops the line.
+  // ENG-598). "Available on your plan" is a MindsHub-tier concept, so only
+  // populate it when the planning provider IS minds-cloud (the only provider
+  // whose gateway emits model_access_denied). For a BYOK provider there's no
+  // plan — return [] so the card drops the line rather than advertising
+  // minds-cloud models the user isn't on. `modelEnabled[id] === true` =
+  // available; absent or false is treated as unavailable (never advertise a
+  // locked model); an empty map (older backend) also yields [].
   const planEnabledModels = useMemo(() => {
+    if (providerValueToType(settings.planningProvider) !== 'minds-cloud') return [];
     const ids = settings.recommendedModels?.['minds-cloud'] || [];
     const enabled = settings.modelEnabled || {};
     return ids.filter((id) => enabled[id] === true);
-  }, [settings.recommendedModels, settings.modelEnabled]);
+  }, [settings.recommendedModels, settings.modelEnabled, settings.planningProvider]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,

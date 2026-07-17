@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { modelUnavailableCtas, planAvailabilityLine } from './ChatView.jsx';
+import { modelUnavailableCtas, planAvailabilityLine, prettyModelLabel } from './ChatView.jsx';
 
 // ENG-649: once ENG-596 + the Statsig `tier_locked` rule shipped, `model_disabled`
 // means strictly "admin kill switch — down for everyone", so its card must NOT
@@ -52,5 +52,29 @@ describe('planAvailabilityLine', () => {
 
   it('resolves ids to product labels via modelLabel', () => {
     expect(planAvailabilityLine(['claude-opus-4-8'])).toBe('Available on your plan: Claude Opus 4.8');
+  });
+});
+
+// prettyModelLabel backs both the card title and the availability line: it
+// capitalizes a bare single-token alias for prose but must never re-case a
+// label modelLabel already spaced/cased (e.g. "o4 Mini").
+describe('prettyModelLabel', () => {
+  it('capitalizes a bare single-word alias', () => {
+    expect(prettyModelLabel('sonnet')).toBe('Sonnet');
+  });
+
+  it('passes through a multi-word label untouched (never re-cased)', () => {
+    expect(prettyModelLabel('claude-opus-4-8')).toBe('Claude Opus 4.8');
+    // modelLabel deliberately lowercases the "o4" head — keep it that way.
+    expect(prettyModelLabel('o4-mini')).toBe('o4 Mini');
+  });
+
+  it('uses the fallback when the id is missing', () => {
+    expect(prettyModelLabel(undefined, 'This model')).toBe('This model');
+  });
+
+  it('returns empty string when there is no id and no fallback', () => {
+    expect(prettyModelLabel(undefined)).toBe('');
+    expect(prettyModelLabel('')).toBe('');
   });
 });

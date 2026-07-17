@@ -968,7 +968,7 @@ export function modelUnavailableCtas(code) {
 // bare single-token alias ("sonnet") comes back lowercase, and it reads better
 // capitalized in prose. So capitalize single-word labels only, leaving anything
 // modelLabel already spaced/cased untouched. `fallback` covers a missing id.
-function prettyModelLabel(id, fallback = '') {
+export function prettyModelLabel(id, fallback = '') {
   const raw = modelLabel(id) || id || fallback;
   if (!raw) return raw;
   return /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
