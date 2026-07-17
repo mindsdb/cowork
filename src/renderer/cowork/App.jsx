@@ -30,6 +30,7 @@ import { extractFormSpec } from './components/datavault/parseFormSpec';
 import { host, getAccessToken } from '../platform/host';
 import { loadSkin, persistSkin, nextSkin, skinLabel } from '../lib/skins';
 import { loadCustomTheme, persistCustomTheme, applyCustomTheme } from '../lib/customTheme';
+import { applyNavTitleColor } from '../lib/navBranding';
 import { getAgentLabel } from './lib/agentLabel';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -752,6 +753,11 @@ function AppCore() {
     // via Settings → Personalization → Animated background.
     showDots: false,
     showCounters: true,
+    navTitle: '',
+    navTitleColor: '',
+    navLogo: '',
+    showThemeToggle: true,
+    show8bitToggle: true,
     accentVariant: 'aqua',
   });
 
@@ -1259,6 +1265,12 @@ function AppCore() {
     persistCustomTheme(customTheme);
     applyCustomTheme(skin === 'custom' ? customTheme : null);
   }, [skin, customTheme]);
+
+  // Sidebar title color — a synced Setting (like the greeting), independent
+  // of the skin/CustomTheme system above, so it applies in every style.
+  useEffect(() => {
+    applyNavTitleColor(settings.navTitleColor);
+  }, [settings.navTitleColor]);
 
   // Mirror the Dot grid setting to a body class so the gravity-field
   // canvas can be hidden via CSS. `display: none` also lets the
@@ -3618,6 +3630,8 @@ function AppCore() {
           onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           skin={skin}
           onToggleSkin={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
+          showThemeToggle={settings.showThemeToggle !== false}
+          show8bitToggle={settings.show8bitToggle !== false}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
@@ -3646,6 +3660,8 @@ function AppCore() {
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={settings.showCounters !== false}
+          navTitle={settings.navTitle || null}
+          navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
           onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
@@ -4052,6 +4068,8 @@ function AppCore() {
               window.dispatchEvent(new CustomEvent('anton:open-new-project'));
             }, 60);
           }}
+          navTitle={settings.navTitle || null}
+          navLogo={settings.navLogo || null}
         >
           {mainEl}
         </MobileShell>

@@ -84,4 +84,38 @@ describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
       screen.getByRole('button', { name: 'Toggle 8-bit style' }).className
     ).toContain('is-on');
   });
+
+  it('hides the theme toggle when showThemeToggle is false', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline showThemeToggle={false} />);
+    expect(screen.queryByRole('button', { name: /Switch to (dark|light) theme/ })).toBeNull();
+  });
+
+  it('hides the 8-bit toggle when show8bitToggle is false', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline show8bitToggle={false} />);
+    expect(screen.queryByRole('button', { name: 'Toggle 8-bit style' })).toBeNull();
+  });
+});
+
+describe('Sidebar — nav title/logo override', () => {
+  it('shows the default "MindsHub" wordmark and no logo when unset', () => {
+    render(<Sidebar {...baseProps} />);
+    expect(screen.getByText('MindsHub')).toBeInTheDocument();
+    expect(document.querySelector('.anton-sidebar__logo')).toBeNull();
+  });
+
+  it('shows a custom navTitle and navLogo when set', () => {
+    render(<Sidebar {...baseProps} navTitle="Acme Workspace" navLogo="data:image/png;base64,abc123" />);
+    expect(screen.getByText('Acme Workspace')).toBeInTheDocument();
+    expect(screen.queryByText('MindsHub')).toBeNull();
+    const img = document.querySelector('.anton-sidebar__logo');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('data:image/png;base64,abc123');
+  });
+
+  it('falls back to "MindsHub" when navTitle is an empty string', () => {
+    render(<Sidebar {...baseProps} navTitle="" />);
+    expect(screen.getByText('MindsHub')).toBeInTheDocument();
+  });
 });

@@ -212,11 +212,19 @@ export default function Sidebar({
   onToggleTheme,
   skin = 'normal',
   onToggleSkin,
+  // Settings → Appearance → Theme/8-bit toggle buttons. Hide either
+  // footer button independently; both default to shown.
+  showThemeToggle = true,
+  show8bitToggle = true,
   settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
   // on each Recent row. Default true.
   showCounters = true,
+  // Settings → Appearance → Sidebar title/logo. Replaces the "MindsHub"
+  // wordmark; null/empty falls back to the default (text-only, no logo).
+  navTitle = null,
+  navLogo = null,
 }) {
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
@@ -469,7 +477,15 @@ export default function Sidebar({
               userSelect: 'none',
             }}
           >·</span>
-          <div className="anton-sidebar__wordmark">MindsHub</div>
+          {navLogo && (
+            <img
+              src={navLogo}
+              alt=""
+              aria-hidden="true"
+              className="anton-sidebar__logo"
+            />
+          )}
+          <div className="anton-sidebar__wordmark">{navTitle || 'MindsHub'}</div>
         </div>
       </div>
 
@@ -790,24 +806,28 @@ export default function Sidebar({
               </button>
             )
           )}
-          <button
-            className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
-            onClick={onToggleSkin}
-            title="8-bit style"
-            aria-label="Toggle 8-bit style"
-            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
-          >
-            {Ico.gamepad(15)}
-          </button>
-          <button
-            className="chrome-btn--small"
-            onClick={onToggleTheme}
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
-          >
-            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-          </button>
+          {show8bitToggle && (
+            <button
+              className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
+              onClick={onToggleSkin}
+              title="8-bit style"
+              aria-label="Toggle 8-bit style"
+              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
+            >
+              {Ico.gamepad(15)}
+            </button>
+          )}
+          {showThemeToggle && (
+            <button
+              className="chrome-btn--small"
+              onClick={onToggleTheme}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: show8bitToggle ? undefined : 'auto' }}
+            >
+              {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+            </button>
+          )}
         </div>
 
         {/* Version is shown on the Settings page — no need to repeat here. */}

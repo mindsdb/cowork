@@ -2774,13 +2774,20 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 .anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; }
 .anton-sidebar__chrome-buttons { display: flex; gap: 2px; }
 
+.anton-sidebar__logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .anton-sidebar__wordmark {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: var(--text-xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink);
+  color: var(--nav-title-color, var(--ink));
   padding-right: 4px;
   white-space: nowrap;
 }
@@ -4333,13 +4340,19 @@ body[data-theme="dark"] .chat-floating-composer .composer-wrap {
    brand): font-display, uppercase, the same letter-spacing — so the
    mobile drawer shares the same brand typography. Size bumped from
    the sidebar's 11px since the drawer header has more vertical room. */
+.mshell__drawer-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
 .mshell__drawer-title {
   font-family: var(--font-display);
   font-size: var(--text-base);
   font-weight: 500;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ink);
+  color: var(--nav-title-color, var(--ink));
 }
 body[data-theme="dark"] .mshell__drawer-title {
   text-shadow: 0 0 14px var(--accent-glow);

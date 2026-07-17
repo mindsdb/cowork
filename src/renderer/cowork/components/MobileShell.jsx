@@ -91,6 +91,8 @@ export default function MobileShell({
   onOpenSchedule,        // (scheduleId)
   onNewTask,             // () — fresh task, no project pinned
   onNewProject,          // () — open the "New project" modal (via projects route)
+  navTitle = null,       // Settings → Appearance → Sidebar title override
+  navLogo = null,        // Settings → Appearance → Sidebar logo override
   children,
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -277,7 +279,12 @@ export default function MobileShell({
         aria-hidden={!drawerOpen}
       >
         <div className="mshell__drawer-head">
-          <span className="mshell__drawer-title">MindsHub Cowork</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            {navLogo && (
+              <img src={navLogo} alt="" aria-hidden="true" className="mshell__drawer-logo" />
+            )}
+            <span className="mshell__drawer-title">{navTitle || 'MindsHub Cowork'}</span>
+          </div>
           <button
             type="button"
             className="mshell__close"

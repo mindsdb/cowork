@@ -1768,6 +1768,24 @@ export default function SettingsView({
     );
   };
 
+  // Sidebar logo upload — read as a data URI and save as the synced
+  // `navLogo` setting (same pipeline as every other setting, e.g. greeting).
+  // Capped well under a reasonable size for a settings-table text column.
+  const logoInputRef = useRef(null);
+  const MAX_LOGO_BYTES = 300 * 1024;
+  const [logoError, setLogoError] = useState(null);
+  const handleLogoUpload = (file) => {
+    if (!file) return;
+    if (file.size > MAX_LOGO_BYTES) {
+      setLogoError('Logo must be under 300 KB.');
+      return;
+    }
+    setLogoError(null);
+    const reader = new FileReader();
+    reader.onload = () => setSetting('navLogo', reader.result);
+    reader.readAsDataURL(file);
+  };
+
   const renderAppearanceSection = () => (
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <CollapsibleGroup title="Appearance">
@@ -1879,6 +1897,72 @@ export default function SettingsView({
             ariaLabel="Greeting text"
           />
         </Section>
+        <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
+          <TextInput
+            value={settings.navTitle || ''}
+            onChange={(v) => setSetting('navTitle', v)}
+            placeholder="MindsHub"
+            title="Replaces the MindsHub wordmark in the nav panel."
+            ariaLabel="Sidebar title text"
+          />
+        </Section>
+        <Section title="Sidebar title color" subtitle="Pick a color for the sidebar title, or follow the theme's default text color.">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input
+              type="color"
+              value={settings.navTitleColor || '#e8e8ec'}
+              onChange={(e) => setSetting('navTitleColor', e.target.value)}
+              disabled={!settings.navTitleColor}
+              aria-label="Sidebar title color"
+              style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: settings.navTitleColor ? 1 : 0.45 }}
+            />
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <Checkbox
+                checked={!settings.navTitleColor}
+                onCheckedChange={(v) => setSetting('navTitleColor', v ? '' : '#e8e8ec')}
+                aria-label="Follow theme color"
+              />
+              Follow theme
+            </label>
+          </div>
+        </Section>
+        <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {settings.navLogo && (
+              <img
+                src={settings.navLogo}
+                alt=""
+                style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--line-2)', background: 'var(--surface)' }}
+              />
+            )}
+            <Button
+              variant="subtle"
+              onClick={() => logoInputRef.current?.click()}
+              title="Choose a logo image."
+            >
+              {settings.navLogo ? 'Change logo' : 'Upload logo'}
+            </Button>
+            {settings.navLogo && (
+              <button
+                type="button"
+                onClick={() => { setSetting('navLogo', ''); setLogoError(null); }}
+                style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12.5, fontFamily: 'var(--font-body)' }}
+              >
+                Remove
+              </button>
+            )}
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              style={{ display: 'none' }}
+              onChange={(e) => { handleLogoUpload(e.target.files?.[0]); e.target.value = ''; }}
+            />
+          </div>
+          {logoError && (
+            <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>{logoError}</div>
+          )}
+        </Section>
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <Switch
@@ -1894,6 +1978,22 @@ export default function SettingsView({
               onCheckedChange={(v) => setSetting('showCounters', v)}
               title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
               aria-label="Nav-panel counters"
+            />
+          </Section>
+          <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
+            <Switch
+              checked={settings.showThemeToggle !== false}
+              onCheckedChange={(v) => setSetting('showThemeToggle', v)}
+              title="Show or hide the sidebar's light/dark theme toggle."
+              aria-label="Theme toggle button"
+            />
+          </Section>
+          <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
+            <Switch
+              checked={settings.show8bitToggle !== false}
+              onCheckedChange={(v) => setSetting('show8bitToggle', v)}
+              title="Show or hide the sidebar's 8-bit style toggle."
+              aria-label="8-bit style toggle button"
             />
           </Section>
         </div>
