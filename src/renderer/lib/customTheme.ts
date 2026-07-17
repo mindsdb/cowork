@@ -107,6 +107,10 @@ const MONO_STACK = "'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, M
 export function applyCustomTheme(t: CustomTheme | null, theme: 'light' | 'dark' = 'dark'): void {
   const body = document.body;
   for (const p of MANAGED_PROPS) body.style.removeProperty(p);
+  // Not a custom property (kept out of MANAGED_PROPS, which is documented as
+  // the --custom-property list) — cleared explicitly so removing/clearing
+  // the theme hands the window background back to .gf-theme-light/dark.
+  body.style.removeProperty('background');
   body.classList.remove('custom-scanlines', 'custom-bg-active');
   if (!t) return;
 
@@ -146,6 +150,14 @@ export function applyCustomTheme(t: CustomTheme | null, theme: 'light' | 'dark' 
     body.style.setProperty('--ink-3', rgbToHex(mix(inkPole, bg, 0.45)));
     body.style.setProperty('--ink-4', rgbToHex(mix(inkPole, bg, 0.60)));
     body.style.setProperty('--ink-5', rgbToHex(mix(inkPole, bg, 0.75)));
+    // The window-level background (outside the sidebar) is otherwise
+    // hardcoded per stock theme by .gf-theme-light/.gf-theme-dark
+    // (styles.css) — those class rules never look at --bg at all. Setting
+    // `background` here directly as an inline style beats them on
+    // specificity, so a custom background actually reaches beyond the
+    // sidebar. A bit darker than the picked color gives the sidebar some
+    // depth against it rather than reading as one flat slab.
+    body.style.setProperty('background', rgbToHex(mix(bg, BLACK, 0.10)));
   }
 
   const r = Math.max(0, Math.min(16, t.radius));

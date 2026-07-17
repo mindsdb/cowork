@@ -56,4 +56,29 @@ describe('customTheme — light/dark background split', () => {
     applyCustomTheme(null, 'dark');
     expect(document.body.classList.contains('custom-bg-active')).toBe(false);
   });
+
+  // The window-level background (outside the sidebar) is otherwise hardcoded
+  // per stock theme by .gf-theme-light/.gf-theme-dark (styles.css), which
+  // never reference --bg — so without an inline override here, a custom
+  // background would only ever show up inside the sidebar.
+  describe('window-level background (outside the sidebar)', () => {
+    it('sets an inline body background darker than the picked color', () => {
+      applyCustomTheme({ ...DEFAULT_CUSTOM_THEME, bgDark: '#334455' }, 'dark');
+      const applied = document.body.style.getPropertyValue('background');
+      expect(applied).not.toBe('');
+      expect(applied.toLowerCase()).not.toBe('#334455');
+    });
+
+    it('clears the inline background when no custom bg is resolved', () => {
+      applyCustomTheme({ ...DEFAULT_CUSTOM_THEME, bgDark: '#334455' }, 'light');
+      expect(document.body.style.getPropertyValue('background')).toBe('');
+    });
+
+    it('clears the inline background when the theme is turned off (t = null)', () => {
+      applyCustomTheme({ ...DEFAULT_CUSTOM_THEME, bgDark: '#334455' }, 'dark');
+      expect(document.body.style.getPropertyValue('background')).not.toBe('');
+      applyCustomTheme(null, 'dark');
+      expect(document.body.style.getPropertyValue('background')).toBe('');
+    });
+  });
 });
