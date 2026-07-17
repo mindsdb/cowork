@@ -1683,8 +1683,9 @@ export default function ChatView({
                   );
                 }
                 // Model-403 mid-conversation: the plan doesn't include the
-                // model (or it's admin-disabled) → offer Upgrade / Switch
-                // model, never "try again".
+                // model (Upgrade + Switch) or it's admin-disabled (Switch only)
+                // → offer Switch model / Upgrade, never "try again". See
+                // ModelUnavailableCard for the per-code CTA split (ENG-649).
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
                   return (
                     <ModelUnavailableCard
