@@ -34,7 +34,7 @@ export function Toast({ message, type = 'error', onClose, duration = 4000, align
       color: theme.color,
       fontSize: 13,
       fontFamily: 'var(--font-body)',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+      boxShadow: 'var(--sh-popup)',
       maxWidth: 480,
       pointerEvents: 'auto',
     }}>

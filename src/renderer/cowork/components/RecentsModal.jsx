@@ -160,7 +160,7 @@ export default function RecentsModal({ open, onClose, tasks = [], onSelect, onDe
           background: 'var(--surface)',
           borderBottom: '1px solid var(--line)',
           borderRadius: 0,
-          boxShadow: '0 14px 32px rgba(15, 16, 17, 0.22)',
+          boxShadow: 'var(--sh-popup)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           fontFamily: FONT_BODY,
         }}
