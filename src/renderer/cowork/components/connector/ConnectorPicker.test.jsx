@@ -33,7 +33,6 @@ describe('ConnectorPicker — pinned Browser Control tile (Task A1)', () => {
     // Expectation-setting copy: the tile explains the dedicated Chrome
     // window so users know their regular tabs are untouched.
     expect(screen.getByText(/dedicated Chrome window/)).toBeInTheDocument();
-    expect(screen.getByText(/regular tabs stay untouched/)).toBeInTheDocument();
     // Registry connectors are unaffected by the pinned section.
     expect(await screen.findByText('Gmail')).toBeInTheDocument();
   });

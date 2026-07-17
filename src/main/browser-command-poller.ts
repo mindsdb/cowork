@@ -43,9 +43,8 @@ import {
 
 // A command handed down by cowork-server (schemas/browser.py BridgeCommand).
 // `action_type` is the stored type (inspect/navigate/scroll/wait/open_url);
-// the server never sends the LLM verb. `open_url` is server-directed only —
-// enqueued after the user explicitly asked for that site in chat and the
-// server granted the new domain; `href` carries the full http(s) URL.
+// the server never sends the LLM verb. `open_url` carries the full http(s)
+// URL in `href` (semantics: see openUserDirectedUrl in browser-bridge.ts).
 // Arrives wrapped: `POST /browse/commands/next` responds
 // `{ command: BridgeCommand | null, blocked?: string }`.
 export interface BridgeCommand {
@@ -83,8 +82,7 @@ export interface PollerTransport {
 type ExecFns = {
   inspect: typeof inspect;
   navigateApprovedLink: typeof navigateApprovedLink;
-  // Server-directed open_url: retargets the approved host (user consent was
-  // established in chat before the server enqueued the command) + navigates.
+  // open_url executor (see the authoritative doc on it in browser-bridge.ts).
   openUserDirectedUrl: typeof openUserDirectedUrl;
   scroll: typeof scroll;
   wait: typeof wait;
@@ -284,8 +282,7 @@ export async function executeCommand(cmd: BridgeCommand): Promise<BrowserActionR
     case 'navigate':
       return cfg.exec.navigateApprovedLink(cmd.href ?? '');
     case 'open_url':
-      // Server-directed, user-consented retarget + navigate. A command with
-      // no href can't be executed — refuse it as a failed navigation.
+      // A command with no href can't be executed — refuse as a failed nav.
       if (!cmd.href) {
         return {
           status: 'navigation_failed',

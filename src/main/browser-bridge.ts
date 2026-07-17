@@ -28,6 +28,7 @@ import {
   type ObservedResult,
   type ObservedLink,
   hostMatchesGrant,
+  isHttpUrl,
   isReadonlyCdpMethod,
   registrableHost,
 } from '../shared/browser-bridge-types';
@@ -817,17 +818,25 @@ export async function navigateApprovedLink(href: string): Promise<BrowserActionR
       reason: 'That link leaves the approved site.',
     };
   }
+  return navigateAndVerify(href);
+}
+
+// Shared drive-navigate-then-verify tail used by BOTH navigate paths
+// (navigateApprovedLink and openUserDirectedUrl), so they enforce the same
+// redirect policy by construction: Page.navigate, give the page a beat to
+// settle, read back, and pass the shared approved-domain check. The page may
+// have redirected OFF the approved site — the grant must NOT stay live then,
+// or a later command would run against the off-domain page without
+// reapproval; the shared check drops to lost. On ok, the link cache is
+// refreshed from the readback (kept as-is when extraction returned no links).
+async function navigateAndVerify(href: string): Promise<BrowserActionResult> {
   try {
     await cdp('Page.navigate', { url: href });
-    // Give the page a beat to settle, then read back to verify the domain.
-    // A same-site link may have redirected OFF the approved site: the grant
-    // must NOT stay live then, or a later command would run against the
-    // off-domain page without reapproval — the shared check drops to lost.
     await sleep(400);
     const observed = await extractObserved();
     const offDomain = verifyObservedOnApprovedDomain('navigate', observed);
     if (offDomain) return offDomain;
-    target.lastLinks = observed.links ?? target.lastLinks;
+    if (approvedTarget) approvedTarget.lastLinks = observed.links ?? approvedTarget.lastLinks;
     return { status: 'ok', action: 'navigate', observed };
   } catch (err) {
     return classifyError('navigate', err);
@@ -853,15 +862,8 @@ export async function openUserDirectedUrl(href: string): Promise<BrowserActionRe
   const target = approvedTarget!;
   // Only full http(s) URLs with a non-empty registrable host can carry a
   // grant (file:/data:/about: etc. have no host to retarget to).
-  let httpScheme = false;
-  try {
-    const u = new URL(href);
-    httpScheme = u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    httpScheme = false;
-  }
   const newHost = registrableHost(href);
-  if (!httpScheme || !newHost) {
+  if (!isHttpUrl(href) || !newHost) {
     return {
       status: 'navigation_failed',
       action: 'navigate',
@@ -869,32 +871,24 @@ export async function openUserDirectedUrl(href: string): Promise<BrowserActionRe
     };
   }
   // RETARGET FIRST (the sanctioned, user-consented grant transition — see
-  // the ApprovedTarget.domain comment), then drop the old site's link cache.
+  // the ApprovedTarget.domain comment), then drop the old site's link cache —
+  // those links belong to the old site and must not gate (or pass) navigation
+  // on the new one.
   target.domain = newHost;
   target.lastLinks = [];
   // Push the new domain to the renderer badge + main-side listeners now, so
   // the UI reflects the retarget even if the navigation itself fails.
   emitState();
-  try {
-    await cdp('Page.navigate', { url: href });
-    // Same settle + readback verification as navigateApprovedLink, with the
-    // NEW host as the approved grant: a redirect that stays on the same
-    // registrable host (bbc.co.uk → www.bbc.co.uk) passes; a redirect that
-    // lands on a DIFFERENT registrable host fails the shared check exactly
-    // like a navigate would (navigation_failed + lost).
-    await sleep(400);
-    const observed = await extractObserved();
-    const offDomain = verifyObservedOnApprovedDomain('navigate', observed);
-    if (offDomain) return offDomain;
-    target.lastLinks = observed.links ?? [];
-    if (observed.title) {
-      target.title = observed.title;
-      emitState();
-    }
-    return { status: 'ok', action: 'navigate', observed };
-  } catch (err) {
-    return classifyError('navigate', err);
+  // Shared navigate tail: with the NEW host as the approved grant, a redirect
+  // staying on the same registrable host (bbc.co.uk → www.bbc.co.uk) passes;
+  // a different registrable host fails exactly like a navigate would
+  // (navigation_failed + lost).
+  const result = await navigateAndVerify(href);
+  if (result.status === 'ok' && result.observed?.title) {
+    target.title = result.observed.title;
+    emitState();
   }
+  return result;
 }
 
 // scroll() — move the viewport by one page in the given direction and read the

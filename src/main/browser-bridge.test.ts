@@ -489,7 +489,7 @@ describe('browser-bridge domain-grant immutability', () => {
 // chat ("user-directed URL = implicit grant"), so the bridge retargets the
 // approved host BEFORE navigating and the watchdog must not fire.
 describe('browser-bridge openUserDirectedUrl (server-directed open_url)', () => {
-  it('retargets the approved host, navigates, and returns the observed readback', async () => {
+  it('retargets the approved host, navigates, emits the new-domain state event, and returns the observed readback', async () => {
     await connect();
     expect(bridge.status().domain).toBe('example.com');
     const socket = FakeCdpSocket.instances[0];
@@ -500,23 +500,17 @@ describe('browser-bridge openUserDirectedUrl (server-directed open_url)', () => 
       title: 'News',
       links: [{ text: 'More', href: 'https://news.example.net/more' }],
     };
+    const domains: (string | undefined)[] = [];
+    const unsub = bridge.onBridgeStateChange((p) => domains.push(p.domain));
     const r = await bridge.openUserDirectedUrl('https://news.example.net/story');
+    unsub();
     expect(r.status).toBe('ok');
     expect(r.observed?.url).toBe('https://news.example.net/story');
     expect(bridge.currentState()).toBe('connected');
-    // The grant now covers the NEW registrable host.
+    // The grant now covers the NEW registrable host...
     expect(bridge.status().domain).toBe('example.net');
     expect(socket.sentMethods).toContain('Page.navigate');
-  });
-
-  it('emits a state event carrying the new domain so the renderer badge updates', async () => {
-    await connect();
-    const socket = FakeCdpSocket.instances[0];
-    socket.page = { ...socket.page, url: 'https://news.example.net/story' };
-    const domains: (string | undefined)[] = [];
-    const unsub = bridge.onBridgeStateChange((p) => domains.push(p.domain));
-    await bridge.openUserDirectedUrl('https://news.example.net/story');
-    unsub();
+    // ...and the state event carried it, so the renderer badge updates.
     expect(domains).toContain('example.net');
   });
 

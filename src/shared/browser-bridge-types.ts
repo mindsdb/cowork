@@ -268,6 +268,18 @@ export function isReadonlyCdpMethod(method: string): boolean {
 // isolation boundary here. When no registrable domain exists (IP literals,
 // localhost, single-label intranet hosts) we FAIL SAFE to the exact hostname —
 // the grant then matches only that host.
+// Is `rawUrl` a parseable http(s) URL? Grant-carrying navigation targets
+// (server-directed open_url) must be full web URLs — file:/data:/about: etc.
+// have no host to retarget a grant to.
+export function isHttpUrl(rawUrl: string): boolean {
+  try {
+    const u = new URL(rawUrl);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function registrableHost(rawUrl: string): string {
   try {
     const u = new URL(rawUrl);
