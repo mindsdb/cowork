@@ -482,7 +482,7 @@ export function WorkingFolderLive({ project, isStreaming }) {
       <ConfirmModal
         open={!!pendingDeleteArtifact}
         title={`Delete "${pendingDeleteArtifact?.title || pendingDeleteArtifact?.path?.split('/').pop() || 'artifact'}"?`}
-        message="The artifact will be permanently deleted, and unpublished first if it's currently published. This can't be undone."
+        message="The artifact will be permanently deleted, and sharing will stop first if it's currently shared. This can't be undone."
         confirmLabel="Delete"
         cancelLabel="Keep"
         destructive

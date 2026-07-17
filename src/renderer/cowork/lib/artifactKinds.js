@@ -63,7 +63,7 @@ const PUBLISH_BLOCKED_TYPES = new Set(['fullstack-stateful-app']);
  */
 export function publishBlockedReason(a) {
   if (a && PUBLISH_BLOCKED_TYPES.has(a.type)) {
-    return "Fullstack stateful apps can't be published.";
+    return "Fullstack stateful apps can't be shared.";
   }
   return '';
 }

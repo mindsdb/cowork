@@ -28,8 +28,8 @@ describe('PublishMenu — outside-click dismiss', () => {
   it('closes when a click lands elsewhere on screen, not just on the trigger', () => {
     render(<PublishMenu controller={makeController()} />);
 
-    fireEvent.click(screen.getByText('Publish'));
-    expect(screen.getByText('Publish to the Web')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Share'));
+    expect(screen.getByText('Share to the Web')).toBeInTheDocument();
 
     // The artifact preview renders as an <iframe>; a real click there would
     // hit-test to this overlay div (it visually covers the whole viewport),
@@ -37,7 +37,7 @@ describe('PublishMenu — outside-click dismiss', () => {
     // directly on the overlay simulates that real-world hit-test.
     fireEvent.mouseDown(screen.getByTestId('publish-menu-outside-dismiss'));
 
-    expect(screen.queryByText('Publish to the Web')).toBeNull();
+    expect(screen.queryByText('Share to the Web')).toBeNull();
   });
 
   it('does not render the dismiss overlay when the popover is closed', () => {

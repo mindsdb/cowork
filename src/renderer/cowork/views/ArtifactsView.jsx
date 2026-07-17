@@ -55,7 +55,7 @@ const EMPTY_ARTIFACTS = [];
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
 const SORT_OPTIONS = [
-  { id: 'published', label: 'Published first' },
+  { id: 'published', label: 'Shared first' },
   { id: 'recent', label: 'Recent' },
   { id: 'oldest', label: 'Oldest' },
   { id: 'title', label: 'Title (A–Z)' },
@@ -143,7 +143,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
       <ModalHeader
         id="publish-dialog-title"
-        title="Publish to the Web"
+        title="Share to the Web"
         subtitle={artifact.title || artifact.path?.split('/').pop()}
         onClose={onCancel}
       />
@@ -164,7 +164,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
           opacity: canConfirm ? 1 : 0.5,
         }}>
-          {draft.mode === 'password' ? 'Publish protected' : draft.mode === 'restricted' ? 'Publish restricted' : 'Publish'}
+          {draft.mode === 'password' ? 'Share protected' : draft.mode === 'restricted' ? 'Share restricted' : 'Share'}
         </button>
       </ModalFooter>
     </Modal>
@@ -401,11 +401,11 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
       icon: Ico.refresh(13),
       onClick: onUpdate,
     },
-    // Show Publish for blocked types too (e.g. fullstack-stateful-app) so it
+    // Show Share for blocked types too (e.g. fullstack-stateful-app) so it
     // renders disabled with a reason tooltip rather than vanishing.
     !published && (isPublishableArtifact(artifact) || publishBlock) && {
       id: 'publish',
-      label: 'Publish',
+      label: 'Share',
       icon: Ico.upload(13),
       onClick: onPublish,
       disabled: !!publishBlock,
@@ -413,7 +413,7 @@ function RowMenu({ open, anchorRect, artifact, onClose, onOpen, onReveal, onDown
     },
     published && {
       id: 'unpublish',
-      label: 'Unpublish',
+      label: 'Stop sharing',
       icon: Ico.upload(13),
       onClick: onUnpublish,
     },
@@ -680,7 +680,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       return Promise.resolve();
     }
     if (!isPublishableArtifact(artifact)) {
-      setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be published.' });
+      setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be shared.' });
       return Promise.resolve();
     }
     // Settle any prior unresolved flow before starting a new one so a
@@ -716,18 +716,18 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         trackArtifactPublished(r.report_id || artifact.id || '', m);
         setToast({
           kind: 'ok',
-          message: label ? `Published (${label}) — ${r.url}` : `Published — ${r.url}`,
+          message: label ? `Shared (${label}) — ${r.url}` : `Shared — ${r.url}`,
         });
       } else {
         setPhase(artifact.path, 'failed');
-        setToast({ kind: 'error', message: 'Publish returned no URL.' });
+        setToast({ kind: 'error', message: 'Sharing returned no URL.' });
       }
     } catch (e) {
       const msg = e?.message || String(e);
       // Map the most common failure to a clearer next step.
       const friendly = /minds_api_key/i.test(msg) || /minds api key/i.test(msg)
-        ? 'Set your Minds API key in Settings to publish artifacts.'
-        : `Publish failed: ${msg}`;
+        ? 'Set your Minds API key in Settings to share artifacts.'
+        : `Sharing failed: ${msg}`;
       setPhase(artifact.path, 'failed');
       setToast({ kind: 'error', message: friendly });
     } finally {
@@ -743,9 +743,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
-      setToast({ kind: 'ok', message: 'Unpublished from MindsHub.' });
+      setToast({ kind: 'ok', message: 'Stopped sharing on MindsHub.' });
     } catch (e) {
-      setToast({ kind: 'error', message: `Unpublish failed: ${e?.message || e}` });
+      setToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -761,7 +761,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       // Server refreshed last_md5 + published_mtime, so the artifact is no
       // longer "modified". Reflect it locally without a refetch.
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
-      setToast({ kind: 'ok', message: 'Updated published version.' });
+      setToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
       setToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
     } finally {
@@ -833,7 +833,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     }}>
       <PageHeader
         title="Live Artifacts"
-        subtitle={`Documents, dashboards, and code ${agentLabel} produces. Publish to share a live URL.`}
+        subtitle={`Documents, dashboards, and code ${agentLabel} produces. Share to get a live URL.`}
         // 20px below the subtitle text so the page reads with a
         // little air before the search-row begins. The 20px spacer
         // below the header still adds the standard between-section
@@ -967,7 +967,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             }
             items.push({
               id: 'unpublish',
-              label: busyA ? 'Working…' : 'Unpublish',
+              label: busyA ? 'Working…' : 'Stop sharing',
               icon: Ico.power(13),
               onClick: () => handleUnpublish(a),
             });
@@ -978,7 +978,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             const blocked = publishBlockedReason(a);
             items.push({
               id: 'publish',
-              label: busyA ? 'Publishing…' : 'Publish',
+              label: busyA ? 'Sharing…' : 'Share',
               icon: Ico.power(13),
               disabled: !!blocked,
               title: blocked || undefined,

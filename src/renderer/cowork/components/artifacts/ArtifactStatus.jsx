@@ -73,9 +73,9 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   if (phase === 'failed') {
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <Pill tone="danger" label="Publish failed" />
+        <Pill tone="danger" label="Sharing failed" />
         <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-          Couldn't publish.{onRetry ? ' ' : ''}
+          Couldn't share.{onRetry ? ' ' : ''}
           {onRetry && (
             <button
               type="button"
@@ -88,13 +88,13 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
       </span>
     );
   }
-  if (phase === 'publishing') return <Pill tone="info" label="Publishing…" />;
+  if (phase === 'publishing') return <Pill tone="info" label="Sharing…" />;
   if (phase === 'updating') return <Pill tone="info" label="Updating…" />;
-  if (phase === 'unpublishing') return <Pill label="Unpublishing…" />;
+  if (phase === 'unpublishing') return <Pill label="Stopping sharing…" />;
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
-    return <Pill label={publishable ? 'Unpublished' : 'Draft'} />;
+    return <Pill label={publishable ? 'Not shared' : 'Draft'} />;
   }
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
   return (
@@ -102,12 +102,12 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     // "Unpublished changes" warning pushed to the right (margin-left:auto).
     // On a tight card it wraps to its own line, still right-aligned there.
     <span style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
-      <Pill tone="green" dot label="Published" />
+      <Pill tone="green" dot label="Shared" />
       <AccessChip mode={mode} />
       {artifact.modified && (
         inlineChanges
-          ? <Pill tone="amber" dot label="Unpublished changes" />
-          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Pill tone="amber" dot label="Unpublished changes" /></span>
+          ? <Pill tone="amber" dot label="Unshared changes" />
+          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Pill tone="amber" dot label="Unshared changes" /></span>
       )}
     </span>
   );
