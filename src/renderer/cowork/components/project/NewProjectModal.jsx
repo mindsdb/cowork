@@ -197,7 +197,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
           background: 'var(--surface)',
           border: '1px solid var(--line)',
           borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+          boxShadow: 'var(--sh-modal)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           fontFamily: FONT_BODY,
         }}
