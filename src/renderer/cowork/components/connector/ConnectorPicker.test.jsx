@@ -30,6 +30,10 @@ describe('ConnectorPicker — pinned Browser Control tile (Task A1)', () => {
     expect(screen.getByText('Browser Control')).toBeInTheDocument();
     // "Read-only" mini-chip per the a1-connector-tile mockups.
     expect(screen.getByText('Read-only')).toBeInTheDocument();
+    // Expectation-setting copy: the tile explains the dedicated Chrome
+    // window so users know their regular tabs are untouched.
+    expect(screen.getByText(/dedicated Chrome window/)).toBeInTheDocument();
+    expect(screen.getByText(/regular tabs stay untouched/)).toBeInTheDocument();
     // Registry connectors are unaffected by the pinned section.
     expect(await screen.findByText('Gmail')).toBeInTheDocument();
   });

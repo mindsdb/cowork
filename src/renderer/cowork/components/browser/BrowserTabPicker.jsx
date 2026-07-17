@@ -106,6 +106,9 @@ export default function BrowserTabPicker({ open, tabs = [], loading = false, err
         >
           Choose a Chrome tab
         </div>
+        <div style={{ marginTop: 6, fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink-3)' }}>
+          These tabs are in Cowork&apos;s dedicated Chrome window. You can also just ask the agent to open a site once connected.
+        </div>
         <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5, color: 'var(--ink-2)' }}>
           Cowork will get read-only access to the one tab you pick — nothing else in your browser.
         </div>

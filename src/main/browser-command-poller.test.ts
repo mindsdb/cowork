@@ -179,6 +179,7 @@ function fakeExec(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     inspect: vi.fn(async () => okResult),
     navigateApprovedLink: vi.fn(async () => ({ ...okResult, action: 'navigate' as const })),
+    openUserDirectedUrl: vi.fn(async () => ({ ...okResult, action: 'navigate' as const })),
     scroll: vi.fn(async () => ({ ...okResult, action: 'scroll' as const })),
     wait: vi.fn(async () => ({ ...okResult, action: 'wait' as const })),
     currentState: vi.fn(() => 'connected' as const),
@@ -740,6 +741,37 @@ describe('browser-command-poller', () => {
     expect(exec.navigateApprovedLink).toHaveBeenCalledWith('https://shop.example.com/a');
     expect(exec.scroll).toHaveBeenCalledWith('up');
     expect(exec.wait).toHaveBeenCalledWith(5);
+  });
+
+  it('dispatches open_url to openUserDirectedUrl with the href and posts the result', async () => {
+    // Server-directed open_url (user-consented retarget): the poller hands
+    // the full href to the retargeting primitive, never to the link-gated
+    // navigateApprovedLink.
+    const server = new FakeBrowseServer();
+    server.queueCommand({
+      command_id: 'C-OPEN',
+      action_type: 'open_url',
+      href: 'https://news.example.net/story',
+      session_id: 'SESS-1',
+    });
+    const exec = fakeExec();
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('command');
+    expect(server.rejections).toEqual([]);
+    expect(exec.openUserDirectedUrl).toHaveBeenCalledWith('https://news.example.net/story');
+    expect(exec.navigateApprovedLink).not.toHaveBeenCalled();
+    expect(server.results.at(-1)).toMatchObject({ command_id: 'C-OPEN', result_code: 'ok' });
+  });
+
+  it('an open_url command with no href posts a navigation_failed (error) result without executing', async () => {
+    const server = new FakeBrowseServer();
+    server.queueCommand({ command_id: 'C-NO-HREF', action_type: 'open_url', session_id: 'SESS-1' });
+    const exec = fakeExec();
+    expect(await __pollOnceForTest({ transport, exec, fetchImpl: server.fetch })).toBe('command');
+    expect(server.rejections).toEqual([]);
+    expect(exec.openUserDirectedUrl).not.toHaveBeenCalled();
+    // navigation_failed maps to the internal `error` code.
+    expect(server.results.at(-1)).toMatchObject({ command_id: 'C-NO-HREF', result_code: 'error' });
+    expect(server.results.at(-1)?.detail).toMatch(/no href/i);
   });
 });
 

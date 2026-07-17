@@ -22,6 +22,7 @@ import {
   status as bridgeStatus,
   inspect,
   navigateApprovedLink,
+  openUserDirectedUrl,
   scroll,
   wait,
   onBridgeStateChange,
@@ -35,17 +36,21 @@ import {
   toInternalResultCode,
   toServerBridgeState,
   type BrowserActionResult,
+  type BrowserActionType,
   type InternalResultCode,
   type ObservedResult,
 } from '../shared/browser-bridge-types';
 
 // A command handed down by cowork-server (schemas/browser.py BridgeCommand).
-// `action_type` is the stored type (inspect/navigate/scroll/wait); the server
-// never sends the LLM verb. Arrives wrapped: `POST /browse/commands/next`
-// responds `{ command: BridgeCommand | null, blocked?: string }`.
+// `action_type` is the stored type (inspect/navigate/scroll/wait/open_url);
+// the server never sends the LLM verb. `open_url` is server-directed only —
+// enqueued after the user explicitly asked for that site in chat and the
+// server granted the new domain; `href` carries the full http(s) URL.
+// Arrives wrapped: `POST /browse/commands/next` responds
+// `{ command: BridgeCommand | null, blocked?: string }`.
 export interface BridgeCommand {
   command_id: string;
-  action_type: 'inspect' | 'navigate' | 'scroll' | 'wait';
+  action_type: 'inspect' | 'navigate' | 'scroll' | 'wait' | 'open_url';
   session_id?: string;
   conversation_id?: string | null;
   domain?: string | null;
@@ -78,6 +83,9 @@ export interface PollerTransport {
 type ExecFns = {
   inspect: typeof inspect;
   navigateApprovedLink: typeof navigateApprovedLink;
+  // Server-directed open_url: retargets the approved host (user consent was
+  // established in chat before the server enqueued the command) + navigates.
+  openUserDirectedUrl: typeof openUserDirectedUrl;
   scroll: typeof scroll;
   wait: typeof wait;
   currentState: typeof currentState;
@@ -163,6 +171,7 @@ function defaultExec(): ExecFns {
   return {
     inspect,
     navigateApprovedLink,
+    openUserDirectedUrl,
     scroll,
     wait,
     currentState,
@@ -182,6 +191,14 @@ function initConfig(config: PollerConfig = {}): void {
     exec: config.exec ?? defaultExec(),
     fetchImpl: config.fetchImpl ?? ((globalThis.fetch as typeof fetch) ?? undefined)!,
   };
+}
+
+// Map a wire action_type to the stored BrowserActionType used in local
+// result payloads. `open_url` executes through the navigate primitive family
+// (openUserDirectedUrl) and shares navigate's result-code semantics, so it
+// reports as `navigate` — the shared type union stays the four stored types.
+function toActionType(actionType: BridgeCommand['action_type']): BrowserActionType {
+  return actionType === 'open_url' ? 'navigate' : actionType;
 }
 
 // Build the content-free digest WS4 persists from a transient observed result.
@@ -266,6 +283,17 @@ export async function executeCommand(cmd: BridgeCommand): Promise<BrowserActionR
       return cfg.exec.inspect();
     case 'navigate':
       return cfg.exec.navigateApprovedLink(cmd.href ?? '');
+    case 'open_url':
+      // Server-directed, user-consented retarget + navigate. A command with
+      // no href can't be executed — refuse it as a failed navigation.
+      if (!cmd.href) {
+        return {
+          status: 'navigation_failed',
+          action: 'navigate',
+          reason: 'open_url command carried no href.',
+        };
+      }
+      return cfg.exec.openUserDirectedUrl(cmd.href);
     case 'scroll':
       return cfg.exec.scroll(cmd.direction ?? 'down');
     case 'wait':
@@ -433,7 +461,7 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
       helloSent = false;
       const gated = buildResultPayload(cmd.command_id, {
         status: 'bridge_disconnected',
-        action: cmd.action_type,
+        action: toActionType(cmd.action_type),
         reason: 'The browser was handed back before this action ran.',
       });
       await postJson(`/browse/commands/${cmd.command_id}/result`, gated);
@@ -452,7 +480,7 @@ async function pollOnce(): Promise<'command' | 'idle' | 'error'> {
     if (stopArmed && !stopWindowClosed) {
       const gated = buildResultPayload(cmd.command_id, {
         status: 'bridge_disconnected',
-        action: cmd.action_type,
+        action: toActionType(cmd.action_type),
         reason: 'The browser was stopped before this action ran.',
       });
       await postJson(`/browse/commands/${cmd.command_id}/result`, gated);

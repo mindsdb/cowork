@@ -484,6 +484,127 @@ describe('browser-bridge domain-grant immutability', () => {
   });
 });
 
+// Server-directed open_url — the ONE sanctioned grant retarget. The server
+// enqueues open_url only after the user explicitly asked for that site in
+// chat ("user-directed URL = implicit grant"), so the bridge retargets the
+// approved host BEFORE navigating and the watchdog must not fire.
+describe('browser-bridge openUserDirectedUrl (server-directed open_url)', () => {
+  it('retargets the approved host, navigates, and returns the observed readback', async () => {
+    await connect();
+    expect(bridge.status().domain).toBe('example.com');
+    const socket = FakeCdpSocket.instances[0];
+    // The tab lands on the user-requested site.
+    socket.page = {
+      ...socket.page,
+      url: 'https://news.example.net/story',
+      title: 'News',
+      links: [{ text: 'More', href: 'https://news.example.net/more' }],
+    };
+    const r = await bridge.openUserDirectedUrl('https://news.example.net/story');
+    expect(r.status).toBe('ok');
+    expect(r.observed?.url).toBe('https://news.example.net/story');
+    expect(bridge.currentState()).toBe('connected');
+    // The grant now covers the NEW registrable host.
+    expect(bridge.status().domain).toBe('example.net');
+    expect(socket.sentMethods).toContain('Page.navigate');
+  });
+
+  it('emits a state event carrying the new domain so the renderer badge updates', async () => {
+    await connect();
+    const socket = FakeCdpSocket.instances[0];
+    socket.page = { ...socket.page, url: 'https://news.example.net/story' };
+    const domains: (string | undefined)[] = [];
+    const unsub = bridge.onBridgeStateChange((p) => domains.push(p.domain));
+    await bridge.openUserDirectedUrl('https://news.example.net/story');
+    unsub();
+    expect(domains).toContain('example.net');
+  });
+
+  it('the cross-host watchdog does NOT fire during the sanctioned retarget', async () => {
+    await connect();
+    const socket = FakeCdpSocket.instances[0];
+    socket.page = { ...socket.page, url: 'https://news.example.net/story' };
+    const opening = bridge.openUserDirectedUrl('https://news.example.net/story');
+    // Chrome reports the main-frame navigation to the NEW host while the
+    // open is in flight — the grant was retargeted first, so no `lost`.
+    socket.emitEvent('Page.frameNavigated', {
+      frame: { url: 'https://news.example.net/story' },
+    });
+    const r = await opening;
+    expect(r.status).toBe('ok');
+    expect(bridge.currentState()).toBe('connected');
+    expect(bridge.status().domain).toBe('example.net');
+  });
+
+  it('a same-registrable-host redirect (bbc.co.uk → www.bbc.co.uk style) succeeds', async () => {
+    await connect();
+    const socket = FakeCdpSocket.instances[0];
+    // Requested apex, landed on www — same registrable host.
+    socket.page = { ...socket.page, url: 'https://www.example.net/home' };
+    const r = await bridge.openUserDirectedUrl('https://example.net/');
+    expect(r.status).toBe('ok');
+    expect(bridge.currentState()).toBe('connected');
+    expect(bridge.status().domain).toBe('example.net');
+  });
+
+  it('a redirect landing on a DIFFERENT registrable host is navigation_failed + lost', async () => {
+    await connect();
+    const socket = FakeCdpSocket.instances[0];
+    // Requested example.net, but the server redirected somewhere else the
+    // user never asked for — same policy as the navigate readback check.
+    socket.page = { ...socket.page, url: 'https://evil.example.org/landing' };
+    const r = await bridge.openUserDirectedUrl('https://news.example.net/story');
+    expect(r.status).toBe('navigation_failed');
+    expect(r.reason).toMatch(/leaves the approved site/);
+    expect(bridge.currentState()).toBe('lost');
+  });
+
+  it('clears the old site\'s link cache on retarget', async () => {
+    await connect();
+    await bridge.inspect(); // populate lastLinks with docs.example.com links
+    const socket = FakeCdpSocket.instances[0];
+    // Make the post-navigate readback fail so lastLinks is never repopulated
+    // — the cache must already have been cleared by the retarget.
+    const origSend = socket.send.bind(socket);
+    socket.send = (data: string) => {
+      const frame = JSON.parse(data);
+      if (frame.method === 'Runtime.evaluate') {
+        socket.sentMethods.push(frame.method);
+        queueMicrotask(() => {
+          socket.fire('message', JSON.stringify({ id: frame.id, error: { message: 'boom' } }));
+        });
+        return;
+      }
+      origSend(data);
+    };
+    const r = await bridge.openUserDirectedUrl('https://news.example.net/story');
+    expect(r.status).toBe('navigation_failed');
+    expect(bridge.currentState()).toBe('connected'); // retargeted, still live
+    // An old-site link from before the retarget is no longer in the cache.
+    socket.send = origSend;
+    const nav = await bridge.navigateApprovedLink('https://docs.example.com/api/charges');
+    expect(nav.status).toBe('navigation_failed');
+    expect(nav.reason).toMatch(/not one of the links/);
+  });
+
+  for (const bad of ['ftp://example.net/file', 'not a url', 'about:blank', 'file:///tmp/x.html', '']) {
+    it(`rejects a non-http(s)/hostless href (${JSON.stringify(bad)}) without retargeting`, async () => {
+      await connect();
+      const r = await bridge.openUserDirectedUrl(bad);
+      expect(r.status).toBe('navigation_failed');
+      expect(bridge.status().domain).toBe('example.com'); // grant unchanged
+      expect(bridge.currentState()).toBe('connected');
+      // No CDP navigation was issued for the rejected href.
+      expect(FakeCdpSocket.instances[0].sentMethods).not.toContain('Page.navigate');
+    });
+  }
+
+  it('returns bridge_disconnected when no tab is connected', async () => {
+    const r = await bridge.openUserDirectedUrl('https://news.example.net/story');
+    expect(r.status).toBe('bridge_disconnected');
+  });
+});
+
 // Item 4 — an in-flight approve() must not resurrect a connection after a
 // cancel/detach/dispose lands mid-connect.
 describe('browser-bridge in-flight approval currency', () => {

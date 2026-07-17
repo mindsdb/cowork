@@ -179,8 +179,8 @@ function SelectPill({ label, value, onChange, options }) {
 // "No connectors match". See /code/.plans/designs/a1-connector-tile-*.html.
 const BROWSER_CONTROL_TILE = {
   label: 'Browser Control',
-  description: 'Let the agent read a Chrome tab you approve. Read-only, per-tab approval — it never types or clicks for you.',
-  keywords: ['browser', 'chrome', 'tab', 'browser control', 'desktop', 'read-only'],
+  description: 'Opens a dedicated Chrome window for the agent — your regular tabs stay untouched; sign in there if a site needs it.',
+  keywords: ['browser', 'chrome', 'tab', 'browser control', 'desktop', 'read-only', 'window'],
 };
 
 function browserControlMatches(query) {

@@ -22,6 +22,13 @@ describe('BrowserTabPicker', () => {
     expect(screen.getByText('stripe.com')).toBeInTheDocument();
   });
 
+  it('sets the dedicated-window expectation under the heading', () => {
+    render(<BrowserTabPicker open tabs={TABS} onConfirm={() => {}} onClose={() => {}} />);
+    expect(
+      screen.getByText(/dedicated Chrome window\. You can also just ask the agent to open a site/),
+    ).toBeInTheDocument();
+  });
+
   it('confirm is disabled until a tab is selected, then confirms with its targetId', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();

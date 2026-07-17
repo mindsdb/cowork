@@ -45,11 +45,15 @@ type GetWindow = () => BrowserWindow | null;
 interface ApprovedTarget {
   targetId: string;
   webSocketDebuggerUrl: string;
-  // The originally-approved registrable host. IMMUTABLE after approval — the
-  // grant is for exactly this domain. It is NEVER reassigned on navigation or
-  // inspect; a cross-host page is discarded and requires re-approval, so the
-  // permission can never silently expand to a domain the user never approved.
-  readonly domain: string;
+  // The approved registrable host. IMMUTABLE after approval — EXCEPT via the
+  // server-directed `open_url` command (openUserDirectedUrl below), which
+  // carries user consent from chat: the user explicitly asked for that site
+  // and cowork-server granted the new domain before enqueuing the command.
+  // The grant is otherwise for exactly this domain: it is NEVER reassigned on
+  // navigation or inspect; a cross-host page is discarded and requires
+  // re-approval, so the permission can never silently expand to a domain the
+  // user never approved.
+  domain: string;
   title: string;
   client: CdpClient;
   // The links extracted by the most recent inspect(); the navigate link-gate
@@ -569,7 +573,10 @@ export async function approve(): Promise<{ ok: boolean; state: BridgeState; reas
     // stays connected (the grant is unchanged). A navigation to a DIFFERENT
     // registrable host must NOT silently re-grant: we drop the connection to
     // `lost` so the user must re-approve for the new domain. The approved
-    // `domain` field is immutable and is never updated here.
+    // `domain` field is never updated HERE — the only sanctioned reassignment
+    // is openUserDirectedUrl (server-directed open_url, user consent from
+    // chat), which retargets `domain` BEFORE navigating so this watchdog sees
+    // the destination as already-approved and does not fire mid-navigation.
     client.on('Page.frameNavigated', (params: unknown) => {
       const p = params as { frame?: { parentId?: string; url?: string } };
       const frame = p?.frame;
@@ -821,6 +828,69 @@ export async function navigateApprovedLink(href: string): Promise<BrowserActionR
     const offDomain = verifyObservedOnApprovedDomain('navigate', observed);
     if (offDomain) return offDomain;
     target.lastLinks = observed.links ?? target.lastLinks;
+    return { status: 'ok', action: 'navigate', observed };
+  } catch (err) {
+    return classifyError('navigate', err);
+  }
+}
+
+// openUserDirectedUrl() — execute a server-directed `open_url` command. The
+// SERVER is the trusted authority here: it enqueues open_url ONLY after the
+// user explicitly asked for that site in chat and it granted the new domain
+// ("user-directed URL = implicit grant"), so this primitive — unlike
+// navigateApprovedLink — is allowed to RETARGET the approved host.
+//
+// Ordering matters: the grant is reassigned BEFORE Page.navigate so the
+// cross-host frame-navigation watchdog (Page.frameNavigated above) sees the
+// destination as already-approved and does not drop the connection to `lost`
+// mid-navigation. The last-inspect link cache is cleared with it — those
+// links belong to the old site and must not gate (or pass) navigation on the
+// new one. Result codes are exactly the navigate vocabulary: ok /
+// navigation_failed / bridge_disconnected / permission_denied — no new codes.
+export async function openUserDirectedUrl(href: string): Promise<BrowserActionResult> {
+  const pre = ensureConnected('navigate');
+  if (pre) return pre;
+  const target = approvedTarget!;
+  // Only full http(s) URLs with a non-empty registrable host can carry a
+  // grant (file:/data:/about: etc. have no host to retarget to).
+  let httpScheme = false;
+  try {
+    const u = new URL(href);
+    httpScheme = u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    httpScheme = false;
+  }
+  const newHost = registrableHost(href);
+  if (!httpScheme || !newHost) {
+    return {
+      status: 'navigation_failed',
+      action: 'navigate',
+      reason: 'That is not a valid http(s) URL to open.',
+    };
+  }
+  // RETARGET FIRST (the sanctioned, user-consented grant transition — see
+  // the ApprovedTarget.domain comment), then drop the old site's link cache.
+  target.domain = newHost;
+  target.lastLinks = [];
+  // Push the new domain to the renderer badge + main-side listeners now, so
+  // the UI reflects the retarget even if the navigation itself fails.
+  emitState();
+  try {
+    await cdp('Page.navigate', { url: href });
+    // Same settle + readback verification as navigateApprovedLink, with the
+    // NEW host as the approved grant: a redirect that stays on the same
+    // registrable host (bbc.co.uk → www.bbc.co.uk) passes; a redirect that
+    // lands on a DIFFERENT registrable host fails the shared check exactly
+    // like a navigate would (navigation_failed + lost).
+    await sleep(400);
+    const observed = await extractObserved();
+    const offDomain = verifyObservedOnApprovedDomain('navigate', observed);
+    if (offDomain) return offDomain;
+    target.lastLinks = observed.links ?? [];
+    if (observed.title) {
+      target.title = observed.title;
+      emitState();
+    }
     return { status: 'ok', action: 'navigate', observed };
   } catch (err) {
     return classifyError('navigate', err);
