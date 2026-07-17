@@ -13,6 +13,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
+import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
@@ -170,30 +171,12 @@ function SelectPill({ label, value, onChange, options }) {
 // every tile element — memo skips tiles whose connector didn't change.
 const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
   return (
-    <button
-      type="button"
+    <Card
+      as="button"
+      interactive
+      padding="cozy"
       onClick={() => onPick?.(connector)}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 12,
-        padding: '14px 16px',
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 10,
-        textAlign: 'left',
-        cursor: 'pointer',
-        font: 'inherit', color: 'inherit',
-        transition: 'border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.boxShadow = '0 4px 18px rgba(15,16,17,0.06)';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.boxShadow = 'none';
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
     >
       <span style={{
         display: 'inline-grid', placeItems: 'center',
@@ -216,7 +199,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
           }}>{connector.description}</span>
         )}
       </div>
-    </button>
+    </Card>
   );
 });
 

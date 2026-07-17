@@ -90,9 +90,13 @@ export function ToggleGroup({
             fontFamily: 'var(--font-body)',
             fontSize: is.fontSize,
             border: 0,
-            background: state.pressed ? 'var(--surface-3)' : 'transparent',
+            background: state.pressed
+              ? 'var(--toggle-selected-bg, var(--surface-3))'
+              : 'transparent',
             color: state.pressed ? 'var(--ink)' : 'var(--ink-3)',
-            boxShadow: state.pressed ? 'inset 0 0 0 1px var(--line-2)' : 'none',
+            boxShadow: state.pressed
+              ? 'var(--toggle-selected-shadow, inset 0 0 0 1px var(--line-2))'
+              : 'none',
             transition: 'background 0.15s ease, color 0.15s ease',
           })}
         >

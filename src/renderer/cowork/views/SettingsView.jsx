@@ -74,7 +74,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   return (
     <div style={{
       border: '1px solid var(--border-subtle)',
-      borderRadius: 10,
+      borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
       WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
       backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -1910,7 +1910,7 @@ export default function SettingsView({
   const renderUpdatesSection = () => (
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <div style={{
-        border: '1px solid var(--border-subtle)', borderRadius: 10,
+        border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
         background: 'var(--surface-glass)',
         WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
         backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -2086,7 +2086,7 @@ export default function SettingsView({
 
           {/* Status card — status header + port + logs */}
           <div style={{
-            border: '1px solid var(--border-subtle)', borderRadius: 10,
+            border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
             background: 'var(--surface-glass)',
             WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
             backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -2190,7 +2190,7 @@ export default function SettingsView({
 
   const renderAccountSection = () => {
     const CARD = {
-      border: '1px solid var(--border-subtle)', borderRadius: 10,
+      border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
       WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
       backdropFilter: 'blur(var(--surface-glass-blur))',

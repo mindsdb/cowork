@@ -6,6 +6,7 @@
 
 import { initialStreamState, reduceStream, iterateSSE } from './lib/responseStreamAdapter';
 import { host } from '../platform/host';
+import { relativeAge } from './lib/formatTime';
 import { transformSettingsRows, diffSettingsForWrite } from './lib/settingsTransform';
 import {
   buildMemoryDeletePayload,
@@ -124,18 +125,6 @@ export async function fetchHealth() {
 // attachments). The shape returned here mirrors what App.jsx already
 // expects so callers don't need to change.
 
-function _humanTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  if (secs < 604800) return `${Math.floor(secs / 86400)} days ago`;
-  return `${Math.floor(secs / 604800)} weeks ago`;
-}
-
 function _failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
   const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
@@ -204,7 +193,7 @@ function _conversationToTask(conv, messages = []) {
   return {
     id: conv.id,
     title: conv.title || conv.preview || conv.id || 'Untitled task',
-    subtitle: _humanTime(conv.updated_at || conv.created_at),
+    subtitle: relativeAge(conv.updated_at || conv.created_at) || '',
     status: 'idle',
     messages: _hydrateAssistantEvents(messages),
     projectName: conv.project || null,

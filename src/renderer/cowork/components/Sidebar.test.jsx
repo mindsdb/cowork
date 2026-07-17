@@ -38,3 +38,50 @@ describe('Sidebar — Channels entry (ENG-720)', () => {
     expect(onNavigate).toHaveBeenCalledWith('channels');
   });
 });
+
+describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
+  beforeEach(() => {
+    hostMock.isWeb = true;
+  });
+
+  it('renders the theme toggle in the footer and calls onToggleTheme when clicked', () => {
+    hostMock.isWeb = false;
+    const onToggleTheme = vi.fn();
+    render(
+      <Sidebar {...baseProps} serverOnline theme="dark" onToggleTheme={onToggleTheme} />
+    );
+    const toggle = screen.getByRole('button', { name: 'Switch to light theme' });
+    toggle.click();
+    expect(onToggleTheme).toHaveBeenCalledTimes(1);
+  });
+
+  it('still shows the theme toggle on the web build, which hides Settings', () => {
+    hostMock.isWeb = true;
+    const onToggleTheme = vi.fn();
+    render(
+      <Sidebar {...baseProps} theme="light" onToggleTheme={onToggleTheme} />
+    );
+    expect(screen.getByRole('button', { name: 'Switch to dark theme' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+  });
+
+  it('renders the 8-bit skin toggle next to the theme toggle and calls onToggleSkin', () => {
+    hostMock.isWeb = false;
+    const onToggleSkin = vi.fn();
+    render(
+      <Sidebar {...baseProps} serverOnline skin="normal" onToggleSkin={onToggleSkin} />
+    );
+    const toggle = screen.getByRole('button', { name: 'Toggle 8-bit style' });
+    expect(toggle.className).not.toContain('is-on');
+    toggle.click();
+    expect(onToggleSkin).toHaveBeenCalledTimes(1);
+  });
+
+  it('lights the skin toggle when a non-default skin is active', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline skin="8bit" />);
+    expect(
+      screen.getByRole('button', { name: 'Toggle 8-bit style' }).className
+    ).toContain('is-on');
+  });
+});

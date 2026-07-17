@@ -53,7 +53,7 @@ function MemoryRow({ entry, onOpen }) {
       onClick={onOpen}
       title={entry.content || labelCategory(entry.category)}
       className={clsx(
-        'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
+        'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'border-0 bg-transparent w-full'
       )}
@@ -106,7 +106,7 @@ function SessionAttachmentRow({
         : undefined}
       title={titleText}
       className={clsx(
-        'group relative grid items-center gap-2 rounded-md px-1 py-1 text-left',
+        'group relative grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         canOpen && 'cursor-pointer transition-colors hover:bg-surface-2',
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
       )}
@@ -164,7 +164,7 @@ function ContextFileRow({ file, onOpen, onRequestDelete }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(); } }}
       title={`${file.path}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}`}
       className={clsx(
-        'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
+        'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
       )}
@@ -230,7 +230,7 @@ function DriveReferenceRow({ file, onRequestDelete }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInDrive(); } }}
       title={`Open "${file.name}" in Google Drive`}
       className={clsx(
-        'group grid items-center gap-2 rounded-md px-1 py-1 text-left',
+        'group grid items-center gap-2 rounded-card-row px-1 py-1 text-left',
         'cursor-pointer transition-colors hover:bg-surface-2',
         'outline-none focus-visible:ring-2 focus-visible:ring-offset-0 focus-visible:ring-accent'
       )}
@@ -641,7 +641,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className={clsx(
-                'flex items-center gap-2 px-1 py-1 rounded-md',
+                'flex items-center gap-2 px-1 py-1 rounded-card-row',
                 'text-[12px] text-ink-4 hover:text-ink hover:bg-surface-2',
                 'cursor-pointer bg-transparent border-0 text-left',
               )}
@@ -740,7 +740,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               type="button"
               onClick={() => taskUploadInputRef.current?.click()}
               className={clsx(
-                'flex items-center gap-2 px-1 py-1 rounded-md',
+                'flex items-center gap-2 px-1 py-1 rounded-card-row',
                 'text-[12px] text-ink-4 hover:text-ink hover:bg-surface-2',
                 'cursor-pointer bg-transparent border-0 text-left',
               )}

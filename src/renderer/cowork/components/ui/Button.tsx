@@ -7,7 +7,8 @@
 //   <Button>Save draft</Button>                          // default neutral
 //   <Button variant="primary">Continue</Button>          // accent + glow
 //   <Button variant="subtle">Cancel</Button>             // borderless
-//   <Button variant="tinted">Compose</Button>            // accent fill
+//   <Button variant="tinted">Compose</Button>            // faint accent wash
+//   <Button variant="solid">Publish</Button>             // filled page CTA
 //   <Button variant="danger" size="sm">Delete</Button>
 //   <Button icon size="sm" aria-label="Search">{icon}</Button>
 //   <Button block>Sign in</Button>
@@ -17,7 +18,7 @@ import { forwardRef } from 'react';
 import { Button as BaseButton } from '@base-ui/react/button';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 
-export type ButtonVariant = 'default' | 'primary' | 'subtle' | 'tinted' | 'danger';
+export type ButtonVariant = 'default' | 'primary' | 'subtle' | 'tinted' | 'solid' | 'danger';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 // Extend Base UI's Button props (which include `render`, native button attrs,
@@ -33,7 +34,7 @@ export interface ButtonProps
   className?: string;
 }
 
-const VARIANTS = new Set<ButtonVariant>(['default', 'primary', 'subtle', 'tinted', 'danger']);
+const VARIANTS = new Set<ButtonVariant>(['default', 'primary', 'subtle', 'tinted', 'solid', 'danger']);
 const SIZES = new Set<ButtonSize>(['xs', 'sm', 'md', 'lg', 'xl']);
 
 const Button = forwardRef<ComponentRef<typeof BaseButton>, ButtonProps>(function Button({

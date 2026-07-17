@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message, Button } from '../components/ui';
+import { Message, Button, Card, EmptyState as UiEmptyState } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
@@ -19,7 +19,7 @@ import {
 import { trackArtifactPublished } from '../lib/analytics';
 
 const TITLES = {
-  memory:  ['Memory',  'Profile, rules, and lessons the agent can reuse across tasks.'],
+  memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
   publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
 };
 
@@ -204,7 +204,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   return (
     <>
       <CollectionPageHeader
-        title="Memory"
+        title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
       <div style={{ height: 14 }} />
@@ -213,9 +213,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
         display: 'grid', gridTemplateColumns: '300px 1fr',
         padding: '0 32px 24px', gap: 24,
       }}>
-        <div className="scroll-clean" style={{
-          borderRight: '1px solid var(--border-0)',
-          paddingRight: 12,
+        <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
           overflowY: 'auto', minHeight: 0,
         }}>
@@ -238,7 +236,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
             />
           ))}
           {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
-        </div>
+        </Card>
         <div className="scroll-clean" style={{
           overflowY: 'auto', minHeight: 0,
         }}>
@@ -290,7 +288,9 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               </div>
             </>
           ) : (
-            <EmptyState>Select a memory entry to inspect it.</EmptyState>
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UiEmptyState description="Select a memory entry to inspect it." />
+            </div>
           )}
         </div>
       </div>

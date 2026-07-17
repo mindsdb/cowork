@@ -12,7 +12,9 @@
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
+import { Card } from '../components/ui/Card';
 import { Toast } from '../components/ui/Toast';
+import { EmptyState } from '../components/ui/EmptyState';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -251,32 +253,16 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   };
 
   return (
-    <div
+    <Card
+      as="div"
+      interactive
+      padding="none"
       className="cw-artifact-card"
-      role="button"
-      tabIndex={0}
       {...hoverProps}
-      onClick={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
-      onKeyDown={(e) => { if (e.key === 'Enter') (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact)); }}
+      onActivate={() => (canPreview ? onOpenViewer(artifact) : openArtifactFile(artifact))}
       style={{
-        cursor: 'pointer',
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
-        transition: 'border-color 160ms ease, box-shadow 200ms ease, transform 160ms ease',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02)',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 28px rgba(15,16,17,0.08)';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02)';
-        e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
       {/* Body — icon + name·ext + actions, then the status row. */}
@@ -341,7 +327,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-4)',
         }}>{artifact.updated || '—'}</span>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -580,26 +566,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
         isMacPlatform={host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')}
       />
     </>
-  );
-}
-
-// ─── Empty state ─────────────────────────────────────────────────────────
-
-function EmptyState({ agentLabel = 'the agent' }) {
-  return (
-    <div style={{
-      flex: 1, minHeight: 360,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 12, padding: '40px 24px',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>
-      <div className="s-h3" style={{ color: 'var(--ink)' }}>
-        No artifacts yet
-      </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 380, textAlign: 'center' }}>
-        When {agentLabel} creates documents, dashboards, or code outputs they'll appear here.
-      </div>
-    </div>
   );
 }
 
@@ -874,7 +840,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         // rhythm — together they make Live Artifacts breathe a touch
         // more than other collection pages, where the action button
         // already anchors the lower edge of the header.
-        subtitleBottom={20}
       />
 
       <Toast
@@ -902,12 +867,17 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
             />
           }
           sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+          view={<span className="artifacts-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
         />
       )}
 
       {total === 0 ? (
-        <EmptyState agentLabel={agentLabel} />
+        <EmptyState
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-5)' }}>{Ico.sparkle(32)}</span>}
+          title="No artifacts yet"
+          description={`When ${agentLabel} creates documents, dashboards, or code outputs they'll appear here.`}
+          style={{ flex: 1 }}
+        />
       ) : effectiveView === 'grid' ? (
         <div className="artifacts-grid" style={{
           // Grid layout (display + responsive columns + gap) lives in CSS

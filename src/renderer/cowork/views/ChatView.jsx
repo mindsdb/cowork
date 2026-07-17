@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from 'react-dom';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
-import { Message } from '../components/ui';
+import { Message, Card } from '../components/ui';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
 import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
@@ -55,7 +55,7 @@ const T = {
 };
 
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-const FONT_MONO    = "'JetBrains Mono', monospace";
+const FONT_MONO    = "var(--font-mono)";
 const FONT_BODY    = "'Inter', system-ui, sans-serif";
 
 // ─── small shared atoms ──────────────────────────────────────────────────
@@ -615,34 +615,14 @@ function ArtifactCard({ artifact, onOpen }) {
   // behaviour. Cursor + hover lift mark the entire surface as
   // interactive at a glance.
   return (
-    <div
-      role="button"
-      tabIndex={canAct ? 0 : -1}
+    <Card
+      as="div"
+      interactive={canAct}
+      padding="cozy"
+      onActivate={canAct ? handleOpen : undefined}
       aria-label={canAct ? `Open preview: ${artifact.title}` : disabledReason || 'No file path'}
-      onClick={() => { if (canAct) handleOpen(); }}
-      onKeyDown={(e) => {
-        if (!canAct) return;
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen(); }
-      }}
       style={{
         display: 'grid', gridTemplateColumns: '64px 1fr auto', alignItems: 'center', gap: 16,
-        background: T.surface, border: `1px solid ${T.line}`,
-        borderRadius: 14, padding: '14px 16px',
-        boxShadow: '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)',
-        cursor: canAct ? 'pointer' : 'default',
-        transition: 'border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease',
-        outline: 'none',
-      }}
-      onMouseOver={(e) => {
-        if (!canAct) return;
-        e.currentTarget.style.borderColor = T.accent;
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 12px 26px rgba(15,16,17,0.06)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = T.line;
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 1px 0 rgba(15,16,17,0.02), 0 8px 20px rgba(15,16,17,0.04)';
       }}
     >
       <div style={{
@@ -751,7 +731,7 @@ function ArtifactCard({ artifact, onOpen }) {
           </SmallBtn>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 

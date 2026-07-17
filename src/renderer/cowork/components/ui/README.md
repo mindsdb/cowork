@@ -18,7 +18,7 @@ markup and look match the hand-rolled originals it replaced (the ENG-639 migrati
 `<input className="field-input">` markup.** One implementation means accessibility,
 theming, and behaviour get fixed in one place instead of per call-site.
 
-- `<Button variant="primary|subtle|tinted|danger" size icon block>` — forwards its ref,
+- `<Button variant="primary|subtle|tinted|solid|danger" size icon block>` — forwards its ref,
   so it can also back a `<Menu trigger={<Button/>}>` or render polymorphically via `render`.
 - `<Input>` / `<Textarea>`, `<Modal>` (+ `ModalHeader/Body/Footer`), `<Menu>` — see each
   file's header comment for the full prop list and usage examples.
