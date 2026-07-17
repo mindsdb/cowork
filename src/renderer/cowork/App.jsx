@@ -791,6 +791,11 @@ function AppCore() {
   // already open would spawn a second loopback attempt.
   const ssoBusyRef = useRef(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
+  // One-shot intent handed to CustomizeView when the Connectors Directory
+  // picks a non-registry entry (Browser Control): 'browser_control' routes
+  // the user straight into the connect workflow's Browser Control pane.
+  // CustomizeView clears it via onConnectIntentHandled after consuming it.
+  const [connectIntent, setConnectIntent] = useState(null);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
@@ -2360,6 +2365,17 @@ function AppCore() {
       Promise.resolve().then(() => handleSendFromHome(`Connect ${label}`));
     }
     return tempId;
+  };
+
+  // Browser Control tile picked in the Connectors Directory. Not a registry
+  // connector — no chat task, no vault form. Close the picker and route to
+  // Connect Apps and Data with a one-shot intent; CustomizeView opens the
+  // connect workflow directly on the Browser Control pane and then clears
+  // the intent so it doesn't refire.
+  const handleBrowserControlPicked = () => {
+    setConnectorPickerOpen(false);
+    setConnectIntent('browser_control');
+    setRoute('customize');
   };
 
   const {
@@ -4037,6 +4053,8 @@ function AppCore() {
             onReconnect={(spec) => handleConnectorPicked(spec)}
             agentLabel={agentLabel}
             activeConversationId={activeTaskId}
+            connectIntent={connectIntent}
+            onConnectIntentHandled={() => setConnectIntent(null)}
           />
         )}
 
@@ -4166,6 +4184,7 @@ function AppCore() {
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
         onPick={handleConnectorPicked}
+        onPickBrowserControl={handleBrowserControlPicked}
       />
 
       {!host.isWeb && (

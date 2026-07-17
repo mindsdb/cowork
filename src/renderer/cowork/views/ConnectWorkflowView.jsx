@@ -5,6 +5,7 @@ import {
   startConnectorOAuth,
   pollConnectorOAuth,
   browseControlApprove,
+  setBrowserControlEnabled,
 } from '../api';
 import { trackDataSourceConnected } from '../lib/analytics';
 import { host } from '../../platform/host';
@@ -596,6 +597,168 @@ function BrowserControlDetail({ browser, onChooseTab }) {
   );
 }
 
+// Post-approval confirmation — shown right after the user approves a Chrome
+// tab. Mirrors BrowserTabPicker's modal shell; copy + layout follow
+// /code/.plans/designs/a1-approve-autoenable-*.html: success title, the
+// approved tab echoed as a domain row with a Live badge, and the ok note
+// confirming Browser Control auto-enabled with an Open Settings pointer.
+function BrowserApprovedConfirm({ open, tab, onOpenSettings, onClose }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const initial = ((tab?.title || tab?.domain || '?').trim().charAt(0) || '?').toUpperCase();
+
+  return (
+    <div
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(14,15,16,0.34)',
+        backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
+        WebkitAppRegion: 'no-drag',
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="browser-approved-title"
+        data-testid="browser-approved-confirm"
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(480px, 92vw)',
+          background: 'var(--surface)',
+          border: '1px solid var(--line)',
+          borderRadius: 12,
+          boxShadow: '0 24px 60px rgba(15,16,17,0.25), 0 1px 0 rgba(15,16,17,0.04)',
+          padding: '20px 22px 16px',
+          fontFamily: "'Inter', sans-serif",
+        }}
+      >
+        <div
+          id="browser-approved-title"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            fontFamily: "'Josefin Sans', sans-serif",
+            fontSize: 16, fontWeight: 600, color: 'var(--ink)', letterSpacing: '0.01em',
+          }}
+        >
+          <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--success, #22a06b)' }}>
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="m8.5 12.2 2.4 2.4 4.6-5" />
+            </svg>
+          </span>
+          Tab approved
+        </div>
+        <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5, color: 'var(--ink-2)' }}>
+          Cowork now has read-only access to this tab — nothing else in your browser.
+        </div>
+
+        {(tab?.title || tab?.domain) && (
+          <div style={{
+            marginTop: 16, display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 10px', borderRadius: 8, border: '1px solid var(--line)',
+          }}>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 26, height: 26, flex: '0 0 auto', borderRadius: 6,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--surface-2)', color: 'var(--ink-2)',
+                fontSize: 12, fontWeight: 700,
+              }}
+            >
+              {initial}
+            </span>
+            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+              <span style={{
+                fontSize: 13, fontWeight: 500, color: 'var(--ink)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {tab?.title || tab?.domain}
+              </span>
+              <span style={{
+                fontSize: 11.5, color: 'var(--ink-3)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {tab?.domain}
+              </span>
+            </span>
+            <span style={{
+              flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5,
+              height: 20, padding: '0 8px', borderRadius: 999,
+              fontSize: 10.5, fontWeight: 600,
+              background: 'color-mix(in srgb, var(--success, #22a06b) 12%, transparent)',
+              color: 'var(--success, #22a06b)',
+            }}>
+              Live
+            </span>
+          </div>
+        )}
+
+        <div style={{
+          marginTop: 14, display: 'flex', gap: 10, alignItems: 'flex-start',
+          padding: '11px 12px', borderRadius: 8,
+          background: 'color-mix(in srgb, var(--success, #22a06b) 8%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--success, #22a06b) 25%, transparent)',
+        }}>
+          <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--success, #22a06b)', marginTop: 1 }}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="14" rx="2" />
+              <path d="M8 21h8M12 18v3" />
+            </svg>
+          </span>
+          <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink-2)' }}>
+            <strong style={{ color: 'var(--ink)' }}>Browser Control is now enabled</strong>
+            <br />
+            You can turn it off anytime in Settings → Agent → Browser Control. Turning it off
+            revokes access immediately.
+          </span>
+        </div>
+
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => { onOpenSettings?.('agent'); onClose?.(); }}
+            style={{
+              all: 'unset', cursor: 'pointer',
+              padding: '8px 14px', borderRadius: 8,
+              border: '1px solid var(--line)',
+              fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', background: 'transparent',
+            }}
+          >
+            Open Settings
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              all: 'unset', cursor: 'pointer',
+              padding: '8px 14px', borderRadius: 8,
+              fontSize: 13, fontWeight: 600, color: '#fff',
+              background: 'var(--accent)', border: '1px solid var(--accent)',
+            }}
+          >
+            Back to task
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConnectorsPage({
   connectorLibrary,
   connectorGroups,
@@ -970,14 +1133,27 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
   );
 }
 
-export default function ConnectWorkflowView({ onClose, activeConversationId = null }) {
+export default function ConnectWorkflowView({
+  onClose,
+  activeConversationId = null,
+  /**
+   * Connector pane to land on when the workflow opens (e.g. 'anton_chrome'
+   * when arriving via the Connectors Directory's Browser Control tile).
+   * Defaults to the Google Drive pane like before.
+   */
+  initialConnectorId = null,
+  /** Opens the Settings modal (section id) — used by the post-approval note. */
+  onOpenSettings,
+}) {
   // Always start on the connectors view — the old "home" overview
   // tab isn't part of this workflow anymore (the Connect Apps and
   // Data page already serves that role with the connection cards).
   const [page, setPage] = useState(PAGE_CONNECTORS);
   const [directoryMode, setDirectoryMode] = useState('');
   const [catalog, setCatalog] = useState(null);
-  const [selectedConnectorId, setSelectedConnectorId] = useState('google_drive');
+  const [selectedConnectorId, setSelectedConnectorId] = useState(
+    initialConnectorId && CONNECTOR_LIBRARY[initialConnectorId] ? initialConnectorId : 'google_drive',
+  );
   const [driveStatus, setDriveStatus] = useState('');
   const [driveAuthPending, setDriveAuthPending] = useState(false);
   const [driveAuthStartedAt, setDriveAuthStartedAt] = useState('');
@@ -990,6 +1166,11 @@ export default function ConnectWorkflowView({ onClose, activeConversationId = nu
   const [tabPickerOpen, setTabPickerOpen] = useState(false);
   const [browserTabs, setBrowserTabs] = useState([]);
   const [tabsLoading, setTabsLoading] = useState(false);
+  // Post-approval confirmation ({title, domain} of the approved tab, or
+  // null). Shown after a successful attach: echoes the approved tab and the
+  // "Browser Control is now enabled" note per the a1-approve-autoenable
+  // mockups, with an Open Settings pointer at the symmetric off-switch.
+  const [approvedTabConfirm, setApprovedTabConfirm] = useState(null);
 
   const openTabPicker = async () => {
     setTabPickerOpen(true);
@@ -1032,6 +1213,17 @@ export default function ConnectWorkflowView({ onClose, activeConversationId = nu
         await browseControlApprove({ domain, conversationId: activeConversationId });
       } catch { /* best effort */ }
     }
+    // Approving a tab IS the user's grant — auto-enable the tool flag so the
+    // server's session-tool selection actually hands the agent the
+    // browser_control tool. Best-effort (setBrowserControlEnabled swallows
+    // failures internally): a network blip must not wedge the approval; the
+    // Settings toggle remains the manual fallback / symmetric off-switch.
+    await setBrowserControlEnabled(true);
+    // Confirmation state per a1-approve-autoenable: echo the approved tab +
+    // the "now enabled" note with an Open Settings pointer.
+    setApprovedTabConfirm(approvedTab
+      ? { title: approvedTab.title, domain: approvedTab.domain }
+      : { title: undefined, domain: undefined });
   };
 
   const refresh = async () => {
@@ -1228,6 +1420,13 @@ export default function ConnectWorkflowView({ onClose, activeConversationId = nu
         loading={tabsLoading}
         onConfirm={handleApproveTab}
         onClose={() => setTabPickerOpen(false)}
+      />
+
+      <BrowserApprovedConfirm
+        open={approvedTabConfirm != null}
+        tab={approvedTabConfirm}
+        onOpenSettings={onOpenSettings}
+        onClose={() => setApprovedTabConfirm(null)}
       />
 
       {directoryMode && (

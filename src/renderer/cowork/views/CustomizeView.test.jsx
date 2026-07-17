@@ -7,6 +7,12 @@ vi.mock('../api', () => ({
   fetchConnector: vi.fn(async () => ({})),
   fetchDatasources: vi.fn(async () => ({ connections: [] })),
   fetchSavedConnection: vi.fn(async () => null),
+  // Surface used by the embedded ConnectWorkflowView (connect intent tests).
+  fetchIntegrations: vi.fn(async () => ({ items: [] })),
+  startConnectorOAuth: vi.fn(),
+  pollConnectorOAuth: vi.fn(),
+  browseControlApprove: vi.fn(async () => ({ ok: true })),
+  setBrowserControlEnabled: vi.fn(async () => ({ ok: true })),
 }));
 
 const { mockHost, listeners } = vi.hoisted(() => {
@@ -103,5 +109,30 @@ describe('CustomizeView — Browser Control card', () => {
     expect(fetchDatasources).toHaveBeenCalled();
     // Never routes a browser_control disconnect through the vault delete path.
     expect(deleteDatasource).not.toHaveBeenCalled();
+  });
+});
+
+describe('CustomizeView — browser_control connect intent (Task A1)', () => {
+  it('opens the connect workflow on the Browser Control pane and acknowledges the intent', async () => {
+    const onConnectIntentHandled = vi.fn();
+    render(
+      <CustomizeView
+        connectors={STABLE_CONNECTORS}
+        onConnectNew={vi.fn()}
+        connectIntent="browser_control"
+        onConnectIntentHandled={onConnectIntentHandled}
+      />,
+    );
+    // The workflow replaces the listing and lands directly on the Browser
+    // Control detail pane (initialConnectorId="anton_chrome").
+    await waitFor(() => expect(screen.getByTestId('browser-control-detail')).toBeInTheDocument());
+    // Intent is consumed exactly once so a re-render can't refire it.
+    expect(onConnectIntentHandled).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not open the workflow without an intent', async () => {
+    render(<CustomizeView connectors={STABLE_CONNECTORS} onConnectNew={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Connect Apps and Data')).toBeInTheDocument());
+    expect(screen.queryByTestId('browser-control-detail')).not.toBeInTheDocument();
   });
 });

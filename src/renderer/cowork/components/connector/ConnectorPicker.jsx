@@ -14,6 +14,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { Modal } from '../ui/Modal';
+import { host } from '../../../platform/host';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -166,6 +167,121 @@ function SelectPill({ label, value, onChange, options }) {
   );
 }
 
+// ── Browser Control — pinned Electron-only entry ──────────────────────
+//
+// Browser Control is a desktop-runtime capability (CDP bridge into the
+// user's Chrome), not a server-registry connector, so it doesn't come from
+// fetchConnectors(). It renders as a pinned tile under its own "Desktop"
+// heading above the category sections — Electron only (`host.isElectron`);
+// web builds must never show it. Kept in the search index below so typing
+// "browser control" (or chrome / tab) matches the tile instead of
+// "No connectors match". See /code/.plans/designs/a1-connector-tile-*.html.
+const BROWSER_CONTROL_TILE = {
+  id: 'browser_control',
+  label: 'Browser Control',
+  description: 'Let the agent read a Chrome tab you approve. Read-only, per-tab approval — it never types or clicks for you.',
+  keywords: ['browser', 'chrome', 'tab', 'browser control', 'desktop', 'read-only'],
+};
+
+function browserControlMatches(query) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    BROWSER_CONTROL_TILE.label,
+    BROWSER_CONTROL_TILE.description,
+    ...BROWSER_CONTROL_TILE.keywords,
+  ].join(' ').toLowerCase();
+  return hay.includes(q);
+}
+
+// Monitor icon — same SVG the anton_chrome ConnectorLogo uses in
+// ConnectWorkflowView.jsx, so the tile and the workflow detail read as
+// one feature.
+function BrowserControlIcon({ size = 22 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="14" rx="2" />
+      <path d="M8 21h8M12 18v3" />
+    </svg>
+  );
+}
+
+// Pinned tile — mirrors ConnectorTile's chrome (hover lift, 40px logo well)
+// with a "Read-only" mini-chip after the name per the A1 mockups.
+function BrowserControlTile({ onPick }) {
+  return (
+    <button
+      type="button"
+      data-testid="browser-control-tile"
+      onClick={() => onPick?.()}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 12,
+        padding: '14px 16px',
+        background: 'var(--surface)',
+        border: '1px solid var(--line)',
+        borderRadius: 10,
+        textAlign: 'left',
+        cursor: 'pointer',
+        font: 'inherit', color: 'inherit',
+        transition: 'border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease',
+      }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.borderColor = 'var(--accent)';
+        e.currentTarget.style.boxShadow = '0 4px 18px rgba(15,16,17,0.06)';
+        e.currentTarget.style.transform = 'translateY(-1px)';
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.borderColor = 'var(--line)';
+        e.currentTarget.style.boxShadow = 'none';
+        e.currentTarget.style.transform = 'translateY(0)';
+      }}
+    >
+      <span style={{
+        display: 'inline-grid', placeItems: 'center',
+        width: 40, height: 40, borderRadius: 8,
+        background: 'var(--surface-2)',
+        color: 'var(--ink-3)',
+        flexShrink: 0,
+      }}>
+        <BrowserControlIcon size={22} />
+      </span>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 7,
+          fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14, color: 'var(--ink)',
+          letterSpacing: '0',
+        }}>
+          {BROWSER_CONTROL_TILE.label}
+          <span style={{
+            height: 17, padding: '0 7px', borderRadius: 999,
+            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            display: 'inline-flex', alignItems: 'center',
+            background: 'var(--accent-bg)', color: 'var(--accent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+          }}>
+            Read-only
+          </span>
+        </span>
+        <span style={{
+          fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)',
+          lineHeight: 1.4,
+        }}>{BROWSER_CONTROL_TILE.description}</span>
+      </div>
+    </button>
+  );
+}
+
 // memo: `filtered` changes on every search keystroke, so the .map recreates
 // every tile element — memo skips tiles whose connector didn't change.
 const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
@@ -220,7 +336,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
   );
 });
 
-export default function ConnectorPicker({ open, onPick, onClose }) {
+export default function ConnectorPicker({ open, onPick, onPickBrowserControl, onClose }) {
   const [connectors, setConnectors] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -269,6 +385,14 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
   // Client-side filter. Substring match across the visible metadata
   // — label / description / aliases / category — plus the explicit
   // category dropdown.
+  // Pinned Browser Control tile — Electron only (desktop CDP bridge; the
+  // web build must never render it). Honors the search box (label +
+  // keywords) and hides under an explicit category filter, since it lives
+  // outside the server registry's category space.
+  const showBrowserControl = Boolean(host.isElectron)
+    && category === 'all'
+    && browserControlMatches(query);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return connectors.filter((c) => {
@@ -423,11 +547,40 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
               {error}
             </div>
           )}
-          {!loading && !error && filtered.length === 0 && (
+          {!loading && !error && filtered.length === 0 && !showBrowserControl && (
             <div style={{ padding: 12, color: 'var(--ink-3)', fontSize: 13 }}>
               {query
                 ? <>No connectors match <strong>“{query}”</strong>.</>
                 : 'No connectors available yet.'}
+            </div>
+          )}
+          {/* Pinned Desktop section — Browser Control, above Featured and
+              every category (and above the flat A–Z list). Searchable but
+              outside the registry, so it renders independent of `filtered`. */}
+          {!loading && !error && showBrowserControl && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{
+                fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
+                letterSpacing: '0.04em', textTransform: 'uppercase',
+                color: 'var(--ink-3)',
+                padding: '4px 2px 8px',
+              }}>
+                Desktop
+                <span style={{
+                  marginLeft: 8, fontWeight: 500,
+                  color: 'var(--ink-4)',
+                  fontSize: 11, letterSpacing: 0, textTransform: 'none',
+                }}>
+                  1
+                </span>
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                gap: 10,
+              }}>
+                <BrowserControlTile onPick={onPickBrowserControl} />
+              </div>
             </div>
           )}
           {/* Body — two modes:

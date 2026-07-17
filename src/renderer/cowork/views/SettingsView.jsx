@@ -1764,6 +1764,28 @@ export default function SettingsView({
             />
           </Section>
         </CollapsibleGroup>
+
+        <CollapsibleGroup title="Browser Control">
+          <Section title="Browser Control" subtitle="Allow the agent to read Chrome tabs you explicitly approve. Read-only — it never types or clicks. Turning this off revokes the tool and disconnects any approved tab.">
+            <Switch
+              checked={settings.browserControlEnabled ?? false}
+              onCheckedChange={(v) => {
+                setSetting('browserControlEnabled', v);
+                // Symmetric off-switch: flipping OFF also disconnects any
+                // attached Chrome tab right away (best-effort — the CDP
+                // bridge lives in Electron main; revoke is idempotent and a
+                // failure must never block the settings edit). The flag
+                // itself still round-trips through Save like every other
+                // setting.
+                if (!v && host.isElectron) {
+                  host.browserControlRevoke().catch(() => {});
+                }
+              }}
+              title="Allow the agent to read Chrome tabs you explicitly approve."
+              aria-label="Browser Control"
+            />
+          </Section>
+        </CollapsibleGroup>
       </SettingsSectionPanel>
     );
   };

@@ -7,7 +7,7 @@ vi.mock('../platform/host', () => {
   return { host, default: host };
 });
 
-import { browseControlApprove, browseControlStop, browseControlTakeover } from './api';
+import { browseControlApprove, browseControlStop, browseControlTakeover, setBrowserControlEnabled } from './api';
 
 let fetchMock;
 
@@ -85,5 +85,27 @@ describe('browseControlStop / browseControlTakeover', () => {
   it('stop is best-effort on a network blip', async () => {
     fetchMock.mockRejectedValueOnce(new Error('boom'));
     await expect(browseControlStop('c1')).resolves.toEqual({ ok: false, conversation_id: 'c1' });
+  });
+});
+
+describe('setBrowserControlEnabled (Task A1 tool enablement)', () => {
+  it('PUTs the flag as a string "true" to /api/v1/settings/browser_control_enabled', async () => {
+    await setBrowserControlEnabled(true);
+    const { url, opts, body } = lastCall();
+    expect(url).toBe('http://127.0.0.1:9999/api/v1/settings/browser_control_enabled');
+    expect(opts.method).toBe('PUT');
+    // The settings API round-trips strings (same convention as
+    // updateSettings' String(value)); the server coerces "true"/"false".
+    expect(body).toEqual({ value: 'true' });
+  });
+
+  it('PUTs "false" when disabling', async () => {
+    await setBrowserControlEnabled(false);
+    expect(lastCall().body).toEqual({ value: 'false' });
+  });
+
+  it('is best-effort: a network blip resolves to { ok: false }', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('boom'));
+    await expect(setBrowserControlEnabled(true)).resolves.toEqual({ ok: false });
   });
 });

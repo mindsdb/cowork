@@ -700,6 +700,17 @@ export default function CustomizeView({
   agentLabel = 'the agent',
   /** Active conversation id — threaded into the Browser Control approve flow. */
   activeConversationId = null,
+  /**
+   * One-shot navigation intent from App (Connectors Directory picks that
+   * bypass the registry). 'browser_control' opens the connect workflow
+   * directly on the Browser Control pane. Consumed once, then acknowledged
+   * via onConnectIntentHandled so a re-render can't refire it.
+   */
+  connectIntent = null,
+  onConnectIntentHandled,
+  /** Opens the Settings modal (optionally at a section) — threaded into the
+   *  connect workflow's post-approval "Open Settings" action. */
+  onOpenSettings,
 }) {
   const [list, setList] = useState(Array.isArray(initialConnectors) ? initialConnectors : []);
   const [search, setSearch] = useState('');
@@ -714,10 +725,25 @@ export default function CustomizeView({
   // the App-level route stays at 'customize' so the sidebar's active
   // state is correct throughout.
   const [showWorkflow, setShowWorkflow] = useState(false);
+  // Connector the workflow should land on when opened via a connect intent
+  // (e.g. Browser Control from the Connectors Directory). null = the
+  // workflow's own default.
+  const [workflowConnectorId, setWorkflowConnectorId] = useState(null);
 
   // Live Browser Control bridge state — surfaces as a real connection card
   // when the bridge is connected or lost (needs-reconnect warning).
   const browser = useBrowserControl();
+
+  // Consume the one-shot connect intent from App: 'browser_control' opens
+  // the connect workflow directly on the Browser Control pane. Acknowledge
+  // immediately so a later re-render (or route round-trip) can't refire it.
+  useEffect(() => {
+    if (connectIntent !== 'browser_control') return;
+    setWorkflowConnectorId('anton_chrome');
+    setShowWorkflow(true);
+    onConnectIntentHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectIntent]);
 
   // Fetch fresh on every mount so connections made outside this view
   // (e.g. browser OAuth flow from the chat panel) are always visible.
@@ -752,6 +778,7 @@ export default function CustomizeView({
 
   const handleWorkflowClose = async () => {
     setShowWorkflow(false);
+    setWorkflowConnectorId(null);
     // Returning from the workflow likely added/removed connections —
     // refetch so the listing reflects whatever changed.
     try {
@@ -875,7 +902,14 @@ export default function CustomizeView({
   // The workflow has its own header with a "Back" button that calls
   // handleWorkflowClose, which refetches and pops back to the listing.
   if (showWorkflow) {
-    return <ConnectWorkflowView onClose={handleWorkflowClose} activeConversationId={activeConversationId} />;
+    return (
+      <ConnectWorkflowView
+        onClose={handleWorkflowClose}
+        activeConversationId={activeConversationId}
+        initialConnectorId={workflowConnectorId}
+        onOpenSettings={onOpenSettings}
+      />
+    );
   }
 
   return (

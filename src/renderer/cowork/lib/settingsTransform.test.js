@@ -4,6 +4,7 @@ import {
   diffSettingsForWrite,
   effectiveRoleModel,
   effectiveRoleProvider,
+  transformSettingsRows,
 } from './settingsTransform';
 
 // The minds-cloud recommended list holds bare aliases — never `latest:`-prefixed.
@@ -163,3 +164,31 @@ describe('effectiveRoleModel / effectiveRoleProvider — canonical fields, never
     expect(effectiveRoleProvider({}, 'planning')).toBe('minds-cloud');
   });
 })
+
+describe('browser_control_enabled round-trip (Task A1)', () => {
+  it('reads the server row into camelCase with boolean parsing', () => {
+    const result = transformSettingsRows([
+      { key: 'browser_control_enabled', value: 'true' },
+    ]);
+    expect(result.browserControlEnabled).toBe(true);
+    expect(transformSettingsRows([
+      { key: 'browser_control_enabled', value: 'false' },
+    ]).browserControlEnabled).toBe(false);
+  });
+
+  it('writes the toggle back as the server key with a stringified value', () => {
+    const writes = diffSettingsForWrite(
+      { browserControlEnabled: true },
+      { browserControlEnabled: false },
+    );
+    expect(writes).toEqual({ browser_control_enabled: 'true' });
+  });
+
+  it('skips the write when unchanged', () => {
+    const writes = diffSettingsForWrite(
+      { browserControlEnabled: true },
+      { browserControlEnabled: true },
+    );
+    expect(writes).toEqual({});
+  });
+});

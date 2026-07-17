@@ -671,6 +671,25 @@ export async function browseControlStop(conversationId, stopId) {
   }
 }
 
+// Tool enablement for Browser Control (Task A1). Approving a Chrome tab IS
+// the user's grant, so the approve flow upserts `browser_control_enabled`
+// directly — without the flag the server never adds the browser tool to the
+// session. Value goes over the wire as a string ("true"/"false") because the
+// settings API round-trips strings (same convention as updateSettings, which
+// sends String(value); the server coerces). Best-effort like
+// browseControlApprove: a network blip must not wedge the approval gesture —
+// the Settings toggle remains the manual fallback.
+export async function setBrowserControlEnabled(enabled) {
+  try {
+    return await req('/settings/browser_control_enabled', {
+      method: 'PUT',
+      body: JSON.stringify({ value: String(!!enabled) }),
+    });
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function browseControlTakeover(conversationId) {
   if (!conversationId) return { ok: false };
   try {
