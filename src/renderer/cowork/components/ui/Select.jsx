@@ -8,9 +8,15 @@
 // until you want consistent styling, real keyboard support, or a divider
 // between options. Base UI's Select gives us a fully custom, accessible
 // popup (arrow keys, typeahead, focus management) while we own only the
-// skin, wired to the same CSS variables (`--surface`, `--ink-2`, `--line`,
-// `--danger`) the rest of the app uses — the same pattern `ui/Menu.jsx`
-// already established for dropdown menus.
+// skin, wired to the same design tokens (`bg-surface`, `text-ink-2`,
+// `border-line`, …) the rest of the app uses.
+//
+// Styled with `cva` + `cn()` + Tailwind's `data-[]:`/`aria-[]:` arbitrary
+// variants — the pattern `Switch.tsx`/`Checkbox.tsx` already established
+// for skinning Base UI's data-attribute-driven states (highlighted,
+// disabled, selected, open/closed). Not a runtime-injected stylesheet:
+// Tailwind's own pipeline sees and processes every class here, same as
+// any other component.
 //
 // API is options-array driven (mirrors `Menu`'s `items` prop) rather than
 // compound children — nearly every call site already builds its options
@@ -38,96 +44,42 @@
 //   - `variant="pill"` — compact "Label: value ⌄" control, replaces the
 //     SelectPill / customize-select overlay trick used for sort/filter.
 
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Select as BaseSelect } from '@base-ui/react/select';
+import { cva } from 'class-variance-authority';
+import { cn } from '../../lib/cn';
 
-let _SELECT_CSS_INJECTED = false;
-function _ensureSelectCss() {
-  if (_SELECT_CSS_INJECTED) return;
-  if (typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-cw-select', '');
-  style.textContent = `
-.cw-select-trigger {
-  display: inline-flex; align-items: center; justify-content: space-between;
-  gap: 10px;
-  font-family: var(--font-body);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  color: var(--ink);
-  cursor: pointer;
-  outline: none;
-  box-sizing: border-box;
-  transition: border-color .12s ease, box-shadow .15s ease;
-}
-.cw-select-trigger:hover               { border-color: var(--line-2); }
-.cw-select-trigger:focus-visible       { border-color: var(--accent); box-shadow: var(--ring); }
-.cw-select-trigger[data-disabled]      { opacity: 0.55; cursor: not-allowed; }
-.cw-select-trigger[aria-invalid="true"] {
-  border-color: #E07060;
-  box-shadow: 0 0 0 1px rgba(224,112,96,0.45);
-}
-
-.cw-select-trigger--field {
-  width: 100%;
-  padding: 7px 10px;
-  font-size: 13px;
-}
-.cw-select-trigger--field.cw-select-trigger--sm { padding: 5px 8px; font-size: 12px; }
-
-.cw-select-trigger--pill {
-  border-radius: 7px;
-  padding: 7px 11px;
-  background: var(--surface-2);
-  color: var(--ink-2);
-  font-size: 12.5px;
-}
-.cw-select-pill-label { color: var(--ink-4); font-size: 11.5px; }
-.cw-select-value       { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-select-icon         { display: inline-flex; flex-shrink: 0; color: var(--ink-3); }
-
-.cw-select-backdrop { position: fixed; inset: 0; }
-
-.cw-select-positioner { box-sizing: border-box; outline: none; }
-
-.cw-select-popup {
-  min-width: var(--anchor-width, 160px);
-  max-height: var(--available-height, 320px);
-  overflow-y: auto;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(15,16,17,0.28), 0 1px 0 rgba(15,16,17,0.04);
-  padding: 4px 0;
-  outline: none;
-  font-family: var(--font-body);
-  transform-origin: var(--transform-origin);
-}
-.cw-select-popup[data-open]   { animation: cw-select-in 130ms ease-out; }
-.cw-select-popup[data-closed] { animation: cw-select-out 90ms ease-in; }
-@keyframes cw-select-in  { from { opacity: 0; transform: scale(0.97); } to   { opacity: 1; transform: scale(1); } }
-@keyframes cw-select-out { from { opacity: 1; transform: scale(1); }    to   { opacity: 0; transform: scale(0.97); } }
-
-.cw-select-item {
-  display: flex; align-items: center; gap: 8px;
-  width: calc(100% - 8px); margin: 0 4px;
-  padding: 8px 10px; border-radius: 5px;
-  font-size: 13px; color: var(--ink-2);
-  cursor: pointer; user-select: none; outline: none;
-  box-sizing: border-box;
-}
-.cw-select-item[data-highlighted] { background: var(--surface-2); }
-.cw-select-item[data-disabled]    { opacity: 0.55; cursor: not-allowed; }
-.cw-select-item-text  { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-select-item-check { display: inline-flex; flex-shrink: 0; color: var(--accent); visibility: hidden; }
-.cw-select-item[data-selected] .cw-select-item-check { visibility: visible; }
-.cw-select-sep         { height: 1px; background: var(--line); margin: 4px 0; }
-.cw-select-group-label { padding: 6px 14px 2px; font-size: 11px; font-weight: 600; color: var(--ink-4); text-transform: uppercase; letter-spacing: 0.04em; }
-`;
-  document.head.appendChild(style);
-  _SELECT_CSS_INJECTED = true;
-}
+const triggerVariants = cva(
+  [
+    'inline-flex items-center justify-between gap-[10px]',
+    'font-body bg-surface border border-line rounded-[var(--r)] text-ink',
+    'cursor-pointer outline-none box-border',
+    '[transition:border-color_.12s_ease,box-shadow_.15s_ease]',
+    'hover:border-line-2',
+    'focus-visible:border-accent focus-visible:shadow-[var(--ring)]',
+    'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
+    'aria-[invalid=true]:border-[#E07060] aria-[invalid=true]:shadow-[0_0_0_1px_rgba(224,112,96,0.45)]',
+  ],
+  {
+    variants: {
+      variant: {
+        field: 'w-full px-[10px] py-[7px] text-[13px]',
+        pill: 'rounded-[7px] px-[11px] py-[7px] bg-surface-2 text-ink-2 text-[12.5px]',
+      },
+      size: {
+        md: '',
+        sm: '',
+      },
+    },
+    compoundVariants: [
+      // Only the field variant has a distinct "sm" size — a pill's size
+      // is fixed regardless of `size` (matches the original hand-rolled
+      // SelectPill, which never took a size prop).
+      { variant: 'field', size: 'sm', class: 'px-[8px] py-[5px] text-[12px]' },
+    ],
+    defaultVariants: { variant: 'field', size: 'md' },
+  },
+);
 
 const CHEVRON_DOWN = (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -161,13 +113,15 @@ function flattenForLabels(options) {
 function renderOptions(options) {
   return options.filter(Boolean).map((opt, i) => {
     if (opt.separator) {
-      return <BaseSelect.Separator key={`sep-${i}`} className="cw-select-sep" />;
+      return <BaseSelect.Separator key={`sep-${i}`} className="h-px bg-line my-[4px]" />;
     }
 
     if (Array.isArray(opt.options)) {
       return (
-        <BaseSelect.Group key={opt.group ?? i} className="cw-select-group">
-          <BaseSelect.GroupLabel className="cw-select-group-label">{opt.group}</BaseSelect.GroupLabel>
+        <BaseSelect.Group key={opt.group ?? i}>
+          <BaseSelect.GroupLabel className="pt-[6px] px-[14px] pb-[2px] text-[11px] font-semibold text-ink-4 uppercase tracking-[0.04em]">
+            {opt.group}
+          </BaseSelect.GroupLabel>
           {renderOptions(opt.options)}
         </BaseSelect.Group>
       );
@@ -178,11 +132,17 @@ function renderOptions(options) {
         key={opt.value}
         value={opt.value}
         disabled={opt.disabled}
-        className="cw-select-item"
         title={opt.title}
+        className={cn(
+          'group flex items-center gap-[8px]',
+          'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[8px] rounded-[5px]',
+          'text-[13px] text-ink-2 cursor-pointer select-none outline-none box-border',
+          'data-[highlighted]:bg-surface-2',
+          'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
+        )}
       >
-        <BaseSelect.ItemText className="cw-select-item-text">{opt.label}</BaseSelect.ItemText>
-        <span className="cw-select-item-check">
+        <BaseSelect.ItemText className="flex-1 min-w-0 truncate">{opt.label}</BaseSelect.ItemText>
+        <span className="inline-flex shrink-0 text-accent invisible group-data-[selected]:visible">
           <BaseSelect.ItemIndicator>{CHECK}</BaseSelect.ItemIndicator>
         </span>
       </BaseSelect.Item>
@@ -218,8 +178,6 @@ export function Select({
   // `aria-describedby` to associate an inline error message).
   ...rest
 }) {
-  useEffect(() => { _ensureSelectCss(); }, []);
-
   const itemsForLabels = useMemo(() => flattenForLabels(options), [options]);
 
   return (
@@ -232,7 +190,7 @@ export function Select({
       name={name}
     >
       <BaseSelect.Trigger
-        className={`cw-select-trigger cw-select-trigger--${variant} cw-select-trigger--${size}${className ? ` ${className}` : ''}`}
+        className={cn(triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-invalid={invalid || undefined}
         title={title}
@@ -240,20 +198,30 @@ export function Select({
         {...rest}
       >
         {variant === 'pill' && (label || ariaLabel) && (
-          <span className="cw-select-pill-label">{label || ariaLabel}:</span>
+          <span className="text-ink-4 text-[11.5px]">{label || ariaLabel}:</span>
         )}
-        <BaseSelect.Value placeholder={placeholder} className="cw-select-value" />
-        <BaseSelect.Icon className="cw-select-icon">{CHEVRON_DOWN}</BaseSelect.Icon>
+        <BaseSelect.Value placeholder={placeholder} className="truncate" />
+        <BaseSelect.Icon className="inline-flex shrink-0 text-ink-3">{CHEVRON_DOWN}</BaseSelect.Icon>
       </BaseSelect.Trigger>
       <BaseSelect.Portal>
-        <BaseSelect.Backdrop className="cw-select-backdrop" />
+        <BaseSelect.Backdrop className="fixed inset-0" />
         <BaseSelect.Positioner
-          className="cw-select-positioner"
+          className="box-border outline-none"
           sideOffset={6}
           alignItemWithTrigger={false}
           style={{ zIndex }}
         >
-          <BaseSelect.Popup className="cw-select-popup">
+          <BaseSelect.Popup
+            className={cn(
+              'min-w-[var(--anchor-width,_160px)] max-h-[var(--available-height,_320px)] overflow-y-auto',
+              // No border — floats on shadow-sh-popup alone (ENG-790's
+              // "drop the border" direction, applied here too so Select
+              // doesn't diverge from Menu's popup look).
+              'bg-surface rounded-[10px] shadow-sh-popup py-[4px] outline-none font-body',
+              '[transform-origin:var(--transform-origin)]',
+              'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
+            )}
+          >
             <BaseSelect.List>
               {renderOptions(options)}
             </BaseSelect.List>
