@@ -235,6 +235,48 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
   return { savedIsCustom, showStalePin, inputMode, selectValue };
 }
 
+/**
+ * Build the model `<Select>` option list for the Agent-Models picker, given
+ * `resolveModelPickerValue`'s `showStalePin` flag. Pairs with it: every
+ * value `resolveModelPickerValue` can return (`selectValue`) has a matching
+ * entry here, which is what keeps the ENG-739 invariant true end-to-end —
+ * a stored pin or a locked model is always a real, rendered (if disabled)
+ * option, never a value the control can silently desync on.
+ *
+ * @param {string} curModel     currently-stored model id
+ * @param {string[]} modelList  provider's recommended model ids
+ * @param {boolean} allowOther  whether to append the "Other…" custom-id entry
+ * @param {boolean} showStalePin from resolveModelPickerValue
+ * @param {Record<string, boolean>} modelEnabled per-model availability map
+ *   (settings.modelEnabled); a model mapped to `false` renders locked.
+ */
+export function buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled = {}) {
+  const list = Array.isArray(modelList) ? modelList : [];
+  const isLocked = (m) => modelEnabled[m] === false;
+  return [
+    ...(showStalePin
+      // Labeled "legacy — re-select" (not "current") so it reads as an
+      // action to take, not a selection: the same model may also appear
+      // below as a real "— Add credits to unlock" row, and a bare "(current)"
+      // would look like two identical, already-selected entries (ENG-739
+      // review).
+      ? [{
+          value: '__stale__',
+          label: `${modelLabel(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)`,
+          disabled: true,
+        }]
+      : []),
+    // Wallet-based access (ENG-412, #434): a locked model is one the org's
+    // wallet can't currently pay for — prompt to add credits, not upgrade.
+    ...list.map((m) => ({
+      value: m,
+      label: `${modelLabel(m)}${isLocked(m) ? ' — Add credits to unlock' : ''}`,
+      disabled: isLocked(m),
+    })),
+    ...(allowOther ? [{ value: '__custom__', label: 'Other…' }] : []),
+  ];
+}
+
 // ─── Row → client transform ─────────────────────────────────────────
 
 /**
