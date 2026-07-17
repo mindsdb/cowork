@@ -963,14 +963,38 @@ export function modelUnavailableCtas(code) {
   return code === 'model_access_denied' ? ['upgrade', 'switch'] : ['switch'];
 }
 
-function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
-  // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
-  // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
-  // bare single-token alias ("sonnet") comes back lowercase, and it reads
-  // better capitalized in the title. So capitalize single-word labels only,
-  // leaving anything modelLabel already spaced/cased untouched.
-  const raw = modelLabel(failedModel) || failedModel || 'This model';
-  const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
+// modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
+// deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
+// bare single-token alias ("sonnet") comes back lowercase, and it reads better
+// capitalized in prose. So capitalize single-word labels only, leaving anything
+// modelLabel already spaced/cased untouched. `fallback` covers a missing id.
+function prettyModelLabel(id, fallback = '') {
+  const raw = modelLabel(id) || id || fallback;
+  if (!raw) return raw;
+  return /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+// The ENG-598 copy spec's "Available on your plan: <list>" line for the
+// plan-gate card, so a user who hit a locked model sees what they CAN switch
+// to without leaving the chat. Given the account's enabled model ids (already
+// resolved client-side from /recommended-models — never hardcoded), label each
+// via modelLabel, show up to three, and summarize the rest as "and N more".
+// Returns null when there's nothing to show so the caller drops the line.
+export function planAvailabilityLine(enabledIds) {
+  const labels = (enabledIds || []).map((id) => prettyModelLabel(id)).filter(Boolean);
+  if (labels.length === 0) return null;
+  const shown = labels.slice(0, 3);
+  const extra = labels.length - shown.length;
+  let list;
+  if (extra > 0) list = `${shown.join(', ')}, and ${extra} more`;
+  else if (shown.length === 1) list = shown[0];
+  else if (shown.length === 2) list = `${shown[0]} and ${shown[1]}`;
+  else list = `${shown.slice(0, -1).join(', ')}, and ${shown[shown.length - 1]}`;
+  return `Available on your plan: ${list}`;
+}
+
+function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText, enabledModels = [] }) {
+  const label = prettyModelLabel(failedModel, 'This model');
   const denied = code === 'model_access_denied';
   const title = denied
     ? `${label} isn't included in your plan`
@@ -985,14 +1009,25 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
   };
   const buttons = modelUnavailableCtas(code).map((k) => byKey[k]);
 
+  // "Available on your plan" only makes sense on the plan gate — the kill
+  // switch isn't a plan problem. Dropped automatically when the list is empty.
+  const availableLine = denied ? planAvailabilityLine(enabledModels) : null;
+
   return (
     <ActionCard
       time={time}
       agentLabel={agentLabel}
       title={title}
-      body={errorText || (denied
-        ? 'Switch models in Settings, or upgrade your plan to unlock it.'
-        : 'This model is currently turned off. Switch to another model in Settings.')}
+      body={
+        <>
+          {errorText || (denied
+            ? 'Switch models in Settings, or upgrade your plan to unlock it.'
+            : 'This model is currently turned off. Switch to another model in Settings.')}
+          {availableLine && (
+            <div style={{ marginTop: 6, color: T.ink3 }}>{availableLine}</div>
+          )}
+        </>
+      }
       buttons={buttons}
     />
   );
@@ -1005,6 +1040,7 @@ export default function ChatView({
   onBack,
   project,
   model,
+  planEnabledModels = [],
   attachments,
   connectors,
   onAttachFiles,
@@ -1690,12 +1726,13 @@ export default function ChatView({
                   return (
                     <ModelUnavailableCard
                       key={i}
-                      time={formatTime(m.createdAt)}
+                      time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
                       code={m.code}
                       failedModel={m.failedModel}
                       errorText={m.content}
+                      enabledModels={planEnabledModels}
                     />
                   );
                 }

@@ -1088,6 +1088,17 @@ function AppCore() {
     return recommendedModelOptions(settings.recommendedModels, providerType)
       .map((o) => ({ id: o.id, name: o.label, desc: '' }));
   }, [settings.recommendedModels, settings.planningProvider]);
+  // The MindsHub-tiered models the account can actually use, in menu order —
+  // feeds the "Available on your plan" line on the model-403 card (ENG-649 /
+  // ENG-598). Tier gating (model_access_denied) only comes from minds-cloud, so
+  // that's the list to offer. `modelEnabled[id] === true` = available; absent or
+  // false is treated as unavailable here (never advertise a locked model), and
+  // an empty map (older backend) yields [] so the card drops the line.
+  const planEnabledModels = useMemo(() => {
+    const ids = settings.recommendedModels?.['minds-cloud'] || [];
+    const enabled = settings.modelEnabled || {};
+    return ids.filter((id) => enabled[id] === true);
+  }, [settings.recommendedModels, settings.modelEnabled]);
   // The user's preferred collapsed state for the sidebar. Effective
   // collapsed-ness is derived below — we only honor this value while
   // viewing a chat task; every other surface (home, projects,
@@ -3747,6 +3758,7 @@ function AppCore() {
             }}
             project={currentTaskProject}
             model={currentTaskModel}
+            planEnabledModels={planEnabledModels}
             attachments={composerAttachments}
             connectors={connectors}
             onAttachFiles={handleAttachFiles}
