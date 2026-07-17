@@ -44,6 +44,24 @@ export function accountUserFromToken(token) {
   };
 }
 
+// Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
+// freshly auto-saved key, without touching any other field — critical so an
+// Appearance auto-save never marks a genuinely-unsaved Provider/Model edit
+// (tracked in the same snapshot, via the shared page-wide Save button) as
+// saved just because it happened to be present at the same time. Returns
+// the input unchanged if it's null or unparseable (defensive: the caller
+// should never hit that path, but a snapshot must never be corrupted).
+export function patchSavedJson(prevJson, key, value) {
+  if (prevJson == null) return prevJson;
+  try {
+    const parsed = JSON.parse(prevJson);
+    parsed[key] = value;
+    return JSON.stringify(parsed);
+  } catch {
+    return prevJson;
+  }
+}
+
 function Section({ title, subtitle, notice, children }) {
   return (
     <div className="settings-section" style={{
@@ -1768,6 +1786,72 @@ export default function SettingsView({
     );
   };
 
+  // Appearance auto-save — every control on this page persists on its own,
+  // debounced for text/color inputs so typing doesn't fire a write per
+  // keystroke. Per-key status (saving/saved/error) gives the user direct
+  // feedback instead of relying on the page-wide Save button, which these
+  // fields no longer participate in (see AutoSaveTag).
+  const [autoSaveStatus, setAutoSaveStatus] = useState({});
+  const autoSaveTimersRef = useRef({});
+  const autoSaveClearTimersRef = useRef({});
+
+  const autoSaveSetting = (key, value, { debounceMs = 0 } = {}) => {
+    setSetting(key, value);
+    clearTimeout(autoSaveTimersRef.current[key]);
+    clearTimeout(autoSaveClearTimersRef.current[key]);
+
+    const commit = async () => {
+      setAutoSaveStatus((prev) => ({ ...prev, [key]: 'saving' }));
+      try {
+        await onSave({ [key]: value });
+        // Narrow the "last saved" snapshot to just this field so the
+        // shared page-wide Save button (used by Providers/Model settings
+        // elsewhere in this view) doesn't mistake an auto-saved Appearance
+        // change for a pending manual one — or, worse, mark a genuinely
+        // unsaved Provider edit as "Saved" just because Appearance also
+        // changed at the same time.
+        setLastSavedJson((prev) => patchSavedJson(prev, key, value));
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: 'saved' }));
+        autoSaveClearTimersRef.current[key] = setTimeout(() => {
+          setAutoSaveStatus((prev) => {
+            const { [key]: _drop, ...rest } = prev;
+            return rest;
+          });
+        }, 1800);
+      } catch (err) {
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: 'error' }));
+        console.warn(`Auto-save failed for ${key}:`, err);
+      }
+    };
+
+    if (debounceMs > 0) {
+      autoSaveTimersRef.current[key] = setTimeout(commit, debounceMs);
+    } else {
+      commit();
+    }
+  };
+
+  useEffect(() => () => {
+    Object.values(autoSaveTimersRef.current).forEach(clearTimeout);
+    Object.values(autoSaveClearTimersRef.current).forEach(clearTimeout);
+  }, []);
+
+  function AutoSaveTag({ settingKey }) {
+    const status = autoSaveStatus[settingKey];
+    if (!status) return null;
+    if (status === 'saving') {
+      return <span style={{ fontSize: 11.5, color: 'var(--ink-4)', marginLeft: 8 }}>Saving…</span>;
+    }
+    if (status === 'error') {
+      return <span style={{ fontSize: 11.5, color: 'var(--danger, #e5484d)', marginLeft: 8 }}>Couldn't save</span>;
+    }
+    return (
+      <span style={{ fontSize: 11.5, color: 'var(--ok, #3aa876)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {Ico.check(11)} Saved
+      </span>
+    );
+  }
+
   // Sidebar logo upload — read as a data URI and save as the synced
   // `navLogo` setting (same pipeline as every other setting, e.g. greeting).
   // Capped well under a reasonable size for a settings-table text column.
@@ -1782,7 +1866,7 @@ export default function SettingsView({
     }
     setLogoError(null);
     const reader = new FileReader();
-    reader.onload = () => setSetting('navLogo', reader.result);
+    reader.onload = () => autoSaveSetting('navLogo', reader.result);
     reader.readAsDataURL(file);
   };
 
@@ -1890,28 +1974,38 @@ export default function SettingsView({
           </>
         )}
         <Section title="Greeting" subtitle="The line shown when you start a new task.">
-          <TextInput
-            value={settings.greeting}
-            onChange={(v) => setSetting('greeting', v)}
-            title="Shown above the task input when you start a new task."
-            ariaLabel="Greeting text"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ flex: 1 }}>
+              <TextInput
+                value={settings.greeting}
+                onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                title="Shown above the task input when you start a new task."
+                ariaLabel="Greeting text"
+              />
+            </div>
+            <AutoSaveTag settingKey="greeting" />
+          </div>
         </Section>
         <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
-          <TextInput
-            value={settings.navTitle || ''}
-            onChange={(v) => setSetting('navTitle', v)}
-            placeholder="MindsHub"
-            title="Replaces the MindsHub wordmark in the nav panel."
-            ariaLabel="Sidebar title text"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ flex: 1 }}>
+              <TextInput
+                value={settings.navTitle || ''}
+                onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
+                placeholder="MindsHub"
+                title="Replaces the MindsHub wordmark in the nav panel."
+                ariaLabel="Sidebar title text"
+              />
+            </div>
+            <AutoSaveTag settingKey="navTitle" />
+          </div>
         </Section>
         <Section title="Sidebar title color" subtitle="Pick a color for the sidebar title, or follow the theme's default text color.">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <input
               type="color"
               value={settings.navTitleColor || '#e8e8ec'}
-              onChange={(e) => setSetting('navTitleColor', e.target.value)}
+              onChange={(e) => autoSaveSetting('navTitleColor', e.target.value, { debounceMs: 400 })}
               disabled={!settings.navTitleColor}
               aria-label="Sidebar title color"
               style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: settings.navTitleColor ? 1 : 0.45 }}
@@ -1919,11 +2013,12 @@ export default function SettingsView({
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
               <Checkbox
                 checked={!settings.navTitleColor}
-                onCheckedChange={(v) => setSetting('navTitleColor', v ? '' : '#e8e8ec')}
+                onCheckedChange={(v) => autoSaveSetting('navTitleColor', v ? '' : '#e8e8ec')}
                 aria-label="Follow theme color"
               />
               Follow theme
             </label>
+            <AutoSaveTag settingKey="navTitleColor" />
           </div>
         </Section>
         <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
@@ -1945,7 +2040,7 @@ export default function SettingsView({
             {settings.navLogo && (
               <button
                 type="button"
-                onClick={() => { setSetting('navLogo', ''); setLogoError(null); }}
+                onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
                 style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12.5, fontFamily: 'var(--font-body)' }}
               >
                 Remove
@@ -1958,6 +2053,7 @@ export default function SettingsView({
               style={{ display: 'none' }}
               onChange={(e) => { handleLogoUpload(e.target.files?.[0]); e.target.value = ''; }}
             />
+            <AutoSaveTag settingKey="navLogo" />
           </div>
           {logoError && (
             <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>{logoError}</div>
@@ -1965,36 +2061,48 @@ export default function SettingsView({
         </Section>
         <div className="settings-hide-mobile">
           <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
-            <Switch
-              checked={settings.showDots}
-              onCheckedChange={(v) => setSetting('showDots', v)}
-              title="Toggle the animated grid background."
-              aria-label="Animated background"
-            />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.showDots}
+                onCheckedChange={(v) => autoSaveSetting('showDots', v)}
+                title="Toggle the animated grid background."
+                aria-label="Animated background"
+              />
+              <AutoSaveTag settingKey="showDots" />
+            </div>
           </Section>
           <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-            <Switch
-              checked={settings.showCounters !== false}
-              onCheckedChange={(v) => setSetting('showCounters', v)}
-              title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
-              aria-label="Nav-panel counters"
-            />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.showCounters !== false}
+                onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
+                title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
+                aria-label="Nav-panel counters"
+              />
+              <AutoSaveTag settingKey="showCounters" />
+            </div>
           </Section>
           <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
-            <Switch
-              checked={settings.showThemeToggle !== false}
-              onCheckedChange={(v) => setSetting('showThemeToggle', v)}
-              title="Show or hide the sidebar's light/dark theme toggle."
-              aria-label="Theme toggle button"
-            />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.showThemeToggle !== false}
+                onCheckedChange={(v) => autoSaveSetting('showThemeToggle', v)}
+                title="Show or hide the sidebar's light/dark theme toggle."
+                aria-label="Theme toggle button"
+              />
+              <AutoSaveTag settingKey="showThemeToggle" />
+            </div>
           </Section>
           <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
-            <Switch
-              checked={settings.show8bitToggle !== false}
-              onCheckedChange={(v) => setSetting('show8bitToggle', v)}
-              title="Show or hide the sidebar's 8-bit style toggle."
-              aria-label="8-bit style toggle button"
-            />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.show8bitToggle !== false}
+                onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
+                title="Show or hide the sidebar's 8-bit style toggle."
+                aria-label="8-bit style toggle button"
+              />
+              <AutoSaveTag settingKey="show8bitToggle" />
+            </div>
           </Section>
         </div>
       </CollapsibleGroup>
