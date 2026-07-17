@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message, Button } from '../components/ui';
+import { Message, Button, Card, EmptyState as UiEmptyState } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
@@ -19,8 +19,8 @@ import {
 import { trackArtifactPublished } from '../lib/analytics';
 
 const TITLES = {
-  memory:  ['Memory',  'Profile, rules, and lessons the agent can reuse across tasks.'],
-  publish: ['Publish', 'HTML artifacts the agent can publish with Minds credentials.'],
+  memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
+  publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
 };
 
 function PageHeader({ title, subtitle }) {
@@ -204,7 +204,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   return (
     <>
       <CollectionPageHeader
-        title="Memory"
+        title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
       <div style={{ height: 14 }} />
@@ -213,9 +213,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
         display: 'grid', gridTemplateColumns: '300px 1fr',
         padding: '0 32px 24px', gap: 24,
       }}>
-        <div className="scroll-clean" style={{
-          borderRight: '1px solid var(--border-0)',
-          paddingRight: 12,
+        <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
           overflowY: 'auto', minHeight: 0,
         }}>
@@ -238,7 +236,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
             />
           ))}
           {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
-        </div>
+        </Card>
         <div className="scroll-clean" style={{
           overflowY: 'auto', minHeight: 0,
         }}>
@@ -290,7 +288,9 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               </div>
             </>
           ) : (
-            <EmptyState>Select a memory entry to inspect it.</EmptyState>
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UiEmptyState description="Select a memory entry to inspect it." />
+            </div>
           )}
         </div>
       </div>
@@ -499,15 +499,15 @@ function ConnectView({ data, setData, setStatus }) {
 function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   const publish = async (artifact) => {
     try {
-      setStatus('Publishing…');
+      setStatus('Sharing…');
       const result = await publishArtifact(artifact.path);
       if (result.url) trackArtifactPublished(result.report_id || artifact.id || '', 'public');
-      setStatus(result.url ? `Published: ${result.url}` : 'Published.');
+      setStatus(result.url ? `Shared: ${result.url}` : 'Shared.');
       const latest = await fetchPublishable();
       setData(latest);
       onRefreshArtifacts?.();
     } catch (err) {
-      setStatus(err.message || 'Publishing failed.');
+      setStatus(err.message || 'Sharing failed.');
     }
   };
 
@@ -515,7 +515,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
         <Message variant="warning">
-          Configure a Minds API key in Settings before publishing.
+          Configure a Minds API key in Settings before sharing.
         </Message>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
@@ -528,12 +528,12 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
           </div>
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => navigator.clipboard?.writeText(artifact.publishedUrl)}>Copy URL</Button>}
           {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
-          <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Publish</Button>
+          <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>
       )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
       {(data.history || []).length > 0 && (
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 8 }}>Publish history</div>
+          <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 8 }}>Share history</div>
           {(data.history || []).slice(0, 10).map((item) => (
             <div key={`${item.artifact}-${item.publishedAt}`} style={{ padding: '8px 0', borderTop: '1px solid var(--border-0)', fontSize: 12.5 }}>
               <strong>{item.artifactName}</strong>

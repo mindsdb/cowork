@@ -120,6 +120,20 @@ export default {
         '10': 'var(--space-10)',
         '12': 'var(--space-12)',
       },
+      // Card-system tokens (ENG-791) — so Tailwind-styled cards can use
+      // `rounded-card` / `shadow-card` instead of arbitrary `rounded-[8px]`
+      // or hardcoded hex. Bound to the same CSS vars as the .card classes.
+      borderRadius: {
+        card:       'var(--card-radius)',      // rounded-card      → 12
+        'card-row': 'var(--card-radius-row)',  // rounded-card-row  → 8
+      },
+      boxShadow: {
+        'sh-1':       'var(--sh-1)',
+        'sh-2':       'var(--sh-2)',
+        'sh-3':       'var(--sh-3)',
+        card:         'var(--card-shadow-rest)',
+        'card-hover': 'var(--card-shadow-hover)',
+      },
     },
   },
   plugins: [],

@@ -1,4 +1,4 @@
-import { saveTokens, getRefreshToken } from './token-store';
+import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort } from './server-process';
 import { checkInstallStatus } from './installer';
 import { coworkHome, coworkEnvPath, coworkStatePath } from './cowork-home';
@@ -50,25 +50,43 @@ function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   return fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...init });
 }
 
-// True iff the user has previously finalized onboarding with Minds as
-// their LLM. Lets the boot-time silent refresh decide whether a new
-// access token is worth pulling — the env file is the source of truth
-// for the LLM credential, the JWT only matters for auth-service calls.
-function envHasMindsCommitted(): boolean {
-  const envPath = coworkEnvPath();
-  if (!fs.existsSync(envPath)) return false;
-  const content = fs.readFileSync(envPath, 'utf-8');
-  return /^ANTON_MINDS_API_KEY=/m.test(content);
-}
+// Outcome of a refresh-token exchange. The distinction matters (ENG-761):
+// only `invalid_grant` means the session is definitively dead and local
+// state may be destroyed. Everything else (network down at boot, Keycloak
+// 5xx, timeout) is `transient` — the refresh token is still good and MUST
+// be kept, otherwise one network blip at launch permanently signs the
+// user out.
+export type TokenRefreshResult =
+  | { status: 'ok'; token: string }
+  | { status: 'no_refresh_token' }
+  | { status: 'invalid_grant' }
+  | { status: 'superseded' }
+  | { status: 'transient' };
 
 // Refresh tokens only — no env writes, no server restart. Used during
-// onboarding (e.g. after Stripe checkout, when we re-check roles) and
-// from the boot path. The LLM env credential is a long-lived API key
-// minted by the auth-service and isn't tied to the JWT lifetime, so
-// refreshing the JWT no longer needs to touch env.
-export async function refreshTokensOnly(): Promise<string | null> {
+// onboarding (e.g. after Stripe checkout, when we re-check roles), from
+// the boot path, and on demand when the renderer asks for the access
+// token. The LLM env credential is a long-lived API key minted by the
+// auth-service and isn't tied to the JWT lifetime, so refreshing the
+// JWT never needs to touch env.
+//
+// Single-flight: concurrent callers (boot refresh + settings-open check
+// + the scheduled timer) share one Keycloak round-trip. Keycloak may be
+// configured to rotate refresh tokens, so parallel exchanges with the
+// same token are not just wasteful but potentially self-invalidating.
+let _inflightRefresh: Promise<TokenRefreshResult> | null = null;
+
+export function refreshTokensOnly(): Promise<TokenRefreshResult> {
+  if (!_inflightRefresh) {
+    _inflightRefresh = doRefreshTokens().finally(() => { _inflightRefresh = null; });
+  }
+  return _inflightRefresh;
+}
+
+async function doRefreshTokens(): Promise<TokenRefreshResult> {
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
+  if (!refreshToken) return { status: 'no_refresh_token' };
+  const tokenStoreVersion = getTokenStoreVersion();
   try {
     const res = await timedFetch(TOKEN_URL, {
       method: 'POST',
@@ -79,22 +97,40 @@ export async function refreshTokensOnly(): Promise<string | null> {
         refresh_token: refreshToken,
       }).toString(),
     });
-    if (!res.ok) return null;
-    const data = await res.json() as { access_token: string; expires_in?: number; refresh_token?: string };
+    if (!res.ok) {
+      // Keycloak reports a dead session as 400 with error=invalid_grant.
+      // Treat ONLY an explicit OAuth error on a 4xx as definitive; any
+      // ambiguity (5xx, non-JSON body, rate limit) keeps the token.
+      let oauthError = '';
+      try { oauthError = String(((await res.json()) as { error?: string })?.error || ''); } catch { /* non-JSON */ }
+      if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
+      if ((res.status === 400 || res.status === 401) && oauthError === 'invalid_grant') {
+        console.warn('[minds-auth] refresh token rejected (invalid_grant) — clearing session');
+        clearTokens();
+        cancelScheduledRefresh();
+        return { status: 'invalid_grant' };
+      }
+      console.warn(`[minds-auth] token refresh failed transiently (HTTP ${res.status}${oauthError ? `, ${oauthError}` : ''}) — keeping tokens`);
+      scheduleRefreshRetry();
+      return { status: 'transient' };
+    }
+    const data = await res.json() as { access_token?: unknown; expires_in?: number; refresh_token?: string };
+    if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
+    if (typeof data.access_token !== 'string' || !data.access_token) {
+      console.warn('[minds-auth] token refresh returned no access token — keeping session');
+      scheduleRefreshRetry();
+      return { status: 'transient' };
+    }
     saveTokens(data.access_token, data.expires_in ?? 3600, data.refresh_token ?? refreshToken);
     scheduleRefresh(data.expires_in ?? 3600);
-    return data.access_token;
-  } catch {
-    return null;
+    return { status: 'ok', token: data.access_token };
+  } catch (e: any) {
+    if (getTokenStoreVersion() !== tokenStoreVersion) return { status: 'superseded' };
+    // Network failure / timeout — the token itself is fine. Retry later.
+    console.warn('[minds-auth] token refresh unreachable — keeping tokens, will retry:', e?.message || e);
+    scheduleRefreshRetry();
+    return { status: 'transient' };
   }
-}
-
-// Boot-time entry point. Only worth running when the user already
-// finalized onboarding (env has the committed API key) — otherwise the
-// in-memory token would just sit unused. Returns true iff we refreshed.
-export async function silentRefresh(): Promise<boolean> {
-  if (!envHasMindsCommitted()) return false;
-  return Boolean(await refreshTokensOnly());
 }
 
 // RP-initiated Keycloak logout. Local clearTokens() is not enough on
@@ -274,10 +310,16 @@ async function switchActiveOrg(accessToken: string, orgId: string): Promise<bool
 
 // Refresh the access token using the persisted refresh_token. The new
 // token reflects whatever active-organization switch we just performed,
-// and is saved back into the store so subsequent calls (and
-// silentRefresh) see the org-aware token. Identical mechanics to
-// refreshTokensOnly — kept as a named alias for call-site clarity.
-const refreshAfterOrgSwitch = refreshTokensOnly;
+// and is saved back into the store so subsequent refreshes see the
+// org-aware token. Returns the token string or null — the org-switch
+// loops only care whether they got a usable token.
+async function refreshAfterOrgSwitch(): Promise<string | null> {
+  // An exchange that started before the org switch cannot contain the new
+  // claim. Let it settle, then deliberately start a fresh exchange.
+  if (_inflightRefresh) await _inflightRefresh;
+  const result = await refreshTokensOnly();
+  return result.status === 'ok' ? result.token : null;
+}
 
 export interface EnsureActiveOrgResult {
   token: string | null;
@@ -841,8 +883,30 @@ export async function writeMindsKeyToEnvAndRestart(apiKey: string): Promise<void
 
 let _refreshTimer: NodeJS.Timeout | null = null;
 
+// How long to wait before retrying after a transient refresh failure.
+// Constant (no backoff): one loopback-cheap POST per minute while the
+// network is down, and the session converges to signed-in the moment
+// connectivity returns instead of waiting for the next app launch.
+const REFRESH_RETRY_DELAY_MS = 60_000;
+
 export function scheduleRefresh(expiresInSeconds: number): void {
+  scheduleRefreshIn(Math.max((expiresInSeconds - 60) * 1000, 10_000));
+}
+
+export function scheduleRefreshRetry(): void {
+  scheduleRefreshIn(REFRESH_RETRY_DELAY_MS);
+}
+
+export function cancelScheduledRefresh(): void {
   if (_refreshTimer) clearTimeout(_refreshTimer);
-  const delay = Math.max((expiresInSeconds - 60) * 1000, 10_000);
-  _refreshTimer = setTimeout(silentRefresh, delay);
+  _refreshTimer = null;
+}
+
+function scheduleRefreshIn(delayMs: number): void {
+  if (_refreshTimer) clearTimeout(_refreshTimer);
+  // refreshTokensOnly re-arms the timer itself on every outcome that
+  // warrants one (ok → next expiry window, transient → retry delay), so
+  // the chain never dies after a single failure — the pre-ENG-761 timer
+  // ran silentRefresh once and never retried.
+  _refreshTimer = setTimeout(() => { void refreshTokensOnly(); }, delayMs);
 }

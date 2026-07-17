@@ -30,7 +30,7 @@ import {
   revealProjectInFinder,
   fetchMemory, fetchArtifacts, countNonEmptyMemory,
 } from '../api';
-import { Button, Menu } from '../components/ui';
+import { Button, Menu, EmptyState } from '../components/ui';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
@@ -133,7 +133,7 @@ function activitySummaryFor(project, tasks) {
 // type, height, padding and accent-glow consistent across pages.
 function NewProjectButton({ onClick }) {
   return (
-    <Button variant="primary" className="proj-new-action" onClick={onClick}>
+    <Button variant="solid" className="proj-new-action" onClick={onClick}>
       {Ico.plus(14)} New project
     </Button>
   );
@@ -271,7 +271,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
     return (
       <div
         style={{
-          minHeight: 120, borderRadius: 10,
+          minHeight: 120, borderRadius: 'var(--card-radius)',
           padding: '14px 16px',
           background: 'var(--surface)',
           border: '1px solid var(--accent)',
@@ -337,7 +337,7 @@ function NewProjectCard({ onCreate, creating, onCreatingChange }) {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        minHeight: 120, borderRadius: 10,
+        minHeight: 120, borderRadius: 'var(--card-radius)',
         padding: '14px 16px',
         background: 'transparent',
         border: `1px dashed ${hover ? 'var(--accent)' : 'var(--line-2)'}`,
@@ -610,29 +610,10 @@ function ListRow({
 
 // ─── Empty / loading ─────────────────────────────────────────────────────
 
-function EmptyState({ onNewProject }) {
-  return (
-    <div style={{
-      flex: 1, minHeight: 360,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 14, padding: '40px 24px',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>
-      <div className="s-h3" style={{ color: 'var(--ink)' }}>
-        No projects yet
-      </div>
-      <div style={{ fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)', maxWidth: 360, textAlign: 'center' }}>
-        Create your first project to start grouping conversations and outputs.
-      </div>
-      <NewProjectButton onClick={onNewProject} />
-    </div>
-  );
-}
-
 function SkeletonCard() {
   return (
     <div style={{
-      minHeight: 120, borderRadius: 10, padding: '14px 16px',
+      minHeight: 120, borderRadius: 'var(--card-radius)', padding: '14px 16px',
       border: '1px solid var(--line)', background: 'var(--surface)',
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
@@ -1180,7 +1161,6 @@ export default function ProjectsView({
         // subtitle and the search bar look smaller in grid than in
         // list. Embedding it as `marginBottom` on the subtitle makes
         // the spacing immune to whatever the body below decides to do.
-        subtitleBottom={20}
       />
 
       <FilterRow
@@ -1193,7 +1173,7 @@ export default function ProjectsView({
           />
         }
         sort={<SortPill value={sort} onChange={setSort} options={SORT_OPTIONS} />}
-        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+        view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={setView} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
         counts={
           <ProjectsCounts
             search={search}
@@ -1213,7 +1193,13 @@ export default function ProjectsView({
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : projects.length === 0 ? (
-        <EmptyState onNewProject={handleNewProject} />
+        <EmptyState
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.folder(32)}</span>}
+          title="No projects yet"
+          description="Create your first project to start grouping conversations and outputs."
+          action={<NewProjectButton onClick={handleNewProject} />}
+          style={{ flex: 1 }}
+        />
       ) : effectiveView === 'grid' ? (
         <div style={{
           padding: '6px 32px 60px',
@@ -1246,7 +1232,7 @@ export default function ProjectsView({
             onClick={handleNewProject}
             className="proj-new-tile"
             style={{
-              minHeight: 120, borderRadius: 10,
+              minHeight: 120, borderRadius: 'var(--card-radius)',
               padding: '14px 16px',
               background: 'transparent',
               border: '1px dashed var(--line-2)',

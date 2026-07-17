@@ -59,6 +59,14 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
   mindshubFinalize: () => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
+  // Fires whenever the MindsHub session state changes in the main
+  // process (login, silent refresh, logout, session death). Returns an
+  // unsubscribe function.
+  onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => {
+    const listener = (_: any, payload: any) => cb(payload);
+    ipcRenderer.on(IPC.MINDSHUB_AUTH_CHANGED, listener);
+    return () => ipcRenderer.removeListener(IPC.MINDSHUB_AUTH_CHANGED, listener);
+  },
 
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),

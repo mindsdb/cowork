@@ -8,6 +8,10 @@
 // verbatim in installer.ts and server-updater.ts with "keep in sync"
 // comments; this module is now the single copy.
 
+// Pure CalVer helpers from the shared version module (no I/O) — used by the
+// OTA cache-freshness / update-newer decisions below.
+import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
+
 // ---------------------------------------------------------------------------
 // Version comparison
 // ---------------------------------------------------------------------------
@@ -200,6 +204,61 @@ export function decideUpdateApply(input: {
 }
 
 // ---------------------------------------------------------------------------
+// UI OTA enablement (build-channel / env gate)
+// ---------------------------------------------------------------------------
+
+/** Should we serve an activated OTA cache over the app-bundled renderer?
+ *  Only when the cache is genuinely NEWER than the bundled renderer: a fresh
+ *  install or a shell upgrade ships a newer bundled UI that must win over a
+ *  stale cache, and a legacy pre-gate cache (or any unparseable version) is
+ *  never considered fresh — so it fails safe to the bundled renderer. */
+export function otaCacheIsFresh(cachedVersion: string | null, bundledVersion: string): boolean {
+  const c = parseCalVer(cachedVersion);
+  const b = parseCalVer(bundledVersion);
+  if (!c || !b) return false;
+  return compareCalVer(c, b) > 0;
+}
+
+/** Is a manifest bundle worth announcing/applying? Only when it is strictly
+ *  newer than the *effective installed UI* — the newest of the app-bundled
+ *  renderer and the raw current-slot cache. This prevents (a) a fresh install
+ *  re-downloading the same version it already ships (bundled == manifest), and
+ *  (b) a regressed manifest downgrading a newer current cache. Unparseable
+ *  manifest → never (can't validate); nothing parseable installed → treat as
+ *  newer (first real cache). */
+export function uiUpdateIsNewer(
+  manifestVersion: string,
+  bundledVersion: string,
+  cachedRawVersion: string | null,
+): boolean {
+  const m = parseCalVer(manifestVersion);
+  if (!m) return false;
+  const installed = newestCalVer([bundledVersion, cachedRawVersion]);
+  if (!installed) return true;
+  return compareCalVer(m, installed) > 0;
+}
+
+/** Should UI OTA hot-updates run in this build?
+ *
+ *  Replaces the old hardcoded `OTA_UI_DISABLED = true` constant (ENG-670) with
+ *  a channel/env gate so enabling OTA is never a hand-edited source flip:
+ *   - an explicit env override wins, for QA/testing: `OTA_UI=on|off`
+ *     (also accepts 1/true/enable and 0/false/disable);
+ *   - otherwise OTA is ON only for `prod` (release) builds. `preview`/`stable`
+ *     (staging) and `dev` keep their bundled branch-under-test UI, so testers
+ *     always run the renderer built from the branch;
+ *   - an unknown build kind fails safe to OFF — never hot-update blind. */
+export function otaUiEnabled(input: {
+  buildKind: string | null | undefined;
+  envOverride?: string | null;
+}): boolean {
+  const env = (input.envOverride ?? '').trim().toLowerCase();
+  if (env === 'on' || env === 'enable' || env === '1' || env === 'true') return true;
+  if (env === 'off' || env === 'disable' || env === '0' || env === 'false') return false;
+  return input.buildKind === 'prod';
+}
+
+// ---------------------------------------------------------------------------
 // UI OTA manifest
 // ---------------------------------------------------------------------------
 
@@ -207,6 +266,37 @@ export interface UIManifest {
   version: string;
   url: string; // GitHub Release asset download URL
   sha256: string;
+  minServerVersion?: string; // optional CalVer floor: minimum cowork-server this UI needs
+}
+
+/** Should a UI bundle be withheld because the running server can't be shown to
+ *  satisfy its declared floor? A safety net ON TOP OF the server-first update
+ *  coupling — it covers what coupling can't: UI-only passes, pinned/PyPI server
+ *  refs that can't roll forward, and publish-order races. Returns a
+ *  human-readable reason to skip, or null to allow.
+ *
+ *  A *declared* floor fails CLOSED — the whole point of a declared constraint is
+ *  to protect the user exactly when compatibility is unknown:
+ *   - no/absent floor → allow (absence is the explicit opt-out);
+ *   - floor present but not CalVer → skip (a floor we can't interpret is not a
+ *     licence to ship);
+ *   - floor present but the running server version is unknown/unparseable
+ *     (server down, /health timeout, older server omits server_version) → skip;
+ *   - server older than the floor (by CalVer date/seq, MAJOR ignored) → skip. */
+export function uiServerCompatSkipReason(input: {
+  minServerVersion?: string | null;
+  serverVersion: string | null;
+}): string | null {
+  const minRaw = (input.minServerVersion ?? '').trim();
+  if (!minRaw) return null; // no constraint declared
+  const min = parseCalVer(minRaw);
+  if (!min) return `invalid min_server_version "${minRaw}"`;
+  const server = parseCalVer(input.serverVersion);
+  if (!server) return `server version unknown (need >= ${minRaw})`;
+  if (compareCalVer(server, min) < 0) {
+    return `server ${input.serverVersion} < required ${minRaw}`;
+  }
+  return null;
 }
 
 /** Validate a fetched latest.json body into a UIManifest, or null.
@@ -218,7 +308,18 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
     const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
     if (!isNonEmptyString(data?.version) || !isNonEmptyString(data?.url)) return null;
     if (typeof data.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(data.sha256)) return null;
-    return { version: data.version, url: data.url, sha256: data.sha256 };
+    const manifest: UIManifest = { version: data.version, url: data.url, sha256: data.sha256 };
+    // Optional server-compat floor (camelCase or the snake_case the publish
+    // workflow writes). The publisher omits the field entirely when no floor is
+    // intended, so a field that is *present but not a valid non-empty string*
+    // is a malformed constraint — reject the whole manifest rather than silently
+    // treat it as unconstrained (that would be a fail-open hole).
+    const msv = data.minServerVersion ?? data.min_server_version;
+    if (msv !== undefined && msv !== null) {
+      if (!isNonEmptyString(msv)) return null;
+      manifest.minServerVersion = msv;
+    }
+    return manifest;
   } catch {
     return null;
   }

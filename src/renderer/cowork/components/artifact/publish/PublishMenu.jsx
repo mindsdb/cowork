@@ -4,7 +4,7 @@
 // A Base UI Popover anchored to the trigger, driving the full publish
 // state machine off `usePublish`:
 //
-//   not published → "Publish to the Web" (access chooser + Publish)
+//   not published → "Share to the Web" (access chooser + Share)
 //   publishing    → button shows a spinner
 //   published     → URL + current access + Unpublish + Update button, or an
 //                    "Up to date" status when there is nothing to publish
@@ -16,6 +16,7 @@
 // rich flow — previously only the grid had it.
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
 import { Spinner } from '../../ui';
@@ -29,7 +30,7 @@ import {
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
-const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const FONT_MONO = "var(--font-mono)";
 
 const ACCESS_LABELS = {
   public: { icon: Ico.globe, title: 'Public', desc: 'Anyone on the internet with the URL' },
@@ -157,7 +158,7 @@ function AccessSummaryCard({ mode }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10,
-      padding: '10px 12px', borderRadius: 10,
+      padding: '10px 12px', borderRadius: 'var(--card-radius)',
       background: 'var(--surface-2)', border: '1px solid var(--line)',
     }}>
       <span style={{
@@ -207,9 +208,9 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
         const acting = activatingMd5 === v.md5;
         return (
           <div key={v.md5 || i} style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
-            background: live ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'var(--surface-2)',
-            border: `1px solid ${live ? 'color-mix(in srgb, var(--accent) 35%, transparent)' : 'var(--line)'}`,
+            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 'var(--card-radius-row)',
+            background: live ? 'var(--accent-bg)' : 'var(--surface-2)',
+            border: `1px solid ${live ? 'var(--accent)' : 'var(--line)'}`,
           }}>
             <span style={{ minWidth: 0, flex: 1 }}>
               <span style={{ display: 'block', fontFamily: FONT_BODY, fontWeight: 600, fontSize: 12.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -309,162 +310,185 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   };
 
   return (
-    <Popover.Root open={open} onOpenChange={(v) => { if (!disabled) setOpen(v); }}>
-      <Popover.Trigger
-        disabled={disabled}
-        title={disabled ? (disabledReason || undefined) : undefined}
-        style={triggerStyle}
-      >
-        {isPublished ? (<>Published <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.chevDown(13)}</span></>) : 'Publish'}
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Positioner side="bottom" align="end" sideOffset={8} style={{ zIndex: 90 }}>
-          <Popover.Popup style={{
-            width: 'min(380px, 92vw)',
-            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14,
-            boxShadow: '0 16px 44px rgba(15,16,17,0.26)', overflow: 'hidden',
-            fontFamily: FONT_BODY, outline: 'none',
-          }}>
-            {/* NOT PUBLISHED — Publish to the Web */}
-            {!isPublished && (
-              <>
-                <PanelHeader title="Publish to the Web" />
-                <div style={{ padding: SECTION_PAD }}>
-                  <SectionLabel>Who can access your app</SectionLabel>
-                  <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} />
-                </div>
-                <ErrorRow message={pub.error} />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
-                  <FooterButton primary onClick={doPublish}
-                    disabled={pub.busy || !isAccessDraftValid(draft)}
-                    busy={pub.phase === 'publishing'} busyLabel="Publishing">
-                    Publish
-                  </FooterButton>
-                </div>
-              </>
-            )}
-
-            {/* PUBLISHED */}
-            {isPublished && (
-              <>
-                <PanelHeader title="Published" />
-
-                <div style={{ padding: SECTION_PAD, borderBottom: '1px solid var(--line)' }}>
-                  <SectionLabel>Website URL</SectionLabel>
-                  <UrlField url={pub.publishedUrl} />
-                </div>
-
-                <div style={{ padding: SECTION_PAD }}>
-                  {view === 'summary' && (
-                    <>
-                      <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setView('access'); }}>Change</LinkButton>}>
-                        Who can access your app
-                      </SectionLabel>
-                      <AccessSummaryCard mode={pub.accessMode} />
-                      {pub.accessMode === 'password' && (
-                        <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                          <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
-                        </div>
-                      )}
-                      {pub.versions.length > 1 && (
-                        <div style={{ marginTop: 12 }}>
-                          <LinkButton onClick={() => setView('versions')}>{`Version history (${pub.versions.length})`}</LinkButton>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {view === 'access' && (
-                    <>
-                      <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setView('summary'); }}>Dismiss</LinkButton>}>
-                        Who can access your app
-                      </SectionLabel>
-                      <AccessChooser value={draft} onChange={setDraft} onSubmit={doApplyAccess} />
-                    </>
-                  )}
-
-                  {view === 'password' && (
-                    <>
-                      <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
-                        Change password
-                      </SectionLabel>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8, padding: '0 8px 0 10px',
-                      }}>
-                        <input
-                          type={pwd.reveal ? 'text' : 'password'} value={pwd.value}
-                          onChange={(e) => setPwd((p) => ({ ...p, value: e.target.value }))}
-                          onKeyDown={(e) => { if (e.key === 'Enter') doSavePassword(); }}
-                          autoFocus placeholder="New password"
-                          style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 0' }}
-                        />
-                        <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
-                          title={pwd.reveal ? 'Hide' : 'Show'} aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
-                          style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
-                          {pwd.reveal ? Ico.eyeOff(15) : Ico.eye(15)}
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {view === 'versions' && (
-                    <>
-                      <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
-                        Version history
-                      </SectionLabel>
-                      <VersionList
-                        versions={pub.versions}
-                        activatingMd5={activatingMd5}
-                        busy={pub.busy}
-                        onActivate={doActivate}
-                      />
-                      <p style={{ margin: '10px 2px 0', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.4 }}>
-                        Making a version live changes what visitors see at your URL. Your workspace files stay as they are.
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                <ErrorRow message={pub.error} />
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
-                  <FooterButton onClick={doUnpublish} disabled={pub.busy}
-                    busy={pub.phase === 'unpublishing'} busyLabel="Unpublishing…">
-                    Unpublish
-                  </FooterButton>
-
-                  {view === 'password' ? (
-                    <FooterButton primary onClick={doSavePassword}
-                      disabled={pub.busy || !pwd.value.trim() || pwd.value.trim() === (pub.accessPassword || '')}
-                      busy={pub.phase === 'publishing'} busyLabel="Saving…">
-                      Save
+    <>
+      {/* Outside-press dismiss. Base UI's own outside-click detection listens
+          on the parent document, but the artifact preview is an <iframe>
+          (ArtifactViewer) — clicks inside it fire in the iframe's own
+          document and never reach a parent-document listener, so almost
+          anywhere the user clicks fails to close this popover (mirrors the
+          drag-region gap documented in ui/Menu.jsx's anchored-mode overlay).
+          A transparent layer positioned just under the popup intercepts
+          those presses directly instead of relying on bubbling. */}
+      {open && createPortal(
+        <div
+          data-testid="publish-menu-outside-dismiss"
+          onMouseDown={() => setOpen(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            zIndex: 89,
+            background: 'transparent',
+            WebkitAppRegion: 'no-drag',
+          }}
+        />,
+        document.body,
+      )}
+      <Popover.Root open={open} onOpenChange={(v) => { if (!disabled) setOpen(v); }}>
+        <Popover.Trigger
+          disabled={disabled}
+          title={disabled ? (disabledReason || undefined) : undefined}
+          style={triggerStyle}
+        >
+          {isPublished ? (<>Shared <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.chevDown(13)}</span></>) : 'Share'}
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Positioner side="bottom" align="end" sideOffset={8} style={{ zIndex: 90 }}>
+            <Popover.Popup style={{
+              width: 'min(380px, 92vw)',
+              background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14,
+              boxShadow: '0 16px 44px rgba(15,16,17,0.26)', overflow: 'hidden',
+              fontFamily: FONT_BODY, outline: 'none',
+            }}>
+              {/* NOT PUBLISHED — Share to the Web */}
+              {!isPublished && (
+                <>
+                  <PanelHeader title="Share to the Web" />
+                  <div style={{ padding: SECTION_PAD }}>
+                    <SectionLabel>Who can access your app</SectionLabel>
+                    <AccessChooser value={draft} onChange={setDraft} onSubmit={doPublish} />
+                  </div>
+                  <ErrorRow message={pub.error} />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
+                    <FooterButton primary onClick={doPublish}
+                      disabled={pub.busy || !isAccessDraftValid(draft)}
+                      busy={pub.phase === 'publishing'} busyLabel="Sharing">
+                      Share
                     </FooterButton>
-                  ) : view === 'access' ? (
-                    (draftDiffers(draft, current) || pub.modified) ? (
-                      <FooterButton primary onClick={doApplyAccess}
-                        disabled={pub.busy || !isAccessDraftValid(draft)}
-                        busy={pub.phase === 'publishing'} busyLabel="Updating…">
+                  </div>
+                </>
+              )}
+  
+              {/* PUBLISHED */}
+              {isPublished && (
+                <>
+                  <PanelHeader title="Shared" />
+  
+                  <div style={{ padding: SECTION_PAD, borderBottom: '1px solid var(--line)' }}>
+                    <SectionLabel>Website URL</SectionLabel>
+                    <UrlField url={pub.publishedUrl} />
+                  </div>
+  
+                  <div style={{ padding: SECTION_PAD }}>
+                    {view === 'summary' && (
+                      <>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setView('access'); }}>Change</LinkButton>}>
+                          Who can access your app
+                        </SectionLabel>
+                        <AccessSummaryCard mode={pub.accessMode} />
+                        {pub.accessMode === 'password' && (
+                          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                            <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>Change password</LinkButton>
+                          </div>
+                        )}
+                        {pub.versions.length > 1 && (
+                          <div style={{ marginTop: 12 }}>
+                            <LinkButton onClick={() => setView('versions')}>{`Version history (${pub.versions.length})`}</LinkButton>
+                          </div>
+                        )}
+                      </>
+                    )}
+  
+                    {view === 'access' && (
+                      <>
+                        <SectionLabel action={<LinkButton onClick={() => { setDraft(draftFromController(pub)); setView('summary'); }}>Dismiss</LinkButton>}>
+                          Who can access your app
+                        </SectionLabel>
+                        <AccessChooser value={draft} onChange={setDraft} onSubmit={doApplyAccess} />
+                      </>
+                    )}
+  
+                    {view === 'password' && (
+                      <>
+                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
+                          Change password
+                        </SectionLabel>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8, padding: '0 8px 0 10px',
+                        }}>
+                          <input
+                            type={pwd.reveal ? 'text' : 'password'} value={pwd.value}
+                            onChange={(e) => setPwd((p) => ({ ...p, value: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') doSavePassword(); }}
+                            autoFocus placeholder="New password"
+                            style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: 'var(--ink)', fontFamily: FONT_MONO, fontSize: 13, padding: '9px 0' }}
+                          />
+                          <button type="button" onClick={() => setPwd((p) => ({ ...p, reveal: !p.reveal }))}
+                            title={pwd.reveal ? 'Hide' : 'Show'} aria-label={pwd.reveal ? 'Hide password' : 'Show password'}
+                            style={{ background: 'transparent', border: 0, cursor: 'pointer', color: 'var(--ink-4)', display: 'inline-flex', padding: 4 }}>
+                            {pwd.reveal ? Ico.eyeOff(15) : Ico.eye(15)}
+                          </button>
+                        </div>
+                      </>
+                    )}
+  
+                    {view === 'versions' && (
+                      <>
+                        <SectionLabel action={<LinkButton onClick={() => setView('summary')}>Dismiss</LinkButton>}>
+                          Version history
+                        </SectionLabel>
+                        <VersionList
+                          versions={pub.versions}
+                          activatingMd5={activatingMd5}
+                          busy={pub.busy}
+                          onActivate={doActivate}
+                        />
+                        <p style={{ margin: '10px 2px 0', fontFamily: FONT_BODY, fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.4 }}>
+                          Making a version live changes what visitors see at your URL. Your workspace files stay as they are.
+                        </p>
+                      </>
+                    )}
+                  </div>
+  
+                  <ErrorRow message={pub.error} />
+  
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--line)' }}>
+                    <FooterButton onClick={doUnpublish} disabled={pub.busy}
+                      busy={pub.phase === 'unpublishing'} busyLabel="Stopping…">
+                      Stop sharing
+                    </FooterButton>
+  
+                    {view === 'password' ? (
+                      <FooterButton primary onClick={doSavePassword}
+                        disabled={pub.busy || !pwd.value.trim() || pwd.value.trim() === (pub.accessPassword || '')}
+                        busy={pub.phase === 'publishing'} busyLabel="Saving…">
+                        Save
+                      </FooterButton>
+                    ) : view === 'access' ? (
+                      (draftDiffers(draft, current) || pub.modified) ? (
+                        <FooterButton primary onClick={doApplyAccess}
+                          disabled={pub.busy || !isAccessDraftValid(draft)}
+                          busy={pub.phase === 'publishing'} busyLabel="Updating…">
+                          Update
+                        </FooterButton>
+                      ) : (
+                        <UpToDateTag />
+                      )
+                    ) : pub.modified ? (
+                      <FooterButton primary onClick={pub.update} disabled={pub.busy}
+                        busy={pub.phase === 'updating'} busyLabel="Updating…">
                         Update
                       </FooterButton>
                     ) : (
                       <UpToDateTag />
-                    )
-                  ) : pub.modified ? (
-                    <FooterButton primary onClick={pub.update} disabled={pub.busy}
-                      busy={pub.phase === 'updating'} busyLabel="Updating…">
-                      Update
-                    </FooterButton>
-                  ) : (
-                    <UpToDateTag />
-                  )}
-                </div>
-              </>
-            )}
-          </Popover.Popup>
-        </Popover.Positioner>
-      </Popover.Portal>
-    </Popover.Root>
+                    )}
+                  </div>
+                </>
+              )}
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
+    </>
   );
 }
 

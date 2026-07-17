@@ -29,6 +29,11 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Odd' })).toHaveClass('btn', { exact: true });
   });
 
+  it('renders the solid variant (filled page CTA) with its class', () => {
+    render(<Button variant="solid">Publish</Button>);
+    expect(screen.getByRole('button', { name: 'Publish' })).toHaveClass('btn', 'solid', { exact: true });
+  });
+
   it('forwards rest props: click handlers fire, disabled blocks them', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();

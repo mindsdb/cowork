@@ -7,6 +7,7 @@ import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb } from './lib/syncSettings';
+import { resolveBootTarget } from './lib/bootTarget';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -122,18 +123,11 @@ export default function App() {
   useEffect(() => {
     async function init() {
       const started = Date.now();
-      let target: Page = 'auth';
-      try {
-        const settings = await host.readSettings();
-        const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalTermsConsent();
-        const { configured } = await host.checkConfigured();
-        if (consented && configured) {
-          const status = await host.checkInstall();
-          target = (!status.antonInstalled || !status.serverDepsReady) ? 'setup' : 'terminal';
-        }
-      } catch {
-        target = 'auth';
-      }
+      // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
+      // readSettings() is best-effort there, so a hosted-web /settings/raw 403
+      // (ENG-817) can't abort the gate and strand a configured instance on the
+      // auth screen; config_ready (health) drives the real decision.
+      const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
       // Keep the welcome orb up briefly so it doesn't flash on fast boots.
       const elapsed = Date.now() - started;
       if (elapsed < WELCOME_MIN_MS) {
@@ -210,16 +204,20 @@ export default function App() {
 
       {page === 'terminal' && <CoworkApp />}
 
-      {/* Theme + style toggles on the onboarding corner — mirror the in-app
-          floating buttons (CoworkApp has its own; these only show here). The
-          CSS stacks the style toggle above the theme toggle. */}
+      {/* Theme + style toggles on the onboarding corner. CoworkApp hasn't
+          mounted yet on these pages (no sidebar to host them), so the
+          pre-app flow keeps its own floating corner toggles — namespaced
+          `arcade-*` (arcade.css) so they're independent of the in-app
+          sidebar footer toggle (Sidebar.jsx) that replaced the old
+          shared floating-chrome buttons. The CSS stacks the style toggle
+          above the theme toggle. */}
       {isArcadePage && (
         <>
           <button
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
             title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             aria-label="Toggle colour theme"
-            className="floating-theme-toggle"
+            className="arcade-theme-toggle"
             style={{ zIndex: 200 }}
           >
             {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
@@ -228,7 +226,7 @@ export default function App() {
             onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
             title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
             aria-label="Toggle 8-bit arcade style"
-            className="floating-theme-toggle floating-skin-toggle"
+            className="arcade-theme-toggle arcade-skin-toggle"
             style={{ zIndex: 200 }}
           >
             <GamepadIcon size={15} />

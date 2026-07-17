@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
-import ThemeModal from './components/ThemeModal';
 import MoveToProjectModal from './components/MoveToProjectModal';
 import { pickConnectWelcome } from './lib/connectWelcomes';
 // OnboardingShell removed — the desktop shell's renderer handles terms/install/
@@ -748,7 +747,10 @@ function AppCore() {
     tone: 'balanced',
     defaultModel: 'claude-sonnet-4-6',
     autoPin: true,
-    showDots: true,
+    // Animated dot-grid background off by default — a flat surface reads
+    // calmer and cohesive with the rest of the UI. Users can opt back in
+    // via Settings → Personalization → Animated background.
+    showDots: false,
     showCounters: true,
     accentVariant: 'aqua',
   });
@@ -780,6 +782,12 @@ function AppCore() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('agent');
   const [ssoConnected, setSsoConnected] = useState(false);
+  // Last sign-in failure, painted on the Settings account card. Cleared
+  // on retry and on any authenticated push from main (ENG-761).
+  const [ssoError, setSsoError] = useState('');
+  // Re-entry guard: a second "Sign in" click while a browser flow is
+  // already open would spawn a second loopback attempt.
+  const ssoBusyRef = useRef(false);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -1170,10 +1178,6 @@ function AppCore() {
   // Settings → Appearance, applied as inline body token overrides.
   const [customTheme, setCustomTheme] = useState(loadCustomTheme);
 
-  // Display modal (theme + 8-bit style), opened from the bottom-right
-  // "gamepad" corner button.
-  const [themeModalOpen, setThemeModalOpen] = useState(false);
-
   // Routes that allow the sidebar to be collapsed via Cmd+B. Read via
   // a ref so the keydown listener (mounted once) sees the live route
   // without needing to rebind on every navigation.
@@ -1269,6 +1273,14 @@ function AppCore() {
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
+  // Route-aware gravity-field intensity: dense work surfaces quiet the
+  // light-mode field (gf-quiet + gravity-field.css) so it never competes
+  // with content; the home stage keeps the full ambient motion.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('gf-quiet', route !== 'home');
+    return () => document.body.classList.remove('gf-quiet');
+  }, [route]);
   // Effective collapse state: only honor the user's preference while
   // the route allows it (chat task). Everywhere else the sidebar
   // stays expanded — gives the user permanent access to the nav.
@@ -2263,13 +2275,46 @@ function AppCore() {
     getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
   }, [settingsOpen]);
 
+  // Authoritative signed-in state, pushed from the main process on every
+  // token-store transition (login, silent refresh, logout, session
+  // death). The UI no longer depends solely on the promise of whichever
+  // call initiated the sign-in — that promise can be lost (ENG-761)
+  // while the main process is in fact authenticated, or vice versa.
+  useEffect(() => {
+    if (!host.isElectron) return undefined;
+    return host.onMindsHubAuthChanged(({ authenticated }) => {
+      setSsoConnected(!!authenticated);
+      if (authenticated) setSsoError('');
+    });
+  }, []);
+
   const handleSsoSignIn = async () => {
-    if (!host.isElectron) return;
-    const loginResult = await host.mindshubLogin();
-    if (!loginResult?.ok) return;
-    await host.mindshubFinalize().catch(() => {});
-    setSsoConnected(true);
-    refreshData();
+    if (!host.isElectron || ssoBusyRef.current) return;
+    ssoBusyRef.current = true;
+    setSsoError('');
+    try {
+      const loginResult = await host.mindshubLogin();
+      if (!loginResult?.ok) {
+        // ENG-761: this used to silently return — the browser said
+        // "You're authorized!" while the app showed nothing. Surface the
+        // failure where the user will look for it: the account card.
+        setSsoError(String(loginResult?.reason || 'Sign in failed. Please try again.'));
+        setSettingsSection('account');
+        setSettingsOpen(true);
+        return;
+      }
+      // Signed in — flip the UI now; key provisioning below takes several
+      // seconds (org bootstrap + server restart) and is not a sign-in gate.
+      setSsoConnected(true);
+      try {
+        await host.mindshubFinalize();
+      } catch (e) {
+        console.warn('[sso] finalize failed after sign-in (account is authenticated):', e);
+      }
+      refreshData();
+    } finally {
+      ssoBusyRef.current = false;
+    }
   };
 
   const navigate = (key) => {
@@ -3266,12 +3311,33 @@ function AppCore() {
   };
   const performDeleteProject = async (project) => {
     if (!project?.name) return;
+    // The server cascades a project delete to its conversations (ENG-701),
+    // so tombstone their ids the same way performDeleteTask does for a single
+    // delete. Without this, an in-flight fetchSessions that started before the
+    // delete resolves with stale data, and mergeTasksFromServer's carry-over
+    // re-adds the (now server-deleted) conversations — leaving a "ghost" that
+    // opens but errors on send, until an app restart (ENG-666). Match by name
+    // OR path: the server stamps conv.project = project.name (and project_path
+    // = project.path), so this catches every conversation in the project.
+    const doomedTaskIds = tasksRef.current
+      .filter((t) => t.projectName === project.name || t.projectPath === project.path)
+      .map((t) => t.id);
+    doomedTaskIds.forEach((id) => deletedTaskIdsRef.current.add(id));
     // Optimistic — drop locally before the round-trip.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
     setTasks((prev) => prev.filter((t) =>
       t.projectName !== project.name && t.projectPath !== project.path
     ));
     if (selectedProject?.name === project.name) setSelectedProject(null);
+    // If the conversation currently open belonged to this project, clear it —
+    // otherwise currentTask silently falls back to tasks[0] (an unrelated
+    // conversation from another project). Only leave the chat view when we're
+    // actually on it; from the projects view (where deletes usually happen)
+    // the user should stay put — same policy as performDeleteTask.
+    if (activeTaskId && doomedTaskIds.includes(activeTaskId)) {
+      setActiveTaskId(null);
+      if (route === 'task') setRoute('home');
+    }
     try { await deleteProject(project); } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[performDeleteProject] failed', e);
@@ -3542,9 +3608,16 @@ function AppCore() {
           connectorsCount={connectors.length}
           activeRoute={route === 'task' ? null : (route === 'schedule-detail' ? 'scheduled' : route)}
           settingsActive={settingsOpen}
-          activeTaskId={activeTaskId}
+          // Only mark a recent as "selected" while actually viewing a task —
+          // activeTaskId persists across navigation, so passing it unconditionally
+          // left the last-opened task highlighted on Projects/Settings/etc.
+          activeTaskId={route === 'task' ? activeTaskId : null}
           serverOnline={serverOnline}
           agentLabel={agentLabel}
+          theme={theme}
+          onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          skin={skin}
+          onToggleSkin={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
           onNavigate={navigate}
           onSelectTask={selectTask}
           onNewTask={newTask}
@@ -3910,6 +3983,7 @@ function AppCore() {
               onStartServer={handleServerStart}
               onStopServer={handleServerStop}
               isSsoConnected={ssoConnected}
+              ssoError={ssoError}
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
             />
           </ModalBody>
@@ -4052,45 +4126,6 @@ function AppCore() {
           setPendingDeleteProject(null);
           await performDeleteProject(p);
         }}
-      />
-
-      {/* Floating theme + display toggles (bottom-right). Hidden on the
-          Settings page — it has its own theme/style controls, and the
-          floating buttons otherwise overlap the Save button there. */}
-      {route !== 'settings' && (
-        <>
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            aria-label="Toggle colour theme"
-            className="floating-theme-toggle"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
-          </button>
-
-          {/* Style toggle — stacked above the theme toggle. Flips directly
-              between 8-bit arcade and smooth (like the sun/moon theme
-              toggle). The icon shows the destination style. */}
-          <button
-            onClick={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
-            title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
-            aria-label="Toggle 8-bit arcade style"
-            className="floating-theme-toggle floating-skin-toggle"
-            style={{ WebkitAppRegion: 'no-drag' }}
-          >
-            {Ico.gamepad(15)}
-          </button>
-        </>
-      )}
-
-      <ThemeModal
-        open={themeModalOpen}
-        onClose={() => setThemeModalOpen(false)}
-        theme={theme}
-        onThemeChange={setTheme}
-        skin={skin}
-        onSkinChange={setSkin}
       />
 
       <MoveToProjectModal

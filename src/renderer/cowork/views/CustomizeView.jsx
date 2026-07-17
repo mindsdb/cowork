@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Button } from '../components/ui';
+import { Button, EmptyState } from '../components/ui';
 import { CONNECTIONS_VAULT_KEEP, deleteDatasource, fetchConnector, fetchDatasources, fetchSavedConnection } from '../api';
 import { host } from '../../platform/host';
 import Spinner from '../components/ui/Spinner';
@@ -31,7 +31,7 @@ const FONT_MONO    = "var(--font-mono)";
 function ConnectButton({ onClick, large = false }) {
   return (
     <Button
-      variant="primary"
+      variant="solid"
       onClick={onClick}
       style={large ? { fontSize: 13.5 } : undefined}
     >
@@ -221,29 +221,6 @@ function ConnectionCard({ connection, onDelete, onModify }) {
 }
 
 // ─── Empty state ─────────────────────────────────────────────────────────
-
-function EmptyState({ onConnectNew, agentLabel = 'the agent' }) {
-  return (
-    <div style={{
-      flex: 1, minHeight: 360,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 14, padding: '40px 24px',
-    }}>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>
-      <div className="s-h3" style={{ color: 'var(--ink)' }}>
-        No apps connected yet
-      </div>
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 13.5, color: 'var(--ink-3)',
-        maxWidth: 380, textAlign: 'center', lineHeight: 1.5,
-      }}>
-        Connectors shape how {agentLabel} works with you. Hook up the apps and
-        databases you already use, and {agentLabel} will automate work there.
-      </div>
-      <ConnectButton onClick={onConnectNew} large />
-    </div>
-  );
-}
 
 // ─── Connection detail panel ──────────────────────────────────────────────
 
@@ -858,7 +835,6 @@ export default function CustomizeView({
         actions={<ConnectButton onClick={handleConnectNew} />}
       />
 
-      <div style={{ height: 18 }} />
 
       {total > 0 && (
         <FilterRow
@@ -878,7 +854,13 @@ export default function CustomizeView({
       )}
 
       {total === 0 ? (
-        <EmptyState onConnectNew={handleConnectNew} agentLabel={agentLabel} />
+        <EmptyState
+          icon={<span style={{ display: 'inline-flex', color: 'var(--ink-4)' }}>{Ico.link(32)}</span>}
+          title="No apps connected yet"
+          description={`Connectors shape how ${agentLabel} works with you. Hook up the apps and databases you already use, and ${agentLabel} will automate work there.`}
+          action={<ConnectButton onClick={handleConnectNew} large />}
+          style={{ flex: 1 }}
+        />
       ) : (
         <div style={{
           padding: '6px 32px 60px',

@@ -11,6 +11,10 @@ import {
   parseUiManifest,
   looksLikeBrokenInstall,
   decideUpdateApply,
+  otaUiEnabled,
+  otaCacheIsFresh,
+  uiUpdateIsNewer,
+  uiServerCompatSkipReason,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -250,6 +254,27 @@ describe('parseUiManifest', () => {
     expect(parseUiManifest(JSON.stringify({ ...valid, sha256: SHA + 'ab' }))).toBeNull();
     expect(parseUiManifest(JSON.stringify({ ...valid, sha256: 'zz'.repeat(32) }))).toBeNull();
   });
+
+  it('picks up an optional min server version (snake_case or camelCase)', () => {
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: '2.26.7.6.1' }))).toEqual({
+      ...valid,
+      minServerVersion: '2.26.7.6.1',
+    });
+    expect(parseUiManifest(JSON.stringify({ ...valid, minServerVersion: '2.26.7.6.1' }))).toEqual({
+      ...valid,
+      minServerVersion: '2.26.7.6.1',
+    });
+    // Field absent entirely → unconstrained (the publisher's opt-out).
+    expect(parseUiManifest(JSON.stringify(valid))).toEqual(valid);
+  });
+
+  it('rejects a manifest whose min server version is present but malformed', () => {
+    // A declared-but-invalid floor is an error, not an opt-out — don't silently
+    // ship it as unconstrained.
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: 123 }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: '' }))).toBeNull();
+    expect(parseUiManifest(JSON.stringify({ ...valid, minServerVersion: {} }))).toBeNull();
+  });
 });
 
 describe('looksLikeBrokenInstall', () => {
@@ -320,5 +345,109 @@ describe('decideUpdateApply', () => {
     expect(
       decideUpdateApply({ ...base, serverUpdateAvailable: false, uiUpdateAvailable: false, serverDown: true }),
     ).toEqual({ applyServer: false, applyUi: false });
+  });
+});
+
+describe('otaUiEnabled', () => {
+  it('is ON only for prod builds by default', () => {
+    expect(otaUiEnabled({ buildKind: 'prod' })).toBe(true);
+    expect(otaUiEnabled({ buildKind: 'stable' })).toBe(false);
+    expect(otaUiEnabled({ buildKind: 'preview' })).toBe(false);
+    expect(otaUiEnabled({ buildKind: 'dev' })).toBe(false);
+  });
+
+  it('fails safe to OFF for an unknown/missing build kind', () => {
+    expect(otaUiEnabled({ buildKind: null })).toBe(false);
+    expect(otaUiEnabled({ buildKind: undefined })).toBe(false);
+    expect(otaUiEnabled({ buildKind: 'something-else' })).toBe(false);
+  });
+
+  it('lets an explicit env override win over the build kind (both directions)', () => {
+    // Force ON even on a non-prod build...
+    for (const v of ['on', 'enable', '1', 'true', 'TRUE', ' On ']) {
+      expect(otaUiEnabled({ buildKind: 'stable', envOverride: v })).toBe(true);
+    }
+    // ...and force OFF even on prod.
+    for (const v of ['off', 'disable', '0', 'false', 'FALSE', ' Off ']) {
+      expect(otaUiEnabled({ buildKind: 'prod', envOverride: v })).toBe(false);
+    }
+  });
+
+  it('ignores a blank/unrecognized override and falls back to build kind', () => {
+    expect(otaUiEnabled({ buildKind: 'prod', envOverride: '' })).toBe(true);
+    expect(otaUiEnabled({ buildKind: 'prod', envOverride: 'maybe' })).toBe(true);
+    expect(otaUiEnabled({ buildKind: 'stable', envOverride: 'maybe' })).toBe(false);
+  });
+});
+
+describe('otaCacheIsFresh', () => {
+  it('serves the cache only when it is strictly newer than the bundled renderer', () => {
+    expect(otaCacheIsFresh('2.26.7.13.1', '2.26.7.6.1')).toBe(true);
+    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.13.1')).toBe(false); // older cache → bundled wins
+    expect(otaCacheIsFresh('2.26.7.6.1', '2.26.7.6.1')).toBe(false); // equal → bundled wins
+  });
+
+  it('compares on the CalVer date, not the raw string (git-describe suffix ok)', () => {
+    // A newer cache carrying a git-describe suffix still reads as fresh.
+    expect(otaCacheIsFresh('2.26.7.13.1-4-gabc1234', '2.26.7.6.1')).toBe(true);
+  });
+
+  it('fails safe to bundled when either version is missing or non-CalVer', () => {
+    expect(otaCacheIsFresh(null, '2.26.7.6.1')).toBe(false);
+    expect(otaCacheIsFresh('bundled', '2.26.7.6.1')).toBe(false);
+    expect(otaCacheIsFresh('2.26.7.13.1', '2.0.7')).toBe(false); // legacy pkg.json fallback
+  });
+});
+
+describe('uiUpdateIsNewer', () => {
+  it('only when strictly newer than the newest of bundled + current cache', () => {
+    // Newer than both → yes.
+    expect(uiUpdateIsNewer('2.26.7.20.1', '2.26.7.6.1', '2.26.7.13.1')).toBe(true);
+    // Equal to the effective installed → no (the fresh-install re-download loop).
+    expect(uiUpdateIsNewer('2.26.7.6.1', '2.26.7.6.1', null)).toBe(false);
+    // Older than the current cache → no (blocks a regressed-manifest downgrade).
+    expect(uiUpdateIsNewer('2.26.7.6.1', '2.26.7.6.1', '2.26.7.13.1')).toBe(false);
+    // Newer than bundled but there's no cache yet → yes.
+    expect(uiUpdateIsNewer('2.26.7.13.1', '2.26.7.6.1', null)).toBe(true);
+  });
+
+  it('unparseable manifest never announces; nothing-parseable-installed treats it as newer', () => {
+    expect(uiUpdateIsNewer('bundled', '2.26.7.6.1', null)).toBe(false);
+    expect(uiUpdateIsNewer('2.26.7.6.1', '2.0.7', null)).toBe(true); // legacy bundled fallback
+  });
+});
+
+describe('uiServerCompatSkipReason', () => {
+  it('allows only when no floor is declared (absence is the explicit opt-out)', () => {
+    expect(uiServerCompatSkipReason({ serverVersion: '0.26.7.6.4.dev40+g82a1da968' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: '', serverVersion: '0.26.7.6.4' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: null, serverVersion: '0.26.7.6.4' })).toBeNull();
+  });
+
+  it('fails closed on a declared-but-uninterpretable floor', () => {
+    // A non-CalVer floor we can't compare is not a licence to ship.
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.1.6', serverVersion: '0.26.7.6.4' }))
+      .toBe('invalid min_server_version "0.1.6"');
+  });
+
+  it('fails closed when a floor is declared but the server version is unknown', () => {
+    expect(uiServerCompatSkipReason({ minServerVersion: '2.26.7.6.1', serverVersion: null }))
+      .toBe('server version unknown (need >= 2.26.7.6.1)');
+    expect(uiServerCompatSkipReason({ minServerVersion: '2.26.7.6.1', serverVersion: 'bundled' }))
+      .toBe('server version unknown (need >= 2.26.7.6.1)');
+  });
+
+  it('withholds when the running server is older than the floor (by CalVer)', () => {
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.4', serverVersion: '0.26.7.6.1' }))
+      .toBe('server 0.26.7.6.1 < required 0.26.7.6.4');
+    // Earlier date is older regardless of a higher seq.
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.5.9' }))
+      .toBe('server 0.26.7.5.9 < required 0.26.7.6.1');
+  });
+
+  it('allows when the server meets or exceeds the floor, tolerating a PEP 440 dev suffix', () => {
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.6.1' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.13.1' })).toBeNull();
+    expect(uiServerCompatSkipReason({ minServerVersion: '0.26.7.6.1', serverVersion: '0.26.7.6.4.dev40+g82a1da968' })).toBeNull();
   });
 });

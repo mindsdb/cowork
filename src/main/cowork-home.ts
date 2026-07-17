@@ -71,6 +71,29 @@ function resolveBuildKind(): BuildKind {
   return 'prod';
 }
 
+/** Strict build-kind resolver for safety gates (e.g. OTA enablement).
+ *  Unlike buildKind(), a missing / malformed / unrecognized packaged config
+ *  resolves to `null` ("unknown") instead of defaulting to `prod`, so a
+ *  mispackaged build can never accidentally opt into production-only behavior.
+ *  A packaged build must carry an explicit, recognized build kind to be
+ *  treated as prod. */
+export function buildKindStrict(): BuildKind | null {
+  const strict = (raw: string): BuildKind | null => {
+    const kind = raw.trim().toLowerCase();
+    return (BUILD_KINDS as readonly string[]).includes(kind) ? (kind as BuildKind) : null;
+  };
+  if (process.env.COWORK_BUILD_KIND) return strict(process.env.COWORK_BUILD_KIND);
+  if (!app.isPackaged) return 'dev';
+  try {
+    const configPath = path.join(process.resourcesPath || '', 'build-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (config?.buildKind) return strict(String(config.buildKind));
+    }
+  } catch { /* fall through to unknown */ }
+  return null;
+}
+
 export function coworkHome(): string {
   const kind = buildKind();
   return path.join(os.homedir(), kind === 'prod' ? '.cowork' : `.cowork-${kind}`);

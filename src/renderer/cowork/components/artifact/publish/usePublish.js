@@ -28,8 +28,8 @@ import { trackArtifactPublished } from '../../../lib/analytics';
 // next step; everything else surfaces verbatim.
 function friendlyPublishError(e) {
   const msg = e?.message || String(e);
-  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to publish.';
-  return `Publish failed: ${msg}`;
+  if (/minds[_ ]?api[_ ]?key/i.test(msg)) return 'Set your Minds API key in Settings to share.';
+  return `Sharing failed: ${msg}`;
 }
 
 function modeFromArtifact(a) {
@@ -42,6 +42,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   const [accessPassword, setAccessPassword] = useState(artifact?.accessPassword || '');
   const [accessEmails, setAccessEmails] = useState(artifact?.accessEmails || []);
   const [orgAllowed, setOrgAllowed] = useState(!!artifact?.orgAllowed);
+  const [artifactKey, setArtifactKey] = useState(artifact?.artifactKey || '');
   const [modified, setModified] = useState(!!artifact?.modified);
   const [phase, setPhase] = useState('idle'); // idle | publishing | updating | unpublishing | activating
   const [error, setError] = useState('');
@@ -59,6 +60,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setAccessPassword(artifact?.accessPassword || '');
     setAccessEmails(artifact?.accessEmails || []);
     setOrgAllowed(!!artifact?.orgAllowed);
+    setArtifactKey(artifact?.artifactKey || '');
     setModified(!!artifact?.modified);
     setError('');
     setVersions([]);  // stale history must never carry across artifacts
@@ -74,7 +76,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     setError('');
     try {
       const r = await publishArtifact(targetPath, access);
-      if (!r?.url) throw new Error('Publish returned no URL.');
+      if (!r?.url) throw new Error('Sharing returned no URL.');
       // Server is authoritative (it degrades an empty restricted/password
       // selection back to public); fall back to the requested access.
       const m = r.accessMode || access?.mode || 'public';
@@ -85,6 +87,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         accessPassword: m === 'password' ? (access?.password || '') : '',
         accessEmails: m === 'restricted' ? (r.accessEmails || access?.emails || []) : [],
         orgAllowed: m === 'restricted' ? !!(r.orgAllowed ?? access?.org_allowed) : false,
+        artifactKey: r.artifactKey || artifact?.artifactKey || '',
         modified: false,
       };
       setPublishedUrl(next.publishedUrl);
@@ -92,6 +95,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       setAccessPassword(next.accessPassword);
       setAccessEmails(next.accessEmails);
       setOrgAllowed(next.orgAllowed);
+      setArtifactKey(next.artifactKey);
       setModified(false);
       // Only count the analytics event on the transition to published,
       // not on every in-place access change.
@@ -135,7 +139,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, publishedUrl: '' });
       return true;
     } catch (e) {
-      setError(`Unpublish failed: ${e?.message || e}`);
+      setError(`Couldn't stop sharing: ${e?.message || e}`);
       return false;
     } finally {
       setPhase('idle');
@@ -152,6 +156,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     if (!s) return;
     const nextModified = !!s.modified;
     const nextUrl = s.publishedUrl || '';
+    if (s.artifactKey) setArtifactKey(s.artifactKey);
     if (nextModified === modified && nextUrl === publishedUrl) return;
     setModified(nextModified);
     setPublishedUrl(nextUrl);
@@ -218,7 +223,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
   }, [enabled, targetPath]);
 
   return {
-    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, modified,
+    publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, artifactKey, modified,
     phase, busy, error, setError,
     versions, versionsLoading,
     publish, update, unpublish, refresh, loadVersions, activate,

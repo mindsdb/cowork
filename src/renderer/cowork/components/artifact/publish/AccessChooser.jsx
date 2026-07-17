@@ -19,7 +19,7 @@ import Ico from '../../Icons';
 import { Checkbox } from '../../ui';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const FONT_MONO = "var(--font-mono)";
 
 // Static style objects — hoisted to module scope so they aren't re-created on
 // every render (the values never depend on props).
@@ -95,8 +95,8 @@ function OptionCard({ value, active, icon, title, desc }) {
       style={{
         display: 'flex', alignItems: 'center', gap: 10, width: '100%',
         textAlign: 'left', cursor: 'pointer',
-        padding: '10px 12px', borderRadius: 10,
-        background: active ? 'color-mix(in srgb, var(--accent) 9%, transparent)' : 'var(--surface-2)',
+        padding: '10px 12px', borderRadius: 'var(--card-radius)',
+        background: active ? 'var(--accent-bg)' : 'var(--surface-2)',
         border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
         transition: 'background 120ms ease, border-color 120ms ease',
       }}

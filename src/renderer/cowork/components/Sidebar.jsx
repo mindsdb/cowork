@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner } from './ui';
+import { Spinner, Kbd } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
-import { timeAgo } from '../lib/formatTime';
+import { relativeAge } from '../lib/formatTime';
 
 // Platform-aware modifier symbol for keyboard hints. Mac uses ⌘ glyph,
 // Windows/Linux use Ctrl+ literal.
@@ -13,10 +13,10 @@ const IS_MAC = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 
 const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 const shortcut = (key) => `${MOD_LABEL}${key}`;
 
-function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
+function NavItem({ icon, label, active, onClick, badge, comingSoon }) {
   return (
     <button
-      className={`nav-item${active ? ' active' : ''}${compact ? ' compact' : ''}`}
+      className={`nav-item${active ? ' active' : ''}`}
       onClick={comingSoon ? undefined : onClick}
       aria-label={label}
       data-coming-soon={comingSoon ? '' : undefined}
@@ -34,7 +34,7 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon, compact }) {
   );
 }
 
-function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, agentLabel }) {
+function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const triggerRef = useRef(null);
@@ -61,7 +61,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       style={{ position: 'relative', display: 'flex' }}
       {...hoverProps}
     >
-      <button className="recent-item" onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
+      <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
         <span className="recent-row__title" style={{
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           flex: 1, paddingRight: 8,
@@ -99,8 +99,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           <span style={{
             position: 'absolute', inset: 0,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end',
-            fontFamily: 'var(--font-mono)', fontSize: 10,
-            color: 'var(--ink-4)', letterSpacing: '0.02em',
+            fontFamily: 'var(--font-sans)', fontSize: 11,
+            color: 'var(--ink-4)',
             opacity: (showKebab || (!showTimestamp && !isActive)) ? 0 : 1,
             transition: 'opacity 120ms ease',
             gap: 6,
@@ -118,7 +118,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
                 }}
               />
             ) : (
-              showTimestamp ? timeAgo(task.updatedAt || task.subtitle) : ''
+              showTimestamp ? (relativeAge(task.updatedAt || task.subtitle) || task.subtitle || '') : ''
             )}
           </span>
           <span
@@ -204,6 +204,14 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   agentLabel,
+  // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
+  // both switches (relocated from the old floating bottom-right
+  // buttons; see App.jsx). Defaults keep the buttons harmless if a
+  // caller (e.g. a test) doesn't wire them up.
+  theme = 'dark',
+  onToggleTheme,
+  skin = 'normal',
+  onToggleSkin,
   settingsActive = false,
   // Settings → Personalization → Show nav-panel counters. When
   // false, hide the per-nav badge counts AND the time-since slot
@@ -492,7 +500,7 @@ export default function Sidebar({
           >
             <span style={{ display: 'inline-flex' }}>{Ico.plus(14)}</span>
             <span className="btn-new-task__label">New task</span>
-            <span className="kbd">{shortcut('N')}</span>
+            <Kbd>{shortcut('N')}</Kbd>
           </button>
         </div>
 
@@ -526,20 +534,16 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Brain-style nav — visually grouped panel.
-            Order: Memories → Skills library → Settings. Labels read
-            as the things the user OWNS (plural collections) rather
-            than the abstract concepts the engine names them after.
-            No heading: the agent name (e.g. "Anton") read as
-            inconsistent branding here, and the bordered panel already
-            sets the group apart on its own. marginTop gives the group
-            a deliberate top gap (matching the breathing room below it,
-            before the Pinned label) in place of the removed heading —
-            a touch tighter than the heading's own footprint, which
-            avoids leaving an empty heading-sized void. */}
-        <div className="anton-group" style={{ marginTop: 18 }}>
-          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} compact />
-          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} compact />
+        {/* Agent — the agent's own brain: what it remembers (Memories)
+            and what it can do (Skills library). Pulled out of the old
+            bordered inset and presented as a labeled group, so it reads
+            as a category alongside Pinned / Recent instead of a drawn
+            box (fewer edges). Labels name what the user OWNS (plural
+            collections) rather than the engine's abstract concepts. */}
+        <div className="section-label">Agent</div>
+        <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <NavItem icon={Ico.brain(15)} label="Memories"       onClick={() => onNavigate('memory')} active={activeRoute === 'memory'} />
+          <NavItem icon={Ico.cube(15)}  label="Skills library" onClick={() => onNavigate('skills')} active={activeRoute === 'skills'} />
         </div>
 
         {/* Pinned — only rendered when there are pinned tasks; an empty
@@ -561,6 +565,7 @@ export default function Sidebar({
                   onMoveToProject={onMoveTaskToProject}
                   showTimestamp={showCounters}
                   isActive={activeTaskIds.has(task.id)}
+                  selected={activeTaskId === task.id}
                   agentLabel={agentLabel}
                 />
               ))}
@@ -636,6 +641,7 @@ export default function Sidebar({
                 onMoveToProject={isGroup ? undefined : onMoveTaskToProject}
                 showTimestamp={showCounters}
                 isActive={!isGroup && activeTaskIds.has(t.id)}
+                selected={!isGroup && activeTaskId === t.id}
                 agentLabel={agentLabel}
               />
             );
@@ -722,65 +728,87 @@ export default function Sidebar({
           </button>
         )}
 
-        {/* Footer — Electron-only. Web shell omits this entirely since the
-            FastAPI process IS the host (start/stop/diagnostics don't apply).
+        {/* Footer — always rendered so the theme toggle (relocated here
+            from the old floating bottom-right button) is reachable on
+            both Electron and the hosted web shell. The settings /
+            backend-status controls stay Electron-only: the FastAPI
+            process IS the host on web, so start/stop/diagnostics don't
+            apply and the web shell hides Settings entirely.
 
             Normal state: a settings nav row — no server noise when everything
             is working fine.
             Disconnected / busy: the status pill replaces the settings row so
             the problem is immediately visible. */}
-        {!host.isWeb && (
         <div className="anton-sidebar__footer">
-          {(!serverOnline || serverBusy) ? (
-            <>
+          {!host.isWeb && (
+            (!serverOnline || serverBusy) ? (
+              <>
+                <button
+                  type="button"
+                  className={
+                    'status-pill is-clickable' +
+                    (serverBusy ? ' is-busy' : '')
+                  }
+                  onClick={onShowServerHelp}
+                  title="Backend status — click for details"
+                  aria-label="Backend status — click for details"
+                  style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
+                >
+                  <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
+                  <span className="status-text">
+                    <span className="status-text__faded">backend ·</span>{' '}
+                    {serverBusy ? (
+                      <>
+                        <span className="status-text__live">{serverBusyKind}</span>{' '}
+                        <Spinner />
+                      </>
+                    ) : (
+                      <span className="status-text__faded">offline</span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
+                  onClick={() => onNavigate('settings:backend')}
+                  title="Settings"
+                  aria-label="Settings"
+                  style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                >
+                  {Ico.settings(13)}
+                </button>
+              </>
+            ) : (
               <button
-                type="button"
-                className={
-                  'status-pill is-clickable' +
-                  (serverBusy ? ' is-busy' : '')
-                }
-                onClick={onShowServerHelp}
-                title="Backend status — click for details"
-                aria-label="Backend status — click for details"
-                style={{ WebkitAppRegion: 'no-drag', flex: 1 }}
-              >
-                <span className={'status-dot' + (serverBusy ? ' busy' : ' offline')} />
-                <span className="status-text">
-                  <span className="status-text__faded">backend ·</span>{' '}
-                  {serverBusy ? (
-                    <>
-                      <span className="status-text__live">{serverBusyKind}</span>{' '}
-                      <Spinner />
-                    </>
-                  ) : (
-                    <span className="status-text__faded">offline</span>
-                  )}
-                </span>
-              </button>
-              <button
-                className={'chrome-btn--small' + (settingsActive ? ' is-on' : '')}
-                onClick={() => onNavigate('settings:backend')}
+                className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
+                onClick={() => onNavigate('settings:agent')}
                 title="Settings"
                 aria-label="Settings"
-                style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+                style={{ WebkitAppRegion: 'no-drag', flex: 1, minWidth: 0 }}
               >
-                {Ico.settings(13)}
+                <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
+                <span>Settings</span>
               </button>
-            </>
-          ) : (
-            <button
-              className={'anton-sidebar__footer-settings' + (settingsActive ? ' is-on' : '')}
-              onClick={() => onNavigate('settings:agent')}
-              title="Settings"
-              aria-label="Settings"
-              style={{ WebkitAppRegion: 'no-drag' }}
-            >
-              <span style={{ display: 'inline-flex', flexShrink: 0 }}>{Ico.settings(13)}</span>
-              <span>Settings</span>
-            </button>
+            )
           )}
+          <button
+            className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
+            onClick={onToggleSkin}
+            title="8-bit style"
+            aria-label="Toggle 8-bit style"
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, marginLeft: 'auto' }}
+          >
+            {Ico.gamepad(15)}
+          </button>
+          <button
+            className="chrome-btn--small"
+            onClick={onToggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+          >
+            {theme === 'dark' ? Ico.sun(15) : Ico.moon(15)}
+          </button>
         </div>
-        )}
 
         {/* Version is shown on the Settings page — no need to repeat here. */}
       </div>

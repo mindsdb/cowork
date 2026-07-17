@@ -1,8 +1,11 @@
 // Standard page-header for collection-style screens (Projects, Live
 // Artifacts, Connect Apps and Data, Scheduled tasks). Keeps title +
 // subtitle + primary action on the same vertical rhythm everywhere
-// (28px top → display-font title → 4px gap → muted subtitle, with
-// the action floated to the title baseline on the right).
+// (28px top → display-font title → 4px gap → muted subtitle → 20px
+// bottom before whatever follows — usually the FilterRow — with the
+// action floated to the title baseline on the right). Views should
+// NOT add their own spacer between this and the FilterRow; the 20px
+// is baked in so every page shares the same gap.
 //
 // Each consumer brings its own button via `actions` so the visual
 // language stays open-ended: anything React-renderable can sit in
@@ -24,7 +27,7 @@ const FONT_MONO    = 'var(--font-mono)';
 export function PageHeader({ title, subtitle, eyebrow, actions, subtitleBottom }) {
   return (
     <div style={{
-      padding: '28px 32px 0',
+      padding: '28px 32px 20px',
       display: 'flex', flexDirection: 'column', gap: 18,
     }}>
       <div style={{

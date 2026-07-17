@@ -23,6 +23,27 @@ function decodeJwtPayload(token) {
   } catch { return null; }
 }
 
+// Exported for tests. Pure mapping from an access token to the account
+// card's user object; null means "show the sign-in card" — both for a
+// missing token and for one that can't be decoded (a stale identity must
+// never keep rendering over a token we can no longer read, ENG-761).
+export function accountUserFromToken(token) {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  return {
+    name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
+    email: payload.email || null,
+    username: payload.preferred_username || null,
+    sub: payload.sub || null,
+    org: (() => {
+      let org = payload.active_organization ?? payload.organization;
+      if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
+      return org?.displayName || org?.name || null;
+    })(),
+  };
+}
+
 function Section({ title, subtitle, notice, children }) {
   return (
     <div className="settings-section" style={{
@@ -53,7 +74,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   return (
     <div style={{
       border: '1px solid var(--border-subtle)',
-      borderRadius: 10,
+      borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
       WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
       backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -612,6 +633,7 @@ export default function SettingsView({
   section = 'agent',
   onSectionChange,
   isSsoConnected = false,
+  ssoError = '',
   onSsoSignIn,
 }) {
   const [saved, setSaved] = useState(false);
@@ -654,25 +676,20 @@ export default function SettingsView({
     return () => { cancelled = true; };
   }, [section, serverOnline]);
   useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
+  // Re-runs when the signed-in state flips (ENG-761): previously deps
+  // were [section] only, so signing in while this section was already
+  // open never re-read the token — the card stayed on "Sign in". The
+  // cancelled guard matches the sibling effects: getAccessToken can ride
+  // a slow network refresh, and a stale resolution must not overwrite
+  // what a newer run painted.
   useEffect(() => {
-    if (section !== 'account') return;
+    if (section !== 'account') return undefined;
+    let cancelled = false;
     getAccessToken().then((token) => {
-      if (!token) return;
-      const payload = decodeJwtPayload(token);
-      if (!payload) return;
-      setAccountUser({
-        name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
-        email: payload.email || null,
-        username: payload.preferred_username || null,
-        sub: payload.sub || null,
-        org: (() => {
-          let org = payload.active_organization ?? payload.organization;
-          if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
-          return org?.displayName || org?.name || null;
-        })(),
-      });
+      if (!cancelled) setAccountUser(accountUserFromToken(token));
     }).catch(() => { });
-  }, [section]);
+    return () => { cancelled = true; };
+  }, [section, isSsoConnected]);
 
   // Load diagnostics when Backend section is active
   useEffect(() => {
@@ -1863,7 +1880,7 @@ export default function SettingsView({
           />
         </Section>
         <div className="settings-hide-mobile">
-          <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
+          <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
             <Switch
               checked={settings.showDots}
               onCheckedChange={(v) => setSetting('showDots', v)}
@@ -1893,7 +1910,7 @@ export default function SettingsView({
   const renderUpdatesSection = () => (
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <div style={{
-        border: '1px solid var(--border-subtle)', borderRadius: 10,
+        border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
         background: 'var(--surface-glass)',
         WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
         backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -2069,7 +2086,7 @@ export default function SettingsView({
 
           {/* Status card — status header + port + logs */}
           <div style={{
-            border: '1px solid var(--border-subtle)', borderRadius: 10,
+            border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
             background: 'var(--surface-glass)',
             WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
             backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -2173,7 +2190,7 @@ export default function SettingsView({
 
   const renderAccountSection = () => {
     const CARD = {
-      border: '1px solid var(--border-subtle)', borderRadius: 10,
+      border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
       WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
       backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -2277,7 +2294,7 @@ export default function SettingsView({
           {[
             { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
             { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
-            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Publish & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
+            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
             { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
           ].map(({ icon, label, desc, soon }) => (
             <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -2304,6 +2321,21 @@ export default function SettingsView({
             </div>
           ))}
         </div>
+
+        {/* Last sign-in failure (ENG-761) — without this, a failed
+            browser flow left the card looking untouched and the user
+            with no idea anything went wrong. */}
+        {ssoError && (
+          <div role="alert" style={{
+            width: '100%', padding: '10px 14px', borderRadius: 8,
+            fontSize: 12.5, lineHeight: 1.55,
+            color: 'var(--danger, #c0564f)',
+            background: 'color-mix(in srgb, var(--danger, #c0564f) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--danger, #c0564f) 30%, transparent)',
+          }}>
+            Sign-in didn't complete: {ssoError}
+          </div>
+        )}
 
         {/* CTA */}
         <button

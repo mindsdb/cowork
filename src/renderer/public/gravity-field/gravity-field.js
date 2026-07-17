@@ -37,6 +37,9 @@
       glow:   a => `rgba(31, 156, 176, ${a})`,
     },
     light: {
+      // Full-strength ink. Route-aware quieting lives in
+      // gravity-field.css: `body.gf-quiet` dims the canvas on dense
+      // work surfaces while the home stage keeps the full field.
       dot:    a => `rgba(85, 102, 109, ${a})`,
       stroke: a => `rgba(85, 102, 109, ${a})`,
       glow:   a => `rgba(31, 156, 176, ${a})`,

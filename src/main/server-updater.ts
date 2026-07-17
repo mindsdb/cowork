@@ -475,8 +475,12 @@ async function _gitUpdate(uv: string, coworkVcs: VcsInfo): Promise<ServerUpdateR
       // Rollback by pinning the exact prior commits.
       const rollback = await installGit(uv, prevCowork, prevAnton);
       if (rollback.ok) {
-        await startServer();
-        console.log(`[server-updater] rolled back to cowork@${prevCowork.slice(0, 7)}`);
+        const restored = await startServer();
+        if (restored.ok) {
+          console.log(`[server-updater] rolled back to cowork@${prevCowork.slice(0, 7)}`);
+        } else {
+          _notify?.({ phase: 'error', critical: true, error: `Server update failed; rolled back to cowork@${prevCowork.slice(0, 7)} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
+        }
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Server update failed and rollback also failed (${rollback.stderr}). Restart the app to recover.` });
       }
@@ -526,8 +530,12 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
       console.error('[server-updater] new version failed health check, rolling back...');
       const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`]);
       if (rollback.ok) {
-        await startServer();
-        console.log(`[server-updater] rolled back to ${from}`);
+        const restored = await startServer();
+        if (restored.ok) {
+          console.log(`[server-updater] rolled back to ${from}`);
+        } else {
+          _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed; rolled back to ${from} but the restored server did not start (${restored.reason}). Restart the app to recover.` });
+        }
       } else {
         _notify?.({ phase: 'error', critical: true, error: `Server update to ${to} failed and rollback to ${from} also failed. Restart the app to recover.` });
       }
