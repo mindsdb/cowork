@@ -99,6 +99,10 @@ describe('ConnectWorkflowView — Browser Control consolidation', () => {
       }),
     );
 
+    // The post-approval confirmation modal opens (Base UI dialog — it makes
+    // the page behind it inert); dismiss it to get back to the detail pane.
+    await user.click(await screen.findByRole('button', { name: 'Back to task' }));
+
     // Connected state arrives via a push; the detail shows the active domain + Disconnect.
     pushState({ state: 'connected', domain: 'stripe.com' });
     await waitFor(() =>
@@ -169,6 +173,64 @@ describe('ConnectWorkflowView — Task A1 entry + tool enablement', () => {
     // "Back to task" dismisses the confirmation.
     await user.click(screen.getByRole('button', { name: 'Back to task' }));
     expect(screen.queryByTestId('browser-approved-confirm')).not.toBeInTheDocument();
+  });
+
+  it('a failed attach keeps the picker open with an error and never claims success', async () => {
+    const user = userEvent.setup();
+    mockHost.browserControlListTabs.mockResolvedValue({
+      ok: true,
+      tabs: [{ targetId: 'T1', title: 'Stripe Docs', url: 'https://docs.stripe.com/api', domain: 'stripe.com' }],
+    });
+    // Chosen tab closed between listing and Approve / CDP attach failed.
+    mockHost.browserControlAttach.mockResolvedValueOnce({ ok: false, reason: 'target-gone' });
+    render(<ConnectWorkflowView activeConversationId="CONV-9" initialConnectorId="anton_chrome" />);
+    await screen.findByTestId('browser-control-detail');
+    await user.click(screen.getByRole('button', { name: 'Choose a Chrome tab' }));
+    await user.click(await screen.findByRole('radio', { name: /Stripe Docs/ }));
+    await user.click(screen.getByRole('button', { name: 'Approve this tab' }));
+
+    // The picker stays open with an inline error so the user can retry.
+    const error = await screen.findByTestId('browser-tab-picker-error');
+    expect(error).toHaveTextContent(/Could not connect to that tab/);
+    expect(screen.getByRole('button', { name: 'Approve this tab' })).toBeInTheDocument();
+    // Nothing downstream may run off a failed attach: no local approve, no
+    // server grant, no tool enablement, no success confirmation.
+    expect(mockHost.browserControlApprove).not.toHaveBeenCalled();
+    expect(apiMock.browseControlApprove).not.toHaveBeenCalled();
+    expect(apiMock.setBrowserControlEnabled).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('browser-approved-confirm')).not.toBeInTheDocument();
+
+    // A retry that succeeds proceeds normally and clears the error.
+    await user.click(screen.getByRole('button', { name: 'Approve this tab' }));
+    await screen.findByTestId('browser-approved-confirm');
+    expect(screen.queryByTestId('browser-tab-picker-error')).not.toBeInTheDocument();
+  });
+
+  it('a failed settings write shows the "couldn\'t enable" variant, and Retry flips it once the write lands', async () => {
+    const user = userEvent.setup();
+    mockHost.browserControlListTabs.mockResolvedValue({
+      ok: true,
+      tabs: [{ targetId: 'T1', title: 'Stripe Docs', url: 'https://docs.stripe.com/api', domain: 'stripe.com' }],
+    });
+    apiMock.setBrowserControlEnabled.mockResolvedValueOnce({ ok: false });
+    render(<ConnectWorkflowView activeConversationId="CONV-9" initialConnectorId="anton_chrome" />);
+    await screen.findByTestId('browser-control-detail');
+    await user.click(screen.getByRole('button', { name: 'Choose a Chrome tab' }));
+    await user.click(await screen.findByRole('radio', { name: /Stripe Docs/ }));
+    await user.click(screen.getByRole('button', { name: 'Approve this tab' }));
+
+    // The tab IS approved — the confirmation shows — but it must not claim
+    // the tool is enabled when the flag write failed.
+    await screen.findByTestId('browser-approved-confirm');
+    expect(screen.getByTestId('browser-approved-enable-failed')).toBeInTheDocument();
+    expect(screen.getByText('Couldn’t enable Browser Control')).toBeInTheDocument();
+    expect(screen.queryByText('Browser Control is now enabled')).not.toBeInTheDocument();
+
+    // Retry (mock resolves ok:true on the second call) → enabled variant.
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.getByText('Browser Control is now enabled')).toBeInTheDocument());
+    expect(screen.queryByTestId('browser-approved-enable-failed')).not.toBeInTheDocument();
+    expect(apiMock.setBrowserControlEnabled).toHaveBeenCalledTimes(2);
   });
 
   it('Open Settings routes to the agent settings section and dismisses', async () => {

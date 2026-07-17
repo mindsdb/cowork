@@ -1772,12 +1772,11 @@ export default function SettingsView({
               onCheckedChange={(v) => {
                 setSetting('browserControlEnabled', v);
                 // Symmetric off-switch: flipping OFF also disconnects any
-                // attached Chrome tab right away (best-effort — the CDP
-                // bridge lives in Electron main; revoke is idempotent and a
-                // failure must never block the settings edit). The flag
-                // itself still round-trips through Save like every other
-                // setting.
-                if (!v && host.isElectron) {
+                // attached Chrome tab right away (best-effort — revoke is
+                // idempotent, no-ops on web internally, and a failure must
+                // never block the settings edit). The flag itself still
+                // round-trips through Save like every other setting.
+                if (!v) {
                   host.browserControlRevoke().catch(() => {});
                 }
               }}

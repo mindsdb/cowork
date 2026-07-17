@@ -672,19 +672,21 @@ export async function browseControlStop(conversationId, stopId) {
 }
 
 // Tool enablement for Browser Control (Task A1). Approving a Chrome tab IS
-// the user's grant, so the approve flow upserts `browser_control_enabled`
-// directly — without the flag the server never adds the browser tool to the
-// session. Value goes over the wire as a string ("true"/"false") because the
-// settings API round-trips strings (same convention as updateSettings, which
-// sends String(value); the server coerces). Best-effort like
-// browseControlApprove: a network blip must not wedge the approval gesture —
-// the Settings toggle remains the manual fallback.
+// the user's grant, so the approve flow upserts `browser_control_enabled` —
+// without the flag the server never adds the browser tool to the session.
+// Routed through updateSettings (NOT a raw PUT) so it takes the exact same
+// path the Settings screen uses: serialized on the settings lock, diffed
+// against the last-fetched snapshot, and — critically — `_lastFetchedSettings`
+// is re-fetched after the write. A raw PUT would leave the renderer's
+// settings cache stale (switch shows OFF though the server flag is ON, and a
+// later Save could skip writing `false` because the diff base never learned
+// about the `true`). Best-effort like browseControlApprove: a network blip
+// must not wedge the approval gesture — callers inspect `ok` and fall back to
+// the Settings toggle.
 export async function setBrowserControlEnabled(enabled) {
   try {
-    return await req('/settings/browser_control_enabled', {
-      method: 'PUT',
-      body: JSON.stringify({ value: String(!!enabled) }),
-    });
+    const result = await updateSettings({ browserControlEnabled: !!enabled });
+    return { ok: true, ...result };
   } catch {
     return { ok: false };
   }

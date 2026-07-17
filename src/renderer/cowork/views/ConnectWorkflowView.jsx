@@ -11,7 +11,9 @@ import { trackDataSourceConnected } from '../lib/analytics';
 import { host } from '../../platform/host';
 import { useBrowserControl } from '../hooks/useBrowserControl';
 import BrowserControlBadge from '../components/browser/BrowserControlBadge';
-import BrowserTabPicker from '../components/browser/BrowserTabPicker';
+import BrowserTabPicker, { initialLetter } from '../components/browser/BrowserTabPicker';
+import MonitorIcon from '../components/browser/MonitorIcon';
+import { Modal, ModalBody } from '../components/ui/Modal';
 
 const PAGE_HOME = 'home';
 const PAGE_CONNECTORS = 'connectors';
@@ -385,10 +387,7 @@ function ConnectorLogo({ id, large = false }) {
   if (id === 'anton_chrome') {
     return (
       <span className={className} aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="14" rx="2" />
-          <path d="M8 21h8M12 18v3" />
-        </svg>
+        <MonitorIcon />
       </span>
     );
   }
@@ -598,164 +597,165 @@ function BrowserControlDetail({ browser, onChooseTab }) {
 }
 
 // Post-approval confirmation — shown right after the user approves a Chrome
-// tab. Mirrors BrowserTabPicker's modal shell; copy + layout follow
+// tab. Built on the app's <Modal> primitive (portal, focus trap/restore,
+// scroll lock, Esc/backdrop, ARIA); copy + layout follow
 // /code/.plans/designs/a1-approve-autoenable-*.html: success title, the
-// approved tab echoed as a domain row with a Live badge, and the ok note
-// confirming Browser Control auto-enabled with an Open Settings pointer.
-function BrowserApprovedConfirm({ open, tab, onOpenSettings, onClose }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const initial = ((tab?.title || tab?.domain || '?').trim().charAt(0) || '?').toUpperCase();
-
+// approved tab echoed as a domain row with a Live badge, and the note about
+// the auto-enabled browser_control_enabled flag. Two note variants, driven
+// by `tab.enabled` (did the settings write land?):
+//   • enabled  — "Browser Control is now enabled" + Open Settings pointer.
+//   • failed   — the tab IS approved but the flag write failed: say so,
+//     offer Retry, and point at the Settings toggle as the manual fallback.
+//     Never claims the tool is on when it isn't.
+function BrowserApprovedConfirm({ open, tab, onOpenSettings, onRetryEnable, onClose }) {
+  const enabled = tab?.enabled !== false;
   return (
-    <div
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 80,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(14,15,16,0.34)',
-        backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
-        WebkitAppRegion: 'no-drag',
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="browser-approved-title"
-        data-testid="browser-approved-confirm"
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(480px, 92vw)',
-          background: 'var(--surface)',
-          border: '1px solid var(--line)',
-          borderRadius: 12,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.25), 0 1px 0 rgba(15,16,17,0.04)',
-          padding: '20px 22px 16px',
-          fontFamily: "'Inter', sans-serif",
-        }}
-      >
-        <div
-          id="browser-approved-title"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            fontFamily: "'Josefin Sans', sans-serif",
-            fontSize: 16, fontWeight: 600, color: 'var(--ink)', letterSpacing: '0.01em',
-          }}
-        >
-          <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--success, #22a06b)' }}>
-            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="m8.5 12.2 2.4 2.4 4.6-5" />
-            </svg>
-          </span>
-          Tab approved
-        </div>
-        <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5, color: 'var(--ink-2)' }}>
-          Cowork now has read-only access to this tab — nothing else in your browser.
-        </div>
+    <Modal open={open} onClose={onClose} size="sm" labelledBy="browser-approved-title">
+      <ModalBody padding="20px 22px 16px" style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div data-testid="browser-approved-confirm">
+          <div
+            id="browser-approved-title"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontFamily: "'Josefin Sans', sans-serif",
+              fontSize: 16, fontWeight: 600, color: 'var(--ink)', letterSpacing: '0.01em',
+            }}
+          >
+            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--success, #22a06b)' }}>
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="m8.5 12.2 2.4 2.4 4.6-5" />
+              </svg>
+            </span>
+            Tab approved
+          </div>
+          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5, color: 'var(--ink-2)' }}>
+            Cowork now has read-only access to this tab — nothing else in your browser.
+          </div>
 
-        {(tab?.title || tab?.domain) && (
-          <div style={{
-            marginTop: 16, display: 'flex', alignItems: 'center', gap: 10,
-            padding: '9px 10px', borderRadius: 8, border: '1px solid var(--line)',
-          }}>
-            <span
-              aria-hidden="true"
+          {(tab?.title || tab?.domain) && (
+            <div style={{
+              marginTop: 16, display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 10px', borderRadius: 8, border: '1px solid var(--line)',
+            }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 26, height: 26, flex: '0 0 auto', borderRadius: 6,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'var(--surface-2)', color: 'var(--ink-2)',
+                  fontSize: 12, fontWeight: 700,
+                }}
+              >
+                {initialLetter(tab?.title, tab?.domain)}
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                <span style={{
+                  fontSize: 13, fontWeight: 500, color: 'var(--ink)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {tab?.title || tab?.domain}
+                </span>
+                <span style={{
+                  fontSize: 11.5, color: 'var(--ink-3)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {tab?.domain}
+                </span>
+              </span>
+              <span style={{
+                flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5,
+                height: 20, padding: '0 8px', borderRadius: 999,
+                fontSize: 10.5, fontWeight: 600,
+                background: 'color-mix(in srgb, var(--success, #22a06b) 12%, transparent)',
+                color: 'var(--success, #22a06b)',
+              }}>
+                Live
+              </span>
+            </div>
+          )}
+
+          {enabled ? (
+            <div style={{
+              marginTop: 14, display: 'flex', gap: 10, alignItems: 'flex-start',
+              padding: '11px 12px', borderRadius: 8,
+              background: 'color-mix(in srgb, var(--success, #22a06b) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--success, #22a06b) 25%, transparent)',
+            }}>
+              <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--success, #22a06b)', marginTop: 1 }}>
+                <MonitorIcon size={18} />
+              </span>
+              <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink-2)' }}>
+                <strong style={{ color: 'var(--ink)' }}>Browser Control is now enabled</strong>
+                <br />
+                You can turn it off anytime in Settings → Agent → Browser Control. Turning it off
+                revokes access immediately.
+              </span>
+            </div>
+          ) : (
+            <div
+              role="alert"
+              data-testid="browser-approved-enable-failed"
               style={{
-                width: 26, height: 26, flex: '0 0 auto', borderRadius: 6,
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                background: 'var(--surface-2)', color: 'var(--ink-2)',
-                fontSize: 12, fontWeight: 700,
+                marginTop: 14, display: 'flex', gap: 10, alignItems: 'flex-start',
+                padding: '11px 12px', borderRadius: 8,
+                background: 'color-mix(in srgb, var(--warning, #b45309) 8%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--warning, #b45309) 30%, transparent)',
               }}
             >
-              {initial}
-            </span>
-            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-              <span style={{
-                fontSize: 13, fontWeight: 500, color: 'var(--ink)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {tab?.title || tab?.domain}
+              <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--warning, #b45309)', marginTop: 1 }}>
+                <MonitorIcon size={18} />
               </span>
-              <span style={{
-                fontSize: 11.5, color: 'var(--ink-3)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {tab?.domain}
+              <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink-2)' }}>
+                <strong style={{ color: 'var(--ink)' }}>Couldn’t enable Browser Control</strong>
+                <br />
+                The tab is approved, but saving the setting failed. Retry, or turn it on in
+                Settings → Agent → Browser Control.
+                <br />
+                <button
+                  type="button"
+                  onClick={() => onRetryEnable?.()}
+                  style={{
+                    all: 'unset', cursor: 'pointer', marginTop: 6,
+                    fontSize: 12.5, fontWeight: 600, color: 'var(--accent)',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Retry
+                </button>
               </span>
-            </span>
-            <span style={{
-              flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5,
-              height: 20, padding: '0 8px', borderRadius: 999,
-              fontSize: 10.5, fontWeight: 600,
-              background: 'color-mix(in srgb, var(--success, #22a06b) 12%, transparent)',
-              color: 'var(--success, #22a06b)',
-            }}>
-              Live
-            </span>
+            </div>
+          )}
+
+          <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => { onOpenSettings?.('agent'); onClose?.(); }}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                padding: '8px 14px', borderRadius: 8,
+                border: '1px solid var(--line)',
+                fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', background: 'transparent',
+              }}
+            >
+              Open Settings
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                padding: '8px 14px', borderRadius: 8,
+                fontSize: 13, fontWeight: 600, color: '#fff',
+                background: 'var(--accent)', border: '1px solid var(--accent)',
+              }}
+            >
+              Back to task
+            </button>
           </div>
-        )}
-
-        <div style={{
-          marginTop: 14, display: 'flex', gap: 10, alignItems: 'flex-start',
-          padding: '11px 12px', borderRadius: 8,
-          background: 'color-mix(in srgb, var(--success, #22a06b) 8%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--success, #22a06b) 25%, transparent)',
-        }}>
-          <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--success, #22a06b)', marginTop: 1 }}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="14" rx="2" />
-              <path d="M8 21h8M12 18v3" />
-            </svg>
-          </span>
-          <span style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink-2)' }}>
-            <strong style={{ color: 'var(--ink)' }}>Browser Control is now enabled</strong>
-            <br />
-            You can turn it off anytime in Settings → Agent → Browser Control. Turning it off
-            revokes access immediately.
-          </span>
         </div>
-
-        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button
-            type="button"
-            onClick={() => { onOpenSettings?.('agent'); onClose?.(); }}
-            style={{
-              all: 'unset', cursor: 'pointer',
-              padding: '8px 14px', borderRadius: 8,
-              border: '1px solid var(--line)',
-              fontSize: 13, fontWeight: 500, color: 'var(--ink-2)', background: 'transparent',
-            }}
-          >
-            Open Settings
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              all: 'unset', cursor: 'pointer',
-              padding: '8px 14px', borderRadius: 8,
-              fontSize: 13, fontWeight: 600, color: '#fff',
-              background: 'var(--accent)', border: '1px solid var(--accent)',
-            }}
-          >
-            Back to task
-          </button>
-        </div>
-      </div>
-    </div>
+      </ModalBody>
+    </Modal>
   );
 }
 
@@ -1166,14 +1166,21 @@ export default function ConnectWorkflowView({
   const [tabPickerOpen, setTabPickerOpen] = useState(false);
   const [browserTabs, setBrowserTabs] = useState([]);
   const [tabsLoading, setTabsLoading] = useState(false);
-  // Post-approval confirmation ({title, domain} of the approved tab, or
-  // null). Shown after a successful attach: echoes the approved tab and the
-  // "Browser Control is now enabled" note per the a1-approve-autoenable
-  // mockups, with an Open Settings pointer at the symmetric off-switch.
+  // Post-approval confirmation ({title, domain, enabled} of the approved
+  // tab, or null). Shown only after a SUCCESSFUL attach: echoes the approved
+  // tab per the a1-approve-autoenable mockups. `enabled` mirrors whether the
+  // browser_control_enabled flag write actually landed — when it failed, the
+  // note flips to a "couldn't enable" variant with a Retry instead of
+  // claiming the tool is on.
   const [approvedTabConfirm, setApprovedTabConfirm] = useState(null);
+  // Attach failure surfaced INSIDE the tab picker (which stays open so the
+  // user can pick another tab or retry) — e.g. the chosen tab was closed
+  // between listing and Approve, or the CDP attach failed.
+  const [tabPickerError, setTabPickerError] = useState('');
 
   const openTabPicker = async () => {
     setTabPickerOpen(true);
+    setTabPickerError('');
     setTabsLoading(true);
     try {
       const result = await browser.listTabs();
@@ -1186,7 +1193,7 @@ export default function ConnectWorkflowView({
   };
 
   const handleApproveTab = async (targetId) => {
-    setTabPickerOpen(false);
+    setTabPickerError('');
     // Bind the approved tab to the ACTIVE conversation FIRST: main's command
     // poller needs the conversation id to identify itself on bridge/hello
     // (the server 422s an anonymous hello), so hand it down before the
@@ -1197,7 +1204,17 @@ export default function ConnectWorkflowView({
       await host.browserControlSetConversation(activeConversationId || null);
     } catch { /* best effort */ }
     // Approve locally: attach + approve the CDP session in the main bridge.
-    await browser.attach(targetId);
+    // This is the gate for everything downstream — if it failed (tab closed
+    // before Approve, CDP attach error), there is NO approved tab: keep the
+    // picker open with the error and never claim success.
+    const attached = await browser.attach(targetId);
+    if (attached && attached.ok === false) {
+      setTabPickerError(
+        'Could not connect to that tab — it may have been closed. Pick another tab and try again.',
+      );
+      return;
+    }
+    setTabPickerOpen(false);
     // Tell the server this host is approved so it creates the BrowserSession +
     // BrowserTabGrant for the approved host. Content-free (host-only domain),
     // best-effort — the local attach above is the user-visible part; a network
@@ -1215,15 +1232,25 @@ export default function ConnectWorkflowView({
     }
     // Approving a tab IS the user's grant — auto-enable the tool flag so the
     // server's session-tool selection actually hands the agent the
-    // browser_control tool. Best-effort (setBrowserControlEnabled swallows
-    // failures internally): a network blip must not wedge the approval; the
-    // Settings toggle remains the manual fallback / symmetric off-switch.
-    await setBrowserControlEnabled(true);
-    // Confirmation state per a1-approve-autoenable: echo the approved tab +
-    // the "now enabled" note with an Open Settings pointer.
-    setApprovedTabConfirm(approvedTab
-      ? { title: approvedTab.title, domain: approvedTab.domain }
-      : { title: undefined, domain: undefined });
+    // browser_control tool. Goes through the same updateSettings path the
+    // Settings screen uses so the renderer's settings cache stays coherent.
+    // The result decides which confirmation variant renders: only a landed
+    // write may claim "Browser Control is now enabled".
+    const enableResult = await setBrowserControlEnabled(true);
+    setApprovedTabConfirm({
+      title: approvedTab?.title,
+      domain: approvedTab?.domain,
+      enabled: enableResult?.ok === true,
+    });
+  };
+
+  // Retry from the confirmation's "couldn't enable" variant — flips it to
+  // the enabled variant once the write lands.
+  const handleRetryEnable = async () => {
+    const result = await setBrowserControlEnabled(true);
+    if (result?.ok === true) {
+      setApprovedTabConfirm((prev) => (prev ? { ...prev, enabled: true } : prev));
+    }
   };
 
   const refresh = async () => {
@@ -1418,6 +1445,7 @@ export default function ConnectWorkflowView({
         open={tabPickerOpen}
         tabs={browserTabs}
         loading={tabsLoading}
+        error={tabPickerError}
         onConfirm={handleApproveTab}
         onClose={() => setTabPickerOpen(false)}
       />
@@ -1426,6 +1454,7 @@ export default function ConnectWorkflowView({
         open={approvedTabConfirm != null}
         tab={approvedTabConfirm}
         onOpenSettings={onOpenSettings}
+        onRetryEnable={handleRetryEnable}
         onClose={() => setApprovedTabConfirm(null)}
       />
 

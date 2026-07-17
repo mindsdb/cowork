@@ -15,6 +15,7 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { Modal } from '../ui/Modal';
 import { host } from '../../../platform/host';
+import MonitorIcon from '../browser/MonitorIcon';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -177,7 +178,6 @@ function SelectPill({ label, value, onChange, options }) {
 // "browser control" (or chrome / tab) matches the tile instead of
 // "No connectors match". See /code/.plans/designs/a1-connector-tile-*.html.
 const BROWSER_CONTROL_TILE = {
-  id: 'browser_control',
   label: 'Browser Control',
   description: 'Let the agent read a Chrome tab you approve. Read-only, per-tab approval — it never types or clicks for you.',
   keywords: ['browser', 'chrome', 'tab', 'browser control', 'desktop', 'read-only'],
@@ -194,36 +194,18 @@ function browserControlMatches(query) {
   return hay.includes(q);
 }
 
-// Monitor icon — same SVG the anton_chrome ConnectorLogo uses in
-// ConnectWorkflowView.jsx, so the tile and the workflow detail read as
-// one feature.
-function BrowserControlIcon({ size = 22 }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="4" width="18" height="14" rx="2" />
-      <path d="M8 21h8M12 18v3" />
-    </svg>
-  );
-}
-
-// Pinned tile — mirrors ConnectorTile's chrome (hover lift, 40px logo well)
-// with a "Read-only" mini-chip after the name per the A1 mockups.
-function BrowserControlTile({ onPick }) {
+// Shared tile shell — the chrome (hover lift, 40px logo well, name +
+// description column) every picker tile uses. Slot-based so the registry
+// tiles and the pinned Browser Control tile render through ONE shell instead
+// of duplicating the styling: `logo` fills the icon well, `badge` renders
+// inline after the name (e.g. the Read-only mini-chip), `logoColor` tints
+// the well's foreground.
+function TileShell({ name, description, logo, logoColor, badge, onClick, testId }) {
   return (
     <button
       type="button"
-      data-testid="browser-control-tile"
-      onClick={() => onPick?.()}
+      data-testid={testId}
+      onClick={onClick}
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 12,
         padding: '14px 16px',
@@ -250,10 +232,10 @@ function BrowserControlTile({ onPick }) {
         display: 'inline-grid', placeItems: 'center',
         width: 40, height: 40, borderRadius: 8,
         background: 'var(--surface-2)',
-        color: 'var(--ink-3)',
+        color: logoColor || 'var(--ink-3)',
         flexShrink: 0,
       }}>
-        <BrowserControlIcon size={22} />
+        {logo}
       </span>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{
@@ -261,24 +243,43 @@ function BrowserControlTile({ onPick }) {
           fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14, color: 'var(--ink)',
           letterSpacing: '0',
         }}>
-          {BROWSER_CONTROL_TILE.label}
-          <span style={{
-            height: 17, padding: '0 7px', borderRadius: 999,
-            fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em',
-            textTransform: 'uppercase',
-            display: 'inline-flex', alignItems: 'center',
-            background: 'var(--accent-bg)', color: 'var(--accent)',
-            border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-          }}>
-            Read-only
-          </span>
+          {name}
+          {badge}
         </span>
-        <span style={{
-          fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)',
-          lineHeight: 1.4,
-        }}>{BROWSER_CONTROL_TILE.description}</span>
+        {description && (
+          <span style={{
+            fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)',
+            lineHeight: 1.4,
+          }}>{description}</span>
+        )}
       </div>
     </button>
+  );
+}
+
+// Pinned tile — the shared shell with the Browser Control monitor glyph and
+// a "Read-only" mini-chip after the name per the A1 mockups.
+function BrowserControlTile({ onPick }) {
+  return (
+    <TileShell
+      testId="browser-control-tile"
+      name={BROWSER_CONTROL_TILE.label}
+      description={BROWSER_CONTROL_TILE.description}
+      logo={<MonitorIcon size={22} />}
+      badge={(
+        <span style={{
+          height: 17, padding: '0 7px', borderRadius: 999,
+          fontSize: 9.5, fontWeight: 600, letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          display: 'inline-flex', alignItems: 'center',
+          background: 'var(--accent-bg)', color: 'var(--accent)',
+          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+        }}>
+          Read-only
+        </span>
+      )}
+      onClick={() => onPick?.()}
+    />
   );
 }
 
@@ -286,53 +287,13 @@ function BrowserControlTile({ onPick }) {
 // every tile element — memo skips tiles whose connector didn't change.
 const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
   return (
-    <button
-      type="button"
+    <TileShell
+      name={connector.label || connector.id}
+      description={connector.description}
+      logo={<ConnectorLogo connector={connector} size={22} />}
+      logoColor={connector.logo_color}
       onClick={() => onPick?.(connector)}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 12,
-        padding: '14px 16px',
-        background: 'var(--surface)',
-        border: '1px solid var(--line)',
-        borderRadius: 10,
-        textAlign: 'left',
-        cursor: 'pointer',
-        font: 'inherit', color: 'inherit',
-        transition: 'border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease',
-      }}
-      onMouseOver={(e) => {
-        e.currentTarget.style.borderColor = 'var(--accent)';
-        e.currentTarget.style.boxShadow = '0 4px 18px rgba(15,16,17,0.06)';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseOut={(e) => {
-        e.currentTarget.style.borderColor = 'var(--line)';
-        e.currentTarget.style.boxShadow = 'none';
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
-    >
-      <span style={{
-        display: 'inline-grid', placeItems: 'center',
-        width: 40, height: 40, borderRadius: 8,
-        background: 'var(--surface-2)',
-        color: connector.logo_color || 'var(--ink-3)',
-        flexShrink: 0,
-      }}>
-        <ConnectorLogo connector={connector} size={22} />
-      </span>
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 14, color: 'var(--ink)',
-          letterSpacing: '0',
-        }}>{connector.label || connector.id}</span>
-        {connector.description && (
-          <span style={{
-            fontFamily: FONT_BODY, fontSize: 12.5, color: 'var(--ink-3)',
-            lineHeight: 1.4,
-          }}>{connector.description}</span>
-        )}
-      </div>
-    </button>
+    />
   );
 });
 
@@ -557,32 +518,39 @@ export default function ConnectorPicker({ open, onPick, onPickBrowserControl, on
           {/* Pinned Desktop section — Browser Control, above Featured and
               every category (and above the flat A–Z list). Searchable but
               outside the registry, so it renders independent of `filtered`. */}
-          {!loading && !error && showBrowserControl && (
-            <div style={{ marginBottom: 24 }}>
-              <div style={{
-                fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
-                letterSpacing: '0.04em', textTransform: 'uppercase',
-                color: 'var(--ink-3)',
-                padding: '4px 2px 8px',
-              }}>
-                Desktop
-                <span style={{
-                  marginLeft: 8, fontWeight: 500,
-                  color: 'var(--ink-4)',
-                  fontSize: 11, letterSpacing: 0, textTransform: 'none',
+          {!loading && !error && showBrowserControl && (() => {
+            // One pinned tile today; the array keeps the section count honest
+            // if more desktop capabilities land here.
+            const desktopTiles = [
+              <BrowserControlTile key="browser_control" onPick={onPickBrowserControl} />,
+            ];
+            return (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{
+                  fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600,
+                  letterSpacing: '0.04em', textTransform: 'uppercase',
+                  color: 'var(--ink-3)',
+                  padding: '4px 2px 8px',
                 }}>
-                  1
-                </span>
+                  Desktop
+                  <span style={{
+                    marginLeft: 8, fontWeight: 500,
+                    color: 'var(--ink-4)',
+                    fontSize: 11, letterSpacing: 0, textTransform: 'none',
+                  }}>
+                    {desktopTiles.length}
+                  </span>
+                </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                  gap: 10,
+                }}>
+                  {desktopTiles}
+                </div>
               </div>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                gap: 10,
-              }}>
-                <BrowserControlTile onPick={onPickBrowserControl} />
-              </div>
-            </div>
-          )}
+            );
+          })()}
           {/* Body — two modes:
                 • sortBy=default → Featured section first (when not
                   searching/filtering), then category sections.

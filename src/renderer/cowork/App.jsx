@@ -2409,6 +2409,17 @@ function AppCore() {
   useEffect(() => {
     if (!settingsOpen) return;
     getAccessToken().then((token) => setSsoConnected(!!token)).catch(() => {});
+    // Re-sync settings from the server every time the modal opens. Settings
+    // can change outside the modal's own save path — e.g. approving a Chrome
+    // tab auto-enables browser_control_enabled — and the toggles must reflect
+    // the server's state, not a snapshot from app launch. (fetchSettings also
+    // refreshes the api-level diff base, so a subsequent Save diffs against
+    // current truth.)
+    fetchSettings().then((data) => {
+      if (data && typeof data === 'object') {
+        setSettings((prev) => ({ ...prev, ...data }));
+      }
+    }).catch(() => {});
   }, [settingsOpen]);
 
   // Authoritative signed-in state, pushed from the main process on every

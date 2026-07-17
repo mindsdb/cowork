@@ -88,23 +88,49 @@ describe('browseControlStop / browseControlTakeover', () => {
   });
 });
 
+// setBrowserControlEnabled routes through updateSettings — the SAME path the
+// Settings screen uses — so the write is serialized on the settings lock,
+// diffed against the last-fetched snapshot, and followed by a settings
+// re-fetch that keeps the renderer's diff base (_lastFetchedSettings)
+// coherent. A raw PUT would leave that cache stale: the Settings switch
+// would show OFF though the server flag is ON, and a later Save could skip
+// writing `false` because the diff base never learned about the `true`.
 describe('setBrowserControlEnabled (Task A1 tool enablement)', () => {
+  const settingsPut = () => fetchMock.mock.calls.find(
+    ([url, opts]) => url === 'http://127.0.0.1:9999/api/v1/settings/browser_control_enabled'
+      && opts?.method === 'PUT',
+  );
+
   it('PUTs the flag as a string "true" to /api/v1/settings/browser_control_enabled', async () => {
-    await setBrowserControlEnabled(true);
-    const { url, opts, body } = lastCall();
-    expect(url).toBe('http://127.0.0.1:9999/api/v1/settings/browser_control_enabled');
-    expect(opts.method).toBe('PUT');
+    await expect(setBrowserControlEnabled(true)).resolves.toMatchObject({ ok: true });
+    const call = settingsPut();
+    expect(call).toBeTruthy();
     // The settings API round-trips strings (same convention as
     // updateSettings' String(value)); the server coerces "true"/"false".
-    expect(body).toEqual({ value: 'true' });
+    expect(JSON.parse(call[1].body)).toEqual({ value: 'true' });
   });
 
   it('PUTs "false" when disabling', async () => {
     await setBrowserControlEnabled(false);
-    expect(lastCall().body).toEqual({ value: 'false' });
+    expect(JSON.parse(settingsPut()[1].body)).toEqual({ value: 'false' });
   });
 
-  it('is best-effort: a network blip resolves to { ok: false }', async () => {
+  it('re-fetches /settings/ after the write so the renderer diff base stays coherent', async () => {
+    await setBrowserControlEnabled(true);
+    const putIndex = fetchMock.mock.calls.findIndex(
+      ([url, opts]) => url.endsWith('/settings/browser_control_enabled') && opts?.method === 'PUT',
+    );
+    const refetchIndex = fetchMock.mock.calls.findIndex(
+      ([url, opts], i) => i > putIndex
+        && url === 'http://127.0.0.1:9999/api/v1/settings/'
+        && (!opts?.method || opts.method === 'GET'),
+    );
+    expect(putIndex).toBeGreaterThanOrEqual(0);
+    expect(refetchIndex).toBeGreaterThan(putIndex);
+  });
+
+  it('is best-effort: a failed write resolves to { ok: false }', async () => {
+    // First fetch inside updateSettings is the PUT itself — reject it.
     fetchMock.mockRejectedValueOnce(new Error('boom'));
     await expect(setBrowserControlEnabled(true)).resolves.toEqual({ ok: false });
   });

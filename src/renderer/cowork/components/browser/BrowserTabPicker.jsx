@@ -6,12 +6,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-function initialLetter(title, domain) {
+// Exported: the post-approval confirmation (ConnectWorkflowView) renders the
+// same initial-letter avatar for the approved tab.
+export function initialLetter(title, domain) {
   const source = (title || domain || '?').trim();
   return source.charAt(0).toUpperCase() || '?';
 }
 
-export default function BrowserTabPicker({ open, tabs = [], loading = false, onConfirm, onClose }) {
+export default function BrowserTabPicker({ open, tabs = [], loading = false, error = '', onConfirm, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
   const dialogRef = useRef(null);
 
@@ -177,6 +179,21 @@ export default function BrowserTabPicker({ open, tabs = [], loading = false, onC
           }}>
             Cowork will be able to read <strong style={{ color: 'var(--ink)' }}>{selectedTab.domain}</strong>. Only
             pages on this domain, and only while the task runs. Approval ends when you disconnect.
+          </div>
+        )}
+
+        {error && (
+          <div
+            role="alert"
+            data-testid="browser-tab-picker-error"
+            style={{
+              marginTop: 12, padding: '9px 11px', borderRadius: 8,
+              background: 'color-mix(in srgb, var(--danger, #d9534f) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--danger, #d9534f) 30%, transparent)',
+              fontSize: 12.5, lineHeight: 1.5, color: 'var(--danger, #d9534f)',
+            }}
+          >
+            {error}
           </div>
         )}
 

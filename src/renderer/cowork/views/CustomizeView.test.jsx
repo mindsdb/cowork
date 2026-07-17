@@ -135,4 +135,32 @@ describe('CustomizeView — browser_control connect intent (Task A1)', () => {
     await waitFor(() => expect(screen.getByText('Connect Apps and Data')).toBeInTheDocument());
     expect(screen.queryByTestId('browser-control-detail')).not.toBeInTheDocument();
   });
+
+  it('the no-connectors auto-open timer never fires on top of an intent-opened workflow', async () => {
+    // Race regression: with zero connectors, CustomizeView auto-opens the
+    // connect flow (onConnectNew → App reopens the global picker) after
+    // 200ms. When the browser-control intent already opened the workflow,
+    // that timer firing would bounce the user from the Browser Control pane
+    // back to the picker they just left.
+    vi.useFakeTimers();
+    try {
+      const onConnectNew = vi.fn();
+      render(
+        <CustomizeView
+          connectors={STABLE_CONNECTORS}
+          onConnectNew={onConnectNew}
+          connectIntent="browser_control"
+          onConnectIntentHandled={vi.fn()}
+        />,
+      );
+      // Let the timer window elapse (and the list-sync effects settle).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(onConnectNew).not.toHaveBeenCalled();
+      expect(screen.getByTestId('browser-control-detail')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

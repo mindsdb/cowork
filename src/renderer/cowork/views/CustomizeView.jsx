@@ -734,16 +734,26 @@ export default function CustomizeView({
   // when the bridge is connected or lost (needs-reconnect warning).
   const browser = useBrowserControl();
 
+  // One-shot guard for the no-connectors auto-open below. Declared up here
+  // because the connect-intent effect also spends it (an intent-opened
+  // workflow must suppress the auto-open timer).
+  const autoOpenedRef = useRef(false);
+
   // Consume the one-shot connect intent from App: 'browser_control' opens
   // the connect workflow directly on the Browser Control pane. Acknowledge
-  // immediately so a later re-render (or route round-trip) can't refire it.
+  // immediately so a later re-render (or route round-trip) can't refire it —
+  // the guard + immediate ack also make it safe to list the (per-render
+  // inline) ack handler in the deps without looping.
   useEffect(() => {
     if (connectIntent !== 'browser_control') return;
+    // The intent IS this view's "open the connect flow" moment — spend the
+    // one-shot no-connectors auto-open below so its timer can't fire on top
+    // of the intent-opened workflow and bounce the user back to the picker.
+    autoOpenedRef.current = true;
     setWorkflowConnectorId('anton_chrome');
     setShowWorkflow(true);
     onConnectIntentHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectIntent]);
+  }, [connectIntent, onConnectIntentHandled]);
 
   // Fetch fresh on every mount so connections made outside this view
   // (e.g. browser OAuth flow from the chat panel) are always visible.
@@ -799,14 +809,20 @@ export default function CustomizeView({
   // mount, and delayed slightly so a still-in-flight `fetchDatasources`
   // can populate `initialConnectors` first (avoids briefly opening the
   // modal for users who actually have connectors).
-  const autoOpenedRef = useRef(false);
+  // (autoOpenedRef is declared above, next to the connect-intent effect.)
+  // The timer reads the CURRENT workflow state through a ref — the effect
+  // only depends on `list`, so the closed-over `showWorkflow` would be stale
+  // and the timer could fire on top of a workflow another path (e.g. the
+  // browser-control connect intent) opened after this render.
+  const showWorkflowRef = useRef(showWorkflow);
+  showWorkflowRef.current = showWorkflow;
   useEffect(() => {
     if (autoOpenedRef.current) return;
     const id = setTimeout(() => {
       if (autoOpenedRef.current) return;
       // Only auto-open when nothing is configured AND the workflow
       // isn't already on screen for some other reason.
-      if ((list || []).length === 0 && !showWorkflow) {
+      if ((list || []).length === 0 && !showWorkflowRef.current) {
         autoOpenedRef.current = true;
         handleConnectNew();
       }
