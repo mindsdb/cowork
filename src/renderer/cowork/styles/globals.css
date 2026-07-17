@@ -491,6 +491,26 @@ a[href],
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/* Moved from runtime-injected <style> tags (DataVaultFormPanel,
+   CommentsPanel, CommentsToolbar, HomeView) — plain keyframes with no
+   Base UI data-attribute dependency never needed JS injection; they
+   just belong here with every other keyframe in the app. */
+@keyframes dvf-appear {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+@keyframes cw-comments-panel-in {
+  0%   { opacity: 0; transform: translateX(16px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes cw-act-bar-in {
+  0%   { opacity: 0; transform: translate(-50%, 12px); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes boot-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 @keyframes fadein-down {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }

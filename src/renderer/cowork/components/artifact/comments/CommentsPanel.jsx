@@ -12,7 +12,7 @@
 // ToggleGroup (radiogroup semantics, arrow-key navigation) with the
 // reference's segmented-control skin.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ToggleGroup as BaseToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
 import { isoToEpoch } from '../../../lib/commentsReducer';
@@ -28,22 +28,10 @@ const SHADOW_SM =
   + '0 12px 12px -6px rgba(0,0,0,0.04)';
 
 // Slide-in entrance (mirrors the reference #act-panel: translateX(16px)→0 +
-// fade, same easing as the toolbar). Keyframes can't be inline; inject once —
-// same pattern as CommentsToolbar / ui/Menu. Honors reduced-motion.
-let _CSS_INJECTED = false;
-function _ensureCss() {
-  if (_CSS_INJECTED || typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-cw-comments-panel', '');
-  style.textContent = `
-@keyframes cw-comments-panel-in { 0% { opacity: 0; transform: translateX(16px); }
-                                  100% { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) {
-  .cw-comments-panel { animation: none !important; }
-}`;
-  document.head.appendChild(style);
-  _CSS_INJECTED = true;
-}
+// fade, same easing as the toolbar) — the `cw-comments-panel-in` keyframe
+// lives in globals.css alongside every other keyframe in the app.
+// `motion-reduce:!animate-none` (Tailwind's built-in variant) honors
+// reduced-motion; the `!` is required to beat the inline `animation` style.
 
 const isClosed = (t) => t.status === 'resolved' || t.status === 'dismissed';
 
@@ -81,8 +69,6 @@ export function CommentsPanel({
   // webContents focus in Electron and leaves inputs dead afterwards.
   const [pendingDelete, setPendingDelete] = useState(null);
 
-  useEffect(() => { _ensureCss(); }, []);
-
   const groups = useMemo(() => {
     const notDismissed = threads.filter((t) => t.status !== 'dismissed');
     return {
@@ -107,8 +93,9 @@ export function CommentsPanel({
 
   return (
     <div
-      className="cw-comments-panel absolute top-[12px] right-[12px] bottom-[12px] w-[342px] z-30
-        flex flex-col gap-[10px] rounded-[8px] bg-[#FCFCFC] px-[12px] py-[8px]"
+      className="absolute top-[12px] right-[12px] bottom-[12px] w-[342px] z-30
+        flex flex-col gap-[10px] rounded-[8px] bg-[#FCFCFC] px-[12px] py-[8px]
+        motion-reduce:!animate-none"
       style={{
         boxShadow: SHADOW_SM,
         fontFamily: 'var(--font-body)',
