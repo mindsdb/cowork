@@ -103,9 +103,16 @@ export async function persistOnboarding(
       };
     }
     // syncModels writes the model keys the bulk DB sync intentionally skips
-    // (ENG-739); harness records the chosen cartridge. Both best-effort.
-    await deps.syncModels(lines);
-    await deps.syncHarness();
+    // (ENG-739); harness records the chosen cartridge. Both are best-effort:
+    // the config has ALREADY persisted authoritatively (dbOk), so a flaky
+    // model/harness sync must NOT bounce the user to the error screen over a
+    // saved config (ENG-848). Swallow their failures.
+    try {
+      await deps.syncModels(lines);
+      await deps.syncHarness();
+    } catch {
+      // best-effort; the authoritative config already landed above.
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message ? e.message : GENERIC };

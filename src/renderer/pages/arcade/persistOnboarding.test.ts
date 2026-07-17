@@ -50,6 +50,19 @@ describe('persistOnboarding', () => {
     const d = makeDeps({ saveSettings: vi.fn(async () => false) });
     await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
   });
+
+  // ENG-848: syncModels/syncHarness run AFTER the authoritative DB write and are
+  // best-effort — a throw there must not bounce a user whose config already
+  // persisted to the onboarding error screen.
+  it('still succeeds when syncModels throws after the DB write lands', async () => {
+    const d = makeDeps({ syncModels: vi.fn(async () => { throw new Error('model sync flaked'); }) });
+    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
+  });
+
+  it('still succeeds when syncHarness throws after the DB write lands', async () => {
+    const d = makeDeps({ syncHarness: vi.fn(async () => { throw new Error('harness sync flaked'); }) });
+    await expect(persistOnboarding(d, ['ANTON_X=1'])).resolves.toEqual({ ok: true });
+  });
 });
 
 describe('resolveFinalizeOutcome', () => {
