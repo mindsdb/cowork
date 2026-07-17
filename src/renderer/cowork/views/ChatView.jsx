@@ -933,20 +933,24 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   );
 }
 
-// Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
-// credential is FINE — the gateway rejected the requested MODEL. Two flavors,
-// keyed on the gateway's structured code:
-//
-// - `model_access_denied` — plan gate: the account's tier doesn't include the
-//   model. An upgrade genuinely fixes it, so lead with Upgrade.
-// - `model_disabled` — hedged until the gateway distinguishes tier locks from
-//   admin kill switches everywhere (ENG-596): it can be either, so offer both
-//   Switch-model and Upgrade without promising the upgrade fixes it.
-//
-// The body is the server's curated copy (anton's message, passed through
-// verbatim) — unlike ReconnectCard there's no web-only affordance to work
-// around: Upgrade is just a billing link (host.openExternal window.opens on
-// web), and Switch model routes to Settings on both shells.
+/*
+ * Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
+ * credential is FINE — the gateway rejected the requested MODEL. Now rare: the
+ * wallet billing model has no tier/plan gating, so a locked model is one the
+ * org's wallet can't currently pay for (adding credits unlocks it), not one a
+ * plan excludes. Two flavors, keyed on the gateway's structured code:
+ *
+ * - `model_access_denied` — the wallet can't cover this model. Adding credits
+ *   fixes it, so lead with Add credits.
+ * - `model_disabled` — hedged: may be a credits lock OR an admin kill switch
+ *   (ENG-596), so offer both Switch-model and Add credits, leading with Switch
+ *   without promising credits will unlock it.
+ *
+ * The body is the server's curated copy (anton's message, passed through
+ * verbatim) — unlike ReconnectCard there's no web-only affordance to work
+ * around: Add credits is just a billing link (host.openExternal window.opens
+ * on web), and Switch model routes to Settings on both shells.
+ */
 function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
   // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
   // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
@@ -957,7 +961,7 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
   const title = denied
-    ? `${label} isn't included in your plan`
+    ? `${label} needs credits`
     : `${label} isn't available right now`;
 
   return (
@@ -965,10 +969,10 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
       time={time}
       agentLabel={agentLabel}
       title={title}
-      body={errorText || 'Switch models in Settings, or upgrade your plan to unlock it.'}
+      body={errorText || 'This model needs credits. Add credits to unlock it, or switch to another model in Settings.'}
       buttons={[
-        // Plan gate → lead with Upgrade; hedged/disabled → lead with Switch.
-        { label: 'Upgrade plan', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
+        /* Credits lock → lead with Add credits; hedged/disabled → lead with Switch. */
+        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
         { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
       ]}
     />
@@ -1659,9 +1663,9 @@ export default function ChatView({
                     />
                   );
                 }
-                // Model-403 mid-conversation: the plan doesn't include the
-                // model (or it's admin-disabled) → offer Upgrade / Switch
-                // model, never "try again".
+                /* Model-403 mid-conversation: the wallet can't currently pay
+                 * for the model (or it's admin-disabled) → offer Add credits /
+                 * Switch model, never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
                   return (
                     <ModelUnavailableCard

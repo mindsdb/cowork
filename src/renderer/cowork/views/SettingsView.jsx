@@ -1532,8 +1532,9 @@ export default function SettingsView({
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
                   // Per-model availability (settings.modelEnabled, sourced from MindsHub
-                  // /v1/models). A model the user's tier can't use is listed here as
-                  // false so we render it greyed + non-selectable — an upgrade prompt.
+                  // /v1/models). A model the org's wallet can't currently pay for (or
+                  // whose free allowance is spent) is listed here as false so we render
+                  // it greyed + non-selectable, with an "add credits to unlock" prompt.
                   // Absent id ⇒ available (backwards compatible; direct providers have
                   // no such flag).
                   const modelEnabled = settings.modelEnabled || {};
@@ -1656,16 +1657,16 @@ export default function SettingsView({
                                   {showStalePin && (
                                     // Labeled "legacy — re-select" (not "current") so it reads as
                                     // an action to take, not a selection: the same model may also
-                                    // appear below as a real "— Upgrade to unlock" row, and a bare
-                                    // "(current)" would look like two identical, already-selected
-                                    // entries (ENG-739 review).
+                                    // appear below as a real "— Add credits to unlock" row, and a
+                                    // bare "(current)" would look like two identical,
+                                    // already-selected entries (ENG-739 review).
                                     <option value="__stale__" disabled>
                                       {modelLabel(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)
                                     </option>
                                   )}
                                   {modelList.map((m) => (
                                     <option key={m} value={m} disabled={isLocked(m)}>
-                                      {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
+                                      {modelLabel(m)}{isLocked(m) ? ' — Add credits to unlock' : ''}
                                     </option>
                                   ))}
                                   {allowOther && <option value="__custom__">Other…</option>}
