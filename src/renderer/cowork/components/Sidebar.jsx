@@ -212,6 +212,11 @@ export default function Sidebar({
   onToggleTheme,
   skin = 'normal',
   onToggleSkin,
+  // Whether the 8-bit button should render "on". While skin === 'custom',
+  // the caller repurposes onToggleSkin to flip the mono font instead of
+  // skin itself, so "on" needs to track that font choice, not `skin`.
+  // Defaults to the plain skin-based reading for callers that don't pass it.
+  is8bitActive,
   // Settings → Appearance → Theme/8-bit toggle buttons. Hide either
   // footer button independently; both default to shown.
   showThemeToggle = true,
@@ -354,11 +359,11 @@ export default function Sidebar({
     })
     .slice(0, 8);
 
-  // The 8-bit toggle flips `skin` straight to '8bit'/'normal' — while a
-  // custom theme is active that would silently discard it (the CustomTheme
-  // recipe only applies when skin === 'custom'), so hide the toggle rather
-  // than let a quick sidebar button reset a whole theme.
-  const effectiveShow8bitToggle = show8bitToggle && skin !== 'custom';
+  // "On" state for the 8-bit button: while skin === 'custom', onToggleSkin
+  // is repurposed to flip the mono font (see App.jsx) rather than skin
+  // itself, so the caller passes is8bitActive to track that. Falls back to
+  // the plain skin-based reading for callers that don't pass it (tests).
+  const resolved8bitActive = is8bitActive ?? (skin !== 'normal');
 
   return (
     <aside
@@ -812,7 +817,7 @@ export default function Sidebar({
               </button>
             )
           )}
-          {(effectiveShow8bitToggle || showThemeToggle) && (
+          {(show8bitToggle || showThemeToggle) && (
             // Marks these as quick display toggles, not settings — separate
             // from the Settings/backend-status controls to the left.
             <span
@@ -821,12 +826,12 @@ export default function Sidebar({
               style={{ WebkitAppRegion: 'no-drag', marginLeft: 'auto' }}
             />
           )}
-          {effectiveShow8bitToggle && (
+          {show8bitToggle && (
             <button
-              className={'chrome-btn--small' + (skin !== 'normal' ? ' is-on' : '')}
+              className={'chrome-btn--small' + (resolved8bitActive ? ' is-on' : '')}
               onClick={onToggleSkin}
-              title="8-bit style"
-              aria-label="Toggle 8-bit style"
+              title={skin === 'custom' ? '8-bit font' : '8-bit style'}
+              aria-label={skin === 'custom' ? 'Toggle 8-bit font' : 'Toggle 8-bit style'}
               style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
             >
               {Ico.gamepad(15)}

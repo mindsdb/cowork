@@ -2794,6 +2794,17 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
 body[data-theme="dark"] .anton-sidebar__wordmark {
   text-shadow: 0 0 14px var(--accent-glow);
 }
+/* A flat custom background reads as a mistake next to a glow/gradient tuned
+   for the stock theme's palette — set by applyCustomTheme whenever a custom
+   bg is active (any skin, not just the 8-bit halo below, which is already
+   skin-scoped away from Custom). */
+body.custom-bg-active .anton-sidebar__wordmark,
+body.custom-bg-active .mshell__drawer-title {
+  text-shadow: none;
+}
+body.custom-bg-active .app-sidebar::before {
+  background: none;
+}
 
 /* Cyan halo at the top of the sidebar — only in dark mode. */
 /* No decorative halo in the default dark skin: the sidebar's accent

@@ -1263,8 +1263,8 @@ function AppCore() {
   // skins are untouched.
   useEffect(() => {
     persistCustomTheme(customTheme);
-    applyCustomTheme(skin === 'custom' ? customTheme : null);
-  }, [skin, customTheme]);
+    applyCustomTheme(skin === 'custom' ? customTheme : null, theme === 'light' ? 'light' : 'dark');
+  }, [skin, customTheme, theme]);
 
   // Sidebar title color — a synced Setting (like the greeting), independent
   // of the skin/CustomTheme system above, so it applies in every style.
@@ -3629,7 +3629,20 @@ function AppCore() {
           theme={theme}
           onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           skin={skin}
-          onToggleSkin={() => setSkin(skin === '8bit' ? 'normal' : '8bit')}
+          // While a Custom theme is active, the sidebar's "8-bit" button
+          // can't flip `skin` straight to '8bit'/'normal' — that would
+          // silently discard the CustomTheme recipe (it only applies while
+          // skin === 'custom'). Repurpose the same button to toggle just
+          // the mono/8-bit font instead, so it stays meaningful without
+          // resetting anything.
+          onToggleSkin={() => {
+            if (skin === 'custom') {
+              setCustomTheme((prev) => ({ ...prev, font: prev.font === 'mono' ? 'standard' : 'mono' }));
+            } else {
+              setSkin(skin === '8bit' ? 'normal' : '8bit');
+            }
+          }}
+          is8bitActive={skin === 'custom' ? customTheme.font === 'mono' : skin !== 'normal'}
           showThemeToggle={settings.showThemeToggle !== false}
           show8bitToggle={settings.show8bitToggle !== false}
           onNavigate={navigate}

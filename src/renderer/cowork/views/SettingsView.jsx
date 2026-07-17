@@ -1896,6 +1896,21 @@ export default function SettingsView({
     // be dead weight that always reads "Saved" and never does anything.
     <SettingsSectionPanel>
       <CollapsibleGroup title="Appearance">
+        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+          <ToggleGroup
+            value={normalizeSkin(skin)}
+            onValueChange={(v) => onSkinChange?.(v)}
+            aria-label="Style"
+            options={SKINS.map((s) => ({
+              value: s.id,
+              label: s.icon && Ico[s.icon]
+                ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
+                : s.label,
+              'aria-label': `${s.label} style`,
+              title: s.title,
+            }))}
+          />
+        </Section>
         <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
           <ToggleGroup
             value={theme || 'dark'}
@@ -1917,21 +1932,6 @@ export default function SettingsView({
             ]}
           />
         </Section>
-        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-          <ToggleGroup
-            value={normalizeSkin(skin)}
-            onValueChange={(v) => onSkinChange?.(v)}
-            aria-label="Style"
-            options={SKINS.map((s) => ({
-              value: s.id,
-              label: s.icon && Ico[s.icon]
-                ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
-                : s.label,
-              'aria-label': `${s.label} style`,
-              title: s.title,
-            }))}
-          />
-        </Section>
         {normalizeSkin(skin) === 'custom' && customTheme && (
           <>
             <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
@@ -1943,23 +1943,43 @@ export default function SettingsView({
                 style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer' }}
               />
             </Section>
-            <Section title="Background" subtitle="Pick a base color — surfaces and text shades derive from it — or follow the Light/Dark theme.">
+            <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <input
                   type="color"
-                  value={customTheme.bg || (theme === 'light' ? '#fafafa' : '#080d18')}
-                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.value })}
-                  disabled={customTheme.bg === null}
-                  aria-label="Custom background color"
-                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
+                  value={customTheme.bgLight || '#fafafa'}
+                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
+                  disabled={customTheme.bgLight === null}
+                  aria-label="Custom background color — Light mode"
+                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgLight === null ? 0.45 : 1 }}
                 />
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
                   <Checkbox
-                    checked={customTheme.bg === null}
-                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bg: v ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
-                    aria-label="Follow Light/Dark"
+                    checked={customTheme.bgLight === null}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
+                    aria-label="Default Light background"
                   />
-                  Follow Light/Dark
+                  Default
+                </label>
+              </div>
+            </Section>
+            <Section title="Background — Dark mode" subtitle="Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <input
+                  type="color"
+                  value={customTheme.bgDark || '#080d18'}
+                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
+                  disabled={customTheme.bgDark === null}
+                  aria-label="Custom background color — Dark mode"
+                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgDark === null ? 0.45 : 1 }}
+                />
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  <Checkbox
+                    checked={customTheme.bgDark === null}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
+                    aria-label="Default Dark background"
+                  />
+                  Default
                 </label>
               </div>
             </Section>

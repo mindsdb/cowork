@@ -97,13 +97,22 @@ describe('Sidebar — footer theme toggle (design polish PR 3: chrome)', () => {
     expect(screen.queryByRole('button', { name: 'Toggle 8-bit style' })).toBeNull();
   });
 
-  // Flipping this toggle sets skin straight to '8bit'/'normal', which would
-  // silently discard an active Custom theme recipe (it only applies while
-  // skin === 'custom') — so it must not be reachable in that state.
-  it('hides the 8-bit toggle when the Custom skin is active, even if show8bitToggle is true', () => {
+  // Flipping this toggle would normally set skin straight to '8bit'/'normal',
+  // which would silently discard an active Custom theme recipe (it only
+  // applies while skin === 'custom'). Rather than hide the button, the
+  // caller (App.jsx) repurposes onToggleSkin to flip just the mono font
+  // while Custom is active, and passes is8bitActive to track that font
+  // choice instead of `skin` itself.
+  it('still shows the 8-bit toggle under the Custom skin, relabeled for the font it actually controls there', () => {
     hostMock.isWeb = false;
     render(<Sidebar {...baseProps} serverOnline show8bitToggle skin="custom" />);
-    expect(screen.queryByRole('button', { name: 'Toggle 8-bit style' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Toggle 8-bit font' })).toBeInTheDocument();
+  });
+
+  it('reads is8bitActive (not skin) for the "on" state under the Custom skin', () => {
+    hostMock.isWeb = false;
+    render(<Sidebar {...baseProps} serverOnline show8bitToggle skin="custom" is8bitActive={false} />);
+    expect(screen.getByRole('button', { name: 'Toggle 8-bit font' }).className).not.toContain('is-on');
   });
 
   it('shows a divider before the toggle group when at least one toggle is visible', () => {
