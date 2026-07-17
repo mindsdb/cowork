@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('antontron', {
   oauthConnect: (opts: { engine: string; name?: string } | {
     authUrl: string; tokenUrl: string; clientId: string;
     clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>;
+    redirectPort?: number;
   }) => ipcRenderer.invoke(IPC.OAUTH_CONNECT, opts),
   oauthCancel: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL),
   // Disconnect a builtin OAuth connection: stops the refresh loop,

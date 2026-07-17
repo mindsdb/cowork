@@ -1103,33 +1103,9 @@ export async function revealSettingKey(name) {
 export async function fetchIntegrations() {
   try {
     return await req('/connectors/oauth/catalogue');
-  } catch {
-    return { items: MOCK_DATA.integrations };
+  } catch (err) {
+    return { items: [], error: err?.message || 'Could not load integrations' };
   }
-}
-
-export async function startGoogleDriveAuth() {
-  return req('/integrations/google-drive/oauth/start', { method: 'POST', body: JSON.stringify({}) });
-}
-
-export async function startGoogleCalendarAuth() {
-  return req('/integrations/google-calendar/oauth/start', { method: 'POST', body: JSON.stringify({}) });
-}
-
-export async function startGmailAuth() {
-  return req('/integrations/gmail/oauth/start', { method: 'POST', body: JSON.stringify({}) });
-}
-
-export async function startGoogleAdsAuth(params = {}) {
-  return req('/integrations/google-ads/oauth/start', { method: 'POST', body: JSON.stringify(params) });
-}
-
-export async function startGoogleAnalyticsAuth() {
-  return req('/integrations/google-analytics/oauth/start', { method: 'POST', body: JSON.stringify({}) });
-}
-
-export async function startGcpAuth() {
-  return req('/integrations/gcp/oauth/start', { method: 'POST', body: JSON.stringify({}) });
 }
 
 export { labelCategory, countNonEmptyMemory, findMemoryEntry } from './lib/memoryTransform';
@@ -1933,35 +1909,6 @@ export const MOCK_DATA = {
     recommendedPair: {},
     providerStatus: {},
   },
-
-  integrations: [
-    {
-      id: 'google_drive',
-      title: 'Google Drive',
-      engine: 'google_drive',
-      status: 'needs_config',
-      description: 'Connect your Google Drive account with Google sign-in so Cowork can work with Drive files, Docs, and Sheets.',
-      setupMode: 'browser_oauth',
-      connectionCount: 0,
-      connections: [],
-      engineAvailable: true,
-      oauth: {
-        ready: false,
-        configError: 'Configure ANTON_GOOGLE_CLIENT_ID and ANTON_GOOGLE_CLIENT_SECRET in ~/.anton/.env to enable Google Drive sign-in.',
-        pending: false,
-        lastSuccessAt: '',
-        lastError: '',
-        lastErrorAt: '',
-        launchLabel: 'Connect Google Drive',
-        redirectUri: 'http://127.0.0.1:8765/v1/integrations/google-drive/oauth/callback',
-      },
-      notes: [
-        'Click Connect Google Drive to open Google sign-in in your browser.',
-        'Cowork stores the returned Google OAuth credentials in its local data vault under ~/.anton/data_vault/.',
-        'Google Drive only shows as connected after the OAuth callback succeeds.',
-      ],
-    },
-  ],
 };
 
 // ── Artifact comments (Plan 5) ────────────────────────────────────────────

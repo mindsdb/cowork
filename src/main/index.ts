@@ -13,6 +13,7 @@ import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
 import { startRefreshLoop, stopRefreshLoop, stopAllRefreshLoops, revokedConnections, getPickerAccess } from './token-refresh';
+import { fetchAccountEmail } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
@@ -646,6 +647,10 @@ function setupIPC() {
         return { ok: false, reason: `Could not load connector spec for "${engine}".` };
       }
 
+      // supports_refresh defaults true (matches the server-side schema
+      // default) when a spec doesn't declare it explicitly.
+      const supportsRefresh = oauthBlock.supports_refresh !== false;
+
       const pkceResult = await oauthConnect({
         authUrl: oauthBlock.auth_url,
         tokenUrl: oauthBlock.token_url,
@@ -653,33 +658,29 @@ function setupIPC() {
         clientSecret,
         scopes: oauthBlock.scopes,
         extraAuthParams: oauthBlock.extra_auth_params,
+        redirectPort: oauthBlock.redirect_port,
       });
-      if (!pkceResult.ok || !pkceResult.access_token || !pkceResult.refresh_token) {
+      if (!pkceResult.ok || !pkceResult.access_token || (supportsRefresh && !pkceResult.refresh_token)) {
         return { ok: false, reason: pkceResult.reason || 'OAuth flow did not return tokens.' };
       }
       focusMainWindow();
 
-      // Fetch account email from Google userinfo — needed as keychain key
-      // and for the vault record's display name. The token exchange already
-      // succeeded at this point, so retry once on a transient failure rather
-      // than forcing the user to redo the whole consent flow.
+      // Fetch account email — needed as keychain key and for the vault
+      // record's display name. The token exchange already succeeded at
+      // this point, so retry once on a transient failure rather than
+      // forcing the user to redo the whole consent flow.
       let accountEmail = '';
       for (let attempt = 0; attempt < 2 && !accountEmail; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
-        try {
-          const uiRes = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
-            headers: { Authorization: `Bearer ${pkceResult.access_token}` },
-          });
-          if (uiRes.ok) {
-            const ui = await uiRes.json() as { email?: string };
-            accountEmail = ui.email || '';
-          }
-        } catch {}
+        accountEmail = await fetchAccountEmail(engine, pkceResult.access_token);
       }
-      if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email from Google.' };
+      if (!accountEmail) return { ok: false, reason: 'Could not retrieve account email.' };
 
       // Store refresh_token in OS keychain — never sent over the network.
-      await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+      // Absent entirely for a supports_refresh: false connector.
+      if (pkceResult.refresh_token) {
+        await setRefreshToken(engine, accountEmail, pkceResult.refresh_token);
+      }
 
       const expiresAt = new Date(Date.now() + (pkceResult.expires_in ?? 3600) * 1000).toISOString();
       const tokenUrl: string = oauthBlock.token_url;
@@ -706,9 +707,10 @@ function setupIPC() {
         },
       );
       if (!saveRes.ok) {
-        // Roll back the keychain write from above — otherwise a live Google
-        // refresh token is orphaned in the OS keychain with no vault record
-        // ever pointing at it.
+        // Roll back the keychain write from above (a no-op if this
+        // connector has none, e.g. supports_refresh: false) — otherwise a
+        // live refresh token is orphaned in the OS keychain with no vault
+        // record ever pointing at it.
         try { await deleteRefreshToken(engine, accountEmail); } catch {}
         return { ok: false, reason: `Failed to save connection (${saveRes.status}).` };
       }
@@ -787,20 +789,32 @@ function setupIPC() {
     revokedConnections.add(key);
     stopRefreshLoop(engine, accountEmail);
     // The refresh_token is the only thing that actually revokes the whole
-    // grant with Google — revoking an access_token (what cowork-server's
-    // own revoke() does below, since the vault never holds refresh_token)
-    // only invalidates that one short-lived token, leaving the underlying
-    // authorization — and any drive.file per-file grants tied to it —
-    // standing indefinitely. Electron is the only place that ever holds
-    // the real refresh_token, so this has to happen here, before it's
-    // deleted from the keychain.
+    // grant with the provider — revoking an access_token (what
+    // cowork-server's own revoke() does, since the vault never holds
+    // refresh_token) only invalidates that one short-lived token, leaving
+    // the underlying authorization standing indefinitely. Electron is the
+    // only place that ever holds the real refresh_token, so this has to
+    // happen here, before it's deleted from the keychain. Gated on
+    // supports_revoke — false means silently skip, local cleanup only.
     try {
       const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
       if (refreshToken) {
-        await fetch(`https://oauth2.googleapis.com/revoke?${new URLSearchParams({ token: refreshToken })}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        });
+        const specRes = await fetch(
+          `http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`,
+          { headers: authHeader() },
+        );
+        if (specRes.ok) {
+          const spec = await specRes.json() as Record<string, any>;
+          const builtinMethod = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin');
+          const oauthBlock = builtinMethod?.oauth;
+          if (oauthBlock?.supports_revoke !== false && oauthBlock?.revoke_url) {
+            await fetch(oauthBlock.revoke_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ token: refreshToken }).toString(),
+            });
+          }
+        }
       }
     } catch {}
     try { await deleteRefreshToken(engine, accountEmail); } catch {}
@@ -1565,7 +1579,9 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`, { headers: authHeader() });
         if (!specRes.ok) continue;
         const spec = await specRes.json() as Record<string, any>;
-        const tokenUrl = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin')?.oauth?.token_url;
+        const oauthBlock = spec?.form?.methods?.find((m: any) => m.id === 'browser_oauth_builtin')?.oauth;
+        if (oauthBlock?.supports_refresh === false) continue;
+        const tokenUrl = oauthBlock?.token_url;
         if (!tokenUrl) continue;
         const refreshToken = await getOAuthRefreshToken(engine, accountEmail);
         if (!refreshToken) continue;

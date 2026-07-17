@@ -439,7 +439,7 @@ export async function applyUpdate(): Promise<boolean> {
 
 export type OAuthConnectOpts =
   | { engine: string; name?: string }
-  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string> };
+  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number };
 
 export interface OAuthConnectResult {
   ok: boolean;

@@ -41,7 +41,7 @@ interface AntonTronAPI {
   }>;
   oauthConnect: (opts:
     | { engine: string; name?: string }
-    | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string> }
+    | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number }
   ) => Promise<{
     ok: boolean;
     reason?: string;
