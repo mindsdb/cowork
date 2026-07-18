@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd } from './ui';
+import { Spinner, Kbd, Badge } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -25,10 +25,10 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon }) {
       <span className="nav-row__icon" style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center' }}>{icon}</span>
       <span className="nav-row__label" style={{ flex: 1 }}>{label}</span>
       {badge != null && (
-        <span className="nav-row__badge pill muted" style={{ fontSize: 10 }}>{badge}</span>
+        <Badge variant="muted" size="xs">{badge}</Badge>
       )}
       {comingSoon && (
-        <span className="pill muted" style={{ fontSize: 10 }}>Soon</span>
+        <Badge variant="muted" size="xs">Soon</Badge>
       )}
     </button>
   );
