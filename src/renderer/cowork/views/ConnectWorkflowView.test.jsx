@@ -172,6 +172,38 @@ describe('ConnectWorkflowView — Browser Control consolidation', () => {
     expect(mockHost.browserControlListTabs).toHaveBeenCalledTimes(2);
   });
 
+  it('a stale (slower) listing settling AFTER a newer one does not clobber the fresh tab list', async () => {
+    const user = userEvent.setup();
+    // First load hangs (deferred); the retry resolves immediately with tabs.
+    // When the OLD promise finally settles (as a failure), it must be ignored
+    // — the picker keeps the fresh tab list, no error, not loading.
+    let resolveFirst;
+    const firstLoad = new Promise((resolve) => { resolveFirst = resolve; });
+    mockHost.browserControlListTabs
+      .mockReturnValueOnce(firstLoad)
+      .mockResolvedValueOnce({
+        ok: true,
+        tabs: [{ targetId: 'T1', title: 'Stripe Docs', url: 'https://docs.stripe.com/api', domain: 'stripe.com' }],
+      });
+    render(<ConnectWorkflowView initialConnectorId="anton_chrome" />);
+    await screen.findByTestId('browser-control-detail');
+    await user.click(screen.getByRole('button', { name: 'Choose a Chrome tab' }));
+    expect(await screen.findByText(/Looking for open Chrome tabs/)).toBeInTheDocument();
+
+    // Close (invalidates the in-flight load) and reopen (fresh load → tabs).
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Choose a Chrome tab' }));
+    expect(await screen.findByRole('radio', { name: /Stripe Docs/ })).toBeInTheDocument();
+
+    // The STALE first request settles last, as a failure.
+    resolveFirst({ ok: false, tabs: [], reason: 'Chrome did not open a debugging session in time.' });
+    await waitFor(() => expect(mockHost.browserControlListTabs).toHaveBeenCalledTimes(2));
+    // Fresh state survives: tabs still listed, no stale error, not loading.
+    expect(screen.getByRole('radio', { name: /Stripe Docs/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('browser-tab-picker-error')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Looking for open Chrome tabs/)).not.toBeInTheDocument();
+  });
+
   it('empty-but-ok listing shows the dedicated-window empty state with Try again', async () => {
     const user = userEvent.setup();
     mockHost.browserControlListTabs

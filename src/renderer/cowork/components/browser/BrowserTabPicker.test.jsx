@@ -46,21 +46,33 @@ describe('BrowserTabPicker', () => {
     expect(onConfirm).toHaveBeenCalledWith('T1');
   });
 
-  it('shows an empty state pointing at the dedicated Chrome window when there are no tabs', () => {
-    render(<BrowserTabPicker open tabs={[]} onConfirm={() => {}} onClose={() => {}} />);
+  it('empty state points at the dedicated Chrome window and Try again calls onRetry', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(<BrowserTabPicker open tabs={[]} onRetry={onRetry} onConfirm={() => {}} onClose={() => {}} />);
     // The dedicated debug-profile window may have opened BEHIND the app on
     // macOS — the copy must point there, not at the user's regular Chrome.
     expect(screen.getByText(/No open tabs in Cowork's Chrome window/)).toBeInTheDocument();
     expect(screen.getByText(/behind this window/)).toBeInTheDocument();
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
-  });
-
-  it('empty state renders Try again and calls onRetry', async () => {
-    const user = userEvent.setup();
-    const onRetry = vi.fn();
-    render(<BrowserTabPicker open tabs={[]} onRetry={onRetry} onConfirm={() => {}} onClose={() => {}} />);
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('never renders a non-radio control inside the radiogroup (valid ARIA)', () => {
+    // Empty state (carries the Try again button): no radiogroup at all.
+    const { rerender } = render(
+      <BrowserTabPicker open tabs={[]} onRetry={() => {}} onConfirm={() => {}} onClose={() => {}} />,
+    );
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    // Loading state: no radiogroup either.
+    rerender(<BrowserTabPicker open tabs={[]} loading onRetry={() => {}} onConfirm={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    // With tabs: the radiogroup contains ONLY radio rows.
+    rerender(<BrowserTabPicker open tabs={TABS} onRetry={() => {}} onConfirm={() => {}} onClose={() => {}} />);
+    const group = screen.getByRole('radiogroup');
+    expect(group.querySelectorAll('button')).toHaveLength(TABS.length);
+    expect(group.querySelectorAll('[role="radio"]')).toHaveLength(TABS.length);
   });
 
   it('error state shows the real failure reason + Try again, not the empty-state copy', async () => {

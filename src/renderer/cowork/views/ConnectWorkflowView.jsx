@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import {
   fetchIntegrations,
@@ -1177,33 +1177,52 @@ export default function ConnectWorkflowView({
   // user can pick another tab or retry) — e.g. the chosen tab was closed
   // between listing and Approve, or the CDP attach failed.
   const [tabPickerError, setTabPickerError] = useState('');
+  // Sequence guard for tab-list loads: listTabs can take ~10s (Chrome launch)
+  // + a self-heal poll, so an OLD in-flight request may settle AFTER a newer
+  // one (retry, or close-then-reopen). Bumped on every load AND on picker
+  // close; only the request holding the latest sequence may commit state, so
+  // a stale response can never clobber a fresh tab list.
+  const tabLoadSeqRef = useRef(0);
 
   // Load (or re-load, via the picker's Try again) the Chrome tab list. A
   // failed listing (Chrome missing, debug port never opened, HTTP error)
   // surfaces its real reason in the picker's error box — NOT the misleading
   // "no open tabs" empty state.
   const loadBrowserTabs = async () => {
+    const seq = ++tabLoadSeqRef.current;
+    const isCurrent = () => tabLoadSeqRef.current === seq;
+    const fallbackReason = 'Could not list Chrome tabs. Try again.';
     setTabPickerError('');
     setTabsLoading(true);
     try {
       const result = await browser.listTabs();
+      if (!isCurrent()) return;
       if (result?.ok === false) {
         setBrowserTabs([]);
-        setTabPickerError(result.reason || 'Could not list Chrome tabs. Try again.');
+        setTabPickerError(result.reason || fallbackReason);
       } else {
         setBrowserTabs(result?.tabs || []);
       }
     } catch {
+      if (!isCurrent()) return;
       setBrowserTabs([]);
-      setTabPickerError('Could not list Chrome tabs. Try again.');
+      setTabPickerError(fallbackReason);
     } finally {
-      setTabsLoading(false);
+      if (isCurrent()) setTabsLoading(false);
     }
   };
 
   const openTabPicker = async () => {
     setTabPickerOpen(true);
     await loadBrowserTabs();
+  };
+
+  const closeTabPicker = () => {
+    // Invalidate any in-flight load so it can't repopulate a closed picker
+    // (and a reopen's fresh load can't be clobbered by it).
+    tabLoadSeqRef.current += 1;
+    setTabsLoading(false);
+    setTabPickerOpen(false);
   };
 
   const handleApproveTab = async (targetId) => {
@@ -1462,7 +1481,7 @@ export default function ConnectWorkflowView({
         error={tabPickerError}
         onConfirm={handleApproveTab}
         onRetry={loadBrowserTabs}
-        onClose={() => setTabPickerOpen(false)}
+        onClose={closeTabPicker}
       />
 
       <BrowserApprovedConfirm

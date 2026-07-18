@@ -16,17 +16,19 @@ export function initialLetter(title, domain) {
 // "Try again" — re-runs the tab listing without closing the picker. Rendered
 // in BOTH the empty state (no tabs in the dedicated window) and the error
 // state (the listing itself failed).
-function RetryButton({ onRetry }) {
+function RetryButton({ onRetry, disabled = false }) {
   return (
     <div style={{ marginTop: 10 }}>
       <button
         type="button"
         onClick={onRetry}
+        disabled={disabled}
         style={{
-          all: 'unset', cursor: 'pointer',
+          all: 'unset', cursor: disabled ? 'default' : 'pointer',
           padding: '7px 12px', borderRadius: 8,
           border: '1px solid var(--line)',
           fontSize: 12.5, fontWeight: 500, color: 'var(--ink-2)',
+          opacity: disabled ? 0.5 : 1,
         }}
       >
         Try again
@@ -135,28 +137,33 @@ export default function BrowserTabPicker({ open, tabs = [], loading = false, err
           Cowork will get read-only access to the one tab you pick — nothing else in your browser.
         </div>
 
-        <div
-          role="radiogroup"
-          aria-label="Open Chrome tabs"
-          style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}
-        >
-          {loading ? (
-            <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--ink-3)' }}>
-              Looking for open Chrome tabs…
+        {/* Loading / empty states live OUTSIDE the radiogroup — a radiogroup
+            may only contain radios, and the empty state carries a Try again
+            button. The radiogroup renders only when there are tab rows. */}
+        {loading && (
+          <div style={{ marginTop: 14, padding: '18px 4px', fontSize: 13, color: 'var(--ink-3)' }}>
+            Looking for open Chrome tabs…
+          </div>
+        )}
+        {!loading && tabs.length === 0 && (
+          // Empty-but-ok: the dedicated window really has no tabs. When the
+          // listing FAILED the error box below carries the reason (and its
+          // own Try again) — don't also show this misleading copy.
+          error ? null : (
+            <div style={{ marginTop: 14, padding: '18px 4px', fontSize: 13, color: 'var(--ink-3)' }}>
+              No open tabs in Cowork&apos;s Chrome window. It may be behind this window — open a
+              page there, or hit Try again.
+              {onRetry && <RetryButton onRetry={onRetry} disabled={loading} />}
             </div>
-          ) : tabs.length === 0 ? (
-            // Empty-but-ok: the dedicated window really has no tabs. When the
-            // listing FAILED the error box below carries the reason (and its
-            // own Try again) — don't also show this misleading copy.
-            !error && (
-              <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--ink-3)' }}>
-                No open tabs in Cowork&apos;s Chrome window. It may be behind this window — open a
-                page there, or hit Try again.
-                {onRetry && <RetryButton onRetry={onRetry} />}
-              </div>
-            )
-          ) : (
-            tabs.map((tab) => {
+          )
+        )}
+        {!loading && tabs.length > 0 && (
+          <div
+            role="radiogroup"
+            aria-label="Open Chrome tabs"
+            style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}
+          >
+            {tabs.map((tab) => {
               const selected = tab.targetId === selectedId;
               return (
                 <button
@@ -200,9 +207,9 @@ export default function BrowserTabPicker({ open, tabs = [], loading = false, err
                   </span>
                 </button>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
 
         {selectedTab && (
           <div style={{
@@ -226,7 +233,7 @@ export default function BrowserTabPicker({ open, tabs = [], loading = false, err
             }}
           >
             {error}
-            {onRetry && <RetryButton onRetry={onRetry} />}
+            {onRetry && <RetryButton onRetry={onRetry} disabled={loading} />}
           </div>
         )}
 
