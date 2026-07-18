@@ -4,7 +4,7 @@ import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/coll
 import { Menu, Button, Card, Select } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
-import { Toast } from '../components/ui/Toast';
+import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
@@ -387,7 +387,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [selected, setSelected]       = useState(null);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
   const [uploadOpen, setUploadOpen]   = useState(false);
-  const [toast, setToast]             = useState(null); // { message, type }
+  const toastManager = useToastManager();
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
   const [view, setView]               = useState(() => localStorage.getItem('anton:skills-view') === 'list' ? 'list' : 'grid');
@@ -395,7 +395,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
   const handleViewChange = (v) => { setView(v); localStorage.setItem('anton:skills-view', v); };
 
-  const showToast = (msg, type = 'error') => setToast({ message: msg, type });
+  // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
+  const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
 
   useEffect(() => {
     fetchProjects().then(setProjects);
@@ -583,7 +584,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         initial={modalSkill ?? null}
         projects={projects}
       />
-      <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
     </div>
   );
 }
