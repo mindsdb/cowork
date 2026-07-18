@@ -63,6 +63,10 @@ describe('ConnectWorkflowView — Browser Control consolidation', () => {
     await user.click(screen.getByText('Browser Control'));
     const detail = await screen.findByTestId('browser-control-detail');
     expect(detail).toBeInTheDocument();
+    // The detail wrapper carries .customize-empty-detail, whose CSS
+    // (overflow-y:auto + `justify-content: safe center`) keeps the tall intro
+    // scrollable and the CTA reachable at small window heights.
+    expect(detail).toHaveClass('customize-empty-detail');
     // Disconnected -> idle badge + read-only intro + Choose a Chrome tab button.
     expect(screen.getByRole('status')).toHaveTextContent('Disconnected');
     expect(screen.getByRole('button', { name: 'Choose a Chrome tab' })).toBeInTheDocument();
@@ -129,6 +133,62 @@ describe('ConnectWorkflowView — Browser Control consolidation', () => {
     // still skipped.
     expect(mockHost.browserControlSetConversation).toHaveBeenCalledWith(null);
     expect(apiMock.browseControlApprove).not.toHaveBeenCalled();
+  });
+
+  it('a failed tab listing surfaces its real reason in the picker, not the empty state', async () => {
+    const user = userEvent.setup();
+    mockHost.browserControlListTabs.mockResolvedValue({
+      ok: false,
+      tabs: [],
+      reason: 'Could not find Google Chrome. Install Chrome to use Browser Control.',
+    });
+    render(<ConnectWorkflowView initialConnectorId="anton_chrome" />);
+    await screen.findByTestId('browser-control-detail');
+    await user.click(screen.getByRole('button', { name: 'Choose a Chrome tab' }));
+
+    const error = await screen.findByTestId('browser-tab-picker-error');
+    expect(error).toHaveTextContent(/Could not find Google Chrome/);
+    // The misleading "no open tabs" empty state must NOT be shown for a failure.
+    expect(screen.queryByText(/No open tabs in Cowork's Chrome window/)).not.toBeInTheDocument();
+  });
+
+  it('Try again re-runs the listing without closing the picker and transitions error → tabs', async () => {
+    const user = userEvent.setup();
+    mockHost.browserControlListTabs
+      .mockResolvedValueOnce({ ok: false, tabs: [], reason: 'Chrome did not open a debugging session in time.' })
+      .mockResolvedValueOnce({
+        ok: true,
+        tabs: [{ targetId: 'T1', title: 'Stripe Docs', url: 'https://docs.stripe.com/api', domain: 'stripe.com' }],
+      });
+    render(<ConnectWorkflowView initialConnectorId="anton_chrome" />);
+    await screen.findByTestId('browser-control-detail');
+    await user.click(screen.getByRole('button', { name: 'Choose a Chrome tab' }));
+    await screen.findByTestId('browser-tab-picker-error');
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    // Picker stays open, error clears, and the fresh listing renders.
+    expect(await screen.findByRole('radio', { name: /Stripe Docs/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('browser-tab-picker-error')).not.toBeInTheDocument();
+    expect(mockHost.browserControlListTabs).toHaveBeenCalledTimes(2);
+  });
+
+  it('empty-but-ok listing shows the dedicated-window empty state with Try again', async () => {
+    const user = userEvent.setup();
+    mockHost.browserControlListTabs
+      .mockResolvedValueOnce({ ok: true, tabs: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        tabs: [{ targetId: 'T1', title: 'Stripe Docs', url: 'https://docs.stripe.com/api', domain: 'stripe.com' }],
+      });
+    render(<ConnectWorkflowView initialConnectorId="anton_chrome" />);
+    await screen.findByTestId('browser-control-detail');
+    await user.click(screen.getByRole('button', { name: 'Choose a Chrome tab' }));
+
+    expect(await screen.findByText(/No open tabs in Cowork's Chrome window/)).toBeInTheDocument();
+    expect(screen.queryByTestId('browser-tab-picker-error')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('radio', { name: /Stripe Docs/ })).toBeInTheDocument();
   });
 });
 

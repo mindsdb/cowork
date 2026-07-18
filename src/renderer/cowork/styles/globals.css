@@ -1353,10 +1353,14 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 .customize-empty-detail {
   flex: 1;
   min-height: 0;
+  /* Tall content (e.g. the Browser Control intro) must scroll, and `safe`
+     centering degrades to flex-start on overflow — plain `center` would clip
+     BOTH the top and the CTA at the bottom with no way to reach them. */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   gap: 22px;
   padding: 32px;
   text-align: center;

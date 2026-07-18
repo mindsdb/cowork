@@ -1178,18 +1178,32 @@ export default function ConnectWorkflowView({
   // between listing and Approve, or the CDP attach failed.
   const [tabPickerError, setTabPickerError] = useState('');
 
-  const openTabPicker = async () => {
-    setTabPickerOpen(true);
+  // Load (or re-load, via the picker's Try again) the Chrome tab list. A
+  // failed listing (Chrome missing, debug port never opened, HTTP error)
+  // surfaces its real reason in the picker's error box — NOT the misleading
+  // "no open tabs" empty state.
+  const loadBrowserTabs = async () => {
     setTabPickerError('');
     setTabsLoading(true);
     try {
       const result = await browser.listTabs();
-      setBrowserTabs(result?.tabs || []);
+      if (result?.ok === false) {
+        setBrowserTabs([]);
+        setTabPickerError(result.reason || 'Could not list Chrome tabs. Try again.');
+      } else {
+        setBrowserTabs(result?.tabs || []);
+      }
     } catch {
       setBrowserTabs([]);
+      setTabPickerError('Could not list Chrome tabs. Try again.');
     } finally {
       setTabsLoading(false);
     }
+  };
+
+  const openTabPicker = async () => {
+    setTabPickerOpen(true);
+    await loadBrowserTabs();
   };
 
   const handleApproveTab = async (targetId) => {
@@ -1447,6 +1461,7 @@ export default function ConnectWorkflowView({
         loading={tabsLoading}
         error={tabPickerError}
         onConfirm={handleApproveTab}
+        onRetry={loadBrowserTabs}
         onClose={() => setTabPickerOpen(false)}
       />
 

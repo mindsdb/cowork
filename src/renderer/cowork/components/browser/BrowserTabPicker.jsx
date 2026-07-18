@@ -13,7 +13,29 @@ export function initialLetter(title, domain) {
   return source.charAt(0).toUpperCase() || '?';
 }
 
-export default function BrowserTabPicker({ open, tabs = [], loading = false, error = '', onConfirm, onClose }) {
+// "Try again" — re-runs the tab listing without closing the picker. Rendered
+// in BOTH the empty state (no tabs in the dedicated window) and the error
+// state (the listing itself failed).
+function RetryButton({ onRetry }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button
+        type="button"
+        onClick={onRetry}
+        style={{
+          all: 'unset', cursor: 'pointer',
+          padding: '7px 12px', borderRadius: 8,
+          border: '1px solid var(--line)',
+          fontSize: 12.5, fontWeight: 500, color: 'var(--ink-2)',
+        }}
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+export default function BrowserTabPicker({ open, tabs = [], loading = false, error = '', onConfirm, onRetry, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
   const dialogRef = useRef(null);
 
@@ -123,9 +145,16 @@ export default function BrowserTabPicker({ open, tabs = [], loading = false, err
               Looking for open Chrome tabs…
             </div>
           ) : tabs.length === 0 ? (
-            <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--ink-3)' }}>
-              No open Chrome tabs found. Open a page in Chrome, then try again.
-            </div>
+            // Empty-but-ok: the dedicated window really has no tabs. When the
+            // listing FAILED the error box below carries the reason (and its
+            // own Try again) — don't also show this misleading copy.
+            !error && (
+              <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--ink-3)' }}>
+                No open tabs in Cowork&apos;s Chrome window. It may be behind this window — open a
+                page there, or hit Try again.
+                {onRetry && <RetryButton onRetry={onRetry} />}
+              </div>
+            )
           ) : (
             tabs.map((tab) => {
               const selected = tab.targetId === selectedId;
@@ -197,6 +226,7 @@ export default function BrowserTabPicker({ open, tabs = [], loading = false, err
             }}
           >
             {error}
+            {onRetry && <RetryButton onRetry={onRetry} />}
           </div>
         )}
 

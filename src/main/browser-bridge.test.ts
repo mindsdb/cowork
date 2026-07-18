@@ -332,6 +332,84 @@ describe('browser-bridge managed Chrome launch (listTabs)', () => {
     expect(spawned[0].disposed).toBe(true); // stale handle torn down
   });
 
+  it('creates an about:blank tab when the fresh Chrome exposes zero page targets', async () => {
+    // Freshly spawned dedicated Chrome (or the user closed every tab in the
+    // dedicated window): /json/list has no page target. listTabs must
+    // self-heal via /json/new so the picker always has at least one row.
+    vi.useFakeTimers();
+    const BLANK = {
+      id: 'BLANK-1',
+      type: 'page',
+      title: 'about:blank',
+      url: 'about:blank',
+      webSocketDebuggerUrl: 'ws://127.0.0.1:9333/devtools/page/BLANK-1',
+    };
+    let created = false;
+    const restore2 = bridge.__setBridgeDeps({
+      listTargets: async () => (created ? [BLANK] : []),
+      probeDebugPort: async () => true,
+      createTab: async () => {
+        created = true;
+        return true;
+      },
+    });
+    const resultPromise = bridge.listTabs();
+    await vi.advanceTimersByTimeAsync(2000);
+    const result = await resultPromise;
+    restore2();
+    expect(result.ok).toBe(true);
+    expect(created).toBe(true);
+    expect(result.tabs).toHaveLength(1);
+    expect(result.tabs[0].targetId).toBe('BLANK-1');
+  });
+
+  it('createTab failure still returns ok with empty tabs (graceful)', async () => {
+    const restore2 = bridge.__setBridgeDeps({
+      listTargets: async () => [],
+      probeDebugPort: async () => true,
+      createTab: async () => false,
+    });
+    const result = await bridge.listTabs();
+    restore2();
+    expect(result.ok).toBe(true);
+    expect(result.tabs).toHaveLength(0);
+  });
+
+  it('does not create a tab when page targets already exist', async () => {
+    let createCalls = 0;
+    const restore2 = bridge.__setBridgeDeps({
+      listTargets: async () => [TARGET],
+      probeDebugPort: async () => true,
+      createTab: async () => {
+        createCalls++;
+        return true;
+      },
+    });
+    const result = await bridge.listTabs();
+    restore2();
+    expect(result.ok).toBe(true);
+    expect(result.tabs).toHaveLength(1);
+    expect(createCalls).toBe(0);
+  });
+
+  it('surfaces a spawn error immediately instead of waiting out the poll deadline', async () => {
+    // ENOENT-style child_process failure: the poll loop must bail with the
+    // real reason, not the generic 10s "did not open a debugging session".
+    const restore2 = bridge.__setBridgeDeps({
+      listTargets: async () => [TARGET],
+      resolveChrome: () => '/path/to/google-chrome',
+      spawnChrome: (_path, _args, onError) => {
+        onError?.('spawn /path/to/google-chrome ENOENT');
+        return { dispose: () => {} };
+      },
+      probeDebugPort: async () => false,
+    });
+    const result = await bridge.listTabs();
+    restore2();
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('Could not launch Chrome (spawn /path/to/google-chrome ENOENT).');
+  });
+
   it('does not kill a just-spawned Chrome that is still starting up', async () => {
     vi.useFakeTimers();
     let spawnCount = 0;

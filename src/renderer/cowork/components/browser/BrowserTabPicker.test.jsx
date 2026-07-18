@@ -46,10 +46,41 @@ describe('BrowserTabPicker', () => {
     expect(onConfirm).toHaveBeenCalledWith('T1');
   });
 
-  it('shows an empty state when there are no tabs', () => {
+  it('shows an empty state pointing at the dedicated Chrome window when there are no tabs', () => {
     render(<BrowserTabPicker open tabs={[]} onConfirm={() => {}} onClose={() => {}} />);
-    expect(screen.getByText(/No open Chrome tabs found/)).toBeInTheDocument();
+    // The dedicated debug-profile window may have opened BEHIND the app on
+    // macOS — the copy must point there, not at the user's regular Chrome.
+    expect(screen.getByText(/No open tabs in Cowork's Chrome window/)).toBeInTheDocument();
+    expect(screen.getByText(/behind this window/)).toBeInTheDocument();
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
+  });
+
+  it('empty state renders Try again and calls onRetry', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(<BrowserTabPicker open tabs={[]} onRetry={onRetry} onConfirm={() => {}} onClose={() => {}} />);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('error state shows the real failure reason + Try again, not the empty-state copy', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <BrowserTabPicker
+        open
+        tabs={[]}
+        error="Could not find Google Chrome. Install Chrome to use Browser Control."
+        onRetry={onRetry}
+        onConfirm={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('browser-tab-picker-error')).toHaveTextContent(/Could not find Google Chrome/);
+    // The misleading "no open tabs" copy must NOT render alongside a failure.
+    expect(screen.queryByText(/No open tabs in Cowork's Chrome window/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it('Esc closes the picker', async () => {

@@ -247,9 +247,18 @@ interface BridgeDeps {
   // Resolve the Chrome binary path (null when none is found).
   resolveChrome?: () => string | null;
   // Spawn Chrome with the given binary + args, detached. Returns a disposer.
-  spawnChrome?: (chromePath: string, args: string[]) => { dispose: () => void };
+  // `onError` (optional) reports child-process spawn failures (ENOENT etc.)
+  // so the launch flow surfaces them instead of a generic 10s timeout.
+  spawnChrome?: (
+    chromePath: string,
+    args: string[],
+    onError?: (message: string) => void,
+  ) => { dispose: () => void };
   // Probe whether the DevTools debug port is already accepting connections.
   probeDebugPort?: (base: string) => Promise<boolean>;
+  // Create a new (about:blank) tab via the DevTools HTTP endpoint. Returns
+  // true when Chrome accepted the request.
+  createTab?: (base: string) => Promise<boolean>;
 }
 
 let deps: BridgeDeps = {
@@ -266,6 +275,10 @@ let managedChrome: { dispose: () => void } | null = null;
 // just means Chrome is still starting — don't kill and respawn it.
 let managedChromeSpawnedAt = 0;
 const CHROME_STARTUP_WINDOW_MS = 15000;
+// Spawn failure (ENOENT etc.) reported by the spawner for the CURRENT managed
+// Chrome. The launch poll loop checks it so the user sees "Could not launch
+// Chrome (…)" immediately instead of waiting out the full port-poll deadline.
+let lastSpawnError: string | null = null;
 
 // Test-only: override HTTP/WS transport. Returns a restore fn.
 export function __setBridgeDeps(next: Partial<BridgeDeps>): () => void {
@@ -302,6 +315,7 @@ export function __resetBridgeForTest(): void {
   }
   managedChrome = null;
   managedChromeSpawnedAt = 0;
+  lastSpawnError = null;
   getWindowRef = () => null;
   bridgeStateListeners.clear();
   conversationId = null;
@@ -330,11 +344,17 @@ function defaultResolveChrome(): string | null {
 // transient main-process hiccup. Returns a disposer that kills the child.
 // Clears `managedChrome` when the child exits (killed/crashed) so the next
 // connect attempt respawns instead of waiting on a dead process forever.
-function defaultSpawnChrome(chromePath: string, args: string[]): { dispose: () => void } {
+function defaultSpawnChrome(
+  chromePath: string,
+  args: string[],
+  onError?: (message: string) => void,
+): { dispose: () => void } {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { spawn } = require('child_process') as typeof import('child_process');
   const child = spawn(chromePath, args, { detached: true, stdio: 'ignore' });
-  child.on('error', () => { /* surfaced by the port-wait failing */ });
+  // Report spawn failures (ENOENT, EACCES, …) so ensureManagedChrome can bail
+  // with a real reason instead of waiting out the port-poll deadline.
+  child.on('error', (err) => { onError?.(err?.message || String(err)); });
   child.on('exit', () => {
     // Our managed Chrome died — drop the stale handle so ensureManagedChrome
     // spawns a replacement (only if the handle still points at THIS child).
@@ -360,12 +380,27 @@ async function defaultProbeDebugPort(base: string): Promise<boolean> {
   }
 }
 
+// Default tab creator: DevTools HTTP /json/new. Chrome 111+ requires PUT;
+// older Chrome only accepted GET — fall back on a non-ok PUT. Opening a tab
+// also tends to raise the (possibly background) dedicated Chrome window.
+async function defaultCreateTab(base: string): Promise<boolean> {
+  try {
+    const put = await fetch(`${base}/json/new?about:blank`, { method: 'PUT' });
+    if (put.ok) return true;
+    const get = await fetch(`${base}/json/new?about:blank`);
+    return get.ok;
+  } catch {
+    return false;
+  }
+}
+
 function d<K extends keyof BridgeDeps>(key: K): NonNullable<BridgeDeps[K]> {
   const fallbacks: Required<Pick<BridgeDeps,
-    'resolveChrome' | 'spawnChrome' | 'probeDebugPort'>> = {
+    'resolveChrome' | 'spawnChrome' | 'probeDebugPort' | 'createTab'>> = {
     resolveChrome: defaultResolveChrome,
     spawnChrome: defaultSpawnChrome,
     probeDebugPort: defaultProbeDebugPort,
+    createTab: defaultCreateTab,
   };
   return (deps[key] ?? (fallbacks as Record<string, unknown>)[key as string]) as NonNullable<BridgeDeps[K]>;
 }
@@ -415,13 +450,23 @@ export async function ensureManagedChrome(): Promise<{ ok: boolean; reason?: str
         reason: 'Could not find Google Chrome. Install Chrome to use Browser Control.',
       };
     }
-    managedChrome = d('spawnChrome')(chromePath, launchArgs(port, debugUserDataDir()));
+    lastSpawnError = null;
+    managedChrome = d('spawnChrome')(chromePath, launchArgs(port, debugUserDataDir()), (message) => {
+      lastSpawnError = message;
+    });
     managedChromeSpawnedAt = Date.now();
   }
 
-  // Poll the port until Chrome's DevTools endpoint accepts (bounded).
+  // Poll the port until Chrome's DevTools endpoint accepts (bounded). A spawn
+  // error (ENOENT etc.) means the port will never answer — bail with the real
+  // reason instead of waiting out the deadline.
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
+    if (lastSpawnError) {
+      managedChrome = null;
+      managedChromeSpawnedAt = 0;
+      return { ok: false, reason: `Could not launch Chrome (${lastSpawnError}).` };
+    }
     if (await probe(base)) return { ok: true };
     await sleep(200);
   }
@@ -461,6 +506,11 @@ export function status(): BrowserStatusResult {
 
 // ── Tab discovery (for the approval picker) ─────────────────────────────────
 
+// Attachable page targets only (the picker never lists workers/extensions).
+function pageTargets(targets: CdpTarget[]): CdpTarget[] {
+  return targets.filter((t) => t.type === 'page' && !!t.webSocketDebuggerUrl);
+}
+
 export async function listTabs(): Promise<{ ok: boolean; tabs: BrowserTab[]; reason?: string }> {
   try {
     // Connect flow entry point: make sure OUR managed Chrome (dedicated debug
@@ -469,15 +519,26 @@ export async function listTabs(): Promise<{ ok: boolean; tabs: BrowserTab[]; rea
     // the right flags. Reuses an already-running port gracefully.
     const launched = await ensureManagedChrome();
     if (!launched.ok) return { ok: false, tabs: [], reason: launched.reason };
-    const targets = await deps.listTargets(devToolsHttpBase(debugPort()));
-    const tabs: BrowserTab[] = targets
-      .filter((t) => t.type === 'page' && !!t.webSocketDebuggerUrl)
-      .map((t) => ({
-        targetId: t.id,
-        title: t.title || t.url,
-        url: t.url,
-        domain: registrableHost(t.url),
-      }));
+    const base = devToolsHttpBase(debugPort());
+    let pages = pageTargets(await deps.listTargets(base));
+    // Self-heal an empty window: a freshly spawned Chrome may not expose a
+    // page target yet, and the user may have closed every tab in the
+    // dedicated window. Open an about:blank tab (also raises the window if it
+    // opened behind the app) and re-poll briefly for it to appear, so the
+    // picker always has at least one row when Chrome is reachable.
+    if (pages.length === 0 && (await d('createTab')(base))) {
+      const deadline = Date.now() + 2000;
+      while (pages.length === 0 && Date.now() < deadline) {
+        await sleep(200);
+        pages = pageTargets(await deps.listTargets(base));
+      }
+    }
+    const tabs: BrowserTab[] = pages.map((t) => ({
+      targetId: t.id,
+      title: t.title || t.url,
+      url: t.url,
+      domain: registrableHost(t.url),
+    }));
     return { ok: true, tabs };
   } catch (err) {
     return { ok: false, tabs: [], reason: safeReason(err) };
@@ -966,6 +1027,7 @@ export function disposeAllBridges(): void {
   }
   managedChrome = null;
   managedChromeSpawnedAt = 0;
+  lastSpawnError = null;
 }
 
 // ── IPC wiring ───────────────────────────────────────────────────────────
