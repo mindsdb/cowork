@@ -934,17 +934,18 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
 }
 
 /*
- * Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
- * credential is FINE — the gateway rejected the requested MODEL. Now rare: the
- * wallet billing model has no tier/plan gating, so a locked model is one the
- * org's wallet can't currently pay for (adding credits unlocks it), not one a
- * plan excludes. Two flavors, keyed on the gateway's structured code:
+ * Legacy model-403 (`model_access_denied` / `model_disabled`): back-compat
+ * only. The current gateway never emits a 403 model denial — a wallet that
+ * can't pay comes back as 402 `wallet_empty`, which the server maps to
+ * `token_limit` and the out-of-credits card renders. These codes only arrive
+ * from older pre-wallet gateway/anton versions, so the branch stays. Two
+ * flavors, keyed on the structured code:
  *
- * - `model_access_denied` — the wallet can't cover this model. Adding credits
- *   fixes it, so lead with Add credits.
- * - `model_disabled` — hedged: may be a credits lock OR an admin kill switch
- *   (ENG-596), so offer both Switch-model and Add credits, leading with Switch
- *   without promising credits will unlock it.
+ * - `model_access_denied` — old gateways sent this when the account couldn't
+ *   cover the model, so lead with Add credits.
+ * - `model_disabled` — an admin turned the model off; credits don't unlock
+ *   it, so lead with Switch model (Add credits stays as a secondary escape
+ *   hatch since some old gateways used this code for credit locks too).
  *
  * The body is the server's curated copy (anton's message, passed through
  * verbatim) — unlike ReconnectCard there's no web-only affordance to work
@@ -969,9 +970,11 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
       time={time}
       agentLabel={agentLabel}
       title={title}
-      body={errorText || 'This model needs credits. Add credits to unlock it, or switch to another model in Settings.'}
+      body={errorText || (denied
+        ? 'This model needs credits. Add credits to unlock it, or switch to another model in Settings.'
+        : 'This model is currently unavailable. Switch to another model in Settings.')}
       buttons={[
-        /* Credits lock → lead with Add credits; hedged/disabled → lead with Switch. */
+        /* Credits denial → lead with Add credits; admin-disabled → lead with Switch. */
         { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
         { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
       ]}
@@ -1663,8 +1666,9 @@ export default function ChatView({
                     />
                   );
                 }
-                /* Model-403 mid-conversation: the wallet can't currently pay
-                 * for the model (or it's admin-disabled) → offer Add credits /
+                /* Legacy model-403 (pre-wallet gateways only): current
+                 * gateways report wallet denials as `token_limit`, rendered
+                 * by the out-of-credits card above. Offer Add credits /
                  * Switch model, never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
                   return (
