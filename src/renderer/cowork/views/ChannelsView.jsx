@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
+import { Badge } from '../components/ui';
 import ChannelBindings from './ChannelBindings';
 import {
   fetchChannelPlugins,
@@ -103,12 +104,11 @@ function ChannelLogo({ type, size = 26 }) {
 
 function StatusBadge({ active, configured }) {
   const label = active ? 'Active' : configured ? 'Configured' : 'Not connected';
-  const tone = active ? 'ok' : configured ? 'warn' : 'idle';
+  // Active and Configured are both "healthy" states (green) — Configured
+  // just means set-but-not-necessarily-live, not a warning.
+  const variant = (active || configured) ? 'success' : 'muted';
   return (
-    <span className={`channels-badge channels-badge-${tone}`}>
-      <span className="channels-led" aria-hidden="true" />
-      {label}
-    </span>
+    <Badge variant={variant} dot size="xs">{label}</Badge>
   );
 }
 
