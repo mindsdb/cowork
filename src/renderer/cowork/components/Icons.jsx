@@ -95,6 +95,19 @@ const Ico = {
   // toggle between hidden and revealed value.
   eye:      (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>,
   eyeOff:   (s = 14) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18"/><path d="M10.6 6.1A11 11 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3 3.6"/><path d="M6.6 6.6A18 18 0 0 0 2 12s3.5 6 10 6c1.7 0 3.2-.3 4.5-.9"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>,
+  // ── Embedded-browser chrome ────────────────────────────────────────────
+  // (Reload reuses `refresh` above — same rotate-cw glyph; `lock`, `globe`,
+  // `close`, `plus`, `search`, `clock`, `download`, `externalLink` exist too.)
+  arrowLeft: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5m0 0 6 6m-6-6 6-6"/></svg>,
+  arrowRight: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg>,
+  // Right-docked panel — agent dock toggle (divider on the right).
+  panelRight: (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg>,
+  // House — start page / home affordance.
+  home:     (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="m3 11 9-8 9 8"/><path d="M5 9.5V20a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 20V9.5"/><path d="M9.5 21.5v-6h5v6"/></svg>,
+  // Warning triangle — load-error overlay.
+  warning:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5 2.5 20h19L12 3.5Z"/><path d="M12 10v4.5"/><path d="M12 17.5h.01"/></svg>,
+  // Browser window with a plus — "new tab".
+  tabPlus:  (s = 16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9h18"/><path d="M12 12v5M9.5 14.5h5"/></svg>,
   // ── Artifact-viewer top-bar icons (design-supplied, 20-grid) ──────────
   // Folder with an export arrow — "open the artifact's local folder".
   openFolder:   (s = 16) => <svg width={s} height={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 8.33325C17.5 6.95254 16.3807 5.83325 15 5.83325H11.338C10.5021 5.83325 9.7215 5.4155 9.25783 4.72L9.0755 4.4465C8.61183 3.751 7.83126 3.33325 6.99538 3.33325H5C3.61929 3.33325 2.5 4.45254 2.5 5.83325V13.3333C2.5 14.714 3.61929 15.8333 5 15.8333H9.16667"/><path d="M13.3545 16.229L16.89 12.6935"/><path d="M13.9434 12.1042H17.4789V15.6398"/></svg>,

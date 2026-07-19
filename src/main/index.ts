@@ -9,6 +9,7 @@ import { checkInstallStatus, runInstaller } from './installer';
 import { startServer, stopServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions } from './server-process';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { initUpdater, registerUpdateHandlers } from './updater';
+import { registerBrowserHandlers, shutdownBrowser, startBrowserBridge } from './browser/browser-manager';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { OAUTH_CREDENTIALS } from './credentials';
@@ -1245,6 +1246,10 @@ function setupIPC() {
   // can check/apply in any build (dev, unpackaged, server-down). The gated
   // boot/periodic polling is started separately by initUpdater().
   registerUpdateHandlers(() => mainWindow);
+
+  // Embedded browser: tab/IPC handlers + tabs.json restore. The agent bridge
+  // starts after the window exists (see below, right after createWindow()).
+  registerBrowserHandlers(() => mainWindow);
 }
 
 // One-time purge of the on-disk HTTP cache, gated by app version. Older builds
@@ -1366,8 +1371,10 @@ app.whenReady().then(async () => {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
+        // No accelerators on purpose: ⌘R/⇧⌘R belong to the embedded browser
+        // (reload-tab) on the Browser route; these stay click-only for dev.
+        { label: 'Reload', click: () => mainWindow?.webContents.reload() },
+        { label: 'Force Reload', click: () => mainWindow?.webContents.reloadIgnoringCache() },
         { role: 'toggleDevTools' },
         { role: 'togglefullscreen' },
         { role: 'zoomIn' },
@@ -1375,7 +1382,22 @@ app.whenReady().then(async () => {
         { role: 'resetZoom' },
       ],
     },
-    { role: 'windowMenu' },
+    {
+      // Same items as the stock windowMenu role, but NOT the role itself:
+      // windowMenu registers the submenu with NSApp, which injects a Close
+      // item bound to ⌘W — that accelerator belongs to the embedded browser
+      // (close-tab). Close lives here explicitly, moved to ⇧⌘W.
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac
+          ? ([{ type: 'separator' }, { role: 'front' }] as Electron.MenuItemConstructorOptions[])
+          : []),
+        { type: 'separator' },
+        { role: 'close', accelerator: 'CmdOrCtrl+Shift+W' },
+      ],
+    },
     {
       role: 'help',
       submenu: [
@@ -1415,6 +1437,11 @@ app.whenReady().then(async () => {
   // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
   await resolveServerPort();
   createWindow();
+
+  // Agent bridge for the embedded browser: starts once the app is ready and
+  // the window exists (contract §2). Writes coworkHome()/browser-bridge.json
+  // so the Python side can discover port + bearer token. Never blocks boot.
+  void startBrowserBridge();
 
   // Capture renderer readiness NOW, before the async server start —
   // did-finish-load fires quickly (especially with Vite dev server)
@@ -1606,6 +1633,9 @@ async function drainServerForQuit(): Promise<void> {
   // Stop all OAuth refresh loops before the server shuts down so no
   // in-flight tick can call PATCH /token against a dead server.
   stopAllRefreshLoops();
+  // Embedded browser: close the agent bridge, destroy tab views, and flush
+  // tabs.json before the process goes away.
+  await shutdownBrowser().catch((err) => console.warn('[browser] shutdown failed:', err));
   // Hard ceiling so a wedged python can't pin the quit indefinitely.
   // stopServer's own SIGTERM(3s) + SIGKILL(1.5s) chain stays inside
   // this window, but a misbehaving OS-level process delay could push

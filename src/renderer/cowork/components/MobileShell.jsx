@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Ico from './Icons';
+import { host } from '../../platform/host';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
 // (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
@@ -12,6 +13,9 @@ const SECTIONS = [
   { key: 'scheduled', label: 'Scheduled Tasks', route: 'scheduled' },
   { key: 'artifacts', label: 'Live Artifacts',  route: 'artifacts' },
   { key: 'tasks',     label: 'Tasks',           route: 'tasks' },
+  // Embedded browser — Electron-only (no native WebContentsView bridge
+  // in the web shell), mirrors the desktop Sidebar gate.
+  ...(host.isElectron ? [{ key: 'browser', label: 'Browser', route: 'browser' }] : []),
 ];
 
 function titleForRoute(route, { selectedProject, currentTask } = {}) {
@@ -21,6 +25,7 @@ function titleForRoute(route, { selectedProject, currentTask } = {}) {
   if (route === 'scheduled' || route === 'schedule-detail') return 'Scheduled';
   if (route === 'artifacts') return 'Artifacts';
   if (route === 'tasks') return 'Tasks';
+  if (route === 'browser') return 'Browser';
   if (route === 'customize') return 'Connect';
   if (route === 'settings') return 'Settings';
   if (route === 'memory') return 'Memories';
@@ -186,9 +191,10 @@ export default function MobileShell({
   //   • 'settings'  — configuration surface; "create new" not relevant.
   //   • 'artifacts' — a read-only gallery; artifacts are produced by
   //                   tasks, not by an explicit "+ artifact" action.
+  //   • 'browser'   — the browser chrome owns its own new-tab action.
   // Tap opens a 2-row menu: New task / New project. "New task" honors
   // the current project context if any.
-  const showFab = !['task', 'settings', 'artifacts'].includes(route);
+  const showFab = !['task', 'settings', 'artifacts', 'browser'].includes(route);
   const fabProject = route === 'projects' && selectedProject ? selectedProject : null;
 
   return (
@@ -350,6 +356,17 @@ export default function MobileShell({
                   primary="View all artifacts"
                   secondary={`${artifactsList.length} total`}
                   onClick={() => handleNavigate('artifacts')}
+                />
+              );
+            } else if (section.key === 'browser') {
+              // Single entry — the browser owns its own tabs/chrome;
+              // the accordion body is just a deep link into the route.
+              count = 0;
+              content = (
+                <ListRow
+                  primary="Open browser"
+                  secondary="Tabs, address bar, and the Browser Agent"
+                  onClick={() => handleNavigate('browser')}
                 />
               );
             } else if (section.key === 'tasks') {

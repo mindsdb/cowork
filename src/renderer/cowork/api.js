@@ -292,7 +292,7 @@ export function allocateConversationId() {
 // callback shape the rest of the app already speaks. `conversationId` is
 // optional — omit it to start a new conversation; the caller learns the
 // new id via the first onChunk/onProgress/onDone callback's second arg.
-function _streamResponse(text, { conversationId, projectName, projectPath, model, attachmentIds = [], disabledConnections, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectPath, model, attachmentIds = [], disabledConnections, surface, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   const ctrl = new AbortController();
   (async () => {
     try {
@@ -309,6 +309,10 @@ function _streamResponse(text, { conversationId, projectName, projectPath, model
           // every conversation would fall back to the active project.
           project: projectName || null,
           attachment_ids: attachmentIds,
+          // UI-surface marker (e.g. 'browser' from the Browser Agent dock) —
+          // lets the server inject per-surface turn context. Ordinary chat
+          // turns omit it.
+          ...(surface ? { surface } : {}),
           ...(disabledConnections !== undefined
             ? { disabled_connections: disabledConnections }
             : {}),
