@@ -54,7 +54,9 @@ export function Tooltip({
               lineHeight: 1.3,
               padding: '5px 9px',
               borderRadius: 7,
-              boxShadow: '0 6px 18px rgba(15,16,17,0.22)',
+              // A small hint bubble carries less visual weight than a
+              // dropdown/modal (ENG-790) — sh-2, not sh-popup.
+              boxShadow: 'var(--sh-2)',
               maxWidth: 240,
               userSelect: 'none',
             }}

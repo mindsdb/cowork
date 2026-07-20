@@ -50,9 +50,11 @@ function _ensureMenuCss() {
 .cw-menu {
   min-width: var(--cw-menu-w, 200px);
   background: var(--surface);
-  border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(15,16,17,0.28), 0 1px 0 rgba(15,16,17,0.04);
+  /* No border — the popup floats on --sh-popup alone (ENG-790). The
+     token's own 1px bottom-edge component gives it a crisp physical
+     edge without the older heavier double-edge (border + dark blur). */
+  box-shadow: var(--sh-popup);
   padding: 4px 0;
   outline: none;
   font-family: var(--font-body);

@@ -344,8 +344,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
           <Popover.Positioner side="bottom" align="end" sideOffset={8} style={{ zIndex: 90 }}>
             <Popover.Popup style={{
               width: 'min(380px, 92vw)',
-              background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14,
-              boxShadow: '0 16px 44px rgba(15,16,17,0.26)', overflow: 'hidden',
+              // No border — floats on --sh-popup alone (ENG-790), same
+              // treatment as ui/Menu.jsx's dropdown popups.
+              background: 'var(--surface)', borderRadius: 14,
+              boxShadow: 'var(--sh-popup)', overflow: 'hidden',
               fontFamily: FONT_BODY, outline: 'none',
             }}>
               {/* NOT PUBLISHED — Share to the Web */}

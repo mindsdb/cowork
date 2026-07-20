@@ -4229,7 +4229,7 @@ function AppCore() {
               padding: '10px 14px', borderRadius: 8,
               background: 'var(--surface)',
               border: `1px solid ${err.permanent ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--warning, #f5a623) 40%, transparent)'}`,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              boxShadow: 'var(--sh-popup)',
               fontSize: 13, color: 'var(--ink)',
               display: 'flex', alignItems: 'flex-start', gap: 10,
             }}>

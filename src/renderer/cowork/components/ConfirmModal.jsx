@@ -56,7 +56,7 @@ export function ConfirmModal({
           background: 'var(--surface)',
           border: '1px solid var(--line)',
           borderRadius: 12,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.25), 0 1px 0 rgba(15,16,17,0.04)',
+          boxShadow: 'var(--sh-modal)',
           padding: '20px 22px 16px',
           fontFamily: "'Inter', sans-serif",
         }}
