@@ -1,0 +1,79 @@
+name: Main-process change notice
+
+# Informational PR comment: src/main/ (Electron main process) can't be
+# delivered via OTA hot update like src/renderer/ — it only reaches users
+# through a full reinstall. This nudges authors to double check the code
+# belongs there, without blocking the PR.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: main-process-notice-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comment if src/main changed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- main-process-hot-update-notice -->';
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+            const touchesMain = files.some((f) => f.filename.startsWith('src/main/'));
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body.includes(marker));
+
+            if (!touchesMain) {
+              if (existing) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                });
+              }
+              return;
+            }
+
+            const body = [
+              marker,
+              '⚠️ **This PR touches `src/main/`** (the Electron main process).',
+              '',
+              "Unlike `src/renderer/`, main-process code can't be delivered via OTA hot update — it only reaches users through a full app reinstall. If what you're adding doesn't strictly need main-process privileges (Node/IPC/OS access), consider whether it belongs in `src/renderer/` instead so it can ship faster.",
+              '',
+              '_Automated notice — see `CLAUDE.md` § OTA updates._',
+            ].join('\n');
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
