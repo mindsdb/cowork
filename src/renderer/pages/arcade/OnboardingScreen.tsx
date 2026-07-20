@@ -93,6 +93,13 @@ export interface PersistDeps {
   syncHarness: () => Promise<void>;
 }
 
+export type PersistResult =
+  | { ok: true }
+  // dbSyncFailed marks specifically a `syncToDb` false, as opposed to a
+  // thrown error — so callers can tell "the write was rejected/unreachable"
+  // apart from a real .env/IPC failure (see resolveFinalizeOutcome).
+  | { ok: false; error: string; dbSyncFailed?: true };
+
 // Run the onboarding persist sequence and report whether the config actually
 // landed. The .env write is best-effort (host.saveSettings tolerates the web
 // loopback 403; ENG-817), but the DB write is AUTHORITATIVE — a `false` there
@@ -102,13 +109,17 @@ export interface PersistDeps {
 export async function persistOnboarding(
   deps: PersistDeps,
   lines: string[],
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<PersistResult> {
   const GENERIC = 'Could not save your settings. Please try again.';
   try {
     await deps.saveSettings(lines.join('\n'));
     const dbOk = await deps.syncToDb(lines);
     if (!dbOk) {
-      return { ok: false, error: 'Could not save your settings to the server. Please try again.' };
+      return {
+        ok: false,
+        error: 'Could not save your settings to the server. Please try again.',
+        dbSyncFailed: true,
+      };
     }
     // syncModels writes the model keys the bulk DB sync intentionally skips
     // (ENG-739); harness records the chosen cartridge. Both best-effort.
@@ -118,6 +129,31 @@ export async function persistOnboarding(
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message ? e.message : GENERIC };
   }
+}
+
+export type FinalizeOutcome =
+  | { action: 'success' }
+  | { action: 'defer' }
+  | { action: 'error'; error: string };
+
+// Decide what finalizeSettings should do with a persistOnboarding result. A
+// `dbSyncFailed` result while the server isn't installed/ready yet is the
+// EXPECTED shape of the onboarding/install race (the DB endpoint has no one
+// to answer until the server finishes starting) — defer rather than error,
+// so the caller proceeds to onComplete and lets handleAuthComplete's own
+// checkInstall gate route to the setup screen (handlePostAuth retries this
+// same sync once install finishes). Any other failure — a real .env/IPC
+// error, or a DB sync that failed against an ALREADY-ready server — is a
+// genuine, user-facing failure. Exported pure so the branch is unit-tested
+// without an install IPC round-trip.
+export function resolveFinalizeOutcome(
+  res: PersistResult,
+  installStatus: { antonInstalled: boolean; serverDepsReady: boolean } | null,
+): FinalizeOutcome {
+  if (res.ok) return { action: 'success' };
+  const notReady = Boolean(installStatus) && (!installStatus!.antonInstalled || !installStatus!.serverDepsReady);
+  if (res.dbSyncFailed && notReady) return { action: 'defer' };
+  return { action: 'error', error: res.error };
 }
 
 // The provider→validation-target and provider→env-vars mappings are
@@ -277,9 +313,12 @@ export default function OnboardingScreen({
   };
 
   // Persist the built settings lines and advance to success — but only if the
-  // authoritative DB write succeeded. A failed DB sync (or a real .env error)
-  // surfaces as a retryable error instead of advancing to success over an
-  // unsaved config. Shared by every finalize path so they can't drift.
+  // authoritative DB write succeeded. A failed DB sync while the server isn't
+  // installed/ready yet is deferred (not errored) to onComplete, whose own
+  // checkInstall gate correctly routes to the setup screen instead of
+  // stranding the user on a "could not save" error mid-download (see
+  // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
+  // Shared by every finalize path so they can't drift.
   const finalizeSettings = async (lines: string[]) => {
     const res = await persistOnboarding(
       {
@@ -290,10 +329,18 @@ export default function OnboardingScreen({
       },
       lines,
     );
-    if (!res.ok) {
+    const installStatus = res.ok ? null : await host.checkInstall().catch(() => null);
+    const outcome = resolveFinalizeOutcome(res, installStatus);
+    if (outcome.action === 'error') {
       finalizedRef.current = false; // allow a retry
       setPhase('error');
-      setErrorMsg(res.error);
+      setErrorMsg(outcome.error);
+      return;
+    }
+    if (outcome.action === 'defer') {
+      // Server isn't up yet — skip the "success" flash (misleading here) and
+      // let onComplete's checkInstall gate show the setup/install screen.
+      onComplete();
       return;
     }
     setPhase('success');
