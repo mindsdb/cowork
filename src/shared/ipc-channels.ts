@@ -70,6 +70,7 @@ export const IPC = {
   BROWSER_NEW_TAB: 'browser:new-tab',
   BROWSER_CLOSE_TAB: 'browser:close-tab',
   BROWSER_ACTIVATE_TAB: 'browser:activate-tab',
+  BROWSER_PIN_TAB: 'browser:pin-tab',
   BROWSER_NAVIGATE: 'browser:navigate',
   BROWSER_GO_BACK: 'browser:go-back',
   BROWSER_GO_FORWARD: 'browser:go-forward',

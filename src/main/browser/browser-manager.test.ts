@@ -207,7 +207,7 @@ describe('registerBrowserHandlers', () => {
     await loadManager();
     for (const ch of [
       'browser:get-state', 'browser:set-visible', 'browser:set-bounds', 'browser:new-tab',
-      'browser:close-tab', 'browser:activate-tab', 'browser:navigate', 'browser:go-back',
+      'browser:close-tab', 'browser:activate-tab', 'browser:pin-tab', 'browser:navigate', 'browser:go-back',
       'browser:go-forward', 'browser:reload', 'browser:stop', 'browser:open-devtools',
       'browser:top-sites', 'browser:import-chrome',
     ]) {
@@ -348,6 +348,32 @@ describe('tabs', () => {
 
     // Closing an unknown tab is a graceful {ok:false}.
     expect(await invoke('browser:close-tab', { tabId: 'ghost' })).toEqual({ ok: false });
+  });
+
+  it('pinned tabs cannot be closed until unpinned (close guard + pin round-trip)', async () => {
+    const mgr = await loadManager();
+    const { tabId } = (await invoke('browser:new-tab', { url: 'https://a.com' })) as { tabId: string };
+
+    expect(await invoke('browser:pin-tab', { tabId, pinned: true })).toEqual({ ok: true });
+    expect(mgr.getBrowserState().tabs[0].pinned).toBe(true);
+
+    // Close is refused — for the user AND for the agent path (same action).
+    expect(await invoke('browser:close-tab', { tabId })).toEqual({ ok: false });
+    expect(mgr.getBrowserState().tabs).toHaveLength(1);
+
+    // The flag survives persistence (tabs.json round-trip).
+    await mgr.shutdownBrowser();
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(h.home, 'browser', 'tabs.json'), 'utf-8'),
+    ) as { tabs: Array<{ id: string; pinned?: boolean }> };
+    expect(persisted.tabs[0]).toMatchObject({ id: tabId, pinned: true });
+
+    // Unpin re-enables close.
+    const mgr2 = await loadManager();
+    expect(await invoke('browser:pin-tab', { tabId, pinned: false })).toEqual({ ok: true });
+    expect(await invoke('browser:close-tab', { tabId })).toEqual({ ok: true });
+    expect(mgr2.getBrowserState().tabs).toEqual([]);
+    await mgr2.shutdownBrowser();
   });
 });
 

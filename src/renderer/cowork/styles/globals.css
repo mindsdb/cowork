@@ -5458,6 +5458,11 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 }
 /* Inactive tabs float above the strip baseline; active sits flush. */
 .browser-tab:not(.is-active) { margin-bottom: 4px; }
+/* Pinned: compact favicon-only well (Chrome semantics — no title, no close). */
+.browser-tab--pinned {
+  flex: 0 0 auto; width: 30px; min-width: 30px; max-width: 30px;
+  justify-content: center; padding: 0;
+}
 .browser-tab__title {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

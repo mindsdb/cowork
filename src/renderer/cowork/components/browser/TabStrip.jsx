@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Spinner, Tooltip } from '../ui';
+import { Menu, Spinner, Tooltip } from '../ui';
 // Namespace import + typeof guards — see useBrowserState.js.
 import * as host from '../../../platform/host';
 
@@ -59,6 +59,8 @@ export default function TabStrip({
   const tabRefs = useRef(new Map());
   // Edge fade (CSS mask) only once the tabs actually overflow.
   const [scrollable, setScrollable] = useState(false);
+  // Right-click tab context menu: {x, y, tab} or null.
+  const [tabMenu, setTabMenu] = useState(null);
 
   useEffect(() => {
     const el = stripRef.current;
@@ -69,6 +71,27 @@ export default function TabStrip({
     ro.observe(el);
     return () => ro.disconnect();
   }, [tabs.length]);
+
+  const openTabMenu = (e, tab) => {
+    e.preventDefault();
+    setTabMenu({ x: e.clientX, y: e.clientY, tab });
+  };
+
+  const menuItems = tabMenu
+    ? [
+        {
+          icon: tabMenu.tab.pinned ? Ico.close(14) : Ico.tabPlus(14),
+          label: tabMenu.tab.pinned ? 'Unpin tab' : 'Pin tab',
+          onClick: () => host.browserPinTab?.(tabMenu.tab.id, !tabMenu.tab.pinned),
+        },
+        {
+          icon: Ico.close(14),
+          label: 'Close tab',
+          disabled: tabMenu.tab.pinned,
+          onClick: () => { if (!tabMenu.tab.pinned) onClose(tabMenu.tab.id); },
+        },
+      ]
+    : [];
 
   return (
     <div style={{
@@ -96,6 +119,36 @@ export default function TabStrip({
         {tabs.map((tab) => {
           const active = tab.id === activeTabId;
           const label = tabLabel(tab);
+
+          // Pinned: compact favicon-only well — no title, no close button,
+          // middle-click won't close it (Chrome semantics; main also refuses).
+          if (tab.pinned) {
+            return (
+              <Tooltip key={tab.id} content={`${label} — pinned`} delay={400}>
+                <div
+                  role="tab"
+                  aria-selected={active}
+                  tabIndex={0}
+                  className={`browser-tab browser-tab--pinned${active ? ' is-active' : ''}`}
+                  title=""
+                  onClick={() => onActivate(tab.id)}
+                  onContextMenu={(e) => openTabMenu(e, tab)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(tab.id); }
+                  }}
+                >
+                  <Favicon tab={tab} />
+                  {tab.isAgentControlled && (
+                    <span
+                      aria-label="Agent is driving this tab"
+                      style={{ position: 'absolute', right: 2, bottom: 2, width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }}
+                    />
+                  )}
+                </div>
+              </Tooltip>
+            );
+          }
+
           return (
             <div
               key={tab.id}
@@ -107,6 +160,7 @@ export default function TabStrip({
               style={{ flex: tabs.length > 1 ? '0 1 200px' : '0 1 240px', minWidth: 72 }}
               title={tab.url ? `${label} — ${tab.url}` : label}
               onClick={() => onActivate(tab.id)}
+              onContextMenu={(e) => openTabMenu(e, tab)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(tab.id); }
                 else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -117,7 +171,7 @@ export default function TabStrip({
                 }
               }}
               onAuxClick={(e) => {
-                // Middle-click closes, like Chrome.
+                // Middle-click closes, like Chrome (main refuses pinned tabs).
                 if (e.button === 1) { e.preventDefault(); onClose(tab.id); }
               }}
             >
@@ -174,6 +228,15 @@ export default function TabStrip({
           {Ico.panelRight(15)}
         </button>
       </Tooltip>
+
+      {tabMenu && (
+        <Menu
+          open
+          anchor={{ getBoundingClientRect: () => new DOMRect(tabMenu.x, tabMenu.y, 0, 0) }}
+          onClose={() => setTabMenu(null)}
+          items={menuItems}
+        />
+      )}
     </div>
   );
 }

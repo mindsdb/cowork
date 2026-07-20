@@ -9,6 +9,7 @@ import {
   addTab,
   removeTab,
   activateTab,
+  setTabPinned,
   patchTab,
   topSiteKey,
   mergeTopSites,
@@ -109,6 +110,47 @@ describe('tab model transitions', () => {
     s = addTab(s, c, true);
     expect(s.activeTabId).toBe('c');
     expect(s.tabs.map((t) => t.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('setTabPinned moves the tab to the pinned/unpinned boundary', () => {
+    let s = emptyBrowserState();
+    for (const id of ['a', 'b', 'c', 'd']) s = addTab(s, createTabModel({ id }), false);
+
+    // Pin 'c' → last of the pinned region, ahead of everything unpinned.
+    s = setTabPinned(s, 'c', true);
+    expect(s.tabs.map((t) => t.id)).toEqual(['c', 'a', 'b', 'd']);
+    expect(s.tabs[0].pinned).toBe(true);
+
+    // Pin 'b' → appends after the pinned region, keeps relative order.
+    s = setTabPinned(s, 'b', true);
+    expect(s.tabs.map((t) => t.id)).toEqual(['c', 'b', 'a', 'd']);
+
+    // Pinning an already-pinned tab is a no-op (identity, not a copy).
+    const same = setTabPinned(s, 'b', true);
+    expect(same).toBe(s);
+
+    // Unpin 'c' → first of the unpinned region, 'b' stays pinned in front.
+    s = setTabPinned(s, 'c', false);
+    expect(s.tabs.map((t) => t.id)).toEqual(['b', 'c', 'a', 'd']);
+    expect(s.tabs[1].pinned).toBe(false);
+
+    // Unknown id is a no-op.
+    expect(setTabPinned(s, 'nope', true)).toBe(s);
+  });
+
+  it('createTabModel defaults pinned to false and sanitizePersistedTabs keeps it', () => {
+    expect(createTabModel().pinned).toBe(false);
+    const sanitized = sanitizePersistedTabs({
+      tabs: [
+        { id: 'a', url: 'https://a.com', title: 'A', favicon: null, pinned: true },
+        { id: 'b', url: 'https://b.com', title: 'B', favicon: null },
+      ],
+      activeTabId: 'a',
+    });
+    expect(sanitized?.tabs).toEqual([
+      { id: 'a', url: 'https://a.com', title: 'A', favicon: null, pinned: true },
+      { id: 'b', url: 'https://b.com', title: 'B', favicon: null, pinned: false },
+    ]);
   });
 
   it('removeTab activates the nearest survivor (right, else left, else null)', () => {
@@ -305,9 +347,9 @@ describe('persistence validation', () => {
     };
     expect(sanitizePersistedTabs(good)).toEqual({
       tabs: [
-        { id: 'a', url: 'https://a.com', title: 'A', favicon: 'https://a.com/f.ico' },
-        { id: 'b', url: 'https://b.com', title: 'B', favicon: null },
-        { id: 'c', url: '', title: '', favicon: null },
+        { id: 'a', url: 'https://a.com', title: 'A', favicon: 'https://a.com/f.ico', pinned: false },
+        { id: 'b', url: 'https://b.com', title: 'B', favicon: null, pinned: false },
+        { id: 'c', url: '', title: '', favicon: null, pinned: false },
       ],
       activeTabId: 'a',
     });
@@ -323,7 +365,7 @@ describe('persistence validation', () => {
   it('sanitizePersistedTabs keeps a valid activeTabId and handles empty tab lists', () => {
     expect(
       sanitizePersistedTabs({ tabs: [{ id: 'a', url: '', title: '', favicon: null }], activeTabId: 'a' }),
-    ).toEqual({ tabs: [{ id: 'a', url: '', title: '', favicon: null }], activeTabId: 'a' });
+    ).toEqual({ tabs: [{ id: 'a', url: '', title: '', favicon: null, pinned: false }], activeTabId: 'a' });
     expect(sanitizePersistedTabs({ tabs: [], activeTabId: 'a' })).toEqual({ tabs: [], activeTabId: null });
   });
 
@@ -340,8 +382,8 @@ describe('persistence validation', () => {
     };
     expect(sanitizePersistedTabs(dirty)).toEqual({
       tabs: [
-        { id: 'good', url: 'https://a.com', title: 'A', favicon: null },
-        { id: 'blank', url: '', title: '', favicon: null },
+        { id: 'good', url: 'https://a.com', title: 'A', favicon: null, pinned: false },
+        { id: 'blank', url: '', title: '', favicon: null, pinned: false },
       ],
       activeTabId: 'good',
     });
