@@ -384,3 +384,64 @@ export function dedupeDownloadName(filename: string, exists: (name: string) => b
   }
   return `${base} (${Date.now()})${ext}`; // pathological — still unique-ish
 }
+
+// ---------------------------------------------------------------------------
+// Web apps (sidebar launcher): registry of named tools the user keeps around
+// ---------------------------------------------------------------------------
+
+export interface BrowserApp {
+  id: string;      // 'app-' + slugified origin host
+  name: string;    // display name ('Gmail', 'Linear')
+  origin: string;  // https://mail.google.com — identity: one app per origin
+  createdAt: number;
+}
+
+/** 'https://mail.google.com' → 'app-mail.google.com'. Stable across launches
+ *  so tabs restore against the same app. */
+export function appIdForOrigin(origin: string): string {
+  return `app-${origin.replace(/^https?:\/\//i, '').replace(/[^a-z0-9.-]+/gi, '-').toLowerCase()}`;
+}
+
+/** 'https://mail.google.com' → 'Mail google' — editable guess for the add
+ *  dialog, not a guarantee (users rename via re-add). */
+export function suggestAppName(origin: string): string {
+  try {
+    const host = new URL(origin).hostname.replace(/^www\./, '');
+    const stem = host.replace(/\.(com|co|io|net|org|app|dev|ai|so|sh|me|co\.uk|com\.au|ac\.uk|gov|edu)$/i, '');
+    return stem
+      .split(/[.-]/)
+      .filter(Boolean)
+      .map((w) => w[0].toUpperCase() + w.slice(1))
+      .join(' ') || host;
+  } catch {
+    return origin;
+  }
+}
+
+/** A tab belongs to an app when their origins match exactly. */
+export function tabMatchesApp(tabUrl: string, origin: string): boolean {
+  try {
+    return new URL(tabUrl).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Validate a parsed apps.json into BrowserApp[] (never throws; junk dropped). */
+export function sanitizeApps(raw: unknown): BrowserApp[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BrowserApp[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== 'object') continue;
+    const app = e as { id?: unknown; name?: unknown; origin?: unknown; createdAt?: unknown };
+    if (typeof app.origin !== 'string' || !/^https?:\/\//i.test(app.origin)) continue;
+    const origin = app.origin.replace(/\/+$/, '');
+    out.push({
+      id: typeof app.id === 'string' && app.id ? app.id : appIdForOrigin(origin),
+      name: typeof app.name === 'string' && app.name ? app.name : suggestAppName(origin),
+      origin,
+      createdAt: typeof app.createdAt === 'number' ? app.createdAt : 0,
+    });
+  }
+  return out;
+}

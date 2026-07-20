@@ -658,6 +658,66 @@ async function importChrome(): Promise<{ imported: number; profiles: string[]; e
 }
 
 // ---------------------------------------------------------------------------
+// Web apps registry (sidebar launcher; apps.json in browserDir)
+// ---------------------------------------------------------------------------
+
+let apps: logic.BrowserApp[] | null = null; // lazy-loaded
+
+function appsPath(): string {
+  return path.join(browserDir(), 'apps.json');
+}
+
+function loadApps(): logic.BrowserApp[] {
+  if (apps === null) apps = logic.sanitizeApps(readJson(appsPath()));
+  return apps;
+}
+
+function listApps(): logic.BrowserApp[] {
+  return loadApps();
+}
+
+function addApp(input: { name?: string; origin?: string }): logic.BrowserApp | { error: string } {
+  const raw = String(input.origin ?? '').trim();
+  if (!/^https?:\/\//i.test(raw)) return { error: 'origin must be an http(s) URL' };
+  const origin = new URL(raw).origin;
+  const current = loadApps();
+  const existing = current.find((a) => a.origin === origin);
+  if (existing) return existing; // idempotent — one app per origin
+  const app: logic.BrowserApp = {
+    id: logic.appIdForOrigin(origin),
+    name: String(input.name ?? '').trim() || logic.suggestAppName(origin),
+    origin,
+    createdAt: Date.now(),
+  };
+  apps = [...current, app];
+  writeJsonAtomic(appsPath(), apps);
+  return app;
+}
+
+function removeApp(appId: string): { ok: boolean } {
+  const current = loadApps();
+  if (!current.some((a) => a.id === appId)) return { ok: false };
+  apps = current.filter((a) => a.id !== appId);
+  writeJsonAtomic(appsPath(), apps);
+  return { ok: true };
+}
+
+/** Find-or-create: activate the tab already on the app's origin, else open a
+ *  fresh pinned tab there. The sidebar's "Email is a place, not a tab". */
+async function openApp(appId: string): Promise<{ tabId: string; created: boolean } | { error: string }> {
+  const app = loadApps().find((a) => a.id === appId);
+  if (!app) return { error: `no such app: ${appId}` };
+  const existing = model.tabs.find((t) => logic.tabMatchesApp(t.url, app.origin));
+  if (existing) {
+    await activateTabById(existing.id);
+    return { tabId: existing.id, created: false };
+  }
+  const { tabId } = await newTab({ url: app.origin, activate: true });
+  await setTabPinned(tabId, true);
+  return { tabId, created: true };
+}
+
+// ---------------------------------------------------------------------------
 // Agent bridge facade
 // ---------------------------------------------------------------------------
 
@@ -1042,6 +1102,16 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
   );
   ipcMain.handle(IPC.BROWSER_PIN_TAB, (_e, payload: { tabId?: string; pinned?: boolean }) =>
     payload?.tabId ? setTabPinned(payload.tabId, payload.pinned === true) : { ok: false },
+  );
+  ipcMain.handle(IPC.BROWSER_APPS_LIST, () => listApps());
+  ipcMain.handle(IPC.BROWSER_APPS_ADD, (_e, payload: { name?: string; origin?: string }) =>
+    addApp(payload ?? {}),
+  );
+  ipcMain.handle(IPC.BROWSER_APPS_REMOVE, (_e, payload: { appId?: string }) =>
+    payload?.appId ? removeApp(payload.appId) : { ok: false },
+  );
+  ipcMain.handle(IPC.BROWSER_OPEN_APP, (_e, payload: { appId?: string }) =>
+    payload?.appId ? openApp(payload.appId) : { error: 'appId required' },
   );
   ipcMain.handle(IPC.BROWSER_NAVIGATE, async (_e, payload: { tabId?: string; url?: string }) => {
     if (!payload?.url) return;

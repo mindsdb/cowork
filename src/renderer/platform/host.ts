@@ -688,6 +688,40 @@ export async function browserPinTab(tabId: string, pinned: boolean): Promise<voi
   }
 }
 
+export interface BrowserAppInfo {
+  id: string;
+  name: string;
+  origin: string;
+  createdAt: number;
+}
+
+export async function browserAppsList(): Promise<BrowserAppInfo[]> {
+  if (isElectron && typeof bridge.browserAppsList === 'function') {
+    return bridge.browserAppsList();
+  }
+  return [];
+}
+
+export async function browserAppsAdd(app: { name?: string; origin?: string }): Promise<BrowserAppInfo | { error: string }> {
+  if (isElectron && typeof bridge.browserAppsAdd === 'function') {
+    return bridge.browserAppsAdd(app);
+  }
+  return { error: 'unsupported' };
+}
+
+export async function browserAppsRemove(appId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserAppsRemove === 'function') {
+    await bridge.browserAppsRemove(appId);
+  }
+}
+
+export async function browserOpenApp(appId: string): Promise<{ tabId: string; created: boolean } | { error: string }> {
+  if (isElectron && typeof bridge.browserOpenApp === 'function') {
+    return bridge.browserOpenApp(appId);
+  }
+  return { error: 'unsupported' };
+}
+
 export async function browserNavigate(tabId: string, url: string): Promise<void> {
   if (isElectron && typeof bridge.browserNavigate === 'function') {
     await bridge.browserNavigate(tabId, url);
@@ -803,6 +837,10 @@ export const host = {
   browserCloseTab,
   browserActivateTab,
   browserPinTab,
+  browserAppsList,
+  browserAppsAdd,
+  browserAppsRemove,
+  browserOpenApp,
   browserNavigate,
   browserGoBack,
   browserGoForward,
