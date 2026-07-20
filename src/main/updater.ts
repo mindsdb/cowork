@@ -10,7 +10,7 @@ import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollback
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer } from './server-updater';
 import { isServerRunning } from './server-process';
-import { decideUpdateApply } from './update-logic';
+import { decideUpdateApply, summarizeUpdateCheck, type UpdateCheckSummary } from './update-logic';
 
 const UPDATE_POLL_MS = 4 * 60 * 60 * 1000; // 4 hours
 // How long a freshly-activated UI bundle has to finish loading before we treat
@@ -129,15 +129,40 @@ async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi:
   return uiApplied || (applyServer && serverOk);
 }
 
+// On-demand "Check for updates" (ENG-671). Runs the same detection the periodic
+// poll does — UI (OTA) and server in parallel — but applies nothing and returns
+// a display-ready summary. It reports the two together because the apply path
+// updates both (see summarizeUpdateCheck).
+//
+// A user-triggered check reports "couldn't check" when the network is
+// unreachable rather than a misleading "up to date", so we probe connectivity
+// first. hasInternet() targets the OTA manifest host — a stable proxy for "are
+// we online" that works in every build kind (the host is public even where OTA
+// itself is off). The individual checks already swallow their own network
+// errors and fail closed to "no update", so a failed check can never surface a
+// spurious update here.
+export async function checkForUpdates(): Promise<UpdateCheckSummary> {
+  if (!(await hasInternet())) {
+    return summarizeUpdateCheck({ offline: true, ui: { updateAvailable: false }, server: { updateAvailable: false } });
+  }
+  const [ui, server] = await Promise.all([checkForUIUpdate(), checkForServerUpdate()]);
+  return summarizeUpdateCheck({
+    ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion },
+    server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion },
+  });
+}
+
 // Register the update IPC handlers. Called unconditionally at startup so the
 // renderer can always check/apply (e.g. a manual "Check for updates" action) —
-// independent of packaging, DEV_MODE, or whether the server booted. Both
+// independent of packaging, DEV_MODE, or whether the server booted. checkForUpdates(),
 // checkForUIUpdate() and applyUIUpdate() self-guard (OTA disable + manifest),
 // so they're safe to expose in every build.
 export function registerUpdateHandlers(getWindow: GetWindow) {
   const { ipcMain } = require('electron');
 
-  ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUIUpdate());
+  // Unified check: UI + server detection, no apply. The renderer's "Check for
+  // updates" control surfaces the result and offers apply via UI_UPDATE_APPLY.
+  ipcMain.handle(IPC.UI_UPDATE_CHECK, () => checkForUpdates());
   ipcMain.handle(IPC.UI_UPDATE_APPLY, async () => {
     // A manual apply always re-checks the server so it can't drift from the UI.
     const server = await checkForServerUpdate();

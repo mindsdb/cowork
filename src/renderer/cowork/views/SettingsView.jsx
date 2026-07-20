@@ -761,6 +761,12 @@ export default function SettingsView({
   const [antonVersion, setAntonVersion] = useState('');
   const [showVersionDetails, setShowVersionDetails] = useState(false);
   const [versionCopied, setVersionCopied] = useState(false);
+  // ENG-671 — on-demand "Check for updates". `checkResult` is null (idle) or a
+  // summary { ok, offline, updateAvailable, uiUpdateAvailable,
+  // serverUpdateAvailable, uiVersion?, serverVersion? } from host.checkForUpdates().
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [checkResult, setCheckResult] = useState(null);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -832,6 +838,38 @@ export default function SettingsView({
       setKeychainPref(!next);
     }
   };
+  // ENG-671 — run the on-demand update check. Detection only; the result drives
+  // the status line and (when an update is available) the "Update now" button.
+  const handleCheckForUpdates = async () => {
+    if (checkingUpdates || applyingUpdate) return;
+    setCheckingUpdates(true);
+    setCheckResult(null);
+    try {
+      setCheckResult(await host.checkForUpdates());
+    } catch {
+      // A thrown check is an "error" outcome distinct from offline.
+      setCheckResult({ ok: false, offline: false, updateAvailable: false });
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  // Apply now, without waiting for the next launch. Updates otherwise auto-apply
+  // only at boot (ENG-858); the mid-session periodic check never auto-applies,
+  // so this button is how a user acts on a detected update immediately. Runs the
+  // same server-first + UI apply as the boot check; the window reloads when it
+  // lands (App.jsx listens for UI_UPDATE_STATUS), which tears this view down —
+  // so there's no success state to render here.
+  const handleApplyUpdateNow = async () => {
+    if (applyingUpdate) return;
+    setApplyingUpdate(true);
+    try {
+      await host.applyUpdate();
+    } catch {
+      setApplyingUpdate(false);
+    }
+  };
+
   // Tracks whether any LLM-affecting setting changed since the last
   // successful Save. Used to skip provider tests on a no-op Save so a
   // user just toggling appearance doesn't pay the network round-trip.
@@ -2358,6 +2396,74 @@ export default function SettingsView({
             );
           })()}
         </Section>
+        {isElectron && (
+          <Section
+            title="Check for updates"
+            subtitle="Check now for a newer UI or server version and apply it without waiting for the next launch."
+          >
+            {(() => {
+              const r = checkResult;
+              // Status line shown beside the button once a check resolves.
+              // ok:false is an error/offline outcome — never "up to date".
+              let status = null;
+              if (!checkingUpdates && r) {
+                if (!r.ok) {
+                  status = r.offline
+                    ? "Couldn't check — you appear to be offline."
+                    : "Couldn't check for updates. Please try again.";
+                } else if (!r.updateAvailable) {
+                  status = "You're up to date.";
+                }
+              }
+              const isError = !!r && !r.ok;
+              const isUpToDate = !checkingUpdates && !!r && r.ok && !r.updateAvailable;
+              const available = !checkingUpdates && !!r && r.ok && r.updateAvailable;
+              const busy = checkingUpdates || applyingUpdate;
+              const parts = [];
+              if (available) {
+                if (r.serverUpdateAvailable) parts.push(`Server → ${r.serverVersion || 'new version'}`);
+                if (r.uiUpdateAvailable) parts.push(`UI → ${r.uiVersion || 'new version'}`);
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <Button
+                      onClick={handleCheckForUpdates}
+                      disabled={busy}
+                      style={{ minWidth: 150, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}
+                    >
+                      {checkingUpdates ? 'Checking…' : 'Check for updates'}
+                    </Button>
+                    {status && (
+                      <span style={{ fontSize: 12.5, color: isError ? 'var(--warning, #c47f00)' : 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {isUpToDate && Ico.check ? Ico.check(14) : null}
+                        {status}
+                      </span>
+                    )}
+                  </div>
+                  {available && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)', background: 'rgba(93,146,135,0.12)', borderRadius: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>Update available</span>
+                        {parts.length > 0 && (
+                          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{parts.join('   ')}</span>
+                        )}
+                      </div>
+                      <Button
+                        variant="primary"
+                        onClick={handleApplyUpdateNow}
+                        disabled={applyingUpdate}
+                        style={{ cursor: applyingUpdate ? 'default' : 'pointer', opacity: applyingUpdate ? 0.7 : 1 }}
+                      >
+                        {applyingUpdate ? 'Updating…' : 'Update now'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </Section>
+        )}
       </div>
     </SettingsSectionPanel>
   );

@@ -281,6 +281,58 @@ export function decideUpdateApply(input: {
 }
 
 // ---------------------------------------------------------------------------
+// On-demand "Check for updates" summary (ENG-671)
+// ---------------------------------------------------------------------------
+
+/** Display-ready result of a user-triggered "Check for updates" — the two
+ *  independent detection passes (UI/OTA and server) collapsed into one shape
+ *  the Settings panel can render directly. `ok:false` means the check itself
+ *  could not run (e.g. the network was unreachable); it is NOT "up to date". A
+ *  caller shows "you're up to date" only when `ok && !updateAvailable`. */
+export interface UpdateCheckSummary {
+  ok: boolean;
+  offline: boolean;
+  updateAvailable: boolean;
+  uiUpdateAvailable: boolean;
+  serverUpdateAvailable: boolean;
+  uiVersion?: string;    // available OTA bundle version (present iff uiUpdateAvailable)
+  serverVersion?: string; // available server version (present iff serverUpdateAvailable)
+}
+
+/** Collapse the UI and server detection passes into one summary.
+ *
+ *  `updateAvailable` is the OR of the two on purpose: the manual apply path
+ *  (`UI_UPDATE_APPLY`) updates server AND UI together, so "an update is
+ *  available" must be true when EITHER is — a UI-only view would report "up to
+ *  date" while a server update was pending.
+ *
+ *  Pure: the orchestrator does the network I/O, swallows per-check errors (each
+ *  check fails closed to "no update"), and passes the results plus an `offline`
+ *  flag here. That fail-closed contract is why this can't spuriously offer an
+ *  update on a failed check. */
+export function summarizeUpdateCheck(input: {
+  offline?: boolean;
+  ui: { updateAvailable: boolean; newVersion?: string };
+  server: { updateAvailable: boolean; latestVersion?: string };
+}): UpdateCheckSummary {
+  if (input.offline) {
+    return { ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false };
+  }
+  const uiUpdateAvailable = !!input.ui.updateAvailable;
+  const serverUpdateAvailable = !!input.server.updateAvailable;
+  const summary: UpdateCheckSummary = {
+    ok: true,
+    offline: false,
+    updateAvailable: uiUpdateAvailable || serverUpdateAvailable,
+    uiUpdateAvailable,
+    serverUpdateAvailable,
+  };
+  if (uiUpdateAvailable && input.ui.newVersion) summary.uiVersion = input.ui.newVersion;
+  if (serverUpdateAvailable && input.server.latestVersion) summary.serverVersion = input.server.latestVersion;
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
 // UI OTA enablement (build-channel / env gate)
 // ---------------------------------------------------------------------------
 

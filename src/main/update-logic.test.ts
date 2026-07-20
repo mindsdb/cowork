@@ -20,6 +20,7 @@ import {
   uiServerCompatSkipReason,
   decideStartWait,
   startFailureMessage,
+  summarizeUpdateCheck,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -665,5 +666,64 @@ describe('startFailureMessage', () => {
   it('distinguishes "still starting" from "never started"', () => {
     expect(startFailureMessage({ kind: 'timeout', exitCode: null, spawnError: null, elapsedMs: 90_000 }))
       .toBe('The backend was still starting after 90s and never answered /health.');
+  });
+});
+
+describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
+  it('reports offline as ok:false (not "up to date")', () => {
+    const r = summarizeUpdateCheck({ offline: true, ui: { updateAvailable: false }, server: { updateAvailable: false } });
+    expect(r).toEqual({ ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false });
+  });
+
+  it('reports up to date when both passes are clean', () => {
+    const r = summarizeUpdateCheck({ ui: { updateAvailable: false }, server: { updateAvailable: false } });
+    expect(r.ok).toBe(true);
+    expect(r.offline).toBe(false);
+    expect(r.updateAvailable).toBe(false);
+    expect(r.uiVersion).toBeUndefined();
+    expect(r.serverVersion).toBeUndefined();
+  });
+
+  it('surfaces a server-only update (available even with no UI update)', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: false },
+      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
+    });
+    expect(r.updateAvailable).toBe(true);
+    expect(r.serverUpdateAvailable).toBe(true);
+    expect(r.uiUpdateAvailable).toBe(false);
+    expect(r.serverVersion).toBe('0.26.8.1.2');
+    expect(r.uiVersion).toBeUndefined();
+  });
+
+  it('surfaces a UI-only update', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: true, newVersion: '1.26.7.20.3' },
+      server: { updateAvailable: false },
+    });
+    expect(r.updateAvailable).toBe(true);
+    expect(r.uiUpdateAvailable).toBe(true);
+    expect(r.serverUpdateAvailable).toBe(false);
+    expect(r.uiVersion).toBe('1.26.7.20.3');
+    expect(r.serverVersion).toBeUndefined();
+  });
+
+  it('carries both versions when UI and server both update', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: true, newVersion: '1.26.7.20.3' },
+      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
+    });
+    expect(r.updateAvailable).toBe(true);
+    expect(r.uiVersion).toBe('1.26.7.20.3');
+    expect(r.serverVersion).toBe('0.26.8.1.2');
+  });
+
+  it('omits a version string when the pass flags available but reports no version', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: true },
+      server: { updateAvailable: false },
+    });
+    expect(r.uiUpdateAvailable).toBe(true);
+    expect(r.uiVersion).toBeUndefined();
   });
 });
