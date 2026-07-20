@@ -150,7 +150,7 @@ function persistTabs(): void {
     // error/isLoading are runtime-only — never persisted. Full urls (query
     // strings included) are kept here on purpose: session restore must reopen
     // the exact page. history.json stays redacted (origin + path only).
-    tabs: model.tabs.map(({ id, url, title, favicon }) => ({ id, url, title, favicon })),
+    tabs: model.tabs.map(({ id, url, title, favicon, pinned }) => ({ id, url, title, favicon, pinned })),
     activeTabId: model.activeTabId,
   };
   writeJsonAtomic(tabsPath(), persisted);
@@ -529,14 +529,27 @@ async function newTab(opts: { url?: string; activate?: boolean }): Promise<{ tab
 
 async function closeTab(tabId?: string): Promise<{ ok: boolean }> {
   const id = tabId ?? model.activeTabId;
-  if (!id || !model.tabs.some((t) => t.id === id)) return { ok: false };
-  if (attachedTabId === id) detach(); // remove the native view BEFORE destroying it
-  const timer = agentTimers.get(id);
+  const tab = id ? model.tabs.find((t) => t.id === id) : undefined;
+  if (!tab) return { ok: false };
+  // Pinned tabs can't be closed (Chrome: no close button, ⌘W skips them) —
+  // unpin first. Applies to agent closes too, or a sloppy agent could kill
+  // the user's email tab.
+  if (tab.pinned) return { ok: false };
+  if (attachedTabId === tab.id) detach(); // remove the native view BEFORE destroying it
+  const timer = agentTimers.get(tab.id);
   if (timer) clearTimeout(timer);
-  agentTimers.delete(id);
-  model = logic.removeTab(model, id);
-  destroyView(id);
+  agentTimers.delete(tab.id);
+  model = logic.removeTab(model, tab.id);
+  destroyView(tab.id);
   if (wantVisible && model.activeTabId) attach(model.activeTabId);
+  schedulePush();
+  schedulePersist();
+  return { ok: true };
+}
+
+async function setTabPinned(tabId: string, pinned: boolean): Promise<{ ok: boolean }> {
+  if (!model.tabs.some((t) => t.id === tabId)) return { ok: false };
+  model = logic.setTabPinned(model, tabId, pinned);
   schedulePush();
   schedulePersist();
   return { ok: true };
@@ -1026,6 +1039,9 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
   );
   ipcMain.handle(IPC.BROWSER_ACTIVATE_TAB, (_e, payload: { tabId?: string }) =>
     payload?.tabId ? activateTabById(payload.tabId) : { ok: false },
+  );
+  ipcMain.handle(IPC.BROWSER_PIN_TAB, (_e, payload: { tabId?: string; pinned?: boolean }) =>
+    payload?.tabId ? setTabPinned(payload.tabId, payload.pinned === true) : { ok: false },
   );
   ipcMain.handle(IPC.BROWSER_NAVIGATE, async (_e, payload: { tabId?: string; url?: string }) => {
     if (!payload?.url) return;

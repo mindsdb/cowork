@@ -682,6 +682,12 @@ export async function browserActivateTab(tabId: string): Promise<void> {
   }
 }
 
+export async function browserPinTab(tabId: string, pinned: boolean): Promise<void> {
+  if (isElectron && typeof bridge.browserPinTab === 'function') {
+    await bridge.browserPinTab(tabId, pinned);
+  }
+}
+
 export async function browserNavigate(tabId: string, url: string): Promise<void> {
   if (isElectron && typeof bridge.browserNavigate === 'function') {
     await bridge.browserNavigate(tabId, url);
@@ -796,6 +802,7 @@ export const host = {
   browserNewTab,
   browserCloseTab,
   browserActivateTab,
+  browserPinTab,
   browserNavigate,
   browserGoBack,
   browserGoForward,

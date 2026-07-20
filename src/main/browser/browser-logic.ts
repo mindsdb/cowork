@@ -75,6 +75,7 @@ export function createTabModel(partial?: Partial<BrowserTabInfo>): BrowserTabInf
     title: '',
     url: '',
     favicon: null,
+    pinned: false,
     isLoading: false,
     loadProgress: 0,
     canGoBack: false,
@@ -115,6 +116,19 @@ export function removeTab(state: BrowserState, tabId: string): BrowserState {
 export function activateTab(state: BrowserState, tabId: string): BrowserState {
   if (!state.tabs.some((t) => t.id === tabId)) return state;
   return { ...state, activeTabId: tabId };
+}
+
+/** Pin/unpin a tab. The tab moves to the pinned/unpinned boundary: pinning
+ *  makes it the LAST pinned tab, unpinning the FIRST unpinned one (Chrome
+ *  behavior — both are the same slot, only the flag differs). */
+export function setTabPinned(state: BrowserState, tabId: string, pinned: boolean): BrowserState {
+  const tab = state.tabs.find((t) => t.id === tabId);
+  if (!tab || tab.pinned === pinned) return state;
+  const rest = state.tabs.filter((t) => t.id !== tabId);
+  return {
+    ...state,
+    tabs: [...rest.filter((t) => t.pinned), { ...tab, pinned }, ...rest.filter((t) => !t.pinned)],
+  };
 }
 
 export function patchTab(
@@ -290,7 +304,7 @@ export function historyToTopSites(history: HistoryEntry[]): TopSite[] {
 // ---------------------------------------------------------------------------
 
 export interface PersistedTabs {
-  tabs: Array<{ id: string; url: string; title: string; favicon: string | null }>;
+  tabs: Array<{ id: string; url: string; title: string; favicon: string | null; pinned: boolean }>;
   activeTabId: string | null;
 }
 
@@ -315,6 +329,7 @@ export function sanitizePersistedTabs(raw: unknown): PersistedTabs | null {
       url,
       title: typeof tab.title === 'string' ? tab.title : '',
       favicon: sanitizeFaviconUrl(typeof tab.favicon === 'string' ? tab.favicon : null),
+      pinned: (tab as { pinned?: unknown }).pinned === true,
     });
   }
   const activeTabId =
