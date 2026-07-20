@@ -212,6 +212,12 @@ export default function OnboardingScreen({
   // = still checking; only meaningful in web (Electron uses the SSO flow, so it
   // starts false and takes the normal path).
   const [webConfigured, setWebConfigured] = useState<boolean | null>(host.isWeb ? null : false);
+  // True once the keycloak auto-finalize path (authenticated standalone/localhost)
+  // takes over. Tracked as STATE — not the finalizedRef ref — so the boot returns
+  // below yield to it deterministically; a ref mutation doesn't re-render, which
+  // let the provider form flash / the consent button go inert during
+  // finalization (PR #445 review). Hosted cloud skips keycloak, so it stays false.
+  const [autoFinalizing, setAutoFinalizing] = useState(false);
   useEffect(() => {
     if (!host.isWeb) return;
     let cancelled = false;
@@ -518,6 +524,7 @@ export default function OnboardingScreen({
     let cancelled = false;
     import('../../lib/keycloak').then(({ keycloak }) => {
       if (cancelled || finalizedRef.current || !keycloak.authenticated) return;
+      setAutoFinalizing(true); // drive the boot returns via state, not the ref
       // Provider only — the backend resolves the default model on load.
       saveFinal([
         'ANTON_TERMS_CONSENT=true',
@@ -536,9 +543,11 @@ export default function OnboardingScreen({
   }
 
   // ENG-912: web + already-configured → skip the provider/key flow (the key is
-  // seeded server-side and unreadable here). While the config_ready check is in
-  // flight, hold a minimal welcome so the provider form never flashes.
-  if (host.isWeb && webConfigured === null && !finalizedRef.current) {
+  // seeded server-side and unreadable here). Hold a minimal welcome while the
+  // config_ready check is in flight OR the keycloak auto-finalize path is
+  // completing, so neither the provider form nor the consent screen flashes.
+  // success/error fall through to their own screens below.
+  if (host.isWeb && (webConfigured === null || autoFinalizing) && phase !== 'success' && phase !== 'error') {
     return (
       <ArcadeShell title="Welcome" subtitle="getting things ready">
         <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
@@ -550,10 +559,9 @@ export default function OnboardingScreen({
   // Configured cloud instance: consent-only entry. The Terms/Privacy line is
   // kept so consent is still shown (never silently recorded); Continue records
   // it client-side (via onComplete → rememberTermsConsent) and enters the app.
-  // Skipped when finalizedRef is already set — a keycloak-authenticated user's
-  // auto-finalize effect (saveFinal) handles consent + entry itself, and that
-  // path resolves to the success screen below.
-  if (host.isWeb && webConfigured && !finalizedRef.current) {
+  // Skipped when auto-finalizing — a keycloak-authenticated user's auto-finalize
+  // effect handles consent + entry itself (loading above, then success below).
+  if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
     return (
       <ArcadeShell title="Welcome" subtitle="you're all set">
         <div className="arc-stack" style={{ gap: 18 }}>
