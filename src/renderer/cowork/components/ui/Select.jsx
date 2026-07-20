@@ -52,7 +52,12 @@ import { cn } from '../../lib/cn';
 const triggerVariants = cva(
   [
     'inline-flex items-center justify-between gap-[10px]',
-    'font-body bg-surface border border-line rounded-[var(--r)] text-ink',
+    // `border-solid` is load-bearing, not redundant: preflight is disabled
+    // (tailwind.config.js), so nothing resets the trigger `<button>`'s UA
+    // default `border-style: outset`. Tailwind's `border` sets only width,
+    // `border-line` only color — without this the 1px border renders
+    // beveled/uneven instead of a clean line.
+    'font-body bg-surface border border-solid border-line rounded-[var(--r)] text-ink',
     'cursor-pointer outline-none box-border',
     '[transition:border-color_.12s_ease,box-shadow_.15s_ease]',
     'hover:border-line-2',

@@ -64,6 +64,16 @@ describe('Select', () => {
     expect(screen.getByRole('combobox')).toHaveAttribute('aria-invalid', 'true');
   });
 
+  // Regression: preflight is disabled, so an explicit `border-solid` is the
+  // only thing overriding the trigger <button>'s UA-default `border-style:
+  // outset` (which rendered as a beveled/uneven 1px border in Chromium).
+  // happy-dom doesn't apply the UA default, so we can't assert the computed
+  // style here — guard the class that carries the fix instead.
+  it('keeps border-solid on the trigger so the border is not UA-default outset', () => {
+    render(<Harness />);
+    expect(screen.getByRole('combobox').className).toContain('border-solid');
+  });
+
   it('renders a separator between option groups', async () => {
     const user = userEvent.setup();
     render(<Harness />);
