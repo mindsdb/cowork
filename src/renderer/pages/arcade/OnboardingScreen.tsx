@@ -717,15 +717,15 @@ export default function OnboardingScreen({
               >
                 {phase === 'validating' ? 'One moment…' : 'Create a free account'}
               </button>
-              <div style={{ fontSize: 10.5, letterSpacing: '0.05em', color: 'var(--arc-dim)', textAlign: 'center' }}>
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  className="arc-link"
-                  disabled={phase === 'validating'}
-                  onClick={() => handleMindsSSO()}
-                >Sign in →</button>
-              </div>
+              <button
+                type="button"
+                className="arc-btn-ghost arc-btn-ghost-stacked"
+                style={{ width: '100%' }}
+                disabled={phase === 'validating'}
+                onClick={() => handleMindsSSO()}
+              >
+                Sign in
+              </button>
             </>
           ) : (
             <>
