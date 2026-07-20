@@ -31,8 +31,14 @@ jobs:
           command: npm ci
       - name: Build main + renderer
         run: npm run build
+      - name: Install Electron Linux runtime deps
+        run: sudo apt-get update && sudo apt-get install -y libsecret-1-0
       - name: Run Playwright Electron smoke (headless via xvfb)
         run: xvfb-run --auto-servernum -- npx playwright test
+        env:
+          # Surface the Electron main process stdout/stderr in the CI log —
+          # a main-process crash otherwise reads as a bare firstWindow timeout.
+          DEBUG: pw:browser*
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
