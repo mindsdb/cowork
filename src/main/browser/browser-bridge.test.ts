@@ -37,6 +37,8 @@ function fakeActions(overrides: Partial<BridgeActions> = {}): BridgeActions {
     capturePng: vi.fn(async () => Buffer.from('png-bytes')),
     viewportInfo: vi.fn(async () => ({ cssWidth: 1280, cssHeight: 800, scale: 2 })),
     topSites: vi.fn(async () => [{ url: 'https://a.com', title: 'A', visits: 3, source: 'cowork' as const }]),
+    listApps: vi.fn(() => [{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', createdAt: 1 }]),
+    openApp: vi.fn(async () => ({ tabId: 'tab-1', created: false })),
     markAgentControlled: vi.fn(),
     waitForLoadSettle: vi.fn(async () => {}),
     saveScreenshot: vi.fn(() => '/tmp/shot.png'),
@@ -113,7 +115,11 @@ describe('bridge auth + routing', () => {
     expect(wrong.status).toBe(401);
     const ok = await request(handle!.port, { path: '/state', token: handle!.token });
     expect(ok.status).toBe(200);
-    expect(ok.body).toEqual({ tabs: [], activeTabId: null, viewVisible: false });
+    // /state carries the apps registry so the agent labels tabs in one call.
+    expect(ok.body).toEqual({
+      tabs: [], activeTabId: null, viewVisible: false,
+      apps: [{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', createdAt: 1 }],
+    });
   });
 
   it('unknown routes 404 with an {error} body', async () => {
@@ -400,6 +406,26 @@ describe('bridge DOM endpoints', () => {
     expect(res.status).toBe(200);
     expect(actions.topSites).toHaveBeenCalledWith(5);
     expect(res.body).toEqual([{ url: 'https://a.com', title: 'A', visits: 3, source: 'cowork' }]);
+  });
+
+  it('GET /apps returns the registry', async () => {
+    const res = await request(handle!.port, { path: '/apps', token: handle!.token });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', createdAt: 1 }]);
+  });
+
+  it('POST /apps/open resolves and settles; 404s unknown apps and 400s a missing id', async () => {
+    const res = await request(handle!.port, { path: '/apps/open', token: handle!.token, body: { appId: 'app-mail.google.com' } });
+    expect(res).toEqual({ status: 200, body: { tabId: 'tab-1', created: false } });
+    expect(actions.openApp).toHaveBeenCalledWith('app-mail.google.com');
+    expect(actions.markAgentControlled).toHaveBeenCalledWith('tab-1');
+
+    (actions.openApp as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ error: 'no such app: app-ghost' });
+    const missing = await request(handle!.port, { path: '/apps/open', token: handle!.token, body: { appId: 'app-ghost' } });
+    expect(missing.status).toBe(404);
+
+    const noId = await request(handle!.port, { path: '/apps/open', token: handle!.token, body: {} });
+    expect(noId.status).toBe(400);
   });
 
   it('malformed JSON bodies are a 400, not a crash', async () => {

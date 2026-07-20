@@ -1026,6 +1026,8 @@ const bridgeActions: BridgeActions = {
   capturePng,
   viewportInfo,
   topSites,
+  listApps,
+  openApp,
   markAgentControlled,
   waitForLoadSettle,
   saveScreenshot,
