@@ -37,7 +37,7 @@ function fakeActions(overrides: Partial<BridgeActions> = {}): BridgeActions {
     capturePng: vi.fn(async () => Buffer.from('png-bytes')),
     viewportInfo: vi.fn(async () => ({ cssWidth: 1280, cssHeight: 800, scale: 2 })),
     topSites: vi.fn(async () => [{ url: 'https://a.com', title: 'A', visits: 3, source: 'cowork' as const }]),
-    listApps: vi.fn(() => [{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', createdAt: 1 }]),
+    listApps: vi.fn(() => [{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', favicon: null, createdAt: 1 }]),
     openApp: vi.fn(async () => ({ tabId: 'tab-1', created: false })),
     markAgentControlled: vi.fn(),
     waitForLoadSettle: vi.fn(async () => {}),
@@ -118,7 +118,7 @@ describe('bridge auth + routing', () => {
     // /state carries the apps registry so the agent labels tabs in one call.
     expect(ok.body).toEqual({
       tabs: [], activeTabId: null, viewVisible: false,
-      apps: [{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', createdAt: 1 }],
+      apps: [{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', favicon: null, createdAt: 1 }],
     });
   });
 
@@ -411,7 +411,7 @@ describe('bridge DOM endpoints', () => {
   it('GET /apps returns the registry', async () => {
     const res = await request(handle!.port, { path: '/apps', token: handle!.token });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', createdAt: 1 }]);
+    expect(res.body).toEqual([{ id: 'app-mail.google.com', name: 'Gmail', origin: 'https://mail.google.com', favicon: null, createdAt: 1 }]);
   });
 
   it('POST /apps/open resolves and settles; 404s unknown apps and 400s a missing id', async () => {
