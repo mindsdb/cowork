@@ -38,6 +38,8 @@ export interface BridgeActions {
    *  click-at CSS coordinates. */
   viewportInfo(tabId?: string): Promise<{ cssWidth: number; cssHeight: number; scale: number }>;
   topSites(limit?: number): Promise<TopSite[]>;
+  listApps(): import('./browser-logic').BrowserApp[];
+  openApp(appId: string): Promise<{ tabId: string; created: boolean } | { error: string }>;
   /** Flags the tab agent-controlled for ~10 s (drives TabInfo.isAgentControlled). */
   markAgentControlled(tabId?: string): void;
   /** Resolves once the tab's load settles (did-stop-loading or timeout). */
@@ -182,7 +184,10 @@ async function route(
   const q = (name: string) => str(url.searchParams.get(name)) ?? undefined;
   const tabId = str(body.tabId) ?? q('tabId');
 
-  if (method === 'GET' && p === '/state') return actions.getState();
+  if (method === 'GET' && p === '/state') {
+    // apps ride along so the agent can label tabs by app in ONE call.
+    return { ...actions.getState(), apps: actions.listApps() };
+  }
 
   if (method === 'POST' && p === '/tabs') {
     // activate defaults to true (current behavior); the agent can pass
@@ -327,6 +332,20 @@ async function route(
 
   if (method === 'GET' && p === '/top-sites') {
     return actions.topSites(num(q('limit')));
+  }
+
+  if (method === 'GET' && p === '/apps') {
+    return actions.listApps();
+  }
+
+  if (method === 'POST' && p === '/apps/open') {
+    const appId = str(body.appId);
+    if (!appId) throw new HttpError(400, 'appId required');
+    const result = await actions.openApp(appId);
+    if ('error' in result) throw new HttpError(404, result.error);
+    actions.markAgentControlled(result.tabId);
+    await actions.waitForLoadSettle(result.tabId);
+    return result;
   }
 
   throw new HttpError(404, `unknown route: ${method} ${p}`);
