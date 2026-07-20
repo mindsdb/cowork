@@ -538,7 +538,7 @@ export default function OnboardingScreen({
   // ENG-912: web + already-configured → skip the provider/key flow (the key is
   // seeded server-side and unreadable here). While the config_ready check is in
   // flight, hold a minimal welcome so the provider form never flashes.
-  if (host.isWeb && webConfigured === null) {
+  if (host.isWeb && webConfigured === null && !finalizedRef.current) {
     return (
       <ArcadeShell title="Welcome" subtitle="getting things ready">
         <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
@@ -550,7 +550,10 @@ export default function OnboardingScreen({
   // Configured cloud instance: consent-only entry. The Terms/Privacy line is
   // kept so consent is still shown (never silently recorded); Continue records
   // it client-side (via onComplete → rememberTermsConsent) and enters the app.
-  if (host.isWeb && webConfigured) {
+  // Skipped when finalizedRef is already set — a keycloak-authenticated user's
+  // auto-finalize effect (saveFinal) handles consent + entry itself, and that
+  // path resolves to the success screen below.
+  if (host.isWeb && webConfigured && !finalizedRef.current) {
     return (
       <ArcadeShell title="Welcome" subtitle="you're all set">
         <div className="arc-stack" style={{ gap: 18 }}>
