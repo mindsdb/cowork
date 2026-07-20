@@ -425,10 +425,12 @@ export default function OnboardingScreen({
     await finalizeSettings(lines);
   };
 
-  const handleMindsSSO = async () => {
+  // `register: true` opens the browser on the "create account" form instead
+  // of the login form — same flow, same return path (ENG-914).
+  const handleMindsSSO = async (register = false) => {
     setPhase('validating');
     setErrorMsg('');
-    const loginResult = await host.mindshubLogin();
+    const loginResult = await host.mindshubLogin({ register });
     if (!loginResult.ok) {
       setPhase('error');
       const reason = String(loginResult.reason || '');
@@ -441,7 +443,7 @@ export default function OnboardingScreen({
           `Sign-in timed out — the browser never finished authorizing. Try again and complete the newest tab it opens (close any older "You're authorized" tabs), or press ${reloadKey} to reload.`,
         );
       } else if (/cancelled/i.test(reason)) {
-        setErrorMsg('Sign-in was cancelled. Press Sign in with MindsHub to try again.');
+        setErrorMsg('Sign-in was cancelled. Try again whenever you’re ready.');
       } else {
         setErrorMsg(reason || 'Sign in failed. Please try again.');
       }
@@ -577,7 +579,7 @@ export default function OnboardingScreen({
                   setErrorMsg('');
                   setLlmApiKey('');
                 }}
-              >← back to sign in</button>
+              >← back to account options</button>
 
               <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, textAlign: 'left' }}>
                 <div>
@@ -682,8 +684,11 @@ export default function OnboardingScreen({
   }
 
   // ── Stage 1: MindsHub ──────────────────────────────────────────────
+  // First-run framing (ENG-914): most people seeing this screen have never
+  // used the app, so creating an account leads and signing in is one click
+  // away — not the other way round.
   return (
-    <ArcadeShell title="Sign in" subtitle="sign in or create a free account to continue">
+    <ArcadeShell title="Get started" subtitle="create a free account or sign in to continue">
       <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
         <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'left', borderColor: 'color-mix(in srgb, var(--arc-cyan) 35%, transparent)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -708,17 +713,18 @@ export default function OnboardingScreen({
                 className="arc-btn"
                 style={{ width: '100%' }}
                 disabled={phase === 'validating'}
-                onClick={handleMindsSSO}
+                onClick={() => handleMindsSSO(true)}
               >
-                {phase === 'validating' ? 'Signing in…' : 'Sign in with MindsHub'}
+                {phase === 'validating' ? 'One moment…' : 'Create a free account'}
               </button>
               <div style={{ fontSize: 10.5, letterSpacing: '0.05em', color: 'var(--arc-dim)', textAlign: 'center' }}>
-                No account?{' '}
+                Already have an account?{' '}
                 <button
                   type="button"
                   className="arc-link"
-                  onClick={() => host.openExternal(MINDS_REGISTER_URL)}
-                >Create one for free →</button>
+                  disabled={phase === 'validating'}
+                  onClick={() => handleMindsSSO()}
+                >Sign in →</button>
               </div>
             </>
           ) : (

@@ -24,6 +24,12 @@ const TOKEN_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-con
 // env-aware base as everything else so the MINDSHUB_LOGIN IPC handler in
 // index.ts never has to hardcode a host.
 export const KEYCLOAK_AUTH_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth`;
+// Keycloak's registration endpoint. Accepts the same OIDC/PKCE parameters as
+// the auth endpoint but opens on the "create account" form, and completes the
+// same code flow — so a brand-new user signs up in the browser and lands back
+// in the app already signed in (ENG-914), instead of being stranded on the
+// console website.
+export const KEYCLOAK_REGISTER_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/registrations`;
 export const KEYCLOAK_TOKEN_URL = TOKEN_URL;
 
 // Base label for the MindsHub API key. ENG-440: keys are minted per

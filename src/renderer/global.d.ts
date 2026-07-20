@@ -64,7 +64,7 @@ interface AntonTronAPI {
     failed?: Array<{ id: string; name: string; reason: string }>;
   }>;
   oauthCancelPicker: () => Promise<boolean>;
-  mindshubLogin: () => Promise<{
+  mindshubLogin: (opts?: { register?: boolean }) => Promise<{
     ok: boolean;
     reason?: string;
     access_token?: string;

@@ -552,9 +552,9 @@ export interface MindsHubLoginResult {
   expires_in?: number;
 }
 
-export async function mindshubLogin(): Promise<MindsHubLoginResult> {
+export async function mindshubLogin(opts?: { register?: boolean }): Promise<MindsHubLoginResult> {
   if (isElectron && typeof bridge.mindshubLogin === 'function') {
-    return bridge.mindshubLogin();
+    return bridge.mindshubLogin(opts);
   }
   return { ok: false, reason: 'MindsHub login bridge is Electron-only.' };
 }

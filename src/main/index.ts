@@ -17,7 +17,7 @@ import { fetchAccountEmail } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
+import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTER_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
@@ -834,14 +834,18 @@ function setupIPC() {
   // (for next-launch silent refresh); writing ~/.anton/.env is
   // deferred to `mindshub:finalize` (or to host.saveSettings on the
   // BYOK path).
-  ipcMain.handle(IPC.MINDSHUB_LOGIN, async () => {
+  ipcMain.handle(IPC.MINDSHUB_LOGIN, async (_evt, opts?: { register?: boolean }) => {
     // `anton-desktop` is the only Keycloak client in the dev realm
     // that allows loopback (127.0.0.1) redirect URIs — `public-client`
     // returns HTTP 400 for those. Pulling org context into the token
     // is handled post-login by ensureActiveOrg() in minds-auth.ts.
+    //
+    // `register: true` starts the same PKCE flow on Keycloak's
+    // registration form instead of the login form (ENG-914) — new users
+    // create an account and come back signed in through one code path.
     const result = await oauthConnect({
       clientId: 'anton-desktop',
-      authUrl: KEYCLOAK_AUTH_URL,
+      authUrl: opts?.register ? KEYCLOAK_REGISTER_URL : KEYCLOAK_AUTH_URL,
       tokenUrl: KEYCLOAK_TOKEN_URL,
       scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
     });

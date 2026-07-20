@@ -9,7 +9,19 @@ vi.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 
-import { buildMindsEnvContent, mindsSignInSettingWrites } from './minds-auth';
+import { buildMindsEnvContent, mindsSignInSettingWrites, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTER_URL } from './minds-auth';
+
+describe('KEYCLOAK_REGISTER_URL (ENG-914 create-account flow)', () => {
+  // The register URL must be the SAME realm/flow as the login URL with only
+  // the endpoint swapped — anything else would land new users on a different
+  // Keycloak environment than the one sign-in uses.
+  it('is the registrations endpoint on the same realm as the auth URL', () => {
+    expect(KEYCLOAK_REGISTER_URL).toBe(
+      KEYCLOAK_AUTH_URL.replace(/\/auth$/, '/registrations'),
+    );
+    expect(KEYCLOAK_REGISTER_URL).toMatch(/\/protocol\/openid-connect\/registrations$/);
+  });
+});
 
 describe('buildMindsEnvContent (MindsHub sign-in .env)', () => {
   // ─── ENG-739 / ENG-597 regression: sign-in must not pin a model ─────
