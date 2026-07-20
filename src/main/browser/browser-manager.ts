@@ -676,7 +676,7 @@ function listApps(): logic.BrowserApp[] {
   return loadApps();
 }
 
-function addApp(input: { name?: string; origin?: string }): logic.BrowserApp | { error: string } {
+function addApp(input: { name?: string; origin?: string; favicon?: string }): logic.BrowserApp | { error: string } {
   const raw = String(input.origin ?? '').trim();
   if (!/^https?:\/\//i.test(raw)) return { error: 'origin must be an http(s) URL' };
   const origin = new URL(raw).origin;
@@ -687,6 +687,7 @@ function addApp(input: { name?: string; origin?: string }): logic.BrowserApp | {
     id: logic.appIdForOrigin(origin),
     name: String(input.name ?? '').trim() || logic.suggestAppName(origin),
     origin,
+    favicon: logic.sanitizeFaviconUrl(typeof input.favicon === 'string' ? input.favicon : null),
     createdAt: Date.now(),
   };
   apps = [...current, app];
@@ -700,6 +701,17 @@ function removeApp(appId: string): { ok: boolean } {
   apps = current.filter((a) => a.id !== appId);
   writeJsonAtomic(appsPath(), apps);
   return { ok: true };
+}
+
+function renameApp(appId: string, name: string): logic.BrowserApp | { error: string } {
+  const trimmed = String(name ?? '').trim();
+  if (!trimmed) return { error: 'name required' };
+  const current = loadApps();
+  const app = current.find((a) => a.id === appId);
+  if (!app) return { error: `no such app: ${appId}` };
+  app.name = trimmed;
+  writeJsonAtomic(appsPath(), current);
+  return app;
 }
 
 /** Find-or-create: activate the tab already on the app's origin, else open a
@@ -1109,6 +1121,9 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
   );
   ipcMain.handle(IPC.BROWSER_APPS_REMOVE, (_e, payload: { appId?: string }) =>
     payload?.appId ? removeApp(payload.appId) : { ok: false },
+  );
+  ipcMain.handle(IPC.BROWSER_APPS_RENAME, (_e, payload: { appId?: string; name?: string }) =>
+    payload?.appId ? renameApp(payload.appId, String(payload?.name ?? '')) : { error: 'appId required' },
   );
   ipcMain.handle(IPC.BROWSER_OPEN_APP, (_e, payload: { appId?: string }) =>
     payload?.appId ? openApp(payload.appId) : { error: 'appId required' },

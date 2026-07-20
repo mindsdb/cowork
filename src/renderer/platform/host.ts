@@ -715,6 +715,13 @@ export async function browserAppsRemove(appId: string): Promise<void> {
   }
 }
 
+export async function browserAppsRename(appId: string, name: string): Promise<BrowserAppInfo | { error: string }> {
+  if (isElectron && typeof bridge.browserAppsRename === 'function') {
+    return bridge.browserAppsRename(appId, name);
+  }
+  return { error: 'unsupported' };
+}
+
 export async function browserOpenApp(appId: string): Promise<{ tabId: string; created: boolean } | { error: string }> {
   if (isElectron && typeof bridge.browserOpenApp === 'function') {
     return bridge.browserOpenApp(appId);
@@ -840,6 +847,7 @@ export const host = {
   browserAppsList,
   browserAppsAdd,
   browserAppsRemove,
+  browserAppsRename,
   browserOpenApp,
   browserNavigate,
   browserGoBack,
