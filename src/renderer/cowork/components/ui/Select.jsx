@@ -219,10 +219,18 @@ export function Select({
           <BaseSelect.Popup
             className={cn(
               'min-w-[var(--anchor-width,_160px)] max-h-[var(--available-height,_320px)] overflow-y-auto',
-              // No border — floats on shadow-sh-popup alone (ENG-790's
-              // "drop the border" direction, applied here too so Select
-              // doesn't diverge from Menu's popup look).
-              'bg-surface rounded-[10px] shadow-sh-popup py-[4px] outline-none font-body',
+              // Bordered popup matching Menu's look (same var(--surface) bg,
+              // 1px var(--line) border, 10px radius). `border-solid` is
+              // load-bearing, not redundant: preflight is disabled, so a bare
+              // `border` on this <div> sets width but leaves border-style at
+              // the UA default `none` — which forces the used border-width to
+              // 0, i.e. no border renders at all. Without the border a
+              // borderless popup on the light Settings surface has only the
+              // soft shadow-sh-popup to separate it from the background, and
+              // its top edge all but vanishes. (When ENG-790 lands it drops
+              // borders from every popup — Menu and Select together — so
+              // matching Menu today keeps the two in lockstep either way.)
+              'bg-surface border border-solid border-line rounded-[10px] shadow-sh-popup py-[4px] outline-none font-body',
               '[transform-origin:var(--transform-origin)]',
               'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
             )}

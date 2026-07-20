@@ -74,6 +74,22 @@ describe('Select', () => {
     expect(screen.getByRole('combobox').className).toContain('border-solid');
   });
 
+  // Regression: the popup must keep a visible border. It's a <div>, and
+  // preflight is disabled, so a bare `border` leaves border-style at the UA
+  // default `none` (border-width collapses to 0 → no border). Without it the
+  // borderless popup all but disappears on a light surface (only a soft
+  // shadow separates it). Target the popup via its unique `shadow-sh-popup`
+  // class — the trigger also carries `border-solid`.
+  it('renders the popup with a solid border so it is visible against the background', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole('combobox'));
+    const popup = document.querySelector('.shadow-sh-popup');
+    expect(popup).not.toBeNull();
+    expect(popup.className).toContain('border-solid');
+    expect(popup.className).toContain('border-line');
+  });
+
   it('renders a separator between option groups', async () => {
     const user = userEvent.setup();
     render(<Harness />);
