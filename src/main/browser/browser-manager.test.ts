@@ -210,7 +210,7 @@ describe('registerBrowserHandlers', () => {
       'browser:close-tab', 'browser:activate-tab', 'browser:pin-tab', 'browser:navigate', 'browser:go-back',
       'browser:go-forward', 'browser:reload', 'browser:stop', 'browser:open-devtools',
       'browser:top-sites', 'browser:import-chrome',
-      'browser:apps-list', 'browser:apps-add', 'browser:apps-remove', 'browser:open-app',
+      'browser:apps-list', 'browser:apps-add', 'browser:apps-remove', 'browser:apps-rename', 'browser:open-app',
     ]) {
       expect(h.handlers.has(ch), ch).toBe(true);
     }
@@ -408,6 +408,12 @@ describe('tabs', () => {
     expect(second.created).toBe(false);
     expect(second.tabId).toBe(first.tabId);
     expect(mgr.getBrowserState().tabs).toHaveLength(2);
+
+    // Rename updates the registry (and rejects empty names / unknown ids).
+    const renamed = (await invoke('browser:apps-rename', { appId: app.id, name: 'Gmail' })) as { id: string; name: string };
+    expect(renamed).toMatchObject({ id: app.id, name: 'Gmail' });
+    expect(await invoke('browser:apps-rename', { appId: app.id, name: '  ' })).toMatchObject({ error: expect.any(String) });
+    expect(await invoke('browser:apps-rename', { appId: 'app-ghost', name: 'X' })).toMatchObject({ error: expect.any(String) });
 
     // Unknown app errors cleanly; removal persists.
     expect(await invoke('browser:open-app', { appId: 'app-ghost' })).toMatchObject({ error: expect.any(String) });

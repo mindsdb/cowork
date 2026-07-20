@@ -393,6 +393,7 @@ export interface BrowserApp {
   id: string;      // 'app-' + slugified origin host
   name: string;    // display name ('Gmail', 'Linear')
   origin: string;  // https://mail.google.com — identity: one app per origin
+  favicon: string | null; // captured at add time from a matching open tab, if any
   createdAt: number;
 }
 
@@ -440,6 +441,11 @@ export function sanitizeApps(raw: unknown): BrowserApp[] {
       id: typeof app.id === 'string' && app.id ? app.id : appIdForOrigin(origin),
       name: typeof app.name === 'string' && app.name ? app.name : suggestAppName(origin),
       origin,
+      favicon: sanitizeFaviconUrl(
+        typeof (app as { favicon?: unknown }).favicon === 'string'
+          ? ((app as { favicon?: unknown }).favicon as string)
+          : null,
+      ),
       createdAt: typeof app.createdAt === 'number' ? app.createdAt : 0,
     });
   }

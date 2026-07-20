@@ -74,6 +74,7 @@ export const IPC = {
   BROWSER_APPS_LIST: 'browser:apps-list',
   BROWSER_APPS_ADD: 'browser:apps-add',
   BROWSER_APPS_REMOVE: 'browser:apps-remove',
+  BROWSER_APPS_RENAME: 'browser:apps-rename',
   BROWSER_OPEN_APP: 'browser:open-app',
   BROWSER_NAVIGATE: 'browser:navigate',
   BROWSER_GO_BACK: 'browser:go-back',

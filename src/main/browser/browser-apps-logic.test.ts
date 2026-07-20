@@ -37,10 +37,21 @@ describe('web apps registry', () => {
       { origin: 42 },
     ]);
     expect(apps).toEqual([
-      { id: 'app-x', name: 'X', origin: 'https://x.com', createdAt: 1 },
-      { id: 'app-linear.app', name: 'Linear', origin: 'https://linear.app', createdAt: 0 },
+      { id: 'app-x', name: 'X', origin: 'https://x.com', favicon: null, createdAt: 1 },
+      { id: 'app-linear.app', name: 'Linear', origin: 'https://linear.app', favicon: null, createdAt: 0 },
     ]);
     expect(sanitizeApps(null)).toEqual([]);
     expect(sanitizeApps('nope')).toEqual([]);
+  });
+
+  it('sanitizeApps keeps valid favicons and drops junk ones', () => {
+    const apps = sanitizeApps([
+      { origin: 'https://a.com', favicon: 'https://a.com/f.ico' },
+      { origin: 'https://b.com', favicon: 'javascript:alert(1)' },
+      { origin: 'https://c.com', favicon: 'x'.repeat(300 * 1024) },
+    ]);
+    expect(apps[0].favicon).toBe('https://a.com/f.ico');
+    expect(apps[1].favicon).toBeNull();
+    expect(apps[2].favicon).toBeNull();
   });
 });

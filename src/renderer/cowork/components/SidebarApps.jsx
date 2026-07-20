@@ -9,6 +9,10 @@ function hostOf(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
+function originOf(url) {
+  try { return new URL(url).origin; } catch { return ''; }
+}
+
 function letterOf(name) {
   return (name?.[0] || '·').toUpperCase();
 }
@@ -22,6 +26,10 @@ export default function SidebarApps({ onOpenApp }) {
   const [adding, setAdding] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [menu, setMenu] = useState(null); // {x, y, app}
+  const [renaming, setRenaming] = useState(null); // app being renamed
+  // Live favicons by origin, from open tabs — rows show a real favicon when
+  // the site has one (else the stored one, else the letter well).
+  const [liveFavicons, setLiveFavicons] = useState({});
 
   const refresh = () => {
     if (typeof host.browserAppsList !== 'function') return;
@@ -30,32 +38,54 @@ export default function SidebarApps({ onOpenApp }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(refresh, []);
 
+  useEffect(() => {
+    if (typeof host.browserGetState !== 'function') return undefined;
+    const apply = (s) => {
+      const map = {};
+      for (const t of s?.tabs || []) {
+        if (t?.favicon && t.url) {
+          const o = originOf(t.url);
+          if (o) map[o] = t.favicon;
+        }
+      }
+      setLiveFavicons(map);
+    };
+    host.browserGetState().then(apply).catch(() => {});
+    if (typeof host.onBrowserStateChanged !== 'function') return undefined;
+    return host.onBrowserStateChanged(apply);
+  }, []);
+
   const openAdd = async () => {
     setAdding(true);
-    // Suggest the user's most-visited sites that aren't apps yet — seeded by
-    // the Chrome import / cowork history, not hardcoded vendors.
+    // Suggestions refresh per open and per CURRENT TABS first ("you have
+    // Linear open — pin it?"), then most-visited sites — never hardcoded.
+    const have = new Set(apps.map((a) => a.origin));
+    const out = [];
+    const seen = new Set();
+    const push = (origin, name, favicon) => {
+      if (!origin || have.has(origin) || seen.has(origin)) return;
+      seen.add(origin);
+      out.push({ origin, name, favicon: favicon || null });
+    };
+    try {
+      const state = await host.browserGetState?.();
+      for (const t of state?.tabs || []) {
+        if (!t?.url) continue;
+        const o = originOf(t.url);
+        if (o.startsWith('http')) push(o, t.title || hostOf(o), t.favicon);
+      }
+    } catch { /* tabs are optional input */ }
     if (typeof host.browserTopSites === 'function') {
       try {
         const sites = await host.browserTopSites(30);
-        const have = new Set(apps.map((a) => a.origin));
-        const seen = new Set();
-        const out = [];
-        for (const s of sites || []) {
-          try {
-            const origin = new URL(s.url).origin;
-            if (have.has(origin) || seen.has(origin)) continue;
-            seen.add(origin);
-            out.push({ origin, name: s.title || hostOf(origin) });
-            if (out.length >= 6) break;
-          } catch { /* unparsable url — skip */ }
-        }
-        setSuggestions(out);
+        for (const s of sites || []) push(originOf(s.url), s.title || hostOf(s.url), null);
       } catch { /* suggestions are a nicety, never a blocker */ }
     }
+    setSuggestions(out.slice(0, 6));
   };
 
-  const add = async ({ name, origin }) => {
-    const res = await host.browserAppsAdd?.({ name, origin });
+  const add = async ({ name, origin, favicon }) => {
+    const res = await host.browserAppsAdd?.({ name, origin, favicon: favicon || undefined });
     if (res && !res.error) {
       setAdding(false);
       refresh();
@@ -64,23 +94,49 @@ export default function SidebarApps({ onOpenApp }) {
     return false;
   };
 
+  const rename = async (app, name) => {
+    const res = await host.browserAppsRename?.(app.id, name);
+    if (res && !res.error) {
+      setRenaming(null);
+      refresh();
+      return true;
+    }
+    return false;
+  };
+
+  const faviconFor = (app) => liveFavicons[app.origin] || app.favicon || null;
+
   return (
     <div style={{ marginTop: 2 }}>
       {apps.length > 0 && (
         <div className="section-label" style={{ padding: '10px 14px 4px' }}>Apps</div>
       )}
-      {apps.map((app) => (
-        <button
-          key={app.id}
-          className="nav-item sidebar-app"
-          onClick={() => onOpenApp(app)}
-          onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, app }); }}
-          title={`${app.name} — ${hostOf(app.origin)}`}
-        >
-          <span className="sidebar-app__well" aria-hidden="true">{letterOf(app.name)}</span>
-          <span className="nav-row__label" style={{ flex: 1 }}>{app.name}</span>
-        </button>
-      ))}
+      {apps.map((app) => {
+        const fav = faviconFor(app);
+        return (
+          <button
+            key={app.id}
+            className="nav-item sidebar-app"
+            onClick={() => onOpenApp(app)}
+            onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, app }); }}
+            title={`${app.name} — ${hostOf(app.origin)}`}
+          >
+            {fav ? (
+              <img
+                src={fav}
+                alt=""
+                aria-hidden="true"
+                className="sidebar-app__well"
+                style={{ borderRadius: 4, objectFit: 'cover' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <span className="sidebar-app__well" aria-hidden="true">{letterOf(app.name)}</span>
+            )}
+            <span className="nav-row__label" style={{ flex: 1 }}>{app.name}</span>
+          </button>
+        );
+      })}
 
       <button className="nav-item" onClick={openAdd} title="Pin a web app to the sidebar">
         <span className="nav-row__icon" style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', color: 'var(--ink-4)' }}>
@@ -96,6 +152,11 @@ export default function SidebarApps({ onOpenApp }) {
           onClose={() => setMenu(null)}
           items={[
             {
+              icon: Ico.settings(14),
+              label: 'Rename…',
+              onClick: () => setRenaming(menu.app),
+            },
+            {
               icon: Ico.close(14),
               label: `Remove ${menu.app.name}`,
               onClick: async () => { await host.browserAppsRemove?.(menu.app.id); refresh(); },
@@ -110,7 +171,49 @@ export default function SidebarApps({ onOpenApp }) {
         onAdd={add}
         onClose={() => setAdding(false)}
       />
+      <RenameAppModal
+        app={renaming}
+        onRename={rename}
+        onClose={() => setRenaming(null)}
+      />
     </div>
+  );
+}
+
+function RenameAppModal({ app, onRename, onClose }) {
+  const [name, setName] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (app) {
+      setName(app.name);
+      setTimeout(() => { try { inputRef.current?.focus(); inputRef.current?.select(); } catch {} }, 30);
+    }
+  }, [app]);
+
+  const submit = async () => {
+    const trimmed = name.trim();
+    if (trimmed) await onRename(app, trimmed);
+  };
+
+  return (
+    <Modal open={!!app} onClose={onClose} size="sm" labelledBy="rename-app-title">
+      <ModalHeader id="rename-app-title" title="Rename app" subtitle={app?.origin} />
+      <ModalBody>
+        <Input
+          ref={inputRef}
+          value={name}
+          onChange={(v) => setName(v)}
+          placeholder="App name"
+          aria-label="App name"
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+        />
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="primary" size="sm" onClick={submit} disabled={!name.trim()}>Rename</Button>
+        <Button variant="subtle" size="sm" onClick={onClose}>Cancel</Button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -148,7 +251,11 @@ function AddAppModal({ open, suggestions, onAdd, onClose }) {
             {suggestions.map((s) => (
               <Tooltip key={s.origin} content={s.origin} delay={300}>
                 <button type="button" className="browser-chip" onClick={() => onAdd(s)}>
-                  <span className="sidebar-app__well" style={{ width: 16, height: 16, fontSize: 10 }}>{letterOf(s.name)}</span>
+                  {s.favicon ? (
+                    <img src={s.favicon} alt="" aria-hidden="true" className="sidebar-app__well" style={{ width: 16, height: 16, borderRadius: 4 }} />
+                  ) : (
+                    <span className="sidebar-app__well" style={{ width: 16, height: 16, fontSize: 10 }}>{letterOf(s.name)}</span>
+                  )}
                   {s.name.length > 22 ? `${s.name.slice(0, 22)}…` : s.name}
                 </button>
               </Tooltip>
