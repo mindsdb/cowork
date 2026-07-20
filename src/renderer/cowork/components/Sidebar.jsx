@@ -3,6 +3,7 @@ import Ico from './Icons';
 import { Spinner, Kbd } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
+import SidebarApps from './SidebarApps';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
@@ -563,6 +564,11 @@ export default function Sidebar({
               web-only Channels gate below). Badge = live tab count. */}
           {host.isElectron && (
             <NavItem icon={Ico.globe(15)} label="Browser" onClick={() => onNavigate('browser')} active={activeRoute === 'browser'} badge={showCounters ? (browserTabCount || null) : null} />
+          )}
+          {/* Web apps launcher — named tools (Gmail, Slack, Linear…) pinned
+              in the sidebar; click = find-or-create tab in the browser. */}
+          {host.isElectron && (
+            <SidebarApps onOpenApp={(app) => { onNavigate('browser'); host.browserOpenApp?.(app.id); }} />
           )}
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still

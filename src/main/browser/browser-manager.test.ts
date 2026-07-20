@@ -210,6 +210,7 @@ describe('registerBrowserHandlers', () => {
       'browser:close-tab', 'browser:activate-tab', 'browser:pin-tab', 'browser:navigate', 'browser:go-back',
       'browser:go-forward', 'browser:reload', 'browser:stop', 'browser:open-devtools',
       'browser:top-sites', 'browser:import-chrome',
+      'browser:apps-list', 'browser:apps-add', 'browser:apps-remove', 'browser:open-app',
     ]) {
       expect(h.handlers.has(ch), ch).toBe(true);
     }
@@ -374,6 +375,47 @@ describe('tabs', () => {
     expect(await invoke('browser:close-tab', { tabId })).toEqual({ ok: true });
     expect(mgr2.getBrowserState().tabs).toEqual([]);
     await mgr2.shutdownBrowser();
+  });
+
+  it('apps: add/list/remove round-trips apps.json and openApp finds-or-creates', async () => {
+    const mgr = await loadManager();
+
+    // Add is idempotent per origin and backfills the name.
+    const app = (await invoke('browser:apps-add', { origin: 'https://mail.google.com/' })) as { id: string; name: string; origin: string };
+    expect(app).toMatchObject({ id: 'app-mail.google.com', origin: 'https://mail.google.com' });
+    expect(app.name).toBeTruthy();
+    const dup = (await invoke('browser:apps-add', { origin: 'https://mail.google.com' })) as { id: string };
+    expect(dup.id).toBe(app.id);
+    expect(await invoke('browser:apps-list', undefined)).toHaveLength(1);
+
+    // Invalid origins are rejected without touching the file.
+    const bad = (await invoke('browser:apps-add', { origin: 'not-a-url' })) as { error?: string };
+    expect(bad.error).toBeTruthy();
+    expect(await invoke('browser:apps-list', undefined)).toHaveLength(1);
+
+    // First open creates a PINNED tab at the origin.
+    const first = (await invoke('browser:open-app', { appId: app.id })) as { tabId: string; created: boolean };
+    expect(first.created).toBe(true);
+    const state = mgr.getBrowserState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.tabs[0].url).toBe('https://mail.google.com');
+    expect(state.tabs[0].pinned).toBe(true);
+    expect(state.activeTabId).toBe(first.tabId);
+
+    // Second open ACTIVATES the same tab instead of duplicating.
+    await invoke('browser:activate-tab', { tabId: (await invoke('browser:new-tab', { url: 'https://other.com' })) as { tabId: string } });
+    const second = (await invoke('browser:open-app', { appId: app.id })) as { tabId: string; created: boolean };
+    expect(second.created).toBe(false);
+    expect(second.tabId).toBe(first.tabId);
+    expect(mgr.getBrowserState().tabs).toHaveLength(2);
+
+    // Unknown app errors cleanly; removal persists.
+    expect(await invoke('browser:open-app', { appId: 'app-ghost' })).toMatchObject({ error: expect.any(String) });
+    expect(await invoke('browser:apps-remove', { appId: app.id })).toEqual({ ok: true });
+    expect(await invoke('browser:apps-list', undefined)).toEqual([]);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(h.home, 'browser', 'apps.json'), 'utf-8'));
+    expect(onDisk).toEqual([]);
+    await mgr.shutdownBrowser();
   });
 });
 

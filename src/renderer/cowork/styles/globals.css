@@ -5463,6 +5463,14 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   flex: 0 0 auto; width: 30px; min-width: 30px; max-width: 30px;
   justify-content: center; padding: 0;
 }
+/* Sidebar web-app launcher rows: letter well + name (matches tile wells). */
+.sidebar-app__well {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 18px; height: 18px;
+  border-radius: var(--r-sm); background: var(--surface-3);
+  color: var(--ink-3); font-size: 10.5px; font-weight: 600;
+  font-family: var(--font-body);
+}
 .browser-tab__title {
   flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
