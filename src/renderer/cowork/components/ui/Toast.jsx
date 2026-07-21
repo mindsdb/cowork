@@ -67,7 +67,13 @@ const TYPE_ICON = { success: CHECK, warning: WARNING_TRIANGLE, danger: ALERT_CIR
 // Position: bottom-right — consolidates what were three different
 // positions across the old call sites (top-center, top-right, bottom-right)
 // into one, since a single global viewport can only have one placement.
-export function ToastProvider({ children, limit }) {
+// Base UI defaults to a limit of three and marks older toasts inert once the
+// limit is exceeded. That is unsafe for this app because persistent OAuth
+// errors share the viewport with transient notifications: a fourth toast
+// could otherwise leave an OAuth error visible but without a working dismiss
+// button. The pre-Base-UI stacks were unlimited, so preserve that behavior at
+// the app provider while still allowing a caller to opt into a finite limit.
+export function ToastProvider({ children, limit = Number.POSITIVE_INFINITY }) {
   return (
     <BaseToast.Provider limit={limit}>
       {children}
