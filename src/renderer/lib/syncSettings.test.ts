@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from './syncSettings';
+import { syncSettingsToDb, syncModelsToDb, syncModelsToDbWithRetry, modelLinesFrom } from './syncSettings';
 
 // syncSettingsToDb PUTs each mapped key to `${BASE}/settings/:key`. We stub
 // fetch and inspect which setting keys it wrote.
@@ -116,5 +116,47 @@ describe('syncModelsToDb', () => {
   it('skips inherited prototype names, writing only real model keys', async () => {
     await syncModelsToDb(['toString=evil', 'constructor=x', 'ANTON_PLANNING_MODEL=gpt-5.5']);
     expect(settingKeysWritten(fetchMock.mock.calls)).toEqual(['planning_model']);
+  });
+
+  // #455 review: callers must be able to tell a write succeeded before dropping
+  // their retry payload — a lost model write is not self-healing.
+  it('returns true when every model PUT is 2xx', async () => {
+    expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=gpt-5.5'])).toBe(true);
+  });
+
+  it('returns false when a model PUT is not 2xx', async () => {
+    fetchMock.mockResolvedValue({ ok: false });
+    expect(await syncModelsToDb(['ANTON_PLANNING_MODEL=gpt-5.5'])).toBe(false);
+  });
+
+  it('returns true (vacuously) when there is nothing to write', async () => {
+    expect(await syncModelsToDb(['ANTON_MINDS_API_KEY=mdb_abc'])).toBe(true);
+  });
+});
+
+describe('syncModelsToDbWithRetry', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn(async () => ({ ok: true }) as Response);
+    vi.stubGlobal('fetch', fetchMock);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('recovers from a transient failure (fails once, then succeeds on retry)', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false } as Response) // attempt 1
+      .mockResolvedValue({ ok: true } as Response);      // retry
+    expect(await syncModelsToDbWithRetry(['ANTON_PLANNING_MODEL=gpt-5.5'], 3)).toBe(true);
+  });
+
+  it('returns false after exhausting all attempts', async () => {
+    fetchMock.mockResolvedValue({ ok: false } as Response);
+    expect(await syncModelsToDbWithRetry(['ANTON_PLANNING_MODEL=gpt-5.5'], 2)).toBe(false);
+  });
+
+  it('returns true without any request when there is nothing to write', async () => {
+    expect(await syncModelsToDbWithRetry(['ANTON_MINDS_API_KEY=x'])).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

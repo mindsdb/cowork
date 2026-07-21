@@ -27,7 +27,7 @@ vi.mock('../../lib/keycloak', () => ({ keycloak: keycloakMock }));
 vi.mock('../../lib/syncSettings', async (importActual) => ({
   ...(await importActual()),
   syncSettingsToDb: vi.fn(async () => true),
-  syncModelsToDb: vi.fn(async () => {}),
+  syncModelsToDb: vi.fn(async () => true),
 }));
 
 import OnboardingScreen from './OnboardingScreen';

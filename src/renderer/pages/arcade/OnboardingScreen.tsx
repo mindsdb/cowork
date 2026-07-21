@@ -64,7 +64,9 @@ export interface PersistDeps {
   saveSettings: (content: string) => Promise<boolean>;
   /** Authoritative DB write (PUT /settings/:key). Returns false if any key failed. */
   syncToDb: (lines: string[]) => Promise<boolean>;
-  syncModels: (lines: string[]) => Promise<void>;
+  /** Best-effort model write here (result ignored on the success path — server
+   *  is up); the return type is widened so syncModelsToDb's boolean fits. */
+  syncModels: (lines: string[]) => Promise<unknown>;
   syncHarness: () => Promise<void>;
 }
 

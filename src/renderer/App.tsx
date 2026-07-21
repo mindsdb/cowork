@@ -6,7 +6,7 @@ import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
-import { syncSettingsToDb, syncModelsToDb } from './lib/syncSettings';
+import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
@@ -149,9 +149,6 @@ export default function App() {
   // config_ready is true on first mount. Called from both the already-installed
   // login path and the post-install path so the handshake is never skipped.
   const handlePostAuth = async () => {
-    // Consume the deferred model choice exactly once (see deferredModelRef).
-    const deferredModels = deferredModelRef.current;
-    deferredModelRef.current = null;
     try {
       const saved = await host.readSettings();
       if (saved && typeof saved === 'object') {
@@ -163,11 +160,17 @@ export default function App() {
       // model keys (ENG-739). Replay the just-chosen model now that the server
       // exists. Scoped to the deferred payload — which is set only on the defer
       // path (a fresh, server-less install with no prior DB/picker state) — so a
-      // routine relogin can never re-pin a picker choice.
+      // routine relogin can never re-pin a picker choice. Clear the ref ONLY on a
+      // confirmed 2xx: a dropped model write is not self-healing (excluded from
+      // the bulk sync AND the backend migration), so on failure keep the payload
+      // rather than silently strand the install config-not-ready (#455 review).
+      const deferredModels = deferredModelRef.current;
       if (deferredModels && deferredModels.length) {
-        await syncModelsToDb(deferredModels);
+        if (await syncModelsToDbWithRetry(deferredModels)) {
+          deferredModelRef.current = null;
+        }
       }
-    } catch { /* best-effort — backend migration covers the gap on next restart */ }
+    } catch { /* best-effort — provider/keys reconcile from .env on next restart */ }
     setPage('terminal');
   };
 

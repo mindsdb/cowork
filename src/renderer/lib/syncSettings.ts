@@ -97,16 +97,23 @@ export function modelLinesFrom(lines: string[]): string[] {
 }
 
 /**
- * Explicitly write the model chosen during onboarding to the DB (best-effort),
- * via the dedicated PUT /settings/:key — the ONLY non-picker path allowed to set
- * a model (ENG-739). Callers must invoke this only for a genuine explicit choice
+ * Explicitly write the model chosen during onboarding to the DB via the
+ * dedicated PUT /settings/:key — the ONLY non-picker path allowed to set a model
+ * (ENG-739). Callers must invoke this only for a genuine explicit choice
  * (onboarding), NEVER from the recurring login/post-install/token-refresh bulk
  * sync — doing so would reopen the ENG-739 picker-clobber. A minds onboarding
- * writes no model line, so this is a no-op there (the backend resolves the
- * tier-aware default). Kept alongside syncSettingsToDb so both model-write and
- * bulk-write logic live in one place (ENG-922).
+ * writes no model line, so this is a vacuous success there (the backend resolves
+ * the tier-aware default). Kept alongside syncSettingsToDb so both model-write
+ * and bulk-write logic live in one place (ENG-922).
+ *
+ * Returns true iff every model PUT it attempted received a 2xx (or there was
+ * nothing to write). Callers MUST check this before dropping their retry payload:
+ * a failed model write is NOT self-healing — model keys are excluded from the
+ * bulk .env re-sync (ENG-739) AND the backend's startup migration, so a silently
+ * dropped write leaves a fresh install permanently config-not-ready (#455 review).
  */
-export async function syncModelsToDb(lines: string[]): Promise<void> {
+export async function syncModelsToDb(lines: string[]): Promise<boolean> {
+  let allOk = true;
   for (const line of lines) {
     const eq = line.indexOf('=');
     if (eq <= 0) continue;
@@ -116,11 +123,30 @@ export async function syncModelsToDb(lines: string[]): Promise<void> {
     const value = line.slice(eq + 1);
     if (!value) continue;
     try {
-      await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
+      const res = await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value }),
       });
-    } catch { /* best-effort — the backend's apply_model_defaults still yields a model */ }
+      if (!res.ok) allOk = false;
+    } catch {
+      allOk = false;
+    }
   }
+  return allOk;
+}
+
+/**
+ * syncModelsToDb with a few immediate retries — for the post-install replay
+ * (ENG-922). The cowork-server has just been installed/started, so a lone failed
+ * request is usually a transient settling blip; retrying covers it. Returns true
+ * once a full write succeeds (or there's nothing to write), false if every
+ * attempt failed — on false the caller MUST keep its retry payload (see the
+ * syncModelsToDb note on why a dropped model doesn't self-heal).
+ */
+export async function syncModelsToDbWithRetry(lines: string[], attempts = 3): Promise<boolean> {
+  for (let i = 0; i < Math.max(1, attempts); i++) {
+    if (await syncModelsToDb(lines)) return true;
+  }
+  return false;
 }
