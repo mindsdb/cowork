@@ -526,7 +526,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       ...loadBundledServerCredentials(),
       PATH: getEnvPath(),
       PYTHONUNBUFFERED: '1',
+      // Both names: the server setting was renamed COWORK_SERVER_PORT →
+      // COWORK_LISTEN_PORT, and sending only one strands the other server
+      // generation on :26866 while we health-poll the derived port.
       COWORK_SERVER_PORT: String(serverPort),
+      COWORK_LISTEN_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
       // The server builds OAuth redirect URIs from server_origin, which
       // otherwise defaults to the fixed :26866. Since ENG-439 the packaged
