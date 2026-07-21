@@ -571,7 +571,7 @@ a[href],
   .composer-icon.listening,
   .spinner,
   .status-dot.busy,
-  .status-pill.is-busy .status-text__live,
+  .backend-status-control.is-busy .status-text__live,
   .btn-busy-pulse,
   [class*="set-badge-pulse"] {
     animation: none !important;
@@ -2968,7 +2968,7 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
   flex-shrink: 0;
   background: var(--line);
 }
-.status-pill {
+.backend-status-control {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2988,28 +2988,28 @@ body[data-theme="dark"] .app-sidebar .sidebar-empty {
 }
 /* Clickable variant — hovers brighten the surface a touch so the user
    senses the affordance without the pill changing shape. */
-.status-pill.is-clickable { cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
-.status-pill.is-clickable:hover {
+.backend-status-control.is-clickable { cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
+.backend-status-control.is-clickable:hover {
   background: var(--surface-3);
   border-color: var(--line-2);
 }
-body[data-theme="dark"] .status-pill.is-clickable:hover {
+body[data-theme="dark"] .backend-status-control.is-clickable:hover {
   background: color-mix(in srgb, var(--bg) 78%, var(--accent));
 }
-.status-pill.is-on   { --status-label-color: var(--ink-2); --status-value-color: var(--accent); }
-.status-pill.is-busy { --status-label-color: var(--ink-2); --status-value-color: var(--accent); }
+.backend-status-control.is-on   { --status-label-color: var(--ink-2); --status-value-color: var(--accent); }
+.backend-status-control.is-busy { --status-label-color: var(--ink-2); --status-value-color: var(--accent); }
 /* In dark mode, drop the chip a notch deeper so it reads as inset against
    the navy sidebar surface — same family, just a touch darker. */
-body[data-theme="dark"] .status-pill {
+body[data-theme="dark"] .backend-status-control {
   background: var(--bg);
   border-color: rgba(255, 255, 255, 0.04);
 }
-body[data-theme="dark"] .status-pill.is-on,
-body[data-theme="dark"] .status-pill.is-busy {
+body[data-theme="dark"] .backend-status-control.is-on,
+body[data-theme="dark"] .backend-status-control.is-busy {
   border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 12%, transparent);
 }
-body[data-theme="dark"] .status-pill.is-on .status-text__live {
+body[data-theme="dark"] .backend-status-control.is-on .status-text__live {
   text-shadow: 0 0 10px var(--accent-glow);
 }
 .status-dot {
@@ -3052,12 +3052,12 @@ body[data-theme="dark"] .status-dot:not(.offline):not(.busy) {
    so the whole label shifts together with the on/off/busy state. */
 .status-text__faded { color: var(--status-label-color); }
 .status-text__live  { color: var(--status-value-color); }
-body[data-theme="dark"] .status-pill.is-busy .status-text__live {
+body[data-theme="dark"] .backend-status-control.is-busy .status-text__live {
   text-shadow: 0 0 10px var(--accent-glow);
 }
 /* While starting/stopping, the value word breathes — pairs with the
    pulsing dot and the spinner for a coherent "in flight" look. */
-.status-pill.is-busy .status-text__live {
+.backend-status-control.is-busy .status-text__live {
   animation: status-text-blink 1.1s ease-in-out infinite;
 }
 @keyframes status-text-blink {
@@ -3657,11 +3657,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   font-size: var(--text-xs); color: var(--frost-600);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.search-result-type {
-  font-size: var(--text-2xs); color: var(--frost-600);
-  background: var(--stone-150); border-radius: var(--r-pill); padding: 2px 7px;
-  text-transform: capitalize;
-}
 .search-empty {
   padding: 18px 12px; color: var(--frost-600); font-size: 13px;
 }
@@ -3780,12 +3775,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   background: var(--primary-50); color: var(--primary-700);
   display: inline-flex; align-items: center; justify-content: center;
 }
-.status-pill {
-  font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--r-pill);
-  background: var(--stone-150); color: var(--frost-600); font-weight: 650;
-}
-.status-pill.on { background: var(--sage-50); color: var(--sage-700); }
-.status-pill.warn { background: #FFF1CC; color: #694A09; }
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 8px; min-height: 220px;
@@ -5285,7 +5274,6 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-field { display: flex; flex-direction: column; gap: 4px; }
 .channels-field-label { font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .channels-req { color: var(--danger, #c0392b); font-style: normal; }
-.channels-set { font-size: var(--text-2xs); padding: 1px 6px; border-radius: var(--r-pill); background: rgba(0,0,0,.06); color: var(--ink-4, #8a8a86); }
 .channels-input { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; outline: 0; transition: border-color .12s ease, box-shadow .15s ease; }
 .channels-input:hover { border-color: var(--line-2); }
 .channels-input:focus { border-color: var(--accent); box-shadow: var(--ring); }

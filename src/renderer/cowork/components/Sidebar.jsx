@@ -773,7 +773,7 @@ export default function Sidebar({
                 <button
                   type="button"
                   className={
-                    'status-pill is-clickable' +
+                    'backend-status-control is-clickable' +
                     (serverBusy ? ' is-busy' : '')
                   }
                   onClick={onShowServerHelp}

@@ -205,7 +205,7 @@ function ChannelCard({ plugin, status, onChanged }) {
             <label key={f.name} className="channels-field">
               <span className="channels-field-label">
                 {f.label}{f.required ? <em className="channels-req"> *</em> : null}
-                {isSet ? <span className="channels-set">set</span> : null}
+                {isSet ? <Badge variant="muted" size="xs">set</Badge> : null}
               </span>
               <input
                 type={f.secret ? 'password' : 'text'}

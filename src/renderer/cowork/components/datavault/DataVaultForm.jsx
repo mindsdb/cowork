@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Checkbox, Select } from '../ui';
+import { Badge, Checkbox, Select } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -847,14 +847,11 @@ function MethodPicker({ methods, onPick, busy }) {
                 overflowWrap: 'anywhere', wordBreak: 'break-word',
               }}>{m.label || m.id}</span>
               {m.recommended && (
-                <span style={{
-                  fontSize: 10.5, fontFamily: FONT_MONO, letterSpacing: '0.04em',
-                  color: 'var(--accent)',
-                  padding: '2px 7px', borderRadius: 999,
-                  background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                  textTransform: 'uppercase',
-                }}>Recommended</span>
+                <Badge
+                  variant="accent"
+                  size="sm"
+                  className="font-mono uppercase tracking-[0.04em]"
+                >Recommended</Badge>
               )}
             </div>
             {m.description && (
