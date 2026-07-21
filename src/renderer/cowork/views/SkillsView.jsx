@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu, Button, Card } from '../components/ui';
+import { Menu, Button, Card, Select } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
 import { Toast } from '../components/ui/Toast';
@@ -201,17 +201,16 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
           </div>
           <div>
             <FieldLabel>Scope</FieldLabel>
-            <select
-              aria-label="Scope"
+            <Select
+              ariaLabel="Scope"
               value={draft.project}
-              onChange={(e) => setField('project', e.target.value)}
-              style={{ ...fieldStyle, height: 34, resize: 'none', cursor: 'pointer' }}
-            >
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id ?? p.name} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+              onValueChange={(v) => setField('project', v)}
+              style={{ ...fieldStyle, height: 34 }}
+              options={[
+                { value: '', label: 'All projects' },
+                ...projects.map((p) => ({ value: p.name, label: p.name })),
+              ]}
+            />
           </div>
           <div>
             <FieldLabel>Description</FieldLabel>

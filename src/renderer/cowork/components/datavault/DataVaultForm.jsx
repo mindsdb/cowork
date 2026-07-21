@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Checkbox } from '../ui';
+import { Checkbox, Select } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -106,17 +106,17 @@ function FieldInput({ field, value, onChange, disabled }) {
 
   if (field.type === 'select') {
     return (
-      <select
+      <Select
         value={displayValue}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        style={baseStyle}
-      >
-        {!field.required && <option value="">—</option>}
-        {(field.options || []).map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label || opt.value}</option>
-        ))}
-      </select>
+        onValueChange={onChange}
+        ariaLabel={field.label}
+        style={{ background: 'var(--surface-2)', borderRadius: 7 }}
+        options={[
+          ...(!field.required ? [{ value: '', label: '—' }] : []),
+          ...(field.options || []).map((opt) => ({ value: opt.value, label: opt.label || opt.value })),
+        ]}
+      />
     );
   }
   if (field.type === 'textarea') {
