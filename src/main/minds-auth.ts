@@ -26,6 +26,23 @@ const TOKEN_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-con
 export const KEYCLOAK_AUTH_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/auth`;
 export const KEYCLOAK_TOKEN_URL = TOKEN_URL;
 
+// Keycloak's registration entry into the SAME authorization flow — accepts
+// the identical OIDC params (client, PKCE, state, loopback redirect_uri) but
+// opens on the create-account form instead of the login form. On completion
+// Keycloak redirects to the loopback with a code exactly like sign-in, so
+// sign-up rides the whole existing PKCE machinery (ENG-917).
+export const KEYCLOAK_REGISTRATION_URL = `${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/registrations`;
+
+// Sign-up parks mid-flow on Keycloak's VERIFY_EMAIL required action while
+// the user opens their inbox; clicking the emailed link (same browser)
+// resumes the flow and hits the loopback with the code — verified against
+// phasetwo-keycloak 26.5.7. The auth session that resume depends on lives
+// ~30 min server-side (accessCodeLifespanLogin default), so wait exactly
+// that long: shorter forfeits legitimate resumes, longer waits on a session
+// that no longer exists. Past this window the renderer degrades to the
+// "verified? just hit Sign in" path, never a re-registration.
+export const SIGNUP_CALLBACK_TIMEOUT_MS = 30 * 60 * 1000;
+
 // Base label for the MindsHub API key. ENG-440: keys are minted per
 // device — the full name is `hub:anton:<installation_id>` (see
 // antonKeyName). A single fixed name meant whoever logged in last deleted
@@ -45,6 +62,12 @@ function antonKeyName(): string {
 // fetch has none by default, so a black-holed connection would hang
 // the onboarding "TESTING LINK…" phase forever with no error to show.
 const REQUEST_TIMEOUT_MS = 30_000;
+
+// Retry budget for the fresh-signup org race (see ensureActiveOrg):
+// 4 × 3s ≈ 12s, comfortably above the auth-service job's normal latency
+// without stalling a genuinely org-less account's error forever.
+const ORG_BOOTSTRAP_RETRIES = 4;
+const ORG_BOOTSTRAP_RETRY_DELAY_MS = 3_000;
 
 function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   return fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...init });
@@ -341,7 +364,17 @@ export async function ensureActiveOrg(accessToken: string): Promise<EnsureActive
     return { token: null };
   }
 
-  const orgs = await listOrgCandidates(accessToken, userId, payload);
+  let orgs = await listOrgCandidates(accessToken, userId, payload);
+  // Brand-new accounts (ENG-917): the personal org is provisioned
+  // asynchronously (Keycloak REGISTER webhook → auth-service job), so a
+  // user who verifies their email within seconds can land here before it
+  // exists. Retry briefly before declaring the account org-less.
+  // Established accounts always have ≥1 org on the first pass, so this
+  // loop costs them nothing.
+  for (let i = 0; orgs.length === 0 && i < ORG_BOOTSTRAP_RETRIES; i++) {
+    await new Promise((r) => setTimeout(r, ORG_BOOTSTRAP_RETRY_DELAY_MS));
+    orgs = await listOrgCandidates(accessToken, userId, payload);
+  }
   if (orgs.length === 0) {
     return { token: null };
   }

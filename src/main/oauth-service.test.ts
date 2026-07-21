@@ -122,6 +122,15 @@ describe('oauthConnect', () => {
     expect(result.reason).toMatch(/access token/i);
   });
 
+  it('honors a caller-supplied callback timeout (ENG-917 signup window)', async () => {
+    captureAuthUrl(); // swallow the browser open; never fire the callback
+    // The default window is 3 minutes — this resolving in milliseconds
+    // proves the per-flow override reached the timeout race.
+    const result = await oauthConnect({ ...OPTS, callbackTimeoutMs: 120 });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/timed out/i);
+  });
+
   it('rejects a callback whose state does not match', async () => {
     const nextAuthUrl = captureAuthUrl();
     const flow = oauthConnect(OPTS);

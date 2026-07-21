@@ -49,6 +49,14 @@ export interface OAuthConnectOpts {
    * from the connector spec's oauth.redirect_port.
    */
   redirectPort?: number;
+  /**
+   * How long the loopback server waits for the browser callback before
+   * giving up. Defaults to CALLBACK_TIMEOUT_MS (3 min) — enough to type
+   * credentials. Flows that legitimately pause mid-browser (ENG-917:
+   * Keycloak parks sign-up on VERIFY_EMAIL until the user clicks the
+   * emailed link, sometimes minutes later) pass a longer window.
+   */
+  callbackTimeoutMs?: number;
 }
 
 export interface OAuthConnectResult {
@@ -198,11 +206,12 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   });
   server = loopbackServer;
 
+  const callbackTimeoutMs = opts.callbackTimeoutMs ?? CALLBACK_TIMEOUT_MS;
   let timeoutHandle: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<string>((_, reject) => {
     timeoutHandle = setTimeout(
-      () => reject(new Error(`OAuth timed out — no callback received within ${Math.round(CALLBACK_TIMEOUT_MS / 60000)} minutes.`)),
-      CALLBACK_TIMEOUT_MS,
+      () => reject(new Error(`OAuth timed out — no callback received within ${Math.round(callbackTimeoutMs / 60000)} minutes.`)),
+      callbackTimeoutMs,
     );
   });
 

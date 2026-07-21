@@ -559,6 +559,16 @@ export async function mindshubLogin(): Promise<MindsHubLoginResult> {
   return { ok: false, reason: 'MindsHub login bridge is Electron-only.' };
 }
 
+// Sign-up through Keycloak's registration form, same loopback PKCE flow
+// as mindshubLogin (ENG-917). The promise stays pending through the
+// email-verification pause — resolve may arrive many minutes after call.
+export async function mindshubSignup(): Promise<MindsHubLoginResult> {
+  if (isElectron && typeof bridge.mindshubSignup === 'function') {
+    return bridge.mindshubSignup();
+  }
+  return { ok: false, reason: 'MindsHub sign-up bridge is Electron-only.' };
+}
+
 export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string; access_token?: string }> {
   if (isElectron && typeof bridge.mindshubRefresh === 'function') {
     return bridge.mindshubRefresh();
@@ -666,6 +676,7 @@ export const host = {
   oauthConnect,
   oauthCancel,
   mindshubLogin,
+  mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
   mindshubGetCachedToken,

@@ -17,7 +17,7 @@ import { fetchAccountEmail } from './oauth-identity';
 import { openDrivePickerFlow, cancelCurrentDrivePicker, isValidDriveFileIds } from './drive-picker-service';
 import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } from './picked-files';
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, migrateRefreshTokenStore, isAccessTokenExpired } from './token-store';
-import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_TOKEN_URL } from './minds-auth';
+import { refreshTokensOnly, writeMindsKeyToEnvAndRestart, provisionAntonApiKey, scheduleRefresh, cancelScheduledRefresh, endKeycloakSession, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
 import { MINDS_API_HOST } from './minds-urls';
 import { sendEvent } from './analytics';
 import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
@@ -839,29 +839,41 @@ function setupIPC() {
   // (for next-launch silent refresh); writing ~/.anton/.env is
   // deferred to `mindshub:finalize` (or to host.saveSettings on the
   // BYOK path).
-  ipcMain.handle(IPC.MINDSHUB_LOGIN, async () => {
-    // `anton-desktop` is the only Keycloak client in the dev realm
-    // that allows loopback (127.0.0.1) redirect URIs — `public-client`
-    // returns HTTP 400 for those. Pulling org context into the token
-    // is handled post-login by ensureActiveOrg() in minds-auth.ts.
+  // Shared by MINDSHUB_LOGIN and MINDSHUB_SIGNUP — the same loopback PKCE
+  // exchange against Keycloak; only the browser entry point (login vs
+  // registration form) and the callback patience differ. `anton-desktop`
+  // is the only Keycloak client in the realm that allows loopback
+  // (127.0.0.1) redirect URIs — `public-client` returns HTTP 400 for
+  // those. Pulling org context into the token is handled post-auth by
+  // ensureActiveOrg() in minds-auth.ts.
+  const runMindsAuthFlow = async (authUrl: string, callbackTimeoutMs?: number) => {
     const result = await oauthConnect({
       clientId: 'anton-desktop',
-      authUrl: KEYCLOAK_AUTH_URL,
+      authUrl,
       tokenUrl: KEYCLOAK_TOKEN_URL,
       scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
+      callbackTimeoutMs,
     });
     if (result.ok && result.access_token) {
       if (!result.refresh_token) {
         // Session won't survive a restart without it — loud so a failing
         // machine's log explains the next-launch sign-out (ENG-761).
-        console.warn('[mindshub:login] Keycloak returned no refresh_token — session will not persist across restarts');
+        console.warn('[mindshub:auth] Keycloak returned no refresh_token — session will not persist across restarts');
       }
       saveTokens(result.access_token, result.expires_in ?? 3600, result.refresh_token ?? '');
       scheduleRefresh(result.expires_in ?? 3600);
       focusMainWindow();
     }
     return result;
-  });
+  };
+
+  ipcMain.handle(IPC.MINDSHUB_LOGIN, () => runMindsAuthFlow(KEYCLOAK_AUTH_URL));
+
+  // Sign-up (ENG-917): Keycloak's registration form, then the identical
+  // code exchange. The long callback window covers the VERIFY_EMAIL pause —
+  // the emailed link resumes the parked flow back to our loopback.
+  ipcMain.handle(IPC.MINDSHUB_SIGNUP, () =>
+    runMindsAuthFlow(KEYCLOAK_REGISTRATION_URL, SIGNUP_CALLBACK_TIMEOUT_MS));
 
   // Re-roll the access token using the stored refresh_token without
   // touching the env file. Used after Stripe checkout so the renderer

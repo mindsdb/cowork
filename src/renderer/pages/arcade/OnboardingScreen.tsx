@@ -17,7 +17,11 @@ import { LegalViewer } from './TermsScreen';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
-type Phase = 'choose' | 'validating' | 'minds-no-llm' | 'success' | 'error';
+// 'signup-wait': browser is on Keycloak's registration flow, possibly parked
+// on email verification for minutes (ENG-917). 'signup-verify': that wait
+// timed out — the account likely exists and is verified, one Sign-in click
+// finishes; deliberately an info state, never an error.
+type Phase = 'choose' | 'validating' | 'signup-wait' | 'signup-verify' | 'minds-no-llm' | 'success' | 'error';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
@@ -517,6 +521,43 @@ export default function OnboardingScreen({
       }
       return;
     }
+    await completeMindsAuth();
+  };
+
+  // Sign-up (ENG-917): the same loopback PKCE flow as sign-in, entered
+  // through Keycloak's registration form. The browser leg legitimately
+  // pauses on email verification — sometimes minutes — so the pending
+  // state gets its own copy, and the eventual timeout degrades to a
+  // "verified? just sign in" nudge instead of an error.
+  const handleMindsSignup = async () => {
+    setPhase('signup-wait');
+    setErrorMsg('');
+    const result = await host.mindshubSignup();
+    if (!result.ok) {
+      const reason = String(result.reason || '');
+      if (/cancelled/i.test(reason)) {
+        // Explicit cancel, or superseded by a Sign-in click (the flows are
+        // single-flight in main). Whoever took over owns the phase — only
+        // reset if the wait screen is still the one showing.
+        setPhase((p) => (p === 'signup-wait' ? 'choose' : p));
+        return;
+      }
+      if (/timed out/i.test(reason)) {
+        setPhase('signup-verify');
+        return;
+      }
+      setPhase('error');
+      setErrorMsg(reason || 'Sign up failed. Please try again.');
+      return;
+    }
+    await completeMindsAuth();
+  };
+
+  // Post-auth completion shared by sign-in and sign-up: once Keycloak hands
+  // back tokens the two flows are identical — provision the LLM key, route
+  // free users to the paywall/BYOK, commit the env on success.
+  const completeMindsAuth = async () => {
+    setPhase('validating'); // no-op for sign-in; moves sign-up off its wait screen
     let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string };
     try {
       finalizeResult = await host.mindshubFinalize();
@@ -659,6 +700,25 @@ export default function OnboardingScreen({
       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--arc-muted)' }}>
         TESTING LINK…
       </span>
+    </div>
+  );
+
+  // ── Sign-up pending overlay (ENG-917) ──────────────────────────────
+  // Shown while the browser owns the registration flow. The email-verify
+  // pause means this can sit for minutes — the copy sets that expectation,
+  // and Cancel tears the loopback listener down via the main process.
+  const signupWaitBlock = (
+    <div className="arc-stack arc-fade-in" style={{ gap: 14, padding: '12px 0' }}>
+      <PixelSprite name="bolt" size={44} title="Waiting for sign-up" />
+      <PixelMarquee cells={20} style={{ width: 280 }} />
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--arc-muted)' }}>
+        FINISH SIGN-UP IN YOUR BROWSER
+      </span>
+      <span style={{ fontSize: 11, lineHeight: 1.6, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 340 }}>
+        Create your account, then open the verification email we send you —
+        clicking its link signs you in here automatically.
+      </span>
+      <button type="button" className="arc-link" onClick={() => host.oauthCancel()}>Cancel</button>
     </div>
   );
 
@@ -833,7 +893,8 @@ export default function OnboardingScreen({
                 <button
                   type="button"
                   className="arc-link"
-                  onClick={() => host.openExternal(MINDS_REGISTER_URL)}
+                  disabled={phase === 'validating' || phase === 'signup-wait'}
+                  onClick={handleMindsSignup}
                 >Create one for free →</button>
               </div>
             </>
@@ -874,6 +935,15 @@ export default function OnboardingScreen({
         </div>
 
         {phase === 'validating' && validatingBlock}
+        {phase === 'signup-wait' && signupWaitBlock}
+
+        {phase === 'signup-verify' && (
+          <div className="arc-panel" role="status" style={{ padding: '14px 18px', fontSize: 11.5, lineHeight: 1.7, letterSpacing: '0.04em', color: 'var(--arc-muted)', textAlign: 'center' }}>
+            Verified your email? You're one click away — hit{' '}
+            <b style={{ color: 'var(--arc-ink)' }}>Sign in with MindsHub</b> to finish.
+            No need to register again.
+          </div>
+        )}
 
         {phase === 'error' && (
           <div className="arc-error" role="alert">
@@ -887,6 +957,10 @@ export default function OnboardingScreen({
             type="button"
             className="arc-link"
             onClick={() => {
+              // Leaving for BYOK abandons any parked sign-up — tear its
+              // loopback listener down so a later email-link click can't
+              // yank the user back into the MindsHub path.
+              if (phase === 'signup-wait') host.oauthCancel();
               setProvider('byok');
               setStep('byok');
               setApiKey('');
