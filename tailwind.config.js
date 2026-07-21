@@ -131,8 +131,21 @@ export default {
         'sh-1':       'var(--sh-1)',
         'sh-2':       'var(--sh-2)',
         'sh-3':       'var(--sh-3)',
+        'sh-popup':   'var(--sh-popup)',
         card:         'var(--card-shadow-rest)',
         'card-hover': 'var(--card-shadow-hover)',
+      },
+      // The fade+scale a floating popup plays on open/close, driven by
+      // Base UI's data-open / data-closed attributes — named generically
+      // (not Menu-specific) so any Base UI popover skinned this way can
+      // reuse it instead of redefining its own.
+      keyframes: {
+        'scale-in':  { from: { opacity: 0, transform: 'scale(0.97)' }, to: { opacity: 1, transform: 'scale(1)' } },
+        'scale-out': { from: { opacity: 1, transform: 'scale(1)' },    to: { opacity: 0, transform: 'scale(0.97)' } },
+      },
+      animation: {
+        'scale-in':  'scale-in 130ms ease-out',
+        'scale-out': 'scale-out 90ms ease-in',
       },
     },
   },

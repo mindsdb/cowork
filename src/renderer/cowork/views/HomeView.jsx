@@ -57,23 +57,10 @@ const SETTLE_MS    = 520;
 // 42px. No constants extracted because each value is referenced
 // exactly once.)
 
-// One-shot keyframe injection — adds the boot fade rule once per
-// page load, alongside the global `fadein-up` that already lives in
-// styles/globals.css. (The earlier caret-blink keyframe was dropped
-// when we removed the typewriter cursor in favour of letters
-// appearing letter-by-letter beside the idle orb.)
-let _BOOT_KEYFRAMES_INJECTED = false;
-function _ensureBootKeyframes() {
-  if (_BOOT_KEYFRAMES_INJECTED) return;
-  if (typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-home-boot-keyframes', '');
-  style.textContent = `
-@keyframes boot-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: translateY(0) } }
-`;
-  document.head.appendChild(style);
-  _BOOT_KEYFRAMES_INJECTED = true;
-}
+// `boot-fadein` lives in globals.css alongside the global `fadein-up`
+// (and every other keyframe in the app). (The earlier caret-blink
+// keyframe was dropped when we removed the typewriter cursor in favour
+// of letters appearing letter-by-letter beside the idle orb.)
 
 function useBootPhase({ serverOnline, configReady, greeting, skipIntro = false }) {
   // Phases: loading → collapsing → traveling → morphing → typing →
@@ -258,8 +245,6 @@ export default function HomeView({
   agentLabel,
   prefill = null,
 }) {
-  useEffect(() => { _ensureBootKeyframes(); }, []);
-
   const greetingText = greeting || GREETING_FALLBACK;
   const blocked = configReady === false;
 

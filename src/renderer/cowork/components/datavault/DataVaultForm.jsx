@@ -594,7 +594,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                       borderRadius: '50%',
                       border: '1.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                       borderTopColor: 'var(--accent)',
-                      animation: 'dvf-spin 720ms linear infinite',
+                      animation: 'spin 720ms linear infinite',
                     }}
                   />
                   {f.status}

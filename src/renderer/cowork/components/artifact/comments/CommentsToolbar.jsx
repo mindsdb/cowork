@@ -10,7 +10,6 @@
 // semantics) + Tooltip; the skin is the reference's fixed light palette so
 // the pill reads identically over any artifact, in either app theme.
 
-import { useEffect } from 'react';
 import { Toolbar } from '@base-ui/react/toolbar';
 import { Tooltip } from '../../ui';
 import { CommentIcon, InboxIcon, XIcon } from './icons';
@@ -23,21 +22,10 @@ const SHADOW_TOOLBAR =
   + 'inset 0 -0.5px 0 rgba(255,255,255,0.16),'
   + 'inset 0 0.5px 0 rgba(255,255,255,0.24)';
 
-// Entrance animation — keyframes can't be expressed inline, so inject a tiny
-// scoped stylesheet once (same pattern as ui/Menu.jsx).
-let _CSS_INJECTED = false;
-function _ensureCss() {
-  if (_CSS_INJECTED || typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-cw-comments-toolbar', '');
-  style.textContent = `
-@keyframes cw-act-bar-in { 0% { opacity: 0; transform: translate(-50%, 12px); }
-                           100% { opacity: 1; transform: translate(-50%, 0); } }
-@media (prefers-reduced-motion: reduce) { .cw-act-toolbar { animation: none !important; } }
-`;
-  document.head.appendChild(style);
-  _CSS_INJECTED = true;
-}
+// Entrance animation — the `cw-act-bar-in` keyframe lives in globals.css
+// alongside every other keyframe in the app. `motion-reduce:!animate-none`
+// (Tailwind's built-in variant) honors reduced-motion; the `!` is required
+// to beat the inline `animation` style.
 
 /**
  * 32px hit-target wrapping a 24px circle — the circle carries the hover /
@@ -85,13 +73,12 @@ export function CommentsToolbar({
   onToggleMarkers,
   onClose,         // leaves the comments chrome (reopen from the top bar)
 }) {
-  useEffect(() => { _ensureCss(); }, []);
-
   return (
     <Toolbar.Root
       aria-label="Comments toolbar"
-      className="cw-act-toolbar absolute left-1/2 bottom-[34px] z-40 h-[32px]
-        flex items-center gap-[2px] px-[4px] rounded-[46px]"
+      className="absolute left-1/2 bottom-[34px] z-40 h-[32px]
+        flex items-center gap-[2px] px-[4px] rounded-[46px]
+        motion-reduce:!animate-none"
       style={{
         transform: 'translateX(-50%)',
         background: 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(241,241,241,0.9) 114.06%)',

@@ -26,6 +26,22 @@
 import { Dialog } from '@base-ui/react/dialog';
 import Ico from '../Icons';
 
+// Opacity-only fade for the backdrop/popup on open/close (styled with
+// Tailwind's `data-[]:` variants, matching ui/Menu.jsx / Select.jsx — no
+// runtime-injected stylesheet needed). Opacity-only (no transform) on
+// purpose — a non-identity `transform` on an ancestor makes it the
+// containing block for `position: fixed` descendants, which broke
+// popovers/menus rendered inside a modal (the ArtifactViewer kebab menu
+// in particular). Driven by Base UI's `data-starting-style` so the fade
+// replays on every open; `data-ending-style` zeroes the duration so
+// close is an instant unmount (matches the previous modal, which had no
+// exit animation). The base transition is written as a full arbitrary
+// `[transition:...]` property (not Tailwind's `duration-*`/`ease-*`
+// utilities) so the easing keyword is the literal CSS `ease-out`, not
+// Tailwind's differently-curved `ease-out` utility value.
+const FADE_BACKDROP = 'opacity-100 [transition:opacity_160ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+const FADE_POPUP     = 'opacity-100 [transition:opacity_180ms_ease-out] data-[starting-style]:opacity-0 data-[ending-style]:duration-0';
+
 const FONT_BODY    = 'var(--font-body)';
 
 // Width × max-height. Heights are caps; modals shrink to content.
@@ -50,33 +66,6 @@ const LAYERS = {
   default: 80,
   system:  1200,
 };
-
-// One-shot appearance styles. Opacity-only (no transform) on purpose — a
-// non-identity `transform` on an ancestor makes it the containing block for
-// `position: fixed` descendants, which broke popovers/menus rendered inside a
-// modal (the ArtifactViewer kebab menu in particular). Driven by Base UI's
-// `data-starting-style` so the fade replays on every open; `data-ending-style`
-// zeroes the transition so close is an instant unmount (matches the previous
-// modal, which had no exit animation).
-let _MODAL_STYLES_INJECTED = false;
-function _ensureModalStyles() {
-  if (_MODAL_STYLES_INJECTED) return;
-  if (typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-modal-styles', '');
-  style.textContent = `
-.cw-modal-backdrop { opacity: 1; transition: opacity 160ms ease-out; }
-.cw-modal-backdrop[data-starting-style] { opacity: 0; }
-.cw-modal-backdrop[data-ending-style]   { transition-duration: 0ms; }
-.cw-modal-popup { opacity: 1; transition: opacity 180ms ease-out; }
-.cw-modal-popup[data-starting-style] { opacity: 0; }
-.cw-modal-popup[data-ending-style]   { transition-duration: 0ms; }
-`;
-  document.head.appendChild(style);
-  _MODAL_STYLES_INJECTED = true;
-}
-_ensureModalStyles();
-
 
 export function Modal({
   open,
@@ -128,7 +117,7 @@ export function Modal({
     >
       <Dialog.Portal>
         <Dialog.Backdrop
-          className="cw-modal-backdrop"
+          className={FADE_BACKDROP}
           style={{
             position: 'fixed', inset: 0, zIndex: z,
             background: 'rgba(0,0,0,0.45)',
@@ -146,7 +135,7 @@ export function Modal({
           }}
         >
           <Dialog.Popup
-            className="cw-modal-popup"
+            className={FADE_POPUP}
             aria-labelledby={labelledBy || undefined}
             aria-label={ariaLabel || undefined}
             style={{
