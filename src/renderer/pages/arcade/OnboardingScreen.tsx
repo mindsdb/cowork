@@ -93,6 +93,13 @@ export interface PersistDeps {
   syncHarness: () => Promise<void>;
 }
 
+export type PersistResult =
+  | { ok: true }
+  // dbSyncFailed marks specifically a `syncToDb` false, as opposed to a
+  // thrown error — so callers can tell "the write was rejected/unreachable"
+  // apart from a real .env/IPC failure (see resolveFinalizeOutcome).
+  | { ok: false; error: string; dbSyncFailed?: true };
+
 // Run the onboarding persist sequence and report whether the config actually
 // landed. The .env write is best-effort (host.saveSettings tolerates the web
 // loopback 403; ENG-817), but the DB write is AUTHORITATIVE — a `false` there
@@ -102,13 +109,17 @@ export interface PersistDeps {
 export async function persistOnboarding(
   deps: PersistDeps,
   lines: string[],
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<PersistResult> {
   const GENERIC = 'Could not save your settings. Please try again.';
   try {
     await deps.saveSettings(lines.join('\n'));
     const dbOk = await deps.syncToDb(lines);
     if (!dbOk) {
-      return { ok: false, error: 'Could not save your settings to the server. Please try again.' };
+      return {
+        ok: false,
+        error: 'Could not save your settings to the server. Please try again.',
+        dbSyncFailed: true,
+      };
     }
     // syncModels writes the model keys the bulk DB sync intentionally skips
     // (ENG-739); harness records the chosen cartridge. Both best-effort.
@@ -118,6 +129,31 @@ export async function persistOnboarding(
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message ? e.message : GENERIC };
   }
+}
+
+export type FinalizeOutcome =
+  | { action: 'success' }
+  | { action: 'defer' }
+  | { action: 'error'; error: string };
+
+// Decide what finalizeSettings should do with a persistOnboarding result. A
+// `dbSyncFailed` result while the server isn't installed/ready yet is the
+// EXPECTED shape of the onboarding/install race (the DB endpoint has no one
+// to answer until the server finishes starting) — defer rather than error,
+// so the caller proceeds to onComplete and lets handleAuthComplete's own
+// checkInstall gate route to the setup screen (handlePostAuth retries this
+// same sync once install finishes). Any other failure — a real .env/IPC
+// error, or a DB sync that failed against an ALREADY-ready server — is a
+// genuine, user-facing failure. Exported pure so the branch is unit-tested
+// without an install IPC round-trip.
+export function resolveFinalizeOutcome(
+  res: PersistResult,
+  installStatus: { antonInstalled: boolean; serverDepsReady: boolean } | null,
+): FinalizeOutcome {
+  if (res.ok) return { action: 'success' };
+  const notReady = Boolean(installStatus) && (!installStatus!.antonInstalled || !installStatus!.serverDepsReady);
+  if (res.dbSyncFailed && notReady) return { action: 'defer' };
+  return { action: 'error', error: res.error };
 }
 
 // The provider→validation-target and provider→env-vars mappings are
@@ -204,6 +240,29 @@ export default function OnboardingScreen({
   // Inline Terms/Privacy viewer for the "by continuing you agree" line.
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
 
+  // ENG-912: a console-hosted (web) instance is pre-provisioned server-side
+  // (config_ready:true, key seeded), but the browser can't read that key
+  // (/settings/raw 403s, ENG-457) — so the provider/key-entry flow would ask a
+  // ready user for a MindsHub key they were never given. Detect config_ready
+  // (the ungated /health signal) and offer consent-only entry instead. `null`
+  // = still checking; only meaningful in web (Electron uses the SSO flow, so it
+  // starts false and takes the normal path).
+  const [webConfigured, setWebConfigured] = useState<boolean | null>(host.isWeb ? null : false);
+  // True once the keycloak auto-finalize path (authenticated standalone/localhost)
+  // takes over. Tracked as STATE — not the finalizedRef ref — so the boot returns
+  // below yield to it deterministically; a ref mutation doesn't re-render, which
+  // let the provider form flash / the consent button go inert during
+  // finalization (PR #445 review). Hosted cloud skips keycloak, so it stays false.
+  const [autoFinalizing, setAutoFinalizing] = useState(false);
+  useEffect(() => {
+    if (!host.isWeb) return;
+    let cancelled = false;
+    host.checkConfigured()
+      .then((r) => { if (!cancelled) setWebConfigured(Boolean(r.configured)); })
+      .catch(() => { if (!cancelled) setWebConfigured(false); }); // unreachable → fall back to the full flow
+    return () => { cancelled = true; };
+  }, []);
+
   // Per-provider model lists, owned by cowork-server and fetched at runtime
   // (same source minds-cloud already uses) — no model names are hardcoded
   // here. Empty until the fetch resolves; the picker degrades to a free-text
@@ -277,9 +336,12 @@ export default function OnboardingScreen({
   };
 
   // Persist the built settings lines and advance to success — but only if the
-  // authoritative DB write succeeded. A failed DB sync (or a real .env error)
-  // surfaces as a retryable error instead of advancing to success over an
-  // unsaved config. Shared by every finalize path so they can't drift.
+  // authoritative DB write succeeded. A failed DB sync while the server isn't
+  // installed/ready yet is deferred (not errored) to onComplete, whose own
+  // checkInstall gate correctly routes to the setup screen instead of
+  // stranding the user on a "could not save" error mid-download (see
+  // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
+  // Shared by every finalize path so they can't drift.
   const finalizeSettings = async (lines: string[]) => {
     const res = await persistOnboarding(
       {
@@ -290,10 +352,18 @@ export default function OnboardingScreen({
       },
       lines,
     );
-    if (!res.ok) {
+    const installStatus = res.ok ? null : await host.checkInstall().catch(() => null);
+    const outcome = resolveFinalizeOutcome(res, installStatus);
+    if (outcome.action === 'error') {
       finalizedRef.current = false; // allow a retry
       setPhase('error');
-      setErrorMsg(res.error);
+      setErrorMsg(outcome.error);
+      return;
+    }
+    if (outcome.action === 'defer') {
+      // Server isn't up yet — skip the "success" flash (misleading here) and
+      // let onComplete's checkInstall gate show the setup/install screen.
+      onComplete();
       return;
     }
     setPhase('success');
@@ -501,6 +571,7 @@ export default function OnboardingScreen({
     let cancelled = false;
     import('../../lib/keycloak').then(({ keycloak }) => {
       if (cancelled || finalizedRef.current || !keycloak.authenticated) return;
+      setAutoFinalizing(true); // drive the boot returns via state, not the ref
       // Provider only — the backend resolves the default model on load.
       saveFinal([
         'ANTON_TERMS_CONSENT=true',
@@ -516,6 +587,51 @@ export default function OnboardingScreen({
   // Full-screen Terms/Privacy reader (opened from the consent line).
   if (legalDoc) {
     return <LegalViewer doc={legalDoc} onClose={() => setLegalDoc(null)} />;
+  }
+
+  // ENG-912: web + already-configured → skip the provider/key flow (the key is
+  // seeded server-side and unreadable here). Hold a minimal welcome while the
+  // config_ready check is in flight OR the keycloak auto-finalize path is
+  // completing, so neither the provider form nor the consent screen flashes.
+  // success/error fall through to their own screens below.
+  if (host.isWeb && (webConfigured === null || autoFinalizing) && phase !== 'success' && phase !== 'error') {
+    return (
+      <ArcadeShell title="Welcome" subtitle="getting things ready">
+        <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
+          <PixelSprite name={coworker.sprite} size={72} bob title={coworker.label} />
+        </div>
+      </ArcadeShell>
+    );
+  }
+  // Configured cloud instance: consent-only entry. The Terms/Privacy line is
+  // kept so consent is still shown (never silently recorded); Continue records
+  // it client-side (via onComplete → rememberTermsConsent) and enters the app.
+  // Skipped when auto-finalizing — a keycloak-authenticated user's auto-finalize
+  // effect handles consent + entry itself (loading above, then success below).
+  if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
+    return (
+      <ArcadeShell title="Welcome" subtitle="you're all set">
+        <div className="arc-stack" style={{ gap: 18 }}>
+          <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
+          <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
+            Your workspace is ready to go.
+          </div>
+          <button
+            className="arc-btn"
+            style={{ width: '100%' }}
+            onClick={() => { if (finalizedRef.current) return; finalizedRef.current = true; onComplete(); }}
+          >
+            Continue
+          </button>
+          <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
+            By continuing, you agree to our{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
+            and{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
+          </div>
+        </div>
+      </ArcadeShell>
+    );
   }
 
   // ── Victory ────────────────────────────────────────────────────────

@@ -131,6 +131,7 @@ export default {
         'sh-1':       'var(--sh-1)',
         'sh-2':       'var(--sh-2)',
         'sh-3':       'var(--sh-3)',
+        'sh-popup':   'var(--sh-popup)',
         card:         'var(--card-shadow-rest)',
         'card-hover': 'var(--card-shadow-hover)',
       },

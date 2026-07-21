@@ -697,8 +697,9 @@ function ArtifactCard({ artifact, onOpen }) {
                 role="menu"
                 style={{
                   position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
-                  background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  // No border — floats on --sh-popup alone (ENG-790).
+                  background: T.surface, borderRadius: 10,
+                  boxShadow: 'var(--sh-popup)', padding: 4, minWidth: 140,
                   display: 'flex', flexDirection: 'column', gap: 2,
                 }}
               >

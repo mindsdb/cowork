@@ -68,7 +68,12 @@ function getDevMode(): string | null {
   return val; // 'live' or 'full'
 }
 
-/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'auto'. */
+/** Read UI_UPDATE_MODE from ~/.anton/.env. Defaults to 'auto'.
+ *
+ * ENG-858: this is now an env-only escape hatch, not a user-facing setting —
+ * there is no Settings UI control for it. It exists for support (pin a user
+ * to manual if a bad version ships) and QA (version-pinning during testing);
+ * everyone else gets forced auto-apply at boot. */
 function getUpdateMode(): 'auto' | 'manual' {
   const vars = readEnvFile();
   return vars.UI_UPDATE_MODE === 'manual' ? 'manual' : 'auto';
@@ -1524,7 +1529,7 @@ app.whenReady().then(async () => {
     // build may be exactly what fixes the crash — so the boot check must not be
     // gated behind a successful start. When the server is down, the poll
     // applies an available server update even in manual mode (recovery, not a
-    // routine update); a healthy server still honors the auto/manual setting.
+    // routine update); a healthy server still honors the auto/manual env hatch.
     // maybeUpdateServer rolls back automatically if the new version also fails
     // its health probe, so this can't strand a previously-working install.
     setUpdateNotifier((payload) => {

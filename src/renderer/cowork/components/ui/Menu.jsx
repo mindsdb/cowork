@@ -43,13 +43,10 @@ import { cva } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
 // Popup shell — background/radius/shadow + the open/close fade+scale.
-// NOTE: still the pre-ENG-790 shadow/border values verbatim (this is a
-// pure mechanism refactor, not a value change — ENG-790 softens these
-// separately; whichever of the two PRs lands second reconciles the
-// small overlap in this string).
+// Borderless and token-shadowed per ENG-790; this keeps that visual
+// treatment while replacing the runtime-injected CSS mechanism.
 const MENU_POPUP_CLASSES = cn(
-  'min-w-[var(--cw-menu-w,_200px)] bg-surface border border-line rounded-[10px]',
-  'shadow-[0_12px_32px_rgba(15,16,17,0.28),0_1px_0_rgba(15,16,17,0.04)]',
+  'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
   'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
   'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
 );

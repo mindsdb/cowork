@@ -353,7 +353,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                boxShadow: 'var(--sh-2)',
                 animation: 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}
@@ -2169,7 +2169,7 @@ export default function SettingsView({
       }}>
         <Section
           title="Current version"
-          subtitle="The version currently running. Components under the hood are shown in details."
+          subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
         >
           {(() => {
             const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
@@ -2248,20 +2248,6 @@ export default function SettingsView({
               </div>
             );
           })()}
-        </Section>
-        <Section
-          title="UI updates"
-          subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
-        >
-          <ToggleGroup
-            value={settings.uiUpdateMode ?? 'auto'}
-            onValueChange={(v) => setSetting('uiUpdateMode', v)}
-            aria-label="UI update mode"
-            options={[
-              { value: 'auto', label: 'Auto', title: 'Download and apply UI updates automatically.' },
-              { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
-            ]}
-          />
         </Section>
       </div>
     </SettingsSectionPanel>
