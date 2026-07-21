@@ -72,3 +72,47 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
   }
   return allOk;
 }
+
+// Model env keys → their dedicated DB setting keys. Intentionally SEPARATE from
+// ENV_TO_SETTING (ENG-739): models must NEVER ride the bulk .env re-sync, or a
+// routine login/token-refresh would re-pin a picker choice from the stale .env
+// `latest:` line. See the ENG-739 note on ENV_TO_SETTING above.
+const MODEL_ENV_TO_SETTING: Record<string, string> = {
+  ANTON_PLANNING_MODEL: 'planning_model',
+  ANTON_CODING_MODEL: 'coding_model',
+};
+
+/** The `ANTON_*_MODEL` lines from a set of "KEY=value" lines. */
+export function modelLinesFrom(lines: string[]): string[] {
+  return lines.filter((l) => {
+    const eq = l.indexOf('=');
+    return eq > 0 && l.slice(0, eq) in MODEL_ENV_TO_SETTING;
+  });
+}
+
+/**
+ * Explicitly write the model chosen during onboarding to the DB (best-effort),
+ * via the dedicated PUT /settings/:key — the ONLY non-picker path allowed to set
+ * a model (ENG-739). Callers must invoke this only for a genuine explicit choice
+ * (onboarding), NEVER from the recurring login/post-install/token-refresh bulk
+ * sync — doing so would reopen the ENG-739 picker-clobber. A minds onboarding
+ * writes no model line, so this is a no-op there (the backend resolves the
+ * tier-aware default). Kept alongside syncSettingsToDb so both model-write and
+ * bulk-write logic live in one place (ENG-922).
+ */
+export async function syncModelsToDb(lines: string[]): Promise<void> {
+  for (const line of lines) {
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const settingKey = MODEL_ENV_TO_SETTING[line.slice(0, eq)];
+    const value = line.slice(eq + 1);
+    if (!settingKey || !value) continue;
+    try {
+      await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      });
+    } catch { /* best-effort — the backend's apply_model_defaults still yields a model */ }
+  }
+}

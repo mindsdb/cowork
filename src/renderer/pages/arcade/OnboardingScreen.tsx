@@ -10,7 +10,7 @@ import { host } from '../../platform/host';
 import { BASE, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
-import { syncSettingsToDb } from '../../lib/syncSettings';
+import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
 import { LegalViewer } from './TermsScreen';
@@ -55,34 +55,9 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
-// Explicitly persist a model chosen during onboarding to the DB (best-effort).
-//
-// ENG-739: model keys were removed from `syncSettingsToDb`'s map so a bulk
-// .env re-sync (login / post-install / web token-refresh) can never re-pin a
-// user who recovered via the picker. Onboarding is a genuine explicit choice,
-// so it writes its model here — the only non-picker path allowed to. A minds
-// onboarding writes no model line (the backend resolves the tier-aware
-// default), so this is a no-op there.
-async function syncOnboardingModels(lines: string[]): Promise<void> {
-  const KEY_MAP: Record<string, string> = {
-    ANTON_PLANNING_MODEL: 'planning_model',
-    ANTON_CODING_MODEL: 'coding_model',
-  };
-  for (const line of lines) {
-    const eq = line.indexOf('=');
-    if (eq <= 0) continue;
-    const settingKey = KEY_MAP[line.slice(0, eq)];
-    const value = line.slice(eq + 1);
-    if (!settingKey || !value) continue;
-    try {
-      await fetch(`${BASE}/settings/${settingKey}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value }),
-      });
-    } catch { /* best-effort — the backend's apply_model_defaults still yields a model */ }
-  }
-}
+// The onboarding model write lives in lib/syncSettings as `syncModelsToDb` — the
+// only non-picker path allowed to set a model (ENG-739) — so both onboarding and
+// the post-install replay (ENG-922) share one implementation.
 
 export interface PersistDeps {
   /** .env write — best-effort in web (loopback-gated, ENG-817), throws on a real error. */
@@ -212,7 +187,13 @@ export default function OnboardingScreen({
 }: {
   /** Cartridge chosen on the select screen; persisted with the settings. */
   coworker: { id: string; label: string; sprite: SpriteName };
-  onComplete: () => void;
+  /**
+   * Advance out of onboarding. On the setup-deferral path (fresh install, server
+   * not up yet) the caller receives the just-chosen `ANTON_*_MODEL` lines so the
+   * post-install handshake can replay them once (ENG-922); omitted on every
+   * other path.
+   */
+  onComplete: (deferredModelLines?: string[]) => void;
   /** Optional — returns to the coworker-select screen. */
   onBack?: () => void;
 }) {
@@ -347,7 +328,7 @@ export default function OnboardingScreen({
       {
         saveSettings: (c) => host.saveSettings(c),
         syncToDb: syncSettingsToDb,
-        syncModels: syncOnboardingModels,
+        syncModels: syncModelsToDb,
         syncHarness: () => syncHarness(coworker.id),
       },
       lines,
@@ -363,7 +344,13 @@ export default function OnboardingScreen({
     if (outcome.action === 'defer') {
       // Server isn't up yet — skip the "success" flash (misleading here) and
       // let onComplete's checkInstall gate show the setup/install screen.
-      onComplete();
+      // persistOnboarding stopped at the failed DB sync, BEFORE syncModels, so
+      // the chosen model never reached the DB and the post-install bulk .env
+      // re-sync deliberately excludes model keys (ENG-739). Hand the just-chosen
+      // model lines up so the post-install handshake replays them once —
+      // otherwise a non-Anthropic BYOK user lands config-not-ready ("Select a
+      // model"). In-memory choice, never a .env re-read (ENG-922).
+      onComplete(modelLinesFrom(lines));
       return;
     }
     setPhase('success');

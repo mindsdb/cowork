@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import { COWORKERS } from './pages/arcade/CoworkerSelect';
@@ -6,7 +6,7 @@ import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
-import { syncSettingsToDb } from './lib/syncSettings';
+import { syncSettingsToDb, syncModelsToDb } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
@@ -92,6 +92,12 @@ function MoonIcon({ size = 15 }: { size?: number }) {
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
   const [coworker] = useState(recallCoworker);
+  // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
+  // setup/install screen (server wasn't up to take the DB write). Consumed once
+  // by handlePostAuth after install. A ref (not state) — it drives a one-shot
+  // side effect, not a render; it also must survive the auth→setup→install page
+  // transitions without re-rendering.
+  const deferredModelRef = useRef<string[] | null>(null);
   const [skin, setSkin] = useState(loadSkin);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
@@ -143,11 +149,23 @@ export default function App() {
   // config_ready is true on first mount. Called from both the already-installed
   // login path and the post-install path so the handshake is never skipped.
   const handlePostAuth = async () => {
+    // Consume the deferred model choice exactly once (see deferredModelRef).
+    const deferredModels = deferredModelRef.current;
+    deferredModelRef.current = null;
     try {
       const saved = await host.readSettings();
       if (saved && typeof saved === 'object') {
         const lines = Object.entries(saved as Record<string, string>).map(([k, v]) => `${k}=${v}`);
         await syncSettingsToDb(lines);
+      }
+      // ENG-922: onboarding deferred to the install screen before it could write
+      // the model to the DB, and the bulk .env re-sync above intentionally omits
+      // model keys (ENG-739). Replay the just-chosen model now that the server
+      // exists. Scoped to the deferred payload — which is set only on the defer
+      // path (a fresh, server-less install with no prior DB/picker state) — so a
+      // routine relogin can never re-pin a picker choice.
+      if (deferredModels && deferredModels.length) {
+        await syncModelsToDb(deferredModels);
       }
     } catch { /* best-effort — backend migration covers the gap on next restart */ }
     setPage('terminal');
@@ -155,7 +173,11 @@ export default function App() {
 
   // After login (SSO or BYOK): consent is recorded and a provider is saved.
   // Ensure the backend is installed, then run the credential handshake.
-  const handleAuthComplete = async () => {
+  // `deferredModelLines` is present only when onboarding deferred to setup (the
+  // fresh-install/server-not-up race, ENG-922); stashed for handlePostAuth to
+  // replay once install finishes.
+  const handleAuthComplete = async (deferredModelLines?: string[]) => {
+    deferredModelRef.current = deferredModelLines ?? null;
     rememberTermsConsent();
     try { await host.restartServer(); } catch {}
     try {
