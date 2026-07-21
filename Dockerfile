@@ -116,6 +116,31 @@ RUN chmod +x /tmp/install-cowork-server.sh && /tmp/install-cowork-server.sh
 # closure's own pins move past the floor.
 RUN uv pip install --python /opt/venv/bin/python "pyjwt>=2.13.0"
 
+# Drop the hermes harness. cowork-server hard-depends on hermes-agent but
+# imports it lazily (cowork/harnesses/__init__.py wraps the import in
+# try/except ImportError), and CVS only uses the anton harness. Every one
+# of hermes-agent's transitive deps is also required by anton-agent, so
+# removing the top-level package alone drops the entire hermes footprint
+# without disturbing anything else (verified: 0 packages become orphaned).
+# This also removes hermes-agent's exact `Pillow==12.2.0` pin, which is
+# what blocks the Pillow security floor below.
+RUN uv pip uninstall --python /opt/venv/bin/python hermes-agent
+
+# Security floor: Pillow < 12.3.0 carries 10 HIGH CVEs (CVE-2026-54058/
+# -54059/-54060/-55379/-55380/-59197/-59199/-59200/-59204/-59205 — heap
+# OOB writes, decompression bombs, memory disclosure across the image
+# codecs), all fixed in 12.3.0. Pillow stays in the image because the PDF
+# export stack (xhtml2pdf -> reportlab) and anton both need it; only the
+# now-removed hermes `==12.2.0` pin held it back. Re-check on version bumps.
+RUN uv pip install --python /opt/venv/bin/python "pillow>=12.3.0"
+
+# Fail the build if the harness stack no longer imports without hermes, or
+# if Pillow didn't reach the floor — cheaper to catch here than in a scan.
+RUN /opt/venv/bin/python -c "import cowork.harnesses, PIL; \
+from importlib.metadata import version; \
+assert tuple(map(int, version('pillow').split('.')[:2])) >= (12, 3), version('pillow'); \
+print('✓ harnesses import; pillow', version('pillow'))"
+
 # ── Stage 3: runtime — minimal, no compilers, no uv, no source tree ──────
 # Same digest-pinned UBI 9 minimal base as py-builder. The runtime stage
 # is what the customer actually pulls, so this digest is the one their

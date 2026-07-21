@@ -12,7 +12,7 @@
 # then re-scan and remove any entry whose CVE is now patched in the
 # new base.
 #
-# Last reviewed: 2026-07-16 against
+# Last reviewed: 2026-07-21 against
 #   registry.access.redhat.com/ubi9-minimal@sha256:
 #     062c52ff973065752b0965787649db2bcf551a6c727a00e95a3eb42cebadbdab
 # (Red Hat Enterprise Linux 9.8), with the cowork-server 0.26.7.13.3
@@ -32,8 +32,11 @@
 # coreutils, systemd-libs, libxml2, ... — is removed at build time and
 # can never flag. The rpm DATABASE survives the strip, so scanners
 # still enumerate the remaining packages honestly. Fixes that DO exist
-# are applied: `microdnf update` pulls current Red Hat errata and the
-# Dockerfile pins a PyJWT >= 2.13.0 floor (CVE-2026-48526).
+# are applied: `microdnf update` pulls current Red Hat errata, and the
+# Dockerfile applies Python-package security floors — PyJWT >= 2.13.0
+# (CVE-2026-48526) and Pillow >= 12.3.0 (the 2026-07 image-codec HIGH
+# cluster) — after dropping the unused hermes-agent harness, whose exact
+# `Pillow==12.2.0` pin had been holding the floor back.
 #
 # Threat model summary: cowork is a FastAPI HTTP server that listens on
 # a single loopback port (default 26866). It does NOT terminate TLS, does
