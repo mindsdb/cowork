@@ -82,11 +82,17 @@ const MODEL_ENV_TO_SETTING: Record<string, string> = {
   ANTON_CODING_MODEL: 'coding_model',
 };
 
+// Own-key check — NOT `key in MODEL_ENV_TO_SETTING` / bracket access, which also
+// match inherited Object.prototype names (`toString`, `constructor`, …) and
+// would treat a stray `toString=…` line as a model key with a function value.
+const isModelEnvKey = (key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(MODEL_ENV_TO_SETTING, key);
+
 /** The `ANTON_*_MODEL` lines from a set of "KEY=value" lines. */
 export function modelLinesFrom(lines: string[]): string[] {
   return lines.filter((l) => {
     const eq = l.indexOf('=');
-    return eq > 0 && l.slice(0, eq) in MODEL_ENV_TO_SETTING;
+    return eq > 0 && isModelEnvKey(l.slice(0, eq));
   });
 }
 
@@ -104,9 +110,11 @@ export async function syncModelsToDb(lines: string[]): Promise<void> {
   for (const line of lines) {
     const eq = line.indexOf('=');
     if (eq <= 0) continue;
-    const settingKey = MODEL_ENV_TO_SETTING[line.slice(0, eq)];
+    const envKey = line.slice(0, eq);
+    if (!isModelEnvKey(envKey)) continue;
+    const settingKey = MODEL_ENV_TO_SETTING[envKey];
     const value = line.slice(eq + 1);
-    if (!settingKey || !value) continue;
+    if (!value) continue;
     try {
       await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
         method: 'PUT',

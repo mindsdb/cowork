@@ -22,10 +22,12 @@ const keycloakMock = vi.hoisted(() => ({ authenticated: false }));
 vi.mock('../../platform/host', () => ({ host: hostMock }));
 vi.mock('../../cowork/api', () => ({ BASE: '/api/v1', fetchRecommendedModels: vi.fn(async () => ({})) }));
 vi.mock('../../lib/keycloak', () => ({ keycloak: keycloakMock }));
-vi.mock('../../lib/syncSettings', () => ({
+// Keep the REAL pure helpers (modelLinesFrom) — mock only the I/O functions —
+// so the component test can't pass on a broken modelLinesFrom (no mock/real drift).
+vi.mock('../../lib/syncSettings', async (importActual) => ({
+  ...(await importActual()),
   syncSettingsToDb: vi.fn(async () => true),
   syncModelsToDb: vi.fn(async () => {}),
-  modelLinesFrom: (lines) => lines.filter((l) => /^ANTON_(PLANNING|CODING)_MODEL=/.test(l)),
 }));
 
 import OnboardingScreen from './OnboardingScreen';

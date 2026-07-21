@@ -66,6 +66,13 @@ describe('modelLinesFrom', () => {
       ]),
     ).toEqual([]);
   });
+
+  // Guard: `key in obj` / `obj[key]` also match inherited Object.prototype names.
+  it('does not treat inherited prototype names (toString, constructor) as model keys', () => {
+    expect(
+      modelLinesFrom(['toString=evil', 'constructor=x', 'ANTON_CODING_MODEL=haiku']),
+    ).toEqual(['ANTON_CODING_MODEL=haiku']);
+  });
 });
 
 describe('syncModelsToDb', () => {
@@ -102,5 +109,12 @@ describe('syncModelsToDb', () => {
   it('is a no-op when there are no model lines (minds/SSO path)', async () => {
     await syncModelsToDb(['ANTON_MINDS_API_KEY=mdb_abc']);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // Guard against inherited prototype names resolving to a function via bracket
+  // access and producing a garbage PUT.
+  it('skips inherited prototype names, writing only real model keys', async () => {
+    await syncModelsToDb(['toString=evil', 'constructor=x', 'ANTON_PLANNING_MODEL=gpt-5.5']);
+    expect(settingKeysWritten(fetchMock.mock.calls)).toEqual(['planning_model']);
   });
 });
