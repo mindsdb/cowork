@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
+import { Badge } from '../components/ui';
 import {
   fetchChannelBindings,
   createChannelBinding,
@@ -147,7 +148,7 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
               const rule = rowValue(b, 'trigger_rule');
               return (
                 <tr key={b.id}>
-                  {channelType ? null : <td><span className="channels-badge channels-badge-idle">{b.channel_type}</span></td>}
+                  {channelType ? null : <td><Badge variant="muted" size="xs">{b.channel_type}</Badge></td>}
                   <td className="channels-type">{b.external_group_id}{b.external_thread_id ? `/${b.external_thread_id}` : ''}</td>
                   <td>
                     <input className="channels-input channels-input-sm" value={rowValue(b, 'display_name')}

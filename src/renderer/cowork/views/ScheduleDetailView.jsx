@@ -14,6 +14,7 @@ import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/C
 import { Button } from '../components/ui';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
+import { ScheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
 import { relativeTime } from '../lib/formatTime';
 
 const FONT_BODY    = 'var(--font-body)';
@@ -45,36 +46,6 @@ function runColor(run) {
   if (run.status === 'failed') return 'var(--danger)';
   if (run.status === 'cancelled') return 'var(--ink-4)';
   return run.isManual ? 'var(--accent)' : 'var(--success)';
-}
-
-
-// ── breadcrumb ──
-//
-// ── pills ──
-
-function StatusPill({ task }) {
-  const cfg = (() => {
-    if (task.running)   return { label: 'Running',         fg: 'var(--accent)' };
-    if (!task.enabled)  return { label: 'Paused',          fg: 'var(--ink-3)' };
-    if (task.lastError) return { label: 'Last run failed', fg: 'var(--danger)' };
-    return { label: 'Active', fg: 'var(--success)' };
-  })();
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '4px 10px', borderRadius: 999,
-      background: `color-mix(in srgb, ${cfg.fg} 12%, transparent)`,
-      border: `1px solid color-mix(in srgb, ${cfg.fg} 32%, transparent)`,
-      color: cfg.fg,
-      fontFamily: FONT_BODY, fontSize: 12, fontWeight: 600,
-    }}>
-      <span style={{
-        display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-        background: 'currentColor',
-      }} />
-      {cfg.label}
-    </span>
-  );
 }
 
 
@@ -380,7 +351,7 @@ export default function ScheduleDetailView({
                 display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
               }}>{task.title}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-                <StatusPill task={task} />
+                <ScheduleStatusBadge task={task} failedLabel="Last run failed" size="lg" dot />
                 <span style={{
                   fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)',
                 }}>

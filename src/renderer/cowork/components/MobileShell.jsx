@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Ico from './Icons';
+import { Badge } from './ui';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
 // (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
@@ -68,7 +69,7 @@ function ListRow({ primary, secondary, onClick, badge }) {
         {secondary && <span className="mshell-row__secondary">{secondary}</span>}
       </span>
       {badge != null && badge !== '' && (
-        <span className="mshell-row__badge">{badge}</span>
+        <Badge variant="muted" className="min-w-[22px] justify-center font-semibold">{badge}</Badge>
       )}
       <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
     </button>

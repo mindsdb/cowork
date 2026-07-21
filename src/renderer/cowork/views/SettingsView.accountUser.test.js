@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { accountUserFromToken } from './SettingsView';
+import { accountUserFromToken, providerStatusBadge } from './SettingsView';
 
 const jwt = (payload) =>
   `header.${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}.sig`;
@@ -42,5 +42,17 @@ describe('accountUserFromToken', () => {
   it('returns null for an undecodable token', () => {
     expect(accountUserFromToken('not-a-jwt')).toBeNull();
     expect(accountUserFromToken('a.%%%not-base64%%%.b')).toBeNull();
+  });
+});
+
+describe('providerStatusBadge', () => {
+  it.each([
+    ['ok', true, { label: 'connected', variant: 'success' }],
+    ['fail', true, { label: 'unable to connect', variant: 'danger' }],
+    ['testing', true, { label: 'testing…', variant: 'warning' }],
+    [null, true, { label: 'not tested', variant: 'muted' }],
+    [null, false, null],
+  ])('maps %s (configured: %s) to %o', (status, configured, expected) => {
+    expect(providerStatusBadge(status, configured)).toEqual(expected);
   });
 });
