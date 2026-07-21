@@ -45,9 +45,14 @@ export async function runPostAuthHandshake(deps: PostAuthDeps): Promise<PostAuth
     }
     return { next: 'terminal', clearDeferred: true };
   } catch {
-    // Read / bulk sync threw (server unreachable): provider/keys reconcile from
-    // .env on next restart (existing best-effort contract). Keep any deferred
-    // model so a later Retry can still replay it.
+    // Read / bulk sync threw (server unreachable / IPC error). If a model replay
+    // was owed, surface the retryable error so the owed model isn't silently
+    // lost — symmetric with the replay-returned-false case above. Otherwise fall
+    // through to terminal (provider/keys reconcile from .env on next restart,
+    // the existing best-effort contract).
+    if (deps.deferredModelLines && deps.deferredModelLines.length) {
+      return { next: 'setupError', clearDeferred: false };
+    }
     return { next: 'terminal', clearDeferred: false };
   }
 }

@@ -35,9 +35,21 @@ describe('runPostAuthHandshake', () => {
     expect(await runPostAuthHandshake(deps)).toEqual({ next: 'setupError', clearDeferred: false });
   });
 
-  it('a thrown bulk sync keeps the payload (does not clear on a degraded terminal)', async () => {
+  // A thrown handshake with a model owed is symmetric with replay-returns-false:
+  // surface the retryable error, keep the payload — don't silently lose the model.
+  it('thrown handshake WITH a deferred model → setupError, payload retained', async () => {
     const deps = makeDeps({
       deferredModelLines: ['ANTON_PLANNING_MODEL=gpt-5.5'],
+      syncSettingsToDb: vi.fn(async () => { throw new Error('offline'); }),
+    });
+    expect(await runPostAuthHandshake(deps)).toEqual({ next: 'setupError', clearDeferred: false });
+  });
+
+  // No model owed: a thrown bulk sync keeps the existing best-effort contract
+  // (enter the app; provider/keys reconcile from .env on next restart).
+  it('thrown handshake with NO deferred model → terminal (best-effort)', async () => {
+    const deps = makeDeps({
+      deferredModelLines: null,
       syncSettingsToDb: vi.fn(async () => { throw new Error('offline'); }),
     });
     expect(await runPostAuthHandshake(deps)).toEqual({ next: 'terminal', clearDeferred: false });

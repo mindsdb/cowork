@@ -99,6 +99,9 @@ export default function App() {
   // side effect, not a render; it also must survive the auth→setup→install page
   // transitions without re-rendering.
   const deferredModelRef = useRef<string[] | null>(null);
+  // Guards the setupError Retry button so a double-click can't fan out redundant
+  // concurrent handshakes.
+  const [retrying, setRetrying] = useState(false);
   const [skin, setSkin] = useState(loadSkin);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
@@ -228,7 +231,13 @@ export default function App() {
           <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)', maxWidth: 380 }}>
             Your provider is saved, but we couldn't apply your model. Check your connection, then try again.
           </div>
-          <button className="arc-btn" onClick={handlePostAuth}>Retry</button>
+          <button
+            className="arc-btn"
+            disabled={retrying}
+            onClick={async () => { setRetrying(true); try { await handlePostAuth(); } finally { setRetrying(false); } }}
+          >
+            {retrying ? 'Retrying…' : 'Retry'}
+          </button>
         </div>
       )}
 
