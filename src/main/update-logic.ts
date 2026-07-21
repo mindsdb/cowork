@@ -344,6 +344,12 @@ export interface UIManifest {
   url: string; // GitHub Release asset download URL
   sha256: string;
   minServerVersion?: string; // optional CalVer floor: minimum cowork-server this UI needs
+  // Optional CalVer of the newest *shell* (installer) published alongside this
+  // manifest (ENG-849). Distinct from `version` (the UI-bundle version): the
+  // publish workflow only emits it on the release path, where an installer
+  // actually ships — so it never falsely advertises a reinstall for a UI-only
+  // publish. Absent → no shell-update notice.
+  shellVersion?: string;
 }
 
 /** Should a UI bundle be withheld because the running server can't be shown to
@@ -396,6 +402,13 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
       if (!isNonEmptyString(msv)) return null;
       manifest.minServerVersion = msv;
     }
+    // Optional shell (installer) version (ENG-849), accepting the camelCase the
+    // publish workflow writes plus a snake_case / nested `shell.version` form.
+    // Advisory-only — it drives a download-link notice, never a download/extract
+    // — so a malformed value is simply ignored (kept absent), NOT a reason to
+    // reject the whole manifest and break OTA.
+    const sv = data.shellVersion ?? data.shell_version ?? (data.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
+    if (isNonEmptyString(sv)) manifest.shellVersion = sv;
     return manifest;
   } catch {
     return null;
@@ -493,4 +506,49 @@ export function startFailureMessage(input: {
     case 'timeout':
       return `The backend was still starting after ${formatElapsed(input.elapsedMs)} and never answered /health.`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shell (installer) update notice (ENG-849)
+// ---------------------------------------------------------------------------
+
+// Where signed installers live (CloudFront over the anton-installer S3 bucket).
+// Per-platform, per-channel-by-filename: `-latest` = prod, `-staging` = stable.
+const SHELL_DOWNLOADS_BASE = 'https://downloads.mindshub.ai/mindshub-cowork';
+
+/** Is a newer Electron shell (installer) available for download?
+ *
+ *  The shell is not covered by OTA — it only updates via a manual reinstall —
+ *  so all we can do is compare the installed shell CalVer against the newest
+ *  published one and, if strictly newer, point the user at the installer.
+ *
+ *  Fail-closed: if either version isn't CalVer (e.g. a dev build whose
+ *  `getAppDisplayVersion()` fell back to the package.json SemVer), return false
+ *  — never nag on a version we can't actually compare. MAJOR is ignored, same
+ *  as every other CalVer comparison (compareCalVer). */
+export function shellUpdateIsNewer(
+  latestShellVersion: string | null | undefined,
+  installedShellVersion: string | null | undefined,
+): boolean {
+  const latest = parseCalVer(latestShellVersion);
+  const installed = parseCalVer(installedShellVersion);
+  if (!latest || !installed) return false;
+  return compareCalVer(latest, installed) > 0;
+}
+
+/** The stable installer download URL for this platform + build channel, or null
+ *  when there isn't one. Prod points at the `-latest` installer, stable at the
+ *  `-staging` installer — a non-prod build must never be sent to the prod
+ *  installer (ENG-676). preview/dev (and any unknown channel) have no stable
+ *  installer URL, and only macOS/Windows ship an installer, so both cases
+ *  return null (the caller can fall back to the downloads site). */
+export function shellDownloadUrl(
+  platform: string,
+  buildKind: string | null | undefined,
+): string | null {
+  const slot = buildKind === 'prod' ? 'latest' : buildKind === 'stable' ? 'staging' : null;
+  if (!slot) return null;
+  if (platform === 'darwin') return `${SHELL_DOWNLOADS_BASE}/mac/mindshub-cowork-${slot}.pkg`;
+  if (platform === 'win32') return `${SHELL_DOWNLOADS_BASE}/windows/mindshub-cowork-${slot}.exe`;
+  return null;
 }

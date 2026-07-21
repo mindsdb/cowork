@@ -12,6 +12,10 @@ on:
         description: 'Exact version to publish (from the auto-release job, e.g. 2.26.7.6.1).'
         required: true
         type: string
+      shell_version:
+        description: 'Installer (shell) CalVer shipping alongside this UI bundle. Emitted into latest.json as shellVersion so clients can offer a reinstall notice (ENG-849). ONLY set on the auto-release path, where a prod installer is actually published — a UI-only re-publish must leave it empty so no phantom reinstall notice appears.'
+        required: false
+        type: string
     secrets:
       RELEASES_TOKEN:
         required: true
@@ -117,6 +121,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
           MIN_SERVER_VERSION_INPUT: ${{ github.event.inputs.min_server_version }}
+          SHELL_VERSION: ${{ inputs.shell_version }}
         run: |
           # -e: halt on first failure (so a bad token fails here, not
           # three commands later). pipefail: propagate failure of the
@@ -183,6 +188,12 @@ jobs:
           msv = os.environ.get('MIN_SERVER_VERSION', '').strip()
           if msv:
               data['min_server_version'] = msv
+          # Shell (installer) version — only present on the auto-release path,
+          # where a prod installer actually shipped (ENG-849). Its absence means
+          # 'no new installer', so the client shows no reinstall notice.
+          sv = os.environ.get('SHELL_VERSION', '').strip()
+          if sv:
+              data['shellVersion'] = sv
           with open('latest.json', 'w') as f:
               json.dump(data, f, indent=2)
           print(json.dumps(data, indent=2))

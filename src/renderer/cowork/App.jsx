@@ -1342,6 +1342,15 @@ function AppCore() {
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
   const toastManager = useToastManager();
+  // Shell (installer) update notice (ENG-849). The Electron shell isn't covered
+  // by OTA — it updates only via a manual reinstall — so this offers a download
+  // link, never an in-place apply. Populated by the 'shell-available' push from
+  // main's boot/periodic poll. Dismissal is per-version so a dismissed notice
+  // reappears when a newer shell ships (don't nag; do re-notify).
+  const [shellUpdate, setShellUpdate] = useState(null); // { version, currentVersion, downloadUrl }
+  const [shellUpdateDismissed, setShellUpdateDismissed] = useState(() => {
+    try { return localStorage.getItem('shellUpdateDismissedVersion') || ''; } catch { return ''; }
+  });
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1456,6 +1465,12 @@ function AppCore() {
   // web — host returns a noop unsubscriber there.
   useEffect(() => {
     return host.onUpdateStatus((status) => {
+      // The shell (installer) notice rides the same channel but is a distinct,
+      // download-only flow — keep it out of the OTA apply state.
+      if (status?.phase === 'shell-available') {
+        setShellUpdate({ version: status.version, currentVersion: status.currentVersion, downloadUrl: status.downloadUrl });
+        return;
+      }
       setUpdateStatus(status);
     });
   }, []);
@@ -1495,6 +1510,19 @@ function AppCore() {
       setUpdateStatus({ phase: 'error' });
     }
   }, [updateApplying, updateStatus]);
+
+  // Shell update = manual reinstall: open the installer download in the browser
+  // (fall back to the downloads site for a platform without a direct URL).
+  const handleDownloadShellUpdate = useCallback(() => {
+    host.openExternal(shellUpdate?.downloadUrl || 'https://downloads.mindshub.ai');
+  }, [shellUpdate]);
+
+  const dismissShellUpdate = useCallback(() => {
+    const v = shellUpdate?.version;
+    if (!v) return;
+    try { localStorage.setItem('shellUpdateDismissedVersion', v); } catch { /* private mode */ }
+    setShellUpdateDismissed(v);
+  }, [shellUpdate]);
 
   // ── Boot lifecycle decisions ─────────────────────────────────────
   // Both of these used to live inside HomeView, but the user can
@@ -3718,6 +3746,9 @@ function AppCore() {
           navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
           onApplyUpdate={handleApplyUpdate}
+          shellUpdate={shellUpdate && shellUpdate.version !== shellUpdateDismissed ? shellUpdate : null}
+          onDownloadShellUpdate={handleDownloadShellUpdate}
+          onDismissShellUpdate={dismissShellUpdate}
           onShowServerHelp={() => openSettings('backend')}
           onToggleServer={async () => {
             if (serverBusy) return;
@@ -4044,6 +4075,8 @@ function AppCore() {
               isSsoConnected={ssoConnected}
               ssoError={ssoError}
               onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+              shellUpdate={shellUpdate}
+              onDownloadShellUpdate={handleDownloadShellUpdate}
             />
           </Modal>
         ) : (

@@ -20,6 +20,8 @@ import {
   uiServerCompatSkipReason,
   decideStartWait,
   startFailureMessage,
+  shellUpdateIsNewer,
+  shellDownloadUrl,
 } from './update-logic';
 
 describe('compareVersions', () => {
@@ -665,5 +667,74 @@ describe('startFailureMessage', () => {
   it('distinguishes "still starting" from "never started"', () => {
     expect(startFailureMessage({ kind: 'timeout', exitCode: null, spawnError: null, elapsedMs: 90_000 }))
       .toBe('The backend was still starting after 90s and never answered /health.');
+  });
+});
+
+describe('parseUiManifest — shellVersion (ENG-849)', () => {
+  const base = { version: '2.26.7.20.1', url: 'https://x/y.tar.gz', sha256: 'a'.repeat(64) };
+
+  it('captures a valid shellVersion (camelCase)', () => {
+    const m = parseUiManifest(JSON.stringify({ ...base, shellVersion: '2.26.7.20.1' }));
+    expect(m?.shellVersion).toBe('2.26.7.20.1');
+  });
+
+  it('accepts snake_case and nested shell.version forms', () => {
+    expect(parseUiManifest(JSON.stringify({ ...base, shell_version: '2.26.7.20.2' }))?.shellVersion).toBe('2.26.7.20.2');
+    expect(parseUiManifest(JSON.stringify({ ...base, shell: { version: '2.26.7.20.3' } }))?.shellVersion).toBe('2.26.7.20.3');
+  });
+
+  it('leaves shellVersion absent when not published (no false reinstall notice)', () => {
+    const m = parseUiManifest(JSON.stringify(base));
+    expect(m).not.toBeNull();
+    expect(m?.shellVersion).toBeUndefined();
+  });
+
+  it('ignores a malformed shellVersion rather than rejecting the manifest (OTA must survive)', () => {
+    const m = parseUiManifest(JSON.stringify({ ...base, shellVersion: 123 }));
+    expect(m).not.toBeNull();
+    expect(m?.version).toBe('2.26.7.20.1');
+    expect(m?.shellVersion).toBeUndefined();
+  });
+});
+
+describe('shellUpdateIsNewer (ENG-849)', () => {
+  it('true only when the latest shell is strictly newer by CalVer', () => {
+    expect(shellUpdateIsNewer('2.26.7.20.1', '2.26.7.13.1')).toBe(true);
+    expect(shellUpdateIsNewer('2.26.7.20.1', '2.26.7.20.1')).toBe(false); // equal
+    expect(shellUpdateIsNewer('2.26.7.13.1', '2.26.7.20.1')).toBe(false); // older
+  });
+
+  it('ignores MAJOR, ordering on the date (a server-major shell string still compares by date)', () => {
+    expect(shellUpdateIsNewer('0.26.7.21.1', '2.26.7.20.1')).toBe(true);
+  });
+
+  it('fails closed on a non-CalVer installed or latest (never nag on the dev SemVer fallback)', () => {
+    expect(shellUpdateIsNewer('2.26.7.20.1', '2.0.7')).toBe(false);
+    expect(shellUpdateIsNewer('2.0.7', '2.26.7.20.1')).toBe(false);
+    expect(shellUpdateIsNewer(null, '2.26.7.20.1')).toBe(false);
+    expect(shellUpdateIsNewer('2.26.7.20.1', undefined)).toBe(false);
+  });
+});
+
+describe('shellDownloadUrl (ENG-849)', () => {
+  it('points prod at the -latest installer per platform', () => {
+    expect(shellDownloadUrl('darwin', 'prod')).toBe('https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-latest.pkg');
+    expect(shellDownloadUrl('win32', 'prod')).toBe('https://downloads.mindshub.ai/mindshub-cowork/windows/mindshub-cowork-latest.exe');
+  });
+
+  it('points stable at the -staging installer, never the prod one (ENG-676)', () => {
+    expect(shellDownloadUrl('darwin', 'stable')).toBe('https://downloads.mindshub.ai/mindshub-cowork/mac/mindshub-cowork-staging.pkg');
+    expect(shellDownloadUrl('win32', 'stable')).toBe('https://downloads.mindshub.ai/mindshub-cowork/windows/mindshub-cowork-staging.exe');
+  });
+
+  it('returns null for channels without a stable installer URL', () => {
+    expect(shellDownloadUrl('darwin', 'preview')).toBeNull();
+    expect(shellDownloadUrl('darwin', 'dev')).toBeNull();
+    expect(shellDownloadUrl('darwin', null)).toBeNull();
+  });
+
+  it('returns null for platforms that ship no installer', () => {
+    expect(shellDownloadUrl('linux', 'prod')).toBeNull();
+    expect(shellDownloadUrl('', 'prod')).toBeNull();
   });
 });

@@ -33,6 +33,10 @@ jobs:
     uses: ./.github/workflows/publish-ui.yml
     with:
       version: ${{ needs.auto-release.outputs.version }}
+      # A prod installer ships in this same run (build-deploy-prod), so record it
+      # as the latest shell version in latest.json for the in-app reinstall
+      # notice (ENG-849). Same CalVer as the installer and the UI bundle.
+      shell_version: ${{ needs.auto-release.outputs.version }}
     secrets: inherit
 
   notify:

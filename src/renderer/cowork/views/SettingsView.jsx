@@ -737,6 +737,11 @@ export default function SettingsView({
   // from the section list (the top-bar back control drills out to it first).
   mobile = false,
   onClose,
+  // Shell (installer) update notice (ENG-849): { version, currentVersion,
+  // downloadUrl } or null. Shown in Updates regardless of banner dismissal —
+  // Settings is a deliberate visit, so it always reflects the true state.
+  shellUpdate = null,
+  onDownloadShellUpdate,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -2358,6 +2363,26 @@ export default function SettingsView({
             );
           })()}
         </Section>
+        {isElectron && shellUpdate && (
+          <Section
+            title="App update available"
+            subtitle="A newer version of MindsHub Cowork has been released. The app itself updates by downloading and reinstalling."
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid rgba(93,146,135,0.30)', background: 'rgba(93,146,135,0.12)', borderRadius: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 160 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                  {shellUpdate.version ? `Version ${shellUpdate.version} is available` : 'A new version is available'}
+                </span>
+                <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {(shellUpdate.currentVersion || '—')} → {shellUpdate.version || '—'}
+                </span>
+              </div>
+              <Button variant="primary" onClick={onDownloadShellUpdate} style={{ cursor: 'pointer' }}>
+                Download update
+              </Button>
+            </div>
+          </Section>
+        )}
       </div>
     </SettingsSectionPanel>
   );

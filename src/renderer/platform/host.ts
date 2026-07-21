@@ -436,6 +436,10 @@ export function onInstallCancelled(cb: () => void): () => void {
 export interface UpdateStatus {
   phase: string;
   version?: string;
+  // Set on the shell (installer) update notice (phase 'shell-available',
+  // ENG-849): the running shell version and the installer download URL.
+  currentVersion?: string;
+  downloadUrl?: string;
 }
 
 // Subscribes to update-status pushes from the main process. Returns

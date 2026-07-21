@@ -20,7 +20,7 @@ interface AntonTronAPI {
   // UI Updates
   checkForUpdate: () => Promise<{ updateAvailable: boolean; applied: boolean; newVersion?: string }>;
   applyUpdate: () => Promise<boolean>;
-  onUpdateStatus: (cb: (status: { phase: string; version?: string }) => void) => () => void;
+  onUpdateStatus: (cb: (status: { phase: string; version?: string; currentVersion?: string; downloadUrl?: string }) => void) => () => void;
 
   getPlatform: () => string;
   getUIVersion: () => Promise<{ app: string; ui: string | null; source: 'ota' | 'bundled' }>;
