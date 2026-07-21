@@ -1018,9 +1018,10 @@ export async function fetchSettings() {
         result.recommendedModels = overlayLists(result.recommendedModels, rec.recommendedModels);
         result.recommendedPair = overlayLists(result.recommendedPair, rec.recommendedPair);
         result.modelEfforts = rec.modelEfforts || {};
-        // Per-model availability: MindsHub lists models the user's tier can't
-        // use (marked enabled:false) so the picker shows them greyed as
-        // upgrade prompts. Absent id ⇒ available (backwards compatible).
+        /* Per-model availability: MindsHub marks models the org's wallet can't
+         * currently pay for (or whose free allowance is spent) as
+         * enabled:false, so the picker shows them greyed with an "add credits"
+         * prompt. Absent id ⇒ available (backwards compatible). */
         result.modelEnabled = rec.modelEnabled || {};
       }
       _lastFetchedSettings = result;
