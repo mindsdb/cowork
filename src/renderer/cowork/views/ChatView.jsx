@@ -35,6 +35,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
+import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -1027,10 +1028,7 @@ function ProviderOverloadedCard({
       agentLabel={agentLabel}
       title={`${who} is having a temporary issue`}
       body={body}
-      buttons={[
-        { label: 'Try again', onClick: () => onRetry?.(), primary: true, disabled: !onRetry },
-        ...(onManaged ? [] : [{ label: 'Set up MindsHub', onClick: () => onOpenSettings?.('agent') }]),
-      ]}
+      buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
     />
   );
 }
