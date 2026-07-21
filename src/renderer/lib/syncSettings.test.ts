@@ -147,12 +147,12 @@ describe('syncModelsToDbWithRetry', () => {
     fetchMock
       .mockResolvedValueOnce({ ok: false } as Response) // attempt 1
       .mockResolvedValue({ ok: true } as Response);      // retry
-    expect(await syncModelsToDbWithRetry(['ANTON_PLANNING_MODEL=gpt-5.5'], 3)).toBe(true);
+    expect(await syncModelsToDbWithRetry(['ANTON_PLANNING_MODEL=gpt-5.5'], 3, 0)).toBe(true);
   });
 
   it('returns false after exhausting all attempts', async () => {
     fetchMock.mockResolvedValue({ ok: false } as Response);
-    expect(await syncModelsToDbWithRetry(['ANTON_PLANNING_MODEL=gpt-5.5'], 2)).toBe(false);
+    expect(await syncModelsToDbWithRetry(['ANTON_PLANNING_MODEL=gpt-5.5'], 2, 0)).toBe(false);
   });
 
   it('returns true without any request when there is nothing to write', async () => {

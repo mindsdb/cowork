@@ -136,17 +136,27 @@ export async function syncModelsToDb(lines: string[]): Promise<boolean> {
   return allOk;
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 /**
- * syncModelsToDb with a few immediate retries — for the post-install replay
- * (ENG-922). The cowork-server has just been installed/started, so a lone failed
- * request is usually a transient settling blip; retrying covers it. Returns true
- * once a full write succeeds (or there's nothing to write), false if every
- * attempt failed — on false the caller MUST keep its retry payload (see the
- * syncModelsToDb note on why a dropped model doesn't self-heal).
+ * syncModelsToDb with a few retries and exponential backoff — for the
+ * post-install replay (ENG-922). The cowork-server has just been
+ * installed/started, so a lone failed request is usually a transient settling
+ * blip; the backoff gives it a moment to come up rather than hammering it
+ * back-to-back (#455 review). Returns true once a full write succeeds (or
+ * there's nothing to write), false if every attempt failed — on false the caller
+ * MUST keep its retry payload (see the syncModelsToDb note on why a dropped model
+ * doesn't self-heal). `baseDelayMs` is 0 in tests to keep them fast.
  */
-export async function syncModelsToDbWithRetry(lines: string[], attempts = 3): Promise<boolean> {
-  for (let i = 0; i < Math.max(1, attempts); i++) {
+export async function syncModelsToDbWithRetry(
+  lines: string[],
+  attempts = 3,
+  baseDelayMs = 500,
+): Promise<boolean> {
+  const n = Math.max(1, attempts);
+  for (let i = 0; i < n; i++) {
     if (await syncModelsToDb(lines)) return true;
+    if (i < n - 1 && baseDelayMs > 0) await sleep(baseDelayMs * 2 ** i);
   }
   return false;
 }

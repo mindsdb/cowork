@@ -8,6 +8,7 @@ import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
 import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
 import { resolveBootTarget } from './lib/bootTarget';
+import { runPostAuthHandshake } from './lib/postAuth';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -15,7 +16,7 @@ import './styles.css';
 //   loading (welcome orb) → auth (sign in / register / continue without) →
 //   setup (install) → terminal. Agent + theme are not onboarding steps; the
 //   look (arcade ↔ normal) is toggled via the corner controller button.
-type Page = 'loading' | 'auth' | 'setup' | 'terminal';
+type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 
 // Per-browser terms-consent flag (web). Desktop also records consent in
 // ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
@@ -149,29 +150,19 @@ export default function App() {
   // config_ready is true on first mount. Called from both the already-installed
   // login path and the post-install path so the handshake is never skipped.
   const handlePostAuth = async () => {
-    try {
-      const saved = await host.readSettings();
-      if (saved && typeof saved === 'object') {
-        const lines = Object.entries(saved as Record<string, string>).map(([k, v]) => `${k}=${v}`);
-        await syncSettingsToDb(lines);
-      }
-      // ENG-922: onboarding deferred to the install screen before it could write
-      // the model to the DB, and the bulk .env re-sync above intentionally omits
-      // model keys (ENG-739). Replay the just-chosen model now that the server
-      // exists. Scoped to the deferred payload — which is set only on the defer
-      // path (a fresh, server-less install with no prior DB/picker state) — so a
-      // routine relogin can never re-pin a picker choice. Clear the ref ONLY on a
-      // confirmed 2xx: a dropped model write is not self-healing (excluded from
-      // the bulk sync AND the backend migration), so on failure keep the payload
-      // rather than silently strand the install config-not-ready (#455 review).
-      const deferredModels = deferredModelRef.current;
-      if (deferredModels && deferredModels.length) {
-        if (await syncModelsToDbWithRetry(deferredModels)) {
-          deferredModelRef.current = null;
-        }
-      }
-    } catch { /* best-effort — provider/keys reconcile from .env on next restart */ }
-    setPage('terminal');
+    // Push .env credentials into the DB, then replay any deferred onboarding
+    // model (see deferredModelRef). Decision extracted to runPostAuthHandshake
+    // so the exhausted-retry transition — route to a retryable error instead of
+    // silently entering the app config-not-ready — is unit-tested without
+    // rendering App (ENG-922, #455 review).
+    const res = await runPostAuthHandshake({
+      readSettings: () => host.readSettings(),
+      syncSettingsToDb,
+      replayModels: (lines) => syncModelsToDbWithRetry(lines),
+      deferredModelLines: deferredModelRef.current,
+    });
+    if (res.clearDeferred) deferredModelRef.current = null;
+    setPage(res.next);
   };
 
   // After login (SSO or BYOK): consent is recorded and a provider is saved.
@@ -226,6 +217,20 @@ export default function App() {
       )}
 
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}
+
+      {page === 'setupError' && (
+        <div
+          className="arc-root welcome-loading"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 18, padding: 24, textAlign: 'center' }}
+        >
+          <OrbitMorph state="thinking" size={72} />
+          <div className="arc-welcome-title">Couldn't finish setup</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)', maxWidth: 380 }}>
+            Your provider is saved, but we couldn't apply your model. Check your connection, then try again.
+          </div>
+          <button className="arc-btn" onClick={handlePostAuth}>Retry</button>
+        </div>
+      )}
 
       {page === 'terminal' && <CoworkApp />}
 
