@@ -778,11 +778,6 @@ function AppCore() {
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
   const [scheduled, setScheduled] = useState([]);
-  // Flat session→schedule map sourced from `GET /v1/schedules`.
-  // Lets TasksView collapse all conversations belonging to one
-  // schedule into a single grouped row instead of listing each
-  // execution separately.
-  const [scheduleRunsIndex, setScheduleRunsIndex] = useState({});
   const [pins, setPins] = useState([]);
   const [connectors, setConnectors] = useState([]);
   const [composerAttachments, setComposerAttachments] = useState([]);
@@ -1352,7 +1347,6 @@ function AppCore() {
     fetchPins().then((data) => setPins(data.pins || []));
     fetchSchedules().then((data) => {
       setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
     });
     fetchDatasources()
       .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
@@ -2370,7 +2364,6 @@ function AppCore() {
     if (key === 'scheduled') {
       fetchSchedules().then((data) => {
       setScheduled(data.schedules || []);
-      setScheduleRunsIndex(data.runs_index || {});
     });
     }
     setRoute(key);
@@ -3424,7 +3417,6 @@ function AppCore() {
     const data = await fetchSchedules();
     const list = data.schedules || [];
     setScheduled(list);
-    setScheduleRunsIndex(data.runs_index || {});
     return list;
   }, []);
 
@@ -3681,13 +3673,6 @@ function AppCore() {
           onDeleteTask={handleDeleteTask}
           onMoveTaskToProject={handleOpenMoveModal}
           projects={projects}
-          schedules={scheduled}
-          scheduleRunsIndex={scheduleRunsIndex}
-          onOpenSchedule={(scheduleId) => {
-            if (isNarrow) setMobileSidebarOpen(false);
-            setSelectedScheduleId(scheduleId);
-            setRoute('schedule-detail');
-          }}
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={settings.showCounters !== false}
@@ -3838,7 +3823,6 @@ function AppCore() {
             selectedProject={selectedProject}
             tasks={tasks}
             scheduled={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             models={modelOptions}
             onSelectProject={(p) => setSelectedProject(p)}
             onCreateProject={handleCreateProject}
@@ -3956,16 +3940,10 @@ function AppCore() {
           <TasksView
             tasks={tasks}
             projects={projects}
-            schedules={scheduled}
-            scheduleRunsIndex={scheduleRunsIndex}
             onOpenTask={(id) => selectTask(id)}
             onOpenProject={(p) => {
               if (p) setSelectedProject(p);
               setRoute('projects');
-            }}
-            onOpenSchedule={(scheduleId) => {
-              setSelectedScheduleId(scheduleId);
-              setRoute('schedule-detail');
             }}
             onDeleteTask={handleDeleteTask}
             onMoveTaskToProject={handleOpenMoveModal}

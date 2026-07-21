@@ -636,7 +636,7 @@ function SkeletonCard() {
 // wants the in-page detail view to stay.
 
 function ProjectDetail({
-  project, projects, tasks, scheduled, scheduleRunsIndex = {}, models, onSend, onSelectTask,
+  project, projects, tasks, scheduled, models, onSend, onSelectTask,
   onDeleteTask, onMoveTaskToProject, onShowAll,
   attachments = [],
   connectors = [],
@@ -881,11 +881,8 @@ function ProjectDetail({
             <TaskList
               tasks={projectTasks}
               projects={projects || []}
-              schedules={scheduled || []}
-              scheduleRunsIndex={scheduleRunsIndex}
               emptyMessage={`No tasks in this project yet — type a prompt above to start one.`}
               onSelectTask={onSelectTask}
-              onOpenSchedule={onOpenSchedule}
               onDeleteTask={onDeleteTask}
               onMoveTaskToProject={onMoveTaskToProject}
             />
@@ -947,10 +944,6 @@ export default function ProjectsView({
   selectedProject,
   tasks = [],
   scheduled = [],
-  // Flat sessionId → scheduleId map. Forwarded to TaskList so the
-  // project view's task list collapses scheduled runs the same way
-  // TasksView does.
-  scheduleRunsIndex = {},
   models = [],
   loading = false,
   onSelectProject,
@@ -1107,7 +1100,6 @@ export default function ProjectsView({
         projects={projects}
         tasks={tasks}
         scheduled={scheduled}
-        scheduleRunsIndex={scheduleRunsIndex}
         models={models}
         onSend={onSendInProject}
         onSelectTask={onSelectTask}

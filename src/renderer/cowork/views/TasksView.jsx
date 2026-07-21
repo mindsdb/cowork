@@ -17,7 +17,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge, CardRow, EmptyState } from '../components/ui';
+import { CardRow, EmptyState } from '../components/ui';
 import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
@@ -207,158 +207,11 @@ function TaskRow({
   );
 }
 
-function ScheduleGroupRow({
-  schedule, runs = [], projects = [],
-  onOpenSchedule, onOpenLatest, onOpenProject,
-}) {
-  const [hover, setHover] = useState(false);
-  const stop = (e) => { e.stopPropagation(); };
-
-  const projectName = schedule?.project || runs[0]?.projectName || runs[0]?.project || '';
-  const projectMatch = projectName
-    ? projects.find((p) => p.name === projectName) || null
-    : null;
-  const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
-
-  // Latest run → drives the timestamp + the "open the actual chat"
-  // affordance. Defaults to the first run when none have a parsable
-  // timestamp (shouldn't happen, but guard anyway).
-  const ts = (raw) => {
-    if (!raw) return 0;
-    if (typeof raw === 'number') return raw;
-    const t = Date.parse(raw);
-    return Number.isFinite(t) ? t : 0;
-  };
-  const latest = runs.reduce((max, r) =>
-    ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-  runs[0]);
-  const updated = relativeAge(latest?.updatedAt || latest?.subtitle || schedule?.lastRunAt) || '—';
-
-  const isAnyActive = runs.some((r) => r.status === 'active');
-
-  return (
-    <CardRow
-      as="div"
-      className="grouped"
-      onActivate={onOpenSchedule}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'grid', gridTemplateColumns: LIST_GRID, gap: 14,
-        padding: '12px 14px',
-        alignItems: 'center',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <span aria-hidden title="Scheduled task" style={{
-          width: 8, height: 8, borderRadius: 99,
-          background: isAnyActive ? 'var(--success)' : 'var(--accent)',
-          boxShadow: isAnyActive ? '0 0 6px var(--success-glow)' : '0 0 6px var(--accent-glow)',
-        }} className={isAnyActive ? 'pulse-dot' : undefined} />
-      </div>
-
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{
-          fontFamily: FONT_DISPLAY, fontSize: 14, fontWeight: 600,
-          color: 'var(--ink)', letterSpacing: '0',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}>{schedule?.title || latest?.title || 'Scheduled task'}</span>
-        <Badge
-          variant="accent"
-          size="sm"
-          className="shrink-0 font-mono uppercase tracking-[0.06em]"
-        >
-          {runs.length} {runs.length === 1 ? 'run' : 'runs'}
-        </Badge>
-      </div>
-
-      <div style={{
-        fontFamily: FONT_BODY, fontSize: 12.5,
-        color: 'var(--ink-2)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        minWidth: 0,
-      }}>
-        {projectName ? (
-          canOpenProject ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onOpenProject(projectMatch); }}
-              title={`Open ${projectMatch.name}`}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                color: 'var(--ink-2)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                maxWidth: '100%', display: 'inline-block',
-                transition: 'color 120ms ease',
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.color = 'var(--accent)';
-                e.currentTarget.style.textDecoration = 'underline';
-                e.currentTarget.style.textUnderlineOffset = '2px';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.color = 'var(--ink-2)';
-                e.currentTarget.style.textDecoration = 'none';
-              }}
-            >{projectName}</button>
-          ) : projectName
-        ) : <span style={{ color: 'var(--ink-5)' }}>—</span>}
-      </div>
-
-      <div style={{
-        fontFamily: FONT_MONO, fontSize: 11,
-        color: 'var(--ink-4)', letterSpacing: '0.04em',
-      }}>{updated}</div>
-
-      {/* Action slot — hover-revealed "Open latest" so the user can
-          jump straight to the most recent run instead of going
-          through schedule detail. The card click itself routes to
-          the schedule view (where per-run history lives). */}
-      <div onClick={stop} onMouseDown={stop} style={{
-        display: 'flex', justifyContent: 'flex-end',
-        opacity: hover ? 1 : 0,
-        transition: 'opacity 140ms ease',
-        pointerEvents: hover ? 'auto' : 'none',
-      }}>
-        <button
-          type="button"
-          onClick={onOpenLatest}
-          aria-label="Open latest run"
-          title="Open latest run"
-          className="icon-btn"
-          style={{
-            width: 26, height: 26, borderRadius: 6,
-            color: 'var(--ink-3)',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'var(--surface-2)';
-            e.currentTarget.style.color = 'var(--accent)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--ink-3)';
-          }}
-        >
-          {Ico.externalLink(13)}
-        </button>
-      </div>
-    </CardRow>
-  );
-}
-
 export default function TasksView({
   tasks = [],
   projects = [],
-  // Schedules + flat sessionId→scheduleId index. When a task carries
-  // a `scheduledId` (or its id is keyed in the index), we collapse
-  // every run of that schedule into a single grouped row showing
-  // "Schedule: <title> · N runs". Click → open the latest run.
-  schedules = [],
-  scheduleRunsIndex = {},
   onOpenTask,
   onOpenProject,
-  onOpenSchedule,
   onDeleteTask,
 }) {
   const [search, setSearch] = useState('');
@@ -367,53 +220,6 @@ export default function TasksView({
   const searchRef = useRef(null);
   useCollectionShortcut(searchRef);
 
-  // First pass: collapse all runs of a single schedule into one
-  // synthetic group row. Without this the page reads as a wall of
-  // duplicate "Daily digest" entries — one per execution — which
-  // makes scanning impossible. The group row's title comes from
-  // the schedule itself; meta carries the most recent run's
-  // timestamp + a "N runs" tag. Click the group row → routes to
-  // the schedule's detail page (where the per-run history already
-  // lives) instead of opening one specific run.
-  const schedulesById = useMemo(() => {
-    const out = new Map();
-    for (const s of schedules || []) {
-      if (s && s.id) out.set(s.id, s);
-    }
-    return out;
-  }, [schedules]);
-
-  // Augment each task with its scheduled id (from server-side
-  // scheduledId OR the index lookup as a fallback for older
-  // records that were saved before the field was plumbed).
-  const augmented = useMemo(() => (
-    (tasks || []).map((t) => {
-      const sid = t.scheduledId || scheduleRunsIndex[t.id] || null;
-      return sid ? { ...t, scheduledId: sid } : t;
-    })
-  ), [tasks, scheduleRunsIndex]);
-
-  // Group: any task with a scheduledId rolls into one row keyed on
-  // that id. Non-scheduled tasks pass through 1:1.
-  const grouped = useMemo(() => {
-    const out = [];
-    const groupsBySchedId = new Map();
-    for (const t of augmented) {
-      if (!t.scheduledId) {
-        out.push({ kind: 'task', task: t });
-        continue;
-      }
-      let g = groupsBySchedId.get(t.scheduledId);
-      if (!g) {
-        g = { kind: 'group', scheduledId: t.scheduledId, runs: [] };
-        groupsBySchedId.set(t.scheduledId, g);
-        out.push(g);
-      }
-      g.runs.push(t);
-    }
-    return out;
-  }, [augmented]);
-
   const ts = (raw) => {
     if (!raw) return 0;
     if (typeof raw === 'number') return raw;
@@ -421,49 +227,22 @@ export default function TasksView({
     return Number.isFinite(t) ? t : 0;
   };
 
-  // Compute a row-shape representative for filtering / sorting that
-  // works for both lone tasks AND collapsed schedule groups.
-  // Group rows expose:
-  //   title:     the schedule's own title (falls back to the latest
-  //              run's title if the schedule isn't in the registry)
-  //   project:   the schedule's project (or the runs' shared project)
-  //   updatedAt: max(updatedAt across all runs)
-  // Orphan-schedule fallback: any task or schedule run that traces
-  // back to a schedule without an explicit project resolves to the
-  // `general` project — matches the server's _run_schedule fallback so
-  // the UI doesn't dangle scheduled tasks under a missing project.
-  const ORPHAN_SCHEDULE_PROJECT = 'general';
-  const rowMeta = (row) => {
-    if (row.kind === 'task') {
-      const explicit = row.task.projectName || row.task.project || '';
-      const isScheduled = !!row.task.scheduledId;
-      return {
-        title:    row.task.title || '',
-        project:  explicit || (isScheduled ? ORPHAN_SCHEDULE_PROJECT : ''),
-        updatedAt: row.task.updatedAt || row.task.subtitle,
-      };
-    }
-    const sched = schedulesById.get(row.scheduledId);
-    const latest = row.runs.reduce((max, r) =>
-      ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-    row.runs[0]);
-    return {
-      title: sched?.title || latest?.title || 'Scheduled task',
-      project: sched?.project || latest?.projectName || latest?.project || ORPHAN_SCHEDULE_PROJECT,
-      updatedAt: latest?.updatedAt || latest?.subtitle || sched?.lastRunAt,
-    };
-  };
+  const rowMeta = (task) => ({
+    title: task.title || '',
+    project: task.projectName || task.project || '',
+    updatedAt: task.updatedAt || task.subtitle,
+  });
 
   const visible = useMemo(() => {
     const q = (search || '').trim().toLowerCase();
-    const matches = (row) => {
-      const meta = rowMeta(row);
+    const matches = (task) => {
+      const meta = rowMeta(task);
       const haystack = [meta.title, meta.project].filter(Boolean).join(' ').toLowerCase();
       if (q && !haystack.includes(q)) return false;
       if (projectFilter !== 'all' && meta.project !== projectFilter) return false;
       return true;
     };
-    const filtered = grouped.filter(matches);
+    const filtered = tasks.filter(matches);
     const cmp = {
       recent:  (a, b) => ts(rowMeta(b).updatedAt) - ts(rowMeta(a).updatedAt),
       name:    (a, b) => rowMeta(a).title.localeCompare(rowMeta(b).title),
@@ -476,7 +255,7 @@ export default function TasksView({
     }[sort] || (() => 0);
     return [...filtered].sort(cmp);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grouped, search, sort, projectFilter, schedulesById]);
+  }, [tasks, search, sort, projectFilter]);
 
   // Project filter dropdown options. "All projects" + every project
   // present in the projects list, sorted by name. We only show
@@ -558,37 +337,16 @@ export default function TasksView({
       ) : (
         <div style={{ padding: '8px 28px 28px' }}>
           <ListHeaderRow />
-          {visible.map((row) => {
-            if (row.kind === 'task') {
-              return (
-                <TaskRow
-                  key={row.task.id}
-                  task={row.task}
-                  projects={projects}
-                  onOpen={(task) => onOpenTask?.(task.id)}
-                  onOpenProject={onOpenProject}
-                  onDelete={(id) => onDeleteTask?.(id)}
-                />
-              );
-            }
-            const sched = schedulesById.get(row.scheduledId);
-            return (
-              <ScheduleGroupRow
-                key={`sched:${row.scheduledId}`}
-                schedule={sched}
-                runs={row.runs}
-                projects={projects}
-                onOpenSchedule={() => onOpenSchedule?.(row.scheduledId)}
-                onOpenLatest={() => {
-                  const latest = row.runs.reduce((max, r) =>
-                    ts(r.updatedAt || r.subtitle) > ts(max?.updatedAt || max?.subtitle) ? r : max,
-                  row.runs[0]);
-                  if (latest?.id) onOpenTask?.(latest.id);
-                }}
-                onOpenProject={onOpenProject}
-              />
-            );
-          })}
+          {visible.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              projects={projects}
+              onOpen={(task) => onOpenTask?.(task.id)}
+              onOpenProject={onOpenProject}
+              onDelete={(id) => onDeleteTask?.(id)}
+            />
+          ))}
           {visible.length === 0 && (
             <div style={{
               padding: '40px 14px',

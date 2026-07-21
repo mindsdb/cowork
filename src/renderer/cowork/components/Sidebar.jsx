@@ -67,25 +67,6 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           flex: 1, paddingRight: 8,
         }}>
           {task.title || 'Untitled'}
-          {/* Schedule-group entries — append a muted "· N runs"
-              suffix so the title still reads clean while the count
-              is visually separated from the schedule name. Painted
-              in --ink-4 (one tone below the title) and the bullet
-              uses --ink-5 so the separator recedes further still. */}
-          {task._scheduleGroup && (() => {
-            const n = task._scheduleGroup.runs;
-            return (
-              <span style={{
-                color: 'var(--ink-4)',
-                fontWeight: 400,
-                marginLeft: 6,
-                whiteSpace: 'nowrap',
-              }}>
-                <span style={{ color: 'var(--ink-5)', marginRight: 4 }}>·</span>
-                {n} {n === 1 ? 'run' : 'runs'}
-              </span>
-            );
-          })()}
         </span>
 
         {/* Right-side fixed slot — 22px wide, holds timestamp OR kebab */}
@@ -191,14 +172,6 @@ export default function Sidebar({
   onDeleteTask,
   onMoveTaskToProject,
   projects = [],
-  // Schedules + the flat sessionId → scheduleId index. When a
-  // recent task carries a scheduledId, we collapse all sibling
-  // runs of the same schedule into a single synthesized entry
-  // ("Daily digest · 3 runs") so the recents list isn't drowned
-  // out by repeat scheduled-run conversations.
-  schedules = [],
-  scheduleRunsIndex = {},
-  onOpenSchedule,
   onToggleServer,
   onShowServerHelp,
   updateAvailable = null, // { version: string } or null
@@ -259,76 +232,25 @@ export default function Sidebar({
   // "Show more" affordance below.
   const recentsRaw = tasksWithPin.filter((t) => !pinnedIds.has(t.id));
 
-  // Collapse all conversations belonging to one schedule into a
-  // single synthetic entry. Without this a daily/hourly schedule
-  // floods the rail with repeat rows and the actual chat tasks
-  // get pushed out of view. Each group entry inherits the most
-  // recent run's timestamp so the grouping respects "newest first."
+  // Sort by `updatedAt` descending so reviving a task (replying in
+  // an open task — App.jsx's handleSendInTask bumps updatedAt at
+  // send-time) or creating a new one immediately floats it to the
+  // top of recents. Without this, the panel mirrors whatever order
+  // `tasks` happens to be in: the server sorts on each fetch, but
+  // in-session edits use `prev.map(...)` which keeps the array
+  // order frozen until the next fetchSessions. Falling back to
+  // `subtitle` (a parseable timestamp on legacy rows) keeps rows
+  // without an explicit updatedAt in roughly the right place rather
+  // than dumping them at the bottom.
   const _ts = (raw) => {
     if (!raw) return 0;
     if (typeof raw === 'number') return raw;
     const t = Date.parse(raw);
     return Number.isFinite(t) ? t : 0;
   };
-  const _scheduleById = new Map((schedules || []).map((s) => [s?.id, s]));
-  const _resolveSchedId = (t) => t?.scheduledId || scheduleRunsIndex?.[t?.id] || null;
-
-  const recentsAll = (() => {
-    const out = [];
-    const groups = new Map(); // scheduleId → synthesised group entry
-    for (const t of recentsRaw) {
-      const sid = _resolveSchedId(t);
-      if (!sid) {
-        out.push(t);
-        continue;
-      }
-      let g = groups.get(sid);
-      if (!g) {
-        const sched = _scheduleById.get(sid);
-        const baseTitle = sched?.title || t.title || 'Scheduled task';
-        g = {
-          id: `sched:${sid}`,
-          title: baseTitle,
-          subtitle: t.subtitle,
-          updatedAt: t.updatedAt,
-          // Orphan schedules (no project) resolve to "general" —
-          // matches the server's _run_schedule fallback.
-          projectName: sched?.project || t.projectName || 'general',
-          // Marker fields the click handler / row renderer key off:
-          _scheduleGroup: { scheduleId: sid, runs: 1, baseTitle },
-        };
-        groups.set(sid, g);
-        out.push(g);
-      } else {
-        g._scheduleGroup.runs += 1;
-        // Track the freshest timestamp across the group's runs so
-        // sorting / "n minutes ago" reflects the most recent run.
-        if (_ts(t.updatedAt || t.subtitle) > _ts(g.updatedAt || g.subtitle)) {
-          g.subtitle = t.subtitle;
-          g.updatedAt = t.updatedAt;
-        }
-      }
-    }
-    // Title stays as the schedule's base name; the run count is
-    // surfaced separately so RecentItem can paint it in a muted
-    // accent that distinguishes the schedule meta from the title.
-    for (const g of out) {
-      if (!g._scheduleGroup) continue;
-      g.title = g._scheduleGroup.baseTitle;
-    }
-    // Sort by `updatedAt` descending so reviving a task (replying in
-    // an open task — App.jsx's handleSendInTask bumps updatedAt at
-    // send-time) or creating a new one immediately floats it to the
-    // top of recents. Without this, the panel mirrors whatever order
-    // `tasks` happens to be in: the server sorts on each fetch, but
-    // in-session edits use `prev.map(...)` which keeps the array
-    // order frozen until the next fetchSessions. Falling back to
-    // `subtitle` (a parseable timestamp on schedule-run rows) keeps
-    // legacy rows without an explicit updatedAt in roughly the right
-    // place rather than dumping them at the bottom.
-    out.sort((a, b) => _ts(b.updatedAt || b.subtitle) - _ts(a.updatedAt || a.subtitle));
-    return out;
-  })();
+  const recentsAll = [...recentsRaw].sort(
+    (a, b) => _ts(b.updatedAt || b.subtitle) - _ts(a.updatedAt || a.subtitle)
+  );
 
   // Strict hover state for the Recents heading row only. CSS
   // `:hover` was bleeding (or appearing to bleed) onto the recents
@@ -645,34 +567,23 @@ export default function Sidebar({
           padding: '0 10px', flex: 1, minHeight: 0, overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 1,
         }}>
-          {recents.map((t) => {
-            // Synthetic schedule-group entries route to the schedule
-            // detail view (where the per-run history lives). Lone
-            // tasks open the chat as before. Pin / move / delete /
-            // rename are suppressed on group entries — those actions
-            // belong to the underlying schedule, not the synthesised
-            // row, and their per-run plumbing wouldn't apply cleanly.
-            const isGroup = !!t._scheduleGroup;
-            return (
-              <RecentItem
-                key={t.id}
-                task={t}
-                projects={projects}
-                onClick={() => isGroup
-                  ? onOpenSchedule?.(t._scheduleGroup.scheduleId)
-                  : onSelectTask(t.id)}
-                onPin={isGroup ? undefined : onPinTask}
-                onUnpin={isGroup ? undefined : onUnpinTask}
-                onRename={isGroup ? undefined : onRenameTask}
-                onDelete={isGroup ? undefined : onDeleteTask}
-                onMoveToProject={isGroup ? undefined : onMoveTaskToProject}
-                showTimestamp={showCounters}
-                isActive={!isGroup && activeTaskIds.has(t.id)}
-                selected={!isGroup && activeTaskId === t.id}
-                agentLabel={agentLabel}
-              />
-            );
-          })}
+          {recents.map((t) => (
+            <RecentItem
+              key={t.id}
+              task={t}
+              projects={projects}
+              onClick={() => onSelectTask(t.id)}
+              onPin={onPinTask}
+              onUnpin={onUnpinTask}
+              onRename={onRenameTask}
+              onDelete={onDeleteTask}
+              onMoveToProject={onMoveTaskToProject}
+              showTimestamp={showCounters}
+              isActive={activeTaskIds.has(t.id)}
+              selected={activeTaskId === t.id}
+              agentLabel={agentLabel}
+            />
+          ))}
           {hasMoreRecents && (
             <button
               type="button"

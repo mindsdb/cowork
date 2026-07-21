@@ -10,7 +10,7 @@
 
 import { useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Badge, Card } from '../ui';
+import { Card } from '../ui';
 import { TaskMenu } from '../TaskMenu';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
@@ -109,14 +109,6 @@ export function TaskCard({
             }}>
               {task.title || 'Untitled'}
             </span>
-            {task._scheduleGroup && (
-              <Badge
-                title={`Schedule with ${task._scheduleGroup.runs} run${task._scheduleGroup.runs === 1 ? '' : 's'}`}
-                variant="accent"
-                size="sm"
-                className="shrink-0 uppercase tracking-[0.04em]"
-              >Schedule · {task._scheduleGroup.runs}</Badge>
-            )}
           </span>
           {subtitle && (
             <span style={{
