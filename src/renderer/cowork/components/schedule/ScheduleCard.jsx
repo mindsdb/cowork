@@ -9,6 +9,7 @@
 // don't navigate, so they stop propagation.
 
 import { useState } from 'react';
+import { scheduleProjectName } from '../../lib/scheduleProject';
 import Ico from '../Icons';
 import { Card } from '../ui';
 import { Badge } from '../ui/Badge';
@@ -65,9 +66,9 @@ export default function ScheduleCard({
   const open  = () => onOpen?.(task);
   const stop  = (e) => { e.stopPropagation(); };
 
-  const projectName = task.project || task.projectName || '';
+  const projectName = scheduleProjectName(task.projectId, projects);
   const projectMatch = projectName
-    ? projects.find((p) => p.name === projectName) || null
+    ? projects.find((p) => p.id === task.projectId) || null
     : null;
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 

@@ -19,6 +19,7 @@ import {
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Button, CardRow, EmptyState } from '../components/ui';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
+import { scheduleProjectName } from '../lib/scheduleProject';
 import ScheduleCard from '../components/schedule/ScheduleCard';
 
 const FONT_BODY = 'var(--font-body)';
@@ -96,7 +97,7 @@ export default function ScheduledView({
     const q = (search || '').trim().toLowerCase();
     const matches = (item) => {
       if (!q) return true;
-      const haystack = [item.title, item.prompt, item.project, item.projectName]
+      const haystack = [item.title, item.prompt, scheduleProjectName(item.projectId, projects)]
         .filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(q);
     };
@@ -113,7 +114,7 @@ export default function ScheduledView({
       created: (a, b) => ts(b.createdAt) - ts(a.createdAt),
     }[sort] || (() => 0);
     return [...filtered].sort(cmp);
-  }, [scheduled, search, sort]);
+  }, [scheduled, search, sort, projects]);
 
   function openCreate() {
     setEditing(null);
@@ -268,7 +269,7 @@ export default function ScheduledView({
         onDelete={handleDelete}
         task={editing}
         projects={projects}
-        defaultProjectPath={selectedProject?.path || ''}
+        defaultProjectId={selectedProject?.id || ''}
         agentLabel={agentLabel}
       />
     </div>
@@ -349,9 +350,9 @@ function ScheduleListRow({
     once: 'Once', hourly: 'Hourly', daily: 'Daily', weekdays: 'Weekdays', weekly: 'Weekly',
   }[task.cadence] || task.cadence;
 
-  const projectName = task.project || task.projectName || '';
+  const projectName = scheduleProjectName(task.projectId, projects);
   const projectMatch = projectName
-    ? projects.find((p) => p.name === projectName) || null
+    ? projects.find((p) => p.id === task.projectId) || null
     : null;
   const canOpenProject = !!(projectMatch && typeof onOpenProject === 'function');
 

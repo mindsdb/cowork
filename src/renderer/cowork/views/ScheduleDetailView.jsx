@@ -14,6 +14,7 @@ import { Crumb as CrumbButton, CrumbSep, CrumbCurrent } from '../components/ui/C
 import { Button } from '../components/ui';
 import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
+import { scheduleProjectName } from '../lib/scheduleProject';
 import { relativeTime } from '../lib/formatTime';
 
 const FONT_BODY    = 'var(--font-body)';
@@ -288,6 +289,7 @@ export default function ScheduleDetailView({
   const [editOpen, setEditOpen] = useState(false);
 
   const taskId = task?.id;
+  const projectName = scheduleProjectName(task?.projectId, projects);
 
   useEffect(() => {
     if (!taskId) return;
@@ -457,8 +459,8 @@ export default function ScheduleDetailView({
             />
             <SummaryStat
               label="Project"
-              value={task.project || '—'}
-              hint={task.project || ''}
+              value={projectName || '—'}
+              hint={projectName || ''}
             />
             <SummaryStat
               label="Model"

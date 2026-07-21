@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Button } from '../ui';
 import Ico from '../Icons';
+import { GENERAL_PROJECT_ID } from '../../lib/scheduleProject';
 
 const FONT_BODY = 'var(--font-body)';
 
@@ -64,13 +65,13 @@ export default function ScheduleTaskModal({
   open, onClose, onSubmit, onDelete,
   task,                    // when set → edit mode
   projects = [],
-  defaultProjectPath = '',
+  defaultProjectId = '',
   busy = false,
   agentLabel,
 }) {
   const isEdit = !!task;
 
-  const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
+  const [form, setForm] = useState(() => emptyForm({ defaultProjectId }));
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -82,31 +83,28 @@ export default function ScheduleTaskModal({
     setError('');
     setConfirmingDelete(false);
     if (task) {
-      // The server stores the project as a NAME (`task.project`) and
-      // the form's <select> uses path as its value. Hydrate the form
-      // by resolving the name back to a path via `projects`. Earlier
-      // versions read `task.projectPath` which the server never sets,
-      // so editing always lost the project association.
-      const taskProjectPath = (() => {
-        if (task.projectPath) return task.projectPath;
-        if (task.project) {
-          const match = projects.find((p) => p.name === task.project);
-          if (match?.path) return match.path;
-        }
-        return '';
-      })();
+      // The server keys the project by id (`task.projectId`), which is also
+      // what the <select> options carry, so hydrate is a direct match. Guard
+      // it against a project that's no longer listed (deleted) and against the
+      // General bucket — neither is a selectable option — so the control falls
+      // back to "No project" rather than a value with no matching <option>.
+      const taskProjectId =
+        task.projectId && task.projectId !== GENERAL_PROJECT_ID
+          && projects.some((p) => p.id === task.projectId)
+          ? task.projectId
+          : '';
       setForm({
-        title:       task.title || '',
-        prompt:      task.prompt || '',
-        cadence:     task.cadence || 'once',
-        nextRunAt:   toLocalInput(task.nextRunAt) || defaultNextRun(),
-        projectPath: taskProjectPath || defaultProjectPath || '',
-        enabled:     task.enabled !== false,
+        title:     task.title || '',
+        prompt:    task.prompt || '',
+        cadence:   task.cadence || 'once',
+        nextRunAt: toLocalInput(task.nextRunAt) || defaultNextRun(),
+        projectId: taskProjectId || defaultProjectId || '',
+        enabled:   task.enabled !== false,
       });
     } else {
-      setForm(emptyForm({ defaultProjectPath }));
+      setForm(emptyForm({ defaultProjectId }));
     }
-  }, [open, task?.id, defaultProjectPath, projects]);
+  }, [open, task?.id, defaultProjectId, projects]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -125,20 +123,19 @@ export default function ScheduleTaskModal({
       return;
     }
     setError('');
-    // The server's `ScheduleRequest` schema accepts `project` as a
-    // bare project NAME (not a path) and ignores any unknown fields.
-    // The earlier payload sent `project_path: <path>` which silently
-    // dropped — every schedule landed with `project: null`, breaking
-    // the project-pivoted card / list / count. Resolve the form's
-    // path back to a name via `projects` and send the right field.
-    const projectMatch = projects.find((p) => p.path === form.projectPath);
+    // The server's `ScheduleCreateRequest` keys the project by id
+    // (`project_id: UUID`); a null falls back to the General bucket. An
+    // earlier payload sent `project: <name>`, which isn't a field on the
+    // schema — pydantic silently dropped it, so every schedule landed
+    // project-less. The <select> already carries the project id as its
+    // value, so send it straight through.
     const payload = {
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
       cadence:      form.cadence,
       timezone:     Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
       next_run_at:  new Date(form.nextRunAt).toISOString(),
-      project:      projectMatch?.name || null,
+      project_id:   form.projectId || null,
       // Scheduled tasks always use the user's configured default
       // model — exposing the picker here let people accidentally
       // pin a stale model id that's no longer valid.
@@ -222,14 +219,16 @@ export default function ScheduleTaskModal({
 
           <Field label="Project">
             <select
-              value={form.projectPath}
-              onChange={(e) => update('projectPath', e.target.value)}
+              value={form.projectId}
+              onChange={(e) => update('projectId', e.target.value)}
               style={fieldSelect}
             >
               <option value="">No project</option>
-              {projects.map((p) => (
-                <option key={p.path} value={p.path}>{p.name}</option>
-              ))}
+              {projects
+                .filter((p) => p.id !== GENERAL_PROJECT_ID)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
             </select>
           </Field>
 
@@ -320,13 +319,17 @@ export default function ScheduleTaskModal({
 
 // ── Helpers ──
 
-function emptyForm({ defaultProjectPath }) {
+function emptyForm({ defaultProjectId }) {
   return {
     title: '',
     prompt: '',
     cadence: 'once',
     nextRunAt: defaultNextRun(),
-    projectPath: defaultProjectPath || '',
+    // The caller passes the currently-selected project as the default, which
+    // is often General (the app's default context) — that isn't a selectable
+    // option, so normalize it to "No project" rather than an id with no
+    // matching <option>.
+    projectId: defaultProjectId && defaultProjectId !== GENERAL_PROJECT_ID ? defaultProjectId : '',
     enabled: true,
   };
 }
