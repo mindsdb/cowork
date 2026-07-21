@@ -15,11 +15,31 @@ describe('Badge', () => {
     expect(el.className).toContain('h-[22px]');
   });
 
-  it('applies each variant a distinct color class', () => {
-    const variants = ['default', 'accent', 'success', 'warning', 'danger', 'muted', 'inverse'] as const;
-    for (const variant of variants) {
+  it('applies the expected foreground, background, and border classes for each variant', () => {
+    const expectedClasses = {
+      default: ['border-line', 'bg-surface-2', 'text-ink-2'],
+      accent: [
+        'border-[color-mix(in_srgb,var(--accent)_30%,transparent)]',
+        'bg-accent-bg',
+        'text-accent',
+      ],
+      success: ['border-success-border', 'bg-success-bg', 'text-success-text'],
+      warning: ['border-warning-border', 'bg-warning-bg', 'text-warning'],
+      danger: ['border-danger-border', 'bg-danger-bg', 'text-danger'],
+      muted: ['border-transparent', 'bg-surface-2', 'text-ink-3'],
+      inverse: [
+        'border-[rgba(255,255,255,0.2)]',
+        'bg-[rgba(255,255,255,0.16)]',
+        'text-[rgba(255,255,255,0.86)]',
+      ],
+    } as const;
+
+    for (const variant of Object.keys(expectedClasses) as Array<keyof typeof expectedClasses>) {
+      const expected = expectedClasses[variant];
       const { unmount } = render(<Badge variant={variant}>{variant}</Badge>);
-      expect(screen.getByText(variant).className).toMatch(/text-/);
+      expect(screen.getByText(variant).className.split(/\s+/)).toEqual(
+        expect.arrayContaining([...expected]),
+      );
       unmount();
     }
   });
@@ -41,7 +61,7 @@ describe('Badge', () => {
     render(<Badge variant="success" className="min-w-[22px]">3</Badge>);
     const el = screen.getByText('3');
     expect(el.className).toContain('min-w-[22px]');
-    expect(el.className).toContain('text-success');
+    expect(el.className).toContain('text-success-text');
   });
 
   it('forwards rest props like title', () => {

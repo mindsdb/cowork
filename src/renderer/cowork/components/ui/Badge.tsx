@@ -2,12 +2,11 @@ import type { ReactNode } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/cn';
 
-// The one small-rounded-label primitive for the whole app — status badges,
-// count badges, category tags, "coming soon" markers. Consolidates what used
-// to be Badge + Pill + ArtifactStatus's own unrelated local `Pill` +
-// channels-badge + dispatch-button-badge + mshell-row__badge + customize-chip,
-// each a slightly different one-off. One shape (pill), one set of variants,
-// sizes cover every dimension those call sites actually needed.
+// Shared small-rounded-label primitive for status badges, count badges,
+// category tags, and "coming soon" markers. This consolidates the migrated
+// Badge/Pill/channel/artifact call sites onto one shape and variant palette;
+// specialized interactive pills and remaining feature-local annotations stay
+// outside this primitive until they can be migrated without changing behavior.
 const badgeVariants = cva(
   'inline-flex items-center gap-1 rounded-full border font-body leading-none font-medium whitespace-nowrap',
   {
@@ -33,7 +32,7 @@ const badgeVariants = cva(
         accent:
           'border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-accent-bg text-accent',
         success:
-          'border-success-border bg-success-bg text-success',
+          'border-success-border bg-success-bg text-success-text',
         warning:
           'border-warning-border bg-warning-bg text-warning',
         danger:
