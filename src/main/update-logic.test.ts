@@ -726,4 +726,34 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
     expect(r.uiUpdateAvailable).toBe(true);
     expect(r.uiVersion).toBeUndefined();
   });
+
+  // Regression (PR #449 review): a channel that failed to check must never be
+  // collapsed into "up to date" alongside a channel that succeeded.
+  it('reports a UI-only check failure as ok:false, not offline', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: false, error: true },
+      server: { updateAvailable: false },
+    });
+    expect(r).toEqual({ ok: false, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false });
+  });
+
+  it('reports a server-only check failure as ok:false, not offline', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: false },
+      server: { updateAvailable: false, error: true },
+    });
+    expect(r).toEqual({ ok: false, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false });
+  });
+
+  it('does not surface a real update found on one channel when the other errored', () => {
+    // A confirmed server update alongside a failed UI check must still read
+    // as "couldn't check" — a half-complete picture is not a trustworthy one.
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: false, error: true },
+      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.updateAvailable).toBe(false);
+    expect(r.serverUpdateAvailable).toBe(false);
+  });
 });

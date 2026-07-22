@@ -306,17 +306,19 @@ export interface UpdateCheckSummary {
  *  available" must be true when EITHER is — a UI-only view would report "up to
  *  date" while a server update was pending.
  *
- *  Pure: the orchestrator does the network I/O, swallows per-check errors (each
- *  check fails closed to "no update"), and passes the results plus an `offline`
- *  flag here. That fail-closed contract is why this can't spuriously offer an
- *  update on a failed check. */
+ *  Pure: the orchestrator does the network I/O and passes each channel's
+ *  result here, including its own `error` flag when that channel's check
+ *  couldn't complete (as opposed to completing and finding no update). `ok` is
+ *  true only when BOTH applicable channels completed cleanly — a channel that
+ *  errored must never be reported as "up to date" alongside one that
+ *  succeeded, since that hides a real unknown behind a confident answer. */
 export function summarizeUpdateCheck(input: {
   offline?: boolean;
-  ui: { updateAvailable: boolean; newVersion?: string };
-  server: { updateAvailable: boolean; latestVersion?: string };
+  ui: { updateAvailable: boolean; newVersion?: string; error?: boolean };
+  server: { updateAvailable: boolean; latestVersion?: string; error?: boolean };
 }): UpdateCheckSummary {
-  if (input.offline) {
-    return { ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false };
+  if (input.offline || input.ui.error || input.server.error) {
+    return { ok: false, offline: !!input.offline, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false };
   }
   const uiUpdateAvailable = !!input.ui.updateAvailable;
   const serverUpdateAvailable = !!input.server.updateAvailable;

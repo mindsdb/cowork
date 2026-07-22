@@ -63,6 +63,21 @@ export function patchSavedJson(prevJson, key, value) {
   }
 }
 
+// Exported for tests. Decide the "Update now" control's state after an
+// on-demand apply attempt (ENG-671 / PR #449 review). host.applyUpdate()
+// communicates several expected failure paths — a failed download, a
+// compatibility rejection, the update disappearing between check and apply —
+// by resolving `false` rather than throwing. A caller that only clears its
+// "applying" flag in a `catch` block leaves the button stuck on "Updating…"
+// forever for those paths; this is the single source of truth for both the
+// resolved-false and thrown-exception cases (the caller maps a thrown
+// exception to `applied: false` before calling this). `applied: true` keeps
+// `applying` true on purpose: a window reload is imminent and will tear this
+// view down, so there is no idle state to render.
+export function nextApplyUpdateState(applied) {
+  return applied ? { applying: true, error: false } : { applying: false, error: true };
+}
+
 function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
   // A section whose sole control is a Switch or ToggleGroup is compact enough
@@ -767,6 +782,10 @@ export default function SettingsView({
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [checkResult, setCheckResult] = useState(null);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
+  // Set when applyUpdate() resolves false — a normal, expected failure path
+  // (failed download, compatibility rejection, update disappeared between
+  // check and apply), distinct from the thrown-exception case below.
+  const [applyError, setApplyError] = useState(false);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -844,6 +863,7 @@ export default function SettingsView({
     if (checkingUpdates || applyingUpdate) return;
     setCheckingUpdates(true);
     setCheckResult(null);
+    setApplyError(false);
     try {
       setCheckResult(await host.checkForUpdates());
     } catch {
@@ -859,14 +879,23 @@ export default function SettingsView({
   // so this button is how a user acts on a detected update immediately. Runs the
   // same server-first + UI apply as the boot check; the window reloads when it
   // lands (App.jsx listens for UI_UPDATE_STATUS), which tears this view down —
-  // so there's no success state to render here.
+  // so there's a success path (stay busy, reload incoming) but no success
+  // *state* to render here. A resolved `false` is a normal, expected failure
+  // (failed download, compatibility rejection, update disappeared between
+  // check and apply) — not an exception — so it must be handled here rather
+  // than only in `catch`, or the button is stuck on "Updating…" forever.
   const handleApplyUpdateNow = async () => {
     if (applyingUpdate) return;
     setApplyingUpdate(true);
+    setApplyError(false);
     try {
-      await host.applyUpdate();
+      const { applying, error } = nextApplyUpdateState(await host.applyUpdate());
+      setApplyingUpdate(applying);
+      setApplyError(error);
     } catch {
-      setApplyingUpdate(false);
+      const { applying, error } = nextApplyUpdateState(false);
+      setApplyingUpdate(applying);
+      setApplyError(error);
     }
   };
 
@@ -2455,9 +2484,14 @@ export default function SettingsView({
                         disabled={applyingUpdate}
                         style={{ cursor: applyingUpdate ? 'default' : 'pointer', opacity: applyingUpdate ? 0.7 : 1 }}
                       >
-                        {applyingUpdate ? 'Updating…' : 'Update now'}
+                        {applyingUpdate ? 'Updating…' : applyError ? 'Try again' : 'Update now'}
                       </Button>
                     </div>
+                  )}
+                  {applyError && (
+                    <span style={{ fontSize: 12.5, color: 'var(--warning, #c47f00)' }}>
+                      Update failed. Please try again.
+                    </span>
                   )}
                 </div>
               );
