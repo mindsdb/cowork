@@ -13,6 +13,13 @@
 // operations (openPath) return { ok: false, reason: 'unsupported' }
 // so call sites can branch / hide affordances.
 
+import type {
+  BrowserState,
+  ChromeImportResult,
+  Rect,
+  TopSite,
+} from '../../shared/browser-types';
+
 const ANTON_SERVER_PORT = 26866;
 
 type Bridge = typeof window extends { antontron?: infer T } ? T : never;
@@ -629,6 +636,111 @@ export async function logout(): Promise<void> {
   }
 }
 
+// ---- Browser (Electron-only embedded tabs) ------------------------------
+//
+// The Browser route renders native WebContentsViews owned by main; the web
+// shell has no embedded browser, so every call degrades to an empty
+// promise / no-op and the route hides itself behind `host.isElectron`.
+
+const EMPTY_BROWSER_STATE: BrowserState = { tabs: [], activeTabId: null, viewVisible: false };
+
+export async function browserGetState(): Promise<BrowserState> {
+  if (isElectron && typeof bridge.browserGetState === 'function') {
+    return bridge.browserGetState();
+  }
+  return EMPTY_BROWSER_STATE;
+}
+
+export async function browserSetVisible(visible: boolean, bounds?: Rect): Promise<void> {
+  if (isElectron && typeof bridge.browserSetVisible === 'function') {
+    await bridge.browserSetVisible(visible, bounds);
+  }
+}
+
+export async function browserSetBounds(rect: Rect): Promise<void> {
+  if (isElectron && typeof bridge.browserSetBounds === 'function') {
+    await bridge.browserSetBounds(rect);
+  }
+}
+
+export async function browserNewTab(opts?: { url?: string; activate?: boolean }): Promise<{ tabId: string }> {
+  if (isElectron && typeof bridge.browserNewTab === 'function') {
+    return bridge.browserNewTab(opts);
+  }
+  return { tabId: '' };
+}
+
+export async function browserCloseTab(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserCloseTab === 'function') {
+    await bridge.browserCloseTab(tabId);
+  }
+}
+
+export async function browserActivateTab(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserActivateTab === 'function') {
+    await bridge.browserActivateTab(tabId);
+  }
+}
+
+export async function browserNavigate(tabId: string, url: string): Promise<void> {
+  if (isElectron && typeof bridge.browserNavigate === 'function') {
+    await bridge.browserNavigate(tabId, url);
+  }
+}
+
+export async function browserGoBack(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserGoBack === 'function') {
+    await bridge.browserGoBack(tabId);
+  }
+}
+
+export async function browserGoForward(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserGoForward === 'function') {
+    await bridge.browserGoForward(tabId);
+  }
+}
+
+export async function browserReload(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserReload === 'function') {
+    await bridge.browserReload(tabId);
+  }
+}
+
+export async function browserStop(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserStop === 'function') {
+    await bridge.browserStop(tabId);
+  }
+}
+
+export async function browserOpenDevTools(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserOpenDevTools === 'function') {
+    await bridge.browserOpenDevTools(tabId);
+  }
+}
+
+export async function browserTopSites(limit?: number): Promise<TopSite[]> {
+  if (isElectron && typeof bridge.browserTopSites === 'function') {
+    return bridge.browserTopSites(limit);
+  }
+  return [];
+}
+
+export async function browserImportChrome(): Promise<ChromeImportResult> {
+  if (isElectron && typeof bridge.browserImportChrome === 'function') {
+    return bridge.browserImportChrome();
+  }
+  return { imported: 0, profiles: [], error: 'unsupported' };
+}
+
+// Subscribes to BrowserState pushes from main (any tab/model change).
+// Returns an unsubscribe function; no-op in the web shell.
+export function onBrowserStateChanged(cb: (state: BrowserState) => void): () => void {
+  if (isElectron && typeof bridge.onBrowserStateChanged === 'function') {
+    return bridge.onBrowserStateChanged(cb);
+  }
+  return () => {};
+}
+
 // Re-export a single namespace for ergonomic call sites (`host.openPath(...)`).
 export const host = {
   isWeb,
@@ -678,6 +790,21 @@ export const host = {
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,
+  browserGetState,
+  browserSetVisible,
+  browserSetBounds,
+  browserNewTab,
+  browserCloseTab,
+  browserActivateTab,
+  browserNavigate,
+  browserGoBack,
+  browserGoForward,
+  browserReload,
+  browserStop,
+  browserOpenDevTools,
+  browserTopSites,
+  browserImportChrome,
+  onBrowserStateChanged,
 };
 
 export default host;
