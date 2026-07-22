@@ -1,24 +1,39 @@
 // Token-driven button. Wraps Base UI's <Button> for native button semantics,
 // focus-visible handling, and `render`-based composition (polymorphic links) —
-// styled with the existing `.btn` class system so the rendered markup and look
-// are unchanged. Base UI is unstyled; the pixels come entirely from `.btn`.
+// painted by the `.btn` class system in globals.css (Base UI ships unstyled).
+//
+// API contract — what owns what:
+//   • `variant` selects the COMPLETE visual treatment (tone + emphasis) and is
+//     the ONLY prop that picks a style. Every treatment is a named variant, so
+//     call sites never encode one via `className`.
+//   • `size` / `icon` / `block` are structural modifiers.
+//   • `className` is a LAYOUT-ONLY escape hatch (margin, alignSelf, flex, width).
+//     Never use it to select a style treatment, and keep in mind it must not be
+//     a Tailwind class a merge could touch (`block` collides) — hence the plain
+//     join below, not twMerge.
+//
+// Variants:
+//   default       neutral, quiet          (surface + hairline border)
+//   primary       accent, prominent       (filled accent — the main CTA)
+//   tinted        accent, quiet           (faint accent wash)
+//   subtle        ghost                   (borderless until hover)
+//   danger        destructive, quiet      (red label; reddens on hover)
+//   danger-solid  destructive, prominent  (solid red — the confirm step)
 //
 // Examples:
-//   <Button>Save draft</Button>                          // default neutral
-//   <Button variant="primary">Continue</Button>          // accent + glow
-//   <Button variant="subtle">Cancel</Button>             // borderless
-//   <Button variant="tinted">Compose</Button>            // faint accent wash
-//   <Button variant="solid">Publish</Button>             // filled page CTA
+//   <Button variant="primary">Save changes</Button>
+//   <Button variant="subtle">Cancel</Button>
 //   <Button variant="danger" size="sm">Delete</Button>
-//   <Button icon size="sm" aria-label="Search">{icon}</Button>
-//   <Button block>Sign in</Button>
+//   <Button variant="danger-solid">Delete permanently</Button>
+//   <Button icon aria-label="Search">{icon}</Button>
+//   <Button block style={{ alignSelf: 'flex-start' }}>Sign in</Button>
 //   <Button render={<a href="/docs" />}>Docs</Button>    // render as an <a>
 
 import { forwardRef } from 'react';
 import { Button as BaseButton } from '@base-ui/react/button';
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 
-export type ButtonVariant = 'default' | 'primary' | 'subtle' | 'tinted' | 'solid' | 'danger';
+export type ButtonVariant = 'default' | 'primary' | 'subtle' | 'tinted' | 'danger' | 'danger-solid';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 // Extend Base UI's Button props (which include `render`, native button attrs,
@@ -34,7 +49,7 @@ export interface ButtonProps
   className?: string;
 }
 
-const VARIANTS = new Set<ButtonVariant>(['default', 'primary', 'subtle', 'tinted', 'solid', 'danger']);
+const VARIANTS = new Set<ButtonVariant>(['default', 'primary', 'subtle', 'tinted', 'danger', 'danger-solid']);
 const SIZES = new Set<ButtonSize>(['xs', 'sm', 'md', 'lg', 'xl']);
 
 const Button = forwardRef<ComponentRef<typeof BaseButton>, ButtonProps>(function Button({
@@ -48,11 +63,13 @@ const Button = forwardRef<ComponentRef<typeof BaseButton>, ButtonProps>(function
 }, ref) {
   const v = VARIANTS.has(variant) ? variant : 'default';
   const s = SIZES.has(size) ? size : 'md';
-  // Byte-identical to the previous Button.jsx class string. Plain join — NOT
-  // twMerge — so the legacy `.btn` modifier tokens pass through untouched.
+  // Plain join — NOT twMerge — so the legacy `.btn` modifier tokens pass
+  // through untouched. The variant token is always emitted (including
+  // `default`) so `.btn.default` can carry the neutral styling without
+  // leaking onto the colored variants; `md` is still the implicit size.
   const classes = [
     'btn',
-    v !== 'default' ? v : '',
+    v,
     s !== 'md' ? s : '',
     icon ? 'icon' : '',
     block ? 'block' : '',

@@ -275,41 +275,31 @@ export default function ScheduleTaskModal({
           confirmingDelete ? (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Delete this schedule?</span>
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={busy}
-                style={btnSecondary}
-              >Cancel</button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={busy}
-                style={btnDanger}
-              >Delete</button>
+              <Button variant="subtle" onClick={() => setConfirmingDelete(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant="danger-solid" onClick={handleDelete} disabled={busy}>
+                Delete
+              </Button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(true)}
-              disabled={busy}
-              style={{ ...btnSecondary, color: 'var(--danger)' }}
-            >
+            <Button variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
               {Ico.trash ? Ico.trash(13) : null}
-              <span style={{ marginLeft: Ico.trash ? 6 : 0 }}>Delete</span>
-            </button>
+              Delete
+            </Button>
           )
         )}
         {!isEdit && <span />}
         <div style={{ display: 'inline-flex', gap: 8 }}>
-          <button type="button" onClick={onClose} disabled={busy} style={btnSecondary}>
+          <Button variant="subtle" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
+          </Button>
           <Button
             variant="primary"
             onClick={handleSubmit}
             disabled={busy}
           >
+            {!isEdit && !busy && Ico.plus(14)}
             {busy ? 'Saving…' : (isEdit ? 'Save changes' : 'Create')}
           </Button>
         </div>
@@ -331,23 +321,3 @@ function emptyForm({ defaultProjectPath }) {
     enabled: true,
   };
 }
-
-const btnSecondary = {
-  display: 'inline-flex', alignItems: 'center',
-  background: 'transparent',
-  border: '1px solid var(--line)',
-  color: 'var(--ink-2)',
-  padding: '7px 12px', borderRadius: 7,
-  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-  cursor: 'pointer',
-};
-
-const btnDanger = {
-  display: 'inline-flex', alignItems: 'center',
-  background: 'var(--danger)',
-  border: '1px solid var(--danger)',
-  color: '#fff',
-  padding: '7px 12px', borderRadius: 7,
-  fontFamily: FONT_BODY, fontSize: 12.5, fontWeight: 500,
-  cursor: 'pointer',
-};

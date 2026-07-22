@@ -1299,13 +1299,6 @@ export default function SettingsView({
                 // Otherwise the middle column shows the status pill and an Edit button appears.
                 const ssoMindsHub = p.type === 'minds-cloud' && isSsoConnected;
                 const showKeyInput = ssoMindsHub || !configured || status === 'untested' || status === 'fail' || editingProviders.has(p.type);
-                const iconBtnStyle = {
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 30, height: 30, borderRadius: 8,
-                  background: 'transparent',
-                  border: '1px solid var(--border-subtle)',
-                  cursor: 'pointer',
-                };
                 return (
                   <div key={p.type} className="settings-provider-row" style={{
                     display: 'grid',
@@ -1399,20 +1392,23 @@ export default function SettingsView({
                     {/* Right: trash + edit buttons */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 30 }}>
                       {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
-                        <button
-                          type="button"
+                        <Button
+                          variant="danger"
+                          icon
+                          size="sm"
                           onClick={() => removeProvider(p.type)}
                           title="Remove this provider"
-                          style={{ ...iconBtnStyle, color: '#E07060' }}
-                        >{Ico.trash(13)}</button>
+                          aria-label="Remove this provider"
+                        >{Ico.trash(13)}</Button>
                       )}
                       {!showKeyInput && (
-                        <button
-                          type="button"
+                        <Button
+                          icon
+                          size="sm"
                           onClick={() => setEditingProviders((prev) => new Set([...prev, p.type]))}
                           title="Edit API key"
-                          style={{ ...iconBtnStyle, color: 'var(--ink-3)' }}
-                        >{Ico.edit(13)}</button>
+                          aria-label="Edit API key"
+                        >{Ico.edit(13)}</Button>
                       )}
                     </div>
                   </div>
@@ -1463,18 +1459,15 @@ export default function SettingsView({
                       style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
                     >{typeLabels[t] || t}</Button>
                   ))}
-                  <button
-                    type="button"
+                  <Button
+                    variant="subtle"
+                    icon
+                    size="sm"
                     onClick={() => setAddPickerOpen(false)}
                     title="Hide the provider picker."
                     aria-label="Close provider picker"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: 26, height: 26, marginLeft: 4, borderRadius: 6,
-                      background: 'transparent', border: 0,
-                      color: 'var(--text-muted)', cursor: 'pointer',
-                    }}
-                  >{Ico.close(13)}</button>
+                    style={{ marginLeft: 4 }}
+                  >{Ico.close(13)}</Button>
                 </div>
               </div>
             </CollapsibleGroup>
@@ -2038,13 +2031,13 @@ export default function SettingsView({
               {settings.navLogo ? 'Change logo' : 'Upload logo'}
             </Button>
             {settings.navLogo && (
-              <button
-                type="button"
+              <Button
+                variant="danger"
                 onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
-                style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12.5, fontFamily: 'var(--font-body)' }}
               >
+                {Ico.trash(13)}
                 Remove
-              </button>
+              </Button>
             )}
             <input
               ref={logoInputRef}
@@ -2189,17 +2182,16 @@ export default function SettingsView({
                         <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
                       </span>
                     ))}
-                    <button
-                      type="button"
+                    <Button
                       onClick={() => {
                         navigator.clipboard?.writeText(copyText);
                         setVersionCopied(true);
                         setTimeout(() => setVersionCopied(false), 1500);
                       }}
-                      style={{ alignSelf: 'flex-start', marginTop: 4, background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', color: 'var(--text-strong)', fontSize: 11 }}
+                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
                     >
                       {versionCopied ? 'Copied' : 'Copy'}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -2257,19 +2249,18 @@ export default function SettingsView({
 
     const backendFooter = (
       <>
-        <button type="button" onClick={refreshDiag} title="Refresh diagnostics"
-          style={{ cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500 }}
-        >Refresh</button>
+        <Button onClick={refreshDiag} title="Refresh diagnostics">
+          {Ico.refresh(14)}Refresh
+        </Button>
         {(onStartServer || onStopServer) && state !== 'offline' && (
-          <button type="button" onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}
-            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'transparent', border: '1px solid var(--line)', color: 'var(--ink-2)', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
-          >{(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}</button>
+          <Button onClick={handleBackendStop} disabled={diagBusy || serverBusy || !onStopServer}>
+            {(diagBusy && serverBusyKind === 'stopping') ? 'Stopping…' : 'Stop backend'}
+          </Button>
         )}
         {(onStartServer || onStopServer) && (
-          <button type="button" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
+          <Button variant="primary" onClick={state === 'offline' ? handleBackendStart : handleBackendRestart}
             disabled={diagBusy || serverBusy || (state === 'offline' ? !onStartServer : !(onStartServer && onStopServer))}
-            style={{ cursor: (diagBusy || serverBusy) ? 'progress' : 'pointer', background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff', padding: '7px 14px', borderRadius: 7, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, opacity: (diagBusy || serverBusy) ? 0.7 : 1 }}
-          >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</button>
+          >{diagBusy ? (state === 'offline' ? 'Starting…' : 'Restarting…') : (state === 'offline' ? 'Start backend' : 'Restart backend')}</Button>
         )}
       </>
     );
@@ -2532,29 +2523,14 @@ export default function SettingsView({
         )}
 
         {/* CTA */}
-        <button
-          type="button"
-          onClick={onSsoSignIn}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '10px 20px', borderRadius: 9, border: 'none',
-            background: 'var(--accent, #5d9287)',
-            color: '#fff',
-            fontSize: 14, fontWeight: 650, fontFamily: 'inherit',
-            cursor: 'pointer',
-            boxShadow: '0 2px 12px color-mix(in srgb, var(--accent, #5d9287) 40%, transparent)',
-            transition: 'opacity 120ms ease, box-shadow 120ms ease',
-          }}
-          onMouseOver={(e) => { e.currentTarget.style.opacity = '0.88'; }}
-          onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
-        >
+        <Button variant="primary" onClick={onSsoSignIn}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
             <polyline points="10 17 15 12 10 7" />
             <line x1="15" y1="12" x2="3" y2="12" />
           </svg>
           Sign in / Sign up to MindsHub
-        </button>
+        </Button>
       </div>
     );
 
@@ -2578,16 +2554,14 @@ export default function SettingsView({
         {accountUser && <div style={{ ...CARD, padding: '0 18px 8px' }}>
           <Section title="Sign out" subtitle="Disconnect from MindsHub and remove every stored credential on this device. Cowork will return to the onboarding flow on the next launch.">
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#E07060', background: 'rgba(224,112,96,0.08)', border: '1px solid rgba(224,112,96,0.35)', cursor: loggingOut ? 'progress' : 'pointer', fontFamily: 'inherit', opacity: loggingOut ? 0.7 : 1 }}
-              >
+              <Button variant="danger" onClick={() => setLogoutConfirmOpen(true)} disabled={loggingOut} title="Sign out and clear stored credentials">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                   <polyline points="16 17 21 12 16 7" />
                   <line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
                 {loggingOut ? 'Signing out…' : 'Sign out'}
-              </button>
+              </Button>
             </div>
           </Section>
         </div>}

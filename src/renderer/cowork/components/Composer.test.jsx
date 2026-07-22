@@ -52,7 +52,7 @@ describe('Composer — "+ New project" (ENG-992)', () => {
     await openNewProjectModal(user);
 
     await user.type(screen.getByLabelText(/project name/i), 'acme');
-    await user.click(screen.getByRole('button', { name: 'CREATE' }));
+    await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(props.onCreateProject).toHaveBeenCalledWith({ name: 'acme', _alreadyCreated: true });
     expect(props.onProjectChange).toHaveBeenCalledWith({ name: 'acme' });

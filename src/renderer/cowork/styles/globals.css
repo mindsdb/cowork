@@ -995,27 +995,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   flex-shrink: 0;
 }
 
-.customize-back-btn {
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--ink);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.customize-back-btn:hover:not(:disabled) {
-  background: var(--surface-2);
-}
-
-.customize-back-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
 .customize-header-title {
   font-size: var(--text-md);
   font-weight: 600;
@@ -1105,22 +1084,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   font-size: 13px;
 }
 
-.customize-add-btn {
-  width: 22px;
-  height: 22px;
-  border: 0;
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--ink-3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.customize-add-btn:hover {
-  background: var(--surface-2);
-}
-
 .customize-subnav-empty {
   text-align: center;
   padding: 18px 14px 6px;
@@ -1131,51 +1094,6 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   font-size: 13px;
   line-height: 1.45;
   color: var(--ink-3);
-}
-
-.customize-browse-btn,
-.customize-secondary-btn {
-  height: 34px;
-  padding: 0 15px;
-  border-radius: var(--r-8);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.customize-browse-btn:hover,
-.customize-secondary-btn:hover {
-  background: var(--surface-2);
-}
-
-.customize-primary-btn {
-  height: 38px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--r-8);
-  background: var(--ink);
-  color: var(--surface);
-  font-size: var(--text-base);
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.customize-primary-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ink) 88%, var(--accent));
-}
-
-.customize-primary-btn:disabled,
-.customize-browse-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .customize-home-main {
@@ -2224,11 +2142,15 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
 }
 [data-coming-soon]:hover::after { opacity: 1; }
 
-/* ─── Button system (per guideline) ──────────────────────────────────────
-   All variants share shape: transparent fill, colored border + label.
-   Each variant supplies --fg (the colour) and --glow (hover halo).
-   .btn is the canonical class name; .btn-primary / .btn-secondary stay as
-   backward-compat aliases that pin specific variants. */
+/* ─── Button system (per brandbook) ──────────────────────────────────────
+   `.btn` is the shared shape; each `<Button variant>` adds a modifier class
+   (`.btn.primary`, `.btn.danger`, …). Light mode follows the brandbook fill
+   grammar (accent-fill primary, surface + hairline default, quiet-red
+   danger); dark mode keeps the outline + glow signature, so several variants
+   carry `body[data-theme="dark"]` overrides. Variants lean on the --fg / --glow
+   custom properties so shared :hover / :focus rules serve every variant.
+   `.btn-primary` remains as a legacy alias; `.btn-secondary` / `.btn-ghost`
+   were removed once nothing rendered them. */
 
 .btn {
   --fg:    var(--ink);
@@ -2280,10 +2202,53 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   pointer-events: none;
 }
 
-/* Primary — accent action. Always-on idle glow, intensifies on hover. */
+/* Default (neutral / secondary) — the quiet, most-used button. Light mode
+   follows the brandbook: a surface fill with a hairline border (no harsh
+   ink outline) and a gentle surface hover. Dark mode keeps the base
+   outline + glow look for now. */
+body:not([data-theme="dark"]) .btn.default {
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: var(--sh-1);
+}
+body:not([data-theme="dark"]) .btn.default:hover {
+  background: var(--surface-2);
+  border-color: var(--line-2);
+  box-shadow: var(--sh-1);
+  text-shadow: none;
+}
+body:not([data-theme="dark"]) .btn.default:active {
+  background: color-mix(in srgb, var(--ink) 8%, var(--surface));
+  box-shadow: var(--sh-1);
+  transform: translateY(0.5px);
+}
+/* Dark: the base .btn's `currentColor` border resolves to bright --ink,
+   which made neutral buttons (Run now / Pause) read far too loud. Give
+   them the same quiet surface + hairline treatment as light, in dark
+   tokens — no glow ring on hover. */
+body[data-theme="dark"] .btn.default {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink-2);
+  box-shadow: none;
+}
+body[data-theme="dark"] .btn.default:hover {
+  background: var(--surface-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+  box-shadow: none;
+  text-shadow: none;
+}
+body[data-theme="dark"] .btn.default:active {
+  background: color-mix(in srgb, var(--ink) 10%, var(--surface));
+  transform: translateY(0.5px);
+}
+
+/* Primary — the prominent accent-fill CTA (brandbook). Light mode is an
+   opaque accent fill with contrasting ink; dark mode is a luminous accent
+   glass so it still reads as "made of light" against the dark UI. */
 .btn.primary,
 .btn-primary {
-  --fg:    var(--accent);
   --glow:  var(--accent-glow);
   font-weight: 600;
   /* Apply .btn shape if the consumer omitted it (legacy callers used .btn-primary alone) */
@@ -2294,9 +2259,13 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   height: 32px;
   padding: 0 14px;
   border-radius: var(--r);
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid currentColor;
+  background: var(--accent-solid);
+  color: var(--accent-solid-ink);
+  border: 1px solid var(--accent-solid);
+  /* Brandbook fill: a soft inset top-highlight + a low drop shadow give
+     the button dimension without a glow. (Dark mode overrides this with
+     the luminous-glass treatment below.) */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 1px 2px rgba(15,16,17,0.10);
   font-family: var(--font-sans);
   font-size: 13px;
   letter-spacing: 0;
@@ -2305,30 +2274,50 @@ button.meta-pill:hover { background: var(--surface-0); border-color: var(--borde
   transition:
     background-color .12s ease, border-color .12s ease,
     box-shadow .12s ease, transform .04s ease, color .12s ease;
-  box-shadow: 0 0 14px color-mix(in srgb, var(--fg) 18%, transparent);
-}
-body[data-theme="light"] .btn.primary,
-body[data-theme="light"] .btn-primary,
-body:not([data-theme="dark"]) .btn.primary,
-body:not([data-theme="dark"]) .btn-primary {
-  /* Light mode: no idle glow; ring + soft halo on hover only. */
-  box-shadow: var(--sh-1);
 }
 .btn.primary:hover,
 .btn-primary:hover {
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-  box-shadow: 0 0 0 1px var(--fg), 0 0 28px var(--glow);
+  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+  border-color: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 1px 3px rgba(15,16,17,0.14);
+  text-shadow: none;
 }
 .btn.primary:active,
 .btn-primary:active {
-  background: color-mix(in srgb, var(--fg) 18%, transparent);
+  background: color-mix(in srgb, var(--accent-solid) 80%, var(--ink));
   transform: translateY(0.5px);
+}
+.btn.primary:focus-visible,
+.btn-primary:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent-solid-ink), 0 0 0 4px var(--glow);
 }
 .btn.primary:disabled,
 .btn-primary:disabled,
 .btn.primary[aria-disabled="true"],
 .btn-primary[aria-disabled="true"] {
   cursor: not-allowed; opacity: 0.55; pointer-events: none;
+}
+/* Dark: luminous accent glass (mirrors the dark solid CTA). */
+body[data-theme="dark"] .btn.primary,
+body[data-theme="dark"] .btn-primary {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+body[data-theme="dark"] .btn.primary:hover,
+body[data-theme="dark"] .btn-primary:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 28px var(--glow);
+}
+body[data-theme="dark"] .btn.primary:active,
+body[data-theme="dark"] .btn-primary:active {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+body[data-theme="dark"] .btn.primary:focus-visible,
+body[data-theme="dark"] .btn-primary:focus-visible {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--glow);
 }
 
 /* Busy variant — used while the button is awaiting an async result
@@ -2370,104 +2359,100 @@ body:not([data-theme="dark"]) .btn-primary {
   }
 }
 
-/* Subtle — borderless until hovered. Quietest variant. Aliased from
-   the older .btn-secondary / .btn-ghost classes. */
-.btn.subtle,
-.btn-secondary,
-.btn-ghost {
+/* Subtle — borderless until hovered. Quietest variant (Cancel, dismiss,
+   quiet toolbar actions). */
+.btn.subtle {
   --fg:   var(--ink-3);
   --glow: rgba(199, 210, 229, 0.18);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: var(--r);
-  background: transparent;
-  /* Flat at rest. Legacy .btn-secondary / .btn-ghost were used standalone, so
-     they never matched base .btn's resting box-shadow. The design-system
-     <Button variant="subtle"> emits `btn subtle` (two classes), which DOES
-     match base .btn — so reset the shadow here to keep the variant genuinely
-     borderless and byte-identical to the legacy standalone classes. */
+  /* Flat at rest — genuinely borderless, no resting shadow. */
   box-shadow: none;
-  color: var(--fg);
   border: 1px solid transparent;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-  cursor: pointer;
-  transition:
-    background-color .12s ease, border-color .12s ease,
-    box-shadow .12s ease, color .12s ease;
 }
-.btn.subtle:hover,
-.btn-secondary:hover,
-.btn-ghost:hover {
+.btn.subtle:hover {
   color: var(--ink);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   box-shadow: 0 0 0 1px var(--line-2), 0 0 18px rgba(199, 210, 229, 0.10);
 }
 
-/* Tinted — accent border + label, with a faint accent fill at rest. */
+/* Tinted — branded secondary: a faint accent wash with a soft accent
+   border (not a full-strength outline) and a quiet hover with no glow
+   ring. This is the register the sidebar "New task" CTA uses. */
 .btn.tinted {
   --fg:   var(--accent);
   --glow: var(--accent-glow);
   background: var(--accent-bg);
-  border-color: currentColor;
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
-
-/* Solid — the filled CTA. One per page; use for the page's primary action. */
-.btn.solid {
-  --glow: var(--accent-glow);
-  font-weight: 600;
-  background: var(--accent-solid);
-  color: var(--accent-solid-ink);
-  border-color: var(--accent-solid);
-}
-.btn.solid:hover {
-  background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
-  box-shadow: 0 0 0 1px var(--accent-solid), 0 0 22px var(--glow);
+.btn.tinted:hover {
+  background: color-mix(in srgb, var(--accent) 16%, var(--accent-bg));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--sh-1);
   text-shadow: none;
 }
-.btn.solid:active {
-  background: color-mix(in srgb, var(--accent-solid) 80%, var(--ink));
-}
-.btn.solid:focus-visible {
-  box-shadow: 0 0 0 1px var(--accent-solid-ink), 0 0 0 4px var(--glow);
-}
-/* Dark: opaque paint fights the neon material language — dark-mode
-   buttons are made of light, not pigment (the outline+glow grammar
-   above). The solid CTA becomes a luminous fill: translucent accent
-   glass with a neon border and the idle glow, one visible step
-   stronger than .btn.primary's outline-only treatment. Light mode
-   keeps the true opaque solid — fills are native material there. */
-body[data-theme="dark"] .btn.solid {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-body[data-theme="dark"] .btn.solid:hover {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
-  box-shadow: 0 0 0 1px var(--accent), 0 0 28px var(--glow);
-}
-body[data-theme="dark"] .btn.solid:active {
-  background: color-mix(in srgb, var(--accent) 32%, transparent);
-}
-body[data-theme="dark"] .btn.solid:focus-visible {
-  box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--glow);
-}
 
-/* Danger */
+/* (The former `solid` variant was retired — it had become a redundant,
+   drift-prone duplicate of the filled `primary`. Use `variant="primary"`.) */
+
+/* Danger — destructive. Light mode follows the brandbook: quiet at rest
+   (red label on a surface fill with a hairline border), reddening on hover.
+   The escalated .danger.primary is the solid-red "delete permanently" step.
+   Dark mode keeps the outline + glow signature for now. */
 .btn.danger {
   --fg:   var(--danger);
   --glow: rgba(248, 113, 113, 0.45);
 }
-.btn.danger.primary {
-  font-weight: 600;
+body:not([data-theme="dark"]) .btn.danger {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--danger);
+  box-shadow: var(--sh-1);
+}
+body:not([data-theme="dark"]) .btn.danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  box-shadow: var(--sh-1);
+  text-shadow: none;
+}
+body:not([data-theme="dark"]) .btn.danger:active {
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  transform: translateY(0.5px);
+}
+body:not([data-theme="dark"]) .btn.danger:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--danger), 0 0 0 4px rgba(248, 113, 113, 0.35);
+}
+
+/* danger-solid — escalated destructive: a solid red fill. Reach for it on the
+   deliberate confirm step (e.g. a confirmation dialog), not every delete
+   affordance. Light = opaque red; dark = luminous red glass. */
+.btn.danger-solid { font-weight: 600; }
+body:not([data-theme="dark"]) .btn.danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  box-shadow: var(--sh-1);
+}
+body:not([data-theme="dark"]) .btn.danger-solid:hover {
+  background: color-mix(in srgb, var(--danger) 88%, var(--ink));
+  border-color: color-mix(in srgb, var(--danger) 88%, var(--ink));
+  box-shadow: 0 0 0 1px var(--danger), 0 0 18px rgba(248, 113, 113, 0.30);
+}
+/* Dark: luminous red glass for the escalated destructive; plain .btn.danger
+   keeps the base red outline + glow. */
+body[data-theme="dark"] .btn.danger-solid {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+  border-color: var(--danger);
   box-shadow: 0 0 14px rgba(248, 113, 113, 0.22);
+}
+body[data-theme="dark"] .btn.danger-solid:hover {
+  background: color-mix(in srgb, var(--danger) 24%, transparent);
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger), 0 0 24px rgba(248, 113, 113, 0.40);
+}
+body[data-theme="dark"] .btn.danger-solid:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 1px var(--danger), 0 0 0 4px rgba(248, 113, 113, 0.40);
 }
 
 /* Sizes */
@@ -2781,56 +2766,9 @@ body.custom-bg-active .app-sidebar::before {
 .app-sidebar { position: relative; }
 .app-sidebar > * { position: relative; z-index: 1; }
 
-/* New task CTA — outlined neon in dark, accent-bordered in light */
+/* New task CTA wrapper — the button itself is the tinted variant,
+   full width (<Button variant="tinted" block size="lg">). */
 .anton-sidebar__cta-wrap { padding: 6px 10px 14px; }
-/* New task — tinted accent (the .btn.tinted register): an accent wash
-   with accent ink. Louder than a neutral surface — it owns the accent
-   identity and can't be misread as an input — but without the shout of
-   a solid fill, which overpowered the sidebar. Solid stays reserved
-   for page CTAs and the armed send button. */
-.btn-new-task {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 36px;
-  padding: 0 12px;
-  background: var(--accent-bg);
-  color: var(--accent-2);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  border-radius: var(--r);
-  box-shadow: var(--sh-1);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: -0.005em;
-  cursor: pointer;
-  text-align: left;
-  transition: background .12s ease, border-color .12s ease,
-              box-shadow .12s ease, transform .04s ease;
-}
-.btn-new-task:hover {
-  background: color-mix(in srgb, var(--accent) 16%, var(--accent-bg));
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-}
-.btn-new-task:active {
-  background: color-mix(in srgb, var(--accent) 24%, var(--accent-bg));
-  transform: translateY(0.5px);
-}
-.btn-new-task__label { flex: 1; font-weight: 600; }
-.btn-new-task .kbd {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: inherit;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-weight: 500;
-  opacity: 0.9;
-}
-/* Dark: the wash sits on navy, so the ink steps up to the bright
-   accent for contrast (matches how Pill/Badge accents read in dark). */
-body[data-theme="dark"] .btn-new-task { color: var(--accent); }
 
 /* Override existing .nav-item rules to follow the guideline shape */
 .app-sidebar .nav-item {
@@ -3376,32 +3314,16 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   flex-direction: column;
   gap: 10px;
 }
-.dispatch-btn {
-  min-height: 46px;
-  border-radius: var(--r-pill);
-  border: 1px solid transparent;
-  padding: 0 18px;
+.dispatch-button-badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: var(--text-base);
-  font-weight: 500;
-}
-.dispatch-btn-primary {
-  background: var(--ink);
-  color: var(--surface);
-}
-.dispatch-btn-primary:disabled {
-  cursor: not-allowed;
-  opacity: 0.86;
-}
-.dispatch-btn-ghost {
-  background: transparent;
-  color: var(--ink);
-}
-.dispatch-btn-ghost:hover {
-  background: var(--surface-3);
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  background: rgba(255,255,255,0.16);
+  color: rgba(255,255,255,0.86);
+  font-size: var(--text-xs);
+  line-height: 1;
 }
 
 @media (max-width: 760px) {
@@ -3424,11 +3346,6 @@ body[data-theme="dark"] .orbit-morph[data-state="done"] {
   .dispatch-qr {
     width: 190px;
     height: 190px;
-  }
-  .dispatch-btn {
-    min-height: 44px;
-    flex-wrap: wrap;
-    row-gap: 4px;
   }
 }
 
@@ -5284,10 +5201,6 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-error { font-size: 12px; color: var(--danger, #c0392b); margin: 10px 0 0; }
 .channels-notice { font-size: 12px; color: var(--accent-strong, #1f8a4c); margin: 10px 0 0; }
 .channels-actions { display: flex; gap: 8px; margin-top: 14px; }
-.channels-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--r-8); border: 1px solid var(--border-02, rgba(0,0,0,.12)); font-size: 13px; cursor: pointer; background: transparent; color: var(--fg); }
-.channels-btn:disabled { opacity: .7; cursor: not-allowed; }
-.channels-btn-primary { background: var(--accent, #1a1916); color: var(--accent-fg, #fff); border-color: transparent; }
-.channels-btn-ghost { background: transparent; }
 
 /* Channel routes (bindings) */
 .channels-routes { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.08)); }
@@ -5299,7 +5212,6 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .channels-route-table td { padding: 6px 8px; border-top: 1px solid var(--border-subtle, rgba(0,0,0,.06)); vertical-align: top; }
 .channels-input-sm { padding: 5px 8px; font-size: 12px; width: 100%; }
 .channels-route-actions { display: flex; gap: 6px; white-space: nowrap; }
-.channels-btn-sm { padding: 5px 10px; font-size: 12px; }
 
 @keyframes step-error-dot-fade {
   0%   { opacity: 1; }

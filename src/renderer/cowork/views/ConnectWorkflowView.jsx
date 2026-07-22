@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Badge } from '../components/ui';
+import { Badge, Button } from '../components/ui';
 import {
   fetchIntegrations,
   startConnectorOAuth,
@@ -455,14 +455,14 @@ function Subnav({ page, onPageChange, onOpenPlugins }) {
       <div className="customize-subnav-section">
         <div className="customize-subnav-section-head">
           <span>Personal plugins</span>
-          <button className="customize-add-btn" aria-label="Browse plugins" onClick={onOpenPlugins}>
+          <Button icon variant="subtle" aria-label="Browse plugins" onClick={onOpenPlugins}>
             {Ico.plus(14)}
-          </button>
+          </Button>
         </div>
 
         <div className="customize-subnav-empty">
           <p>Give the agent role-level expertise with plugins</p>
-          <button className="customize-browse-btn" onClick={onOpenPlugins}>Browse plugins</button>
+          <Button variant="tinted" onClick={onOpenPlugins}>Browse plugins</Button>
         </div>
       </div>
     </aside>
@@ -566,12 +566,12 @@ function ConnectorsPage({
         <div className="customize-pane-header">
           <div className="customize-pane-title">Connectors</div>
           <div className="customize-pane-actions">
-            <button className="icon-btn" type="button" aria-label="Search connectors" onClick={onOpenDirectory}>
+            <Button icon variant="subtle" aria-label="Search connectors" onClick={onOpenDirectory}>
               {Ico.search(15)}
-            </button>
-            <button className="icon-btn" type="button" aria-label="Add connector" onClick={onOpenDirectory}>
+            </Button>
+            <Button icon variant="subtle" aria-label="Add connector" onClick={onOpenDirectory}>
               {Ico.plus(15)}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -582,9 +582,9 @@ function ConnectorsPage({
                 <span>{Ico.chevDown(12)}</span>
                 <span>{group.label}</span>
                 {group.label === 'Desktop' && (
-                  <button className="icon-btn" type="button" aria-label="Connector settings">
+                  <Button icon variant="subtle" aria-label="Connector settings">
                     {Ico.settings(14)}
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -615,9 +615,9 @@ function ConnectorsPage({
 
       <section className="customize-detail-pane">
         <div className="customize-detail-header">
-          <button className="icon-btn" type="button" aria-label="More options">
+          <Button icon variant="subtle" aria-label="More options">
             {Ico.more(16)}
-          </button>
+          </Button>
         </div>
 
         <div className="customize-empty-detail">
@@ -627,9 +627,8 @@ function ConnectorsPage({
               ? `${selectedConnector.name} is already available in MindsHub Cowork.`
               : connectMessage}
           </div>
-          <button
-            className="customize-primary-btn"
-            type="button"
+          <Button
+            variant="primary"
             aria-label={
               selectedConnector?.status === 'included'
                 ? `${selectedConnector.name} available`
@@ -649,7 +648,7 @@ function ConnectorsPage({
                   ? `Waiting for ${connectorName} sign-in...`
                   : connectLabel)
               : selectedConnector?.action || 'Connect'}
-          </button>
+          </Button>
           {detailNotes.map((note, index) => (
             <div key={`${selectedConnector?.id || 'connector'}-note-${index}`} className="customize-empty-note">
               {note}
@@ -1044,15 +1043,15 @@ export default function ConnectWorkflowView({ onClose }) {
   return (
     <div className="customize-view">
       <div className="customize-header">
-        <button
-          className="customize-back-btn"
-          type="button"
+        <Button
+          icon
+          variant="subtle"
           aria-label="Back to connections"
           title="Back to connections"
           onClick={handleBack}
         >
           {Ico.chevLeft(16)}
-        </button>
+        </Button>
         <div className="customize-header-title">Connect Apps and Data</div>
       </div>
 

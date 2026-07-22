@@ -15,8 +15,8 @@
 //     <ModalHeader id="connect-title" title="Connect a tool" subtitle="…" onClose={close} />
 //     <ModalBody> …content… </ModalBody>
 //     <ModalFooter>
-//       <button onClick={close}>Cancel</button>
-//       <button className="btn-primary" onClick={save}>Save</button>
+//       <Button variant="subtle" onClick={close}>Cancel</Button>
+//       <Button variant="primary" onClick={save}>Save</Button>
 //     </ModalFooter>
 //   </Modal>
 //

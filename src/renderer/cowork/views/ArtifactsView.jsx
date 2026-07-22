@@ -15,6 +15,7 @@ import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
 import { useToastManager } from '../components/ui/Toast';
 import { EmptyState } from '../components/ui/EmptyState';
+import { Button } from '../components/ui';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   deleteArtifact,
@@ -154,18 +155,10 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
       </ModalBody>
       <ModalFooter>
-        <button type="button" onClick={onCancel} style={{
-          cursor: 'pointer', background: 'transparent', border: '1px solid var(--line)',
-          color: 'var(--ink-2)', padding: '8px 14px', borderRadius: 8, fontFamily: FONT_BODY, fontSize: 13,
-        }}>Cancel</button>
-        <button type="button" onClick={submit} disabled={!canConfirm} style={{
-          cursor: canConfirm ? 'pointer' : 'not-allowed',
-          background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff',
-          padding: '8px 16px', borderRadius: 8, fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13,
-          opacity: canConfirm ? 1 : 0.5,
-        }}>
+        <Button variant="subtle" onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" onClick={submit} disabled={!canConfirm}>
           {draft.mode === 'password' ? 'Share protected' : draft.mode === 'restricted' ? 'Share restricted' : 'Share'}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   );
