@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { buildKind } from './cowork-home';
 
-// minds-urls computes its exports once at module load (from
-// MINDS_API_HOST env > baked build-channel value > prod fallback), so each
-// case re-imports a fresh copy under a controlled env. build-channel.gen
-// does not exist in the test env, so the baked branch always resolves ''.
+// minds-urls resolves its host once at module load from:
+//   MINDS_API_HOST env > baked build-channel value > build-kind fallback.
+// build-channel.gen does not exist in the test env, so the baked branch
+// always resolves '' and the fallback (driven by buildKind) decides. Mock
+// buildKind so we can drive each branch; a static ESM import is what makes
+// it mockable (see minds-urls.ts). Default 'prod' keeps the fallback on the
+// production host unless a case says otherwise.
+vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
+
 async function loadWithEnv(apiHost?: string) {
   vi.resetModules();
   const prev = process.env.MINDS_API_HOST;
@@ -25,15 +31,17 @@ async function loadWithEnv(apiHost?: string) {
 
 afterEach(() => {
   vi.resetModules();
+  vi.mocked(buildKind).mockReset();
+  vi.mocked(buildKind).mockReturnValue('prod');
 });
 
-// The prod lock: a build with nothing baked and nothing overridden MUST
-// resolve every MindsHub surface to production. Staging/dev targeting is
-// always an explicit opt-in (baked minds_api_url or env override) — never
-// a default a prod user could fall into, and never something a non-prod
-// value can leak into prod through.
-describe('prod defaults (nothing baked, no env override)', () => {
+// The prod lock: a PACKAGED prod build with nothing baked and nothing
+// overridden MUST resolve every MindsHub surface to production. Staging/dev
+// targeting is always explicit (baked minds_api_url, env override, or a
+// non-prod build kind) — never a default a prod user could fall into.
+describe('prod defaults (prod build kind, nothing baked, no env override)', () => {
   it('resolves every host to production', async () => {
+    vi.mocked(buildKind).mockReturnValue('prod');
     const m = await loadWithEnv(undefined);
     expect(m.MINDS_API_HOST).toBe('https://api.mindshub.ai');
     expect(m.MINDS_AUTH_HOST).toBe('https://auth.mindshub.ai');
@@ -44,12 +52,52 @@ describe('prod defaults (nothing baked, no env override)', () => {
   });
 
   it('reports no env slug, so the spawned server is not stamped with ENV', async () => {
+    vi.mocked(buildKind).mockReturnValue('prod');
     const m = await loadWithEnv(undefined);
+    expect(m.MINDS_ENV_SLUG).toBe('');
+  });
+
+  it('falls back to prod if the build kind cannot be resolved', async () => {
+    vi.mocked(buildKind).mockImplementation(() => {
+      throw new Error('no electron app');
+    });
+    const m = await loadWithEnv(undefined);
+    expect(m.MINDS_API_HOST).toBe('https://api.mindshub.ai');
+  });
+});
+
+// Local dev (unpackaged → build kind 'dev') and the staging ring must not
+// silently target production when nothing is baked.
+describe('build-kind fallback (nothing baked, no env override)', () => {
+  it('dev build kind targets the dev environment', async () => {
+    vi.mocked(buildKind).mockReturnValue('dev');
+    const m = await loadWithEnv(undefined);
+    expect(m.MINDS_API_HOST).toBe('https://api.dev.mindshub.ai');
+    expect(m.MINDS_AUTH_HOST).toBe('https://auth.dev.mindshub.ai');
+    expect(m.MINDS_KEYCLOAK_BASE).toBe('https://auth.dev.mindshub.ai/auth');
+    expect(m.MINDS_ENV_SLUG).toBe('dev');
+  });
+
+  it('preview and stable build kinds target staging', async () => {
+    vi.mocked(buildKind).mockReturnValue('preview');
+    let m = await loadWithEnv(undefined);
+    expect(m.MINDS_API_HOST).toBe('https://api.staging.mindshub.ai');
+    expect(m.MINDS_ENV_SLUG).toBe('staging');
+
+    vi.mocked(buildKind).mockReturnValue('stable');
+    m = await loadWithEnv(undefined);
+    expect(m.MINDS_AUTH_HOST).toBe('https://auth.staging.mindshub.ai');
+  });
+
+  it('an explicit MINDS_API_HOST beats the build-kind fallback', async () => {
+    vi.mocked(buildKind).mockReturnValue('dev');
+    const m = await loadWithEnv('https://api.mindshub.ai');
+    expect(m.MINDS_API_HOST).toBe('https://api.mindshub.ai');
     expect(m.MINDS_ENV_SLUG).toBe('');
   });
 });
 
-describe('staging/dev builds derive the whole host family from the API host', () => {
+describe('explicit host overrides derive the whole family', () => {
   it('staging API host yields staging auth + console + slug', async () => {
     const m = await loadWithEnv('https://api.staging.mindshub.ai');
     expect(m.MINDS_AUTH_HOST).toBe('https://auth.staging.mindshub.ai');

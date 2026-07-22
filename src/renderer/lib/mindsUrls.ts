@@ -2,7 +2,13 @@
 // cowork SPA views (billing/API-key links), so every external MindsHub
 // destination is derived in one place from the two VITE_ overrides.
 
-export const MINDS_API_BASE = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai';
+// `vite dev` (import.meta.env.DEV) with no explicit VITE_MINDS_API_URL targets
+// the dev environment, not prod — a bare `npm run dev` must never log in
+// against production. Built renderers always carry a baked VITE_MINDS_API_URL
+// (staging builds set it; prod builds set the prod host), so this fallback
+// only affects local dev; the built-but-unbaked case still resolves to prod.
+export const MINDS_API_BASE = import.meta.env.VITE_MINDS_API_URL
+  || (import.meta.env.DEV ? 'https://api.dev.mindshub.ai' : 'https://api.mindshub.ai');
 
 // Keycloak host, derived from the SAME resolved base as everything else
 // (api.X → auth.X) so the login flow (keycloak.ts, which imports
