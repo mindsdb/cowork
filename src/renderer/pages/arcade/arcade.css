@@ -260,6 +260,13 @@
 .arc-btn-ghost:hover { color: var(--arc-ink); border-color: var(--arc-dim); }
 .arc-btn-ghost:focus-visible { outline: 2px dashed var(--arc-cyan); outline-offset: 3px; }
 
+/* Ghost button stacked directly under an .arc-btn (sign-in card): match the
+   primary's corner radius and height instead of the pill, so the pair reads
+   as one button group. */
+.arc-btn-ghost.arc-btn-ghost-stacked { border-radius: 3px; padding: 11px 16px; }
+body[data-arcade-preset="midnight"] .arc-btn-ghost.arc-btn-ghost-stacked,
+body[data-arcade-preset="daylight"] .arc-btn-ghost.arc-btn-ghost-stacked { border-radius: 10px; }
+
 /* Plain inline "link" */
 .arc-link {
   font-family: inherit;

@@ -106,10 +106,10 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
 
   const clickCreateAccount = async () => {
     render(<OnboardingScreen coworker={coworker} onComplete={() => {}} />);
-    (await screen.findByRole('button', { name: /Create one for free/ })).click();
+    (await screen.findByRole('button', { name: /Create a free account/ })).click();
   };
 
-  it('Create one for free drives the loopback signup flow, not a fire-and-forget link', async () => {
+  it('Create a free account drives the loopback signup flow, not a fire-and-forget link', async () => {
     let resolveSignup;
     hostMock.mindshubSignup = vi.fn(() => new Promise((r) => { resolveSignup = r; }));
     await clickCreateAccount();
@@ -140,7 +140,7 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
     hostMock.mindshubSignup = vi.fn(async () => ({ ok: false, reason: 'cancelled' }));
     await clickCreateAccount();
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Sign in with MindsHub' })).toBeEnabled(),
+      expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled(),
     );
     expect(screen.queryByText('FINISH SIGN-UP IN YOUR BROWSER')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();

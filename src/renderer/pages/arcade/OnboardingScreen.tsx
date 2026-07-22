@@ -504,7 +504,7 @@ export default function OnboardingScreen({
           `Sign-in timed out — the browser never finished authorizing. Try again and complete the newest tab it opens (close any older "You're authorized" tabs), or press ${reloadKey} to reload.`,
         );
       } else if (/cancelled/i.test(reason)) {
-        setErrorMsg('Sign-in was cancelled. Press Sign in with MindsHub to try again.');
+        setErrorMsg('Sign-in was cancelled. Try again whenever you’re ready.');
       } else {
         setErrorMsg(reason || 'Sign in failed. Please try again.');
       }
@@ -742,7 +742,7 @@ export default function OnboardingScreen({
                   setErrorMsg('');
                   setLlmApiKey('');
                 }}
-              >← back to sign in</button>
+              >← back to account options</button>
 
               <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18, textAlign: 'left' }}>
                 <div>
@@ -847,8 +847,11 @@ export default function OnboardingScreen({
   }
 
   // ── Stage 1: MindsHub ──────────────────────────────────────────────
+  // First-run framing (ENG-914): most people seeing this screen have never
+  // used the app, so creating an account leads and signing in is one click
+  // away — not the other way round.
   return (
-    <ArcadeShell title="Sign in" subtitle="sign in or create a free account to continue">
+    <ArcadeShell title="Get started" subtitle="create a free account or sign in to continue">
       <div className="arc-stack arc-fade-in" style={{ gap: 18, width: 'min(420px, 100%)' }}>
         <div className="arc-panel" style={{ width: '100%', boxSizing: 'border-box', padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'left', borderColor: 'color-mix(in srgb, var(--arc-cyan) 35%, transparent)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -872,20 +875,23 @@ export default function OnboardingScreen({
               <button
                 className="arc-btn"
                 style={{ width: '100%' }}
+                disabled={phase === 'validating' || phase === 'signup-wait'}
+                onClick={handleMindsSignup}
+              >
+                {phase === 'validating' ? 'One moment…' : 'Create a free account'}
+              </button>
+              {/* Stays clickable during signup-wait on purpose — the flows are
+                  single-flight in main, so a Sign-in click supersedes a parked
+                  sign-up (ENG-917). */}
+              <button
+                type="button"
+                className="arc-btn-ghost arc-btn-ghost-stacked"
+                style={{ width: '100%' }}
                 disabled={phase === 'validating'}
                 onClick={handleMindsSSO}
               >
-                {phase === 'validating' ? 'Signing in…' : 'Sign in with MindsHub'}
+                Sign in
               </button>
-              <div style={{ fontSize: 10.5, letterSpacing: '0.05em', color: 'var(--arc-dim)', textAlign: 'center' }}>
-                No account?{' '}
-                <button
-                  type="button"
-                  className="arc-link"
-                  disabled={phase === 'validating' || phase === 'signup-wait'}
-                  onClick={handleMindsSignup}
-                >Create one for free →</button>
-              </div>
             </>
           ) : (
             <>
@@ -929,7 +935,7 @@ export default function OnboardingScreen({
         {phase === 'signup-verify' && (
           <div className="arc-panel" role="status" style={{ padding: '14px 18px', fontSize: 11.5, lineHeight: 1.7, letterSpacing: '0.04em', color: 'var(--arc-muted)', textAlign: 'center' }}>
             Verified your email? You're one click away — hit{' '}
-            <b style={{ color: 'var(--arc-ink)' }}>Sign in with MindsHub</b> to finish.
+            <b style={{ color: 'var(--arc-ink)' }}>Sign in</b> to finish.
             No need to register again.
           </div>
         )}
