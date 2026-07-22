@@ -9,7 +9,10 @@
 // feature branch / tag / commit via env vars while iterating; a release
 // flips the channel to the published PyPI wheel.
 //
-//   COWORK_SERVER_CHANNEL   git | pypi            (default: git)
+//   COWORK_SERVER_CHANNEL   git | pypi            (default: git; prod-kind
+//                           builds fall back to pypi — see _channelForBuildKind)
+//   COWORK_SERVER_MIN_VERSION  version floor      (pypi channel; release builds
+//                           bake the latest published version — getMinServerVersion)
 //   COWORK_SERVER_REF       branch|tag|sha        (default: main)  — git channel
 //   ANTON_REF               branch|tag|sha        (default: main)  — git channel
 //   COWORK_SERVER_PACKAGE   literal uv spec       (escape hatch; wins over all)
@@ -36,14 +39,48 @@ export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git'
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
 export const ANTON_PACKAGE = 'anton-agent';
 
-// Minimum version for the PyPI channel (a floor; newer compatible
-// releases are picked up automatically). Keep in sync with installer.ts.
+// Static fallback floor for the PyPI channel. Release builds bake the
+// latest published version at build time (BUILD_COWORK_SERVER_MIN_VERSION,
+// resolved by getMinServerVersion) so a fresh install starts from a
+// known-good release; this constant only backstops builds with no baked
+// value. Either way it is a floor, not a pin — the auto-updater keeps
+// moving installs to newer releases as they publish.
 export const COWORK_SERVER_MIN_VERSION = '0.1.10';
 
 export type Channel = 'git' | 'pypi';
 
+// Channel fallback keyed off the build kind: a prod build with no explicit
+// channel (env or baked) installs from PyPI — an immutable, versioned,
+// yankable artifact — instead of floating on git main HEAD, and never needs
+// git (or the Xcode CLT on macOS). Dev/preview/stable keep git: dev iterates
+// on branches, preview/stable float on staging, which has no PyPI releases.
+// Same defensive shape as _refForBuildKind: any failure resolves to '' so
+// the caller falls through to 'git'.
+function _channelForBuildKind(): string {
+  try {
+    return buildKind() === 'prod' ? 'pypi' : '';
+  } catch {
+    return '';
+  }
+}
+
 export function getChannel(): Channel {
-  return (process.env.COWORK_SERVER_CHANNEL || 'git').toLowerCase() === 'pypi' ? 'pypi' : 'git';
+  const raw = (
+    process.env.COWORK_SERVER_CHANNEL ||
+    _buildVal('BUILD_COWORK_SERVER_CHANNEL') ||
+    _channelForBuildKind() ||
+    'git'
+  ).toLowerCase();
+  return raw === 'pypi' ? 'pypi' : 'git';
+}
+
+/** Minimum cowork-server version for pypi-channel installs:
+ *  env override > build-time baked floor > static fallback. */
+export function getMinServerVersion(): string {
+  return (
+    (process.env.COWORK_SERVER_MIN_VERSION || _buildVal('BUILD_COWORK_SERVER_MIN_VERSION')).trim() ||
+    COWORK_SERVER_MIN_VERSION
+  );
 }
 
 // Build-time baked refs (written by scripts/gen-build-channel.mjs via
@@ -136,11 +173,21 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
     return { package: explicit, overrides, channel: getChannel() };
   }
 
-  if (getChannel() === 'pypi') {
-    return { package: `cowork-server>=${COWORK_SERVER_MIN_VERSION}`, overrides: [], channel: 'pypi' };
+  // Explicit refs come only from the updater's git paths — updating, rolling
+  // back, or repairing a tool venv that IS a git install (detected via
+  // direct_url.json). Those must yield a git spec even on a pypi-channel
+  // build: the updater is source-aware and follows the INSTALLED source,
+  // never the build channel. Otherwise a pypi-default build would migrate
+  // every existing git install to the wheel on its first update poll, and a
+  // failed update's rollback would reinstall the same wheel instead of the
+  // pinned prior commit — turning a bad update into an outage.
+  const explicitRefs = Boolean(opts?.coworkRef || opts?.antonRef);
+
+  if (!explicitRefs && getChannel() === 'pypi') {
+    return { package: `cowork-server>=${getMinServerVersion()}`, overrides: [], channel: 'pypi' };
   }
 
-  // git channel (default)
+  // git channel (default), or updater-supplied explicit refs
   const coworkRef = opts?.coworkRef || getCoworkRef();
   const antonRef = opts?.antonRef || getAntonRef();
 

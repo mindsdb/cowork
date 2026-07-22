@@ -12,6 +12,16 @@ on:
         required: false
         type: string
         default: ""
+      server_channel:
+        description: >-
+          cowork-server install channel baked into the app: empty/'git'
+          floats on server_ref's branch HEAD; 'pypi' (lowercase — the floor
+          step's guard is case-sensitive) installs the published wheel
+          floored at the latest release (immutable and yankable — release
+          builds pass this).
+        required: false
+        type: string
+        default: ""
       minds_api_url:
         description: "MindsHub API base URL (empty = https://api.mindshub.ai)"
         required: false
@@ -163,6 +173,30 @@ jobs:
       - name: Write build config (controls which cowork data home the app uses)
         run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
 
+      # PyPI-channel builds bake the latest published cowork-server version
+      # as the install floor: every fresh install starts from a release that
+      # existed (and was presumably healthy) at build time, while the
+      # auto-updater still moves installs forward as new versions publish.
+      # Failing the build on a PyPI outage is deliberate — better than
+      # shipping an unknown floor.
+      - name: Resolve cowork-server version floor (pypi channel only)
+        if: inputs.server_channel == 'pypi'
+        id: server_floor
+        run: |
+          set -euo pipefail
+          JSON=$(curl -fsSL --retry 3 https://pypi.org/pypi/cowork-server/json)
+          if [ "${{ inputs.build_kind }}" = "prod" ]; then
+            # Stable floor: PyPI's info.version excludes pre-releases.
+            VERSION=$(echo "$JSON" | jq -r '.info.version')
+          else
+            # Staging rc stream: newest non-yanked upload, pre-releases
+            # included (upload recency stands in for PEP 440 ordering).
+            VERSION=$(echo "$JSON" | jq -r '[.releases | to_entries[] | select(.key | test("^[0-9]+(\\.[0-9]+)*(rc[0-9]+)?$")) | select((.value | length) > 0) | select(any(.value[]; .yanked != true)) | {v: .key, t: ([.value[].upload_time_iso_8601] | max)}] | sort_by(.t) | last | .v')
+          fi
+          test -n "$VERSION" && test "$VERSION" != "null"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Baking cowork-server floor $VERSION (build_kind=${{ inputs.build_kind }})"
+
       - name: Build, sign and notarize pkg
         env:
           CSC_FOR_PULL_REQUEST: "true"
@@ -180,6 +214,8 @@ jobs:
           # does not require any per-branch pin in cowork-server's pyproject.
           COWORK_SERVER_REF: ${{ inputs.server_ref }}
           ANTON_REF: ${{ inputs.server_ref }}
+          COWORK_SERVER_CHANNEL: ${{ inputs.server_channel }}
+          COWORK_SERVER_MIN_VERSION: ${{ steps.server_floor.outputs.version }}
           VITE_MINDS_API_URL: ${{ inputs.minds_api_url }}
           VITE_APP_VERSION: ${{ inputs.app_version }}
         run: npm run release:mac:pkg:notarized

@@ -30,6 +30,14 @@ const outFile = join(outDir, 'build-channel.gen.ts');
 
 const coworkRef = (process.env.COWORK_SERVER_REF || '').trim();
 const antonRef = (process.env.ANTON_REF || '').trim();
+// Install channel for cowork-server: 'pypi' (release builds — immutable,
+// versioned, yankable artifacts) or 'git' / empty (float on a branch HEAD).
+const serverChannel = (process.env.COWORK_SERVER_CHANNEL || '').trim().toLowerCase();
+// Minimum cowork-server version for pypi-channel installs. Release builds
+// bake the latest published version at build time so every install starts
+// from a known-good floor; the auto-updater still moves users to newer
+// releases as they publish.
+const serverMinVersion = (process.env.COWORK_SERVER_MIN_VERSION || '').trim();
 // The renderer gets VITE_MINDS_API_URL baked by Vite; the main process is
 // plain tsc and can't see it at runtime, so bake it here too.
 const mindsApiUrl = (process.env.VITE_MINDS_API_URL || '').trim();
@@ -60,6 +68,8 @@ writeFileSync(
     '// Auto-generated at build time by scripts/gen-build-channel.mjs — do not edit',
     `export const BUILD_COWORK_SERVER_REF = '${coworkRef}';`,
     `export const BUILD_ANTON_REF = '${antonRef}';`,
+    `export const BUILD_COWORK_SERVER_CHANNEL = '${serverChannel}';`,
+    `export const BUILD_COWORK_SERVER_MIN_VERSION = '${serverMinVersion}';`,
     `export const BUILD_MINDS_API_URL = '${mindsApiUrl}';`,
     `export const BUILD_APP_VERSION = '${appVersion}';`,
     '',
@@ -71,5 +81,5 @@ writeFileSync(
 writeFileSync(join(outDir, 'app-version.gen.txt'), displayVersion + '\n');
 
 console.log(
-  `[gen-build-channel] COWORK_SERVER_REF=${coworkRef || '(unset)'} ANTON_REF=${antonRef || '(unset)'} MINDS_API_URL=${mindsApiUrl || '(unset)'} APP_VERSION=${appVersion || '(package.json default)'} DISPLAY_VERSION=${displayVersion}`,
+  `[gen-build-channel] COWORK_SERVER_REF=${coworkRef || '(unset)'} ANTON_REF=${antonRef || '(unset)'} COWORK_SERVER_CHANNEL=${serverChannel || '(unset → git, or pypi on prod-kind builds)'} COWORK_SERVER_MIN_VERSION=${serverMinVersion || '(unset → static floor)'} MINDS_API_URL=${mindsApiUrl || '(unset)'} APP_VERSION=${appVersion || '(package.json default)'} DISPLAY_VERSION=${displayVersion}`,
 );
