@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // Mutable host mock — flip isWeb / checkConfigured per test. ENG-912: a
 // console-hosted (web) instance is pre-provisioned (config_ready:true, key
@@ -22,9 +22,18 @@ const keycloakMock = vi.hoisted(() => ({ authenticated: false }));
 vi.mock('../../platform/host', () => ({ host: hostMock }));
 vi.mock('../../cowork/api', () => ({ BASE: '/api/v1', fetchRecommendedModels: vi.fn(async () => ({})) }));
 vi.mock('../../lib/keycloak', () => ({ keycloak: keycloakMock }));
-vi.mock('../../lib/syncSettings', () => ({ syncSettingsToDb: vi.fn(async () => true) }));
+// Keep the REAL pure helpers (modelLinesFrom) — mock only the I/O functions —
+// so the component test can't pass on a broken modelLinesFrom (no mock/real drift).
+vi.mock('../../lib/syncSettings', async (importActual) => ({
+  ...(await importActual()),
+  syncSettingsToDb: vi.fn(async () => true),
+  syncModelsToDb: vi.fn(async () => true),
+}));
 
 import OnboardingScreen from './OnboardingScreen';
+// The syncSettings module is mocked above; grab the mocked syncToDb so a test
+// can make it fail (simulating the server not being up yet during onboarding).
+import { syncSettingsToDb } from '../../lib/syncSettings';
 
 const coworker = { id: 'anton', label: 'ANTON', sprite: 'anton' };
 
@@ -135,5 +144,76 @@ describe('OnboardingScreen — desktop sign-up returns to the app (ENG-917)', ()
     );
     expect(screen.queryByText('FINISH SIGN-UP IN YOUR BROWSER')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+// ENG-922: on a fresh desktop install the cowork-server isn't up during
+// onboarding, so the DB write fails and finalizeSettings DEFERS to the install
+// screen. persistOnboarding returns before syncModels, and the post-install
+// bulk .env re-sync excludes model keys (ENG-739) — so unless the chosen model
+// is handed to onComplete for a one-time replay, a non-Anthropic BYOK user lands
+// config-not-ready ("Select a model"). This locks the OnboardingScreen half of
+// that wiring (the App-side replay is exercised by the manual clean-machine E2E).
+describe('OnboardingScreen — BYOK setup-deferral hands the model up (ENG-922)', () => {
+  beforeEach(() => {
+    hostMock.isWeb = false;      // desktop
+    hostMock.isElectron = true;
+    keycloakMock.authenticated = false;
+    hostMock.validateProvider = vi.fn(async () => ({ ok: true }));
+    hostMock.saveSettings = vi.fn(async () => true);   // .env write succeeds (IPC, no server needed)
+    hostMock.readSettings = vi.fn(async () => ({}));
+    // The race: cowork-server not installed yet → DB sync fails AND checkInstall
+    // reports not-ready → resolveFinalizeOutcome returns 'defer'.
+    hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: false, serverDepsReady: false }));
+    syncSettingsToDb.mockResolvedValue(false);
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({}) })));
+  });
+
+  it('defers with a failed DB sync + uninstalled server → onComplete receives the chosen model lines', async () => {
+    const onComplete = vi.fn();
+    render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
+
+    // Electron start screen → drop into BYOK ("continue without an account").
+    fireEvent.click(await screen.findByRole('button', { name: /Continue without an account/ }));
+    // Custom (openai-compatible): free-text base URL + model — the exact
+    // config-not-ready case (no server-side default model).
+    fireEvent.click(await screen.findByRole('button', { name: 'Custom' }));
+    fireEvent.change(screen.getByPlaceholderText('http://localhost:11434/v1'), {
+      target: { value: 'http://localhost:11434/v1' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter model name...'), {
+      target: { value: 'llama-3.3-70b' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    // The just-chosen model is handed up for the post-install replay — never dropped.
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        'ANTON_PLANNING_MODEL=llama-3.3-70b',
+        'ANTON_CODING_MODEL=llama-3.3-70b',
+      ]),
+    );
+  });
+
+  it('errors (does NOT defer) when the DB sync fails but the server IS installed', async () => {
+    // Regression guard: a real DB failure against a ready server must still
+    // surface the retryable error, not silently proceed.
+    hostMock.checkInstall = vi.fn(async () => ({ antonInstalled: true, serverDepsReady: true }));
+    const onComplete = vi.fn();
+    render(<OnboardingScreen coworker={coworker} onComplete={onComplete} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Continue without an account/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Custom' }));
+    fireEvent.change(screen.getByPlaceholderText('http://localhost:11434/v1'), {
+      target: { value: 'http://localhost:11434/v1' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter model name...'), {
+      target: { value: 'llama-3.3-70b' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });

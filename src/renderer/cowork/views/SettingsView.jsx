@@ -7,7 +7,7 @@ import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
-import { Button, Input, Checkbox, Select } from '../components/ui';
+import { Badge, Button, Input, Checkbox, Select } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -391,22 +391,18 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 // Drives the eye flow toward what matters for the current selection.
 function RelevanceBadge({ status }) {
   if (!status || status === 'unused') return null;
-  const palette = {
-    required: { fg: '#E5B57A', bg: 'rgba(229,181,122,0.12)', bd: 'rgba(229,181,122,0.30)', label: 'Required' },
-    optional: { fg: 'var(--text-muted)', bg: 'rgba(127,127,127,0.10)', bd: 'var(--border-subtle)', label: 'Optional' },
-    auto: { fg: 'var(--sage-500, #5d9287)', bg: 'rgba(93,146,135,0.12)', bd: 'rgba(93,146,135,0.30)', label: 'Auto' },
+  const config = {
+    required: { variant: 'warning', label: 'Required' },
+    optional: { variant: 'muted', label: 'Optional' },
+    auto: { variant: 'success', label: 'Auto' },
   }[status];
-  if (!palette) return null;
+  if (!config) return null;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      marginLeft: 8, padding: '1px 7px',
-      fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
-      textTransform: 'uppercase',
-      color: palette.fg, background: palette.bg,
-      border: `1px solid ${palette.bd}`, borderRadius: 999,
-      verticalAlign: 'middle',
-    }}>{palette.label}</span>
+    <Badge
+      variant={config.variant}
+      size="xs"
+      className="ml-2 align-middle uppercase tracking-[0.04em]"
+    >{config.label}</Badge>
   );
 }
 
@@ -424,19 +420,21 @@ function RelevanceBadge({ status }) {
 function SetBadge({ hasValue, active }) {
   if (!hasValue) return null;
   return (
-    <span
+    <Badge
       title={active
         ? 'Stored and used by the active provider'
         : 'A value is stored, but the active provider does not use it'}
+      variant="success"
+      size="xs"
+      className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
+      icon={<span aria-hidden style={{
+        width: 6, height: 6, borderRadius: 999,
+        background: 'currentColor',
+        boxShadow: active
+          ? '0 0 8px currentColor, 0 0 14px rgba(124,196,182,0.6)'
+          : '0 0 4px rgba(93,146,135,0.45)',
+      }} />}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        marginLeft: 8, padding: '1px 8px 1px 7px',
-        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        color: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
-        background: active ? 'rgba(124,196,182,0.18)' : 'rgba(93,146,135,0.10)',
-        border: `1px solid ${active ? 'rgba(124,196,182,0.55)' : 'rgba(93,146,135,0.28)'}`,
-        borderRadius: 999, verticalAlign: 'middle',
         // When active, the box-shadow comes from the set-badge-pulse
         // keyframes; the static value would never paint. When inactive
         // we explicitly clear any inherited shadow.
@@ -445,21 +443,22 @@ function SetBadge({ hasValue, active }) {
         transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
       }}
     >
-      <span style={{
-        width: 6, height: 6, borderRadius: 999,
-        background: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
-        boxShadow: active
-          ? '0 0 8px #7CC4B6, 0 0 14px rgba(124,196,182,0.6)'
-          : '0 0 4px rgba(93,146,135,0.45)',
-      }} />
       Set
-    </span>
+    </Badge>
   );
 }
 
 // ───────────────────────── Multi-provider helpers ─────────────────────────
 
 const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
+
+export function providerStatusBadge(status, configured) {
+  if (status === 'ok') return { label: 'connected', variant: 'success' };
+  if (status === 'fail') return { label: 'unable to connect', variant: 'danger' };
+  if (status === 'testing') return { label: 'testing…', variant: 'warning' };
+  if (configured) return { label: 'not tested', variant: 'muted' };
+  return null;
+}
 
 const PROVIDER_TYPE_DESC = {
   'minds-cloud': 'All frontier models in one place — Claude, GPT, Gemini, and more.',
@@ -1233,39 +1232,22 @@ export default function SettingsView({
                   }
                   return detail;
                 })();
-                const statusPillLabel = status === 'ok' ? 'connected'
-                  : status === 'fail' ? 'unable to connect'
-                    : status === 'testing' ? 'testing…'
-                      : configured ? 'not tested'
-                        : null;
+                const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
                     : status === 'testing' ? 'Testing…'
                       : 'Not tested yet — save settings and run a test to verify.';
-                const statusPillColor = status === 'ok'
-                  ? { bg: 'rgba(124,196,182,0.15)', border: 'rgba(124,196,182,0.4)', color: '#7CC4B6' }
-                  : status === 'fail'
-                    ? { bg: 'rgba(224,112,96,0.15)', border: 'rgba(224,112,96,0.4)', color: '#E07060' }
-                    : status === 'testing'
-                      ? { bg: 'rgba(229,181,122,0.12)', border: 'rgba(229,181,122,0.35)', color: '#E5B57A' }
-                      : configured
-                        ? { bg: 'rgba(127,127,127,0.08)', border: 'rgba(127,127,127,0.2)', color: 'var(--text-muted)' }
-                        : null;
-                const statusPill = statusPillColor ? (
-                  <span
+                const statusPill = statusBadge ? (
+                  <Badge
                     title={statusPillTitle}
                     aria-label={statusPillTitle}
+                    variant={statusBadge.variant}
+                    size="md"
+                    className={`shrink-0 tracking-[0.01em] ${status === 'testing' ? 'set-badge-pulse' : ''}`}
                     style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      padding: '2px 8px', borderRadius: 999,
-                      fontSize: 11, fontWeight: 500, letterSpacing: '0.01em',
-                      background: statusPillColor.bg,
-                      border: `1px solid ${statusPillColor.border}`,
-                      color: statusPillColor.color,
-                      flexShrink: 0,
                       animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
                     }}
-                  >{statusPillLabel}</span>
+                  >{statusBadge.label}</Badge>
                 ) : null;
                 // Each provider row is a sub-section in the Providers group,
                 // so every row gets an <h3> for SR heading navigation. Known

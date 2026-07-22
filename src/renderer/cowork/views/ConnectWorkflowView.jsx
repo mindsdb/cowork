@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
+import { Badge } from '../components/ui';
 import {
   fetchIntegrations,
   startConnectorOAuth,
@@ -603,7 +604,7 @@ function ConnectorsPage({
                         {connector.interactive && <span className="customize-inline-tag">Interactive</span>}
                       </span>
                     </span>
-                    {connector.chip && <span className="customize-chip">{connector.chip}</span>}
+                    {connector.chip && <Badge variant="muted" size="xs">{connector.chip}</Badge>}
                   </button>
                 );
               })}
