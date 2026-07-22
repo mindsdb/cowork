@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType, modelLabel, resolveModelPickerValue, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
 import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
-import { Button, Input, Checkbox } from '../components/ui';
+import { Badge, Button, Input, Checkbox, Select } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
@@ -353,7 +353,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                boxShadow: 'var(--sh-2)',
                 animation: 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}
@@ -391,22 +391,18 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 // Drives the eye flow toward what matters for the current selection.
 function RelevanceBadge({ status }) {
   if (!status || status === 'unused') return null;
-  const palette = {
-    required: { fg: '#E5B57A', bg: 'rgba(229,181,122,0.12)', bd: 'rgba(229,181,122,0.30)', label: 'Required' },
-    optional: { fg: 'var(--text-muted)', bg: 'rgba(127,127,127,0.10)', bd: 'var(--border-subtle)', label: 'Optional' },
-    auto: { fg: 'var(--sage-500, #5d9287)', bg: 'rgba(93,146,135,0.12)', bd: 'rgba(93,146,135,0.30)', label: 'Auto' },
+  const config = {
+    required: { variant: 'warning', label: 'Required' },
+    optional: { variant: 'muted', label: 'Optional' },
+    auto: { variant: 'success', label: 'Auto' },
   }[status];
-  if (!palette) return null;
+  if (!config) return null;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      marginLeft: 8, padding: '1px 7px',
-      fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
-      textTransform: 'uppercase',
-      color: palette.fg, background: palette.bg,
-      border: `1px solid ${palette.bd}`, borderRadius: 999,
-      verticalAlign: 'middle',
-    }}>{palette.label}</span>
+    <Badge
+      variant={config.variant}
+      size="xs"
+      className="ml-2 align-middle uppercase tracking-[0.04em]"
+    >{config.label}</Badge>
   );
 }
 
@@ -424,19 +420,21 @@ function RelevanceBadge({ status }) {
 function SetBadge({ hasValue, active }) {
   if (!hasValue) return null;
   return (
-    <span
+    <Badge
       title={active
         ? 'Stored and used by the active provider'
         : 'A value is stored, but the active provider does not use it'}
+      variant="success"
+      size="xs"
+      className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
+      icon={<span aria-hidden style={{
+        width: 6, height: 6, borderRadius: 999,
+        background: 'currentColor',
+        boxShadow: active
+          ? '0 0 8px currentColor, 0 0 14px rgba(124,196,182,0.6)'
+          : '0 0 4px rgba(93,146,135,0.45)',
+      }} />}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        marginLeft: 8, padding: '1px 8px 1px 7px',
-        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        color: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
-        background: active ? 'rgba(124,196,182,0.18)' : 'rgba(93,146,135,0.10)',
-        border: `1px solid ${active ? 'rgba(124,196,182,0.55)' : 'rgba(93,146,135,0.28)'}`,
-        borderRadius: 999, verticalAlign: 'middle',
         // When active, the box-shadow comes from the set-badge-pulse
         // keyframes; the static value would never paint. When inactive
         // we explicitly clear any inherited shadow.
@@ -445,21 +443,22 @@ function SetBadge({ hasValue, active }) {
         transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
       }}
     >
-      <span style={{
-        width: 6, height: 6, borderRadius: 999,
-        background: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
-        boxShadow: active
-          ? '0 0 8px #7CC4B6, 0 0 14px rgba(124,196,182,0.6)'
-          : '0 0 4px rgba(93,146,135,0.45)',
-      }} />
       Set
-    </span>
+    </Badge>
   );
 }
 
 // ───────────────────────── Multi-provider helpers ─────────────────────────
 
 const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
+
+export function providerStatusBadge(status, configured) {
+  if (status === 'ok') return { label: 'connected', variant: 'success' };
+  if (status === 'fail') return { label: 'unable to connect', variant: 'danger' };
+  if (status === 'testing') return { label: 'testing…', variant: 'warning' };
+  if (configured) return { label: 'not tested', variant: 'muted' };
+  return null;
+}
 
 const PROVIDER_TYPE_DESC = {
   'minds-cloud': 'All frontier models in one place — Claude, GPT, Gemini, and more.',
@@ -1233,39 +1232,22 @@ export default function SettingsView({
                   }
                   return detail;
                 })();
-                const statusPillLabel = status === 'ok' ? 'connected'
-                  : status === 'fail' ? 'unable to connect'
-                    : status === 'testing' ? 'testing…'
-                      : configured ? 'not tested'
-                        : null;
+                const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
                     : status === 'testing' ? 'Testing…'
                       : 'Not tested yet — save settings and run a test to verify.';
-                const statusPillColor = status === 'ok'
-                  ? { bg: 'rgba(124,196,182,0.15)', border: 'rgba(124,196,182,0.4)', color: '#7CC4B6' }
-                  : status === 'fail'
-                    ? { bg: 'rgba(224,112,96,0.15)', border: 'rgba(224,112,96,0.4)', color: '#E07060' }
-                    : status === 'testing'
-                      ? { bg: 'rgba(229,181,122,0.12)', border: 'rgba(229,181,122,0.35)', color: '#E5B57A' }
-                      : configured
-                        ? { bg: 'rgba(127,127,127,0.08)', border: 'rgba(127,127,127,0.2)', color: 'var(--text-muted)' }
-                        : null;
-                const statusPill = statusPillColor ? (
-                  <span
+                const statusPill = statusBadge ? (
+                  <Badge
                     title={statusPillTitle}
                     aria-label={statusPillTitle}
+                    variant={statusBadge.variant}
+                    size="md"
+                    className={`shrink-0 tracking-[0.01em] ${status === 'testing' ? 'set-badge-pulse' : ''}`}
                     style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      padding: '2px 8px', borderRadius: 999,
-                      fontSize: 11, fontWeight: 500, letterSpacing: '0.01em',
-                      background: statusPillColor.bg,
-                      border: `1px solid ${statusPillColor.border}`,
-                      color: statusPillColor.color,
-                      flexShrink: 0,
                       animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
                     }}
-                  >{statusPillLabel}</span>
+                  >{statusBadge.label}</Badge>
                 ) : null;
                 // Each provider row is a sub-section in the Providers group,
                 // so every row gets an <h3> for SR heading navigation. Known
@@ -1531,11 +1513,12 @@ export default function SettingsView({
                   const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
-                  // Per-model availability (settings.modelEnabled, sourced from MindsHub
-                  // /v1/models). A model the user's tier can't use is listed here as
-                  // false so we render it greyed + non-selectable — an upgrade prompt.
-                  // Absent id ⇒ available (backwards compatible; direct providers have
-                  // no such flag).
+                  /* Per-model availability (settings.modelEnabled, sourced from MindsHub
+                   * /v1/models). A model the org's wallet can't currently pay for (or
+                   * whose free allowance is spent) is listed here as false so we render
+                   * it greyed + non-selectable, with an "add credits to unlock" prompt.
+                   * Absent id ⇒ available (backwards compatible; direct providers have
+                   * no such flag). */
                   const modelEnabled = settings.modelEnabled || {};
                   const isLocked = (m) => modelEnabled[m] === false;
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
@@ -1605,71 +1588,48 @@ export default function SettingsView({
                         {multipleProviders && (
                           <label style={{ display: 'grid', gap: 4 }}>
                             {fieldLabel('Provider')}
-                            <select
-                              className="settings-select"
+                            <Select
                               value={curType}
-                              onChange={(e) => {
-                                const t = e.target.value;
+                              onValueChange={(t) => {
                                 const pair = recommendedPair[t] || ['', ''];
                                 const newModel = pair[role === 'planning' ? 0 : 1] || (recommendedModels[t]?.[0] || '');
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
                               }}
-                              aria-invalid={providerUnusable || undefined}
+                              invalid={providerUnusable}
                               aria-describedby={providerUnusable ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
-                              style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
-                            >
-                              {providers.map((p) => (
-                                <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
-                              ))}
-                            </select>
+                              options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
+                            />
                           </label>
                         )}
                         {modelList.length > 0 ? (
                           (() => {
                             const allowOther = curType !== 'minds-cloud';
-                            // See resolveModelPickerValue: keeps the <select> value matched to a
-                            // rendered <option> so picking a model always fires a real change and
-                            // Save writes it — a login-written `latest:` pin no longer wedges the
-                            // control into a no-op "Saved" (ENG-739).
+                            // See resolveModelPickerValue + buildModelOptions: keeps the Select's
+                            // value matched to a rendered option so picking a model always fires
+                            // a real change and Save writes it — a login-written `latest:` pin no
+                            // longer wedges the control into a no-op "Saved" (ENG-739).
                             const { showStalePin, inputMode, selectValue } =
                               resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
+                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled);
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
-                                <select
-                                  className="settings-select"
+                                <Select
                                   value={selectValue || firstEnabledModel}
-                                  onChange={(e) => {
-                                    if (e.target.value === '__custom__') {
+                                  onValueChange={(next) => {
+                                    if (next === '__custom__') {
                                       setModelInputMode((m) => ({ ...m, [role]: true }));
                                       writeOverride({ providerType: curType, model: curModel || '' });
                                     } else {
                                       setModelInputMode((m) => ({ ...m, [role]: false }));
-                                      writeOverride({ providerType: curType, model: e.target.value });
+                                      writeOverride({ providerType: curType, model: next });
                                     }
                                   }}
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
-                                  style={{ width: '100%' }}
-                                >
-                                  {showStalePin && (
-                                    // Labeled "legacy — re-select" (not "current") so it reads as
-                                    // an action to take, not a selection: the same model may also
-                                    // appear below as a real "— Upgrade to unlock" row, and a bare
-                                    // "(current)" would look like two identical, already-selected
-                                    // entries (ENG-739 review).
-                                    <option value="__stale__" disabled>
-                                      {modelLabel(curModel.replace(/^latest:/, ''))} (legacy — re-select a model)
-                                    </option>
-                                  )}
-                                  {modelList.map((m) => (
-                                    <option key={m} value={m} disabled={isLocked(m)}>
-                                      {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
-                                    </option>
-                                  ))}
-                                  {allowOther && <option value="__custom__">Other…</option>}
-                                </select>
+                                  options={modelOptions}
+                                />
                                 {inputMode && allowOther && (
                                   <TextInput
                                     value={curModel}
@@ -1695,15 +1655,12 @@ export default function SettingsView({
                         {showEffort && (
                           <label style={{ display: 'grid', gap: 4 }}>
                             {fieldLabel('Reasoning effort')}
-                            <select
-                              className="settings-select"
+                            <Select
                               value={effortValue}
-                              onChange={(e) => { setLlmDirty(true); setSetting(effortKey, e.target.value); }}
+                              onValueChange={(v) => { setLlmDirty(true); setSetting(effortKey, v); }}
                               title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
-                              style={{ width: '100%', textTransform: 'capitalize' }}
-                            >
-                              {effortOptions.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
-                            </select>
+                              options={effortOptions.map((lvl) => ({ value: lvl, label: lvl.charAt(0).toUpperCase() + lvl.slice(1) }))}
+                            />
                           </label>
                         )}
                         {providerUnusable && (
@@ -2169,7 +2126,7 @@ export default function SettingsView({
       }}>
         <Section
           title="Current version"
-          subtitle="The version currently running. Components under the hood are shown in details."
+          subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
         >
           {(() => {
             const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
@@ -2248,20 +2205,6 @@ export default function SettingsView({
               </div>
             );
           })()}
-        </Section>
-        <Section
-          title="UI updates"
-          subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
-        >
-          <ToggleGroup
-            value={settings.uiUpdateMode ?? 'auto'}
-            onValueChange={(v) => setSetting('uiUpdateMode', v)}
-            aria-label="UI update mode"
-            options={[
-              { value: 'auto', label: 'Auto', title: 'Download and apply UI updates automatically.' },
-              { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
-            ]}
-          />
         </Section>
       </div>
     </SettingsSectionPanel>

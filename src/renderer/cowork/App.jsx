@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar';
 import MobileShell from './components/MobileShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
+import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
@@ -635,12 +636,13 @@ function mergeTasksFromServer(serverTasks, localTasks) {
   const local = Array.isArray(localTasks) ? localTasks : [];
   if (!Array.isArray(serverTasks)) return local;
   const localById = new Map(local.map((t) => [t.id, t]));
-  // Take whichever of (local, server) updatedAt is newer. A turn
-  // in flight has a fresh client stamp (handleSendInTask /
-  // handleSendFromHome) but a stale server stamp (server only
-  // bumps _meta.json on completion). Without this guard, a
-  // fetchSessions mid-stream would slide the just-revived task
-  // back down the list as soon as it lands.
+  // Take whichever of (local, server) updatedAt is newer. When a turn
+  // is in flight, handleSendInTask / handleSendFromHome stamp a fresh
+  // client updatedAt the instant the user sends, but the server's value
+  // only catches up once the turn's messages persist (the server derives
+  // updated_at from the latest message — ENG-961). Keeping the newer of
+  // the two stops a fetchSessions mid-stream from sliding the just-revived
+  // task back down the list before the server value lands.
   const _newerUpdatedAt = (a, b) => {
     const aa = Date.parse(a || '') || 0;
     const bb = Date.parse(b || '') || 0;
@@ -739,7 +741,11 @@ function nextPollDelay(schedules) {
 }
 
 export default function App() {
-  return <AppCore />;
+  return (
+    <ToastProvider>
+      <AppCore />
+    </ToastProvider>
+  );
 }
 
 function AppCore() {
@@ -1331,7 +1337,7 @@ function AppCore() {
   // OTA UI update state
   const [updateStatus, setUpdateStatus] = useState(null); // { phase, version }
   const [updateApplying, setUpdateApplying] = useState(false);
-  const [refreshErrors, setRefreshErrors] = useState([]); // { engine, name, accountEmail, permanent }
+  const toastManager = useToastManager();
 
   // Load data from server on mount
   const refreshData = useCallback(() => {
@@ -1451,9 +1457,22 @@ function AppCore() {
   }, []);
 
   // Listen for background OAuth refresh failures pushed from main process.
+  // timeout: 0 — persists until the user manually dismisses it, same as
+  // the previous hand-rolled banner (these need action, not a fade-out).
   useEffect(() => {
     return host.onOAuthRefreshError((payload) => {
-      setRefreshErrors((prev) => [...prev, { ...payload, id: Date.now() }]);
+      toastManager.add({
+        type: payload.permanent ? 'danger' : 'warning',
+        timeout: 0,
+        title: (
+          <>
+            <strong>{payload.engine}</strong>
+            {payload.permanent
+              ? ' connection needs to be reconnected — refresh token expired.'
+              : ' connection refresh failed — retrying automatically.'}
+          </>
+        ),
+      });
     });
   }, []);
 
@@ -4220,34 +4239,6 @@ function AppCore() {
           </div>
         </ModalBody>
       </Modal>
-
-      {/* OAuth refresh-error toasts — shown when background token refresh fails */}
-      {refreshErrors.length > 0 && (
-        <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9000, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 340 }}>
-          {refreshErrors.map((err) => (
-            <div key={err.id} style={{
-              padding: '10px 14px', borderRadius: 8,
-              background: 'var(--surface)',
-              border: `1px solid ${err.permanent ? 'color-mix(in srgb, var(--danger) 40%, transparent)' : 'color-mix(in srgb, var(--warning, #f5a623) 40%, transparent)'}`,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-              fontSize: 13, color: 'var(--ink)',
-              display: 'flex', alignItems: 'flex-start', gap: 10,
-            }}>
-              <div style={{ flex: 1, lineHeight: 1.5 }}>
-                {err.permanent
-                  ? <><strong>{err.engine}</strong> connection needs to be reconnected — refresh token expired.</>
-                  : <><strong>{err.engine}</strong> connection refresh failed — retrying automatically.</>}
-              </div>
-              <button
-                type="button"
-                onClick={() => setRefreshErrors((prev) => prev.filter((e) => e.id !== err.id))}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-4)', padding: 0, fontSize: 16, lineHeight: 1, flexShrink: 0 }}
-                aria-label="Dismiss"
-              >×</button>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* OTA update overlay — shown during auto-update download/reload */}
       {(updateStatus?.phase === 'downloading' || updateStatus?.phase === 'reloading') && (

@@ -31,7 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Checkbox } from '../ui';
+import { Badge, Checkbox, Select } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -106,17 +106,17 @@ function FieldInput({ field, value, onChange, disabled }) {
 
   if (field.type === 'select') {
     return (
-      <select
+      <Select
         value={displayValue}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        style={baseStyle}
-      >
-        {!field.required && <option value="">—</option>}
-        {(field.options || []).map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label || opt.value}</option>
-        ))}
-      </select>
+        onValueChange={onChange}
+        ariaLabel={field.label}
+        style={{ background: 'var(--surface-2)', borderRadius: 7 }}
+        options={[
+          ...(!field.required ? [{ value: '', label: '—' }] : []),
+          ...(field.options || []).map((opt) => ({ value: opt.value, label: opt.label || opt.value })),
+        ]}
+      />
     );
   }
   if (field.type === 'textarea') {
@@ -594,7 +594,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                       borderRadius: '50%',
                       border: '1.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                       borderTopColor: 'var(--accent)',
-                      animation: 'dvf-spin 720ms linear infinite',
+                      animation: 'spin 720ms linear infinite',
                     }}
                   />
                   {f.status}
@@ -847,14 +847,11 @@ function MethodPicker({ methods, onPick, busy }) {
                 overflowWrap: 'anywhere', wordBreak: 'break-word',
               }}>{m.label || m.id}</span>
               {m.recommended && (
-                <span style={{
-                  fontSize: 10.5, fontFamily: FONT_MONO, letterSpacing: '0.04em',
-                  color: 'var(--accent)',
-                  padding: '2px 7px', borderRadius: 999,
-                  background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                  textTransform: 'uppercase',
-                }}>Recommended</span>
+                <Badge
+                  variant="accent"
+                  size="sm"
+                  className="font-mono uppercase tracking-[0.04em]"
+                >Recommended</Badge>
               )}
             </div>
             {m.description && (

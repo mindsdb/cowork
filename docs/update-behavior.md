@@ -1,46 +1,44 @@
-# Desktop update behavior — Auto vs. Manual
+# Desktop update behavior
 
 Reference for how and *when* the Cowork desktop app applies updates.
 Source of truth: `src/main/updater.ts` (orchestration) and `decideUpdateApply()`
 in `src/main/update-logic.ts`.
 
-## The setting
+## Default behavior (everyone)
 
-- `UI_UPDATE_MODE` in `~/.anton/.env` — `manual` or `auto`.
-- **Default is `auto`** (any value other than the literal `manual` means auto).
-- One mode governs **both** the cowork-server update and the UI (OTA) bundle.
-
-## When the app checks
-
-Identical in both modes (packaged, non-dev builds only):
+Since ENG-858, there is no user-facing update setting — Settings → Updates
+no longer has an Auto/Manual control. Server and UI updates auto-apply at
+boot for every install.
 
 | Check | When | Can it apply? |
 |---|---|---|
-| **Boot check** | Once, right after the renderer loads at launch | Auto mode only |
+| **Boot check** | Once, right after the renderer loads at launch | Yes |
 | **Periodic check** | Every 4 hours while running | Never — banner only |
 
-## Auto (default)
+The 4-hour periodic checks **never** auto-apply — they only show the
+"update available" banner. A user who leaves the app running for days stays
+on their launch-time version until they relaunch or click the banner.
 
-- **Updates apply at launch, and only at launch.** The boot check
-  auto-applies whatever is available.
-- The 4-hour periodic checks **never** auto-apply, even in auto mode — they
-  only show the "update available" banner. A user who leaves the app running
-  for days stays on their launch-time version until they relaunch or click
-  the banner.
+## Escape hatch: `UI_UPDATE_MODE=manual`
 
-## Manual
+- Env-only — hand-set `UI_UPDATE_MODE=manual` in `~/.anton/.env`. There is no
+  UI for this; it's a support mitigation (pin a user to manual if a bad
+  version ships) and a QA version-pinning lever, not a setting anyone
+  discovers on their own.
+- With it set: **the app never updates on its own.** Boot and periodic checks
+  become detection-only; both just show the banner. Updates apply only when
+  the user triggers them (banner / "Check for updates"), running the same
+  apply sequence as the default.
+- One mode governs **both** the cowork-server update and the UI (OTA) bundle.
+- Pre-existing `UI_UPDATE_MODE=manual` entries from before ENG-858 continue
+  to work exactly as before — nothing to migrate.
 
-- **The app never updates on its own.** Boot and periodic checks are
-  detection-only; both just show the banner.
-- Updates apply only when the user triggers them (banner / "Check for
-  updates"), running the same apply sequence as auto.
-
-## The one exception (both modes)
+## The one exception (default and the escape hatch)
 
 If **cowork-server is down**, an available *server* update applies
 immediately — regardless of mode, on any check, not just boot. A newer server
 build may be exactly what fixes the crash, so this is recovery, not a routine
-update. Server-only: the UI bundle never auto-applies in manual mode.
+update. Server-only: the UI bundle never force-applies on a down server.
 
 ## What "applying" looks like
 

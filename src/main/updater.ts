@@ -1,7 +1,8 @@
 // Unified update orchestrator for the Electron desktop app.
 // Coordinates UI bundle (OTA) and server (cowork-server) updates.
-// Both respect the auto/manual update mode and are always applied
-// together — server first, then UI, then window reload.
+// Both auto-apply at boot (ENG-858) — the auto/manual mode is now an
+// env-only escape hatch (UI_UPDATE_MODE in ~/.anton/.env), not a user
+// setting. Applied together — server first, then UI, then window reload.
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';

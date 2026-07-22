@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveModelPickerValue,
+  buildModelOptions,
   diffSettingsForWrite,
   effectiveRoleModel,
   effectiveRoleProvider,
@@ -120,6 +121,63 @@ describe('ENG-739 stale-pin recovery writes the chosen model', () => {
       { planningModel: 'latest:sonnet' },
     );
     expect(writes).toEqual({});
+  });
+});
+
+// ─── buildModelOptions — the <Select> options list paired with the values
+// resolveModelPickerValue can return. Every value it can produce
+// (curModel, '__stale__', '__custom__') must appear here, or the ENG-739
+// invariant ("selectValue always matches a rendered option") breaks again
+// one layer up, in the option list rather than the resolved value.
+describe('buildModelOptions', () => {
+  it('renders a disabled legacy placeholder first when showStalePin is set', () => {
+    const options = buildModelOptions('latest:sonnet', MINDS_LIST, false, true);
+    expect(options[0]).toEqual({
+      value: '__stale__',
+      label: 'sonnet (legacy — re-select a model)',
+      disabled: true,
+    });
+  });
+
+  it('omits the legacy placeholder when showStalePin is false', () => {
+    const options = buildModelOptions('mindshub_air', MINDS_LIST, false, false);
+    expect(options.some((o) => o.value === '__stale__')).toBe(false);
+  });
+
+  it('lists every model in the recommended list, disabling locked ones', () => {
+    const options = buildModelOptions('sonnet', MINDS_LIST, false, false, { opus: false });
+    const byValue = Object.fromEntries(options.map((o) => [o.value, o]));
+    expect(byValue.sonnet).toEqual({ value: 'sonnet', label: 'sonnet', disabled: false });
+    expect(byValue.opus).toEqual({ value: 'opus', label: 'opus — Add credits to unlock', disabled: true });
+  });
+
+  it('appends an "Other…" entry only when allowOther is true', () => {
+    const withOther = buildModelOptions('claude-opus-4-8', ANTHROPIC_LIST, true, false);
+    expect(withOther.at(-1)).toEqual({ value: '__custom__', label: 'Other…' });
+
+    const withoutOther = buildModelOptions('mindshub_air', MINDS_LIST, false, false);
+    expect(withoutOther.some((o) => o.value === '__custom__')).toBe(false);
+  });
+
+  it('tolerates a missing/undefined model list', () => {
+    expect(buildModelOptions('sonnet', undefined, false, false)).toEqual([]);
+  });
+
+  it("every selectValue resolveModelPickerValue can return matches a rendered option's value", () => {
+    // Stale-pin case.
+    const stale = resolveModelPickerValue('latest:sonnet', MINDS_LIST, false);
+    const staleOptions = buildModelOptions('latest:sonnet', MINDS_LIST, false, stale.showStalePin);
+    expect(staleOptions.map((o) => o.value)).toContain(stale.selectValue);
+
+    // Custom (__custom__) case.
+    const custom = resolveModelPickerValue('my-fine-tune-123', ANTHROPIC_LIST, true);
+    const customOptions = buildModelOptions('my-fine-tune-123', ANTHROPIC_LIST, true, custom.showStalePin);
+    expect(customOptions.map((o) => o.value)).toContain(custom.selectValue);
+
+    // Directly-listed case.
+    const listed = resolveModelPickerValue('mindshub_air', MINDS_LIST, false);
+    const listedOptions = buildModelOptions('mindshub_air', MINDS_LIST, false, listed.showStalePin);
+    expect(listedOptions.map((o) => o.value)).toContain(listed.selectValue);
   });
 });
 

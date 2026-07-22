@@ -15,6 +15,7 @@ import Ico from '../Icons';
 import { fetchConnectors } from '../../api';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
+import { Select } from '../ui';
 
 const FONT_BODY = "var(--font-body, 'Inter', system-ui, sans-serif)";
 const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
@@ -120,51 +121,6 @@ function ConnectorLogo({ connector, size = 22 }) {
     );
   }
   return iconFor(connector)(size);
-}
-
-// Compact "Filter by / Sort by" control. Uses a transparent native
-// <select> overlaid on a styled pill so the chevron + label read as
-// one element while the dropdown UX is the OS one (familiar, free).
-//
-// `options` may contain regular entries `{ id, label }` and visual
-// separators `{ separator: true }`. Separators render as a disabled
-// option with em-dashes — the only cross-platform-safe way to insert
-// a divider into a native <select> without rewriting the dropdown
-// from scratch.
-function SelectPill({ label, value, onChange, options }) {
-  const valued = options.filter((o) => !o.separator);
-  const current = valued.find((o) => o.id === value) || valued[0];
-  return (
-    <label style={{
-      position: 'relative',
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      padding: '7px 11px', borderRadius: 7,
-      background: 'var(--surface-2)',
-      border: '1px solid var(--line)',
-      color: 'var(--ink-2)',
-      fontFamily: FONT_BODY, fontSize: 12.5,
-      cursor: 'pointer',
-    }}>
-      <span style={{ color: 'var(--ink-4)', fontSize: 11.5 }}>{label}:</span>
-      <span>{current?.label || '—'}</span>
-      <span style={{ display: 'inline-flex', color: 'var(--ink-3)' }}>{Ico.chevDown(11)}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={label}
-        style={{
-          position: 'absolute', inset: 0,
-          opacity: 0, cursor: 'pointer',
-        }}
-      >
-        {options.map((o, i) => (
-          o.separator
-            ? <option key={`sep-${i}`} disabled>──────────</option>
-            : <option key={o.id} value={o.id}>{o.label}</option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 // memo: `filtered` changes on every search keystroke, so the .map recreates
@@ -351,30 +307,32 @@ export default function ConnectorPicker({ open, onPick, onClose }) {
           background: 'var(--surface)',
           flexShrink: 0,
         }}>
-          <SelectPill
+          <Select
+            variant="pill"
             label="Filter by"
             value={category}
-            onChange={setCategory}
+            onValueChange={setCategory}
             // "All categories" sits at the top, then a hairline
             // separator, then every category in alphabetical order
             // by display label. Drop-down ordering is decoupled from
             // the GTM-curated `availableCategories` order — that one
             // still drives section ordering inside the body.
             options={[
-              { id: 'all', label: 'All categories' },
+              { value: 'all', label: 'All categories' },
               { separator: true },
               ...[...availableCategories]
-                .map((cat) => ({ id: cat, label: categoryLabel(cat) }))
+                .map((cat) => ({ value: cat, label: categoryLabel(cat) }))
                 .sort((a, b) => a.label.localeCompare(b.label)),
             ]}
           />
-          <SelectPill
+          <Select
+            variant="pill"
             label="Sort by"
             value={sortBy}
-            onChange={setSortBy}
+            onValueChange={setSortBy}
             options={[
-              { id: 'default', label: 'By category' },
-              { id: 'name',    label: 'Name (A–Z)' },
+              { value: 'default', label: 'By category' },
+              { value: 'name',    label: 'Name (A–Z)' },
             ]}
           />
         </div>

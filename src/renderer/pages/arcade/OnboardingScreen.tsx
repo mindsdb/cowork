@@ -10,14 +10,18 @@ import { host } from '../../platform/host';
 import { BASE, fetchRecommendedModels } from '../../cowork/api';
 import { recommendedModelOptions, type ProviderModel } from '../../cowork/lib/settingsTransform';
 import { MINDS_API_BASE, MINDS_REGISTER_URL } from '../../lib/mindsUrls';
-import { syncSettingsToDb } from '../../lib/syncSettings';
+import { syncSettingsToDb, syncModelsToDb, modelLinesFrom } from '../../lib/syncSettings';
 import { ArcadeShell, PixelMarquee } from './components';
 import { PixelSprite, type SpriteName } from './sprites';
 import { LegalViewer } from './TermsScreen';
 
 type Provider = 'minds' | 'byok';
 type ByokProvider = 'anthropic' | 'openai' | 'gemini' | 'openai-compatible';
-type Phase = 'choose' | 'validating' | 'minds-no-llm' | 'success' | 'error';
+// 'signup-wait': browser is on Keycloak's registration flow, possibly parked
+// on email verification for minutes (ENG-917). 'signup-verify': that wait
+// timed out — the account likely exists and is verified, one Sign-in click
+// finishes; deliberately an info state, never an error.
+type Phase = 'choose' | 'validating' | 'signup-wait' | 'signup-verify' | 'minds-no-llm' | 'success' | 'error';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
@@ -55,43 +59,27 @@ async function syncHarness(harnessId: string): Promise<void> {
   } catch {}
 }
 
-// Explicitly persist a model chosen during onboarding to the DB (best-effort).
-//
-// ENG-739: model keys were removed from `syncSettingsToDb`'s map so a bulk
-// .env re-sync (login / post-install / web token-refresh) can never re-pin a
-// user who recovered via the picker. Onboarding is a genuine explicit choice,
-// so it writes its model here — the only non-picker path allowed to. A minds
-// onboarding writes no model line (the backend resolves the tier-aware
-// default), so this is a no-op there.
-async function syncOnboardingModels(lines: string[]): Promise<void> {
-  const KEY_MAP: Record<string, string> = {
-    ANTON_PLANNING_MODEL: 'planning_model',
-    ANTON_CODING_MODEL: 'coding_model',
-  };
-  for (const line of lines) {
-    const eq = line.indexOf('=');
-    if (eq <= 0) continue;
-    const settingKey = KEY_MAP[line.slice(0, eq)];
-    const value = line.slice(eq + 1);
-    if (!settingKey || !value) continue;
-    try {
-      await fetch(`${BASE}/settings/${settingKey}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value }),
-      });
-    } catch { /* best-effort — the backend's apply_model_defaults still yields a model */ }
-  }
-}
+// The onboarding model write lives in lib/syncSettings as `syncModelsToDb` — the
+// only non-picker path allowed to set a model (ENG-739) — so both onboarding and
+// the post-install replay (ENG-922) share one implementation.
 
 export interface PersistDeps {
   /** .env write — best-effort in web (loopback-gated, ENG-817), throws on a real error. */
   saveSettings: (content: string) => Promise<boolean>;
   /** Authoritative DB write (PUT /settings/:key). Returns false if any key failed. */
   syncToDb: (lines: string[]) => Promise<boolean>;
-  syncModels: (lines: string[]) => Promise<void>;
+  /** Best-effort model write here (result ignored on the success path — server
+   *  is up); the return type is widened so syncModelsToDb's boolean fits. */
+  syncModels: (lines: string[]) => Promise<unknown>;
   syncHarness: () => Promise<void>;
 }
+
+export type PersistResult =
+  | { ok: true }
+  // dbSyncFailed marks specifically a `syncToDb` false, as opposed to a
+  // thrown error — so callers can tell "the write was rejected/unreachable"
+  // apart from a real .env/IPC failure (see resolveFinalizeOutcome).
+  | { ok: false; error: string; dbSyncFailed?: true };
 
 // Run the onboarding persist sequence and report whether the config actually
 // landed. The .env write is best-effort (host.saveSettings tolerates the web
@@ -102,13 +90,17 @@ export interface PersistDeps {
 export async function persistOnboarding(
   deps: PersistDeps,
   lines: string[],
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<PersistResult> {
   const GENERIC = 'Could not save your settings. Please try again.';
   try {
     await deps.saveSettings(lines.join('\n'));
     const dbOk = await deps.syncToDb(lines);
     if (!dbOk) {
-      return { ok: false, error: 'Could not save your settings to the server. Please try again.' };
+      return {
+        ok: false,
+        error: 'Could not save your settings to the server. Please try again.',
+        dbSyncFailed: true,
+      };
     }
     // syncModels writes the model keys the bulk DB sync intentionally skips
     // (ENG-739); harness records the chosen cartridge. Both best-effort.
@@ -118,6 +110,31 @@ export async function persistOnboarding(
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message ? e.message : GENERIC };
   }
+}
+
+export type FinalizeOutcome =
+  | { action: 'success' }
+  | { action: 'defer' }
+  | { action: 'error'; error: string };
+
+// Decide what finalizeSettings should do with a persistOnboarding result. A
+// `dbSyncFailed` result while the server isn't installed/ready yet is the
+// EXPECTED shape of the onboarding/install race (the DB endpoint has no one
+// to answer until the server finishes starting) — defer rather than error,
+// so the caller proceeds to onComplete and lets handleAuthComplete's own
+// checkInstall gate route to the setup screen (handlePostAuth retries this
+// same sync once install finishes). Any other failure — a real .env/IPC
+// error, or a DB sync that failed against an ALREADY-ready server — is a
+// genuine, user-facing failure. Exported pure so the branch is unit-tested
+// without an install IPC round-trip.
+export function resolveFinalizeOutcome(
+  res: PersistResult,
+  installStatus: { antonInstalled: boolean; serverDepsReady: boolean } | null,
+): FinalizeOutcome {
+  if (res.ok) return { action: 'success' };
+  const notReady = Boolean(installStatus) && (!installStatus!.antonInstalled || !installStatus!.serverDepsReady);
+  if (res.dbSyncFailed && notReady) return { action: 'defer' };
+  return { action: 'error', error: res.error };
 }
 
 // The provider→validation-target and provider→env-vars mappings are
@@ -176,7 +193,13 @@ export default function OnboardingScreen({
 }: {
   /** Cartridge chosen on the select screen; persisted with the settings. */
   coworker: { id: string; label: string; sprite: SpriteName };
-  onComplete: () => void;
+  /**
+   * Advance out of onboarding. On the setup-deferral path (fresh install, server
+   * not up yet) the caller receives the just-chosen `ANTON_*_MODEL` lines so the
+   * post-install handshake can replay them once (ENG-922); omitted on every
+   * other path.
+   */
+  onComplete: (deferredModelLines?: string[]) => void;
   /** Optional — returns to the coworker-select screen. */
   onBack?: () => void;
 }) {
@@ -203,6 +226,29 @@ export default function OnboardingScreen({
   const finalizedRef = useRef(false);
   // Inline Terms/Privacy viewer for the "by continuing you agree" line.
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
+
+  // ENG-912: a console-hosted (web) instance is pre-provisioned server-side
+  // (config_ready:true, key seeded), but the browser can't read that key
+  // (/settings/raw 403s, ENG-457) — so the provider/key-entry flow would ask a
+  // ready user for a MindsHub key they were never given. Detect config_ready
+  // (the ungated /health signal) and offer consent-only entry instead. `null`
+  // = still checking; only meaningful in web (Electron uses the SSO flow, so it
+  // starts false and takes the normal path).
+  const [webConfigured, setWebConfigured] = useState<boolean | null>(host.isWeb ? null : false);
+  // True once the keycloak auto-finalize path (authenticated standalone/localhost)
+  // takes over. Tracked as STATE — not the finalizedRef ref — so the boot returns
+  // below yield to it deterministically; a ref mutation doesn't re-render, which
+  // let the provider form flash / the consent button go inert during
+  // finalization (PR #445 review). Hosted cloud skips keycloak, so it stays false.
+  const [autoFinalizing, setAutoFinalizing] = useState(false);
+  useEffect(() => {
+    if (!host.isWeb) return;
+    let cancelled = false;
+    host.checkConfigured()
+      .then((r) => { if (!cancelled) setWebConfigured(Boolean(r.configured)); })
+      .catch(() => { if (!cancelled) setWebConfigured(false); }); // unreachable → fall back to the full flow
+    return () => { cancelled = true; };
+  }, []);
 
   // Per-provider model lists, owned by cowork-server and fetched at runtime
   // (same source minds-cloud already uses) — no model names are hardcoded
@@ -277,23 +323,40 @@ export default function OnboardingScreen({
   };
 
   // Persist the built settings lines and advance to success — but only if the
-  // authoritative DB write succeeded. A failed DB sync (or a real .env error)
-  // surfaces as a retryable error instead of advancing to success over an
-  // unsaved config. Shared by every finalize path so they can't drift.
+  // authoritative DB write succeeded. A failed DB sync while the server isn't
+  // installed/ready yet is deferred (not errored) to onComplete, whose own
+  // checkInstall gate correctly routes to the setup screen instead of
+  // stranding the user on a "could not save" error mid-download (see
+  // resolveFinalizeOutcome). Any other failure surfaces as a retryable error.
+  // Shared by every finalize path so they can't drift.
   const finalizeSettings = async (lines: string[]) => {
     const res = await persistOnboarding(
       {
         saveSettings: (c) => host.saveSettings(c),
         syncToDb: syncSettingsToDb,
-        syncModels: syncOnboardingModels,
+        syncModels: syncModelsToDb,
         syncHarness: () => syncHarness(coworker.id),
       },
       lines,
     );
-    if (!res.ok) {
+    const installStatus = res.ok ? null : await host.checkInstall().catch(() => null);
+    const outcome = resolveFinalizeOutcome(res, installStatus);
+    if (outcome.action === 'error') {
       finalizedRef.current = false; // allow a retry
       setPhase('error');
-      setErrorMsg(res.error);
+      setErrorMsg(outcome.error);
+      return;
+    }
+    if (outcome.action === 'defer') {
+      // Server isn't up yet — skip the "success" flash (misleading here) and
+      // let onComplete's checkInstall gate show the setup/install screen.
+      // persistOnboarding stopped at the failed DB sync, BEFORE syncModels, so
+      // the chosen model never reached the DB and the post-install bulk .env
+      // re-sync deliberately excludes model keys (ENG-739). Hand the just-chosen
+      // model lines up so the post-install handshake replays them once —
+      // otherwise a non-Anthropic BYOK user lands config-not-ready ("Select a
+      // model"). In-memory choice, never a .env re-read (ENG-922).
+      onComplete(modelLinesFrom(lines));
       return;
     }
     setPhase('success');
@@ -425,12 +488,10 @@ export default function OnboardingScreen({
     await finalizeSettings(lines);
   };
 
-  // `register: true` opens the browser on the "create account" form instead
-  // of the login form — same flow, same return path (ENG-914).
-  const handleMindsSSO = async (register = false) => {
+  const handleMindsSSO = async () => {
     setPhase('validating');
     setErrorMsg('');
-    const loginResult = await host.mindshubLogin({ register });
+    const loginResult = await host.mindshubLogin();
     if (!loginResult.ok) {
       setPhase('error');
       const reason = String(loginResult.reason || '');
@@ -449,6 +510,43 @@ export default function OnboardingScreen({
       }
       return;
     }
+    await completeMindsAuth();
+  };
+
+  // Sign-up (ENG-917): the same loopback PKCE flow as sign-in, entered
+  // through Keycloak's registration form. The browser leg legitimately
+  // pauses on email verification — sometimes minutes — so the pending
+  // state gets its own copy, and the eventual timeout degrades to a
+  // "verified? just sign in" nudge instead of an error.
+  const handleMindsSignup = async () => {
+    setPhase('signup-wait');
+    setErrorMsg('');
+    const result = await host.mindshubSignup();
+    if (!result.ok) {
+      const reason = String(result.reason || '');
+      if (/cancelled/i.test(reason)) {
+        // Explicit cancel, or superseded by a Sign-in click (the flows are
+        // single-flight in main). Whoever took over owns the phase — only
+        // reset if the wait screen is still the one showing.
+        setPhase((p) => (p === 'signup-wait' ? 'choose' : p));
+        return;
+      }
+      if (/timed out/i.test(reason)) {
+        setPhase('signup-verify');
+        return;
+      }
+      setPhase('error');
+      setErrorMsg(reason || 'Sign up failed. Please try again.');
+      return;
+    }
+    await completeMindsAuth();
+  };
+
+  // Post-auth completion shared by sign-in and sign-up: once Keycloak hands
+  // back tokens the two flows are identical — provision the LLM key, route
+  // free users to the paywall/BYOK, commit the env on success.
+  const completeMindsAuth = async () => {
+    setPhase('validating'); // no-op for sign-in; moves sign-up off its wait screen
     let finalizeResult: { ok: boolean; reason?: string; upgradeRequired?: boolean; apiKey?: string };
     try {
       finalizeResult = await host.mindshubFinalize();
@@ -503,6 +601,7 @@ export default function OnboardingScreen({
     let cancelled = false;
     import('../../lib/keycloak').then(({ keycloak }) => {
       if (cancelled || finalizedRef.current || !keycloak.authenticated) return;
+      setAutoFinalizing(true); // drive the boot returns via state, not the ref
       // Provider only — the backend resolves the default model on load.
       saveFinal([
         'ANTON_TERMS_CONSENT=true',
@@ -518,6 +617,51 @@ export default function OnboardingScreen({
   // Full-screen Terms/Privacy reader (opened from the consent line).
   if (legalDoc) {
     return <LegalViewer doc={legalDoc} onClose={() => setLegalDoc(null)} />;
+  }
+
+  // ENG-912: web + already-configured → skip the provider/key flow (the key is
+  // seeded server-side and unreadable here). Hold a minimal welcome while the
+  // config_ready check is in flight OR the keycloak auto-finalize path is
+  // completing, so neither the provider form nor the consent screen flashes.
+  // success/error fall through to their own screens below.
+  if (host.isWeb && (webConfigured === null || autoFinalizing) && phase !== 'success' && phase !== 'error') {
+    return (
+      <ArcadeShell title="Welcome" subtitle="getting things ready">
+        <div className="arc-stack arc-fade-in" style={{ gap: 16, padding: '12px 0' }}>
+          <PixelSprite name={coworker.sprite} size={72} bob title={coworker.label} />
+        </div>
+      </ArcadeShell>
+    );
+  }
+  // Configured cloud instance: consent-only entry. The Terms/Privacy line is
+  // kept so consent is still shown (never silently recorded); Continue records
+  // it client-side (via onComplete → rememberTermsConsent) and enters the app.
+  // Skipped when auto-finalizing — a keycloak-authenticated user's auto-finalize
+  // effect handles consent + entry itself (loading above, then success below).
+  if (host.isWeb && webConfigured && !autoFinalizing && phase !== 'success' && phase !== 'error') {
+    return (
+      <ArcadeShell title="Welcome" subtitle="you're all set">
+        <div className="arc-stack" style={{ gap: 18 }}>
+          <PixelSprite name={coworker.sprite} size={84} bob title={coworker.label} />
+          <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--arc-muted)', textAlign: 'center', maxWidth: 420 }}>
+            Your workspace is ready to go.
+          </div>
+          <button
+            className="arc-btn"
+            style={{ width: '100%' }}
+            onClick={() => { if (finalizedRef.current) return; finalizedRef.current = true; onComplete(); }}
+          >
+            Continue
+          </button>
+          <div style={{ fontSize: 10.5, lineHeight: 1.5, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 420 }}>
+            By continuing, you agree to our{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('terms')}>Terms of Service</button>{' '}
+            and{' '}
+            <button type="button" className="arc-link" onClick={() => setLegalDoc('privacy')}>Privacy Policy</button>.
+          </div>
+        </div>
+      </ArcadeShell>
+    );
   }
 
   // ── Victory ────────────────────────────────────────────────────────
@@ -545,6 +689,25 @@ export default function OnboardingScreen({
       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--arc-muted)' }}>
         TESTING LINK…
       </span>
+    </div>
+  );
+
+  // ── Sign-up pending overlay (ENG-917) ──────────────────────────────
+  // Shown while the browser owns the registration flow. The email-verify
+  // pause means this can sit for minutes — the copy sets that expectation,
+  // and Cancel tears the loopback listener down via the main process.
+  const signupWaitBlock = (
+    <div className="arc-stack arc-fade-in" style={{ gap: 14, padding: '12px 0' }}>
+      <PixelSprite name="bolt" size={44} title="Waiting for sign-up" />
+      <PixelMarquee cells={20} style={{ width: 280 }} />
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.18em', color: 'var(--arc-muted)' }}>
+        FINISH SIGN-UP IN YOUR BROWSER
+      </span>
+      <span style={{ fontSize: 11, lineHeight: 1.6, letterSpacing: '0.04em', color: 'var(--arc-dim)', textAlign: 'center', maxWidth: 340 }}>
+        Create your account, then open the verification email we send you —
+        clicking its link signs you in here automatically.
+      </span>
+      <button type="button" className="arc-link" onClick={() => host.oauthCancel()}>Cancel</button>
     </div>
   );
 
@@ -712,17 +875,20 @@ export default function OnboardingScreen({
               <button
                 className="arc-btn"
                 style={{ width: '100%' }}
-                disabled={phase === 'validating'}
-                onClick={() => handleMindsSSO(true)}
+                disabled={phase === 'validating' || phase === 'signup-wait'}
+                onClick={handleMindsSignup}
               >
                 {phase === 'validating' ? 'One moment…' : 'Create a free account'}
               </button>
+              {/* Stays clickable during signup-wait on purpose — the flows are
+                  single-flight in main, so a Sign-in click supersedes a parked
+                  sign-up (ENG-917). */}
               <button
                 type="button"
                 className="arc-btn-ghost arc-btn-ghost-stacked"
                 style={{ width: '100%' }}
                 disabled={phase === 'validating'}
-                onClick={() => handleMindsSSO()}
+                onClick={handleMindsSSO}
               >
                 Sign in
               </button>
@@ -764,6 +930,15 @@ export default function OnboardingScreen({
         </div>
 
         {phase === 'validating' && validatingBlock}
+        {phase === 'signup-wait' && signupWaitBlock}
+
+        {phase === 'signup-verify' && (
+          <div className="arc-panel" role="status" style={{ padding: '14px 18px', fontSize: 11.5, lineHeight: 1.7, letterSpacing: '0.04em', color: 'var(--arc-muted)', textAlign: 'center' }}>
+            Verified your email? You're one click away — hit{' '}
+            <b style={{ color: 'var(--arc-ink)' }}>Sign in</b> to finish.
+            No need to register again.
+          </div>
+        )}
 
         {phase === 'error' && (
           <div className="arc-error" role="alert">
@@ -777,6 +952,10 @@ export default function OnboardingScreen({
             type="button"
             className="arc-link"
             onClick={() => {
+              // Leaving for BYOK abandons any parked sign-up — tear its
+              // loopback listener down so a later email-link click can't
+              // yank the user back into the MindsHub path.
+              if (phase === 'signup-wait') host.oauthCancel();
               setProvider('byok');
               setStep('byok');
               setApiKey('');

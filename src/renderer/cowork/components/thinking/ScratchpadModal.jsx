@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
+import { Badge } from '../ui';
 import { CodeBlock } from './CodeBlock';
 
 function fmtMs(ms) {
@@ -162,20 +163,11 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     maxWidth: 180,
                   }} title={t.name}>{t.name}</span>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    minWidth: 18, height: 18,
-                    padding: '0 6px',
-                    borderRadius: 999,
-                    background: active
-                      ? 'color-mix(in srgb, var(--accent) 15%, transparent)'
-                      : 'var(--surface-2)',
-                    color: active ? 'var(--accent)' : 'var(--ink-4)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10.5,
-                    fontWeight: 500,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}>{t.cells.length}</span>
+                  <Badge
+                    variant={active ? 'accent' : 'muted'}
+                    size="xs"
+                    className="min-w-[18px] justify-center font-mono tabular-nums"
+                  >{t.cells.length}</Badge>
                   {active && (
                     <span aria-hidden style={{
                       position: 'absolute',

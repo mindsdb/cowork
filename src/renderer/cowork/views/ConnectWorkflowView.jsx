@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
+import { Badge } from '../components/ui';
 import {
   fetchIntegrations,
   startConnectorOAuth,
   pollConnectorOAuth,
 } from '../api';
 import { trackDataSourceConnected } from '../lib/analytics';
+import { Select } from '../components/ui';
 
 const PAGE_HOME = 'home';
 const PAGE_CONNECTORS = 'connectors';
@@ -602,7 +604,7 @@ function ConnectorsPage({
                         {connector.interactive && <span className="customize-inline-tag">Interactive</span>}
                       </span>
                     </span>
-                    {connector.chip && <span className="customize-chip">{connector.chip}</span>}
+                    {connector.chip && <Badge variant="muted" size="xs">{connector.chip}</Badge>}
                   </button>
                 );
               })}
@@ -765,47 +767,23 @@ function DirectoryModal({ mode, onChangeMode, onClose, onChooseConnector }) {
                 carry categories yet so we hide the control there
                 rather than showing a single "All" option. */}
             {mode === DIRECTORY_MODE_CONNECTORS && (
-              <label className="customize-select" style={{ position: 'relative' }}>
-                <span style={{ color: 'var(--ink-4)', marginRight: 6 }}>Filter by</span>
-                <span>
-                  {DIRECTORY_CATEGORIES.find((c) => c.id === filterCategory)?.label || 'All categories'}
-                </span>
-                {Ico.chevDown(12)}
-                <select
-                  value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  aria-label="Filter by category"
-                  style={{
-                    position: 'absolute', inset: 0,
-                    opacity: 0, cursor: 'pointer',
-                  }}
-                >
-                  {DIRECTORY_CATEGORIES.map((c) => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                variant="pill"
+                label="Filter by"
+                value={filterCategory}
+                onValueChange={setFilterCategory}
+                ariaLabel="Filter by category"
+                options={DIRECTORY_CATEGORIES.map((c) => ({ value: c.id, label: c.label }))}
+              />
             )}
-            <label className="customize-select" style={{ position: 'relative' }}>
-              <span style={{ color: 'var(--ink-4)', marginRight: 6 }}>Sort by</span>
-              <span>
-                {DIRECTORY_SORT_OPTIONS.find((s) => s.id === sortBy)?.label || 'Popular'}
-              </span>
-              {Ico.chevDown(12)}
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                aria-label="Sort by"
-                style={{
-                  position: 'absolute', inset: 0,
-                  opacity: 0, cursor: 'pointer',
-                }}
-              >
-                {DIRECTORY_SORT_OPTIONS.map((s) => (
-                  <option key={s.id} value={s.id}>{s.label}</option>
-                ))}
-              </select>
-            </label>
+            <Select
+              variant="pill"
+              label="Sort by"
+              value={sortBy}
+              onValueChange={setSortBy}
+              ariaLabel="Sort by"
+              options={DIRECTORY_SORT_OPTIONS.map((s) => ({ value: s.id, label: s.label }))}
+            />
           </div>
 
           <div className="customize-modal-toolbar">

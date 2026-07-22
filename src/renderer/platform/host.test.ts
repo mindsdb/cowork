@@ -80,6 +80,7 @@ describe('web mode (no bridge)', () => {
   it('MindsHub PKCE bridges refuse with a reason (web uses Keycloak redirect)', async () => {
     const host = await importHost();
     await expect(host.mindshubLogin()).resolves.toMatchObject({ ok: false });
+    await expect(host.mindshubSignup()).resolves.toMatchObject({ ok: false });
     await expect(host.mindshubRefresh()).resolves.toMatchObject({ ok: false });
     await expect(host.mindshubFinalize()).resolves.toMatchObject({ ok: false });
   });

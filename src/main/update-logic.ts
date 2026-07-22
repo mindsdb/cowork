@@ -187,7 +187,12 @@ export interface UpdateApplyDecision {
  *
  *  UI never force-applies on a down server — a dead backend is a server
  *  problem, and forcing a UI swap + reload mid-recovery adds churn without
- *  fixing anything. */
+ *  fixing anything.
+ *
+ *  ENG-858: `mode` is no longer a user-facing setting — everyone gets `auto`
+ *  unless `UI_UPDATE_MODE=manual` is hand-set in `~/.anton/.env` (support /
+ *  QA escape hatch). The parameter and this decision logic are unchanged;
+ *  only the Settings UI control that used to feed it was removed. */
 export function decideUpdateApply(input: {
   serverUpdateAvailable: boolean;
   uiUpdateAvailable: boolean;

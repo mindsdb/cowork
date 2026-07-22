@@ -35,6 +35,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { modelLabel } from '../lib/settingsTransform';
+import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 
 // Token shorthand mapped to our globals.css custom properties so the same
@@ -697,8 +698,9 @@ function ArtifactCard({ artifact, onOpen }) {
                 role="menu"
                 style={{
                   position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 20,
-                  background: T.surface, border: `1px solid ${T.line}`, borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(15,16,17,0.12)', padding: 4, minWidth: 140,
+                  // No border — floats on --sh-popup alone (ENG-790).
+                  background: T.surface, borderRadius: 10,
+                  boxShadow: 'var(--sh-popup)', padding: 4, minWidth: 140,
                   display: 'flex', flexDirection: 'column', gap: 2,
                 }}
               >
@@ -933,20 +935,25 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
   );
 }
 
-// Mid-conversation model-403 (`model_access_denied` / `model_disabled`): the
-// credential is FINE — the gateway rejected the requested MODEL. Two flavors,
-// keyed on the gateway's structured code:
-//
-// - `model_access_denied` — plan gate: the account's tier doesn't include the
-//   model. An upgrade genuinely fixes it, so lead with Upgrade.
-// - `model_disabled` — hedged until the gateway distinguishes tier locks from
-//   admin kill switches everywhere (ENG-596): it can be either, so offer both
-//   Switch-model and Upgrade without promising the upgrade fixes it.
-//
-// The body is the server's curated copy (anton's message, passed through
-// verbatim) — unlike ReconnectCard there's no web-only affordance to work
-// around: Upgrade is just a billing link (host.openExternal window.opens on
-// web), and Switch model routes to Settings on both shells.
+/*
+ * Legacy model-403 (`model_access_denied` / `model_disabled`): back-compat
+ * only. The current gateway never emits a 403 model denial — a wallet that
+ * can't pay comes back as 402 `wallet_empty`, which the server maps to
+ * `token_limit` and the out-of-credits card renders. These codes only arrive
+ * from older pre-wallet gateway/anton versions, so the branch stays. Two
+ * flavors, keyed on the structured code:
+ *
+ * - `model_access_denied` — old gateways sent this when the account couldn't
+ *   cover the model, so lead with Add credits.
+ * - `model_disabled` — an admin turned the model off; credits don't unlock
+ *   it, so lead with Switch model (Add credits stays as a secondary escape
+ *   hatch since some old gateways used this code for credit locks too).
+ *
+ * The body is the server's curated copy (anton's message, passed through
+ * verbatim) — unlike ReconnectCard there's no web-only affordance to work
+ * around: Add credits is just a billing link (host.openExternal window.opens
+ * on web), and Switch model routes to Settings on both shells.
+ */
 function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedModel, errorText }) {
   // modelLabel finishes multi-part ids (Claude Sonnet, GPT-5.5 Mini) and
   // deliberately lowercases some heads (o4 Mini) — never re-case those. Only a
@@ -957,7 +964,7 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
   const denied = code === 'model_access_denied';
   const title = denied
-    ? `${label} isn't included in your plan`
+    ? `${label} needs credits`
     : `${label} isn't available right now`;
 
   return (
@@ -965,12 +972,51 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
       time={time}
       agentLabel={agentLabel}
       title={title}
-      body={errorText || 'Switch models in Settings, or upgrade your plan to unlock it.'}
+      body={errorText || (denied
+        ? 'This model needs credits. Add credits to unlock it, or switch to another model in Settings.'
+        : 'This model is currently unavailable. Switch to another model in Settings.')}
       buttons={[
-        // Plan gate → lead with Upgrade; hedged/disabled → lead with Switch.
-        { label: 'Upgrade plan', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
+        /* Credits denial → lead with Add credits; admin-disabled → lead with Switch. */
+        { label: 'Add credits', onClick: () => host.openExternal(MINDS_BILLING_URL), primary: denied },
         { label: 'Switch model', onClick: () => onOpenSettings?.('agent'), primary: !denied },
       ]}
+    />
+  );
+}
+
+// Mid-conversation transient provider incident (`provider_overloaded`,
+// ENG-673): the provider (or an upstream it routes to) was overloaded/erroring
+// mid-stream and anton's backoff-retry ran out of time. Unlike the model-403
+// cases this is TRANSIENT, so **Retry** is the primary action (resend the last
+// message).
+//
+// The MindsHub angle depends on how the user is set up (the `reconnectable`
+// flag = "already on MindsHub Cloud"):
+//  - On MindsHub Cloud → the cross-provider failover already applied and the
+//    whole set was down; there's nothing to switch to, so just Retry.
+//  - BYOK/direct → surface MindsHub's failover as the durable fix: informational
+//    in the body, plus a "Set up MindsHub" route to Settings. Deliberately NOT a
+//    raw "Subscribe" button — that would mis-nudge a user who already subscribes
+//    but chose BYOK (the ENG-514 lesson); Settings is where connect / switch /
+//    subscribe are resolved for real.
+function ProviderOverloadedCard({
+  time, agentLabel, onOpenSettings, onRetry, reconnectable, providerLabel, errorText,
+}) {
+  const onManaged = Boolean(reconnectable);
+  const who = onManaged ? 'MindsHub' : (providerLabel || 'The model provider');
+  const base = errorText
+    || `${who} had a temporary incident and didn't recover in time. Try again in a moment.`;
+  const body = onManaged
+    ? base
+    : `${base} MindsHub automatically routes around provider outages like this, so tasks keep running.`;
+
+  return (
+    <ActionCard
+      time={time}
+      agentLabel={agentLabel}
+      title={`${who} is having a temporary issue`}
+      body={body}
+      buttons={providerOverloadedButtons({ reconnectable: onManaged, onRetry, onOpenSettings })}
     />
   );
 }
@@ -1659,9 +1705,10 @@ export default function ChatView({
                     />
                   );
                 }
-                // Model-403 mid-conversation: the plan doesn't include the
-                // model (or it's admin-disabled) → offer Upgrade / Switch
-                // model, never "try again".
+                /* Legacy model-403 (pre-wallet gateways only): current
+                 * gateways report wallet denials as `token_limit`, rendered
+                 * by the out-of-credits card above. Offer Add credits /
+                 * Switch model, never "try again". */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled') {
                   return (
                     <ModelUnavailableCard
@@ -1671,6 +1718,28 @@ export default function ChatView({
                       onOpenSettings={onOpenSettings}
                       code={m.code}
                       failedModel={m.failedModel}
+                      errorText={m.content}
+                    />
+                  );
+                }
+                // Transient provider incident that outlasted anton's retry
+                // budget → Retry (resend the last user message), plus a MindsHub
+                // failover nudge for BYOK users (ENG-673).
+                if (m.code === 'provider_overloaded') {
+                  let prevUserText = '';
+                  for (let j = i - 1; j >= 0; j--) {
+                    const c = visibleMessages[j]?.role === 'user' && visibleMessages[j].content;
+                    if (typeof c === 'string' && c) { prevUserText = c; break; }
+                  }
+                  return (
+                    <ProviderOverloadedCard
+                      key={i}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      onOpenSettings={onOpenSettings}
+                      onRetry={prevUserText ? () => onSend?.(prevUserText) : undefined}
+                      reconnectable={m.reconnectable}
+                      providerLabel={m.providerLabel}
                       errorText={m.content}
                     />
                   );

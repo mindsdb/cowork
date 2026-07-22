@@ -10,44 +10,11 @@
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'failed' | undefined(idle)
 
 import Ico from '../Icons';
+import { Badge } from '../ui';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 
-// Semantic tones (status colors are intentionally semantic, matching the
-// design): published = green, pending changes = amber, in-flight = accent,
-// failed = danger. Neutral pills (Draft / Unpublished) use the surface tint.
-const TONE = {
-  green: '#16A34A',
-  amber: '#F5A623',
-  info: 'var(--accent)',
-  danger: 'var(--danger)',
-};
-
-// One tinted pill. `tone` omitted → neutral grey. `dot` adds a leading status
-// dot; `icon` a leading glyph.
-function Pill({ tone, label, dot = false, icon = null, title }) {
-  const c = TONE[tone];
-  return (
-    <span
-      title={title}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '2px 8px', borderRadius: 999,
-        fontFamily: FONT_BODY, fontSize: 11, fontWeight: 600, lineHeight: 1.3,
-        whiteSpace: 'nowrap', flexShrink: 0,
-        color: c || 'var(--ink-3)',
-        background: c ? `color-mix(in srgb, ${c} 12%, transparent)` : 'var(--surface-2)',
-        border: `1px solid ${c ? `color-mix(in srgb, ${c} 30%, transparent)` : 'var(--line)'}`,
-      }}
-    >
-      {dot && <span style={{ width: 5, height: 5, borderRadius: 99, background: c, flexShrink: 0 }} />}
-      {icon && <span style={{ display: 'inline-flex' }}>{icon}</span>}
-      {label}
-    </span>
-  );
-}
-
-// Neutral access chip beside the Published pill (Public / Password / Restricted).
+// Neutral access chip beside the Published badge (Public / Password / Restricted).
 function AccessChip({ mode }) {
   const m = mode === 'password'
     ? { icon: Ico.lock(11), label: 'Password' }
@@ -73,7 +40,7 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   if (phase === 'failed') {
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <Pill tone="danger" label="Sharing failed" />
+        <Badge variant="danger" size="sm">Sharing failed</Badge>
         <span style={{ fontFamily: FONT_BODY, fontSize: 12, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
           Couldn't share.{onRetry ? ' ' : ''}
           {onRetry && (
@@ -88,13 +55,13 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
       </span>
     );
   }
-  if (phase === 'publishing') return <Pill tone="info" label="Sharing…" />;
-  if (phase === 'updating') return <Pill tone="info" label="Updating…" />;
-  if (phase === 'unpublishing') return <Pill label="Stopping sharing…" />;
+  if (phase === 'publishing') return <Badge variant="accent" size="sm">Sharing…</Badge>;
+  if (phase === 'updating') return <Badge variant="accent" size="sm">Updating…</Badge>;
+  if (phase === 'unpublishing') return <Badge variant="default" size="sm">Stopping sharing…</Badge>;
 
   // Idle — persisted state.
   if (!artifact?.publishedUrl) {
-    return <Pill label={publishable ? 'Not shared' : 'Draft'} />;
+    return <Badge variant="default" size="sm">{publishable ? 'Not shared' : 'Draft'}</Badge>;
   }
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
   return (
@@ -102,12 +69,12 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     // "Unpublished changes" warning pushed to the right (margin-left:auto).
     // On a tight card it wraps to its own line, still right-aligned there.
     <span style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
-      <Pill tone="green" dot label="Shared" />
+      <Badge variant="success" size="sm" dot>Shared</Badge>
       <AccessChip mode={mode} />
       {artifact.modified && (
         inlineChanges
-          ? <Pill tone="amber" dot label="Unshared changes" />
-          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Pill tone="amber" dot label="Unshared changes" /></span>
+          ? <Badge variant="warning" size="sm" dot>Unshared changes</Badge>
+          : <span style={{ marginLeft: 'auto', display: 'inline-flex' }}><Badge variant="warning" size="sm" dot>Unshared changes</Badge></span>
       )}
     </span>
   );

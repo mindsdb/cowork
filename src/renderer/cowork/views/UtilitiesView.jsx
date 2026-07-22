@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message, Button, Card, EmptyState as UiEmptyState } from '../components/ui';
+import { Message, Button, Card, EmptyState as UiEmptyState, Select } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
@@ -440,13 +440,21 @@ function ConnectView({ data, setData, setStatus }) {
         )) : <EmptyState>No data vault connections found.</EmptyState>}
       </div>
       <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <select aria-label="Engine" value={engine} onChange={(e) => setEngineAndTemplate(e.target.value)} style={inputStyle}>
-          {(data.engines || []).map((item) => <option key={item.engine} value={item.engine}>{item.displayName}</option>)}
-        </select>
+        <Select
+          ariaLabel="Engine"
+          value={engine}
+          onValueChange={setEngineAndTemplate}
+          style={inputStyle}
+          options={(data.engines || []).map((item) => ({ value: item.engine, label: item.displayName }))}
+        />
         {(engineDef?.authMethods || []).length > 0 && (
-          <select aria-label="Authentication method" value={selectedAuth?.name || ''} onChange={(e) => setAuthAndTemplate(e.target.value)} style={inputStyle}>
-            {(engineDef.authMethods || []).map((method) => <option key={method.name} value={method.name}>{method.display}</option>)}
-          </select>
+          <Select
+            ariaLabel="Authentication method"
+            value={selectedAuth?.name || ''}
+            onValueChange={setAuthAndTemplate}
+            style={inputStyle}
+            options={(engineDef.authMethods || []).map((method) => ({ value: method.name, label: method.display }))}
+          />
         )}
         <input aria-label="Connection name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" style={inputStyle} />
         {fields.length > 0 && (
@@ -557,11 +565,6 @@ const inputStyle = {
   background: 'var(--surface-0)',
   color: 'var(--ink)',
 };
-
-// Native <select> paints its own chevron in the right padding area;
-// the chevron looked flush with the right border at `padding: 10px`.
-// Bumping right padding gives the indicator some air.
-const selectStyle = { ...inputStyle, paddingRight: 28 };
 
 // Editor and viewer share the same fixed min-height + typography so
 // flipping between read and edit doesn't shift the layout. `--ink`

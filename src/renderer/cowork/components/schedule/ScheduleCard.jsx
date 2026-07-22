@@ -11,8 +11,8 @@
 import { useState } from 'react';
 import Ico from '../Icons';
 import { Card } from '../ui';
-import { Badge } from '../ui/Badge';
 import { relativeTime } from '../../lib/formatTime';
+import { ScheduleStatusBadge } from './ScheduleStatusBadge';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
@@ -39,16 +39,6 @@ function cadenceLabel(cadence) {
     weekly:   'Weekly',
   }[cadence] || cadence;
 }
-
-// Status badge — same conditions/labels as the old StatusPill, mapped
-// onto the shared <Badge> variant palette (amber → accent).
-function StatusBadge({ task }) {
-  if (task.running)   return <Badge size="sm" variant="accent">Running</Badge>;
-  if (!task.enabled)  return <Badge size="sm" variant="muted">Paused</Badge>;
-  if (task.lastError) return <Badge size="sm" variant="danger">Last failed</Badge>;
-  return <Badge size="sm" variant="success">Active</Badge>;
-}
-
 
 export default function ScheduleCard({
   task, busy = false,
@@ -102,7 +92,7 @@ export default function ScheduleCard({
             {task.title || 'Untitled schedule'}
           </div>
           <span style={{ flexShrink: 0 }}>
-            <StatusBadge task={task} />
+            <ScheduleStatusBadge task={task} size="sm" />
           </span>
         </div>
         {task.prompt && (

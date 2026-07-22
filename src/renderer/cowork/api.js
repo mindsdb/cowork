@@ -129,7 +129,18 @@ function _failedEventMeta(events) {
   if (!Array.isArray(events)) return null;
   const ev = [...events].reverse().find((e) => e?.type === 'response.failed');
   if (!ev) return null;
-  return { code: ev.code || null, message: ev.error || ev.message || '' };
+  return {
+    code: ev.code || null,
+    message: ev.error || ev.message || '',
+    // Carry the card context so a RELOADED failure renders the same affordance
+    // as the live one. Without these, reconnectable is undefined on reload and
+    // the provider_overloaded / provider_auth cards mis-nudge a managed user
+    // toward MindsHub (violating the ENG-514 guardrail) — see ENG-673. Mirrors
+    // App.jsx's failedEventMeta (the two hydrate paths must agree on this).
+    reconnectable: ev.reconnectable ?? null,
+    providerLabel: ev.provider_label ?? null,
+    failedModel: ev.model ?? null,
+  };
 }
 
 // Replay the server-persisted SSE event log through the live stream
@@ -165,6 +176,9 @@ function _hydrateAssistantEvents(messages) {
         role: 'error',
         content: failed?.message || 'An unexpected error occurred.',
         code: failed?.code || null,
+        reconnectable: failed?.reconnectable ?? null,
+        providerLabel: failed?.providerLabel ?? null,
+        failedModel: failed?.failedModel ?? null,
       });
     }
   }
@@ -1018,9 +1032,10 @@ export async function fetchSettings() {
         result.recommendedModels = overlayLists(result.recommendedModels, rec.recommendedModels);
         result.recommendedPair = overlayLists(result.recommendedPair, rec.recommendedPair);
         result.modelEfforts = rec.modelEfforts || {};
-        // Per-model availability: MindsHub lists models the user's tier can't
-        // use (marked enabled:false) so the picker shows them greyed as
-        // upgrade prompts. Absent id ⇒ available (backwards compatible).
+        /* Per-model availability: MindsHub marks models the org's wallet can't
+         * currently pay for (or whose free allowance is spent) as
+         * enabled:false, so the picker shows them greyed with an "add credits"
+         * prompt. Absent id ⇒ available (backwards compatible). */
         result.modelEnabled = rec.modelEnabled || {};
       }
       _lastFetchedSettings = result;

@@ -17,7 +17,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import { CardRow, EmptyState } from '../components/ui';
+import { Badge, CardRow, EmptyState } from '../components/ui';
 import { relativeAge } from '../lib/formatTime';
 import {
   PageHeader,
@@ -264,17 +264,13 @@ function ScheduleGroupRow({
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           minWidth: 0,
         }}>{schedule?.title || latest?.title || 'Scheduled task'}</span>
-        <span style={{
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--accent)', letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          padding: '2px 7px', borderRadius: 999,
-          background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-          flexShrink: 0,
-        }}>
+        <Badge
+          variant="accent"
+          size="sm"
+          className="shrink-0 font-mono uppercase tracking-[0.06em]"
+        >
           {runs.length} {runs.length === 1 ? 'run' : 'runs'}
-        </span>
+        </Badge>
       </div>
 
       <div style={{

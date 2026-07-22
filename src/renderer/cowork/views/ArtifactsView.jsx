@@ -13,7 +13,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { Card } from '../components/ui/Card';
-import { Toast } from '../components/ui/Toast';
+import { useToastManager } from '../components/ui/Toast';
 import { EmptyState } from '../components/ui/EmptyState';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
@@ -607,7 +607,8 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
   // don't disappear into the console.
-  const [toast, setToast] = useState(null); // { kind: 'ok'|'error', message }
+  const toastManager = useToastManager();
+  const showToast = ({ kind, message }) => toastManager.add({ title: message, type: kind === 'ok' ? 'success' : 'danger' });
   const searchRef = useRef(null);
 
   // Reflect parent refreshes exactly. The parent refetches when the
@@ -676,11 +677,11 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
     const blocked = publishBlockedReason(artifact);
     if (blocked) {
-      setToast({ kind: 'error', message: blocked });
+      showToast({ kind: 'error', message: blocked });
       return Promise.resolve();
     }
     if (!isPublishableArtifact(artifact)) {
-      setToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be shared.' });
+      showToast({ kind: 'error', message: 'Only HTML and Markdown artifacts can be shared.' });
       return Promise.resolve();
     }
     // Settle any prior unresolved flow before starting a new one so a
@@ -714,13 +715,13 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         setPhase(artifact.path, null);
         const label = m === 'password' ? 'password protected' : m === 'restricted' ? 'restricted' : null;
         trackArtifactPublished(r.report_id || artifact.id || '', m);
-        setToast({
+        showToast({
           kind: 'ok',
           message: label ? `Shared (${label}) — ${r.url}` : `Shared — ${r.url}`,
         });
       } else {
         setPhase(artifact.path, 'failed');
-        setToast({ kind: 'error', message: 'Sharing returned no URL.' });
+        showToast({ kind: 'error', message: 'Sharing returned no URL.' });
       }
     } catch (e) {
       const msg = e?.message || String(e);
@@ -729,7 +730,7 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         ? 'Set your Minds API key in Settings to share artifacts.'
         : `Sharing failed: ${msg}`;
       setPhase(artifact.path, 'failed');
-      setToast({ kind: 'error', message: friendly });
+      showToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
       settlePublish();
@@ -743,9 +744,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
     try {
       await unpublishArtifact(publishTargetPath(artifact));
       updateOne({ ...artifact, publishedUrl: '' });
-      setToast({ kind: 'ok', message: 'Stopped sharing on MindsHub.' });
+      showToast({ kind: 'ok', message: 'Stopped sharing on MindsHub.' });
     } catch (e) {
-      setToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
+      showToast({ kind: 'error', message: `Couldn't stop sharing: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -761,9 +762,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       // Server refreshed last_md5 + published_mtime, so the artifact is no
       // longer "modified". Reflect it locally without a refetch.
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
-      setToast({ kind: 'ok', message: 'Updated the shared version.' });
+      showToast({ kind: 'ok', message: 'Updated the shared version.' });
     } catch (e) {
-      setToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
+      showToast({ kind: 'error', message: `Update failed: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
       setPhase(artifact.path, null);
@@ -782,9 +783,9 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
       }
       await deleteArtifact(artifact.folder || artifact.path);
       removeOne(artifact.path);
-      setToast({ kind: 'ok', message: 'Deleted.' });
+      showToast({ kind: 'ok', message: 'Deleted.' });
     } catch (e) {
-      setToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
+      showToast({ kind: 'error', message: `Delete failed: ${e?.message || e}` });
     } finally {
       setBusy(artifact.path, false);
     }
@@ -840,14 +841,6 @@ export default function ArtifactsView({ artifacts: initial = EMPTY_ARTIFACTS, pr
         // rhythm — together they make Live Artifacts breathe a touch
         // more than other collection pages, where the action button
         // already anchors the lower edge of the header.
-      />
-
-      <Toast
-        type={toast?.kind === 'ok' ? 'success' : 'error'}
-        message={toast?.message}
-        onClose={() => setToast(null)}
-        duration={5000}
-        align="right"
       />
 
       {/* Subtitle → search-row gap. Set to 20px per the design;
