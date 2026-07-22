@@ -13,7 +13,16 @@ jobs:
     uses: ./.github/workflows/build-macos-pkg.yml
     with:
       build_kind: stable
+      # server_ref still matters for machines that already carry a GIT
+      # install of cowork-server: the source-aware updater keeps them on
+      # git@staging. Fresh installs use the pypi rc stream below.
       server_ref: staging
+      # Staging installs from the PyPI pre-release (rc) track published by
+      # cowork-server's publish-staging workflow — same no-git/no-Xcode
+      # install flow as prod, following the staging version stream. Flip
+      # this only after that workflow is live and has published an rc;
+      # otherwise the floor resolves to the latest MAIN release.
+      server_channel: pypi
       minds_api_url: https://api.staging.mindshub.ai
     secrets: inherit
 
@@ -29,7 +38,16 @@ jobs:
     uses: ./.github/workflows/build-windows-installer.yml
     with:
       build_kind: stable
+      # server_ref still matters for machines that already carry a GIT
+      # install of cowork-server: the source-aware updater keeps them on
+      # git@staging. Fresh installs use the pypi rc stream below.
       server_ref: staging
+      # Staging installs from the PyPI pre-release (rc) track published by
+      # cowork-server's publish-staging workflow — same no-git/no-Xcode
+      # install flow as prod, following the staging version stream. Flip
+      # this only after that workflow is live and has published an rc;
+      # otherwise the floor resolves to the latest MAIN release.
+      server_channel: pypi
       minds_api_url: https://api.staging.mindshub.ai
     secrets: inherit
 

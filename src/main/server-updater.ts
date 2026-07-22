@@ -23,6 +23,7 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { buildKind } from './cowork-home';
 import { startServer, stopServer, isServerRunning, withServerMaintenance } from './server-process';
 import {
   getInstallSpec,
@@ -38,6 +39,8 @@ import {
   decideGitUpdate,
   decidePypiUpdate,
   looksLikeBrokenInstall,
+  parseAntonPin,
+  selectLatestPypiVersion,
   type VcsInfo,
 } from './update-logic';
 import {
@@ -169,11 +172,21 @@ function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<
  *  direct_url.json. `--reinstall` rebuilds the environment from scratch, so it
  *  repairs a corrupt or half-written venv — never clobbering one source onto
  *  the other. Shared by the unsupported-Python recreate and the boot repair. */
-function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
+async function reinstallFromSource(uv: string, toolsDir?: string): Promise<{ ok: boolean; stderr: string }> {
   const onGit = !!readVcsInfo('cowork_server', toolsDir);
-  return onGit
-    ? installGit(uv, getCoworkRef(), getAntonRef())
-    : runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
+  if (onGit) return installGit(uv, getCoworkRef(), getAntonRef());
+  // Repair the version that IS installed, not whatever resolves today: a
+  // bare package name resolves the latest stable, which on the staging rc
+  // stream is a silent downgrade — and a downgraded server can face a
+  // database migrated ahead of it and fail to boot. Unknown version
+  // (corrupt venv metadata) falls back to the latest stable, best effort.
+  const installed = await getInstalledVersion(uv);
+  const withArgs = installed ? await antonWithArgs(installed) : [];
+  return runUv(uv, [
+    'tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE,
+    installed ? `${PACKAGE_NAME}==${installed}` : PACKAGE_NAME,
+    ...withArgs,
+  ]);
 }
 
 /** `uv tool dir` — its on-disk layout differs across versions/OSes
@@ -320,23 +333,75 @@ export async function repairServerInstall(failureLog?: string): Promise<boolean>
 
 // ---- PyPI path helpers (release channel) ----------------------------------
 
-function fetchLatestVersion(): Promise<string | null> {
+// Staging-ring builds (preview/stable) follow the rc stream, so their
+// "latest" scans the full releases map including pre-releases; prod AND dev
+// trust info.version, which PyPI computes excluding pre-releases — a prod
+// build can never be offered an rc, and a dev machine's shared uv tool
+// (uv tools are per-user, not per-build) is not dragged onto rcs by a dev
+// session. Defensive try/catch mirrors server-source's build-kind fallbacks.
+function includePrereleases(): boolean {
+  try {
+    const kind = buildKind();
+    return kind === 'preview' || kind === 'stable';
+  } catch {
+    return false;
+  }
+}
+
+function fetchPypiJson(url: string): Promise<Record<string, unknown> | null> {
   return new Promise((resolve) => {
     const req = https.get(
-      PYPI_JSON_URL,
+      url,
       { headers: { Accept: 'application/json' }, timeout: PYPI_TIMEOUT_MS },
       (res) => {
         if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
-          try { resolve(JSON.parse(data)?.info?.version ?? null); } catch { resolve(null); }
+          try { resolve(JSON.parse(data)); } catch { resolve(null); }
         });
       },
     );
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
+}
+
+async function fetchLatestVersion(): Promise<string | null> {
+  const json = (await fetchPypiJson(PYPI_JSON_URL)) as {
+    info?: { version?: string };
+    releases?: Record<string, Array<{ yanked?: boolean }>>;
+  } | null;
+  if (!json) return null;
+  return selectLatestPypiVersion({
+    infoVersion: json.info?.version ?? null,
+    releases: json.releases ?? null,
+    includePrereleases: includePrereleases(),
+  });
+}
+
+/** The extra `--with` args a given cowork-server version needs. Staging rc
+ *  wheels pin `anton-agent==<rc>`; uv honors pre-release markers only in
+ *  DIRECT requirements, so the pin must be restated on the command line or
+ *  the resolution fails. Stable wheels (loose anton constraint) need
+ *  nothing. Fail-open on fetch errors: without the restated pin an rc
+ *  install aborts cleanly at resolution and is retried on the next poll. */
+async function antonWithArgs(version: string): Promise<string[]> {
+  const json = (await fetchPypiJson(`https://pypi.org/pypi/${PACKAGE_NAME}/${version}/json`)) as {
+    info?: { requires_dist?: unknown };
+  } | null;
+  const pin = parseAntonPin(json?.info?.requires_dist);
+  return pin ? ['--with', `anton-agent==${pin}`] : [];
+}
+
+/** Exact install target for a pypi-channel install: the newest version for
+ *  this build's stream plus the direct anton pin its wheel requires. Used by
+ *  the installer so fresh staging installs resolve rc wheels exactly like
+ *  the updater does. */
+export async function resolvePypiInstallTarget(): Promise<{ version: string; withArgs: string[] } | null> {
+  const version = await fetchLatestVersion();
+  if (!version) return null;
+  return { version, withArgs: await antonWithArgs(version) };
 }
 
 // ---------------------------------------------------------------------------
@@ -518,7 +583,17 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     const wasRunning = isServerRunning();
     if (wasRunning) await stopServer();
 
-    const upgrade = await runUv(uv, ['tool', 'install', '--upgrade', '--reinstall', '--python', PYTHON_RANGE, PACKAGE_NAME]);
+    // Install the exact version the decision compared against — a bare
+    // `--upgrade PACKAGE` re-resolves and can diverge from that target, and
+    // it can never reach a pre-release, which the staging rc stream needs
+    // (an exact `==X` specifier enables pre-releases per PEP 440, scoped to
+    // this one package; the wheel's anton rc pin is restated as a direct
+    // requirement via antonWithArgs, so no resolution-wide prerelease flag
+    // is ever set).
+    const upgrade = await runUv(
+      uv,
+      ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${to}`, ...(await antonWithArgs(to))],
+    );
     if (!upgrade.ok) {
       console.error('[server-updater] upgrade failed:', upgrade.stderr);
       if (wasRunning) await startServer();
@@ -528,7 +603,7 @@ async function _pypiUpdate(uv: string): Promise<ServerUpdateResult> {
     const result = await startServer();
     if (!result.ok) {
       console.error('[server-updater] new version failed health check, rolling back...');
-      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`]);
+      const rollback = await runUv(uv, ['tool', 'install', '--force', '--reinstall', '--python', PYTHON_RANGE, `${PACKAGE_NAME}==${from}`, ...(await antonWithArgs(from))]);
       if (rollback.ok) {
         const restored = await startServer();
         if (restored.ok) {
