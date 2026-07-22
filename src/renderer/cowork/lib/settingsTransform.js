@@ -114,12 +114,15 @@ export function providerTypeToServerValue(value) {
 export function effectiveRoleModel(settings, role) {
   const s = settings || {};
   if (role === 'planning') return s.planningModel ?? s.defaultModel ?? '';
+  if (role === 'router') return s.routerModel ?? '';
   return s.codingModel ?? '';
 }
 
 export function effectiveRoleProvider(settings, role) {
   const s = settings || {};
-  const raw = role === 'planning' ? s.planningProvider : s.codingProvider;
+  const raw = role === 'planning' ? s.planningProvider
+    : role === 'router' ? s.routerProvider
+    : s.codingProvider;
   return providerValueToType(raw) || 'minds-cloud';
 }
 
