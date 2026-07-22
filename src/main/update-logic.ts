@@ -329,8 +329,8 @@ export function summarizeUpdateCheck(input: {
 }): UpdateCheckSummary {
   // An explicit `offline` override (no channel result can be trusted) still
   // wins outright, same as before.
-  const uiUpdateAvailable = !input.offline && !input.ui.error && !!input.ui.updateAvailable;
-  const serverUpdateAvailable = !input.offline && !input.server.error && !!input.server.updateAvailable;
+  const uiUpdateAvailable = !input.offline && !!input.ui.updateAvailable;
+  const serverUpdateAvailable = !input.offline && !!input.server.updateAvailable;
   const updateAvailable = uiUpdateAvailable || serverUpdateAvailable;
 
   if (!updateAvailable && (input.offline || input.ui.error || input.server.error)) {

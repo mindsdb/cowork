@@ -783,6 +783,19 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
     expect(r.serverUpdateAvailable).toBe(false);
   });
 
+  it('surfaces a confirmed update when the same aggregated channel also reports a partial error', () => {
+    // The server result aggregates cowork + Anton remote checks. One remote can
+    // confirm a change while the sibling lookup fails, producing both flags.
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: false },
+      server: { updateAvailable: true, latestVersion: '0.26.8.1.2', error: true },
+    });
+    expect(r.ok).toBe(true);
+    expect(r.updateAvailable).toBe(true);
+    expect(r.serverUpdateAvailable).toBe(true);
+    expect(r.serverVersion).toBe('0.26.8.1.2');
+  });
+
   it('an explicit offline override still discards a reported positive from either channel', () => {
     // Belt-and-suspenders: if the caller asserts the whole check is offline,
     // no per-channel result can be trusted, confirmed-looking or not.
