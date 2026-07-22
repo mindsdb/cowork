@@ -37,6 +37,9 @@
       glow:   a => `rgba(31, 156, 176, ${a})`,
     },
     light: {
+      // Full-strength ink. Route-aware quieting lives in
+      // gravity-field.css: `body.gf-quiet` dims the canvas on dense
+      // work surfaces while the home stage keeps the full field.
       dot:    a => `rgba(85, 102, 109, ${a})`,
       stroke: a => `rgba(85, 102, 109, ${a})`,
       glow:   a => `rgba(31, 156, 176, ${a})`,
@@ -61,6 +64,10 @@
     let raf = 0;
     let running = true;
     const start = performance.now();
+    // Cap the draw rate
+    // visually but doubles as a steady GPU/CPU sink for an always-on tab.
+    const FRAME_INTERVAL = 1000 / 4;
+    let lastDraw = 0;
 
     // Smoothed center of mass + cursor.
     const com = { x: 0, y: 0, ready: false };
@@ -100,6 +107,11 @@
     // -------- Frame --------------------------------------------------------
     function frame(now) {
       if (!running) return;
+      if (now - lastDraw < FRAME_INTERVAL) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+      lastDraw = now;
       const t = (now - start) / 1000;
       const r = canvas.getBoundingClientRect();
       const w = r.width;

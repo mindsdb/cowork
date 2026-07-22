@@ -19,7 +19,7 @@ import {
   deleteArtifact,
 } from '../../api';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
-import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isPublishableArtifact, BACKEND_ARTIFACT_TYPES, publishBlockedReason } from '../../lib/artifactKinds';
 import { Modal } from '../ui/Modal';
 import { Menu, Tooltip, Spinner } from '../ui';
 import { ConfirmModal } from '../ConfirmModal';
@@ -27,6 +27,12 @@ import { host } from '../../../platform/host';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { usePublish } from './publish/usePublish';
 import { PublishMenu } from './publish/PublishMenu';
+import {
+  CommentsPanel,
+  CommentsToolbar,
+  useArtifactComments,
+  useArtifactCommentLayer,
+} from './comments';
 
 // Extensions we render inline with the lightweight text preview path
 // (server `/v1/artifacts/preview` → text body). `.md` gets the full
@@ -43,6 +49,15 @@ function _withVersion(url, version) {
   if (!url || version == null || version === '') return url;
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${encodeURIComponent(version)}`;
+}
+
+// Opt the iframe's entry document into the server-injected comment marker
+// layer (cowork-server comments_layer.py gates on this flag). Must match
+// ACTIVATION_PARAM there.
+function _withCommentFlag(url) {
+  if (!url) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}__antonComments=1`;
 }
 
 function _extOfPath(p) {
@@ -159,36 +174,50 @@ function _csvRowsToGfmTable(rows) {
 }
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
-const FONT_DISPLAY = "'Josefin Sans', sans-serif";
-const FONT_MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
+const FONT_MONO = "var(--font-mono)";
 
 // Ghost icon button shared by every top-bar affordance (folder, reload,
 // open-in-browser, kebab, close). forwardRef so it can be the render
 // target of a Base UI Tooltip/Menu trigger (those inject a ref).
+//
+// `active` gives a persistent toggled-on state (accent-tinted fill + accent
+// glyph) that survives mouse-leave — used by the comments switch so it reads
+// as on/off, not just a hover. Hover-idle colors are resolved from `active`
+// so the two states never fight over the inline background.
 const IconButton = forwardRef(function IconButton(
-  { size = 30, disabled = false, style, children, ...rest }, ref,
+  { size = 30, disabled = false, active = false, style, children, ...rest }, ref,
 ) {
+  const idleBg = active ? 'var(--accent-bg)' : 'transparent';
+  const idleFg = active ? 'var(--accent)' : 'var(--ink-3)';
   return (
     <button
       ref={ref}
       type="button"
       disabled={disabled}
+      aria-pressed={active}
       {...rest}
       style={{
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.4 : 1,
-        background: 'transparent', border: 0, color: 'var(--ink-3)',
+        background: idleBg, border: 0, color: idleFg,
         width: size, height: size, borderRadius: 8, flexShrink: 0,
         display: 'inline-grid', placeItems: 'center',
         transition: 'background .12s ease, color .12s ease',
         ...style,
       }}
       onMouseEnter={(e) => {
-        if (!disabled) { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }
+        if (!disabled) {
+          e.currentTarget.style.background = active
+            ? 'color-mix(in srgb, var(--accent) 22%, transparent)'
+            : 'var(--surface-2)';
+          e.currentTarget.style.color = active ? 'var(--accent)' : 'var(--ink)';
+        }
         rest.onMouseEnter?.(e);
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)';
+        e.currentTarget.style.background = idleBg;
+        e.currentTarget.style.color = idleFg;
         rest.onMouseLeave?.(e);
       }}
     >
@@ -209,7 +238,7 @@ function PreviewPlaceholder() {
       <span style={{
         fontFamily: FONT_DISPLAY, fontWeight: 600,
         fontSize: 'clamp(40px, 9vw, 84px)', color: 'var(--ink)', opacity: 0.06,
-        transform: 'rotate(-12deg)', letterSpacing: '0.04em',
+        transform: 'rotate(-12deg)', letterSpacing: '-0.02em',
         userSelect: 'none', whiteSpace: 'nowrap',
       }}>Preview</span>
       <div style={{
@@ -229,6 +258,9 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   const disabledReason = artifact?.actionDisabledReason || '';
   const hasActionPath = !!actionPath && !disabledReason;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
+  // Non-empty when this artifact's type may never be published (e.g.
+  // fullstack-stateful-app). Drives the Publish action's disabled state.
+  const publishBlock = publishBlockedReason(artifact);
   // Backend artifacts treat the folder, not the entry html, as the
   // "thing" the user opens in their OS or browser. Prefer the server's
   // `folder` (the artifact's slug dir) — for fullstack apps the primary
@@ -240,6 +272,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // `<script>` / `<link>` refs in the HTML resolve against a real URL.
   // (srcdoc has no base URL → relative refs 404.)
   const [previewUrl, setPreviewUrl] = useState('');
+  // 'static' (HTML asset bundle) | 'proxy' (fullstack) — the comment marker
+  // layer is server-injected only on the static serve path, so the pin/mode
+  // affordance and the activation flag are gated on this.
+  const [previewKind, setPreviewKind] = useState('');
   // Whether the iframe has finished its first paint — drives the loading
   // placeholder so it lingers past "URL is ready" until content is visible.
   const [iframeReady, setIframeReady] = useState(false);
@@ -254,6 +290,12 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // Manual-reload counter — bumped by the link-pill reload button to
   // force a fresh mount/fetch even when the artifact's mtime is unchanged.
   const [reloadNonce, setReloadNonce] = useState(0);
+  // Comments chrome state. The top bar owns ONE switch (commentsOpen) that
+  // shows/hides the floating comments toolbar; the toolbar owns the rest —
+  // comment-placement mode, the inbox sidebar, marker visibility, leaving.
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [markersShown, setMarkersShown] = useState(true);
   // Per-open counter used as a cache-buster fallback for artifacts whose
   // object carries no `mtime` (e.g. chat-bubble previews built from stream
   // steps). Increments only when there's no mtime, so every (re)open of
@@ -263,6 +305,53 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
   // Publish/access state machine — the single source of truth for the
   // <PublishMenu> popover and the link-pill's published-URL display.
   const pub = usePublish(artifact, { onChange, enabled: open });
+
+  // Comments are enabled only for a published, restricted artifact whose composite
+  // key ({user_dir}/{report_id}) the server has surfaced (Plan 5). Derived here
+  // (before the early return) so the comment hooks below can run unconditionally.
+  const commentsEnabled = !!pub.publishedUrl && pub.accessMode === 'restricted' && !!pub.artifactKey;
+  const _akParts = (pub.artifactKey || '').split('/');
+  const commentUserDir = _akParts[0] || '';
+  const commentReportId = _akParts.slice(1).join('/') || '';
+
+  // Iframe handle + shared comments state. One `useArtifactComments` instance
+  // backs BOTH the inbox panel and the on-artifact marker layer (injected by
+  // cowork-server) — `useArtifactCommentLayer` bridges to that layer over
+  // postMessage. Both stay dormant when comments are disabled.
+  const iframeRef = useRef(null);
+  const comments = useArtifactComments(commentUserDir, commentReportId, {
+    enabled: open && commentsEnabled,
+  });
+  // The injected layer owns the on-artifact UI (pins, hover highlight, thread
+  // popovers) and reports mode changes; this hook pushes the thread list down
+  // and exposes the imperative controls the toolbar + inbox drive. Marker
+  // visibility rides the pushed list (Hide comment ⇒ empty list ⇒ no pins),
+  // so it works against the layer without a server change.
+  const layer = useArtifactCommentLayer(iframeRef, {
+    threads: comments.threads,
+    viewer: comments.viewer,
+    enabled: open && commentsEnabled,
+    markersVisible: commentsOpen && markersShown,
+    onCreate: comments.create,
+    onReply: comments.reply,
+    onStatus: comments.setStatus,
+    onEditThread: comments.editThread,
+    onDeleteThread: comments.deleteThread,
+    onEditReply: comments.editReply,
+    onDeleteReply: comments.deleteReply,
+  });
+
+  // One switch for the whole comments chrome. Opening resets to the default
+  // sub-state (markers on, inbox closed); closing also drops the iframe out of
+  // comment-placement mode so no pin cursor lingers on a "plain" preview.
+  const toggleComments = () => {
+    setCommentsOpen((was) => {
+      if (was) layer.exitMode();
+      setInboxOpen(false);
+      setMarkersShown(true);
+      return !was;
+    });
+  };
 
   const isText = _isTextArtifact(artifact);
   const textExt = isText
@@ -297,6 +386,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
     setLoading(true);
     setErr('');
     setPreviewUrl('');
+    setPreviewKind('');
     setBackendPort(null);
     setTextPreview(null);
     let cancelled = false;
@@ -340,13 +430,29 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             iframeUrl = u.toString();
           } catch { /* fall through with the raw URL */ }
           if (cancelled) return;
-          setPreviewUrl(_withVersion(iframeUrl, cacheVersion));
+          setPreviewKind('proxy');
+          // Fullstack previews flow through the proxy, which injects the marker
+          // layer into the root HTML on the same activation flag (see
+          // preview_proxy.py). Bake it in at mount time — same rationale as the
+          // static branch below (stable src, no reactive reload).
+          setPreviewUrl(commentsEnabled
+            ? _withCommentFlag(_withVersion(iframeUrl, cacheVersion))
+            : _withVersion(iframeUrl, cacheVersion));
           if (typeof port === 'number') setBackendPort(port);
           return;
         }
         if (!url) throw new Error('Preview mount returned no URL');
         if (cancelled) return;
-        setPreviewUrl(_withVersion(url, cacheVersion));
+        setPreviewKind('static');
+        // Bake the comment-layer activation flag into the URL at mount time
+        // (rather than swapping the iframe `src` reactively later) so the src
+        // stays stable — no gratuitous reload/flicker. Injecting the layer into
+        // an already-loaded cross-origin iframe is impossible, so enabling
+        // comments after load inherently needs a remount; commentsEnabled is in
+        // this effect's deps to make that a single, intentional re-run.
+        setPreviewUrl(commentsEnabled
+          ? _withCommentFlag(_withVersion(url, cacheVersion))
+          : _withVersion(url, cacheVersion));
         // Adopt the server's known published URL when the artifact object
         // (e.g. a chat-bubble preview) didn't carry one. Don't blank a
         // locally-known value when the server returns "".
@@ -356,7 +462,7 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasActionPath, disabledReason, isText, reloadNonce]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasActionPath, disabledReason, isText, reloadNonce, commentsEnabled]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -524,9 +630,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
         <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
           <div
             id="artifact-viewer-title"
+            className="s-h3"
             title={title}
             style={{
-              fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 15, color: 'var(--ink)',
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               minWidth: 0, paddingRight: 12,
             }}
@@ -569,8 +676,28 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
 
         {/* Right — publish · more · close */}
         <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+          {/* Single comments switch — everything else (mode, inbox, marker
+              visibility, leaving) lives on the floating CommentsToolbar. */}
+          {commentsEnabled && (previewKind === 'static' || previewKind === 'proxy') && (
+            <Tooltip content={commentsOpen ? 'Hide comments' : 'Comments'}>
+              <IconButton
+                aria-label="Comments"
+                onClick={toggleComments}
+                active={commentsOpen}
+              >
+                {Ico.chats(18)}
+              </IconButton>
+            </Tooltip>
+          )}
           {publishable && (
-            <PublishMenu controller={pub} disabled={!hasActionPath} disabledReason={disabledReason} />
+            // Block only the Publish direction for forbidden types (e.g.
+            // fullstack-stateful-app); once published, the menu stays usable
+            // so the artifact can still be unpublished.
+            <PublishMenu
+              controller={pub}
+              disabled={!hasActionPath || (!isPublished && !!publishBlock)}
+              disabledReason={(!isPublished && publishBlock) ? publishBlock : disabledReason}
+            />
           )}
           <Menu
             ariaLabel="Artifact actions"
@@ -609,7 +736,10 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
       </div>
 
       {/* Body — text (.md/.txt/.csv) renders inline; everything else is a
-          sandboxed iframe with a "Preview" placeholder until it paints. */}
+          sandboxed iframe with a "Preview" placeholder until it paints.
+          `position: relative` so the comments panel can overlay the preview
+          (anchored right) instead of shifting it. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative' }}>
       <div style={{ flex: 1, minHeight: 0, position: 'relative', background: 'var(--surface-2)', overflow: isText ? 'auto' : 'hidden' }}>
         {err ? (
           <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
@@ -668,9 +798,13 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
           <>
             {previewUrl && (
               <iframe
+                ref={iframeRef}
                 title={title || 'Artifact preview'}
+                // The comment-layer activation flag (when applicable) is already
+                // baked into previewUrl at mount time — see the mount effect —
+                // so the src stays stable and doesn't reload reactively.
                 src={previewUrl}
-                onLoad={() => setIframeReady(true)}
+                onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
                 sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
                 style={{
                   width: '100%', height: '100%', border: 0, background: '#fff',
@@ -680,6 +814,39 @@ export function ArtifactViewer({ open, artifact, onClose, onChange, onDelete }) 
             )}
             {(loading || !previewUrl || !iframeReady) && <PreviewPlaceholder />}
           </>
+        )}
+      </div>
+        {/* Comments chrome: the floating toolbar drives everything; the inbox
+            sidebar opens from its tray button. */}
+        {commentsOpen && commentsEnabled && (
+          <CommentsToolbar
+            mode={layer.mode}
+            onToggleMode={layer.toggleMode}
+            inboxOpen={inboxOpen}
+            onToggleInbox={() => setInboxOpen((v) => !v)}
+            markersShown={markersShown}
+            onToggleMarkers={() => setMarkersShown((v) => !v)}
+            onClose={toggleComments}
+          />
+        )}
+        {/* The panel is a thread INBOX (summaries + resolve/delete) plus a
+            pinned composer for general (unanchored) comments; anchored
+            composing, replying, and editing happen in the on-artifact popover. */}
+        {commentsOpen && inboxOpen && commentsEnabled && commentUserDir && commentReportId && (
+          <CommentsPanel
+            threads={comments.threads}
+            anchorStates={layer.anchorStates}
+            error={comments.error}
+            expired={comments.expired}
+            viewer={comments.viewer}
+            onStatus={comments.setStatus}
+            onDeleteThread={comments.deleteThread}
+            onCreate={comments.create}
+            onHoverThread={layer.hlOn}
+            onLeaveThread={layer.hlOff}
+            onFocusThread={layer.focus}
+            onClose={() => setInboxOpen(false)}
+          />
         )}
       </div>
 

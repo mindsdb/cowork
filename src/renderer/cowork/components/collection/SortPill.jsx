@@ -56,9 +56,9 @@ export function SortPill({ value, onChange, options = [], label = 'Sort' }) {
           position: 'absolute', top: 'calc(100% + 4px)', left: 0,
           minWidth: 160, zIndex: 20,
           background: 'var(--surface)',
-          border: '1px solid var(--line)',
+          // No border — floats on --sh-popup alone (ENG-790).
           borderRadius: 8,
-          boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+          boxShadow: 'var(--sh-popup)',
           padding: '4px 0',
         }}>
           {options.map((opt) => (

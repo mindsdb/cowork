@@ -86,7 +86,7 @@ When testing a packaged build (`npm run pack`), the `DEV_MODE` variable in `~/.a
 |-------|----------|
 | `live` | Load from Vite dev server (`localhost:5173`) — requires `npm run dev:renderer` running separately |
 | `full` | Load the bundled renderer only — skips OTA cache entirely |
-| _(unset)_ | Production mode — loads OTA-cached UI if available, otherwise bundled |
+| _(unset)_ | Production mode — loads OTA-cached UI if available (`prod` builds only — see [Over-the-Air Updates](#over-the-air-updates)), otherwise bundled |
 
 To set it, add `DEV_MODE=full` (or `live`) to `~/.anton/.env`. Remove the line to return to production behavior. When `DEV_MODE` is set, the OTA update check is skipped entirely.
 
@@ -255,11 +255,18 @@ The GUI provides a visual `/connect` flow:
 
 ## Over-the-Air Updates
 
-MindsHub Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself changes rarely and is updated via the traditional installer release flow.
+MindsHub Cowork has two independent OTA update channels so both the React frontend and the Python backend can be updated without shipping a new `.dmg` or `.exe`. The Electron shell itself (everything in `src/main/` and the preload) is **not** covered by OTA and only updates via a new installer.
 
-### Server updates (PyPI)
+UI OTA is gated by build kind (ENG-670): enabled in **`prod` builds only** — `stable`, `preview`, and `dev` builds always run their bundled renderer so testers see the branch under test. For *when* updates apply (boot vs. periodic checks, the server-down recovery exception, the `UI_UPDATE_MODE` escape hatch), see [docs/update-behavior.md](docs/update-behavior.md).
 
-After the server boots successfully, the main process checks [PyPI](https://pypi.org/project/cowork-server/) for a newer `cowork-server` version. If one exists, it stops the server, upgrades via `uv tool install --upgrade --reinstall cowork-server`, restarts, and probes `/health`. If the health check fails, the previous version is reinstalled automatically (rollback). Set `COWORK_SERVER_DISABLE_AUTOUPDATE=1` to opt out.
+### Server updates (source-aware)
+
+The server updater detects how `cowork-server` was installed (from the tool venv's `direct_url.json`) and updates accordingly:
+
+- **git install** — re-pulls the configured branch/tag HEAD for `cowork-server` **and** `anton` (trigger: changed remote commit SHA via `git ls-remote`)
+- **PyPI install** — version comparison against [PyPI](https://pypi.org/project/cowork-server/), then `uv tool install --upgrade`
+
+After an upgrade the server is restarted and probed via `/health`; on failure the previous version is reinstalled automatically, and the rollback itself is health-verified (a still-broken rollback raises a critical notification rather than being reported as recovered). If the server is **down**, an available server update is applied immediately regardless of update mode — recovery, not routine maintenance. Set `COWORK_SERVER_DISABLE_AUTOUPDATE=1` to opt out.
 
 See `src/main/server-updater.ts` for the implementation.
 
@@ -273,7 +280,7 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 │                                     │        │  (PUBLIC)                        │
 │  source code lives here             │        │                                  │
 │                                     │  push  │  GitHub Releases:                │
-│  .github/workflows/publish-ui.yml ──┼───────▶│    ui-v1.2.0/ui-bundle.tar.gz   │
+│  .github/workflows/publish-ui.yml ──┼───────▶│    ui-v2.26.7.16.1/…tar.gz      │
 │                                     │        │                                  │
 │                                     │        │  GitHub Pages (gh-pages branch): │
 │                                     │        │    latest.json                   │
@@ -289,35 +296,22 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 
 How it works:
 
-1. Code is merged to `main` (or a `ui-v*` tag is pushed)
-2. The `publish-ui` workflow builds the renderer and creates a `.tar.gz` bundle with a SHA-256 checksum
+1. Code is merged to `main` — **every** push to `main` runs the auto-release workflow (`release.yml`), which computes a CalVer version (e.g. `2.26.7.16.1`), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
+2. The `publish-ui` workflow builds the renderer (with the version baked into `__APP_VERSION__`) and creates a `.tar.gz` bundle with a SHA-256 checksum
 3. Using a `RELEASES_TOKEN`, it pushes the bundle as a GitHub Release and updates `latest.json` on GitHub Pages — both on the public `antontron-releases` repo
-4. On every launch, the app fetches `latest.json` (static file, no auth, no API rate limits)
-5. If a newer version exists, the bundle is downloaded, SHA-256 verified, and cached
-6. In **auto** mode the UI reloads silently; in **manual** mode a sidebar banner lets the user choose when to apply. The preference is configurable in Settings → Updates.
+4. The app checks `latest.json` at launch and every 4 hours (static file, no auth, no API rate limits)
+5. An update is taken only if it passes the safety gates: strictly newer than the installed UI (no downgrades), SHA-256 verified, the server-first coupling held (a failed server update defers the UI), and any declared `min_server_version` floor satisfied
+6. **The update is applied automatically at boot** — the UI reloads silently, no user choice involved. There is no manual/auto setting in Settings anymore (ENG-858); `UI_UPDATE_MODE` in `~/.anton/.env` remains as an env-only support/QA escape hatch, not a user-facing preference. A mid-session periodic check (every 4h) still only surfaces a banner and never auto-applies, so a long-running session can always see and apply an update without an unplanned reload. A freshly-swapped bundle must finish loading within 15s or it is rolled back and quarantined. See [docs/update-behavior.md](docs/update-behavior.md) for the full timing rules.
 
-#### Automatic deployment
+#### Publishing
 
-The workflow triggers automatically on three events:
+| Trigger | When | Version |
+| --- | --- | --- |
+| **Push to `main`** (normal path) | Every merge — the release train's auto-release calls `publish-ui` | Canonical CalVer, identical to the prod installer (e.g. `2.26.7.16.1`) |
+| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml) → Run workflow — re-publish/backfill | Entered version, or derived from `git describe` if empty |
+| **Tag push** | `git tag ui-v2.26.7.16.2 && git push origin ui-v2.26.7.16.2` — UI-only release | From the tag |
 
-| Trigger | When | Version format | Example |
-| --- | --- | --- | --- |
-| **Push to `main`** | Any merge that changes `src/renderer/`, `src/shared/`, or `package.json` | `{pkg.version}-{sha}` | `1.0.1-a3b4c5d` |
-| **Tag push** | `git tag ui-v1.2.0 && git push origin ui-v1.2.0` | Clean version from tag | `1.2.0` |
-| **Manual dispatch** | [Actions UI](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml) → Run workflow | Whatever you enter (or pkg.version + sha if empty) | `1.2.0` |
-
-Every merge to `main` that touches UI files automatically deploys to all users — no manual tagging required. Use explicit tags (`ui-v*`) for milestone releases. The workflow checks for duplicate versions and skips if already published.
-
-#### Publishing manually
-
-```bash
-# Option A: tag
-git tag ui-v1.2.0 && git push origin ui-v1.2.0
-
-# Option B: GitHub Actions UI → Publish UI Bundle → Run workflow
-
-# Option C: just merge to main (auto-publishes if renderer files changed)
-```
+The workflow checks for duplicate versions and skips if already published. Because the client refuses downgrades, un-shipping a bad bundle means publishing a **newer** fixed version, not re-pointing `latest.json` at an older one.
 
 #### Verifying a deploy
 
@@ -329,7 +323,9 @@ git tag ui-v1.2.0 && git push origin ui-v1.2.0
 
 - Every UI bundle is integrity-checked with **SHA-256** before extraction
 - Checksum mismatch → update discarded, app loads last known good UI
-- Previous UI version kept on disk for automatic **rollback**
+- Previous UI version kept on disk for automatic **rollback**; a bundle that fails its post-swap load check is rolled back and **quarantined** (never re-applied)
+- Cache slots carry versioned provenance (`.ota-meta.json`) and are served only when strictly **newer than the bundled renderer** — a stale or legacy cache can never downgrade the UI
+- OTA runs only in `prod` builds; the gate fails safe to OFF if the packaged build kind is missing or unrecognized
 - All downloads over HTTPS
 - `RELEASES_TOKEN` only has write access to the public releases repo — source code is never exposed
 
@@ -339,11 +335,14 @@ git tag ui-v1.2.0 && git push origin ui-v1.2.0
 App starts
   ├─ If DEV_MODE is set → load Vite dev server or bundled renderer, skip OTA
   ├─ Load cached UI (instant, no network needed)
-  │   └─ Falls back to bundled renderer if no cache
+  │   └─ Served only if: OTA enabled (prod build) + valid provenance
+  │      + strictly newer than bundled + server-compat floor verified;
+  │      otherwise the bundled renderer loads
   ├─ Start cowork-server (spawn process, wait for /health)
-  │   └─ After healthy: background PyPI check for server updates
-  └─ After renderer loads:
-      └─ Background: check GitHub Pages for UI updates
+  └─ After renderer loads: boot update check (UI manifest + server, in parallel)
+      ├─ apply now (server first, then UI, health-checked reload) — unless the
+      │   UI_UPDATE_MODE=manual escape hatch is set (support/QA only), then banner only
+      └─ then re-check every 4h (banner only, never auto-applies)
 ```
 
 The app **never blocks on a network request** — it always loads immediately from cache or bundled files.
@@ -655,7 +654,7 @@ Source SVG is in `assets/icon.svg`. The script renders to PNG then creates `.icn
 | `ANTON_MEMORY_MODE` | Settings | Memory mode (autopilot/copilot/off) |
 | `ANTON_LANGFUSE_HEADERS` | Manual | Set to `1` to emit Langfuse-* headers on LLM calls |
 | `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
-| `UI_UPDATE_MODE` | Settings | OTA UI update behavior (`auto` / `manual`; default `auto`) |
+| `UI_UPDATE_MODE` | Manual | OTA UI update behavior (`auto` / `manual`; default `auto`). Env-only support/QA escape hatch — no Settings UI control (ENG-858) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
 | `COWORK_SERVER_PACKAGE` | Manual | Override install source with a literal `uv` spec (local path, custom URL, etc.) — wins over all channel/ref logic |
 | `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |

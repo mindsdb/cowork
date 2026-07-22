@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import Ico from '../components/Icons';
+import { Badge } from '../components/ui';
 import {
   fetchChannelBindings,
   createChannelBinding,
@@ -14,6 +15,7 @@ import {
   deleteChannelBinding,
   fetchProjects,
 } from '../api';
+import { Select } from '../components/ui';
 
 const TRIGGERS = ['always', 'mention_only', 'regex'];
 const BLANK = { channel_type: '', external_group_id: '', display_name: '', trigger_rule: 'always', trigger_pattern: '', anton_project_id: '' };
@@ -95,24 +97,37 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
 
       <div className="channels-route-add">
         {channelType ? null : (
-          <select className="channels-input" value={draft.channel_type}
-            onChange={(e) => setDraft({ ...draft, channel_type: e.target.value })}>
-            <option value="">Channel…</option>
-            {plugins.map((p) => <option key={p.channel_type} value={p.channel_type}>{p.display_name}</option>)}
-          </select>
+          <Select
+            style={{ flex: '1 1 140px', minWidth: 120 }}
+            value={draft.channel_type}
+            onValueChange={(v) => setDraft({ ...draft, channel_type: v })}
+            ariaLabel="Channel"
+            options={[
+              { value: '', label: 'Channel…' },
+              ...plugins.map((p) => ({ value: p.channel_type, label: p.display_name })),
+            ]}
+          />
         )}
         <input className="channels-input" placeholder="chat / group id"
           value={draft.external_group_id}
           onChange={(e) => setDraft({ ...draft, external_group_id: e.target.value })} />
-        <select className="channels-input" value={draft.trigger_rule}
-          onChange={(e) => setDraft({ ...draft, trigger_rule: e.target.value })}>
-          {TRIGGERS.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select className="channels-input" value={draft.anton_project_id}
-          onChange={(e) => setDraft({ ...draft, anton_project_id: e.target.value })}>
-          <option value="">Project: default</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <Select
+          style={{ flex: '1 1 140px', minWidth: 120 }}
+          value={draft.trigger_rule}
+          onValueChange={(v) => setDraft({ ...draft, trigger_rule: v })}
+          ariaLabel="Trigger rule"
+          options={TRIGGERS.map((t) => ({ value: t, label: t }))}
+        />
+        <Select
+          style={{ flex: '1 1 140px', minWidth: 120 }}
+          value={draft.anton_project_id}
+          onValueChange={(v) => setDraft({ ...draft, anton_project_id: v })}
+          ariaLabel="Project"
+          options={[
+            { value: '', label: 'Project: default' },
+            ...projects.map((p) => ({ value: p.id, label: p.name })),
+          ]}
+        />
         <button type="button" className="channels-btn channels-btn-primary" onClick={addRow}>
           {Ico.plus(15)}<span>Add</span>
         </button>
@@ -125,7 +140,7 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
       ) : (
         <table className="channels-route-table">
           <thead>
-            <tr>{channelType ? null : <th>Channel</th>}<th>Chat</th><th>Label</th><th>Trigger</th><th>Project</th><th></th></tr>
+            <tr>{channelType ? null : <th>Channel</th>}<th>Chat</th><th>Label</th><th>Trigger</th><th>Project</th><th>Instructions</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((b) => {
@@ -133,17 +148,20 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
               const rule = rowValue(b, 'trigger_rule');
               return (
                 <tr key={b.id}>
-                  {channelType ? null : <td><span className="channels-badge channels-badge-idle">{b.channel_type}</span></td>}
+                  {channelType ? null : <td><Badge variant="muted" size="xs">{b.channel_type}</Badge></td>}
                   <td className="channels-type">{b.external_group_id}{b.external_thread_id ? `/${b.external_thread_id}` : ''}</td>
                   <td>
                     <input className="channels-input channels-input-sm" value={rowValue(b, 'display_name')}
                       placeholder="—" onChange={(e) => editField(b.id, 'display_name', e.target.value)} />
                   </td>
                   <td>
-                    <select className="channels-input channels-input-sm" value={rule}
-                      onChange={(e) => editField(b.id, 'trigger_rule', e.target.value)}>
-                      {TRIGGERS.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    <Select
+                      size="sm"
+                      value={rule}
+                      onValueChange={(v) => editField(b.id, 'trigger_rule', v)}
+                      ariaLabel="Trigger rule"
+                      options={TRIGGERS.map((t) => ({ value: t, label: t }))}
+                    />
                     {rule === 'regex' ? (
                       <input className="channels-input channels-input-sm" placeholder="pattern"
                         value={rowValue(b, 'trigger_pattern')}
@@ -151,12 +169,22 @@ export default function ChannelBindings({ plugins = [], channelType = null }) {
                     ) : null}
                   </td>
                   <td>
-                    <select className="channels-input channels-input-sm"
+                    <Select
+                      size="sm"
                       value={rowValue(b, 'anton_project_id') || ''}
-                      onChange={(e) => editField(b.id, 'anton_project_id', e.target.value || null)}>
-                      <option value="">default</option>
-                      {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                      onValueChange={(v) => editField(b.id, 'anton_project_id', v || null)}
+                      ariaLabel="Project"
+                      options={[
+                        { value: '', label: 'default' },
+                        ...projects.map((p) => ({ value: p.id, label: p.name })),
+                      ]}
+                    />
+                  </td>
+                  <td>
+                    <textarea className="channels-input channels-input-sm" rows={1}
+                      placeholder="persona / tone for this chat"
+                      value={rowValue(b, 'instructions')}
+                      onChange={(e) => editField(b.id, 'instructions', e.target.value)} />
                   </td>
                   <td className="channels-route-actions">
                     {dirty ? (

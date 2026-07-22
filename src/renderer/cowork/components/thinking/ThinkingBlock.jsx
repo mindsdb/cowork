@@ -1,32 +1,26 @@
-// Collapsible "Thinking…" block under the ANTON label of a turn.
+// Collapsible thinking block above an assistant answer — the ONE
+// in-progress indicator for a turn.
 //
-// Adapted from mdb-ai/Message/ThinkingBlock/index.jsx — without jotai.
 // The parent owns the steps array, the active state and the start time;
 // we just render. The header is clickable to expand/collapse the steps.
 //
-// When `isActive` is true and there are no steps yet, we render the
-// "Thinking..." header with a live timer. As steps arrive, the list
-// expands automatically (mdb-ai auto-expands when scratchpad steps
-// appear; we keep that).
+// Header states:
+//   active + collapsed  →  [orb] <current step label>            (shimmer)
+//   active + expanded   →  [orb] Working for 6s                  (live timer;
+//                          the current step sits at the END of the list below)
+//   finished            →  Worked for 3m 9s  ⌄                   (chevron on hover)
+//   finished, no timing →  Thought process   ⌄                   (e.g. reopened
+//                          conversations where the duration wasn't recoverable)
+//
+// The block auto-expands the first time inspectable steps stream in,
+// and auto-collapses when the turn finishes — the finished header is a
+// calm one-liner the user can reopen on demand.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
 import { ThinkingStep } from './ThinkingStep';
-
-function LiveTimer({ startedAt }) {
-  const [elapsed, setElapsed] = useState(() =>
-    startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0
-  );
-  useEffect(() => {
-    if (!startedAt) return;
-    const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [startedAt]);
-  return <span className="ml-auto text-[11px] text-ink-4">{elapsed}s</span>;
-}
+import { WorkingIndicator } from './WorkingIndicator';
 
 function formatDuration(ms) {
   if (ms == null || ms < 0) return null;
@@ -39,11 +33,27 @@ function formatDuration(ms) {
   return `${h}h ${m % 60}m`;
 }
 
+// Live "Working for 6s" text — ticks once a second while the turn runs.
+function WorkingLabel({ startedAt }) {
+  const [elapsed, setElapsed] = useState(() =>
+    startedAt ? Math.max(0, Date.now() - startedAt) : 0
+  );
+  useEffect(() => {
+    if (!startedAt) return undefined;
+    const id = setInterval(() => {
+      setElapsed(Math.max(0, Date.now() - startedAt));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  return <span className="tabular-nums">Working for {formatDuration(elapsed)}</span>;
+}
+
 export function ThinkingBlock({
   steps = [],
   isActive = false,
   startedAt = null,
   currentLabel = null,
+  slotId = null,
   onActivateStep,
 }) {
   const hasSteps = steps.length > 0;
@@ -52,16 +62,24 @@ export function ThinkingBlock({
     [steps]
   );
 
-  const [isExpanded, setIsExpanded] = useState(() => hasInspectableSteps);
+  const [isExpanded, setIsExpanded] = useState(() => isActive && hasInspectableSteps);
   const hasAutoExpanded = useRef(false);
 
-  // Auto-expand the first time scratchpad or tool-call steps appear.
+  // Auto-expand the first time scratchpad or tool-call steps appear —
+  // but only while the turn is live. Finished blocks mount collapsed.
   useEffect(() => {
-    if (hasInspectableSteps && !hasAutoExpanded.current) {
+    if (isActive && hasInspectableSteps && !hasAutoExpanded.current) {
       setIsExpanded(true);
       hasAutoExpanded.current = true;
     }
-  }, [hasInspectableSteps]);
+  }, [isActive, hasInspectableSteps]);
+
+  // Auto-collapse when the turn finishes.
+  const wasActive = useRef(isActive);
+  useEffect(() => {
+    if (wasActive.current && !isActive) setIsExpanded(false);
+    wasActive.current = isActive;
+  }, [isActive]);
 
   const finalDuration = useMemo(() => {
     if (!isActive && startedAt && steps.length > 0) {
@@ -73,9 +91,8 @@ export function ThinkingBlock({
 
   // Glanceable kill signal: how many cells timed out / were killed. Surfaced
   // in the (collapsed) header so a retry-on-timeout loop is visible without
-  // expanding — otherwise "Thinking…" + a ticking timer looks identical to a
-  // cell that's making progress. Expanding shows which cells via the per-row
-  // "timed out" badge.
+  // expanding — otherwise a ticking timer looks identical to a cell that's
+  // making progress. Expanding shows which cells via the per-row badge.
   const timedOutCount = useMemo(
     () => steps.filter((s) => s.cellStatus === 'timeout').length,
     [steps]
@@ -87,37 +104,44 @@ export function ThinkingBlock({
   if (!isActive && !hasSteps) return null;
 
   return (
-    <div className="w-full pt-1">
+    <div className="w-full">
       <button
         type="button"
         onClick={toggleExpanded}
-        title={isExpanded ? 'Hide details' : 'Show details'}
+        aria-expanded={isExpanded}
+        title={isExpanded ? 'Hide thought process' : 'Show thought process'}
         className={clsx(
           'group flex w-full cursor-pointer items-center gap-1 rounded-md py-1 text-left',
-          'transition-colors hover:bg-surface-2/60',
           'border-0 bg-transparent'
         )}
       >
-        <span
-          className={clsx(
-            'flex-none text-ink-4 transition-transform duration-200',
-            isExpanded && 'rotate-90'
-          )}
-        >
-          {Ico.chevRight(14)}
-        </span>
-
         {isActive ? (
-          <>
-            <span className="flex-none text-[12px] text-ink-3">
-              {currentLabel || 'Thinking'}
-            </span>
-            <LiveTimer startedAt={startedAt} />
-          </>
+          <WorkingIndicator
+            slotId={slotId}
+            label={
+              isExpanded
+                ? <WorkingLabel startedAt={startedAt} />
+                : (currentLabel || 'Thinking…')
+            }
+          />
         ) : (
-          <span className="flex-none text-[12px] text-ink-3">
-            Worked for {finalDuration || '—'}
-          </span>
+          <>
+            {/* Same size as the answer body (14.5px) — the header reads
+                as part of the message, not as fine print. */}
+            <span className="flex-none text-[14.5px] text-ink-3">
+              {finalDuration ? `Worked for ${finalDuration}` : 'Thought process'}
+            </span>
+            <span
+              className={clsx(
+                'inline-flex flex-none items-center self-center text-ink-4',
+                'opacity-0 transition-[opacity,transform] duration-200',
+                'group-hover:opacity-100 group-focus-visible:opacity-100',
+                isExpanded && 'rotate-180'
+              )}
+            >
+              {Ico.chevDown(16)}
+            </span>
+          </>
         )}
 
         {timedOutCount > 0 && (

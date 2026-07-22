@@ -6,10 +6,16 @@
 // return, plus a fragile hover-corridor submenu — and none of them had
 // real keyboard support (arrow keys, typeahead, focus loop). That
 // behavior is exactly what an unstyled primitive layer is for. Base UI
-// gives us all of it; we own only the skin, wired to the same CSS
-// variables (`--surface`, `--ink-2`, `--line`, `--danger`) the rest of
-// the app uses — so it's visually identical to the menus it replaces,
-// with no new styling philosophy.
+// gives us all of it; we own only the skin, wired to the same design
+// tokens (`bg-surface`, `text-ink-2`, `border-line`, `text-danger`) the
+// rest of the app uses — so it's visually identical to the menus it
+// replaces, with no new styling philosophy.
+//
+// Styled with `cva` + `cn()` + Tailwind's `data-[]:` arbitrary variants —
+// the pattern `Switch.tsx`/`Checkbox.tsx`/`Select.jsx` use to skin Base
+// UI's data-attribute-driven states (highlighted, disabled, open/closed).
+// Not a runtime-injected stylesheet: every class here is real source
+// text Tailwind's own pipeline sees and processes.
 //
 // Two mounting modes:
 //
@@ -33,62 +39,42 @@
 import { useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Menu as BaseMenu } from '@base-ui/react/menu';
+import { cva } from 'class-variance-authority';
+import { cn } from '../../lib/cn';
 
-// Scoped stylesheet, injected once — mirrors Modal.jsx's keyframe
-// pattern. Inline styles can't express `[data-highlighted]` /
-// `[data-disabled]`, and those attributes are how Base UI signals both
-// pointer hover AND keyboard navigation, so the highlight has to live in
-// a stylesheet to cover both. Everything resolves to the same design
-// tokens the inline-styled surfaces use.
-let _MENU_CSS_INJECTED = false;
-function _ensureMenuCss() {
-  if (_MENU_CSS_INJECTED) return;
-  if (typeof document === 'undefined') return;
-  const style = document.createElement('style');
-  style.setAttribute('data-cw-menu', '');
-  style.textContent = `
-.cw-menu {
-  min-width: var(--cw-menu-w, 200px);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(15,16,17,0.28), 0 1px 0 rgba(15,16,17,0.04);
-  padding: 4px 0;
-  outline: none;
-  font-family: var(--font-body);
-  transform-origin: var(--transform-origin);
-}
-.cw-menu[data-open]   { animation: cw-menu-in 130ms ease-out; }
-.cw-menu[data-closed] { animation: cw-menu-out 90ms ease-in; }
-@keyframes cw-menu-in  { from { opacity: 0; transform: scale(0.97); } to   { opacity: 1; transform: scale(1); } }
-@keyframes cw-menu-out { from { opacity: 1; transform: scale(1); }    to   { opacity: 0; transform: scale(0.97); } }
-.cw-menu-item {
-  display: flex; align-items: center; gap: 10px;
-  width: calc(100% - 8px); margin: 0 4px;
-  padding: 8px 10px; border-radius: 5px;
-  font-size: 13px; color: var(--ink-2);
-  cursor: pointer; user-select: none; outline: none;
-  box-sizing: border-box;
-}
-.cw-menu-item[data-highlighted]        { background: var(--surface-2); }
-.cw-menu-item[data-disabled]           { opacity: 0.55; cursor: not-allowed; }
-.cw-menu-item.danger                   { color: var(--danger); }
-.cw-menu-item.danger[data-highlighted] { background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.cw-menu-item-ico        { display: inline-flex; flex-shrink: 0; color: var(--ink-3); }
-.cw-menu-item.danger .cw-menu-item-ico { color: var(--danger); }
-.cw-menu-item-label      { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-menu-item-hint       { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-4); }
-.cw-menu-item-chev       { display: inline-flex; flex-shrink: 0; color: var(--ink-4); }
-.cw-menu-sep             { height: 1px; background: var(--line); margin: 4px 0; }
-/* Keep the trigger in its active state while the menu is open. The
-   !important beats the trigger's own inline background, which an
-   onMouseOut handler would otherwise reset the moment the pointer
-   leaves to travel into the menu. */
-.cw-menu-trigger[data-popup-open] { background: var(--surface-2) !important; color: var(--ink) !important; }
-`;
-  document.head.appendChild(style);
-  _MENU_CSS_INJECTED = true;
-}
+// Popup shell — background/radius/shadow + the open/close fade+scale.
+// Borderless and token-shadowed per ENG-790; this keeps that visual
+// treatment while replacing the runtime-injected CSS mechanism.
+const MENU_POPUP_CLASSES = cn(
+  'min-w-[var(--cw-menu-w,_200px)] bg-surface rounded-[10px] shadow-sh-popup',
+  'py-[4px] outline-none font-body [transform-origin:var(--transform-origin)]',
+  'data-[open]:animate-scale-in data-[closed]:animate-scale-out',
+);
+
+const itemVariants = cva(
+  [
+    'flex items-center gap-[10px]',
+    'w-[calc(100%-8px)] mx-[4px] px-[10px] py-[8px] rounded-[5px]',
+    'text-[13px] cursor-pointer select-none outline-none box-border',
+    'data-[disabled]:opacity-55 data-[disabled]:cursor-not-allowed',
+  ],
+  {
+    variants: {
+      danger: {
+        // Two full utilities per branch (not a base + override) so only
+        // one `data-[highlighted]:bg-*` utility is ever present on a
+        // given item — Tailwind utilities are equal-specificity, so a
+        // "base rule + more-specific override" (the old CSS's
+        // `.danger[data-highlighted]` beating `[data-highlighted]`)
+        // doesn't reliably translate; picking one utility per branch
+        // sidesteps needing that specificity order at all.
+        true:  'text-danger data-[highlighted]:bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]',
+        false: 'text-ink-2 data-[highlighted]:bg-surface-2',
+      },
+    },
+    defaultVariants: { danger: false },
+  },
+);
 
 // Chevron for submenu triggers. Inlined so the primitive stays free of
 // any app-icon dependency.
@@ -108,23 +94,25 @@ function renderItems(items, z, onActivate) {
     const key = it.id || it.key || it.label || i;
 
     if (it.divider || it.separator) {
-      return <BaseMenu.Separator key={`sep-${key}-${i}`} className="cw-menu-sep" />;
+      return <BaseMenu.Separator key={`sep-${key}-${i}`} className="h-px bg-line my-[4px]" />;
     }
 
     if (Array.isArray(it.submenu)) {
       return (
         <BaseMenu.SubmenuRoot key={key}>
           <BaseMenu.SubmenuTrigger
-            className={`cw-menu-item${it.danger ? ' danger' : ''}`}
+            className={itemVariants({ danger: it.danger })}
             disabled={it.disabled}
           >
-            {it.icon && <span className="cw-menu-item-ico">{it.icon}</span>}
-            <span className="cw-menu-item-label">{it.label}</span>
-            <span className="cw-menu-item-chev">{CHEVRON_RIGHT}</span>
+            {it.icon && (
+              <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>
+            )}
+            <span className="flex-1 min-w-0 truncate">{it.label}</span>
+            <span className="inline-flex shrink-0 text-ink-4">{CHEVRON_RIGHT}</span>
           </BaseMenu.SubmenuTrigger>
           <BaseMenu.Portal>
             <BaseMenu.Positioner side="right" align="start" sideOffset={4} style={{ zIndex: z + 1 }}>
-              <BaseMenu.Popup className="cw-menu">
+              <BaseMenu.Popup className={MENU_POPUP_CLASSES}>
                 {renderItems(it.submenu, z + 1, onActivate)}
               </BaseMenu.Popup>
             </BaseMenu.Positioner>
@@ -136,14 +124,16 @@ function renderItems(items, z, onActivate) {
     return (
       <BaseMenu.Item
         key={key}
-        className={`cw-menu-item${it.danger ? ' danger' : ''}`}
+        className={itemVariants({ danger: it.danger })}
         disabled={it.disabled}
         title={it.title}
         onClick={() => { it.onClick?.(); onActivate?.(); }}
       >
-        {it.icon && <span className="cw-menu-item-ico">{it.icon}</span>}
-        <span className="cw-menu-item-label">{it.label}</span>
-        {it.hint && <span className="cw-menu-item-hint">{it.hint}</span>}
+        {it.icon && (
+          <span className={cn('inline-flex shrink-0', it.danger ? 'text-danger' : 'text-ink-3')}>{it.icon}</span>
+        )}
+        <span className="flex-1 min-w-0 truncate">{it.label}</span>
+        {it.hint && <span className="font-mono text-[10.5px] text-ink-4">{it.hint}</span>}
       </BaseMenu.Item>
     );
   });
@@ -176,8 +166,6 @@ export function Menu({
   // close (Escape, outside-click, item activation).
   onClose,
 }) {
-  useEffect(() => { _ensureMenuCss(); }, []);
-
   const controlled = open !== undefined;
 
   // Anchored mode = controlled open against a trigger we don't own (the
@@ -246,7 +234,15 @@ export function Menu({
         document.body,
       )}
       <BaseMenu.Root {...rootProps}>
-        {trigger && <BaseMenu.Trigger className="cw-menu-trigger" render={trigger} />}
+        {trigger && (
+          <BaseMenu.Trigger
+            // !important beats the trigger's own inline background,
+            // which an onMouseOut handler would otherwise reset the
+            // moment the pointer leaves to travel into the menu.
+            className="data-[popup-open]:!bg-surface-2 data-[popup-open]:!text-ink"
+            render={trigger}
+          />
+        )}
         <BaseMenu.Portal>
           <BaseMenu.Positioner
             side={side}
@@ -256,7 +252,7 @@ export function Menu({
             style={{ zIndex }}
           >
             <BaseMenu.Popup
-              className="cw-menu"
+              className={MENU_POPUP_CLASSES}
               aria-label={ariaLabel}
               style={{ '--cw-menu-w': `${width}px` }}
             >

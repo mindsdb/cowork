@@ -22,6 +22,15 @@
 // On the `pypi` channel anton comes from the published wheel's pinned
 // dependency, so ANTON_REF is ignored there.
 
+// buildKind is imported eagerly (not lazy-`require`d). It has to be: buildKind()
+// memoizes its result, so tests must drive it via `vi.mock('./cowork-home')` —
+// and vitest only intercepts a static ESM import, not a dynamic require. A lazy
+// require here would bypass the mock and pull the real (electron-dependent)
+// module. server-source.test.ts mocks cowork-home, so this import never pulls
+// electron under test; in production server-source only runs in the Electron
+// main process anyway.
+import { buildKind } from './cowork-home';
+
 export const COWORK_SERVER_REPO = 'https://github.com/mindsdb/cowork-server.git';
 // export const COWORK_SERVER_BRANCH = 'main';
 export const ANTON_REPO = 'https://github.com/mindsdb/anton.git';
@@ -59,10 +68,45 @@ export function getAppDisplayVersion(): string {
   return _buildVal('BUILD_APP_VERSION') || app.getVersion();
 }
 
-export function getCoworkRef(): string {
-  return (process.env.COWORK_SERVER_REF || _buildVal('BUILD_COWORK_SERVER_REF') || 'main').trim() || 'main';
+// Fallback cowork-server git ref keyed off the build kind, used only when
+// neither an explicit COWORK_SERVER_REF env nor a build-time-baked ref is
+// present. This is the safety net for the failure we hit in the field: a
+// stable/preview build whose baked BUILD_COWORK_SERVER_REF came out empty
+// would otherwise default to `main` and install a cowork-server that lacks
+// the branch's routes (e.g. the OAuth connector endpoints only on staging) —
+// surfacing as a bare 404 "Not Found" when the renderer starts the OAuth flow.
+//
+//   dev/prod → main   preview/stable → staging
+//
+// This is deliberately applied to getCoworkRef() ONLY, not getAntonRef():
+// the anton ref must keep deferring to cowork-server's own [tool.uv.sources]
+// pin by default (see getInstallSpec) — a build-kind fallback here would flip
+// getInstallSpec's `overrides` on and REPLACE that pin with anton@staging-HEAD,
+// which can mismatch the anton cowork-server@staging actually expects.
+//
+// Defensive: buildKind() may reach for electron `app` (only when resolving an
+// unset COWORK_BUILD_KIND in a packaged process); this module must stay usable
+// outside Electron (tests, tooling). Any failure resolves to '' so the caller
+// falls through to 'main'.
+function _refForBuildKind(): string {
+  try {
+    const kind = buildKind();
+    return kind === 'preview' || kind === 'stable' ? 'staging' : '';
+  } catch {
+    return '';
+  }
 }
 
+export function getCoworkRef(): string {
+  return (
+    (process.env.COWORK_SERVER_REF || _buildVal('BUILD_COWORK_SERVER_REF') || _refForBuildKind() || 'main').trim() ||
+    'main'
+  );
+}
+
+// No build-kind fallback here — the default (ANTON_REF empty → 'main') is what
+// lets getInstallSpec defer to cowork-server's own [tool.uv.sources] anton pin.
+// See _refForBuildKind and getInstallSpec for why applying it here is unsafe.
 export function getAntonRef(): string {
   return (process.env.ANTON_REF || _buildVal('BUILD_ANTON_REF') || 'main').trim() || 'main';
 }
@@ -70,8 +114,14 @@ export function getAntonRef(): string {
 export interface InstallSpec {
   /** Positional argument to `uv tool install`. */
   package: string;
-  /** Extra args (e.g. `--with <spec>` pairs) appended to the install command. */
-  withArgs: string[];
+  /** Requirement lines to force via a uv overrides file (`UV_OVERRIDE`).
+   *  Used to repoint cowork-server's `[tool.uv.sources]` anton-agent pin at a
+   *  different ref/path. An override REPLACES the requirement, so it wins over
+   *  the sources pin cleanly — no "conflicting URLs" abort like a bare `--with`,
+   *  and, unlike `--no-sources-package`, it is understood by every uv version we
+   *  ship against (older uv builds reject that flag). Empty on the default path.
+   *  Materialized into a temp file by `writeUvOverrides` in uv-paths.ts. */
+  overrides: string[];
   channel: Channel;
 }
 
@@ -82,12 +132,12 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   const explicit = process.env.COWORK_SERVER_PACKAGE;
   if (explicit) {
     const antonPackage = process.env.ANTON_PACKAGE;
-    const withArgs = antonPackage ? ['--with', `${ANTON_PACKAGE} @ ${antonPackage}`] : [];
-    return { package: explicit, withArgs, channel: getChannel() };
+    const overrides = antonPackage ? [`${ANTON_PACKAGE} @ ${antonPackage}`] : [];
+    return { package: explicit, overrides, channel: getChannel() };
   }
 
   if (getChannel() === 'pypi') {
-    return { package: `cowork-server>=${COWORK_SERVER_MIN_VERSION}`, withArgs: [], channel: 'pypi' };
+    return { package: `cowork-server>=${COWORK_SERVER_MIN_VERSION}`, overrides: [], channel: 'pypi' };
   }
 
   // git channel (default)
@@ -101,24 +151,23 @@ export function getInstallSpec(opts?: { coworkRef?: string; antonRef?: string })
   // along).
   //
   // For a non-default ANTON_REF (e.g. a staging build pinning anton@staging),
-  // we override the ref from HERE rather than in cowork-server. A bare
+  // we repoint the ref from HERE rather than in cowork-server. A bare
   // `--with anton-agent @ git+...` is NOT an override: uv treats it as a
   // *second* URL requirement alongside the sources pin and aborts with
-  // "Requirements contain conflicting URLs for package `anton-agent`" — even
-  // for identical URLs. Pairing it with `--no-sources-package anton-agent`
-  // disables the sources pin for just that package, so the `--with` becomes
-  // the sole source and resolves cleanly.
-  const withArgs =
+  // "Requirements contain conflicting URLs for package `anton-agent`". Feeding
+  // the same requirement through a uv OVERRIDE instead replaces the sources
+  // pin outright and resolves cleanly — and, crucially, overrides are honoured
+  // by every uv version (the per-package `--no-sources-package` flag is not:
+  // older uv builds reject it with "unexpected argument", which broke installs
+  // on machines carrying a stale uv).
+  const overrides =
     antonRef === 'main'
       ? []
-      : [
-          '--no-sources-package', ANTON_PACKAGE,
-          '--with', `${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`,
-        ];
+      : [`${ANTON_PACKAGE} @ git+${ANTON_REPO}@${antonRef}`];
 
   return {
     package: `git+${COWORK_SERVER_REPO}@${coworkRef}`,
-    withArgs,
+    overrides,
     channel: 'git',
   };
 }

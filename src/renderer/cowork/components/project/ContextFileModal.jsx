@@ -29,6 +29,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Button } from '../ui';
 import {
   readProjectFile,
   writeProjectFile,
@@ -42,12 +43,12 @@ import { MarkdownContent } from '../markdown/MarkdownContent';
 import { host } from '../../../platform/host';
 
 const FONT_BODY    = "var(--font-body, 'Inter', system-ui, sans-serif)";
-const FONT_DISPLAY = "var(--font-display, 'Josefin Sans', system-ui, sans-serif)";
+const FONT_DISPLAY = "var(--font-display, 'Inter', system-ui, sans-serif)";
 const FONT_MONO    = "var(--font-mono, 'JetBrains Mono', monospace)";
 
 
 // Join a project root + relative path into a forward-slash absolute
-// path so `window.antontron.openPath(...)` resolves correctly even
+// path so `host.openPath(...)` resolves correctly even
 // when the relative side carries embedded slashes.
 function joinAbs(root, rel) {
   if (!root || !rel) return '';
@@ -97,7 +98,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
       {hasProjectFile && (
         <button
           type="button"
-          onClick={() => abs && window.antontron?.showItemInFolder?.(abs)}
+          onClick={() => abs && host.showItemInFolder(abs)}
           title="Reveal in Finder"
           style={{
             cursor: 'pointer',
@@ -116,7 +117,7 @@ function FileAccessButton({ projectPath, projectName, filePath, rawUrl }) {
           // via the OS shell; fall back to opening the local project
           // file in the default app.
           if (rawUrl) host.openExternal(rawUrl);
-          else if (abs) window.antontron?.openPath?.(abs);
+          else if (abs) host.openPath(abs);
         }}
         title="Open in default app"
         style={{
@@ -462,7 +463,7 @@ export default function ContextFileModal({
           background: 'var(--surface)',
           border: '1px solid var(--line)',
           borderRadius: 14,
-          boxShadow: '0 24px 60px rgba(15,16,17,0.30)',
+          boxShadow: 'var(--sh-modal)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
           fontFamily: FONT_BODY,
         }}
@@ -472,10 +473,9 @@ export default function ContextFileModal({
           padding: '14px 18px',
         }}>
           <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <h2 style={{
+            <h2 className="s-h3" style={{
               margin: 0,
-              fontFamily: FONT_DISPLAY, fontSize: 17, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
+              color: 'var(--ink)',
               minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{headerTitle}</h2>
             {headerSubtitle && (
@@ -707,14 +707,13 @@ export default function ContextFileModal({
               >Cancel</button>
             )}
             {editing && (
-              <button
-                type="button"
-                className="btn-primary"
+              <Button
+                variant="primary"
                 onClick={save}
                 disabled={busy}
               >
                 {busy ? 'Saving…' : 'Save'}
-              </button>
+              </Button>
             )}
             {!editing && !loading && (
               <button

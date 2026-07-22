@@ -114,6 +114,33 @@ const sanitizeSchema = {
   },
 };
 
+// User messages are typed or pasted into the composer, where the
+// supported way to make a code block is a ``` fence (see the composer's
+// fence handling). Text copied from an already-indented context —
+// nested lists, quoted replies, an editor selection — arrives with a
+// uniform leading indent, which CommonMark then promotes to an
+// *indented* code block. The result is that pasted prose renders as a
+// monospace, non-wrapping card instead of formatted markdown.
+//
+// Strip the indentation common to every non-blank line (textwrap.dedent
+// semantics): the spurious copied-in indent is removed while relative
+// nesting — genuine sub-bullets, indented fence bodies — is preserved.
+// It's a no-op unless *all* non-blank lines share a leading indent, so
+// mixed content is left untouched.
+function _dedentUserText(text) {
+  if (!text || typeof text !== 'string') return text;
+  const lines = text.split('\n');
+  let min = Infinity;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const indent = line.length - line.replace(/^[ \t]+/, '').length;
+    if (indent < min) min = indent;
+    if (min === 0) return text;
+  }
+  if (!Number.isFinite(min) || min === 0) return text;
+  return lines.map((line) => (line.trim() ? line.slice(min) : line)).join('\n');
+}
+
 function _mergeInlineCodeLines(text) {
   if (!text || typeof text !== 'string') return text;
   // Trailing-whitespace tolerant: a line that's just `code` followed by
@@ -255,8 +282,8 @@ const _SIZES = {
   default: {
     root: 'markdown-content space-y-4 break-words text-body text-ink-2',
     p: 'font-body text-body text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[20px] font-semibold text-ink mt-6 mb-3',
-    h2: 'font-display text-[17px] font-semibold text-ink mt-5 mb-2',
+    h1: 's-h2 text-ink mt-6 mb-3',
+    h2: 's-h3 text-ink mt-5 mb-2',
     h3: 'font-display text-[14px] font-semibold uppercase tracking-wider text-ink-3 mt-4 mb-1.5',
     ul: 'list-disc pl-5 my-3 text-body text-ink-2 space-y-2.5',
     ol: 'list-decimal pl-5 my-3 text-body text-ink-2 space-y-2.5',
@@ -268,8 +295,8 @@ const _SIZES = {
   dense: {
     root: 'markdown-content space-y-2 break-words text-[12.5px] leading-[1.65] text-ink-2',
     p: 'font-body text-[12.5px] leading-[1.65] text-ink-2 my-0 first:mt-0 last:mb-0',
-    h1: 'font-display text-[16px] font-semibold text-ink mt-3.5 mb-1.5 tracking-[-0.005em]',
-    h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5 tracking-[-0.005em]',
+    h1: 's-h3 text-ink mt-3.5 mb-1.5',
+    h2: 'font-display text-[14px] font-semibold text-ink mt-3 mb-1.5',
     h3: 'font-display text-[12px] font-semibold uppercase tracking-wider text-ink-3 mt-2.5 mb-1',
     ul: 'list-disc pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
     ol: 'list-decimal pl-5 my-1.5 text-[12.5px] leading-[1.65] text-ink-2 space-y-1',
@@ -305,11 +332,14 @@ export function MarkdownContent({
   // `isAssistant` so only LLM output gets that fix-up.
   const normalized = useMemo(
     () => {
-      const merged = isAssistant ? _mergeInlineCodeLines(text) : text;
+      // User turns are pasted/typed: strip a uniform copied-in indent so
+      // CommonMark doesn't promote pasted prose to an indented code block.
+      const source = variant === 'user' ? _dedentUserText(text) : text;
+      const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
       return _renderEngramComments(formNormalized);
     },
-    [text, enableForms, isAssistant],
+    [text, enableForms, isAssistant, variant],
   );
   const sz = dense ? _SIZES.dense : _SIZES.default;
 

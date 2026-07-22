@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import { PageHeader, FilterRow, SearchInput, SortPill } from '../components/collection';
-import { Menu } from '../components/ui';
+import { Menu, Button, Card, Select } from '../components/ui';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
-import { Crumb, CrumbSep } from '../components/ui/Crumb';
-import { Toast } from '../components/ui/Toast';
+import { Crumb, CrumbSep, CrumbCurrent } from '../components/ui/Crumb';
+import { useToastManager } from '../components/ui/Toast';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import OverflowMenu from '../components/OverflowMenu';
@@ -17,31 +17,18 @@ function EmptyState({ children }) {
 }
 
 
-const CARD_SHADOW = '0px 0px 0px 0.5px rgba(39,39,42,0.15), 0px 1px 2px rgba(0,0,0,0.05), 0px 0.5px 0px rgba(0,0,0,0.08)';
-
 function SkillGridCard({ skill, onClick }) {
-  const [hovered, setHovered] = useState(false);
   const age = relativeAge(skill.updatedAt);
   const project = skill.projects?.[0] || skill.project;
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <Card
+      as="button"
+      interactive
+      padding="none"
       onClick={() => onClick(skill)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(skill); } }}
       style={{
-        cursor: 'pointer',
-        background: hovered ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${hovered ? 'var(--line-2)' : 'var(--line)'}`,
-        boxShadow: CARD_SHADOW,
-        borderRadius: 8,
         padding: '12px 0 0',
         display: 'flex', flexDirection: 'column', gap: 12,
-        transition: 'background .15s ease',
-        outline: 'none',
-        font: 'inherit', color: 'inherit',
         overflow: 'hidden',
       }}
     >
@@ -52,7 +39,7 @@ function SkillGridCard({ skill, onClick }) {
           <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0, width: 20, height: 20, borderRadius: 4,
-            boxShadow: CARD_SHADOW,
+            boxShadow: 'var(--sh-1)',
             fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 500,
             color: 'var(--ink-3)',
           }}>/</span>
@@ -101,7 +88,7 @@ function SkillGridCard({ skill, onClick }) {
         </span>
         {age && <span>Updated {age}</span>}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -214,17 +201,16 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
           </div>
           <div>
             <FieldLabel>Scope</FieldLabel>
-            <select
-              aria-label="Scope"
+            <Select
+              ariaLabel="Scope"
               value={draft.project}
-              onChange={(e) => setField('project', e.target.value)}
-              style={{ ...fieldStyle, height: 34, resize: 'none', cursor: 'pointer' }}
-            >
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id ?? p.name} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+              onValueChange={(v) => setField('project', v)}
+              style={{ ...fieldStyle, height: 34 }}
+              options={[
+                { value: '', label: 'All projects' },
+                ...projects.map((p) => ({ value: p.name, label: p.name })),
+              ]}
+            />
           </div>
           <div>
             <FieldLabel>Description</FieldLabel>
@@ -249,10 +235,10 @@ function SkillModal({ open, onClose, onSaved, onError, initial = null, projects 
         </div>
       </ModalBody>
       <ModalFooter>
-        <button type="button" className="btn-secondary" onClick={handleClose}>Cancel</button>
-        <button type="button" className="btn-primary" disabled={!canSubmit} onClick={submit}>
+        <Button variant="subtle" onClick={handleClose}>Cancel</Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
           {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   );
@@ -356,11 +342,11 @@ function UploadSkillModal({ open, onClose, onSaved, onError }) {
         </div>
       </ModalBody>
       <ModalFooter align="space-between">
-        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        <Button variant="subtle" onClick={onClose}>Cancel</Button>
         {file && (
-          <button type="button" className="btn-primary" disabled={busy} onClick={upload}>
+          <Button variant="primary" disabled={busy} onClick={upload}>
             {busy ? 'Uploading…' : 'Upload'}
-          </button>
+          </Button>
         )}
       </ModalFooter>
     </Modal>
@@ -376,15 +362,14 @@ function CreateSkillDropdown({ onWrite, onUpload, onCowork }) {
     { id: 'write',  label: 'Write Skill Instructions', icon: Ico.edit(14),    onClick: onWrite },
   ];
   const trigger = (
-    <button
-      type="button"
-      className="btn-primary"
+    <Button
+      variant="solid"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 8, paddingRight: 10 }}
     >
       {Ico.plus(14)}
       <span>Create skill</span>
       <span style={{ display: 'inline-flex', color: 'inherit', opacity: 0.7 }}>{Ico.chevDown(11)}</span>
-    </button>
+    </Button>
   );
   return <Menu trigger={trigger} items={items} align="end" width={220} />;
 }
@@ -402,7 +387,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
   const [selected, setSelected]       = useState(null);
   const [modalSkill, setModalSkill]   = useState(null); // null = closed, undefined = new, skill = edit
   const [uploadOpen, setUploadOpen]   = useState(false);
-  const [toast, setToast]             = useState(null); // { message, type }
+  const toastManager = useToastManager();
   const [search, setSearch]           = useState('');
   const [sortBy, setSortBy]           = useState('name');
   const [view, setView]               = useState(() => localStorage.getItem('anton:skills-view') === 'list' ? 'list' : 'grid');
@@ -410,7 +395,8 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
 
   const handleViewChange = (v) => { setView(v); localStorage.setItem('anton:skills-view', v); };
 
-  const showToast = (msg, type = 'error') => setToast({ message: msg, type });
+  // type: 'success' | 'error' (mapped to the shared Toast's 'danger').
+  const showToast = (msg, type = 'error') => toastManager.add({ title: msg, type: type === 'error' ? 'danger' : type });
 
   useEffect(() => {
     fetchProjects().then(setProjects);
@@ -466,13 +452,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <Crumb label="Skills" onClick={() => setSelected(null)} />
             <CrumbSep />
-            <span style={{
-              fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '0.04em',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {selected.label}
-            </span>
+            <CrumbCurrent label={selected.label} />
             <div style={{ flex: 1 }} />
             <Toggle checked={selected.enabled ?? true} onChange={async (e) => {
               const next = e.target.checked;
@@ -546,7 +526,7 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
           <FilterRow
             search={<SearchInput inputRef={searchRef} value={search} onChange={setSearch} placeholder="Search skills" shortcut={null} />}
             sort={<SortPill value={sortBy} onChange={setSortBy} options={SORT_OPTIONS} />}
-            view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={handleViewChange} size="sm" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(12) }, { value: 'list', label: 'List', icon: Ico.list(12) }]} /></span>}
+            view={<span className="proj-view-toggle"><ToggleGroup value={view} onValueChange={handleViewChange} size="md" aria-label="View" options={[{ value: 'grid', label: 'Grid', icon: Ico.grid(13) }, { value: 'list', label: 'List', icon: Ico.list(13) }]} /></span>}
           />
           {skills === null ? (
             <EmptyState>Loading…</EmptyState>
@@ -604,7 +584,6 @@ export default function SkillsView({ onCreateWithCowork, onTryInChat }) {
         initial={modalSkill ?? null}
         projects={projects}
       />
-      <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
     </div>
   );
 }

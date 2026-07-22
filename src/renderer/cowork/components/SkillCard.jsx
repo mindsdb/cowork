@@ -105,18 +105,16 @@ export default function SkillCard({ skill, projectName }) {
     <>
       <Card
         padding="compact"
-        onClick={() => setOpen(true)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true); } }}
-        style={{ cursor: 'pointer', marginTop: 4 }}
+        interactive
+        onActivate={() => setOpen(true)}
+        style={{ marginTop: 4 }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', alignItems: 'center', gap: 14 }}>
           {/* Icon — `cube` distinguishes a skill from the artifact card's doc/sparkle. */}
           <div
             aria-hidden="true"
             style={{
-              width: 56, height: 56, borderRadius: 'var(--r-md, 10px)',
+              width: 56, height: 56, borderRadius: 'var(--r-lg)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'var(--accent)', background: 'var(--surface-2)', border: '1px solid var(--line)',
             }}
@@ -125,8 +123,8 @@ export default function SkillCard({ skill, projectName }) {
           </div>
 
           <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, color: 'var(--ink)',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {name}

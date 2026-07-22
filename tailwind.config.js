@@ -89,7 +89,7 @@ export default {
       },
       fontFamily: {
         body:    ['Inter', 'system-ui', 'sans-serif'],
-        display: ['"Josefin Sans"', 'sans-serif'],
+        display: ['Inter', 'system-ui', 'sans-serif'],
         mono:    ['"JetBrains Mono"', 'monospace'],
       },
       fontSize: {
@@ -119,6 +119,33 @@ export default {
         '8':  'var(--space-8)',
         '10': 'var(--space-10)',
         '12': 'var(--space-12)',
+      },
+      // Card-system tokens (ENG-791) — so Tailwind-styled cards can use
+      // `rounded-card` / `shadow-card` instead of arbitrary `rounded-[8px]`
+      // or hardcoded hex. Bound to the same CSS vars as the .card classes.
+      borderRadius: {
+        card:       'var(--card-radius)',      // rounded-card      → 12
+        'card-row': 'var(--card-radius-row)',  // rounded-card-row  → 8
+      },
+      boxShadow: {
+        'sh-1':       'var(--sh-1)',
+        'sh-2':       'var(--sh-2)',
+        'sh-3':       'var(--sh-3)',
+        'sh-popup':   'var(--sh-popup)',
+        card:         'var(--card-shadow-rest)',
+        'card-hover': 'var(--card-shadow-hover)',
+      },
+      // The fade+scale a floating popup plays on open/close, driven by
+      // Base UI's data-open / data-closed attributes — named generically
+      // (not Menu-specific) so any Base UI popover skinned this way can
+      // reuse it instead of redefining its own.
+      keyframes: {
+        'scale-in':  { from: { opacity: 0, transform: 'scale(0.97)' }, to: { opacity: 1, transform: 'scale(1)' } },
+        'scale-out': { from: { opacity: 1, transform: 'scale(1)' },    to: { opacity: 0, transform: 'scale(0.97)' } },
+      },
+      animation: {
+        'scale-in':  'scale-in 130ms ease-out',
+        'scale-out': 'scale-out 90ms ease-in',
       },
     },
   },

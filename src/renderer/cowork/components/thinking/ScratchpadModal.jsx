@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import Ico from '../Icons';
+import { Badge } from '../ui';
 import { CodeBlock } from './CodeBlock';
 
 function fmtMs(ms) {
@@ -100,7 +101,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
         <div className="flex flex-none items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex text-ink-3">{Ico.code(15)}</span>
-            <span className="font-display text-[15px] font-semibold tracking-tight text-ink">
+            <span className="s-h3 text-ink">
               Scratchpad
             </span>
           </div>
@@ -147,7 +148,7 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                     fontFamily: 'var(--font-display)',
                     fontSize: 12.5,
                     fontWeight: 500,
-                    letterSpacing: '-0.005em',
+                    letterSpacing: '0',
                     color: active ? 'var(--ink)' : 'var(--ink-3)',
                     transition: 'color 120ms ease',
                   }}
@@ -162,20 +163,11 @@ export function ScratchpadModal({ open, onClose, steps = [], focusStepId = null 
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     maxWidth: 180,
                   }} title={t.name}>{t.name}</span>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    minWidth: 18, height: 18,
-                    padding: '0 6px',
-                    borderRadius: 999,
-                    background: active
-                      ? 'color-mix(in srgb, var(--accent) 15%, transparent)'
-                      : 'var(--surface-2)',
-                    color: active ? 'var(--accent)' : 'var(--ink-4)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10.5,
-                    fontWeight: 500,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}>{t.cells.length}</span>
+                  <Badge
+                    variant={active ? 'accent' : 'muted'}
+                    size="xs"
+                    className="min-w-[18px] justify-center font-mono tabular-nums"
+                  >{t.cells.length}</Badge>
                   {active && (
                     <span aria-hidden style={{
                       position: 'absolute',
@@ -310,7 +302,7 @@ function CellView({ cell, index, total, focused = false }) {
               hitting "Code" lands at eye level, not floated above
               the badge. */}
           <div className="flex items-baseline justify-between gap-3">
-            <span className="truncate font-display text-[14px] font-semibold tracking-tight text-ink">
+            <span className="truncate font-display text-[14px] font-semibold text-ink">
               {data.one_line_description || cell.label || 'Untitled'}
             </span>
             {code && (

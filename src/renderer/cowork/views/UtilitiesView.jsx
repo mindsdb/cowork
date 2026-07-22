@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
-import { Message } from '../components/ui';
+import { Message, Button, Card, EmptyState as UiEmptyState, Select } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import {
@@ -19,8 +19,8 @@ import {
 import { trackArtifactPublished } from '../lib/analytics';
 
 const TITLES = {
-  memory:  ['Memory',  'Profile, rules, and lessons the agent can reuse across tasks.'],
-  publish: ['Publish', 'HTML artifacts the agent can publish with Minds credentials.'],
+  memory:  ['Memories', 'Profile, rules, and lessons the agent can reuse across tasks.'],
+  publish: ['Share', 'HTML artifacts the agent can share with Minds credentials.'],
 };
 
 function PageHeader({ title, subtitle }) {
@@ -204,7 +204,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
   return (
     <>
       <CollectionPageHeader
-        title="Memory"
+        title="Memories"
         subtitle="Profile, rules, and lessons the agent can reuse across tasks."
       />
       <div style={{ height: 14 }} />
@@ -213,9 +213,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
         display: 'grid', gridTemplateColumns: '300px 1fr',
         padding: '0 32px 24px', gap: 24,
       }}>
-        <div className="scroll-clean" style={{
-          borderRight: '1px solid var(--border-0)',
-          paddingRight: 12,
+        <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
           overflowY: 'auto', minHeight: 0,
         }}>
@@ -238,7 +236,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
             />
           ))}
           {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
-        </div>
+        </Card>
         <div className="scroll-clean" style={{
           overflowY: 'auto', minHeight: 0,
         }}>
@@ -255,8 +253,8 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                       : selected.scope}
                   </div>
                 </div>
-                <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-                <button className="btn-primary" onClick={save}>Save</button>
+                <Button variant="subtle" onClick={() => setEditing(null)}>Cancel</Button>
+                <Button variant="primary" onClick={save}>Save</Button>
               </div>
               <textarea
                 value={draft.content}
@@ -277,8 +275,8 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
                       : displayed.scope}
                   </div>
                 </div>
-                <button className="btn-secondary" onClick={() => startEdit(displayed)}>Edit</button>
-                <button className="btn-secondary" onClick={() => remove(displayed)}>Delete</button>
+                <Button variant="subtle" onClick={() => startEdit(displayed)}>Edit</Button>
+                <Button variant="subtle" onClick={() => remove(displayed)}>Delete</Button>
               </div>
               <div style={memoryViewerStyle}>
                 <MarkdownContent
@@ -290,7 +288,9 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
               </div>
             </>
           ) : (
-            <EmptyState>Select a memory entry to inspect it.</EmptyState>
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UiEmptyState description="Select a memory entry to inspect it." />
+            </div>
           )}
         </div>
       </div>
@@ -435,18 +435,26 @@ function ConnectView({ data, setData, setStatus }) {
               <strong style={{ color: 'var(--text-strong)' }}>{conn.displayName || conn.engine}</strong> / {conn.name}
               <div style={{ fontSize: 11.5, color: 'var(--frost-600)' }}>{conn.testAvailable ? 'Ready for datasource tools' : 'Saved in data vault'}</div>
             </div>
-            <button className="btn-secondary" onClick={() => remove(conn)}>Remove</button>
+            <Button variant="subtle" onClick={() => remove(conn)}>Remove</Button>
           </div>
         )) : <EmptyState>No data vault connections found.</EmptyState>}
       </div>
       <form onSubmit={save} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <select aria-label="Engine" value={engine} onChange={(e) => setEngineAndTemplate(e.target.value)} style={inputStyle}>
-          {(data.engines || []).map((item) => <option key={item.engine} value={item.engine}>{item.displayName}</option>)}
-        </select>
+        <Select
+          ariaLabel="Engine"
+          value={engine}
+          onValueChange={setEngineAndTemplate}
+          style={inputStyle}
+          options={(data.engines || []).map((item) => ({ value: item.engine, label: item.displayName }))}
+        />
         {(engineDef?.authMethods || []).length > 0 && (
-          <select aria-label="Authentication method" value={selectedAuth?.name || ''} onChange={(e) => setAuthAndTemplate(e.target.value)} style={inputStyle}>
-            {(engineDef.authMethods || []).map((method) => <option key={method.name} value={method.name}>{method.display}</option>)}
-          </select>
+          <Select
+            ariaLabel="Authentication method"
+            value={selectedAuth?.name || ''}
+            onValueChange={setAuthAndTemplate}
+            style={inputStyle}
+            options={(engineDef.authMethods || []).map((method) => ({ value: method.name, label: method.display }))}
+          />
         )}
         <input aria-label="Connection name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name (optional)" style={inputStyle} />
         {fields.length > 0 && (
@@ -485,12 +493,12 @@ function ConnectView({ data, setData, setStatus }) {
           </div>
         )}
         {validation && <div style={{ fontSize: 12, color: 'var(--frost-700)' }}>{validation}</div>}
-        <button type="button" className="btn-secondary" disabled={!engine.trim() || busy} onClick={validate}>
+        <Button variant="subtle" disabled={!engine.trim() || busy} onClick={validate}>
           {busyAction === 'check' ? 'Checking' : 'Check fields'}
-        </button>
-        <button className="btn-primary" disabled={!engine.trim() || busy}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={!engine.trim() || busy}>
           {busyAction === 'save' ? 'Saving' : 'Save connection'}
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -499,15 +507,15 @@ function ConnectView({ data, setData, setStatus }) {
 function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
   const publish = async (artifact) => {
     try {
-      setStatus('Publishing…');
+      setStatus('Sharing…');
       const result = await publishArtifact(artifact.path);
       if (result.url) trackArtifactPublished(result.report_id || artifact.id || '', 'public');
-      setStatus(result.url ? `Published: ${result.url}` : 'Published.');
+      setStatus(result.url ? `Shared: ${result.url}` : 'Shared.');
       const latest = await fetchPublishable();
       setData(latest);
       onRefreshArtifacts?.();
     } catch (err) {
-      setStatus(err.message || 'Publishing failed.');
+      setStatus(err.message || 'Sharing failed.');
     }
   };
 
@@ -515,7 +523,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
     <div style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {!data.publishReady && (
         <Message variant="warning">
-          Configure a Minds API key in Settings before publishing.
+          Configure a Minds API key in Settings before sharing.
         </Message>
       )}
       {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
@@ -526,14 +534,14 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
             <div style={{ fontSize: 11.5, color: 'var(--frost-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{artifact.path}</div>
             {artifact.publishedUrl && <div style={{ fontSize: 12, color: 'var(--sage-700)', marginTop: 4, userSelect: 'text' }}>{artifact.publishedUrl}</div>}
           </div>
-          {artifact.publishedUrl && <button className="btn-secondary" onClick={() => navigator.clipboard?.writeText(artifact.publishedUrl)}>Copy URL</button>}
-          {artifact.publishedUrl && <button className="btn-secondary" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</button>}
-          <button className="btn-secondary" disabled={!data.publishReady} onClick={() => publish(artifact)}>Publish</button>
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => navigator.clipboard?.writeText(artifact.publishedUrl)}>Copy URL</Button>}
+          {artifact.publishedUrl && <Button variant="subtle" onClick={() => window.open(artifact.publishedUrl, '_blank', 'noopener,noreferrer')}>Open</Button>}
+          <Button variant="subtle" disabled={!data.publishReady} onClick={() => publish(artifact)}>Share</Button>
         </div>
       )) : <EmptyState>No HTML artifacts found in output folders.</EmptyState>}
       {(data.history || []).length > 0 && (
         <div style={{ marginTop: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 8 }}>Publish history</div>
+          <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--text-strong)', marginBottom: 8 }}>Share history</div>
           {(data.history || []).slice(0, 10).map((item) => (
             <div key={`${item.artifact}-${item.publishedAt}`} style={{ padding: '8px 0', borderTop: '1px solid var(--border-0)', fontSize: 12.5 }}>
               <strong>{item.artifactName}</strong>
@@ -557,11 +565,6 @@ const inputStyle = {
   background: 'var(--surface-0)',
   color: 'var(--ink)',
 };
-
-// Native <select> paints its own chevron in the right padding area;
-// the chevron looked flush with the right border at `padding: 10px`.
-// Bumping right padding gives the indicator some air.
-const selectStyle = { ...inputStyle, paddingRight: 28 };
 
 // Editor and viewer share the same fixed min-height + typography so
 // flipping between read and edit doesn't shift the layout. `--ink`

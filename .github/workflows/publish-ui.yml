@@ -1,20 +1,35 @@
 name: Publish UI Bundle
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/renderer/**'
-      - 'src/shared/**'
-      - 'package.json'
-    tags:
-      - 'ui-v*'
+  # Primary path: the auto-release workflow calls this AFTER it creates the
+  # canonical CalVer tag, passing the exact release version — so the UI bundle
+  # and the prod app installer always publish the SAME version. This replaces
+  # the old `push: main` + git-describe path, which raced tag creation and
+  # could publish a version that differed from the released app.
+  workflow_call:
+    inputs:
+      version:
+        description: 'Exact version to publish (from the auto-release job, e.g. 2.26.7.6.1).'
+        required: true
+        type: string
+    secrets:
+      RELEASES_TOKEN:
+        required: true
+  # Manual re-publish / backfill. Leave version empty to derive from git describe.
   workflow_dispatch:
     inputs:
       version:
-        description: 'UI version (e.g. 1.2.0) — leave empty to use package.json'
+        description: 'UI version override (e.g. 2.26.7.6.1) — leave empty to derive the CalVer from git describe'
         required: false
+        type: string
+      min_server_version:
+        description: 'Minimum cowork-server CalVer this UI requires (e.g. 2.26.7.6.1) — leave empty for no constraint / to use package.json minServerVersion'
+        required: false
+        type: string
+  # Explicit UI-only release tag.
+  push:
+    tags:
+      - 'ui-v*'
 
 permissions:
   contents: write
@@ -25,7 +40,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          # Full history so the fallback `git describe` (manual dispatch with no
+          # version) can reach the nearest CalVer tag. The normal path receives
+          # the exact release version from the auto-release job, so no describe.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -34,35 +52,49 @@ jobs:
 
       - run: npm ci
 
-      - name: Build renderer
-        run: npm run build:renderer
-
+      # Resolve the version BEFORE building so it can be baked into the renderer
+      # bundle's __APP_VERSION__ — otherwise Vite falls back to its own git
+      # describe and a workflow_dispatch override (or the release version) never
+      # reaches the running bundle, only latest.json.
       - name: Determine version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            # Manual dispatch with explicit version
-            VER="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            # workflow_call (auto-release) or workflow_dispatch override — the
+            # canonical release version, identical to the prod app installer.
+            VER="$INPUT_VERSION"
           elif [[ "${GITHUB_REF}" == refs/tags/ui-v* ]]; then
-            # Tag push
+            # Explicit UI-only tag push.
             VER="${GITHUB_REF#refs/tags/ui-v}"
           else
-            # Push to main — use package.json version + short sha for uniqueness
-            BASE_VER=$(node -p "require('./package.json').version")
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            VER="${BASE_VER}-${SHORT_SHA}"
+            # Edge (manual dispatch with no version): derive the CalVer from git
+            # describe, falling back to package.json + short sha.
+            VER=$(git describe --tags --match "v[0-9]*" 2>/dev/null | sed 's/^v//')
+            if [ -z "$VER" ]; then
+              VER="$(node -p "require('./package.json').version")-$(git rev-parse --short HEAD)"
+            fi
           fi
+          VER="${VER#v}"
 
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "tag=ui-v$VER" >> "$GITHUB_OUTPUT"
           echo "Publishing UI version: $VER"
 
+      - name: Build renderer
+        # Bake the resolved version into __APP_VERSION__ so the running bundle
+        # reports the same version as latest.json and the prod app installer.
+        env:
+          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
+        run: npm run build:renderer
+
       - name: Check if version already published
         id: check
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
           if gh release view "$TAG" --repo mindsdb/antontron-releases &>/dev/null; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Version $TAG already published — skipping"
@@ -82,6 +114,9 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         env:
           RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          MIN_SERVER_VERSION_INPUT: ${{ github.event.inputs.min_server_version }}
         run: |
           # -e: halt on first failure (so a bad token fails here, not
           # three commands later). pipefail: propagate failure of the
@@ -89,10 +124,17 @@ jobs:
           # gh-pages git steps below use `|| fallback` idioms that are
           # fine with unset edge cases.)
           set -eo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="${{ steps.version.outputs.tag }}"
-          SHA256=$(cat ui-bundle.sha256)
-          DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
+          export SHA256="$(cat ui-bundle.sha256)"
+          export DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
+          # Optional min cowork-server CalVer this UI requires: explicit dispatch
+          # input, else package.json `minServerVersion`, else none. Only emitted
+          # into latest.json when set — absence means "no constraint".
+          if [ -n "$MIN_SERVER_VERSION_INPUT" ]; then
+            export MIN_SERVER_VERSION="$MIN_SERVER_VERSION_INPUT"
+          else
+            export MIN_SERVER_VERSION="$(node -p "require('./package.json').minServerVersion || ''" 2>/dev/null || echo '')"
+          fi
+          echo "Min server version: ${MIN_SERVER_VERSION:-'(none)'}"
 
           # Fail loudly if the token secret is missing/empty. Without
           # this the public-repo clone below still succeeds (no auth
@@ -129,19 +171,18 @@ jobs:
           git fetch origin gh-pages || git checkout --orphan gh-pages
           git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
 
-          # Write manifest
-          cat > latest.json << MANIFEST
-          {
-            "version": "${VERSION}",
-            "url": "${DOWNLOAD_URL}",
-            "sha256": "${SHA256}"
-          }
-          MANIFEST
-
+          # Write manifest (from env, so min_server_version is only emitted when
+          # set — the client treats its absence as "no constraint").
           python3 -c "
-          import json
-          with open('latest.json') as f:
-              data = json.load(f)
+          import json, os
+          data = {
+              'version': os.environ['VERSION'],
+              'url': os.environ['DOWNLOAD_URL'],
+              'sha256': os.environ['SHA256'],
+          }
+          msv = os.environ.get('MIN_SERVER_VERSION', '').strip()
+          if msv:
+              data['min_server_version'] = msv
           with open('latest.json', 'w') as f:
               json.dump(data, f, indent=2)
           print(json.dumps(data, indent=2))

@@ -6,13 +6,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Card } from '../ui';
 import { fetchMemory, fetchArtifacts, countNonEmptyMemory } from '../../api';
 import { useRevealOnHover } from '../../hooks/useRevealOnHover';
 import { relativeAge } from '../../lib/formatTime';
 
 const FONT_BODY    = 'var(--font-body)';
 const FONT_DISPLAY = 'var(--font-display)';
-const FONT_MONO    = 'var(--font-mono)';
 
 function tasksFor(project, tasks) {
   return (tasks || []).filter((t) =>
@@ -84,25 +84,27 @@ function useProjectStats(project, { tasks = [], scheduled = [] }) {
   };
 }
 
-// Single mono stat. Zero values dim to ink-5 on both number and label
-// — the spec's visual cue for "nothing here yet". Spacing: 12 / 11 px.
-function D1Stat({ label, value }) {
-  const isZero = !value || value === 0;
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'baseline', gap: 5,
-      fontFamily: FONT_MONO,
-    }}>
-      <span style={{
-        fontSize: 12, fontWeight: 500,
-        color: isZero ? 'var(--ink-5)' : 'var(--ink-2)',
-      }}>{value ?? 0}</span>
-      <span style={{
-        fontSize: 11, letterSpacing: '0.02em',
-        color: isZero ? 'var(--ink-5)' : 'var(--ink-4)',
-      }}>{label}</span>
-    </span>
-  );
+// Full-word pluralized labels for the stats row, keyed the same as the
+// `useProjectStats` shape. Pure — exported so the pluralization + zero-
+// filtering logic can be unit-tested without mounting the card.
+const STAT_LABELS = {
+  tasks:     ['task', 'tasks'],
+  memories:  ['memory', 'memories'],
+  schedules: ['schedule', 'schedules'],
+  artifacts: ['artifact', 'artifacts'],
+};
+
+// Zero/undefined stats are omitted entirely (not dimmed) — a quieter
+// take on "nothing here yet" than the old D1Stat's ink-5 treatment.
+export function visibleStats(stats = {}) {
+  const out = [];
+  for (const key of ['tasks', 'memories', 'schedules', 'artifacts']) {
+    const value = Number(stats?.[key]) || 0;
+    if (value <= 0) continue;
+    const [singular, plural] = STAT_LABELS[key];
+    out.push({ key, label: `${value} ${value === 1 ? singular : plural}` });
+  }
+  return out;
 }
 
 export function ProjectCard({
@@ -120,9 +122,10 @@ export function ProjectCard({
   onRenameCancel,
 }) {
   const stats = useProjectStats(project, { tasks, scheduled });
+  const cardStats = visibleStats(stats);
   const summary = activitySummary(project, tasks);
   const active = isProjectActive(project, tasks);
-  const { hovered, revealed, hoverProps } = useRevealOnHover(isMenuOpen);
+  const { revealed, hoverProps } = useRevealOnHover(isMenuOpen);
   const triggerRef = useRef(null);
   const renameInputRef = useRef(null);
 
@@ -143,15 +146,7 @@ export function ProjectCard({
     return () => cancelAnimationFrame(id);
   }, [editing]);
 
-  const handleCardKey = (e) => {
-    if (editing) return; // typing in the input — let the input handle it
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onOpen?.(project);
-    }
-  };
-
-  const handleCardClick = (e) => {
+  const handleCardClick = () => {
     if (editing) return; // ignore card clicks while editing
     onOpen?.(project);
   };
@@ -162,24 +157,18 @@ export function ProjectCard({
   };
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={handleCardClick}
-      onKeyDown={handleCardKey}
+    <Card
+      as="div"
+      interactive={!editing}
+      selected={isSelected || editing}
+      padding="cozy"
+      onActivate={editing ? undefined : handleCardClick}
       {...hoverProps}
       style={{
-        cursor: editing ? 'default' : 'pointer',
-        background: hovered && !editing ? 'var(--surface-2)' : 'var(--surface)',
-        border: `1px solid ${editing ? 'var(--accent)' : (isSelected ? 'var(--accent)' : (hovered ? 'var(--line-2)' : 'var(--line)'))}`,
-        borderRadius: 10,
-        padding: '14px 16px',
+        cursor: editing ? 'default' : undefined,
         minHeight: 120,
         display: 'flex', flexDirection: 'column', gap: 10,
-        transition: 'background .15s ease, border-color .15s ease',
         position: 'relative',
-        outline: 'none',
-        font: 'inherit', color: 'inherit',
       }}
     >
       {/* Top row — folder + name + pin + ⋯ */}
@@ -217,7 +206,7 @@ export function ProjectCard({
             style={{
               flex: 1, minWidth: 0,
               fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              letterSpacing: '-0.005em', color: 'var(--ink)',
+              letterSpacing: '0', color: 'var(--ink)',
               background: 'var(--surface-2)',
               border: '1px solid var(--accent)',
               borderRadius: 6,
@@ -226,10 +215,9 @@ export function ProjectCard({
             }}
           />
         ) : (
-          <span style={{
+          <span className="s-h3" style={{
             flex: 1, minWidth: 0,
-            fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-            letterSpacing: '-0.005em', color: 'var(--ink)',
+            color: 'var(--ink)',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>{project.name}</span>
         )}
@@ -314,8 +302,8 @@ export function ProjectCard({
 
         <span style={{
           display: 'inline-flex', alignItems: 'baseline', gap: 6,
-          fontFamily: FONT_MONO, fontSize: 10.5,
-          color: 'var(--ink-4)', letterSpacing: '0.04em',
+          fontFamily: 'var(--font-sans)', fontSize: 11.5,
+          color: 'var(--ink-4)',
         }}>
           {active && (
             <span aria-hidden style={{
@@ -329,18 +317,25 @@ export function ProjectCard({
         </span>
       </div>
 
-      {/* Stats row — short labels per spec, hairline divider above */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: 14,
-        alignItems: 'baseline',
-        borderTop: '1px solid var(--line)',
-        paddingTop: 10,
-      }}>
-        <D1Stat label="tasks" value={stats.tasks} />
-        <D1Stat label="mem"   value={stats.memories} />
-        <D1Stat label="sched" value={stats.schedules} />
-        <D1Stat label="art"   value={stats.artifacts} />
-      </div>
-    </div>
+      {/* Stats row — full-word pluralized labels, hairline divider
+          above. Zero/undefined stats are omitted; when nothing is
+          left to show, the row (and its divider) don't render at
+          all rather than showing an empty strip. */}
+      {cardStats.length > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 14,
+          alignItems: 'baseline',
+          borderTop: '1px solid var(--line)',
+          paddingTop: 10,
+        }}>
+          {cardStats.map(({ key, label }) => (
+            <span key={key} style={{
+              fontFamily: 'var(--font-sans)', fontSize: 12,
+              color: 'var(--ink-4)',
+            }}>{label}</span>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }

@@ -41,6 +41,22 @@ export interface OAuthConnectOpts {
    * always return a refresh_token.
    */
   extraAuthParams?: Record<string, string>;
+  /**
+   * Fixed loopback port to bind the redirect URI to — required for
+   * providers (Linear, confirmed 2026-07-16) that reject any
+   * redirect_uri not pre-registered exactly, including port. Google
+   * accepts any 127.0.0.1 port, so this is omitted for it. Sourced
+   * from the connector spec's oauth.redirect_port.
+   */
+  redirectPort?: number;
+  /**
+   * How long the loopback server waits for the browser callback before
+   * giving up. Defaults to CALLBACK_TIMEOUT_MS (3 min) — enough to type
+   * credentials. Flows that legitimately pause mid-browser (ENG-917:
+   * Keycloak parks sign-up on VERIFY_EMAIL until the user clicks the
+   * emailed link, sometimes minutes later) pass a longer window.
+   */
+  callbackTimeoutMs?: number;
 }
 
 export interface OAuthConnectResult {
@@ -59,6 +75,12 @@ export interface OAuthConnectResult {
 // error instead of an endless spinner.
 const CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 
+// Hard deadline for the code→token exchange. Node's fetch has none by
+// default, so a black-holed connection would hang forever — the browser
+// already shows "You're authorized!" by then, and the app would just
+// never sign in with zero feedback (ENG-761).
+const TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
+
 // Tracks the in-flight OAuth attempt so cancelCurrentOAuth() can tear
 // the loopback server down without waiting for the timeout.
 // The desktop SSO flow uses this so the renderer's "Cancel login"
@@ -68,13 +90,37 @@ const CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 let _activeAttempt: { cancel: () => void } | null = null;
 
 export function cancelCurrentOAuth(): void {
-  _activeAttempt?.cancel();
+  const attempt = _activeAttempt;
+  _activeAttempt = null;
+  attempt?.cancel();
 }
 
 export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnectResult> {
   if (!opts?.authUrl || !opts?.tokenUrl || !opts?.clientId) {
     return { ok: false, reason: 'OAuth opts missing authUrl, tokenUrl, or clientId.' };
   }
+
+  // Only one attempt at a time. A dangling previous attempt (double-
+  // click, retry after a hung exchange) would otherwise keep its own
+  // loopback server alive — two live callback ports and whichever tab
+  // the user completes decides which promise wins (ENG-761).
+  cancelCurrentOAuth();
+
+  let server: http.Server | null = null;
+  let rejectCode: ((err: Error) => void) | null = null;
+  let cancelled = false;
+  const exchangeController = new AbortController();
+  const attempt = {
+    cancel: () => {
+      cancelled = true;
+      try { rejectCode?.(new Error('cancelled')); } catch {}
+      exchangeController.abort();
+      closeServer(server);
+    },
+  };
+  // Reserve ownership before the first await. Otherwise two calls that are
+  // both finding a port can each miss the other and create live attempts.
+  _activeAttempt = attempt;
 
   // PKCE: random verifier (43-128 chars), SHA-256 challenge. The
   // verifier is held in this process and only sent during the token
@@ -89,10 +135,18 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
 
   let port: number;
   try {
-    port = await findFreePort();
+    port = opts.redirectPort ? await bindFixedPort(opts.redirectPort) : await findFreePort();
   } catch (e: any) {
-    return { ok: false, reason: `Could not bind a loopback port: ${e?.message || e}` };
+    if (_activeAttempt === attempt) _activeAttempt = null;
+    if (cancelled) return { ok: false, reason: 'cancelled' };
+    return {
+      ok: false,
+      reason: opts.redirectPort
+        ? `Port ${opts.redirectPort} (required for this connector's redirect URI) is already in use — close whatever's using it and try again.`
+        : `Could not bind a loopback port: ${e?.message || e}`,
+    };
   }
+  if (cancelled) return { ok: false, reason: 'cancelled' };
 
   const redirectUri = `http://127.0.0.1:${port}/callback`;
 
@@ -112,11 +166,9 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   // Wait for the redirect — server stays up until either the
   // callback fires, the safety timeout elapses, or the renderer
   // cancels the flow (via cancelCurrentOAuth()).
-  let server: http.Server | null = null;
-  let rejectCode: ((err: Error) => void) | null = null;
-  const codePromise = new Promise<string>((resolve, reject) => {
+  const { server: loopbackServer, resultPromise: codePromise } = startLoopbackServer<string>(port, (resolve, reject) => {
     rejectCode = reject;
-    server = http.createServer((req, res) => {
+    return http.createServer((req, res) => {
       try {
         const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
         if (url.pathname !== '/callback') {
@@ -151,26 +203,25 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
         reject(e);
       }
     });
-    server.on('error', (err) => reject(err));
-    server.listen(port, '127.0.0.1');
   });
+  server = loopbackServer;
 
+  const callbackTimeoutMs = opts.callbackTimeoutMs ?? CALLBACK_TIMEOUT_MS;
+  let timeoutHandle: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<string>((_, reject) => {
-    setTimeout(
-      () => reject(new Error(`OAuth timed out — no callback received within ${Math.round(CALLBACK_TIMEOUT_MS / 60000)} minutes.`)),
-      CALLBACK_TIMEOUT_MS,
+    timeoutHandle = setTimeout(
+      () => reject(new Error(`OAuth timed out — no callback received within ${Math.round(callbackTimeoutMs / 60000)} minutes.`)),
+      callbackTimeoutMs,
     );
   });
 
-  // Register cancellation handle so the renderer can tear the flow
-  // down. Bound here (not earlier) so we don't carry stale state
-  // across attempts. Cleared in the finally block below.
-  _activeAttempt = {
-    cancel: () => {
-      try { rejectCode?.(new Error('cancelled')); } catch {}
-      closeServer(server);
-    },
-  };
+  // Promise.race only subscribes AFTER the openExternal await below. A
+  // cancel (double-click, logout, second flow) landing in that gap would
+  // reject codePromise with no listener — an unhandledRejection, which
+  // crashes the main process into Electron's error dialog. Mark both
+  // promises as observed now; the race still receives the rejection.
+  codePromise.catch(() => {});
+  timeoutPromise.catch(() => {});
 
   // Open browser. Even on shell.openExternal failure we still wait —
   // the user may copy-paste the URL manually.
@@ -181,13 +232,13 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
     code = await Promise.race([codePromise, timeoutPromise]);
   } catch (e: any) {
     closeServer(server);
-    _activeAttempt = null;
+    if (_activeAttempt === attempt) _activeAttempt = null;
     return { ok: false, reason: e?.message || 'OAuth flow failed.' };
   } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
     // Tiny delay so the success page actually paints in the user's
     // browser before we tear the server down.
     setTimeout(() => closeServer(server), 300);
-    _activeAttempt = null;
   }
 
   // Exchange the code for tokens.
@@ -205,26 +256,72 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: tokenBody.toString(),
+      signal: AbortSignal.any([
+        AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
+        exchangeController.signal,
+      ]),
     });
+    if (cancelled) return { ok: false, reason: 'cancelled' };
     if (!res.ok) {
       const text = await safeReadText(res);
+      if (cancelled) return { ok: false, reason: 'cancelled' };
       return { ok: false, reason: `Token exchange failed (${res.status}): ${text || 'no body'}` };
     }
     const data = (await res.json()) as Record<string, unknown>;
+    if (cancelled) return { ok: false, reason: 'cancelled' };
+    if (typeof data.access_token !== 'string' || !data.access_token) {
+      return { ok: false, reason: 'Token exchange response did not include an access token.' };
+    }
     return {
       ok: true,
       refresh_token: typeof data.refresh_token === 'string' ? data.refresh_token : undefined,
-      access_token: typeof data.access_token === 'string' ? data.access_token : undefined,
+      access_token: data.access_token,
       expires_in: typeof data.expires_in === 'number' ? data.expires_in : undefined,
       scope: typeof data.scope === 'string' ? data.scope : undefined,
       token_type: typeof data.token_type === 'string' ? data.token_type : undefined,
     };
   } catch (e: any) {
+    if (cancelled) return { ok: false, reason: 'cancelled' };
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+      return { ok: false, reason: 'Token exchange timed out — check your network connection and try signing in again.' };
+    }
     return { ok: false, reason: `Token exchange request failed: ${e?.message || e}` };
+  } finally {
+    if (_activeAttempt === attempt) _activeAttempt = null;
   }
 }
 
-function findFreePort(): Promise<number> {
+// Shared loopback-server scaffolding — binds an http.Server around a
+// caller-supplied request handler and wires its resolve/reject into a
+// promise. Used by both oauthConnect (above) and drive-picker-service.ts's
+// openDrivePickerFlow, which otherwise hand-roll the identical
+// server/promise wiring. Each caller keeps its OWN `_activeAttempt`
+// singleton and cancel semantics — independent flows (an OAuth connect and
+// a Drive picker session) can legitimately run concurrently, so that part
+// isn't shared.
+export function startLoopbackServer<T>(
+  port: number,
+  buildServer: (resolve: (value: T) => void, reject: (err: Error) => void) => http.Server,
+): { server: http.Server; resultPromise: Promise<T> } {
+  let server!: http.Server;
+  const resultPromise = new Promise<T>((resolve, reject) => {
+    server = buildServer(resolve, reject);
+    server.on('error', (err) => reject(err));
+    server.listen(port, '127.0.0.1');
+  });
+  return { server, resultPromise };
+}
+
+// Races `promise` against a timeout that rejects with `message` — the
+// shared "safety timeout" shape both loopback flows use.
+export function raceWithTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]);
+}
+
+export function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.unref();
@@ -237,12 +334,29 @@ function findFreePort(): Promise<number> {
   });
 }
 
-function closeServer(server: http.Server | null) {
+// Binds a specific port rather than letting the OS pick one — for
+// providers that require an exact, pre-registered redirect_uri (see
+// OAuthConnectOpts.redirectPort). Rejects if the port's already taken;
+// callers surface that as an actionable "close whatever's using it" error
+// rather than silently falling back to a random port, which would just
+// reproduce the same redirect_uri mismatch against the provider.
+function bindFixedPort(port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on('error', reject);
+    srv.listen(port, '127.0.0.1', () => {
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+export function closeServer(server: http.Server | null) {
   if (!server) return;
   try { server.close(); } catch {}
 }
 
-function base64UrlEncode(buf: Buffer): string {
+export function base64UrlEncode(buf: Buffer): string {
   return buf
     .toString('base64')
     .replace(/=/g, '')

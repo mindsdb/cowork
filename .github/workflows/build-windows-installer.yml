@@ -57,7 +57,12 @@ on:
         required: false
       GOOGLE_ANALYTICS_CLIENT_SECRET:
         required: false
-
+      GOOGLE_PICKER_API_KEY:
+        required: false
+      LINEAR_CLIENT_ID:
+        required: false
+      LINEAR_CLIENT_SECRET:
+        required: false
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: false
 
@@ -100,6 +105,10 @@ jobs:
           GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET }}
           GOOGLE_ANALYTICS_CLIENT_ID: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_ID }}
           GOOGLE_ANALYTICS_CLIENT_SECRET: ${{ secrets.GOOGLE_ANALYTICS_CLIENT_SECRET }}
+          GOOGLE_PICKER_API_KEY: ${{ secrets.GOOGLE_PICKER_API_KEY }}
+          LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
+          LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
+
         run: |
           python -c "
           import os, json
@@ -109,19 +118,16 @@ jobs:
             'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET',
             'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET',
             'GOOGLE_ANALYTICS_CLIENT_ID', 'GOOGLE_ANALYTICS_CLIENT_SECRET',
+            'GOOGLE_PICKER_API_KEY',
+            'LINEAR_CLIENT_ID', 'LINEAR_CLIENT_SECRET',
           ]}
           with open('server-credentials.json', 'w') as f:
               json.dump(creds, f)
           "
 
-      # Non-prod builds get the dev icon so installed dev/staging apps are
-      # visually distinguishable from the production app. Overwriting
-      # assets/icon.png covers electron-builder (ico generation) AND the
-      # packaged runtime, which loads assets/icon.png from resources.
-      - name: Use dev icon for non-prod builds
-        if: inputs.build_kind != 'prod'
+      - name: Write build config (controls which cowork data home the app uses)
         shell: bash
-        run: cp assets/icon-dev.png assets/icon.png
+        run: echo '{"buildKind":"${{ inputs.build_kind }}"}' > build-config.json
 
       - name: Build Windows installer (unsigned)
         run: npm run dist:win
@@ -304,11 +310,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
+          # gen-build-channel.mjs (prebuild:main) resolves the display version once
+          # during the build and writes it here, so the filename matches the version
+          # the app reports (__APP_VERSION__). Fall back to package.json if absent.
+          VERSION_FILE="src/main/app-version.gen.txt"
+          if [ -s "$VERSION_FILE" ]; then
+            VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
           SHA="${GITHUB_SHA::7}"
+          # Untagged builds carry `git describe`'s <tag>-<N>-g<sha> suffix; the
+          # preview/stable names already append -${SHA}, so strip that suffix to
+          # avoid the commit sha appearing twice. A clean release tag (prod) has
+          # no such suffix, so this is a no-op there.
+          VERSION_FN="$VERSION"
           case "${{ inputs.build_kind }}" in
-            preview) NAME="mindshub-cowork-${VERSION}-preview-${SHA}.exe" ;;
-            stable)  NAME="mindshub-cowork-${VERSION}-stable-${SHA}.exe"  ;;
+            preview|stable) VERSION_FN=$(printf '%s' "$VERSION" | sed -E 's/-[0-9]+-g[0-9a-f]+$//') ;;
+          esac
+          case "${{ inputs.build_kind }}" in
+            preview) NAME="mindshub-cowork-${VERSION_FN}-preview-${SHA}.exe" ;;
+            stable)  NAME="mindshub-cowork-${VERSION_FN}-stable-${SHA}.exe"  ;;
             prod)    NAME="mindshub-cowork-${VERSION}.exe" ;;
             *) echo "Unknown build_kind: ${{ inputs.build_kind }}"; exit 1 ;;
           esac

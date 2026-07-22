@@ -2,15 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
-import { providerTypeToKeyField, providerValueToType, modelLabel } from '../lib/settingsTransform';
-import { trackHarnessSwapped } from '../lib/analytics';
+import { providerTypeToKeyField, providerValueToType, resolveModelPickerValue, buildModelOptions, effectiveRoleModel, effectiveRoleProvider } from '../lib/settingsTransform';
+import { trackHarnessSwapped, resetDeviceIdentity } from '../lib/analytics';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { ToggleGroup } from '../components/ui/ToggleGroup';
 import { Switch } from '../components/ui/Switch';
+import { Badge, Button, Input, Checkbox, Select } from '../components/ui';
 import { host } from '../../platform/host';
 import { SKINS, normalizeSkin } from '../../lib/skins';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_CONSOLE_URL, MINDS_REGISTER_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
-import { getUIVersion, isElectron, getAccessToken } from '../../platform/host';
+import { getVersionInfo, isElectron, getAccessToken } from '../../platform/host';
+import { unifiedVersion, SKEW_WARN_DAYS } from '../../../shared/version';
 import ChannelsView from './ChannelsView';
 
 function decodeJwtPayload(token) {
@@ -19,6 +21,45 @@ function decodeJwtPayload(token) {
     while (payload.length % 4) payload += '=';
     return JSON.parse(atob(payload));
   } catch { return null; }
+}
+
+// Exported for tests. Pure mapping from an access token to the account
+// card's user object; null means "show the sign-in card" — both for a
+// missing token and for one that can't be decoded (a stale identity must
+// never keep rendering over a token we can no longer read, ENG-761).
+export function accountUserFromToken(token) {
+  if (!token) return null;
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  return {
+    name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
+    email: payload.email || null,
+    username: payload.preferred_username || null,
+    sub: payload.sub || null,
+    org: (() => {
+      let org = payload.active_organization ?? payload.organization;
+      if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
+      return org?.displayName || org?.name || null;
+    })(),
+  };
+}
+
+// Exported for tests. Narrows a `lastSavedJson` snapshot to reflect one
+// freshly auto-saved key, without touching any other field — critical so an
+// Appearance auto-save never marks a genuinely-unsaved Provider/Model edit
+// (tracked in the same snapshot, via the shared page-wide Save button) as
+// saved just because it happened to be present at the same time. Returns
+// the input unchanged if it's null or unparseable (defensive: the caller
+// should never hit that path, but a snapshot must never be corrupted).
+export function patchSavedJson(prevJson, key, value) {
+  if (prevJson == null) return prevJson;
+  try {
+    const parsed = JSON.parse(prevJson);
+    parsed[key] = value;
+    return JSON.stringify(parsed);
+  } catch {
+    return prevJson;
+  }
 }
 
 function Section({ title, subtitle, notice, children }) {
@@ -51,7 +92,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   return (
     <div style={{
       border: '1px solid var(--border-subtle)',
-      borderRadius: 10,
+      borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
       WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
       backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -122,10 +163,9 @@ function SettingsSectionPanel({ children, footer }) {
 
 function TextInput({ value, onChange, placeholder, title, ariaLabel }) {
   return (
-    <input
-      className="field-input"
+    <Input
       value={value ?? ''}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(next) => onChange(next)}
       placeholder={placeholder}
       title={title}
       aria-label={ariaLabel}
@@ -142,10 +182,9 @@ function ClearableTextInput({ value, onChange, placeholder, ariaLabel }) {
   const hasValue = v.length > 0;
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        className="field-input"
+      <Input
         value={v}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(next) => onChange(next)}
         placeholder={placeholder}
         aria-label={ariaLabel}
         style={hasValue ? { paddingRight: 36 } : undefined}
@@ -266,11 +305,11 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 
   return (
     <div style={{ position: 'relative' }}>
-      <input
-        className="field-input mono"
+      <Input
+        variant="mono"
         type={show ? 'text' : 'password'}
         value={showSentinelAsMask ? '' : v}
-        onChange={(e) => onInput(e.target.value)}
+        onChange={(next) => onInput(next)}
         placeholder={showSentinelAsMask ? '••••••••••••••••' : (placeholder || '••••••••••••••••••')}
         disabled={disabled}
         autoComplete="off"
@@ -314,7 +353,7 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
                 borderRadius: 6,
                 whiteSpace: 'nowrap',
                 pointerEvents: 'none',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                boxShadow: 'var(--sh-2)',
                 animation: 'copied-pop 1.5s ease forwards',
                 zIndex: 5,
               }}
@@ -352,22 +391,18 @@ function ApiKeyInput({ value, onChange, placeholder, disabled, revealName }) {
 // Drives the eye flow toward what matters for the current selection.
 function RelevanceBadge({ status }) {
   if (!status || status === 'unused') return null;
-  const palette = {
-    required: { fg: '#E5B57A', bg: 'rgba(229,181,122,0.12)', bd: 'rgba(229,181,122,0.30)', label: 'Required' },
-    optional: { fg: 'var(--text-muted)', bg: 'rgba(127,127,127,0.10)', bd: 'var(--border-subtle)', label: 'Optional' },
-    auto: { fg: 'var(--sage-500, #5d9287)', bg: 'rgba(93,146,135,0.12)', bd: 'rgba(93,146,135,0.30)', label: 'Auto' },
+  const config = {
+    required: { variant: 'warning', label: 'Required' },
+    optional: { variant: 'muted', label: 'Optional' },
+    auto: { variant: 'success', label: 'Auto' },
   }[status];
-  if (!palette) return null;
+  if (!config) return null;
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      marginLeft: 8, padding: '1px 7px',
-      fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
-      textTransform: 'uppercase',
-      color: palette.fg, background: palette.bg,
-      border: `1px solid ${palette.bd}`, borderRadius: 999,
-      verticalAlign: 'middle',
-    }}>{palette.label}</span>
+    <Badge
+      variant={config.variant}
+      size="xs"
+      className="ml-2 align-middle uppercase tracking-[0.04em]"
+    >{config.label}</Badge>
   );
 }
 
@@ -385,19 +420,21 @@ function RelevanceBadge({ status }) {
 function SetBadge({ hasValue, active }) {
   if (!hasValue) return null;
   return (
-    <span
+    <Badge
       title={active
         ? 'Stored and used by the active provider'
         : 'A value is stored, but the active provider does not use it'}
+      variant="success"
+      size="xs"
+      className={`ml-2 align-middle uppercase tracking-[0.04em] ${active ? 'set-badge-pulse' : ''}`}
+      icon={<span aria-hidden style={{
+        width: 6, height: 6, borderRadius: 999,
+        background: 'currentColor',
+        boxShadow: active
+          ? '0 0 8px currentColor, 0 0 14px rgba(124,196,182,0.6)'
+          : '0 0 4px rgba(93,146,135,0.45)',
+      }} />}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        marginLeft: 8, padding: '1px 8px 1px 7px',
-        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        color: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
-        background: active ? 'rgba(124,196,182,0.18)' : 'rgba(93,146,135,0.10)',
-        border: `1px solid ${active ? 'rgba(124,196,182,0.55)' : 'rgba(93,146,135,0.28)'}`,
-        borderRadius: 999, verticalAlign: 'middle',
         // When active, the box-shadow comes from the set-badge-pulse
         // keyframes; the static value would never paint. When inactive
         // we explicitly clear any inherited shadow.
@@ -406,21 +443,22 @@ function SetBadge({ hasValue, active }) {
         transition: 'box-shadow .2s ease, background .2s ease, color .2s ease',
       }}
     >
-      <span style={{
-        width: 6, height: 6, borderRadius: 999,
-        background: active ? '#7CC4B6' : 'var(--sage-500, #5d9287)',
-        boxShadow: active
-          ? '0 0 8px #7CC4B6, 0 0 14px rgba(124,196,182,0.6)'
-          : '0 0 4px rgba(93,146,135,0.45)',
-      }} />
       Set
-    </span>
+    </Badge>
   );
 }
 
 // ───────────────────────── Multi-provider helpers ─────────────────────────
 
 const PROVIDER_TYPE_ORDER = ['minds-cloud', 'anthropic', 'openai', 'gemini', 'openai-compatible'];
+
+export function providerStatusBadge(status, configured) {
+  if (status === 'ok') return { label: 'connected', variant: 'success' };
+  if (status === 'fail') return { label: 'unable to connect', variant: 'danger' };
+  if (status === 'testing') return { label: 'testing…', variant: 'warning' };
+  if (configured) return { label: 'not tested', variant: 'muted' };
+  return null;
+}
 
 const PROVIDER_TYPE_DESC = {
   'minds-cloud': 'All frontier models in one place — Claude, GPT, Gemini, and more.',
@@ -612,6 +650,7 @@ export default function SettingsView({
   section = 'agent',
   onSectionChange,
   isSsoConnected = false,
+  ssoError = '',
   onSsoSignIn,
 }) {
   const [saved, setSaved] = useState(false);
@@ -624,8 +663,11 @@ export default function SettingsView({
   // Per-role "use a typed model id" flag. Sticky so picking Other…
   // keeps the text input visible even when the typed value is empty.
   const [modelInputMode, setModelInputMode] = useState({ planning: false, coding: false });
-  const [uiVersion, setUiVersion] = useState('');
+  const [versionInfo, setVersionInfo] = useState({ app: '', ui: null, source: 'web' });
   const [serverVersion, setServerVersion] = useState('');
+  const [antonVersion, setAntonVersion] = useState('');
+  const [showVersionDetails, setShowVersionDetails] = useState(false);
+  const [versionCopied, setVersionCopied] = useState(false);
   // Whether the refresh token lives in the macOS keychain (vs a file under
   // ~/.cowork). Mac-only; read from main on mount.
   const [keychainPref, setKeychainPref] = useState(false);
@@ -635,28 +677,36 @@ export default function SettingsView({
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
 
-  useEffect(() => { getUIVersion().then(setUiVersion).catch(() => { }); }, []);
-  useEffect(() => { fetchHealth().then((h) => setServerVersion(h?.server_version || '')).catch(() => { }); }, []);
-  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
+  useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
+  // Backend (server + agent) versions come from /health, which is only
+  // reachable when the backend is up. Re-read whenever the Updates section is
+  // shown and the backend is online, so versions populate after a cold open or
+  // a start/restart from the Backend section instead of staying blank at mount.
   useEffect(() => {
-    if (section !== 'account') return;
-    getAccessToken().then((token) => {
-      if (!token) return;
-      const payload = decodeJwtPayload(token);
-      if (!payload) return;
-      setAccountUser({
-        name: payload.name || [payload.given_name, payload.family_name].filter(Boolean).join(' ') || null,
-        email: payload.email || null,
-        username: payload.preferred_username || null,
-        sub: payload.sub || null,
-        org: (() => {
-          let org = payload.active_organization ?? payload.organization;
-          if (typeof org === 'string') { try { org = JSON.parse(org); } catch { return null; } }
-          return org?.displayName || org?.name || null;
-        })(),
-      });
+    if (section !== 'updates' || !serverOnline) return undefined;
+    let cancelled = false;
+    fetchHealth().then((h) => {
+      if (cancelled) return;
+      setServerVersion(h?.server_version || '');
+      setAntonVersion(h?.anton_version || '');
     }).catch(() => { });
-  }, [section]);
+    return () => { cancelled = true; };
+  }, [section, serverOnline]);
+  useEffect(() => { if (host.isElectron && host.isMac()) host.getKeychainPref().then(setKeychainPref).catch(() => { }); }, []);
+  // Re-runs when the signed-in state flips (ENG-761): previously deps
+  // were [section] only, so signing in while this section was already
+  // open never re-read the token — the card stayed on "Sign in". The
+  // cancelled guard matches the sibling effects: getAccessToken can ride
+  // a slow network refresh, and a stale resolution must not overwrite
+  // what a newer run painted.
+  useEffect(() => {
+    if (section !== 'account') return undefined;
+    let cancelled = false;
+    getAccessToken().then((token) => {
+      if (!cancelled) setAccountUser(accountUserFromToken(token));
+    }).catch(() => { });
+    return () => { cancelled = true; };
+  }, [section, isSsoConnected]);
 
   // Load diagnostics when Backend section is active
   useEffect(() => {
@@ -740,24 +790,16 @@ export default function SettingsView({
     if (!override || typeof override !== 'object') return null;
     return { ...override, providerType: providerValueToType(override.providerType) };
   };
-  const canonicalProviderForRole = (role) => providerValueToType(
-    role === 'planning' ? settings.planningProvider
-      : role === 'router' ? settings.routerProvider
-      : settings.codingProvider,
-  ) || 'minds-cloud';
-  const canonicalModelForRole = (role) => {
-    if (role === 'planning') return settings.planningModel ?? settings.defaultModel ?? '';
-    if (role === 'router') return settings.routerModel ?? '';
-    return settings.codingModel ?? '';
-  };
-  const roleProviderType = (role) => roleOverride(role)?.providerType || canonicalProviderForRole(role);
-  const roleModelValue = (role, fallback = '') => {
-    const override = roleOverride(role);
-    if (override && Object.prototype.hasOwnProperty.call(override, 'model')) {
-      return override.model || '';
-    }
-    return canonicalModelForRole(role) || fallback || '';
-  };
+  const canonicalProviderForRole = (role) => effectiveRoleProvider(settings, role);
+  const canonicalModelForRole = (role) => effectiveRoleModel(settings, role);
+  // ENG-739: resolve the picker's current provider/model from the canonical
+  // fields the SERVER executes, never from `model_overrides`. Sourcing the
+  // current value from the overrides hid a stale planning_model pin
+  // (latest:sonnet) behind the override's model, so the picker showed a model
+  // already-selected, offered no change, and a stuck free-tier user could not
+  // recover. See effectiveRoleModel / effectiveRoleProvider.
+  const roleProviderType = (role) => canonicalProviderForRole(role);
+  const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     const nextModel = model || '';
@@ -811,8 +853,12 @@ export default function SettingsView({
   const activeProviderTypes = (() => {
     const types = new Set();
     if (modelMode === 'custom') {
-      types.add(overrides.planning?.providerType || defaultModeProviderType);
-      types.add(overrides.coding?.providerType || defaultModeProviderType);
+      // ENG-739: source each role's provider from the canonical field the
+      // server executes (via roleProviderType), not the orphaned
+      // model_overrides — otherwise connectivity tests + the readiness banner
+      // could target a different provider than the picker and the server use.
+      types.add(roleProviderType('planning'));
+      types.add(roleProviderType('coding'));
     } else {
       types.add(defaultModeProviderType);
     }
@@ -1057,6 +1103,9 @@ export default function SettingsView({
       // Swallow — partial logout is still worth recovering from on the
       // boot path, and the reload below puts us back through it.
     }
+    // Rotate the analytics device identity so the next account on this machine
+    // starts anonymous-fresh and merges cleanly (ENG-537).
+    resetDeviceIdentity();
     // Exactly ONE reload must happen, or the two compete and leave the
     // page stuck on this confirm modal (flaky in packaged builds). On
     // Electron the main process drives webContents.reload() itself
@@ -1131,14 +1180,14 @@ export default function SettingsView({
                   : 'Changes apply on save.'}
         </span>
       </div>
-      <button
-        className="btn-primary" onClick={save}
+      <Button
+        variant="primary" onClick={save}
         disabled={(!settingsDirty && !anyProviderFailed) || testing || missingCustomNames}
         title={missingCustomNames ? 'Each custom provider needs a name' : testing ? 'Saving…' : (!settingsDirty && !anyProviderFailed) ? 'No unsaved changes' : anyProviderFailed ? 'Re-test failed providers.' : 'Save changes and re-run provider tests.'}
         style={{ width: 140, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 0.55 : 1, cursor: ((!settingsDirty && !anyProviderFailed) || testing || missingCustomNames) ? 'default' : 'pointer' }}
       >
         {testing ? 'Saving…' : (settingsDirty || anyProviderFailed) ? 'Save settings' : <>{Ico.check(14)} Saved</>}
-      </button>
+      </Button>
     </>
   );
 
@@ -1191,39 +1240,22 @@ export default function SettingsView({
                   }
                   return detail;
                 })();
-                const statusPillLabel = status === 'ok' ? 'connected'
-                  : status === 'fail' ? 'unable to connect'
-                    : status === 'testing' ? 'testing…'
-                      : configured ? 'not tested'
-                        : null;
+                const statusBadge = providerStatusBadge(status, configured);
                 const statusPillTitle = status === 'ok' ? `Last test passed${detail ? ` (${detail})` : ''}`
                   : status === 'fail' ? `Last test failed${detail ? `: ${detail}` : ''}`
                     : status === 'testing' ? 'Testing…'
                       : 'Not tested yet — save settings and run a test to verify.';
-                const statusPillColor = status === 'ok'
-                  ? { bg: 'rgba(124,196,182,0.15)', border: 'rgba(124,196,182,0.4)', color: '#7CC4B6' }
-                  : status === 'fail'
-                    ? { bg: 'rgba(224,112,96,0.15)', border: 'rgba(224,112,96,0.4)', color: '#E07060' }
-                    : status === 'testing'
-                      ? { bg: 'rgba(229,181,122,0.12)', border: 'rgba(229,181,122,0.35)', color: '#E5B57A' }
-                      : configured
-                        ? { bg: 'rgba(127,127,127,0.08)', border: 'rgba(127,127,127,0.2)', color: 'var(--text-muted)' }
-                        : null;
-                const statusPill = statusPillColor ? (
-                  <span
+                const statusPill = statusBadge ? (
+                  <Badge
                     title={statusPillTitle}
                     aria-label={statusPillTitle}
+                    variant={statusBadge.variant}
+                    size="md"
+                    className={`shrink-0 tracking-[0.01em] ${status === 'testing' ? 'set-badge-pulse' : ''}`}
                     style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      padding: '2px 8px', borderRadius: 999,
-                      fontSize: 11, fontWeight: 500, letterSpacing: '0.01em',
-                      background: statusPillColor.bg,
-                      border: `1px solid ${statusPillColor.border}`,
-                      color: statusPillColor.color,
-                      flexShrink: 0,
                       animation: status === 'testing' ? 'set-badge-pulse 1.4s ease-in-out infinite' : 'none',
                     }}
-                  >{statusPillLabel}</span>
+                  >{statusBadge.label}</Badge>
                 ) : null;
                 // Each provider row is a sub-section in the Providers group,
                 // so every row gets an <h3> for SR heading navigation. Known
@@ -1247,10 +1279,9 @@ export default function SettingsView({
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                           <h3 className="sr-only">{customHeadingText}</h3>
-                          <input
-                            className="field-input"
+                          <Input
                             value={p.name ?? ''}
-                            onChange={(e) => updateProviderField('openai-compatible', 'name', e.target.value)}
+                            onChange={(next) => updateProviderField('openai-compatible', 'name', next)}
                             placeholder="Custom provider name"
                             title="Display name for this custom provider — shown in the model dropdowns below."
                             aria-label="Custom provider name"
@@ -1402,8 +1433,8 @@ export default function SettingsView({
               }}>
                 {/* Idle: + Add provider button. Fades + slides down when
               the picker opens. */}
-                <button
-                  className="btn-secondary"
+                <Button
+                  variant="subtle"
                   onClick={() => setAddPickerOpen(true)}
                   disabled={availableTypesForAdd.length === 0}
                   title={availableTypesForAdd.length === 0 ? 'All provider types are already configured' : 'Add another provider'}
@@ -1416,7 +1447,7 @@ export default function SettingsView({
                     pointerEvents: addPickerOpen ? 'none' : (availableTypesForAdd.length === 0 ? 'none' : 'auto'),
                     cursor: availableTypesForAdd.length === 0 ? 'not-allowed' : 'pointer',
                   }}
-                >{Ico.plus(13)} Add provider</button>
+                >{Ico.plus(13)} Add provider</Button>
 
                 {/* Open: Choose Provider: <chip> <chip> · Cancel.
               Fades + slides up from below as it appears. */}
@@ -1432,14 +1463,13 @@ export default function SettingsView({
                     fontSize: 12.5, color: 'var(--text-strong)', marginRight: 4,
                   }}>Choose Provider:</strong>
                   {availableTypesForAdd.map((t) => (
-                    <button
+                    <Button
                       key={t}
-                      type="button"
+                      variant="subtle"
                       onClick={() => addProviderOfType(t)}
-                      className="btn-secondary"
                       title={PROVIDER_TYPE_DESC[t]}
                       style={{ fontSize: 12.5, padding: '4px 10px', fontWeight: 400 }}
-                    >{typeLabels[t] || t}</button>
+                    >{typeLabels[t] || t}</Button>
                   ))}
                   <button
                     type="button"
@@ -1475,7 +1505,6 @@ export default function SettingsView({
                 // for the role. Empty overrides fall back to the default
                 // provider's recommended pair.
                 const RoleRow = ({ role, label }) => {
-                  const cur = roleOverride(role) || {};
                   // Resolve the effective provider for this role. The server may
                   // store a stale planning_provider (e.g. 'anthropic') that doesn't
                   // match any configured provider card. When that happens, fall back
@@ -1496,11 +1525,12 @@ export default function SettingsView({
                   const curModel = providerWasRepointed ? fallbackModel : roleModelValue(role, fallbackModel);
                   const provider = providers.find((p) => p.type === curType);
                   const modelList = recommendedModels[curType] || [];
-                  // Per-model availability (settings.modelEnabled, sourced from MindsHub
-                  // /v1/models). A model the user's tier can't use is listed here as
-                  // false so we render it greyed + non-selectable — an upgrade prompt.
-                  // Absent id ⇒ available (backwards compatible; direct providers have
-                  // no such flag).
+                  /* Per-model availability (settings.modelEnabled, sourced from MindsHub
+                   * /v1/models). A model the org's wallet can't currently pay for (or
+                   * whose free allowance is spent) is listed here as false so we render
+                   * it greyed + non-selectable, with an "add credits to unlock" prompt.
+                   * Absent id ⇒ available (backwards compatible; direct providers have
+                   * no such flag). */
                   const modelEnabled = settings.modelEnabled || {};
                   const isLocked = (m) => modelEnabled[m] === false;
                   const firstEnabledModel = modelList.find((m) => !isLocked(m)) || modelList[0] || '';
@@ -1578,58 +1608,48 @@ export default function SettingsView({
                         {multipleProviders && (
                           <label style={{ display: 'grid', gap: 4 }}>
                             {fieldLabel('Provider')}
-                            <select
-                              className="settings-select"
+                            <Select
                               value={curType}
-                              onChange={(e) => {
-                                const t = e.target.value;
+                              onValueChange={(t) => {
                                 const pair = recommendedPair[t] || ['', '', ''];
                                 const newModel = pair[roleIdx] || pair[1] || (recommendedModels[t]?.[0] || '');
                                 setModelInputMode((m) => ({ ...m, [role]: false }));
                                 writeOverride({ providerType: t, model: newModel });
                               }}
-                              aria-invalid={providerUnusable || undefined}
+                              invalid={providerUnusable}
                               aria-describedby={providerUnusable ? providerWarnId : undefined}
                               title={`Choose which provider powers the ${role} role.`}
-                              style={{ width: '100%', ...(providerUnusable ? { borderColor: '#E07060', boxShadow: '0 0 0 1px rgba(224,112,96,0.45)' } : {}) }}
-                            >
-                              {providers.map((p) => (
-                                <option key={p.type} value={p.type}>{providerDisplayName(p)}</option>
-                              ))}
-                            </select>
+                              options={providers.map((p) => ({ value: p.type, label: providerDisplayName(p) }))}
+                            />
                           </label>
                         )}
                         {modelList.length > 0 ? (
                           (() => {
                             const allowOther = curType !== 'minds-cloud';
-                            const savedIsCustom = !!curModel && !modelList.includes(curModel);
-                            const inputMode = modelInputMode[role] || savedIsCustom;
-                            const selectValue = inputMode ? '__custom__' : curModel;
+                            // See resolveModelPickerValue + buildModelOptions: keeps the Select's
+                            // value matched to a rendered option so picking a model always fires
+                            // a real change and Save writes it — a login-written `latest:` pin no
+                            // longer wedges the control into a no-op "Saved" (ENG-739).
+                            const { showStalePin, inputMode, selectValue } =
+                              resolveModelPickerValue(curModel, modelList, allowOther, modelInputMode[role]);
+                            const modelOptions = buildModelOptions(curModel, modelList, allowOther, showStalePin, modelEnabled);
                             return (
                               <label style={{ display: 'grid', gap: 4 }}>
                                 {fieldLabel('Model')}
-                                <select
-                                  className="settings-select"
+                                <Select
                                   value={selectValue || firstEnabledModel}
-                                  onChange={(e) => {
-                                    if (e.target.value === '__custom__') {
+                                  onValueChange={(next) => {
+                                    if (next === '__custom__') {
                                       setModelInputMode((m) => ({ ...m, [role]: true }));
                                       writeOverride({ providerType: curType, model: curModel || '' });
                                     } else {
                                       setModelInputMode((m) => ({ ...m, [role]: false }));
-                                      writeOverride({ providerType: curType, model: e.target.value });
+                                      writeOverride({ providerType: curType, model: next });
                                     }
                                   }}
                                   title={`Pick the model used for ${role}. Choose Other… to type a custom model id.`}
-                                  style={{ width: '100%' }}
-                                >
-                                  {modelList.map((m) => (
-                                    <option key={m} value={m} disabled={isLocked(m)}>
-                                      {modelLabel(m)}{isLocked(m) ? ' — Upgrade to unlock' : ''}
-                                    </option>
-                                  ))}
-                                  {allowOther && <option value="__custom__">Other…</option>}
-                                </select>
+                                  options={modelOptions}
+                                />
                                 {inputMode && allowOther && (
                                   <TextInput
                                     value={curModel}
@@ -1655,15 +1675,12 @@ export default function SettingsView({
                         {showEffort && (
                           <label style={{ display: 'grid', gap: 4 }}>
                             {fieldLabel('Reasoning effort')}
-                            <select
-                              className="settings-select"
+                            <Select
                               value={effortValue}
-                              onChange={(e) => { setLlmDirty(true); setSetting(effortKey, e.target.value); }}
+                              onValueChange={(v) => { setLlmDirty(true); setSetting(effortKey, v); }}
                               title={`Reasoning effort for the ${role} model. Higher effort trades latency/cost for deeper reasoning.`}
-                              style={{ width: '100%', textTransform: 'capitalize' }}
-                            >
-                              {effortOptions.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
-                            </select>
+                              options={effortOptions.map((lvl) => ({ value: lvl, label: lvl.charAt(0).toUpperCase() + lvl.slice(1) }))}
+                            />
                           </label>
                         )}
                         {providerUnusable && (
@@ -1747,9 +1764,131 @@ export default function SettingsView({
     );
   };
 
+  // Appearance auto-save — every control on this page persists on its own,
+  // debounced for text/color inputs so typing doesn't fire a write per
+  // keystroke. Per-key status (saving/saved/error) gives the user direct
+  // feedback instead of relying on the page-wide Save button, which these
+  // fields no longer participate in — there's no Save button on this page
+  // at all (see AutoSaveTag and renderAppearanceSection).
+  const [autoSaveStatus, setAutoSaveStatus] = useState({});
+  const autoSaveTimersRef = useRef({});
+  const autoSaveFadeTimersRef = useRef({});
+  const autoSaveRemoveTimersRef = useRef({});
+
+  const AUTO_SAVE_HOLD_MS = 1400; // how long "Saved" stays at full opacity
+  const AUTO_SAVE_FADE_MS = 500;  // opacity transition duration (matches the inline style below)
+
+  const autoSaveSetting = (key, value, { debounceMs = 0 } = {}) => {
+    setSetting(key, value);
+    clearTimeout(autoSaveTimersRef.current[key]);
+    clearTimeout(autoSaveFadeTimersRef.current[key]);
+    clearTimeout(autoSaveRemoveTimersRef.current[key]);
+
+    const commit = async () => {
+      setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saving', fading: false } }));
+      try {
+        await onSave({ [key]: value });
+        // Narrow the "last saved" snapshot to just this field so the
+        // shared page-wide Save button (used by Providers/Model settings
+        // elsewhere in this view) doesn't mistake an auto-saved Appearance
+        // change for a pending manual one — or, worse, mark a genuinely
+        // unsaved Provider edit as "Saved" just because Appearance also
+        // changed at the same time.
+        setLastSavedJson((prev) => patchSavedJson(prev, key, value));
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'saved', fading: false } }));
+        // Hold at full opacity, then fade out, then unmount — a plain status
+        // message, not a button, and it disappears on its own.
+        autoSaveFadeTimersRef.current[key] = setTimeout(() => {
+          setAutoSaveStatus((prev) => (
+            prev[key]?.state === 'saved' ? { ...prev, [key]: { state: 'saved', fading: true } } : prev
+          ));
+          autoSaveRemoveTimersRef.current[key] = setTimeout(() => {
+            setAutoSaveStatus((prev) => {
+              const { [key]: _drop, ...rest } = prev;
+              return rest;
+            });
+          }, AUTO_SAVE_FADE_MS);
+        }, AUTO_SAVE_HOLD_MS);
+      } catch (err) {
+        // Errors don't auto-fade — they stay until the next attempt so a
+        // failed save can't go unnoticed.
+        setAutoSaveStatus((prev) => ({ ...prev, [key]: { state: 'error', fading: false } }));
+        console.warn(`Auto-save failed for ${key}:`, err);
+      }
+    };
+
+    if (debounceMs > 0) {
+      autoSaveTimersRef.current[key] = setTimeout(commit, debounceMs);
+    } else {
+      commit();
+    }
+  };
+
+  useEffect(() => () => {
+    Object.values(autoSaveTimersRef.current).forEach(clearTimeout);
+    Object.values(autoSaveFadeTimersRef.current).forEach(clearTimeout);
+    Object.values(autoSaveRemoveTimersRef.current).forEach(clearTimeout);
+  }, []);
+
+  function AutoSaveTag({ settingKey }) {
+    const status = autoSaveStatus[settingKey];
+    if (!status) return null;
+    const fadeStyle = {
+      opacity: status.fading ? 0 : 1,
+      transition: `opacity ${AUTO_SAVE_FADE_MS}ms ease`,
+    };
+    if (status.state === 'saving') {
+      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ink-4)', marginLeft: 8 }}>Saving…</span>;
+    }
+    if (status.state === 'error') {
+      return <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--danger, #e5484d)', marginLeft: 8 }}>Couldn't save</span>;
+    }
+    return (
+      <span style={{ ...fadeStyle, fontSize: 11.5, color: 'var(--ok, #3aa876)', marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {Ico.check(11)} Saved
+      </span>
+    );
+  }
+
+  // Sidebar logo upload — read as a data URI and save as the synced
+  // `navLogo` setting (same pipeline as every other setting, e.g. greeting).
+  // Capped well under a reasonable size for a settings-table text column.
+  const logoInputRef = useRef(null);
+  const MAX_LOGO_BYTES = 300 * 1024;
+  const [logoError, setLogoError] = useState(null);
+  const handleLogoUpload = (file) => {
+    if (!file) return;
+    if (file.size > MAX_LOGO_BYTES) {
+      setLogoError('Logo must be under 300 KB.');
+      return;
+    }
+    setLogoError(null);
+    const reader = new FileReader();
+    reader.onload = () => autoSaveSetting('navLogo', reader.result);
+    reader.readAsDataURL(file);
+  };
+
   const renderAppearanceSection = () => (
-    <SettingsSectionPanel footer={renderSaveFooter()}>
+    // No Save footer here — every control on this page auto-saves itself
+    // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
+    // be dead weight that always reads "Saved" and never does anything.
+    <SettingsSectionPanel>
       <CollapsibleGroup title="Appearance">
+        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
+          <ToggleGroup
+            value={normalizeSkin(skin)}
+            onValueChange={(v) => onSkinChange?.(v)}
+            aria-label="Style"
+            options={SKINS.map((s) => ({
+              value: s.id,
+              label: s.icon && Ico[s.icon]
+                ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
+                : s.label,
+              'aria-label': `${s.label} style`,
+              title: s.title,
+            }))}
+          />
+        </Section>
         <Section title="Theme" subtitle="Light or dark — also drives the animated background.">
           <ToggleGroup
             value={theme || 'dark'}
@@ -1771,21 +1910,6 @@ export default function SettingsView({
             ]}
           />
         </Section>
-        <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
-          <ToggleGroup
-            value={normalizeSkin(skin)}
-            onValueChange={(v) => onSkinChange?.(v)}
-            aria-label="Style"
-            options={SKINS.map((s) => ({
-              value: s.id,
-              label: s.icon && Ico[s.icon]
-                ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Ico[s.icon](13)} {s.label}</span>)
-                : s.label,
-              'aria-label': `${s.label} style`,
-              title: s.title,
-            }))}
-          />
-        </Section>
         {normalizeSkin(skin) === 'custom' && customTheme && (
           <>
             <Section title="Accent color" subtitle="Buttons, highlights, focus — the brand color of your theme.">
@@ -1797,23 +1921,43 @@ export default function SettingsView({
                 style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer' }}
               />
             </Section>
-            <Section title="Background" subtitle="Pick a base color — surfaces and text shades derive from it — or follow the Light/Dark theme.">
+            <Section title="Background — Light mode" subtitle="Pick a base color for Light — surfaces and text shades derive from it — or use Light's default.">
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <input
                   type="color"
-                  value={customTheme.bg || (theme === 'light' ? '#fafafa' : '#080d18')}
-                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.value })}
-                  disabled={customTheme.bg === null}
-                  aria-label="Custom background color"
-                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bg === null ? 0.45 : 1 }}
+                  value={customTheme.bgLight || '#fafafa'}
+                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgLight: e.target.value })}
+                  disabled={customTheme.bgLight === null}
+                  aria-label="Custom background color — Light mode"
+                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgLight === null ? 0.45 : 1 }}
                 />
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={customTheme.bg === null}
-                    onChange={(e) => onCustomThemeChange?.({ ...customTheme, bg: e.target.checked ? null : (theme === 'light' ? '#fafafa' : '#080d18') })}
+                  <Checkbox
+                    checked={customTheme.bgLight === null}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgLight: v ? null : '#fafafa' })}
+                    aria-label="Default Light background"
                   />
-                  Follow Light/Dark
+                  Default
+                </label>
+              </div>
+            </Section>
+            <Section title="Background — Dark mode" subtitle="Pick a base color for Dark — surfaces and text shades derive from it — or use Dark's default.">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <input
+                  type="color"
+                  value={customTheme.bgDark || '#080d18'}
+                  onChange={(e) => onCustomThemeChange?.({ ...customTheme, bgDark: e.target.value })}
+                  disabled={customTheme.bgDark === null}
+                  aria-label="Custom background color — Dark mode"
+                  style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: customTheme.bgDark === null ? 0.45 : 1 }}
+                />
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  <Checkbox
+                    checked={customTheme.bgDark === null}
+                    onCheckedChange={(v) => onCustomThemeChange?.({ ...customTheme, bgDark: v ? null : '#080d18' })}
+                    aria-label="Default Dark background"
+                  />
+                  Default
                 </label>
               </div>
             </Section>
@@ -1851,29 +1995,135 @@ export default function SettingsView({
           </>
         )}
         <Section title="Greeting" subtitle="The line shown when you start a new task.">
-          <TextInput
-            value={settings.greeting}
-            onChange={(v) => setSetting('greeting', v)}
-            title="Shown above the task input when you start a new task."
-            ariaLabel="Greeting text"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ flex: 1 }}>
+              <TextInput
+                value={settings.greeting}
+                onChange={(v) => autoSaveSetting('greeting', v, { debounceMs: 600 })}
+                title="Shown above the task input when you start a new task."
+                ariaLabel="Greeting text"
+              />
+            </div>
+            <AutoSaveTag settingKey="greeting" />
+          </div>
+        </Section>
+        <Section title="Sidebar title" subtitle="Shown at the top of the left-hand nav panel. Leave blank for the default, MindsHub.">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ flex: 1 }}>
+              <TextInput
+                value={settings.navTitle || ''}
+                onChange={(v) => autoSaveSetting('navTitle', v, { debounceMs: 600 })}
+                placeholder="MindsHub"
+                title="Replaces the MindsHub wordmark in the nav panel."
+                ariaLabel="Sidebar title text"
+              />
+            </div>
+            <AutoSaveTag settingKey="navTitle" />
+          </div>
+        </Section>
+        <Section title="Sidebar title color" subtitle="Pick a color for the sidebar title, or follow the theme's default text color.">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input
+              type="color"
+              value={settings.navTitleColor || '#e8e8ec'}
+              onChange={(e) => autoSaveSetting('navTitleColor', e.target.value, { debounceMs: 400 })}
+              disabled={!settings.navTitleColor}
+              aria-label="Sidebar title color"
+              style={{ width: 64, height: 32, padding: 2, border: '1px solid var(--line-2)', borderRadius: 6, background: 'var(--surface)', cursor: 'pointer', opacity: settings.navTitleColor ? 1 : 0.45 }}
+            />
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <Checkbox
+                checked={!settings.navTitleColor}
+                onCheckedChange={(v) => autoSaveSetting('navTitleColor', v ? '' : '#e8e8ec')}
+                aria-label="Follow theme color"
+              />
+              Follow theme
+            </label>
+            <AutoSaveTag settingKey="navTitleColor" />
+          </div>
+        </Section>
+        <Section title="Sidebar logo" subtitle="An icon shown next to the sidebar title. PNG, JPG, or SVG, under 300 KB.">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {settings.navLogo && (
+              <img
+                src={settings.navLogo}
+                alt=""
+                style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--line-2)', background: 'var(--surface)' }}
+              />
+            )}
+            <Button
+              variant="subtle"
+              onClick={() => logoInputRef.current?.click()}
+              title="Choose a logo image."
+            >
+              {settings.navLogo ? 'Change logo' : 'Upload logo'}
+            </Button>
+            {settings.navLogo && (
+              <button
+                type="button"
+                onClick={() => { autoSaveSetting('navLogo', ''); setLogoError(null); }}
+                style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12.5, fontFamily: 'var(--font-body)' }}
+              >
+                Remove
+              </button>
+            )}
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              style={{ display: 'none' }}
+              onChange={(e) => { handleLogoUpload(e.target.files?.[0]); e.target.value = ''; }}
+            />
+            <AutoSaveTag settingKey="navLogo" />
+          </div>
+          {logoError && (
+            <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>{logoError}</div>
+          )}
         </Section>
         <div className="settings-hide-mobile">
-          <Section title="Animated background" subtitle="Toggle off if you prefer a flat surface instead of an animated grid.">
-            <Switch
-              checked={settings.showDots}
-              onCheckedChange={(v) => setSetting('showDots', v)}
-              title="Toggle the animated grid background."
-              aria-label="Animated background"
-            />
+          <Section title="Animated background" subtitle="Off by default. Toggle on for an animated dot-grid behind the app instead of a flat surface.">
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.showDots}
+                onCheckedChange={(v) => autoSaveSetting('showDots', v)}
+                title="Toggle the animated grid background."
+                aria-label="Animated background"
+              />
+              <AutoSaveTag settingKey="showDots" />
+            </div>
           </Section>
           <Section title="Show nav-panel counters" subtitle="Badge counts on Projects / Scheduled / Artifacts / Connected apps, plus the time-since label on each Recent row.">
-            <Switch
-              checked={settings.showCounters !== false}
-              onCheckedChange={(v) => setSetting('showCounters', v)}
-              title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
-              aria-label="Nav-panel counters"
-            />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.showCounters !== false}
+                onCheckedChange={(v) => autoSaveSetting('showCounters', v)}
+                title="Show badge counts on Projects, Scheduled, Artifacts and Connected apps."
+                aria-label="Nav-panel counters"
+              />
+              <AutoSaveTag settingKey="showCounters" />
+            </div>
+          </Section>
+          <Section title="Theme toggle button" subtitle="The light/dark button in the sidebar footer.">
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.showThemeToggle !== false}
+                onCheckedChange={(v) => autoSaveSetting('showThemeToggle', v)}
+                title="Show or hide the sidebar's light/dark theme toggle."
+                aria-label="Theme toggle button"
+              />
+              <AutoSaveTag settingKey="showThemeToggle" />
+            </div>
+          </Section>
+          <Section title="8-bit style toggle button" subtitle="The gamepad button in the sidebar footer that switches to 8-Bit Arcade style.">
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Switch
+                checked={settings.show8bitToggle !== false}
+                onCheckedChange={(v) => autoSaveSetting('show8bitToggle', v)}
+                title="Show or hide the sidebar's 8-bit style toggle."
+                aria-label="8-bit style toggle button"
+              />
+              <AutoSaveTag settingKey="show8bitToggle" />
+            </div>
           </Section>
         </div>
       </CollapsibleGroup>
@@ -1889,7 +2139,7 @@ export default function SettingsView({
   const renderUpdatesSection = () => (
     <SettingsSectionPanel footer={renderSaveFooter()}>
       <div style={{
-        border: '1px solid var(--border-subtle)', borderRadius: 10,
+        border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
         background: 'var(--surface-glass)',
         WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
         backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -1897,55 +2147,85 @@ export default function SettingsView({
       }}>
         <Section
           title="Current version"
-          subtitle="The app, UI bundle, and server versions currently running."
+          subtitle="The version currently running. Server and UI updates are applied automatically at launch; components under the hood are shown in details."
         >
-          <div style={{
-            display: 'flex', flexDirection: 'column', gap: 6,
-            fontFamily: 'var(--font-mono)', fontSize: 12.5,
-            color: 'var(--text-strong)',
-          }}>
-            <span>
-              <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>App</span>
-              {typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '—'}
-            </span>
-            {isElectron && uiVersion && uiVersion !== 'bundled' && uiVersion !== 'web' && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                {uiVersion}
-                {uiVersion !== (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '') && (
-                  <span style={{ color: 'var(--text-warning, #c49000)', marginLeft: 6, fontSize: 11 }}>
-                    (differs from app)
+          {(() => {
+            const baked = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';
+            // App shell = installed Electron shell (changes only on reinstall).
+            const shellVer = versionInfo.app || baked;
+            // The running renderer's own baked version is authoritative for the
+            // UI version — it's compiled into whichever bundle actually loaded
+            // (OTA or bundled). Main-process cache metadata (`versionInfo.ui`)
+            // can lag the loaded renderer (OTA off, missing cache, post-
+            // rollback), so it only informs the source label, never the version.
+            const uiVer = baked || versionInfo.ui || '';
+            const uiSource = versionInfo.source === 'ota' ? 'OTA'
+              : versionInfo.source === 'web' ? 'web' : 'bundled';
+            // Unified "content" headline = ISO week of the newest of the
+            // hot-updated components (UI + server + agent). App shell is
+            // excluded — it updates via reinstall and is shown on its own line.
+            const unified = unifiedVersion([uiVer, serverVersion, antonVersion]);
+            const outOfSync = !!unified && unified.skewDays >= SKEW_WARN_DAYS;
+            const rows = [
+              ['App shell', shellVer || '—'],
+              ['UI', uiVer ? `${uiVer} (${uiSource})` : '—'],
+              ['Server', serverVersion || '—'],
+              ['Agent', antonVersion || '—'],
+            ];
+            const copyText = rows.map(([k, v]) => `${k}: ${v}`).join('\n');
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: 'var(--text-strong)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <span title={unified ? unified.weekOf : undefined} style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 600 }}>
+                    {unified ? unified.label : (shellVer || '—')}
+                  </span>
+                  {outOfSync && (
+                    <span
+                      title={`Underlying components span ${unified.skewDays} days — a component is lagging. See details.`}
+                      style={{ color: 'var(--warning, #c47f00)', fontSize: 11.5, fontWeight: 600 }}
+                    >
+                      ⚠ out of sync
+                    </span>
+                  )}
+                  {unified && (
+                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>{unified.weekOf}</span>
+                  )}
+                </div>
+                {isElectron && (
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 12 }}>
+                    <span style={{ marginRight: 4 }}>App shell</span>{shellVer || '—'}
                   </span>
                 )}
-              </span>
-            )}
-            {isElectron && uiVersion === 'bundled' && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>UI</span>
-                bundled
-              </span>
-            )}
-            {serverVersion && (
-              <span>
-                <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>Server</span>
-                {serverVersion}
-              </span>
-            )}
-          </div>
-        </Section>
-        <Section
-          title="UI updates"
-          subtitle="How over-the-air UI updates are applied when a new version is published. Server updates are always applied automatically on launch."
-        >
-          <ToggleGroup
-            value={settings.uiUpdateMode ?? 'auto'}
-            onValueChange={(v) => setSetting('uiUpdateMode', v)}
-            aria-label="UI update mode"
-            options={[
-              { value: 'auto', label: 'Auto', title: 'Download and apply UI updates automatically.' },
-              { value: 'manual', label: 'Manual', title: 'Only apply UI updates when triggered manually.' },
-            ]}
-          />
+                <button
+                  type="button"
+                  onClick={() => setShowVersionDetails((v) => !v)}
+                  style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: 11.5 }}
+                >
+                  {showVersionDetails ? 'Hide details' : 'Details'}
+                </button>
+                {showVersionDetails && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 12, padding: '8px 10px', border: '1px solid var(--border-subtle)', borderRadius: 8, background: 'var(--surface-glass)' }}>
+                    {rows.map(([k, v]) => (
+                      <span key={k}>
+                        <span style={{ color: 'var(--text-muted)', marginRight: 6, display: 'inline-block', minWidth: 64 }}>{k}</span>{v}
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(copyText);
+                        setVersionCopied(true);
+                        setTimeout(() => setVersionCopied(false), 1500);
+                      }}
+                      style={{ alignSelf: 'flex-start', marginTop: 4, background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: '2px 8px', cursor: 'pointer', color: 'var(--text-strong)', fontSize: 11 }}
+                    >
+                      {versionCopied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </Section>
       </div>
     </SettingsSectionPanel>
@@ -2021,7 +2301,7 @@ export default function SettingsView({
 
           {/* Status card — status header + port + logs */}
           <div style={{
-            border: '1px solid var(--border-subtle)', borderRadius: 10,
+            border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
             background: 'var(--surface-glass)',
             WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
             backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -2125,7 +2405,7 @@ export default function SettingsView({
 
   const renderAccountSection = () => {
     const CARD = {
-      border: '1px solid var(--border-subtle)', borderRadius: 10,
+      border: '1px solid var(--border-subtle)', borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
       WebkitBackdropFilter: 'blur(var(--surface-glass-blur))',
       backdropFilter: 'blur(var(--surface-glass-blur))',
@@ -2229,7 +2509,7 @@ export default function SettingsView({
           {[
             { icon: '⇌', label: 'Seamless model router', desc: 'The simplest way to use all models in one place — Claude, GPT, DeepSeek, Kimi, and more.' },
             { icon: '⟁', label: 'Remote tasks', desc: 'Run code and long tasks on managed infrastructure, not your laptop.', soon: true },
-            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Publish & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
+            { icon: <svg width="17" height="13" viewBox="0 0 20 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15.5 12H5a4 4 0 0 1-.5-7.97A5 5 0 0 1 14.5 6h1a3 3 0 0 1 0 6Z" /></svg>, label: 'Share & collaborate', desc: 'Share dashboards, reports, and artifacts — and work on them together.' },
             { icon: '⊹', label: 'Unified account', desc: 'One login, one bill — no juggling API keys across providers.' },
           ].map(({ icon, label, desc, soon }) => (
             <div key={label} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -2256,6 +2536,21 @@ export default function SettingsView({
             </div>
           ))}
         </div>
+
+        {/* Last sign-in failure (ENG-761) — without this, a failed
+            browser flow left the card looking untouched and the user
+            with no idea anything went wrong. */}
+        {ssoError && (
+          <div role="alert" style={{
+            width: '100%', padding: '10px 14px', borderRadius: 8,
+            fontSize: 12.5, lineHeight: 1.55,
+            color: 'var(--danger, #c0564f)',
+            background: 'color-mix(in srgb, var(--danger, #c0564f) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--danger, #c0564f) 30%, transparent)',
+          }}>
+            Sign-in didn't complete: {ssoError}
+          </div>
+        )}
 
         {/* CTA */}
         <button

@@ -31,6 +31,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
+import { Badge, Checkbox, Select } from '../ui';
 import {
   setFormState,
   setSelectedMethod,
@@ -105,17 +106,17 @@ function FieldInput({ field, value, onChange, disabled }) {
 
   if (field.type === 'select') {
     return (
-      <select
+      <Select
         value={displayValue}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        style={baseStyle}
-      >
-        {!field.required && <option value="">—</option>}
-        {(field.options || []).map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label || opt.value}</option>
-        ))}
-      </select>
+        onValueChange={onChange}
+        ariaLabel={field.label}
+        style={{ background: 'var(--surface-2)', borderRadius: 7 }}
+        options={[
+          ...(!field.required ? [{ value: '', label: '—' }] : []),
+          ...(field.options || []).map((opt) => ({ value: opt.value, label: opt.label || opt.value })),
+        ]}
+      />
     );
   }
   if (field.type === 'textarea') {
@@ -140,8 +141,7 @@ function FieldInput({ field, value, onChange, disabled }) {
         fontFamily: FONT_BODY, fontSize: 13, color: 'var(--ink-2)',
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}>
-        <input
-          type="checkbox"
+        <Checkbox
           // Booleans never carry the sentinel — modify-flow only
           // replaces secret string fields. For booleans the saved
           // value lands directly in `default` and the state mirrors
@@ -149,7 +149,8 @@ function FieldInput({ field, value, onChange, disabled }) {
           // a boolean field renders unchecked.
           checked={!isSentinel && !!value}
           disabled={disabled}
-          onChange={(e) => onChange(e.target.checked)}
+          onCheckedChange={(v) => onChange(v)}
+          aria-label={field.checkbox_label || field.label}
         />
         {field.checkbox_label || field.label}
       </label>
@@ -320,9 +321,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
             boxShadow: '0 0 12px var(--success-glow)',
           }}>{Ico.check(20)}</span>
           <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
             }}>{spec.title || 'Connected'}</div>
             {spec.subtitle && (
               <div style={{ fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.5 }}>
@@ -334,13 +334,13 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
         {(spec.engine === 'google_drive' || spec._connector_id === 'google_drive') && (
           <div style={{
             padding: '10px 12px', borderRadius: 8,
-            background: 'color-mix(in srgb, #f59e0b 10%, var(--surface))',
-            border: '1px solid color-mix(in srgb, #f59e0b 35%, transparent)',
+            background: 'var(--info-bg)',
+            border: '1px solid var(--info-border)',
             display: 'flex', gap: 8, alignItems: 'flex-start',
           }}>
-            <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>⚠️</span>
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>
-              <strong>Limited file access:</strong> This connector can only access files created by Cowork within your Google Drive — not your existing files. Full Google Drive access is coming soon.
+            <span style={{ fontSize: 14, flexShrink: 0, lineHeight: 1.4 }}>ℹ️</span>
+            <span style={{ fontSize: 12.5, color: 'var(--info-text)', lineHeight: 1.55 }}>
+              This connection can access files it created, plus any you pick yourself — use "Add files from Google Drive" in a chat's + menu, or "Select files from Google Drive" in this connection's settings.
             </span>
           </div>
         )}
@@ -440,9 +440,8 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <FormLogo logo={spec.logo} logoUrl={spec.logo_url} color={spec.logo_color} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 16, fontWeight: 600,
-              color: 'var(--ink)', letterSpacing: '-0.005em',
+            <div className="s-h3" style={{
+              color: 'var(--ink)',
             }}>{spec.title || 'Connect'}</div>
           </div>
         </div>
@@ -595,7 +594,7 @@ export function DataVaultForm({ spec, busy = false, onAction, onMethodChange, co
                       borderRadius: '50%',
                       border: '1.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                       borderTopColor: 'var(--accent)',
-                      animation: 'dvf-spin 720ms linear infinite',
+                      animation: 'spin 720ms linear infinite',
                     }}
                   />
                   {f.status}
@@ -843,19 +842,16 @@ function MethodPicker({ methods, onPick, busy }) {
             }}>
               <span style={{
                 fontWeight: 600, fontSize: 13.5, color: 'var(--ink)',
-                letterSpacing: '-0.005em',
+                letterSpacing: '0',
                 minWidth: 0, flex: '1 1 auto',
                 overflowWrap: 'anywhere', wordBreak: 'break-word',
               }}>{m.label || m.id}</span>
               {m.recommended && (
-                <span style={{
-                  fontSize: 10.5, fontFamily: FONT_MONO, letterSpacing: '0.04em',
-                  color: 'var(--accent)',
-                  padding: '2px 7px', borderRadius: 999,
-                  background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                  textTransform: 'uppercase',
-                }}>Recommended</span>
+                <Badge
+                  variant="accent"
+                  size="sm"
+                  className="font-mono uppercase tracking-[0.04em]"
+                >Recommended</Badge>
               )}
             </div>
             {m.description && (

@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('antontron', {
   oauthConnect: (opts: { engine: string; name?: string } | {
     authUrl: string; tokenUrl: string; clientId: string;
     clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>;
+    redirectPort?: number;
   }) => ipcRenderer.invoke(IPC.OAUTH_CONNECT, opts),
   oauthCancel: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL),
   // Disconnect a builtin OAuth connection: stops the refresh loop,
@@ -46,13 +47,27 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.on(IPC.OAUTH_REFRESH_ERROR, listener);
     return () => ipcRenderer.removeListener(IPC.OAUTH_REFRESH_ERROR, listener);
   },
+  // Opens the Google Picker in the OS browser for a builtin OAuth
+  // connection and resolves with the files the user selected there.
+  oauthPickDriveFiles: (opts: { engine: string; name: string; accountEmail: string; fileIds?: string[]; projectName?: string }) =>
+    ipcRenderer.invoke(IPC.OAUTH_PICK_DRIVE_FILES, opts),
+  oauthCancelPicker: () => ipcRenderer.invoke(IPC.OAUTH_CANCEL_PICKER),
 
   // MindsHub onboarding — see main/index.ts for the rationale on
   // why these are split out from the generic oauth:connect bridge.
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
+  mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
   mindshubFinalize: () => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),
+  // Fires whenever the MindsHub session state changes in the main
+  // process (login, silent refresh, logout, session death). Returns an
+  // unsubscribe function.
+  onMindsHubAuthChanged: (cb: (payload: { authenticated: boolean }) => void) => {
+    const listener = (_: any, payload: any) => cb(payload);
+    ipcRenderer.on(IPC.MINDSHUB_AUTH_CHANGED, listener);
+    return () => ipcRenderer.removeListener(IPC.MINDSHUB_AUTH_CHANGED, listener);
+  },
 
   // Open a local file/folder in the OS default handler.
   openPath:     (p: string) => ipcRenderer.invoke('shell:open-path', p),

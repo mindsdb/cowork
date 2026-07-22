@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Ico from './Icons';
+import { Badge } from './ui';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
 // (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
@@ -68,7 +69,7 @@ function ListRow({ primary, secondary, onClick, badge }) {
         {secondary && <span className="mshell-row__secondary">{secondary}</span>}
       </span>
       {badge != null && badge !== '' && (
-        <span className="mshell-row__badge">{badge}</span>
+        <Badge variant="muted" className="min-w-[22px] justify-center font-semibold">{badge}</Badge>
       )}
       <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
     </button>
@@ -91,6 +92,8 @@ export default function MobileShell({
   onOpenSchedule,        // (scheduleId)
   onNewTask,             // () — fresh task, no project pinned
   onNewProject,          // () — open the "New project" modal (via projects route)
+  navTitle = null,       // Settings → Appearance → Sidebar title override
+  navLogo = null,        // Settings → Appearance → Sidebar logo override
   children,
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -277,7 +280,12 @@ export default function MobileShell({
         aria-hidden={!drawerOpen}
       >
         <div className="mshell__drawer-head">
-          <span className="mshell__drawer-title">MindsHub Cowork</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            {navLogo && (
+              <img src={navLogo} alt="" aria-hidden="true" className="mshell__drawer-logo" />
+            )}
+            <span className="mshell__drawer-title">{navTitle || 'MindsHub Cowork'}</span>
+          </div>
           <button
             type="button"
             className="mshell__close"

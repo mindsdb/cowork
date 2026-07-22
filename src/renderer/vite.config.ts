@@ -1,5 +1,6 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { createLogger, defineConfig } from 'vite';
+import react, { reactCompilerPreset } from '@vitejs/plugin-react';
+import babel from '@rolldown/plugin-babel';
 import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
@@ -45,6 +46,20 @@ try {
 // `npm run build` and `npm run dev` paths are byte-identical to before.
 const IS_WEB = process.env.BUILD_TARGET === 'web';
 
+const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
+
+// `npm run dev` boots vite before Electron spawns the sidecar, so downgrade the expected startup ECONNREFUSED proxy noise to a calm line.
+const logger = createLogger();
+const logError = logger.error;
+logger.error = (msg, options) => {
+  const err = options?.error as NodeJS.ErrnoException | undefined;
+  if (err?.code === 'ECONNREFUSED' && msg.includes('http proxy error')) {
+    logger.info(`/api proxy: cowork-server not listening on :${SERVER_PORT} yet`, { timestamp: true });
+    return;
+  }
+  logError(msg, options);
+};
+
 // In dev, vite's default html serving picks `index.html` for `/`, which
 // is the Electron entry (depends on window.antontron and crashes in a
 // regular browser). When BUILD_TARGET=web, rewrite bare `/` to the web
@@ -67,9 +82,13 @@ export default defineConfig({
     // build time, cutting cascade re-renders (e.g. one Sidebar state change
     // re-rendered 68 components before, 12 after). Components it can't
     // prove safe are skipped, so it degrades gracefully.
-    react({ babel: { plugins: ['babel-plugin-react-compiler'] } }),
+    // plugin-react v6 (oxc) dropped the `babel` option; the compiler now
+    // rides @rolldown/plugin-babel with the exported preset.
+    react(),
+    babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webRootRewrite] : []),
   ],
+  customLogger: logger,
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __GIT_HASH__: JSON.stringify(gitHash),
@@ -92,9 +111,7 @@ export default defineConfig({
     port: Number(process.env.VITE_RENDERER_PORT || 5173),
     strictPort: true,
     proxy: {
-      // Same override the main process honors (server-process.ts), so a
-      // dev session can run against a sandboxed backend on another port.
-      '/api': `http://127.0.0.1:${process.env.COWORK_SERVER_PORT || 26866}`,
+      '/api': `http://127.0.0.1:${SERVER_PORT}`,
     },
   },
   resolve: {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import SetupScreen from './pages/arcade/SetupScreen';
 import OnboardingScreen from './pages/arcade/OnboardingScreen';
 import { COWORKERS } from './pages/arcade/CoworkerSelect';
@@ -6,7 +6,9 @@ import CoworkApp from './CoworkApp';
 import OrbitMorph from './cowork/components/ui/OrbitMorph';
 import { host } from './platform/host';
 import { loadSkin, persistSkin } from './lib/skins';
-import { syncSettingsToDb } from './lib/syncSettings';
+import { syncSettingsToDb, syncModelsToDbWithRetry } from './lib/syncSettings';
+import { resolveBootTarget } from './lib/bootTarget';
+import { runPostAuthHandshake } from './lib/postAuth';
 import type { SpriteName } from './pages/arcade/sprites';
 import './styles.css';
 
@@ -14,7 +16,7 @@ import './styles.css';
 //   loading (welcome orb) → auth (sign in / register / continue without) →
 //   setup (install) → terminal. Agent + theme are not onboarding steps; the
 //   look (arcade ↔ normal) is toggled via the corner controller button.
-type Page = 'loading' | 'auth' | 'setup' | 'terminal';
+type Page = 'loading' | 'auth' | 'setup' | 'setupError' | 'terminal';
 
 // Per-browser terms-consent flag (web). Desktop also records consent in
 // ~/.anton/.env (ANTON_TERMS_CONSENT), written when auth completes.
@@ -91,6 +93,15 @@ function MoonIcon({ size = 15 }: { size?: number }) {
 export default function App() {
   const [page, setPage] = useState<Page>('loading');
   const [coworker] = useState(recallCoworker);
+  // ENG-922: model lines handed up by OnboardingScreen when it deferred to the
+  // setup/install screen (server wasn't up to take the DB write). Consumed once
+  // by handlePostAuth after install. A ref (not state) — it drives a one-shot
+  // side effect, not a render; it also must survive the auth→setup→install page
+  // transitions without re-rendering.
+  const deferredModelRef = useRef<string[] | null>(null);
+  // Guards the setupError Retry button so a double-click can't fan out redundant
+  // concurrent handshakes.
+  const [retrying, setRetrying] = useState(false);
   const [skin, setSkin] = useState(loadSkin);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
@@ -122,18 +133,11 @@ export default function App() {
   useEffect(() => {
     async function init() {
       const started = Date.now();
-      let target: Page = 'auth';
-      try {
-        const settings = await host.readSettings();
-        const consented = settings.ANTON_TERMS_CONSENT === 'true' || hasLocalTermsConsent();
-        const { configured } = await host.checkConfigured();
-        if (consented && configured) {
-          const status = await host.checkInstall();
-          target = (!status.antonInstalled || !status.serverDepsReady) ? 'setup' : 'terminal';
-        }
-      } catch {
-        target = 'auth';
-      }
+      // Boot-routing decision lives in a pure, tested unit (resolveBootTarget).
+      // readSettings() is best-effort there, so a hosted-web /settings/raw 403
+      // (ENG-817) can't abort the gate and strand a configured instance on the
+      // auth screen; config_ready (health) drives the real decision.
+      const target: Page = await resolveBootTarget(host, hasLocalTermsConsent());
       // Keep the welcome orb up briefly so it doesn't flash on fast boots.
       const elapsed = Date.now() - started;
       if (elapsed < WELCOME_MIN_MS) {
@@ -149,19 +153,28 @@ export default function App() {
   // config_ready is true on first mount. Called from both the already-installed
   // login path and the post-install path so the handshake is never skipped.
   const handlePostAuth = async () => {
-    try {
-      const saved = await host.readSettings();
-      if (saved && typeof saved === 'object') {
-        const lines = Object.entries(saved as Record<string, string>).map(([k, v]) => `${k}=${v}`);
-        await syncSettingsToDb(lines);
-      }
-    } catch { /* best-effort — backend migration covers the gap on next restart */ }
-    setPage('terminal');
+    // Push .env credentials into the DB, then replay any deferred onboarding
+    // model (see deferredModelRef). Decision extracted to runPostAuthHandshake
+    // so the exhausted-retry transition — route to a retryable error instead of
+    // silently entering the app config-not-ready — is unit-tested without
+    // rendering App (ENG-922, #455 review).
+    const res = await runPostAuthHandshake({
+      readSettings: () => host.readSettings(),
+      syncSettingsToDb,
+      replayModels: (lines) => syncModelsToDbWithRetry(lines),
+      deferredModelLines: deferredModelRef.current,
+    });
+    if (res.clearDeferred) deferredModelRef.current = null;
+    setPage(res.next);
   };
 
   // After login (SSO or BYOK): consent is recorded and a provider is saved.
   // Ensure the backend is installed, then run the credential handshake.
-  const handleAuthComplete = async () => {
+  // `deferredModelLines` is present only when onboarding deferred to setup (the
+  // fresh-install/server-not-up race, ENG-922); stashed for handlePostAuth to
+  // replay once install finishes.
+  const handleAuthComplete = async (deferredModelLines?: string[]) => {
+    deferredModelRef.current = deferredModelLines ?? null;
     rememberTermsConsent();
     try { await host.restartServer(); } catch {}
     try {
@@ -208,18 +221,42 @@ export default function App() {
 
       {page === 'setup' && <SetupScreen onComplete={handleInstallComplete} />}
 
+      {page === 'setupError' && (
+        <div
+          className="arc-root welcome-loading"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 18, padding: 24, textAlign: 'center' }}
+        >
+          <OrbitMorph state="thinking" size={72} />
+          <div className="arc-welcome-title">Couldn't finish setup</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--arc-muted)', maxWidth: 380 }}>
+            Your provider is saved, but we couldn't apply your model. Check your connection, then try again.
+          </div>
+          <button
+            className="arc-btn"
+            disabled={retrying}
+            onClick={async () => { setRetrying(true); try { await handlePostAuth(); } finally { setRetrying(false); } }}
+          >
+            {retrying ? 'Retrying…' : 'Retry'}
+          </button>
+        </div>
+      )}
+
       {page === 'terminal' && <CoworkApp />}
 
-      {/* Theme + style toggles on the onboarding corner — mirror the in-app
-          floating buttons (CoworkApp has its own; these only show here). The
-          CSS stacks the style toggle above the theme toggle. */}
+      {/* Theme + style toggles on the onboarding corner. CoworkApp hasn't
+          mounted yet on these pages (no sidebar to host them), so the
+          pre-app flow keeps its own floating corner toggles — namespaced
+          `arcade-*` (arcade.css) so they're independent of the in-app
+          sidebar footer toggle (Sidebar.jsx) that replaced the old
+          shared floating-chrome buttons. The CSS stacks the style toggle
+          above the theme toggle. */}
       {isArcadePage && (
         <>
           <button
             onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
             title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             aria-label="Toggle colour theme"
-            className="floating-theme-toggle"
+            className="arcade-theme-toggle"
             style={{ zIndex: 200 }}
           >
             {theme === 'dark' ? <SunIcon size={15} /> : <MoonIcon size={15} />}
@@ -228,7 +265,7 @@ export default function App() {
             onClick={() => setSkin((s) => (s === '8bit' ? 'normal' : '8bit'))}
             title={skin === '8bit' ? 'Switch 8-bit arcade style off' : 'Switch style to 8-Bit Arcade mode'}
             aria-label="Toggle 8-bit arcade style"
-            className="floating-theme-toggle floating-skin-toggle"
+            className="arcade-theme-toggle arcade-skin-toggle"
             style={{ zIndex: 200 }}
           >
             <GamepadIcon size={15} />

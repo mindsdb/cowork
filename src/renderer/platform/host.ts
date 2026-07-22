@@ -6,7 +6,7 @@
 //
 // Every cowork/* file MUST go through this module instead of touching
 // `window.antontron` directly. This is enforced by a lint guard
-// (`pnpm check:cowork-purity`).
+// (`npm run check:cowork-purity`), which runs in CI.
 //
 // Web fallbacks are intentionally narrow: methods that have a sensible
 // browser equivalent (openExternal → window.open) work; OS-level shell
@@ -209,6 +209,34 @@ export async function getUIVersion(): Promise<string> {
   return 'web';
 }
 
+export interface VersionInfo {
+  /** Installed Electron shell (App) version — changes only on reinstall. */
+  app: string;
+  /** OTA-activated UI bundle version, or null when running the bundled UI. */
+  ui: string | null;
+  /** Where the running renderer came from. */
+  source: 'bundled' | 'ota' | 'web';
+}
+
+/** Structured version facts for the unified version display (ENG-213). The
+ *  renderer resolves the effective UI version as `ui ?? __APP_VERSION__`. */
+export async function getVersionInfo(): Promise<VersionInfo> {
+  if (isElectron && typeof bridge.getUIVersion === 'function') {
+    const v = await bridge.getUIVersion();
+    if (v && typeof v === 'object') {
+      // Normalize across shell versions (an OTA renderer can run on an older
+      // installed shell). Legacy shells return `ui: 'bundled'` (a sentinel,
+      // not a version) and omit `source`. Treat that sentinel as null, and
+      // when `source` is absent infer OTA only if a real UI version is present.
+      const ui = v.ui != null && v.ui !== 'bundled' ? String(v.ui) : null;
+      const source: VersionInfo['source'] =
+        v.source === 'ota' || v.source === 'bundled' ? v.source : ui ? 'ota' : 'bundled';
+      return { app: String(v.app ?? ''), ui, source };
+    }
+  }
+  return { app: '', ui: null, source: 'web' };
+}
+
 // ---- Onboarding -------------------------------------------------------
 //
 // The cowork SPA mounts the same arcade onboarding screens (TermsScreen
@@ -225,7 +253,11 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { detail = (await res.json()).detail || detail; } catch {}
-    throw new Error(detail);
+    // Preserve the HTTP status on the error so callers can distinguish the
+    // expected loopback-gate 403 (ENG-817) from real failures (4xx/5xx/network).
+    const err = new Error(detail) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -234,15 +266,37 @@ export async function readSettings(): Promise<Record<string, string>> {
   if (isElectron && typeof bridge.readSettings === 'function') {
     return bridge.readSettings();
   }
-  return fetchJson('/api/v1/settings/raw');
+  // Web: /settings/raw returns unmasked secrets and is loopback-gated
+  // (ENG-457). In the console-hosted deployment the browser's request reaches
+  // cowork-server from the docker bridge, not loopback, so the gate returns
+  // 403 (ENG-817). The DB is authoritative, so for THAT expected 403 we degrade
+  // to empty rather than aborting boot/onboarding. Any other failure (network,
+  // 4xx/5xx, malformed) is a real error and must propagate. (Electron reads via
+  // the IPC bridge above, unaffected.)
+  try {
+    return await fetchJson('/api/v1/settings/raw');
+  } catch (e) {
+    if ((e as { status?: number }).status === 403) return {};
+    throw e;
+  }
 }
 
 export async function saveSettings(content: string): Promise<boolean> {
   if (isElectron && typeof bridge.saveSettings === 'function') {
     return bridge.saveSettings(content);
   }
-  await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
-  return true;
+  // Web: the .env write (/settings/raw) is loopback-gated (ENG-457/ENG-817), so
+  // the expected 403 from the gate is best-effort — return false for it instead
+  // of aborting (the DB write via PUT /settings/:key is the authoritative store).
+  // Any OTHER failure (network, 4xx/5xx) is a real persistence error and must
+  // propagate, so onboarding can't report success over a failed write.
+  try {
+    await fetchJson('/api/v1/settings/raw', { method: 'POST', body: JSON.stringify({ content }) });
+    return true;
+  } catch (e) {
+    if ((e as { status?: number }).status === 403) return false;
+    throw e;
+  }
 }
 
 export async function restartServer(): Promise<void> {
@@ -385,7 +439,7 @@ export async function applyUpdate(): Promise<boolean> {
 
 export type OAuthConnectOpts =
   | { engine: string; name?: string }
-  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string> };
+  | { authUrl: string; tokenUrl: string; clientId: string; clientSecret?: string; scopes: string[]; extraAuthParams?: Record<string, string>; redirectPort?: number };
 
 export interface OAuthConnectResult {
   ok: boolean;
@@ -413,6 +467,58 @@ export async function keychainRevoke(engine: string, name: string, accountEmail:
     return bridge.keychainRevoke({ engine, name, accountEmail });
   }
   return { ok: false, reason: 'keychainRevoke is Electron-only.' };
+}
+
+export interface DrivePickerFile {
+  id: string;
+  name: string;
+  mimeType?: string;
+  iconUrl?: string;
+  url?: string;
+  resourceKey?: string | null;
+  /** Project(s) this file was explicitly added to — empty/absent when
+   *  only ever picked from connection-details (no project context). */
+  projects?: string[];
+}
+
+export interface FailedDrivePick {
+  id: string;
+  name: string;
+  reason: string;
+}
+
+export interface DrivePickerResult {
+  ok: boolean;
+  reason?: string;
+  /** The connection's full accumulated grant — every file ever picked. */
+  files?: DrivePickerFile[];
+  /** Only the file(s) the user selected in THIS picker session. */
+  newFiles?: DrivePickerFile[];
+  failed?: FailedDrivePick[];
+}
+
+// Electron-only: opens the Google Picker in the OS default browser (not
+// embedded — Google's sign-in step gets blocked inside Electron the same
+// way raw OAuth would) and resolves once the user picks files there or
+// cancels. Needed because drive.file alone only grants the app access to
+// files it created itself — the Picker is how a user grants access to
+// existing files without widening the OAuth scope. `fileIds`, when
+// known (e.g. from a pasted Drive link), pre-navigates the picker to
+// those files for faster consent. `projectName`, when passed, tags any
+// newly-picked files as belonging to that project (see DrivePickerFile);
+// omit it for connection-details' "Pick files" button, which has no
+// project context.
+export async function pickDriveFiles(engine: string, name: string, accountEmail: string, fileIds?: string[], projectName?: string): Promise<DrivePickerResult> {
+  if (isElectron && typeof bridge.oauthPickDriveFiles === 'function') {
+    return bridge.oauthPickDriveFiles({ engine, name, accountEmail, fileIds, projectName });
+  }
+  return { ok: false, reason: 'Google Picker is Electron-only for now.' };
+}
+
+export async function cancelDrivePicker(): Promise<void> {
+  if (isElectron && typeof bridge.oauthCancelPicker === 'function') {
+    await bridge.oauthCancelPicker();
+  }
 }
 
 export function onOAuthRefreshError(
@@ -453,6 +559,16 @@ export async function mindshubLogin(): Promise<MindsHubLoginResult> {
   return { ok: false, reason: 'MindsHub login bridge is Electron-only.' };
 }
 
+// Sign-up through Keycloak's registration form, same loopback PKCE flow
+// as mindshubLogin (ENG-917). The promise stays pending through the
+// email-verification pause — resolve may arrive many minutes after call.
+export async function mindshubSignup(): Promise<MindsHubLoginResult> {
+  if (isElectron && typeof bridge.mindshubSignup === 'function') {
+    return bridge.mindshubSignup();
+  }
+  return { ok: false, reason: 'MindsHub sign-up bridge is Electron-only.' };
+}
+
 export async function mindshubRefresh(): Promise<{ ok: boolean; reason?: string; access_token?: string }> {
   if (isElectron && typeof bridge.mindshubRefresh === 'function') {
     return bridge.mindshubRefresh();
@@ -473,6 +589,18 @@ export async function mindshubGetCachedToken(): Promise<string | null> {
     return result?.access_token ?? null;
   }
   return null;
+}
+
+// Subscribe to MindsHub session-state changes pushed from the main
+// process (login, silent refresh, logout, session death). Returns an
+// unsubscribe function; no-op in the web shell.
+export function onMindsHubAuthChanged(
+  cb: (payload: { authenticated: boolean }) => void,
+): () => void {
+  if (isElectron && typeof bridge.onMindsHubAuthChanged === 'function') {
+    return bridge.onMindsHubAuthChanged(cb);
+  }
+  return () => {};
 }
 
 // Where the refresh token is stored: macOS keychain (true) or a plaintext
@@ -529,6 +657,7 @@ export const host = {
   showItemInFolder,
   getPathForFile,
   getUIVersion,
+  getVersionInfo,
   readSettings,
   saveSettings,
   restartServer,
@@ -547,15 +676,19 @@ export const host = {
   oauthConnect,
   oauthCancel,
   mindshubLogin,
+  mindshubSignup,
   mindshubRefresh,
   mindshubFinalize,
   mindshubGetCachedToken,
+  onMindsHubAuthChanged,
   getKeychainPref,
   setKeychainPref,
   getAccessToken,
   logout,
   keychainRevoke,
   onOAuthRefreshError,
+  pickDriveFiles,
+  cancelDrivePicker,
 };
 
 export default host;

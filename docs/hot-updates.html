@@ -328,6 +328,21 @@
     color: var(--accent); font-weight: 600;
   }
 
+  /* ───────────── Warn callout (stale / changed) ───────────── */
+  .callout-warn {
+    background: var(--warn-bg);
+    border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 20px 0;
+    max-width: 70ch;
+    font-size: 13.5px; line-height: 1.6; color: var(--ink-2);
+  }
+  .callout-warn strong { color: var(--warn); font-weight: 600; }
+  .callout-warn p { margin: 0 0 8px; max-width: none; font-size: inherit; color: inherit; }
+  .callout-warn p:last-child { margin-bottom: 0; }
+  .callout-warn code { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+
   /* ───────────── Troubleshooting ───────────── */
   .trouble {
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
@@ -378,11 +393,11 @@
       <span class="toc-section">Tests</span>
       <a href="#test-1">1. Manual mode · first launch</a>
       <a href="#test-2">2. Manual mode · up to date</a>
-      <a href="#test-3">3. Auto mode</a>
+      <a href="#test-3">3. Auto mode (default)</a>
       <a href="#test-4">4. Offline behavior</a>
       <a href="#test-5">5. DEV_MODE=live</a>
       <a href="#test-6">6. DEV_MODE=full</a>
-      <a href="#test-7">7. Settings UI toggle</a>
+      <a href="#test-7">7. Settings · no toggle</a>
       <a href="#test-8">8. Rollback / cache clear</a>
       <a href="#test-9">9. About panel version</a>
       <a href="#test-10">10. Standard dev mode</a>
@@ -402,11 +417,11 @@
         <a href="#file-locations">File locations</a>
         <a href="#test-1">1. Manual · first launch</a>
         <a href="#test-2">2. Manual · up to date</a>
-        <a href="#test-3">3. Auto mode</a>
+        <a href="#test-3">3. Auto mode (default)</a>
         <a href="#test-4">4. Offline</a>
         <a href="#test-5">5. DEV_MODE=live</a>
         <a href="#test-6">6. DEV_MODE=full</a>
-        <a href="#test-7">7. Settings UI toggle</a>
+        <a href="#test-7">7. Settings · no toggle</a>
         <a href="#test-8">8. Rollback</a>
         <a href="#test-9">9. About panel</a>
         <a href="#test-10">10. Standard dev</a>
@@ -417,12 +432,27 @@
 
     <p class="eyebrow">QA Reference</p>
     <h1 class="hero">Hot Updates (OTA) — Manual Testing</h1>
-    <p class="hero-sub"><span class="dot"></span> 10 / 10 Tests Passed</p>
+    <p class="hero-sub" style="background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent);"><span class="dot" style="background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent);"></span> Updated for ENG-858 · re-run marked tests</p>
     <p class="lede">
       Every mode and scenario the OTA hot-updates feature ships with, walked through end-to-end.
-      Each test is self-contained — run them in any order. Look for the green pill on each
-      test card to confirm coverage as you go.
+      Each test is self-contained — run them in any order. Look for the pill on each
+      test card: green means still-valid coverage, amber means re-run against the current build.
     </p>
+
+    <div class="callout-warn">
+      <p><strong>Updated for ENG-858 (auto-apply at boot).</strong> The Settings → Updates
+      Auto/Manual toggle has been <strong>removed</strong>. Server and UI updates now always
+      auto-apply at launch for everyone — <code>auto</code> is the default, and applying only
+      happens at the boot check. The mid-session 4-hour banner is unchanged: it never
+      auto-applied, and still only shows an "update available" prompt.</p>
+      <p><code>UI_UPDATE_MODE=manual</code> in <code>~/.anton/.env</code> survives as a
+      support/QA-only escape hatch — hand-edited, no UI. Setting it restores the old
+      detection-only banner behavior for both server and UI.</p>
+      <p>The green pass markers below reflect the QA run <em>before</em> this change. The tests
+      whose expected behavior moved — <a href="#test-1">Test 1</a>, <a href="#test-3">Test 3</a>,
+      and <a href="#test-7">Test 7</a> — are marked amber and must be re-run before this page is
+      used for release validation.</p>
+    </div>
 
     <div class="keys">
       <div class="key">
@@ -435,7 +465,7 @@
       </div>
       <div class="key">
         <span class="lbl">Modes</span>
-        <span class="val">manual · auto · live · full</span>
+        <span class="val">auto (default) · manual · live · full</span>
       </div>
     </div>
 
@@ -511,17 +541,21 @@
     <section class="test" id="test-1">
       <div class="test-head">
         <span class="test-num">Test 01</span>
-        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Manual update mode (default) — first launch, no cache</h2>
-        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Manual mode (env escape hatch) — first launch, no cache</h2>
+        <span class="test-pill pill-todo"><span class="dot"></span> Re-run</span>
       </div>
-      <p>The out-of-the-box experience for new users.</p>
+      <p>
+        The detection-only banner flow. Since ENG-858 this is no longer the default — it must be
+        opted into via <code>UI_UPDATE_MODE=manual</code> in <code>~/.anton/.env</code> (no UI).
+      </p>
 
       <p class="step-label">Setup</p>
       <pre><code># Ensure no prior OTA cache exists
 rm -rf ~/Library/Application\ Support/Anton/ui-cache
 
-# Ensure manual mode (or just remove the key — manual is the default)
+# Opt into manual mode (no longer the default — set it explicitly)
 grep -v 'UI_UPDATE_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env
+echo 'UI_UPDATE_MODE=manual' >> ~/.anton/.env
 grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
 
       <p class="step-label">Steps</p>
@@ -579,15 +613,20 @@ cat ~/Library/Application\ Support/Anton/ui-cache/version.json
     <section class="test" id="test-3">
       <div class="test-head">
         <span class="test-num">Test 03</span>
-        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Auto update mode</h2>
-        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Auto update mode (default)</h2>
+        <span class="test-pill pill-todo"><span class="dot"></span> Re-run</span>
       </div>
+      <p>
+        Since ENG-858 this is the default for everyone — with no <code>UI_UPDATE_MODE</code> set,
+        the app behaves as below. The setup sets it explicitly only to make the test hermetic.
+      </p>
 
       <p class="step-label">Setup</p>
       <pre><code># Clear cache to force a fresh download
 rm -rf ~/Library/Application\ Support/Anton/ui-cache
 
-# Set auto mode
+# Auto is the default; set it explicitly so the test doesn't depend on prior state
+grep -v 'UI_UPDATE_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env
 echo 'UI_UPDATE_MODE=auto' >> ~/.anton/.env</code></pre>
 
       <p class="step-label">Steps</p>
@@ -606,7 +645,7 @@ echo 'UI_UPDATE_MODE=auto' >> ~/.anton/.env</code></pre>
       </ul>
 
       <p class="step-label">Cleanup</p>
-      <pre><code># Remove the auto mode setting to go back to default (manual)
+      <pre><code># Remove the key — auto is the default, so behavior is unchanged
 grep -v 'UI_UPDATE_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
     </section>
 
@@ -734,33 +773,34 @@ echo 'DEV_MODE=full' >> ~/.anton/.env</code></pre>
     <section class="test" id="test-7">
       <div class="test-head">
         <span class="test-num">Test 07</span>
-        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Settings UI toggle</h2>
-        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">Settings — no update toggle (ENG-858)</h2>
+        <span class="test-pill pill-todo"><span class="dot"></span> Re-run</span>
       </div>
+      <p>
+        ENG-858 removed the user-facing Auto/Manual control. This test confirms it is gone and
+        that nothing writes <code>UI_UPDATE_MODE</code> from the UI anymore.
+      </p>
 
       <p class="step-label">Steps</p>
       <ol>
         <li>Launch the app (packaged or dev mode — Settings UI works in both)</li>
         <li>Navigate to Settings (gear icon in the sidebar)</li>
-        <li>Scroll down and expand the <strong>Updates</strong> section</li>
+        <li>Open the version / updates area</li>
       </ol>
 
       <p class="step-label">What to verify</p>
       <ul class="verify">
-        <li>There is a segmented control with two options: <strong>Manual</strong> and <strong>Auto</strong></li>
-        <li>The default selection is <strong>Manual</strong></li>
-        <li>Clicking <strong>Auto</strong> switches the selection visually</li>
-        <li>Click <strong>Save settings</strong></li>
+        <li>There is <strong>no</strong> "UI updates" section and <strong>no</strong> Manual/Auto segmented control anywhere in Settings</li>
+        <li>The <strong>Current version</strong> section's subtitle notes that "Server and UI updates are applied automatically at launch"</li>
         <li>
-          Verify the setting was persisted:
+          Confirm the UI never writes the key. With no <code>UI_UPDATE_MODE</code> line present, use
+          Settings normally (e.g. save any other setting), then:
           <pre><code>grep UI_UPDATE_MODE ~/.anton/.env
-# Should show: UI_UPDATE_MODE=auto</code></pre>
+# Should print nothing — the UI no longer sets this key</code></pre>
         </li>
-        <li>Switch back to <strong>Manual</strong> and save again</li>
         <li>
-          Verify:
-          <pre><code>grep UI_UPDATE_MODE ~/.anton/.env
-# Should show: UI_UPDATE_MODE=manual</code></pre>
+          If you hand-add <code>UI_UPDATE_MODE=manual</code> to <code>~/.anton/.env</code>, it is
+          honored on next launch (escape hatch) but never surfaced or editable in the UI
         </li>
       </ul>
     </section>
@@ -854,8 +894,8 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
       <div class="row">
         <span class="var">UI_UPDATE_MODE</span>
         <span class="vals">auto, manual</span>
-        <span class="def">manual</span>
-        <span class="effect">How OTA updates are applied</span>
+        <span class="def">auto</span>
+        <span class="effect">How updates are applied. <code>manual</code> is an env-only escape hatch (no UI) since ENG-858</span>
       </div>
       <div class="row">
         <span class="var">DEV_MODE</span>
@@ -865,8 +905,8 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
       </div>
     </div>
     <p style="margin-top: 12px;">
-      Both can also be set from the Settings UI (<code>UI_UPDATE_MODE</code>) or manually
-      edited.
+      Both are set by hand-editing <code>~/.anton/.env</code>. Neither has a Settings UI control —
+      the <code>UI_UPDATE_MODE</code> toggle was removed in ENG-858.
     </p>
 
     <!-- ───────────── Troubleshooting ───────────── -->

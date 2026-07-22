@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from './ui/Modal';
+import { Button, Checkbox } from './ui';
 
 export default function MoveToProjectModal({ open, task, projects = [], onClose, onConfirm }) {
   const [query, setQuery] = useState('');
@@ -121,19 +122,19 @@ export default function MoveToProjectModal({ open, task, projects = [], onClose,
         </div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
+          <Checkbox
             checked={moveEverything}
-            onChange={(e) => setMoveEverything(e.target.checked)}
+            onCheckedChange={setMoveEverything}
+            aria-label="Move everything — the files and artifacts this task created"
           />
           <span>Move everything — the files &amp; artifacts this task created</span>
         </label>
       </ModalBody>
       <ModalFooter>
-        <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-        <button type="button" className="btn-primary" onClick={submit} disabled={!canConfirm}>
+        <Button variant="subtle" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="primary" onClick={submit} disabled={!canConfirm}>
           {busy ? 'Moving…' : destName ? `Move to ${destName}` : 'Move'}
-        </button>
+        </Button>
       </ModalFooter>
     </Modal>
   );
