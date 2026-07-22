@@ -2165,6 +2165,10 @@ function AppCore() {
       const fresh = await fetchDatasources();
       setConnectors(Array.isArray(fresh?.connections) ? fresh.connections : []);
     } catch { /* best-effort refresh */ }
+    // Project files' Context card holds its own Google Drive file list and
+    // has no other way to learn this connection (and its _picked_files
+    // grant) is gone — see the matching dispatch in CustomizeView.handleDelete.
+    window.dispatchEvent(new CustomEvent('anton:connections-changed'));
     setRoute('customize');
   };
   // Picker hands us a summary record (id + label + …). The user
@@ -2290,7 +2294,6 @@ function AppCore() {
     setComposerAttachments,
     setActiveTaskId,
     setRoute,
-    handleConnectorPicked,
   });
 
   // Keep the ref synced so the Cmd/Ctrl+N keydown handler always calls

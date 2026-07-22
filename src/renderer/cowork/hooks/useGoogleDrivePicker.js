@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { fetchDatasources, fetchSavedConnection, deletePickedFile } from '../api';
-import { subscribe as subscribeDataVaultForm } from '../components/datavault/formStore';
 import { host } from '../../platform/host';
 
 // All Google Drive picker/connect orchestration used by the composer's "+"
@@ -12,16 +11,13 @@ import { host } from '../../platform/host';
 // `selectedProject`/`currentTask` are read-only context this hook needs to
 // pick a sensible project to tag files with and to return the user to their
 // task after an inline connect; `setComposerAttachments`/`setActiveTaskId`/
-// `setRoute` are the app-level state setters those flows drive;
-// `handleConnectorPicked` is the shared (non-Drive-specific) connector-picker
-// entry point reused here for the "not connected yet" path.
+// `setRoute` are the app-level state setters those flows drive.
 export function useGoogleDrivePicker({
   selectedProject,
   currentTask,
   setComposerAttachments,
   setActiveTaskId,
   setRoute,
-  handleConnectorPicked,
 }) {
   // Non-null while prompting which Google Drive account to use (more than
   // one google_drive connection exists) — set by chooseGoogleDriveConnection
@@ -208,45 +204,21 @@ export function useGoogleDrivePicker({
 
   // Shared by both "+" menu entry points below: not connected yet →
   // confirm the user actually wants to leave the app for Google's connect
-  // flow (it opens the OS browser, not an in-app screen), then open the
-  // same imperative connect flow the connector picker uses, then
-  // auto-resume `onConnected` once that form reports success, so the user
-  // doesn't have to click "Add files" a second time.
+  // flow (it opens the OS browser, not an in-app screen), fire the OAuth
+  // connect directly (no connector-setup task/form — see ENG-Drive-picker
+  // streamline), then run `onConnected` once it succeeds so the user doesn't
+  // have to click "Add files" a second time. `host.oauthConnect` already
+  // resolves on every failure mode (bad config, callback timeout, token
+  // exchange failure/timeout) — no outer timeout needed here.
   const connectGoogleDriveThenRun = useCallback(async (onConnected) => {
     const confirmed = await new Promise((resolve) => setDriveConnectPrompt({ resolve }));
     if (!confirmed) return;
-    const tempId = await handleConnectorPicked({ id: 'google_drive' });
-    if (!tempId) return;
-    const CONNECT_RESUME_TIMEOUT_MS = 5 * 60 * 1000;
-    // Callers `await` this whole function expecting it to cover the full
-    // connect-then-pick flow (e.g. so they can reload the file list right
-    // after) — resolving as soon as the connect tab merely OPENS, before
-    // OAuth/picking actually finish, made callers reload against a
-    // stale/empty list. Wrap the subscription in a promise so this only
-    // resolves once onConnected() has actually run (or the timeout gives up).
-    await new Promise((resolve, reject) => {
-      let unsubscribe = () => {};
-      const timeoutId = setTimeout(() => { unsubscribe(); resolve(); }, CONNECT_RESUME_TIMEOUT_MS);
-      unsubscribe = subscribeDataVaultForm(tempId, async (spec) => {
-        const engine = spec?.engine || spec?._connector_id;
-        if (!spec?._is_success || engine !== 'google_drive') return;
-        clearTimeout(timeoutId);
-        unsubscribe();
-        // Both the timeout and cancel paths above always resolve — if
-        // onConnected() throws (e.g. an unguarded IPC rejection deep in
-        // openGoogleDrivePicker) this must reject rather than leave the
-        // promise settled by nothing, which would hang the caller's busy
-        // state forever instead of surfacing the error like every other
-        // failure path in this flow does.
-        try {
-          await onConnected();
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-  }, [handleConnectorPicked]);
+    const result = await host.oauthConnect({ engine: 'google_drive', name: '' });
+    if (!result?.ok) {
+      throw new Error(result?.reason || 'Could not connect Google Drive.');
+    }
+    await onConnected();
+  }, []);
 
   // Composer "+" menu entry point. `projectName` comes from the Composer's
   // own `project` prop (Home/Task/Projects all pass one) — tags the picked
@@ -279,9 +251,9 @@ export function useGoogleDrivePicker({
       if (!res.ok) throw new Error(res.reason || 'Could not add Google Drive files.');
       return res;
     }
-    // Connecting routes away to a temporary task — remember where to come
-    // back to so the user isn't left staring at "Connect Google Drive"
-    // once their file references are added.
+    // Connecting no longer navigates away (see connectGoogleDriveThenRun) —
+    // this just re-affirms the current task's route once files are added,
+    // in case something else changed it during the OAuth wait.
     const returnToTaskId = currentTask?.id || null;
     await connectGoogleDriveThenRun(async () => {
       await addGoogleDriveFileReferences(projectName);
