@@ -279,3 +279,67 @@ describe('web settings access — loopback-gated /raw (ENG-817)', () => {
     await expect(host.saveSettings('ANTON_X=1')).rejects.toThrow();
   });
 });
+
+describe('embedded browser bridge', () => {
+  it('web mode: every browser call degrades to an empty promise / no-op', async () => {
+    const host = await importHost();
+    await expect(host.browserGetState()).resolves.toEqual({ tabs: [], activeTabId: null, viewVisible: false });
+    await expect(host.browserNewTab({ url: 'https://a.com' })).resolves.toEqual({ tabId: '' });
+    await expect(host.browserTopSites()).resolves.toEqual([]);
+    await expect(host.browserImportChrome()).resolves.toEqual({ imported: 0, profiles: [], error: 'unsupported' });
+    await expect(host.browserSetVisible(true, { x: 0, y: 0, width: 10, height: 10 })).resolves.toBeUndefined();
+    await expect(host.browserSetBounds({ x: 0, y: 0, width: 1, height: 1 })).resolves.toBeUndefined();
+    await expect(host.browserCloseTab('t1')).resolves.toBeUndefined();
+    await expect(host.browserActivateTab('t1')).resolves.toBeUndefined();
+    await expect(host.browserNavigate('t1', 'https://a.com')).resolves.toBeUndefined();
+    await expect(host.browserGoBack('t1')).resolves.toBeUndefined();
+    await expect(host.browserGoForward('t1')).resolves.toBeUndefined();
+    await expect(host.browserReload('t1')).resolves.toBeUndefined();
+    await expect(host.browserStop('t1')).resolves.toBeUndefined();
+    await expect(host.browserOpenDevTools('t1')).resolves.toBeUndefined();
+    const unsub = host.onBrowserStateChanged(() => {});
+    expect(typeof unsub).toBe('function');
+    unsub();
+  });
+
+  it('a partial bridge (OTA renderer on an older shell) degrades the same way', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+    await expect(host.browserGetState()).resolves.toEqual({ tabs: [], activeTabId: null, viewVisible: false });
+    await expect(host.browserNewTab()).resolves.toEqual({ tabId: '' });
+    await expect(host.browserTopSites(5)).resolves.toEqual([]);
+  });
+
+  it('electron mode: calls delegate to the bridge with the same arguments', async () => {
+    const browserGetState = vi.fn(async () => ({ tabs: [{ id: 't1' }], activeTabId: 't1', viewVisible: true }));
+    const browserNewTab = vi.fn(async () => ({ tabId: 't2' }));
+    const browserNavigate = vi.fn(async () => {});
+    const browserSetVisible = vi.fn(async () => {});
+    const browserTopSites = vi.fn(async () => [{ url: 'https://a.com', title: 'A', visits: 2, source: 'cowork' }]);
+    const onBrowserStateChanged = vi.fn(() => () => {});
+    (window as unknown as Record<string, unknown>).antontron = {
+      browserGetState, browserNewTab, browserNavigate, browserSetVisible,
+      browserTopSites, onBrowserStateChanged,
+    };
+    const host = await importHost();
+
+    await expect(host.browserGetState()).resolves.toMatchObject({ activeTabId: 't1' });
+    await expect(host.browserNewTab({ url: 'https://a.com', activate: true })).resolves.toEqual({ tabId: 't2' });
+    expect(browserNewTab).toHaveBeenCalledWith({ url: 'https://a.com', activate: true });
+
+    await host.browserNavigate('t2', 'example.com');
+    expect(browserNavigate).toHaveBeenCalledWith('t2', 'example.com');
+
+    const rect = { x: 1, y: 2, width: 300, height: 200 };
+    await host.browserSetVisible(true, rect);
+    expect(browserSetVisible).toHaveBeenCalledWith(true, rect);
+
+    await expect(host.browserTopSites(8)).resolves.toHaveLength(1);
+    expect(browserTopSites).toHaveBeenCalledWith(8);
+
+    const cb = vi.fn();
+    const unsub = host.onBrowserStateChanged(cb);
+    expect(onBrowserStateChanged).toHaveBeenCalledWith(cb);
+    unsub();
+  });
+});

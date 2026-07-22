@@ -157,6 +157,18 @@ Electron renderer (React/TS, sandboxed)
 
 All IPC channel names are defined as constants in [src/shared/ipc-channels.ts](src/shared/ipc-channels.ts). Add new channels there first.
 
+### Embedded browser (Browser route)
+
+A full multi-tab Chromium browser lives in main, not in the renderer:
+
+- `src/main/browser/browser-manager.ts` — one `WebContentsView` per tab (partition `persist:cowork-browser`, sandboxed, no preload, permissions deny-all). Only the active tab's view is attached to the window, and only while the Browser route is visible; the renderer mirrors its placeholder rect via `browser:set-bounds`. Tabs persist in `~/.cowork*/browser/tabs.json` (views materialize lazily), history in `history.json` (query/hash redacted, files 0600).
+- `browser-bridge.ts` — loopback HTTP server (random port, per-launch bearer token) through which the agent drives the SAME tabs the user sees. Discovery: `coworkHome()/browser-bridge.json` (authoritative, 0600; deleted on shutdown) + `COWORK_BROWSER_BRIDGE_PORT/TOKEN` env for the spawned server. Running the server manually against a dev app? Start it with `COWORK_HOME=~/.cowork-dev` so paths line up.
+- Agent tools: `cowork-server/cowork/harnesses/anton_harness/browser_tools.py` (`browser_navigate/read/snapshot/click/type/scroll/back/tabs/screenshot/close_tab` + trusted-input `browser_click_at/press_key/insert_text/paste` for canvas apps), registered in the anton harness. They try env discovery first, then the file, and fall through on connection failure. Browser Agent dock turns send `surface: 'browser'` on `/responses` — the handler injects a live `<browser-context>` block (copilot guidance + open tabs) into the LLM input only (never persisted).
+- Trusted input (canvas apps like Sheets/Figma): `browser-input.ts` drives CDP `Input.*` (isTrusted:true, `keyDown` for default actions). CDP input needs the view attached to a window that was SHOWN with the view attached — so non-visible tabs move to a hidden input window (parked 87% offscreen, `showInactive` → 350ms → `hide` — one warm cycle per tab per session, then input-ready). Paste is a synthetic ClipboardEvent (proven: Sheets splits TSV into cells). Screenshots still need the tab visibly attached.
+- Gotchas: a never-attached `WebContentsView` has a 0×0 renderer viewport — `runScript` primes it with a behind-attach (z-index 0, invisible); `capturePage` only works on a visibly attached tab (bridge 400s otherwise). Schemes are enforced at the load site (`isAllowedTabUrl`) because `will-navigate` never fires for programmatic `loadURL`. ⌘W/⌘R are intentionally NOT in the app menu — the Browser route handles them (close/reload tab); window close is ⌘⇧W.
+- Chrome history import: `chrome-import.ts` copies each profile's History db (+WAL) to tmp and queries via `/usr/bin/sqlite3 -json` (no npm dep), cached 24 h in `chrome-import.json`.
+- Tests: `src/main/browser/*.test.ts` (pure logic in `browser-logic.ts`), `e2e/browser.spec.ts` (real-app bridge lifecycle, loopback only).
+
 ### Dual-mode: Electron vs. Web
 
 The app ships as both an Electron desktop app and a headless web SPA (served by cowork-server). The abstraction lives entirely in [src/renderer/platform/host.ts](src/renderer/platform/host.ts):

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC } from '../shared/ipc-channels';
+import type { Rect } from '../shared/browser-types';
 
 // ENG-439: main resolves a per-OS-user server port and passes it to the
 // renderer process via additionalArguments. Parse it once here so the host
@@ -122,6 +123,32 @@ contextBridge.exposeInMainWorld('antontron', {
     const listener = (_: any, status: { phase: string; version?: string }) => cb(status);
     ipcRenderer.on(IPC.UI_UPDATE_STATUS, listener);
     return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
+  },
+
+  // Browser (embedded tabs, driven by renderer UI + the agent bridge)
+  browserGetState: () => ipcRenderer.invoke(IPC.BROWSER_GET_STATE),
+  browserSetVisible: (visible: boolean, bounds?: Rect) =>
+    ipcRenderer.invoke(IPC.BROWSER_SET_VISIBLE, { visible, bounds }),
+  browserSetBounds: (r: Rect) => ipcRenderer.invoke(IPC.BROWSER_SET_BOUNDS, r),
+  browserNewTab: (opts?: { url?: string; activate?: boolean }) =>
+    ipcRenderer.invoke(IPC.BROWSER_NEW_TAB, opts ?? {}),
+  browserCloseTab: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_CLOSE_TAB, { tabId }),
+  browserActivateTab: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_ACTIVATE_TAB, { tabId }),
+  browserNavigate: (tabId: string, url: string) =>
+    ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, { tabId, url }),
+  browserGoBack: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_GO_BACK, { tabId }),
+  browserGoForward: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_GO_FORWARD, { tabId }),
+  browserReload: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_RELOAD, { tabId }),
+  browserStop: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_STOP, { tabId }),
+  browserOpenDevTools: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_OPEN_DEVTOOLS, { tabId }),
+  browserTopSites: (limit?: number) => ipcRenderer.invoke(IPC.BROWSER_TOP_SITES, { limit }),
+  browserImportChrome: () => ipcRenderer.invoke(IPC.BROWSER_IMPORT_CHROME),
+  // Full BrowserState pushed (debounced) on any tab/model change. Returns an
+  // unsubscribe function.
+  onBrowserStateChanged: (cb: (state: any) => void) => {
+    const listener = (_: any, state: any) => cb(state);
+    ipcRenderer.on(IPC.BROWSER_STATE_CHANGED, listener);
+    return () => ipcRenderer.removeListener(IPC.BROWSER_STATE_CHANGED, listener);
   },
 
   // App

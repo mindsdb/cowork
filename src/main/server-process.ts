@@ -19,6 +19,7 @@ import { coworkHome, buildKind } from './cowork-home';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { withServerLifecycle } from './server-lifecycle';
 import { getEnvPath, findUv, getCoworkServerBinary } from './uv-paths';
+import { getBridgeEnv } from './browser/browser-bridge';
 
 const DEFAULT_PORT = 26866; // legacy port (ANTON on T9 keypad)
 const SERVER_HOST = '127.0.0.1';
@@ -545,6 +546,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // build points at. Only set when the build is baked for a non-prod env
       // and the caller hasn't already pinned ENV explicitly.
       ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
+      // Embedded-browser agent bridge discovery (W1): COWORK_BROWSER_BRIDGE_PORT
+      // / COWORK_BROWSER_BRIDGE_TOKEN when the bridge is already up. Best-effort
+      // — the discovery FILE (browser-bridge.json in coworkHome) is the
+      // authoritative path the server re-reads at call time.
+      ...getBridgeEnv(),
     };
 
     // detached: true on POSIX puts the child in its own process group so
