@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('antontron', {
   // MindsHub onboarding — see main/index.ts for the rationale on
   // why these are split out from the generic oauth:connect bridge.
   mindshubLogin: () => ipcRenderer.invoke(IPC.MINDSHUB_LOGIN),
+  mindshubSignup: () => ipcRenderer.invoke(IPC.MINDSHUB_SIGNUP),
   mindshubRefresh: () => ipcRenderer.invoke(IPC.MINDSHUB_REFRESH),
   mindshubFinalize: () => ipcRenderer.invoke(IPC.MINDSHUB_FINALIZE),
   mindshubGetCachedToken: () => ipcRenderer.invoke(IPC.MINDSHUB_GET_CACHED_TOKEN),

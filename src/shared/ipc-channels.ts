@@ -52,6 +52,10 @@ export const IPC = {
   // after the user has chosen an LLM path (free users may never
   // commit Minds as the LLM if they go BYOK).
   MINDSHUB_LOGIN: 'mindshub:login',
+  // Same loopback PKCE flow as MINDSHUB_LOGIN but entered through
+  // Keycloak's registration form, with a callback window long enough to
+  // survive the email-verification pause (ENG-917).
+  MINDSHUB_SIGNUP: 'mindshub:signup',
   MINDSHUB_REFRESH: 'mindshub:refresh',
   MINDSHUB_FINALIZE: 'mindshub:finalize',
   MINDSHUB_GET_CACHED_TOKEN: 'mindshub:get-cached-token',
