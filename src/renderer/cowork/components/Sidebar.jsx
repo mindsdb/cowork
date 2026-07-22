@@ -231,6 +231,28 @@ export default function Sidebar({
   navTitle = null,
   navLogo = null,
 }) {
+  // Live browser-tab count for the Browser nav badge. Subscribes directly
+  // to the main-process state push (App doesn't track tabs); the host
+  // methods are guarded since they land with the browser workstream and
+  // are absent in the web shell anyway (the item itself is Electron-gated).
+  const [browserTabCount, setBrowserTabCount] = useState(0);
+  useEffect(() => {
+    if (!host.isElectron || typeof host.onBrowserStateChanged !== 'function') return undefined;
+    let alive = true;
+    if (typeof host.browserGetState === 'function') {
+      host.browserGetState()
+        .then((s) => { if (alive) setBrowserTabCount(Array.isArray(s?.tabs) ? s.tabs.length : 0); })
+        .catch(() => {});
+    }
+    const unsub = host.onBrowserStateChanged((s) => {
+      setBrowserTabCount(Array.isArray(s?.tabs) ? s.tabs.length : 0);
+    });
+    return () => {
+      alive = false;
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
+
   // Decorate every task with its pinned state. Tasks come from the
   // conversations endpoint which doesn't know about pins (they live
   // in a separate /pins store), so without this the menu shows
@@ -536,6 +558,12 @@ export default function Sidebar({
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
           <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />
+          {/* Embedded browser — native tabs + agent dock. Electron-only:
+              the web shell has no WebContentsView bridge (mirror of the
+              web-only Channels gate below). Badge = live tab count. */}
+          {host.isElectron && (
+            <NavItem icon={Ico.globe(15)} label="Browser" onClick={() => onNavigate('browser')} active={activeRoute === 'browser'} badge={showCounters ? (browserTabCount || null) : null} />
+          )}
           {/* Connect Apps and Data — replaces "Customize". Reuses the
               `customize` route key so existing in-flight links still
               work. The page now lists connected apps + datasources in

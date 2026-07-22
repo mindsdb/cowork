@@ -17,6 +17,7 @@ import ScheduledView from './views/ScheduledView';
 import TasksView from './views/TasksView';
 import ScheduleDetailView from './views/ScheduleDetailView';
 import ArtifactsView from './views/ArtifactsView';
+import BrowserView from './views/BrowserView';
 import ChannelsView from './views/ChannelsView';
 import CustomizeView from './views/CustomizeView';
 import SettingsView from './views/SettingsView';
@@ -1163,9 +1164,9 @@ function AppCore() {
 
   // On narrow screens (< 900px), sidebar is a slide-over overlay — track open state separately.
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  // Routes where the user can collapse the sidebar. Currently:
-  // chat task only.
-  const sidebarCollapsibleRoutes = useMemo(() => new Set(['task']), []);
+  // Routes where the user can collapse the sidebar: chat task, and the
+  // embedded browser (max real estate for the native page).
+  const sidebarCollapsibleRoutes = useMemo(() => new Set(['task', 'browser']), []);
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)
   // and the body's bg colour both follow this value.
@@ -1281,7 +1282,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize | browser
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -3954,6 +3955,13 @@ function AppCore() {
           />
         )}
 
+
+        {route === 'browser' && (
+          // Self-contained: reads CSS vars for theme, owns its native-view
+          // bounds/visibility mirroring and agent-dock chat. Electron-only
+          // entry (Sidebar gates the nav item on host.isElectron).
+          <BrowserView />
+        )}
 
         {route === 'channels' && (
           <ChannelsView />

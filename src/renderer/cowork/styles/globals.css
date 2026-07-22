@@ -429,6 +429,10 @@ a[href],
 .scroll-clean,
 .field-input,
 .field-textarea,
+/* Browser chrome: the omnibox pill (and its icon/padding gaps) must take
+   clicks to focus the field, not drag the window. */
+.browser-omnibox,
+.browser-omnibox *,
 /* Any surface that needs to receive wheel/scroll events. Without this,
    the cowork shell's outer `-webkit-app-region: drag` swallows wheel
    events and the inner overflow:auto element never sees the scroll. */
@@ -5421,3 +5425,227 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
 .cw-status-cell  { container-type: inline-size; container-name: statuscell; }
 @container artcard (max-width: 400px)   { .cw-access-label { display: none; } }
 @container statuscell (max-width: 380px) { .cw-access-label { display: none; } }
+
+/* ===== Browser ===== */
+/* Embedded-browser route (BrowserView). Tabs echo the sidebar nav-row
+   language: ink-wash hovers (never accent-tinted), active tab = --surface
+   fill blending into the toolbar below. Icon buttons reuse `.icon-btn`;
+   scroll regions reuse `.scroll-clean`. Layout/geometry stays inline in the
+   components — only states, keyframes and pseudo-selectors live here. */
+
+/* ── Tab strip ─────────────────────────────────────────────────────────── */
+.browser-tab {
+  position: relative;
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 1 auto; min-width: 0; max-width: 200px;
+  height: 30px; padding: 0 8px;
+  border: 0; border-radius: var(--r-8);
+  background: transparent; color: var(--ink-3);
+  font-family: var(--font-body); font-size: 12.5px; font-weight: 400;
+  cursor: pointer; text-align: left;
+  transition: background .12s ease, color .12s ease;
+  -webkit-app-region: no-drag;
+}
+.browser-tab:hover:not(.is-active) { background: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink-2); }
+/* Active: --surface fill + 1px --line frame, bottom edge open and pulled
+   1px over the toolbar's top border so the tab reads as continuous with
+   the --surface toolbar beneath it. */
+.browser-tab.is-active {
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-bottom-color: transparent;
+  border-radius: var(--r-8) var(--r-8) 0 0;
+  margin-bottom: -1px;
+}
+/* Inactive tabs float above the strip baseline; active sits flush. */
+.browser-tab:not(.is-active) { margin-bottom: 4px; }
+.browser-tab__title {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.browser-tab__close {
+  flex: 0 0 auto;
+  width: 16px; height: 16px; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; color: var(--ink-4);
+  cursor: pointer; padding: 0;
+  opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease;
+}
+.browser-tab:hover .browser-tab__close,
+.browser-tab__close:focus-visible { opacity: 1; }
+.browser-tab__close:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+/* Keep the close visible on the active tab so the affordance doesn't
+   vanish when the pointer leaves the tab body. */
+.browser-tab.is-active .browser-tab__close { opacity: 1; }
+/* Tabs row: hide the horizontal scrollbar entirely — overflow stays
+   wheel/trackpad-scrollable (scroll-clean draws one, too heavy here). */
+.browser-tabstrip-scroll { scrollbar-width: none; -webkit-app-region: no-drag; }
+.browser-tabstrip-scroll::-webkit-scrollbar { display: none; }
+/* Once tabs overflow, faded strip edges signal there's more off-screen.
+   Mask-only (alpha gradient), so it's theme/dark-mode agnostic. */
+.browser-tabstrip-scroll.is-scrollable {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+}
+/* Keyboard rings on the browser's custom controls — same --ring token as
+   .card-row / .card.interactive. */
+.browser-tab:focus-visible,
+.browser-tile:focus-visible,
+.browser-chip:focus-visible,
+.browser-import:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* ── Omnibox ───────────────────────────────────────────────────────────── */
+/* Quiet focus: --surface-2 at rest → --surface + 1px accent ring while
+   focused. No glow, matching the composer's focus language. */
+.browser-omnibox {
+  display: flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 12px;
+  border-radius: var(--r-xl);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.browser-omnibox:hover:not(:focus-within) { background: color-mix(in srgb, var(--ink) 6%, var(--surface-2)); }
+.browser-omnibox:focus-within {
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.browser-omnibox input {
+  flex: 1; min-width: 0; height: 100%;
+  border: 0; outline: 0; background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body); font-size: 13px;
+}
+.browser-omnibox input::placeholder { color: var(--ink-4); }
+
+/* ── Load progress ─────────────────────────────────────────────────────── */
+.browser-progress {
+  height: 2px; overflow: hidden;
+  background: transparent;
+}
+.browser-progress__bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 0 var(--r-2) var(--r-2) 0;
+  transition: width .4s ease, opacity .3s ease;
+}
+
+/* ── Start page ────────────────────────────────────────────────────────── */
+@keyframes browser-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.browser-fade-up { animation: browser-fade-up .5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Top-site tile — favicon well lifts on hover like Card.interactive. */
+.browser-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  width: 64px; padding: 12px 4px 8px;
+  border: 0; border-radius: var(--r-lg);
+  background: transparent; cursor: pointer;
+  font-family: var(--font-body);
+  transition: background .12s ease, box-shadow .18s ease, transform .18s ease;
+}
+.browser-tile:hover { background: var(--surface); box-shadow: var(--sh-2); transform: translateY(-1px); }
+.browser-tile__well {
+  width: 44px; height: 44px; border-radius: var(--r-lg);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--ink-3);
+  font-size: 17px; font-weight: 600;
+  overflow: hidden;
+}
+.browser-tile__label {
+  max-width: 100%;
+  font-size: 12px; color: var(--ink-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Dashed "Import from Chrome" card — same language as the dashed
+   EmptyState / dropzone cards. */
+.browser-import {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  border: 1px dashed var(--line-2); border-radius: var(--r-lg);
+  background: transparent; color: var(--ink-3);
+  font-family: var(--font-body); font-size: 13px;
+  cursor: pointer;
+  transition: border-color .12s ease, background .12s ease, color .12s ease;
+}
+.browser-import:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-bg); color: var(--ink); }
+.browser-import:disabled { opacity: .55; cursor: default; }
+
+/* ── Agent dock ────────────────────────────────────────────────────────── */
+/* Quick-prompt chips above the composer (empty state). */
+.browser-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  background: transparent; color: var(--ink-3);
+  font-family: var(--font-body); font-size: 12.5px;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.browser-chip:hover { background: var(--surface-2); color: var(--ink); border-color: var(--line-2); }
+
+/* Left-edge drag handle for the dock resizer — 5px hit zone, a 1px
+   accent line appears on hover/drag. Sits fully inside the dock root so
+   the collapsing grid track never clips it. */
+.browser-dock-resizer {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 5px;
+  cursor: col-resize; z-index: 5;
+  touch-action: none; /* let pointer capture own the drag gesture */
+  -webkit-app-region: no-drag;
+}
+.browser-dock-resizer::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 1px;
+  background: transparent; transition: background .12s ease;
+}
+.browser-dock-resizer:hover::after,
+.browser-dock-resizer.is-dragging::after,
+.browser-dock-resizer:focus-visible::after { background: var(--accent); }
+.browser-dock-resizer:focus-visible { outline: none; }
+
+/* Dock composer — quiet-focus textarea well (1–5 rows, auto-grown in JS). */
+.browser-composer {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-12);
+  transition: border-color .12s ease, background .12s ease;
+}
+.browser-composer:focus-within { border-color: var(--accent); background: var(--surface); }
+.browser-composer textarea {
+  display: block; width: 100%;
+  border: 0; outline: 0; resize: none; background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body); font-size: 13px; line-height: 1.45;
+}
+.browser-composer textarea::placeholder { color: var(--ink-4); }
+
+/* Streaming status pulse in the dock header. */
+@keyframes browser-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
+}
+.browser-pulse { animation: browser-pulse 1.4s ease-in-out infinite; }
+
+/* Dock slide — the content grid animates its second column (wide) or the
+   drawer slides in fixed (narrow); 380ms easeOutExpo matches the sidebar
+   collapse. Classes exist so prefers-reduced-motion can override the
+   otherwise-inline transitions. `visibility` rides along so a closed
+   panel stays visible for the full out-animation before leaving the tab
+   order (visibility interpolates as "visible until the very end"). */
+.browser-dock-grid { transition: grid-template-columns 380ms cubic-bezier(0.22, 1, 0.36, 1); }
+.browser-dock-drawer { transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 380ms ease, visibility 380ms; }
+.browser-dock-panel { transition: opacity 240ms cubic-bezier(0.22, 1, 0.36, 1), visibility 240ms; }
+.browser-dock-scrim { transition: opacity 240ms ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-fade-up { animation: none; }
+  .browser-tile,
+  .browser-tab,
+  .browser-progress__bar { transition: none; }
+  .browser-pulse { animation: none; }
+  .browser-dock-grid,
+  .browser-dock-drawer,
+  .browser-dock-panel,
+  .browser-dock-scrim { transition: none !important; }
+}
