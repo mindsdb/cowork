@@ -308,24 +308,45 @@ export interface UpdateCheckSummary {
  *
  *  Pure: the orchestrator does the network I/O and passes each channel's
  *  result here, including its own `error` flag when that channel's check
- *  couldn't complete (as opposed to completing and finding no update). `ok` is
- *  true only when BOTH applicable channels completed cleanly — a channel that
- *  errored must never be reported as "up to date" alongside one that
- *  succeeded, since that hides a real unknown behind a confident answer. */
+ *  couldn't complete (as opposed to completing and finding no update).
+ *
+ *  A channel's own error never invalidates ITS OWN positive result — a
+ *  channel that actually completed and found an update is never inconclusive
+ *  about itself. So a confirmed update on either channel always wins over the
+ *  other channel being inconclusive: the periodic poll would still surface
+ *  (and could apply) that same confirmed update, and hiding it behind a
+ *  generic "couldn't check" would make the manual check strictly less useful
+ *  than the poll it's meant to mirror. `ok:false` — "couldn't check", never
+ *  "up to date" — applies only when NEITHER channel confirmed anything AND at
+ *  least one was inconclusive. `offline` additionally requires BOTH channels
+ *  to have failed (or an explicit override), since one erroring while the
+ *  other completed cleanly with no update is a partial-check failure, not "no
+ *  connectivity". */
 export function summarizeUpdateCheck(input: {
   offline?: boolean;
   ui: { updateAvailable: boolean; newVersion?: string; error?: boolean };
   server: { updateAvailable: boolean; latestVersion?: string; error?: boolean };
 }): UpdateCheckSummary {
-  if (input.offline || input.ui.error || input.server.error) {
-    return { ok: false, offline: !!input.offline, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false };
+  // An explicit `offline` override (no channel result can be trusted) still
+  // wins outright, same as before.
+  const uiUpdateAvailable = !input.offline && !input.ui.error && !!input.ui.updateAvailable;
+  const serverUpdateAvailable = !input.offline && !input.server.error && !!input.server.updateAvailable;
+  const updateAvailable = uiUpdateAvailable || serverUpdateAvailable;
+
+  if (!updateAvailable && (input.offline || input.ui.error || input.server.error)) {
+    return {
+      ok: false,
+      offline: !!input.offline || (!!input.ui.error && !!input.server.error),
+      updateAvailable: false,
+      uiUpdateAvailable: false,
+      serverUpdateAvailable: false,
+    };
   }
-  const uiUpdateAvailable = !!input.ui.updateAvailable;
-  const serverUpdateAvailable = !!input.server.updateAvailable;
+
   const summary: UpdateCheckSummary = {
     ok: true,
     offline: false,
-    updateAvailable: uiUpdateAvailable || serverUpdateAvailable,
+    updateAvailable,
     uiUpdateAvailable,
     serverUpdateAvailable,
   };

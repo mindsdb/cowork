@@ -134,24 +134,20 @@ async function applyUpdates(getWindow: GetWindow, applyServer: boolean, applyUi:
 // returns a display-ready summary. It reports the two together because the
 // apply path updates both (see summarizeUpdateCheck).
 //
-// Mirrors poll()'s hasInternet() gating below exactly: the manifest host being
-// unreachable only skips the UI check (different host, would just time out) —
-// it must never suppress the independent server check, which lives on
-// different hosts (git remote / PyPI) with its own fail-safe handling. Each
-// channel now carries its own `error` flag when its check couldn't complete,
-// so a failed check is reported as "couldn't check", never collapsed into a
-// misleading "up to date" (see summarizeUpdateCheck). `offline` — the more
-// specific "you appear to be offline" message — only applies when neither
-// channel could reach anything.
+// No manifest-reachability pre-gate here (unlike poll(), which uses hasInternet()
+// purely as a latency shortcut for a background loop that never surfaces
+// "couldn't check" to a user). checkForUIUpdate() already self-guards: OTA
+// disabled for this build channel returns instantly with no network call at
+// all, so a manifest host outage must never poison a check in a build where
+// the UI channel isn't even applicable. When OTA IS enabled and the manifest
+// really is unreachable, checkForUIUpdate() surfaces that itself via `error`.
+// Each channel carries its own `error` flag when its check couldn't complete;
+// summarizeUpdateCheck lets a channel that DID confirm an update win over the
+// other one being inconclusive, and only reports "up to date" when neither
+// channel found anything AND neither errored.
 export async function checkForUpdates(): Promise<UpdateCheckSummary> {
-  const manifestReachable = await hasInternet();
-  const uiSkipped: UpdateCheckResult = { updateAvailable: false, applied: false, error: true };
-  const [ui, server] = await Promise.all([
-    manifestReachable ? checkForUIUpdate() : Promise.resolve(uiSkipped),
-    checkForServerUpdate(),
-  ]);
+  const [ui, server] = await Promise.all([checkForUIUpdate(), checkForServerUpdate()]);
   return summarizeUpdateCheck({
-    offline: !manifestReachable && !!server.error,
     ui: { updateAvailable: ui.updateAvailable, newVersion: ui.newVersion, error: ui.error },
     server: { updateAvailable: server.updateAvailable, latestVersion: server.latestVersion, error: server.error },
   });

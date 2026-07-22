@@ -727,9 +727,10 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
     expect(r.uiVersion).toBeUndefined();
   });
 
-  // Regression (PR #449 review): a channel that failed to check must never be
-  // collapsed into "up to date" alongside a channel that succeeded.
-  it('reports a UI-only check failure as ok:false, not offline', () => {
+  // Regression (PR #449 review, round 1): a channel that failed to check
+  // must never be collapsed into "up to date" alongside a channel that
+  // completed cleanly and found nothing.
+  it('reports a UI-only check failure (no update found on either side) as ok:false, not offline', () => {
     const r = summarizeUpdateCheck({
       ui: { updateAvailable: false, error: true },
       server: { updateAvailable: false },
@@ -737,7 +738,7 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
     expect(r).toEqual({ ok: false, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false });
   });
 
-  it('reports a server-only check failure as ok:false, not offline', () => {
+  it('reports a server-only check failure (no update found on either side) as ok:false, not offline', () => {
     const r = summarizeUpdateCheck({
       ui: { updateAvailable: false },
       server: { updateAvailable: false, error: true },
@@ -745,15 +746,51 @@ describe('summarizeUpdateCheck (ENG-671 "Check for updates")', () => {
     expect(r).toEqual({ ok: false, offline: false, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false });
   });
 
-  it('does not surface a real update found on one channel when the other errored', () => {
-    // A confirmed server update alongside a failed UI check must still read
-    // as "couldn't check" — a half-complete picture is not a trustworthy one.
+  it('reports offline only when BOTH channels failed to check', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: false, error: true },
+      server: { updateAvailable: false, error: true },
+    });
+    expect(r).toEqual({ ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false });
+  });
+
+  // Regression (PR #449 review, round 2): a channel that DID complete and
+  // find a real update must win over the other channel being inconclusive —
+  // the periodic poll would still surface (and could apply) that same
+  // confirmed update, so the manual check must not hide it behind a generic
+  // "couldn't check".
+  it('surfaces a confirmed server update even when the UI check errored', () => {
     const r = summarizeUpdateCheck({
       ui: { updateAvailable: false, error: true },
       server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
     });
-    expect(r.ok).toBe(false);
-    expect(r.updateAvailable).toBe(false);
+    expect(r.ok).toBe(true);
+    expect(r.updateAvailable).toBe(true);
+    expect(r.serverUpdateAvailable).toBe(true);
+    expect(r.serverVersion).toBe('0.26.8.1.2');
+    expect(r.uiUpdateAvailable).toBe(false);
+  });
+
+  it('surfaces a confirmed UI update even when the server check errored', () => {
+    const r = summarizeUpdateCheck({
+      ui: { updateAvailable: true, newVersion: '1.26.7.20.3' },
+      server: { updateAvailable: false, error: true },
+    });
+    expect(r.ok).toBe(true);
+    expect(r.updateAvailable).toBe(true);
+    expect(r.uiUpdateAvailable).toBe(true);
+    expect(r.uiVersion).toBe('1.26.7.20.3');
     expect(r.serverUpdateAvailable).toBe(false);
+  });
+
+  it('an explicit offline override still discards a reported positive from either channel', () => {
+    // Belt-and-suspenders: if the caller asserts the whole check is offline,
+    // no per-channel result can be trusted, confirmed-looking or not.
+    const r = summarizeUpdateCheck({
+      offline: true,
+      ui: { updateAvailable: false },
+      server: { updateAvailable: true, latestVersion: '0.26.8.1.2' },
+    });
+    expect(r).toEqual({ ok: false, offline: true, updateAvailable: false, uiUpdateAvailable: false, serverUpdateAvailable: false });
   });
 });
