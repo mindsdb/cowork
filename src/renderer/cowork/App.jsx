@@ -636,12 +636,13 @@ function mergeTasksFromServer(serverTasks, localTasks) {
   const local = Array.isArray(localTasks) ? localTasks : [];
   if (!Array.isArray(serverTasks)) return local;
   const localById = new Map(local.map((t) => [t.id, t]));
-  // Take whichever of (local, server) updatedAt is newer. A turn
-  // in flight has a fresh client stamp (handleSendInTask /
-  // handleSendFromHome) but a stale server stamp (server only
-  // bumps _meta.json on completion). Without this guard, a
-  // fetchSessions mid-stream would slide the just-revived task
-  // back down the list as soon as it lands.
+  // Take whichever of (local, server) updatedAt is newer. When a turn
+  // is in flight, handleSendInTask / handleSendFromHome stamp a fresh
+  // client updatedAt the instant the user sends, but the server's value
+  // only catches up once the turn's messages persist (the server derives
+  // updated_at from the latest message — ENG-961). Keeping the newer of
+  // the two stops a fetchSessions mid-stream from sliding the just-revived
+  // task back down the list before the server value lands.
   const _newerUpdatedAt = (a, b) => {
     const aa = Date.parse(a || '') || 0;
     const bb = Date.parse(b || '') || 0;
