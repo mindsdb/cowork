@@ -362,14 +362,14 @@ body[data-theme="dark"] {
   --primary-50: var(--accent-bg);
 }
 
-/* In dark mode, bold + emphasised inline text picks up a soft neon glow —
-   restrained but unmistakably "alive" per the guideline. */
+/* Emphasis in dark mode: bold is the brightest ink, italics stay italic.
+   ENG-641: removed the neon glow (text-shadow) that made emphasis fluoresce. */
 body[data-theme="dark"] strong,
-body[data-theme="dark"] b,
-body[data-theme="dark"] em {
+body[data-theme="dark"] b {
   color: var(--ink);
-  text-shadow: 0 0 14px var(--accent-glow);
-  font-style: normal;
+}
+body[data-theme="dark"] em {
+  font-style: italic;
 }
 
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
@@ -529,26 +529,25 @@ a[href],
 }
 
 /* ─── Streaming text fade-in ─────────────────────────────────────────────── */
-/* Word-level: individual words fade in as they stream. React reconciliation
-   preserves existing <span> elements (keyed by index) so only newly
-   appended words play the animation. */
+/* Word-level: words fade in as they stream. React keeps existing spans
+   (keyed by index) so only newly appended words animate. ENG-641: opacity
+   only, blur removed. */
 @keyframes stream-word-fade {
-  from { opacity: 0; filter: blur(2px); }
-  to   { opacity: 1; filter: blur(0px); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .stream-word {
-  animation: stream-word-fade 0.32s ease-out both;
+  animation: stream-word-fade 0.18s ease-out both;
 }
 
-/* Block-level: non-text elements (code blocks, tables, blockquotes, hrs)
-   slide + fade in when they first appear during streaming. Text-bearing
-   elements (p, h1-h3, li) use word-level animation instead. */
+/* Block-level (code, tables, blockquotes, hrs): fade in on first appearance;
+   text elements use the word-level animation above. Opacity only (ENG-641). */
 @keyframes stream-block-fade {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .markdown-content.is-streaming > *:not(p):not(h1):not(h2):not(h3):not(ul):not(ol) {
-  animation: stream-block-fade 0.35s ease-out both;
+  animation: stream-block-fade 0.24s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4835,18 +4834,13 @@ body[data-theme="dark"] .mshell__drawer-title {
   position: relative;
 }
 .user-turn-bubble {
-  /* De-bubbled (ENG-787 move 01): the right-aligned bordered+shadowed
-     "SMS bubble" is the single most dated element in the chat. Modern AI
-     chat (Claude/Codex) renders the user turn as a quiet tinted block —
-     no hard border, no drop shadow. A --surface-3 fill carries the shape
-     instead; keep the generous rounding so it reads as a friendly block,
-     not an input box. (--surface-2 was too faint against the page + the
-     animated dot field behind it — --surface-3 roughly doubles the
-     separation while staying on the neutral token scale.) */
-  background: var(--surface-3);
-  border: 0;
-  border-radius: 18px;
-  padding: 14px 18px;
+  /* Quiet outlined block, not an SMS bubble: --surface-2 fill + a --line
+     hairline for the edge (a light fill alone barely separates from the page
+     over the dot field), no shadow. ENG-787 de-bubble, ENG-641 refine. */
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  padding: 12px 16px;
   font-family: var(--font-body);
   font-size: var(--text-base);
   line-height: 1.55;
