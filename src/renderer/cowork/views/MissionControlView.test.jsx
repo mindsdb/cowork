@@ -1,17 +1,36 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // The view composes `useBoard` — mocked here so each test controls the four
-// columns directly. The Composer is stubbed with a button that fires onSend,
-// which is all the wiring this view is responsible for.
+// columns directly. The Composer and ApprovalCard are stubbed: the board is
+// responsible for rendering one ApprovalCard per pending approval and for
+// wiring the composer's onSend, not for those components' internals (they
+// have their own test files).
 const useBoard = vi.hoisted(() => vi.fn());
 vi.mock('../components/board/useBoard', () => ({ useBoard }));
+
+const fetchSession = vi.hoisted(() => vi.fn(async () => null));
+const openArtifact = vi.hoisted(() => vi.fn(async () => ({})));
+vi.mock('../api', () => ({ fetchSession, openArtifact }));
+
+const hostMock = vi.hoisted(() => ({ isElectron: true, isMac: () => false }));
+vi.mock('../../platform/host', () => ({ host: hostMock }));
 
 vi.mock('../components/Composer', () => ({
   default: ({ onSend }) => (
     <button type="button" data-testid="board-composer" onClick={() => onSend?.('hello board')}>
       composer
     </button>
+  ),
+}));
+
+vi.mock('../components/ApprovalCard', () => ({
+  default: ({ approval }) => (
+    <div data-testid={`approval-card-${approval?.id}`}>
+      {approval?.kind === 'auth'
+        ? `Sign in to ${approval?.actionDescriptor?.appName}`
+        : approval?.actionDescriptor?.summary}
+    </div>
   ),
 }));
 
@@ -78,27 +97,24 @@ describe('MissionControlView — columns', () => {
     expect(screen.getByText('Shipped work lands here')).toBeInTheDocument();
   });
 
-  it('renders column counts and rows', () => {
+  it('renders one ApprovalCard per pending approval in Needs You', () => {
+    useBoard.mockReturnValue(board({ needsYou: [pendingAction, pendingAuth] }));
+    render(<MissionControlView />);
+    const col = screen.getByLabelText('Needs You');
+    expect(col.textContent).toContain('2');
+    expect(screen.getByTestId('approval-card-ap-1')).toBeInTheDocument();
+    expect(screen.getByTestId('approval-card-ap-2')).toBeInTheDocument();
+  });
+
+  it('renders running and scheduled rows', () => {
     useBoard.mockReturnValue(board({
-      needsYou: [pendingAction, pendingAuth],
       running: [{ conversationId: 'c1', topic: 'Weekly digest', startedAt: '2026-07-23T09:00:00Z' }],
       scheduled: [{ id: 's1', title: 'Morning digest', cadence: 'daily', enabled: true, nextRunAt: '2026-07-24T08:00:00Z' }],
-      shipped: {
-        today: [{ id: 'ap-9', conversationId: 'c9', kind: 'action', status: 'approved', actionDescriptor: { summary: 'Sent the update' }, resolvedAt: '2026-07-23T11:00:00Z' }],
-        older: [],
-      },
     }));
     render(<MissionControlView />);
-
-    const needsYouCol = screen.getByLabelText('Needs You');
-    expect(needsYouCol.textContent).toContain('2');
-    expect(screen.getByText('Send the reply to Abi')).toBeInTheDocument();
-    expect(screen.getByText('Sign in to Gmail')).toBeInTheDocument();
-
     expect(screen.getByText('Weekly digest')).toBeInTheDocument();
     expect(screen.getByText('Morning digest')).toBeInTheDocument();
     expect(screen.getByText(/Daily · Next/)).toBeInTheDocument();
-    expect(screen.getByText('Sent the update')).toBeInTheDocument();
   });
 
   it('collapses expired approvals into one quiet row', () => {
@@ -147,11 +163,147 @@ describe('MissionControlView — columns', () => {
   });
 });
 
+describe('MissionControlView — shipped receipts', () => {
+  it('shows receipt.result.summary when present', () => {
+    useBoard.mockReturnValue(board({
+      shipped: {
+        today: [{
+          id: 'a1', conversationId: 'c1', kind: 'action', status: 'approved',
+          actionDescriptor: { summary: 'Update the sheet' },
+          receipt: { executed: true, result: { summary: '26 rows → B2:G12' } },
+          resolvedAt: '2026-07-23T11:00:00Z',
+        }],
+        older: [],
+      },
+    }));
+    render(<MissionControlView />);
+    expect(screen.getByText('26 rows → B2:G12')).toBeInTheDocument();
+  });
+
+  it('shows receipt.error when the action failed', () => {
+    useBoard.mockReturnValue(board({
+      shipped: {
+        today: [{
+          id: 'a1', conversationId: 'c1', kind: 'action', status: 'approved',
+          actionDescriptor: { summary: 'Send the note' },
+          receipt: { executed: false, error: 'SMTP rejected the message' },
+          resolvedAt: '2026-07-23T11:00:00Z',
+        }],
+        older: [],
+      },
+    }));
+    render(<MissionControlView />);
+    expect(screen.getByText('SMTP rejected the message')).toBeInTheDocument();
+  });
+
+  it('falls back to "Approved · <relative>" for a bare receipt', () => {
+    useBoard.mockReturnValue(board({
+      shipped: {
+        today: [{
+          id: 'a1', conversationId: 'c1', kind: 'action', status: 'approved',
+          actionDescriptor: { summary: 'Send the note' },
+          receipt: { executed: true, resolved_at: '2026-07-23T11:00:00Z' },
+          resolvedAt: '2026-07-23T11:00:00Z',
+        }],
+        older: [],
+      },
+    }));
+    render(<MissionControlView />);
+    expect(screen.getByText(/Approved · /)).toBeInTheDocument();
+  });
+
+  it('surfaces an artifact link when the receipt references one', () => {
+    useBoard.mockReturnValue(board({
+      shipped: {
+        today: [{
+          id: 'a1', conversationId: 'c1', kind: 'action', status: 'approved',
+          actionDescriptor: { summary: 'Build the report' },
+          receipt: { executed: true, result: { summary: 'Report built' }, artifact: '/tmp/artifacts/q3-report.html' },
+          resolvedAt: '2026-07-23T11:00:00Z',
+        }],
+        older: [],
+      },
+    }));
+    render(<MissionControlView />);
+    const link = screen.getByRole('button', { name: 'q3-report.html' });
+    fireEvent.click(link);
+    expect(openArtifact).toHaveBeenCalledWith('/tmp/artifacts/q3-report.html');
+  });
+});
+
+describe('MissionControlView — peek', () => {
+  const runningBoard = () => board({
+    running: [{ conversationId: 'c1', topic: 'Weekly digest', startedAt: null }],
+  });
+
+  beforeEach(() => {
+    hostMock.isElectron = true;
+  });
+
+  it('opens a read-only transcript and closes via the close button', async () => {
+    fetchSession.mockImplementation(async () => ({
+      messages: [
+        { role: 'user', content: 'Draft the weekly update' },
+        { role: 'assistant', content: 'On it — pulling the numbers.' },
+        { role: '_streaming', content: '' },
+        { role: 'activity', content: 'Thinking…' },
+      ],
+    }));
+    useBoard.mockReturnValue(runningBoard());
+    render(<MissionControlView />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    const panel = screen.getByLabelText('Peek — Weekly digest');
+    expect(panel).toBeInTheDocument();
+
+    expect(await screen.findByText('Draft the weekly update')).toBeInTheDocument();
+    expect(screen.getByText('On it — pulling the numbers.')).toBeInTheDocument();
+    // Internal roles are filtered out of the transcript.
+    expect(screen.queryByText('Thinking…')).toBeNull();
+    expect(fetchSession).toHaveBeenCalledWith('c1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close peek' }));
+    expect(screen.queryByLabelText('Peek — Weekly digest')).toBeNull();
+  });
+
+  it('closes on Escape', async () => {
+    fetchSession.mockImplementation(async () => ({ messages: [] }));
+    useBoard.mockReturnValue(runningBoard());
+    render(<MissionControlView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    expect(screen.getByLabelText('Peek — Weekly digest')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByLabelText('Peek — Weekly digest')).toBeNull();
+  });
+
+  it('offers "Watch live" in the Electron shell and routes to the browser', async () => {
+    hostMock.isElectron = true;
+    fetchSession.mockImplementation(async () => ({ messages: [] }));
+    const onNavigate = vi.fn();
+    useBoard.mockReturnValue(runningBoard());
+    render(<MissionControlView onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Watch live/ }));
+    expect(onNavigate).toHaveBeenCalledWith('browser');
+    expect(screen.queryByLabelText('Peek — Weekly digest')).toBeNull();
+  });
+
+  it('hides "Watch live" in the web shell', async () => {
+    hostMock.isElectron = false;
+    fetchSession.mockImplementation(async () => ({ messages: [] }));
+    useBoard.mockReturnValue(runningBoard());
+    render(<MissionControlView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    expect(screen.getByLabelText('Peek — Weekly digest')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Watch live/ })).toBeNull();
+    hostMock.isElectron = true;
+  });
+});
+
 describe('MissionControlView — drill-in + composer', () => {
-  it('drills into the conversation from Needs You / Running / Shipped rows', () => {
+  it('drills into the conversation from Running and Shipped rows', () => {
     const onSelectTask = vi.fn();
     useBoard.mockReturnValue(board({
-      needsYou: [pendingAction],
       running: [{ conversationId: 'c1', topic: 'Weekly digest', startedAt: null }],
       shipped: {
         today: [{ id: 'a1', conversationId: 'c9', kind: 'action', status: 'approved', actionDescriptor: { summary: 'Sent the update' }, resolvedAt: '2026-07-23T11:00:00Z' }],
@@ -159,9 +311,6 @@ describe('MissionControlView — drill-in + composer', () => {
       },
     }));
     render(<MissionControlView onSelectTask={onSelectTask} />);
-
-    fireEvent.click(screen.getByText('Send the reply to Abi'));
-    expect(onSelectTask).toHaveBeenCalledWith('conv-1');
 
     fireEvent.click(screen.getByText('Weekly digest'));
     expect(onSelectTask).toHaveBeenCalledWith('c1');
