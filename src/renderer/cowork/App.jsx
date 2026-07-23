@@ -3998,38 +3998,28 @@ function AppCore() {
             a modal. Gated on isMobile; desktop keeps the two-column modal. */}
         {isMobile ? (
           settingsOpen && (
+            // Full-page master-detail surface. SettingsView owns its top bar
+            // (contextual back / title) and scroll body — see its mobile
+            // branch. onClose closes the whole surface from the section list.
             <div className="settings-mobile" role="dialog" aria-modal="true" aria-labelledby="settings-mobile-title">
-              <header className="settings-mobile__top">
-                <button
-                  type="button"
-                  className="settings-mobile__back"
-                  aria-label="Close settings"
-                  onClick={() => setSettingsOpen(false)}
-                >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-                </button>
-                <div className="settings-mobile__title" id="settings-mobile-title">Settings</div>
-                <span className="settings-mobile__spacer" aria-hidden="true" />
-              </header>
-              <div className="settings-mobile__body scroll-clean">
-                <SettingsView
-                  mobile
-                  settings={settings} setSetting={setSetting} onSave={saveSettings}
-                  theme={theme} onThemeChange={setTheme}
-                  skin={skin} onSkinChange={setSkin}
-                  customTheme={customTheme} onCustomThemeChange={setCustomTheme}
-                  agentLabel={agentLabel}
-                  section={settingsSection}
-                  onSectionChange={setSettingsSection}
-                  serverOnline={serverOnline}
-                  serverBusy={serverBusy}
-                  serverBusyKind={serverBusyKind}
-                  onStartServer={handleServerStart}
-                  onStopServer={handleServerStop}
-                  isSsoConnected={ssoConnected}
-                  ssoError={ssoError}
-                />
-              </div>
+              <SettingsView
+                mobile
+                onClose={() => setSettingsOpen(false)}
+                settings={settings} setSetting={setSetting} onSave={saveSettings}
+                theme={theme} onThemeChange={setTheme}
+                skin={skin} onSkinChange={setSkin}
+                customTheme={customTheme} onCustomThemeChange={setCustomTheme}
+                agentLabel={agentLabel}
+                section={settingsSection}
+                onSectionChange={setSettingsSection}
+                serverOnline={serverOnline}
+                serverBusy={serverBusy}
+                serverBusyKind={serverBusyKind}
+                onStartServer={handleServerStart}
+                onStopServer={handleServerStop}
+                isSsoConnected={ssoConnected}
+                ssoError={ssoError}
+              />
             </div>
           )
         ) : (

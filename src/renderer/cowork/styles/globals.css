@@ -4533,11 +4533,12 @@ body[data-theme="dark"] .mshell__drawer-title {
   -webkit-overflow-scrolling: touch;
   background: var(--bg);
 }
-/* Accordion nav wrapper + expanded section body. The body renders section
+/* Master-detail (ENG-990). The section list uses the full-width mshell
+   accordion rows (border dividers); the detail page renders the section's
    content in natural flow (SettingsSectionPanel drops its internal scroll on
-   mobile), indented to align under the accordion header label. */
-.settings-acc { padding: 4px 0 24px; }
-.settings-acc__body { padding: 0 14px 16px 14px; }
+   mobile) with a comfortable gutter and safe-area-aware bottom padding. */
+.settings-list { padding: 4px 0 24px; }
+.settings-detail { padding: 6px 14px calc(24px + env(safe-area-inset-bottom, 0)); }
 
 /* FAB — anchored bottom-right inside the mobile body. Sits above the
    home-indicator on iOS via env(safe-area-inset-bottom). */

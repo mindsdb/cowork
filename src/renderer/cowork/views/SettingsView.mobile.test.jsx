@@ -37,7 +37,6 @@ function renderMobile(props = {}) {
   return render(
     <SettingsView
       mobile
-      section="__none__"
       settings={{}}
       setSetting={vi.fn()}
       onSave={vi.fn()}
@@ -55,31 +54,32 @@ function renderMobile(props = {}) {
   );
 }
 
-describe('SettingsView mobile accordion (ENG-990)', () => {
-  it('renders the six sections as collapsed accordion headers', () => {
+describe('SettingsView mobile master-detail (ENG-990)', () => {
+  it('opens on the section list with all six sections', () => {
     renderMobile();
+    // Header title is "Settings", back control closes the surface.
+    expect(screen.getByRole('button', { name: 'Close settings' })).toBeTruthy();
     for (const label of NAV_LABELS) {
-      const header = screen.getByRole('button', { name: new RegExp(`^${label}$`) });
-      expect(header).toBeTruthy();
-      expect(header.getAttribute('aria-expanded')).toBe('false');
+      expect(screen.getByRole('button', { name: new RegExp(`^${label}$`) })).toBeTruthy();
     }
   });
 
-  it('expands a section when its header is tapped', () => {
+  it('drills into a section on tap and back returns to the list', () => {
     renderMobile();
-    const account = screen.getByRole('button', { name: /^Account$/ });
-    expect(account.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(account);
-    expect(account.getAttribute('aria-expanded')).toBe('true');
-    // Tapping again collapses it.
-    fireEvent.click(account);
-    expect(account.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: /^Account$/ }));
+    // Now in the Account detail: the list rows are gone, back control changes.
+    expect(screen.getByRole('button', { name: 'Back to settings' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Appearance$/ })).toBeNull();
+    // Back returns to the list.
+    fireEvent.click(screen.getByRole('button', { name: 'Back to settings' }));
+    expect(screen.getByRole('button', { name: /^Appearance$/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close settings' })).toBeTruthy();
   });
 
-  it('does not render the desktop nav rail label in mobile mode', () => {
-    renderMobile();
-    // The desktop SettingsNav renders an uppercase "Settings" heading; the
-    // mobile accordion does not.
-    expect(screen.queryByText('Settings')).toBeNull();
+  it('closes the surface via the back control from the list', () => {
+    const onClose = vi.fn();
+    renderMobile({ onClose });
+    fireEvent.click(screen.getByRole('button', { name: 'Close settings' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

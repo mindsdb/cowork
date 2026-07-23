@@ -94,15 +94,26 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
   const headingId = useId();
+  // Mobile (ENG-990): flat and non-collapsible. The master-detail screen
+  // already isolates one section, so a second collapse level just adds
+  // confusion — render the group title as a plain header with its content
+  // always visible, separated from the next group by spacing.
+  if (mobile) {
+    return (
+      <div style={{ marginBottom: 6 }}>
+        <h2 style={{
+          margin: 0, padding: '12px 2px 8px',
+          fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
+          letterSpacing: '0.04em', textTransform: 'uppercase',
+          color: 'var(--text-muted)',
+        }}>{title}</h2>
+        <div style={{ padding: '0 2px 4px' }}>{children}</div>
+      </div>
+    );
+  }
+
   return (
-    <div style={mobile ? {
-      // Flat on mobile: the accordion already frames the section, so the
-      // nested card's border + glass fill + 14px gap just read as redundant
-      // chrome and wasted vertical space once everything is stacked. Groups
-      // separate via their uppercase headers + spacing (grouped-list style)
-      // rather than a card each.
-      marginBottom: 4,
-    } : {
+    <div style={{
       border: '1px solid var(--border-subtle)',
       borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
@@ -121,7 +132,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
           aria-controls={panelId}
           style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-            padding: mobile ? '12px 2px 8px' : '14px 18px', background: 'transparent', border: 0,
+            padding: '14px 18px', background: 'transparent', border: 0,
             fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
             letterSpacing: '0.04em', textTransform: 'uppercase',
             color: 'var(--text-muted)', cursor: 'pointer', textAlign: 'left',
@@ -137,7 +148,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
         </button>
       </h2>
       {open && (
-        <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: mobile ? '0 2px 4px' : '0 18px 8px' }}>{children}</div>
+        <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: '0 18px 8px' }}>{children}</div>
       )}
     </div>
   );
@@ -692,9 +703,11 @@ export default function SettingsView({
   isSsoConnected = false,
   ssoError = '',
   onSsoSignIn,
-  // Mobile (ENG-990): render as a full page with accordion navigation
-  // instead of the desktop two-column layout.
+  // Mobile (ENG-990): render as a full page with master-detail navigation
+  // instead of the desktop two-column layout. onClose closes the surface
+  // from the section list (the top-bar back control drills out to it first).
   mobile = false,
+  onClose,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -723,8 +736,10 @@ export default function SettingsView({
   // local so collapsing everything on mobile never leaves the shared desktop
   // `section` empty; seeded from `section` and re-synced when a deep-link
   // (onOpenSettings('backend')) changes it while the page is open.
-  const [openSection, setOpenSection] = useState(section || 'agent');
-  useEffect(() => { if (section) setOpenSection(section); }, [section]);
+  // Mobile master-detail (ENG-990): which section's detail page is open
+  // (null = the section list). Starts at the list on each open — the mobile
+  // surface remounts when Settings opens, so this resets naturally.
+  const [detailSection, setDetailSection] = useState(null);
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
   // Backend (server + agent) versions come from /health, which is only
@@ -2664,10 +2679,12 @@ export default function SettingsView({
     />
   );
 
-  // Mobile (ENG-990): full-page accordion. Each nav item is a collapsible
-  // row; the open one renders its section content inline (mounted on demand,
-  // matching the desktop one-section-at-a-time behaviour and keeping section
-  // effects/dropdowns from all running at once). The page itself scrolls.
+  // Mobile (ENG-990): master-detail. The surface is a list of the six
+  // sections; tapping one drills into a focused full-screen page for just
+  // that section (sub-groups render flat — see CollapsibleGroup — so there's
+  // no nested collapsing). The top-bar back control returns to the list; from
+  // the list it closes Settings (onClose). Only the open section mounts, so
+  // its effects/dropdowns don't all run at once.
   if (mobile) {
     const renderers = {
       agent: renderAgentSection,
@@ -2677,43 +2694,58 @@ export default function SettingsView({
       backend: renderBackendSection,
       account: renderAccountSection,
     };
+    const activeItem = NAV_ITEMS.find((i) => i.id === detailSection) || null;
+    const inDetail = Boolean(activeItem);
     return (
       <SettingsLayoutContext.Provider value={{ mobile: true }}>
-        <nav className="settings-acc" role="navigation" aria-label="Settings sections">
-          {NAV_ITEMS.map((item) => {
-            const open = openSection === item.id;
-            const disabled = !serverOnline && item.id !== 'backend';
-            const icon = Ico[item.icon] ? Ico[item.icon](17) : null;
-            return (
-              <div className="mshell-accordion" key={item.id}>
-                <button
-                  type="button"
-                  className="mshell-accordion__head"
-                  aria-expanded={open}
-                  aria-disabled={disabled || undefined}
-                  disabled={disabled}
-                  onClick={() => setOpenSection((cur) => (cur === item.id ? null : item.id))}
-                  style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
-                >
-                  {icon && (
-                    <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--text-muted)' }}>
-                      {icon}
-                    </span>
-                  )}
-                  <span className="mshell-accordion__label">{item.label}</span>
-                  <span className={`mshell-accordion__chev ${open ? 'is-open' : ''}`}>
-                    {Ico.chevronRight(16)}
-                  </span>
-                </button>
-                {open && (
-                  <div className="settings-acc__body">
-                    {renderers[item.id]?.()}
+        <header className="settings-mobile__top">
+          <button
+            type="button"
+            className="settings-mobile__back"
+            aria-label={inDetail ? 'Back to settings' : 'Close settings'}
+            onClick={() => (inDetail ? setDetailSection(null) : onClose?.())}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          <div className="settings-mobile__title" id="settings-mobile-title">
+            {activeItem ? activeItem.label : 'Settings'}
+          </div>
+          <span className="settings-mobile__spacer" aria-hidden="true" />
+        </header>
+        <div className="settings-mobile__body scroll-clean">
+          {inDetail ? (
+            <div className="settings-detail">
+              {renderers[detailSection]?.()}
+            </div>
+          ) : (
+            <nav className="settings-list" role="navigation" aria-label="Settings sections">
+              {NAV_ITEMS.map((item) => {
+                const disabled = !serverOnline && item.id !== 'backend';
+                const icon = Ico[item.icon] ? Ico[item.icon](18) : null;
+                return (
+                  <div className="mshell-accordion" key={item.id}>
+                    <button
+                      type="button"
+                      className="mshell-accordion__head"
+                      aria-disabled={disabled || undefined}
+                      disabled={disabled}
+                      onClick={() => setDetailSection(item.id)}
+                      style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                    >
+                      {icon && (
+                        <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--text-muted)' }}>
+                          {icon}
+                        </span>
+                      )}
+                      <span className="mshell-accordion__label">{item.label}</span>
+                      <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+                    </button>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
+                );
+              })}
+            </nav>
+          )}
+        </div>
         {logoutConfirm}
       </SettingsLayoutContext.Provider>
     );
