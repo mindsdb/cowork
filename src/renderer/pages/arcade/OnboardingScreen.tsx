@@ -110,8 +110,11 @@ export async function persistOnboarding(
     try {
       await deps.syncModels(lines);
       await deps.syncHarness();
-    } catch {
-      // best-effort; the authoritative config already landed above.
+    } catch (e) {
+      // Best-effort; the authoritative config already landed above. Logged
+      // because a dropped model write does NOT self-heal (model keys ride
+      // neither the bulk re-sync nor the startup migration — ENG-739/922).
+      console.error('[onboarding] best-effort model/harness sync failed', e);
     }
     return { ok: true };
   } catch (e) {
