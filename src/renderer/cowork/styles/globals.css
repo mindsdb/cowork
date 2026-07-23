@@ -362,14 +362,17 @@ body[data-theme="dark"] {
   --primary-50: var(--accent-bg);
 }
 
-/* In dark mode, bold + emphasised inline text picks up a soft neon glow —
-   restrained but unmistakably "alive" per the guideline. */
+/* Emphasis in dark mode: bold reads as the brightest ink, italics stay
+   italic. ENG-641: dropped the neon text-shadow glow on emphasis — a dated
+   effect that made every **bold** / *italic* run in markdown fluoresce. With
+   the glow gone, em needs its italic back (it had been flattened to lean on
+   the glow for emphasis). */
 body[data-theme="dark"] strong,
-body[data-theme="dark"] b,
-body[data-theme="dark"] em {
+body[data-theme="dark"] b {
   color: var(--ink);
-  text-shadow: 0 0 14px var(--accent-glow);
-  font-style: normal;
+}
+body[data-theme="dark"] em {
+  font-style: italic;
 }
 
 /* ─── Reset ──────────────────────────────────────────────────────────────── */
@@ -4845,17 +4848,19 @@ body[data-theme="dark"] .mshell__drawer-title {
      "SMS bubble" is the single most dated element in the chat. Modern AI
      chat (Claude/Codex) renders the user turn as a quiet tinted block —
      no hard border, no drop shadow.
-     ENG-641: a flat opaque --surface-3 chip read as heavy + out of place —
-     the only solid box in a conversation that otherwise floats over the
-     gravity-field. But plain --surface-2 vanished against that field (the
-     reason ENG-787 reached for --surface-3). Split the difference with a
-     translucent tint: lighter than solid --surface-3, so it stops reading
-     as a grey box (and tones down the saturated slate-blue in dark mode),
-     yet the field shows faintly through so the bubble belongs to the same
-     surface world as the answer text. Tune the % if it's too faint / heavy
-     over the canvas. */
-  background: color-mix(in srgb, var(--surface-3) 80%, transparent);
-  border: 0;
+     ENG-641: a flat opaque --surface-3 chip read as heavy + out of place.
+     Dropped it to --surface-2 for a clearly lighter, quieter block. A
+     translucency experiment barely moved it in light mode — surface-3 and
+     the page bg sit only ~14 levels apart, so a tint of a near-bg colour is
+     invisible. --surface-2 is the biggest lighten that stays legible; it
+     reads most clearly in dark mode, where surface-3 was a saturated
+     slate-blue. The light-mode neutral band is narrow, so the fill alone
+     stays subtle there — a hairline (--line) carries the bubble's edge so
+     it reads as a defined block regardless of fill contrast. No shadow
+     stacked on top, so it's a quiet outlined block, not the old SMS bubble
+     (border + shadow + white fill). */
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   border-radius: var(--r-xl);
   padding: 12px 16px;
   font-family: var(--font-body);
