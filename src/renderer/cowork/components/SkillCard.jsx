@@ -19,7 +19,7 @@ import Button from './ui/Button';
 import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { MarkdownContent } from './markdown/MarkdownContent';
-import { saveSkillAndSync } from '../lib/skillsStore';
+import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
 
 // Trigger a browser save-as for a text file, fully client-side (no server).
 // The event payload already carries the full SKILL.md, so download works
@@ -63,6 +63,7 @@ export default function SkillCard({ skill, projectName }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [status, setStatus] = useState(null); // { kind: 'ok'|'error', text }
+  const { skills } = useSkills();
 
   const name = skill.name || skill.slug || 'Skill';
 
@@ -78,24 +79,39 @@ export default function SkillCard({ skill, projectName }) {
     if (saving || saved) return;
     setSaving(true);
     setStatus(null);
+
+    const slug = skill.slug || skill.label;
+    // `declarative` is the API's instructions alias (matches SkillsView's save);
+    // `label` is the slug identity used for both create and the PUT URL.
+    const payload = {
+      label: slug,
+      name: skill.name || undefined,
+      description: skill.description || undefined,
+      // instructions only — never the raw SKILL.md (its YAML frontmatter
+      // would get double-stored inside the body). Download uses skill_md.
+      declarative: skill.instructions || '',
+      ...(projectName && { projects: [projectName] }),
+    };
+    // A saved skill with this slug → PUT (overwrite, scope included); else POST.
+    const exists = Array.isArray(skills) && skills.some((s) => s.id === slug);
+
     try {
-      // `declarative` is the API's instructions alias (matches SkillsView's save).
-      await saveSkillAndSync({
-        label: skill.label || skill.slug,
-        name: skill.name || undefined,
-        description: skill.description || undefined,
-        // instructions only — never the raw SKILL.md (its YAML frontmatter
-        // would get double-stored inside the body). Download uses skill_md.
-        declarative: skill.instructions || '',
-        ...(projectName && { projects: [projectName] }),
-        // Re-saving a refined draft overwrites the stored skill (scope included)
-        // instead of 409-ing on the existing slug.
-        upsert: true,
-      });
+      await saveSkillAndSync(payload, exists);
       setSaved(true);
       setStatus({ kind: 'ok', text: 'Saved to your skills' });
     } catch (err) {
-      setStatus({ kind: 'error', text: err?.message || 'Could not save skill.' });
+      // Stale list (created since the last fetch): retry as an update, not fail.
+      if (!exists && /already exists/i.test(err?.message || '')) {
+        try {
+          await saveSkillAndSync(payload, true);
+          setSaved(true);
+          setStatus({ kind: 'ok', text: 'Saved to your skills' });
+        } catch (err2) {
+          setStatus({ kind: 'error', text: err2?.message || 'Could not save skill.' });
+        }
+      } else {
+        setStatus({ kind: 'error', text: err?.message || 'Could not save skill.' });
+      }
     } finally {
       setSaving(false);
     }
