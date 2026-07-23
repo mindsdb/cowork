@@ -32,9 +32,11 @@ export default function FindBar({ tabId, onClose }) {
       if (tabId) host.browserStopFind?.(tabId);
       return;
     }
-    // Skip the round-trip for an identical query (arrow-key re-renders).
+    // Skip the round-trip for an identical query — but only for passive
+    // repeats (re-renders, live-search). An explicit Enter/Next must always
+    // advance, or the second press looks dead.
     const key = `${q}|${findNext}|${forward}`;
-    if (key === lastSentRef.current) return;
+    if (!findNext && key === lastSentRef.current) return;
     lastSentRef.current = key;
     const res = await host.browserFindInPage?.({ tabId, text: q, findNext, forward });
     if (res && res.ok !== false) setResult(res);

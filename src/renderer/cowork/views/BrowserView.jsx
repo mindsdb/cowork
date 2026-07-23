@@ -99,8 +99,19 @@ export default function BrowserView() {
     setFindOpen(false);
     if (activeTabId) host.browserStopFind?.(activeTabId);
   }, [activeTabId]);
-  // Switching tabs closes the bar (and clears the old page's highlights).
-  useEffect(() => { if (findOpen) closeFind(); }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Switching tabs closes the bar and clears the highlights — on the tab
+  // being LEFT: this effect runs after activeTabId has already changed, so
+  // closeFind would send stopFind to the destination tab and leave the old
+  // page's matches highlighted (Codex review on #480).
+  const prevTabRef = useRef(activeTabId);
+  useEffect(() => {
+    const prev = prevTabRef.current;
+    prevTabRef.current = activeTabId;
+    if (prev !== activeTabId && findOpen) {
+      setFindOpen(false);
+      if (prev) host.browserStopFind?.(prev);
+    }
+  }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Until the first getState resolves (cold mount, no cache) show a
   // neutral blank surface — not the start-page hero, which would flash
   // away the moment the real tab model lands.
