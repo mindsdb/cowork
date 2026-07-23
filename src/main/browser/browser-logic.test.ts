@@ -383,8 +383,8 @@ describe('persistence validation', () => {
         null,
       ]),
     ).toEqual([
-      { url: 'https://a.com', title: 'A', ts: 1 },
-      { url: 'https://b.com', title: '', ts: 0 },
+      { url: 'https://a.com/', title: 'A', ts: 1 },
+      { url: 'https://b.com/', title: '', ts: 0 },
     ]);
     const huge = Array.from({ length: HISTORY_CAP + 50 }, (_, i) => ({ url: `https://h.com/${i}`, title: '', ts: i }));
     expect(sanitizeHistory(huge)).toHaveLength(HISTORY_CAP);
