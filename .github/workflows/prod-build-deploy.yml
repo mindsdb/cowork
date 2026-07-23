@@ -45,7 +45,7 @@ jobs:
       - id: build
         uses: mindsdb/github-actions/build-push-ecr@main
         with:
-          module-name: mindsdb-cowork-frontend
+          module-name: ${{ env.CI_REPOSITORY_SLUG }}
           extra-build-args: '-f Dockerfile.frontend'
           build-for-environment: production
 

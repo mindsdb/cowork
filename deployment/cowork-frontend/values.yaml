@@ -6,10 +6,11 @@ deployment:
   replicaCount: 2
 
   image:
-    # The build-push-ecr action derives the ECR repo name from the GitHub repo
-    # slug plus the image target, so this must track the frontend image the
-    # cowork repo's Dockerfile.frontend builds (cowork-frontend).
-    repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/mindsdb-cowork-frontend
+    # ECR repo name is the GitHub repo slug (mindsdb-cowork), matching the
+    # build-push-ecr default. The cowork repo builds only the web SPA image to
+    # ECR (the all-in-one ./Dockerfile is never pushed), so no -frontend suffix
+    # is needed and this stays consistent with the tags.cowork deploy key.
+    repository: 168681354662.dkr.ecr.us-east-1.amazonaws.com/mindsdb-cowork
     # No command/args: the image runs nginx via its own entrypoint. The SPA is
     # fully static; VITE_ vars are baked at build time (or derived same-origin at
     # runtime), so there is nothing to configure per environment here.

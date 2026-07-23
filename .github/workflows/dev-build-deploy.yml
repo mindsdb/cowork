@@ -42,10 +42,10 @@ jobs:
       - id: build
         uses: mindsdb/github-actions/build-push-ecr@main
         with:
-          # The cowork repo ships two images; this is the static web SPA. Name
-          # it explicitly: the repo-slug default (mindsdb-cowork) is the
-          # all-in-one desktop image built from ./Dockerfile.
-          module-name: mindsdb-cowork-frontend
+          # Repo-slug default image name (mindsdb-cowork); the web SPA is the
+          # only image the cowork repo pushes to ECR. `-f Dockerfile.frontend`
+          # selects the SPA build (not the all-in-one ./Dockerfile).
+          module-name: ${{ env.CI_REPOSITORY_SLUG }}
           extra-build-args: '-f Dockerfile.frontend'
           build-for-environment: development
 
