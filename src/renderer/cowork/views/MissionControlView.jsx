@@ -17,7 +17,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
-import Composer from '../components/Composer';
 import ApprovalCard from '../components/ApprovalCard';
 import { Button, CardRow, Spinner } from '../components/ui';
 import Badge from '../components/ui/Badge';
@@ -46,19 +45,22 @@ function cadenceLabel(cadence) {
   }[cadence] || cadence || '';
 }
 
-function Column({ title, count, isEmpty, empty, children }) {
+function Column({ title, count, dot = 'var(--ink-4)', isEmpty, empty, children }) {
   return (
-    <section aria-label={title} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section aria-label={title} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{
-        display: 'flex', alignItems: 'baseline', gap: 8,
-        padding: '0 4px 6px', borderBottom: '1px solid var(--line)',
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '0 4px 7px', borderBottom: '1px solid var(--line)',
       }}>
+        <span aria-hidden style={{
+          width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0,
+          display: 'inline-block',
+        }} />
         <span style={{
           fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.14em',
-          textTransform: 'uppercase', color: 'var(--ink-4)', fontWeight: 600,
+          textTransform: 'uppercase', color: 'var(--ink-3)', fontWeight: 650,
         }}>{title}</span>
         <span style={{
-          marginLeft: 'auto',
           fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-4)',
         }}>{count}</span>
       </div>
@@ -143,7 +145,7 @@ function ShippedRow({ approval: a, celebrate = false, onClick }) {
       onActivate={onClick}
       style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 10px' }}
     >
-      <span aria-hidden style={{ color: 'var(--ink-4)', display: 'inline-flex', flexShrink: 0, marginTop: 2 }}>{Ico.check(13)}</span>
+      <span aria-hidden style={{ color: 'var(--ok)', display: 'inline-flex', flexShrink: 0, marginTop: 2 }}>{Ico.check(13)}</span>
       <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span className="s-h3" style={{
           color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
@@ -157,8 +159,11 @@ function ShippedRow({ approval: a, celebrate = false, onClick }) {
             }}>First ship</span>
           )}
         </span>
-        <span style={{ ...QUIET, fontSize: 11.5 }}>
-          {summary || `${a.status === 'edited' ? 'Edited & sent' : 'Approved'} · ${rel}`}
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.06em',
+          textTransform: 'uppercase', color: 'var(--ok)',
+        }}>
+          ✓ {summary || (a.status === 'edited' ? 'edited & sent' : 'approved')} · {rel}
         </span>
         {artifactRef && (
           <button
@@ -281,6 +286,8 @@ export default function MissionControlView({
   onSelectTask,
   onNavigate,
   agentLabel = 'Anton',
+  navTitle,
+  onNewTask,
   // Composer wiring — same props HomeView passes; the board's composer
   // submits into the existing new-task flow (App's handleSendFromHome).
   onSend,
@@ -338,6 +345,7 @@ export default function MissionControlView({
   }, [shipped, metrics, agentLabel]);
 
   const n = needsYou.length;
+  const todayStamp = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
   const headline = n === 0
     ? `Nothing needs you. ${agentLabel} has the rest.`
     : n === 1
@@ -370,6 +378,12 @@ export default function MissionControlView({
         gap: 24, flexWrap: 'wrap',
       }}>
         <div style={{ flex: '1 1 300px', minWidth: 240 }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.16em',
+            textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 6,
+          }}>
+            {navTitle || 'MindsHub'} · {todayStamp}
+          </div>
           <h1 className="s-h1" style={{ margin: 0, color: 'var(--ink)' }}>
             {headline}
           </h1>
@@ -390,27 +404,28 @@ export default function MissionControlView({
             </div>
           )}
         </div>
-        <div style={{ flex: '0 1 440px', minWidth: 280 }}>
-          <Composer
-            onSend={onSend}
-            project={project}
-            onProjectChange={onProjectChange}
-            model={model}
-            onModelChange={onModelChange}
-            projects={projects}
-            models={models}
-            attachments={attachments}
-            connectors={connectors}
-            onNavigateToConnectors={onNavigateToConnectors}
-            onAttachFiles={onAttachFiles}
-            onAddGoogleDriveFiles={onAddGoogleDriveFiles}
-            onRemoveAttachment={onRemoveAttachment}
-            disabledConnections={disabledConnections}
-            onUpdateConnectorMute={onUpdateConnectorMute}
-            onCreateProject={onCreateProject}
-            hideModel
-          />
-        </div>
+        {/* "Hand something new" — a BUTTON, not an embedded composer: one
+            click starts a new task, exactly like the sidebar's New task. */}
+        <button
+          type="button"
+          onClick={() => onNewTask?.()}
+          className="hover-tint"
+          style={{
+            flex: '0 1 420px', minWidth: 260,
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '11px 14px',
+            background: 'var(--surface-2)', border: '1px solid var(--line)',
+            borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+            boxShadow: 'var(--sh-1, none)',
+          }}
+          aria-label={`Hand ${agentLabel} something new — start a new task`}
+        >
+          <span aria-hidden style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>{Ico.plus(13)}</span>
+          <span style={{ flex: 1, fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--ink-4)' }}>
+            Hand {agentLabel} something new…
+          </span>
+          <span aria-hidden style={{ display: 'inline-flex', color: 'var(--accent)', flexShrink: 0 }}>{Ico.arrowRight ? Ico.arrowRight(12) : Ico.plus(12)}</span>
+        </button>
       </div>
 
       {loading ? (
@@ -425,7 +440,7 @@ export default function MissionControlView({
           gap: 20,
           alignItems: 'start',
         }}>
-          <Column title="Needs You" count={n} isEmpty={n === 0 && expired.length === 0} empty="Work waiting on you">
+          <Column title="Needs You" dot="var(--warn)" count={n} isEmpty={n === 0 && expired.length === 0} empty="Work waiting on you">
             {needsYou.map((a) => (
               <ApprovalCard key={a.id} approval={a} onOpenTab={openApprovalTab} />
             ))}
@@ -440,36 +455,58 @@ export default function MissionControlView({
             )}
           </Column>
 
-          <Column title="Running" count={running.length} isEmpty={running.length === 0} empty={`${agentLabel}'s work in progress`}>
+          <Column title="Running" dot="var(--ok)" count={running.length} isEmpty={running.length === 0} empty={`${agentLabel}'s work in progress`}>
             {running.map((r) => (
-              <Row
+              <CardRow
                 key={r.conversationId}
-                icon={<LiveDot />}
-                title={r.topic}
-                meta={`Started ${relativeAge(r.startedAt) || 'just now'}`}
-                badge={(
-                  <Button
-                    size="sm"
-                    variant="subtle"
-                    onClick={(e) => { e.stopPropagation(); setPeekId(r.conversationId); }}
-                  >
-                    Peek
-                  </Button>
-                )}
-                onClick={() => onSelectTask?.(r.conversationId)}
-              />
+                as="div"
+                onActivate={() => onSelectTask?.(r.conversationId)}
+                style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 12px' }}
+              >
+                <span className="s-h3" style={{
+                  color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{r.topic}</span>
+                <span style={{ ...QUIET, fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <LiveDot />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Started {relativeAge(r.startedAt) || 'just now'}
+                  </span>
+                </span>
+                {/* Indeterminate progress — no fake percentages; the shimmer
+                    is the honest "alive" signal (proj-shimmer keyframes). */}
+                <span className="proj-shimmer" style={{
+                  display: 'block', height: 3, borderRadius: 2,
+                  backgroundSize: '240px 100%',
+                  animation: 'proj-shimmer 2.4s linear infinite',
+                }} />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPeekId(r.conversationId); }}
+                  style={{
+                    alignSelf: 'flex-start', background: 'none', border: 0, padding: 0,
+                    fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.08em',
+                    color: 'var(--accent)', cursor: 'pointer',
+                  }}
+                >
+                  PEEK ▸
+                </button>
+              </CardRow>
             ))}
           </Column>
 
-          <Column title="Scheduled" count={scheduled.length} isEmpty={scheduled.length === 0} empty="Nothing scheduled">
+          <Column title="Scheduled" dot="color-mix(in srgb, var(--accent) 45%, #c4b5fd)" count={scheduled.length} isEmpty={scheduled.length === 0} empty="Nothing scheduled">
             {scheduled.map((s) => (
               <Row
                 key={s.id}
                 icon={Ico.clock(13)}
                 title={s.title || 'Untitled schedule'}
-                meta={s.enabled
-                  ? `${cadenceLabel(s.cadence)} · Next ${relativeTime(s.nextRunAt || s.next_run_at) ?? '—'}`
-                  : cadenceLabel(s.cadence)}
+                meta={(
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    {cadenceLabel(s.cadence)}{s.enabled && (s.nextRunAt || s.next_run_at)
+                      ? ` · ${relativeTime(s.nextRunAt || s.next_run_at)}`
+                      : ''}
+                  </span>
+                )}
                 badge={!s.enabled ? <Badge size="sm" variant="muted">Paused</Badge> : undefined}
                 onClick={() => onNavigate?.('scheduled')}
               />

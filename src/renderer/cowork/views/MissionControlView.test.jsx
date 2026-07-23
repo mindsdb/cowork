@@ -125,7 +125,7 @@ describe('MissionControlView — columns', () => {
     render(<MissionControlView />);
     expect(screen.getByText('Weekly digest')).toBeInTheDocument();
     expect(screen.getByText('Morning digest')).toBeInTheDocument();
-    expect(screen.getByText(/Daily · Next/)).toBeInTheDocument();
+    expect(screen.getByText(/Daily · /)).toBeInTheDocument();
   });
 
   it('collapses expired approvals into one quiet row', () => {
@@ -170,7 +170,7 @@ describe('MissionControlView — columns', () => {
     expect(screen.getByText('Earlier')).toBeInTheDocument();
     expect(screen.getByText('Today item')).toBeInTheDocument();
     expect(screen.getByText('Older item')).toBeInTheDocument();
-    expect(screen.getByText(/Edited & sent/)).toBeInTheDocument();
+    expect(screen.getByText(/edited & sent/i)).toBeInTheDocument();
   });
 });
 
@@ -188,7 +188,7 @@ describe('MissionControlView — shipped receipts', () => {
       },
     }));
     render(<MissionControlView />);
-    expect(screen.getByText('26 rows → B2:G12')).toBeInTheDocument();
+    expect(screen.getByText(/26 rows → B2:G12/)).toBeInTheDocument();
   });
 
   it('shows receipt.error when the action failed', () => {
@@ -204,7 +204,7 @@ describe('MissionControlView — shipped receipts', () => {
       },
     }));
     render(<MissionControlView />);
-    expect(screen.getByText('SMTP rejected the message')).toBeInTheDocument();
+    expect(screen.getByText(/SMTP rejected the message/)).toBeInTheDocument();
   });
 
   it('falls back to "Approved · <relative>" for a bare receipt', () => {
@@ -220,7 +220,7 @@ describe('MissionControlView — shipped receipts', () => {
       },
     }));
     render(<MissionControlView />);
-    expect(screen.getByText(/Approved · /)).toBeInTheDocument();
+    expect(screen.getByText(/approved · /i)).toBeInTheDocument();
   });
 
   it('surfaces an artifact link when the receipt references one', () => {
@@ -263,7 +263,8 @@ describe('MissionControlView — peek', () => {
     useBoard.mockReturnValue(runningBoard());
     render(<MissionControlView />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    // The whole card is clickable; the Peek affordance is the PEEK ▸ text link.
+    fireEvent.click(screen.getByText('PEEK ▸'));
     const panel = screen.getByLabelText('Peek — Weekly digest');
     expect(panel).toBeInTheDocument();
 
@@ -281,7 +282,8 @@ describe('MissionControlView — peek', () => {
     fetchSession.mockImplementation(async () => ({ messages: [] }));
     useBoard.mockReturnValue(runningBoard());
     render(<MissionControlView />);
-    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    // The whole card is clickable; the Peek affordance is the PEEK ▸ text link.
+    fireEvent.click(screen.getByText('PEEK ▸'));
     expect(screen.getByLabelText('Peek — Weekly digest')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByLabelText('Peek — Weekly digest')).toBeNull();
@@ -293,7 +295,8 @@ describe('MissionControlView — peek', () => {
     const onNavigate = vi.fn();
     useBoard.mockReturnValue(runningBoard());
     render(<MissionControlView onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    // The whole card is clickable; the Peek affordance is the PEEK ▸ text link.
+    fireEvent.click(screen.getByText('PEEK ▸'));
     fireEvent.click(await screen.findByRole('button', { name: /Watch live/ }));
     expect(onNavigate).toHaveBeenCalledWith('browser');
     expect(screen.queryByLabelText('Peek — Weekly digest')).toBeNull();
@@ -304,7 +307,8 @@ describe('MissionControlView — peek', () => {
     fetchSession.mockImplementation(async () => ({ messages: [] }));
     useBoard.mockReturnValue(runningBoard());
     render(<MissionControlView />);
-    fireEvent.click(screen.getByRole('button', { name: 'Peek' }));
+    // The whole card is clickable; the Peek affordance is the PEEK ▸ text link.
+    fireEvent.click(screen.getByText('PEEK ▸'));
     expect(screen.getByLabelText('Peek — Weekly digest')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Watch live/ })).toBeNull();
     hostMock.isElectron = true;
@@ -340,12 +344,12 @@ describe('MissionControlView — drill-in + composer', () => {
     expect(onNavigate).toHaveBeenCalledWith('scheduled');
   });
 
-  it('wires the board composer into onSend', () => {
-    const onSend = vi.fn();
+  it('the "Hand something new" pill starts a new task like the sidebar button', () => {
+    const onNewTask = vi.fn();
     useBoard.mockReturnValue(board());
-    render(<MissionControlView onSend={onSend} />);
-    fireEvent.click(screen.getByTestId('board-composer'));
-    expect(onSend).toHaveBeenCalledWith('hello board');
+    render(<MissionControlView onNewTask={onNewTask} agentLabel="Anton" />);
+    fireEvent.click(screen.getByRole('button', { name: /Hand Anton something new/i }));
+    expect(onNewTask).toHaveBeenCalledTimes(1);
   });
 });
 

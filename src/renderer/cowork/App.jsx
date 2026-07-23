@@ -1194,7 +1194,10 @@ function AppCore() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Routes where the user can collapse the sidebar: chat task, and the
   // embedded browser (max real estate for the native page).
-  const sidebarCollapsibleRoutes = useMemo(() => new Set(['task', 'browser']), []);
+  // Collapse affordance lives on the surfaces users inhabit: the board
+  // (home), a task, and the browser. The rail carries full navigation, so
+  // "keep it expanded elsewhere" no longer applies.
+  const sidebarCollapsibleRoutes = useMemo(() => new Set(['mission-control', 'task', 'browser']), []);
   // Theme (light | dark) — persisted in localStorage so the choice
   // survives reloads. The animated background canvas (gravity-field)
   // and the body's bg colour both follow this value.
@@ -3799,6 +3802,8 @@ function AppCore() {
             onSelectTask={selectTask}
             onNavigate={navigate}
             agentLabel={agentLabel}
+            navTitle={settings.navTitle}
+            onNewTask={newTask}
             onSend={handleSendFromHome}
             project={selectedProject}
             onProjectChange={setSelectedProject}
