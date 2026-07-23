@@ -492,6 +492,33 @@ describe('tabs', () => {
     await mgr.shutdownBrowser();
   });
 
+  it('per-tab zoom applies to the view, persists, and resets', async () => {
+    const mgr = await loadManager();
+    const { tabId } = (await invoke('browser:new-tab', { url: 'https://a.com' })) as { tabId: string };
+    const wc = fakeWc(0) as unknown as { setZoomFactor: ReturnType<typeof vi.fn> };
+    wc.setZoomFactor = vi.fn();
+
+    expect(await invoke('browser:set-zoom', { tabId, direction: 1 })).toEqual({ zoom: 1.1 });
+    expect(mgr.getBrowserState().tabs[0].zoom).toBe(1.1);
+    expect(wc.setZoomFactor).toHaveBeenCalledWith(1.1);
+    expect(await invoke('browser:set-zoom', { tabId, direction: 1 })).toEqual({ zoom: 1.25 });
+    expect(await invoke('browser:set-zoom', { tabId, direction: 0 })).toEqual({ zoom: 1 });
+    expect(mgr.getBrowserState().tabs[0].zoom).toBe(1);
+    expect(await invoke('browser:set-zoom', { tabId, direction: 2 })).toEqual({ ok: false });
+
+    // Persists through the tabs.json round-trip.
+    await invoke('browser:set-zoom', { tabId, direction: 1 });
+    await mgr.shutdownBrowser();
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(h.home, 'browser', 'tabs.json'), 'utf-8'),
+    ) as { tabs: Array<{ id: string; zoom?: number }> };
+    expect(persisted.tabs[0].zoom).toBe(1.1);
+    const mgr2 = await loadManager();
+    const restored = mgr2.getBrowserState();
+    expect(restored.tabs[0].zoom).toBe(1.1);
+    await mgr2.shutdownBrowser();
+  });
+
   it('apps: add/list/remove round-trips apps.json and openApp finds-or-creates', async () => {
     const mgr = await loadManager();
 
