@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, Children } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
@@ -64,8 +64,16 @@ export function patchSavedJson(prevJson, key, value) {
 
 function Section({ title, subtitle, notice, children }) {
   const { mobile } = useContext(SettingsLayoutContext);
+  // A section whose sole control is a Switch or ToggleGroup is compact enough
+  // to keep the desktop "title left / control right" row on wider mobile
+  // widths instead of stacking (ENG-990). Full-width controls — text inputs,
+  // selects, color pickers, the generic field wrapper — stay stacked. The
+  // row only re-forms above ~440px (see the media query); the narrowest
+  // phones still stack everything.
+  const kids = Children.toArray(children);
+  const compact = kids.length === 1 && (kids[0]?.type === Switch || kids[0]?.type === ToggleGroup);
   return (
-    <div className="settings-section" style={{
+    <div className={`settings-section${compact ? ' settings-section--inline' : ''}`} style={{
       display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
       padding: '16px 0',
       alignItems: 'flex-start',

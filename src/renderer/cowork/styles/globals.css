@@ -4671,6 +4671,21 @@ body[data-theme="dark"] .mshell__drawer-title {
   border-top: 1px solid var(--border-subtle);
 }
 
+/* Wider mobile (large phone / small tablet): a section whose sole control is
+   a Switch or ToggleGroup re-forms the desktop "title | control" row instead
+   of stacking (ENG-990). Higher specificity than the stack rule below, so it
+   wins in the 440–639px overlap; under 440px only the stack rule matches, so
+   the narrowest phones still stack everything. */
+@media (min-width: 440px) and (max-width: 639.98px) {
+  .settings-section.settings-section--inline {
+    grid-template-columns: 1fr auto !important;
+    gap: 16px !important;
+  }
+  .settings-section.settings-section--inline > :last-child {
+    justify-self: end;
+  }
+}
+
 @media (max-width: 639.98px) {
   /* Project detail (ProjectsView in detail mode) — desktop puts the
      rail (Working folder + Context + Scheduled) in a 320px right
