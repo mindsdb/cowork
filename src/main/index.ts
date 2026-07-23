@@ -376,7 +376,7 @@ function createWindow() {
     // are window-relative; the sidebar floats with ~9px outer padding so
     // x:18 / y:22 places the lights inside the chrome row with a small gap
     // from the sidebar's top-left.
-    trafficLightPosition: process.platform === 'darwin' ? { x: 22, y: 24 } : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 32, y: 24 } : undefined,
     backgroundColor: '#0a0a0f',
     show: false,
     webPreferences: {
