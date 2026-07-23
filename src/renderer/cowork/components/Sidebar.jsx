@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd, Badge } from './ui';
+import { Spinner, Kbd, Badge, Input } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
@@ -38,13 +38,23 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const triggerRef = useRef(null);
-  const inputRef = useRef(null);
+  // One-shot latch: Enter commits once (the trailing unmount-blur is a
+  // no-op), and Escape arms it so the same blur can't commit the cancel.
+  const renameDone = useRef(false);
   const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
 
+  const startRename = () => {
+    setDraft(task.title || '');
+    renameDone.current = false;
+    setEditing(true);
+  };
   const submitRename = () => {
-    const next = (inputRef.current?.value ?? '').trim();
+    if (renameDone.current) return;
+    renameDone.current = true;
     setEditing(false);
+    const next = draft.trim();
     if (!next || next === (task.title || '').trim()) return;
     onRename?.(task.id, next);
   };
@@ -71,10 +81,10 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       {...hoverProps}
     >
       {editing ? (
-        <input
-          ref={inputRef}
-          className="recent-item"
-          defaultValue={task.title || ''}
+        <Input
+          size="sm"
+          value={draft}
+          onChange={setDraft}
           aria-label="Rename task"
           autoFocus
           onFocus={(e) => { try { e.target.select(); } catch {} }}
@@ -84,8 +94,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
             if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
             else if (e.key === 'Escape') {
               e.preventDefault();
-              // Reset before unmount so a trailing blur can't commit the typed value.
-              e.currentTarget.value = task.title || '';
+              renameDone.current = true;
               setEditing(false);
             }
           }}
@@ -93,13 +102,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           spellCheck={false}
           autoCapitalize="none"
           autoCorrect="off"
-          style={{
-            flex: 1, minWidth: 0, cursor: 'text',
-            color: 'var(--ink)',
-            background: 'var(--surface-2)',
-            border: '1px solid var(--accent)',
-            outline: 'none',
-          }}
+          style={{ flex: 1, minWidth: 0 }}
         />
       ) : (
       <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
@@ -198,7 +201,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         onPin={() => onPin?.(task)}
         onUnpin={() => onUnpin?.(task.id)}
         hideRename={!onRename}
-        onRename={() => setEditing(true)}
+        onRename={startRename}
         onDelete={() => onDelete?.(task.id)}
         hideMoveToProject={!onMoveToProject}
         onMoveToProject={() => onMoveToProject?.(task)}
