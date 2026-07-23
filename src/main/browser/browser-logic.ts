@@ -305,6 +305,7 @@ export function sanitizePersistedTabs(raw: unknown): PersistedTabs | null {
   if (!Array.isArray(data.tabs)) return null;
   const tabs: PersistedTabs['tabs'] = [];
   for (const t of data.tabs) {
+    if (tabs.length >= MAX_TABS) break; // a corrupt/hand-edited file must not bypass the cap
     if (!t || typeof t !== 'object') continue;
     const tab = t as { id?: unknown; url?: unknown; title?: unknown; favicon?: unknown };
     if (typeof tab.id !== 'string' || !tab.id) continue;
@@ -332,8 +333,10 @@ export function sanitizeHistory(raw: unknown): HistoryEntry[] {
     if (!e || typeof e !== 'object') continue;
     const entry = e as { url?: unknown; title?: unknown; ts?: unknown };
     if (typeof entry.url !== 'string' || !entry.url) continue;
+    const redacted = redactUrlForLog(entry.url);
+    if (!redacted) continue; // junk or non-http — and legacy rows with query strings collapse here
     out.push({
-      url: entry.url,
+      url: redacted,
       title: typeof entry.title === 'string' ? entry.title : '',
       ts: typeof entry.ts === 'number' ? entry.ts : 0,
     });
