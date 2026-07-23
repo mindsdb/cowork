@@ -402,10 +402,12 @@ export interface BrowserApp {
   createdAt: number;
 }
 
-/** 'https://mail.google.com' → 'app-mail.google.com'. Stable across launches
- *  so tabs restore against the same app. */
+/** 'https://mail.google.com' → 'app-https-mail.google.com'. Stable across
+ *  launches so tabs restore against the same app. The scheme stays in:
+ *  http:// and https:// variants of one host are different origins and
+ *  must not share an id (they'd collide as duplicate registry keys). */
 export function appIdForOrigin(origin: string): string {
-  return `app-${origin.replace(/^https?:\/\//i, '').replace(/[^a-z0-9.-]+/gi, '-').toLowerCase()}`;
+  return `app-${origin.replace(/^(https?):\/\//i, '$1-').replace(/[^a-z0-9.-]+/gi, '-').toLowerCase()}`;
 }
 
 /** 'https://mail.google.com' → 'Mail google' — editable guess for the add

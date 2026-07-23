@@ -382,7 +382,7 @@ describe('tabs', () => {
 
     // Add is idempotent per origin and backfills the name.
     const app = (await invoke('browser:apps-add', { origin: 'https://mail.google.com/' })) as { id: string; name: string; origin: string };
-    expect(app).toMatchObject({ id: 'app-mail.google.com', origin: 'https://mail.google.com' });
+    expect(app).toMatchObject({ id: 'app-https-mail.google.com', origin: 'https://mail.google.com' });
     expect(app.name).toBeTruthy();
     const dup = (await invoke('browser:apps-add', { origin: 'https://mail.google.com' })) as { id: string };
     expect(dup.id).toBe(app.id);
