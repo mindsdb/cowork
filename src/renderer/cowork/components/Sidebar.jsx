@@ -82,7 +82,12 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           onKeyDown={(e) => {
             e.stopPropagation();
             if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
-            else if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+            else if (e.key === 'Escape') {
+              e.preventDefault();
+              // Reset before unmount so a trailing blur can't commit the typed value.
+              e.currentTarget.value = task.title || '';
+              setEditing(false);
+            }
           }}
           onBlur={submitRename}
           spellCheck={false}
