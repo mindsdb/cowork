@@ -195,11 +195,7 @@ export function Select({
       name={name}
     >
       <BaseSelect.Trigger
-        // Stable class so the mobile form-control sizing rule (globals.css,
-        // iOS-zoom breakpoint) can bump this custom trigger to 16px in step
-        // with native inputs — otherwise selects render smaller than inputs
-        // on mobile (ENG-990).
-        className={cn('anton-select-trigger', triggerVariants({ variant, size }), className)}
+        className={cn(triggerVariants({ variant, size }), className)}
         aria-label={ariaLabel || label}
         aria-invalid={invalid || undefined}
         title={title}

@@ -5294,12 +5294,19 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   ),
   textarea,
   select,
-  [contenteditable="true"],
-  /* Custom Select trigger (a button, not a native <select>) — bump it too so
-     dropdowns match text inputs at the mobile size instead of rendering
-     smaller (ENG-990). */
-  .anton-select-trigger {
+  [contenteditable="true"] {
     font-size: max(16px, 1em) !important;
+  }
+
+  /* …except the Settings form fields, which keep their normal desktop size
+     (--text-base, 14px) so they match the selects instead of jumping to the
+     16px floor (ENG-990 QA). Settings fields are direct-tap, so the focusin
+     viewport-meta guard in App.jsx covers iOS zoom for them; the 16px floor
+     above still applies to the composer, search, and menu inputs where
+     programmatic focus races the meta toggle. */
+  .settings-mobile .field-input,
+  .settings-mobile .field-textarea {
+    font-size: var(--text-base) !important;
   }
 }
 
