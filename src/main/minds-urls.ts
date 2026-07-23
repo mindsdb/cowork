@@ -15,7 +15,6 @@
 // URL pattern:
 //   prod:    api.mindshub.ai    / auth.mindshub.ai    / console.mindshub.ai
 //   staging: api.staging.mindshub.ai / auth.staging.mindshub.ai / console.staging.mindshub.ai
-//   dev:     api.dev.mindshub.ai     / auth.dev.mindshub.ai     / console.dev.mindshub.ai
 
 // buildKind is imported eagerly (not lazy-required) so vitest can intercept it
 // via vi.mock — a static ESM import is mockable, a dynamic require inside a
@@ -53,7 +52,7 @@ function toOrigin(u: string): string {
 function _fallbackApiHost(): string {
   try {
     const kind = buildKind();
-    if (kind === 'dev') return 'https://api.dev.mindshub.ai';
+    if (kind === 'dev') return 'https://api.staging.mindshub.ai';
     if (kind === 'preview' || kind === 'stable') return 'https://api.staging.mindshub.ai';
   } catch {
     // buildKind may reach for electron `app` outside a packaged process; any
