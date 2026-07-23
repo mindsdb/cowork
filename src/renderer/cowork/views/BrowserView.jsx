@@ -88,12 +88,6 @@ export default function BrowserView() {
   const [dockWidth, setDockWidth] = useState(loadDockWidth);
   const [dockResizing, setDockResizing] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
-  const closeFind = useCallback(() => {
-    setFindOpen(false);
-    if (activeTabId) host.browserStopFind?.(activeTabId);
-  }, [activeTabId]);
-  // Switching tabs closes the bar (and clears the old page's highlights).
-  useEffect(() => { if (findOpen) closeFind(); }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { window.localStorage.setItem('cowork.browser.dock', dockOpen ? 'open' : 'closed'); } catch {} }, [dockOpen]);
   useEffect(() => { try { window.localStorage.setItem('cowork.browser.dockW', String(dockWidth)); } catch {} }, [dockWidth]);
 
@@ -101,6 +95,12 @@ export default function BrowserView() {
   const omniboxRef = useRef(null);
 
   const activeTabId = state.activeTabId;
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    if (activeTabId) host.browserStopFind?.(activeTabId);
+  }, [activeTabId]);
+  // Switching tabs closes the bar (and clears the old page's highlights).
+  useEffect(() => { if (findOpen) closeFind(); }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Until the first getState resolves (cold mount, no cache) show a
   // neutral blank surface — not the start-page hero, which would flash
   // away the moment the real tab model lands.
