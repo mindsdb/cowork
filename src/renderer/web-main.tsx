@@ -24,6 +24,7 @@ import './cowork/styles/skin-8bit.css';
 import './styles.css';
 import App from './App';
 import { keycloak, scheduleWebTokenRefresh } from './lib/keycloak';
+import { MINDS_API_BASE } from './lib/mindsUrls';
 import { loadSkin } from './lib/skins';
 import { host } from './platform/host';
 import { syncSettingsToDb } from './lib/syncSettings';
@@ -57,7 +58,11 @@ const initOptions = { onLoad: 'login-required' as const, pkceMethod: 'S256', che
 // for the user's own key. ANTON_MINDS_URL is required so the scratchpad
 // derives the right host (/v1 for api.mindshub.ai) instead of falling back
 // to the default mdb.ai.
-const MINDS_API_HOST = import.meta.env.VITE_MINDS_API_URL || 'https://api.mindshub.ai';
+//
+// Sourced from the single resolved MINDS_API_BASE (mindsUrls.ts) so the value
+// written to the backend tracks the same origin-derived / VITE-overridden host
+// the rest of the SPA uses, rather than re-deriving its own fallback.
+const MINDS_API_HOST = MINDS_API_BASE;
 const MINDS_ENV_LINES = (token: string) => [
   `ANTON_MINDS_API_KEY=${token}`,
   `ANTON_MINDS_URL=${MINDS_API_HOST}`,
