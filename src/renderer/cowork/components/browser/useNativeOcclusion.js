@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react';
 // Overlays that must hide the native WebContentsView — DOM can never paint
 // over an OS-level view, so any modal/dialog layered above the browser
 // content would be punched through. `.cw-modal-backdrop` / `.cw-modal-popup`
-// are what ui/Modal.jsx (Base UI Dialog) portals into <body>; the generic
-// role catches non-Modal dialogs.
+// are what ui/Modal.jsx (Base UI Dialog) portals into <body>; the sidebar
+// overlay (narrow) and mobile drawer/scrim are DOM overlays too; the
+// generic role catches non-Modal dialogs.
 // Exported so BrowserView's shortcut handler can stand down while the
 // same overlays own the keyboard.
-export const OVERLAY_SELECTOR = '.cw-modal-backdrop, .cw-modal-popup, [role="dialog"]';
+export const OVERLAY_SELECTOR =
+  '.cw-modal-backdrop, .cw-modal-popup, .sidebar-overlay-wrap, .mshell__drawer.is-open, .mshell__scrim.is-open, [role="dialog"]';
 
 function computeOccluded() {
   if (typeof document === 'undefined') return false;
