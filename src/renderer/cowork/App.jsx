@@ -3994,51 +3994,91 @@ function AppCore() {
         )}
 
         {/* Settings modal — rendered over whatever route is active */}
-        <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
-          <ModalHeader
-            id="settings-modal-title"
-            title="Settings"
-            onClose={() => setSettingsOpen(false)}
-            right={!ssoConnected && host.isElectron ? (
-              <button
-                type="button"
-                onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
-                title="Sign in with MindsHub to use managed models"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '5px 11px', borderRadius: 7,
-                  border: '1px solid var(--border-subtle)',
-                  background: 'transparent',
-                  color: 'var(--ink-3)',
-                  fontFamily: 'var(--font-body)', fontSize: 12.5,
-                  cursor: 'pointer', flexShrink: 0,
-                  transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
-              >Sign in</button>
-            ) : undefined}
-          />
-          <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <SettingsView
-              settings={settings} setSetting={setSetting} onSave={saveSettings}
-              theme={theme} onThemeChange={setTheme}
-              skin={skin} onSkinChange={setSkin}
-              customTheme={customTheme} onCustomThemeChange={setCustomTheme}
-              agentLabel={agentLabel}
-              section={settingsSection}
-              onSectionChange={setSettingsSection}
-              serverOnline={serverOnline}
-              serverBusy={serverBusy}
-              serverBusyKind={serverBusyKind}
-              onStartServer={handleServerStart}
-              onStopServer={handleServerStop}
-              isSsoConnected={ssoConnected}
-              ssoError={ssoError}
-              onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+        {/* Mobile (ENG-990): Settings is a full page with accordion nav, not
+            a modal. Gated on isMobile; desktop keeps the two-column modal. */}
+        {isMobile ? (
+          settingsOpen && (
+            <div className="settings-mobile" role="dialog" aria-modal="true" aria-labelledby="settings-mobile-title">
+              <header className="settings-mobile__top">
+                <button
+                  type="button"
+                  className="settings-mobile__back"
+                  aria-label="Close settings"
+                  onClick={() => setSettingsOpen(false)}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                </button>
+                <div className="settings-mobile__title" id="settings-mobile-title">Settings</div>
+                <span className="settings-mobile__spacer" aria-hidden="true" />
+              </header>
+              <div className="settings-mobile__body scroll-clean">
+                <SettingsView
+                  mobile
+                  settings={settings} setSetting={setSetting} onSave={saveSettings}
+                  theme={theme} onThemeChange={setTheme}
+                  skin={skin} onSkinChange={setSkin}
+                  customTheme={customTheme} onCustomThemeChange={setCustomTheme}
+                  agentLabel={agentLabel}
+                  section={settingsSection}
+                  onSectionChange={setSettingsSection}
+                  serverOnline={serverOnline}
+                  serverBusy={serverBusy}
+                  serverBusyKind={serverBusyKind}
+                  onStartServer={handleServerStart}
+                  onStopServer={handleServerStop}
+                  isSsoConnected={ssoConnected}
+                  ssoError={ssoError}
+                />
+              </div>
+            </div>
+          )
+        ) : (
+          <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} size="lg" height="min(820px, 88vh)" labelledBy="settings-modal-title">
+            <ModalHeader
+              id="settings-modal-title"
+              title="Settings"
+              onClose={() => setSettingsOpen(false)}
+              right={!ssoConnected && host.isElectron ? (
+                <button
+                  type="button"
+                  onClick={async () => { setSettingsOpen(false); await handleSsoSignIn(); }}
+                  title="Sign in with MindsHub to use managed models"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '5px 11px', borderRadius: 7,
+                    border: '1px solid var(--border-subtle)',
+                    background: 'transparent',
+                    color: 'var(--ink-3)',
+                    fontFamily: 'var(--font-body)', fontSize: 12.5,
+                    cursor: 'pointer', flexShrink: 0,
+                    transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+                >Sign in</button>
+              ) : undefined}
             />
-          </ModalBody>
-        </Modal>
+            <ModalBody padding="0" style={{ overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <SettingsView
+                settings={settings} setSetting={setSetting} onSave={saveSettings}
+                theme={theme} onThemeChange={setTheme}
+                skin={skin} onSkinChange={setSkin}
+                customTheme={customTheme} onCustomThemeChange={setCustomTheme}
+                agentLabel={agentLabel}
+                section={settingsSection}
+                onSectionChange={setSettingsSection}
+                serverOnline={serverOnline}
+                serverBusy={serverBusy}
+                serverBusyKind={serverBusyKind}
+                onStartServer={handleServerStart}
+                onStopServer={handleServerStop}
+                isSsoConnected={ssoConnected}
+                ssoError={ssoError}
+                onSsoSignIn={!ssoConnected && host.isElectron ? async () => { setSettingsOpen(false); await handleSsoSignIn(); } : undefined}
+              />
+            </ModalBody>
+          </Modal>
+        )}
 
         {/* Legacy 'connect' kind removed — Connect Apps and Data is now
             the canonical surface for connector management (route

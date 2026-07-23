@@ -4467,6 +4467,78 @@ body[data-theme="dark"] .mshell__drawer-title {
   margin: 10px 12px;
 }
 
+/* ── Mobile Settings full page (ENG-990) ─────────────────────────────────
+   On mobile, Settings renders as a full-page surface with accordion
+   navigation instead of the desktop two-column modal. Mirrors the
+   MobileShell chrome (fixed inset, 52px top bar, safe-area insets) and
+   layers at the same z as the modal it replaces so it covers the shell. */
+.settings-mobile {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text-default);
+  font-family: var(--font-sans);
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+.settings-mobile__top {
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+  z-index: 2;
+}
+.settings-mobile__back {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-strong);
+  border-radius: var(--r-12);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 140ms ease;
+}
+.settings-mobile__back:active { background: var(--surface-2); }
+.settings-mobile__title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+.settings-mobile__spacer { display: inline-block; width: 40px; height: 40px; }
+.settings-mobile__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg);
+}
+/* Accordion nav wrapper + expanded section body. The body renders section
+   content in natural flow (SettingsSectionPanel drops its internal scroll on
+   mobile), indented to align under the accordion header label. */
+.settings-acc { padding: 4px 0 24px; }
+.settings-acc__body { padding: 0 14px 16px 14px; }
+
 /* FAB — anchored bottom-right inside the mobile body. Sits above the
    home-indicator on iOS via env(safe-area-inset-bottom). */
 .mshell__fab {

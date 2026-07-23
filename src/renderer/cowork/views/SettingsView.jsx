@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { useId } from 'react';
 import Ico from '../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchHealth } from '../api';
@@ -134,7 +134,35 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
 // Shared layout shell for every settings section: scrollable content area
 // on top, optional sticky footer with action buttons on the bottom.
 // Pass `footer` as JSX — buttons, status text, whatever the section needs.
+// Layout mode for the settings surface. Desktop (default) renders the
+// two-column nav + scrolling panel inside a modal; mobile (ENG-990) renders
+// a full page with accordion navigation, where each section flows naturally
+// so the whole page scrolls. SettingsSectionPanel reads this to drop its
+// flex-fill / internal scroll / sticky footer on mobile.
+const SettingsLayoutContext = createContext({ mobile: false });
+
 function SettingsSectionPanel({ children, footer }) {
+  const { mobile } = useContext(SettingsLayoutContext);
+  if (mobile) {
+    // Natural flow inside the accordion body: no internal scroll or width
+    // cap (the page scrolls and the column is already narrow), and the
+    // footer sits inline at the end rather than as a sticky glass bar.
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div>{children}</div>
+        {footer && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            padding: '14px 0 2px',
+            marginTop: 12,
+            borderTop: '1px solid var(--border-subtle)',
+          }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       <div
@@ -652,6 +680,9 @@ export default function SettingsView({
   isSsoConnected = false,
   ssoError = '',
   onSsoSignIn,
+  // Mobile (ENG-990): render as a full page with accordion navigation
+  // instead of the desktop two-column layout.
+  mobile = false,
 }) {
   const [saved, setSaved] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -676,6 +707,12 @@ export default function SettingsView({
   const [diagBusy, setDiagBusy] = useState(false);
   // Account section — decoded from the JWT, null until loaded
   const [accountUser, setAccountUser] = useState(null);
+  // Mobile accordion: which section is expanded (null = all collapsed). Kept
+  // local so collapsing everything on mobile never leaves the shared desktop
+  // `section` empty; seeded from `section` and re-synced when a deep-link
+  // (onOpenSettings('backend')) changes it while the page is open.
+  const [openSection, setOpenSection] = useState(section || 'agent');
+  useEffect(() => { if (section) setOpenSection(section); }, [section]);
 
   useEffect(() => { getVersionInfo().then(setVersionInfo).catch(() => { }); }, []);
   // Backend (server + agent) versions come from /health, which is only
@@ -2595,6 +2632,76 @@ export default function SettingsView({
     );
   };
 
+  const logoutConfirm = (
+    <ConfirmModal
+      open={logoutConfirmOpen}
+      title="Sign out of Cowork?"
+      message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
+      confirmLabel="Sign out"
+      cancelLabel="Cancel"
+      destructive
+      busy={loggingOut}
+      busyLabel="Signing out…"
+      onConfirm={handleLogout}
+      onClose={() => setLogoutConfirmOpen(false)}
+    />
+  );
+
+  // Mobile (ENG-990): full-page accordion. Each nav item is a collapsible
+  // row; the open one renders its section content inline (mounted on demand,
+  // matching the desktop one-section-at-a-time behaviour and keeping section
+  // effects/dropdowns from all running at once). The page itself scrolls.
+  if (mobile) {
+    const renderers = {
+      agent: renderAgentSection,
+      appearance: renderAppearanceSection,
+      channels: renderChannelsSection,
+      updates: renderUpdatesSection,
+      backend: renderBackendSection,
+      account: renderAccountSection,
+    };
+    return (
+      <SettingsLayoutContext.Provider value={{ mobile: true }}>
+        <nav className="settings-acc" role="navigation" aria-label="Settings sections">
+          {NAV_ITEMS.map((item) => {
+            const open = openSection === item.id;
+            const disabled = !serverOnline && item.id !== 'backend';
+            const icon = Ico[item.icon] ? Ico[item.icon](17) : null;
+            return (
+              <div className="mshell-accordion" key={item.id}>
+                <button
+                  type="button"
+                  className="mshell-accordion__head"
+                  aria-expanded={open}
+                  aria-disabled={disabled || undefined}
+                  disabled={disabled}
+                  onClick={() => setOpenSection((cur) => (cur === item.id ? null : item.id))}
+                  style={disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
+                >
+                  {icon && (
+                    <span aria-hidden="true" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--text-muted)' }}>
+                      {icon}
+                    </span>
+                  )}
+                  <span className="mshell-accordion__label">{item.label}</span>
+                  <span className={`mshell-accordion__chev ${open ? 'is-open' : ''}`}>
+                    {Ico.chevronRight(16)}
+                  </span>
+                </button>
+                {open && (
+                  <div className="settings-acc__body">
+                    {renderers[item.id]?.()}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+        {logoutConfirm}
+      </SettingsLayoutContext.Provider>
+    );
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
       <SettingsNav section={section} onSectionChange={onSectionChange} serverOnline={serverOnline} />
@@ -2606,18 +2713,7 @@ export default function SettingsView({
       {section === 'backend' && renderBackendSection()}
       {section === 'account' && renderAccountSection()}
 
-      <ConfirmModal
-        open={logoutConfirmOpen}
-        title="Sign out of Cowork?"
-        message="This clears your stored API keys and disconnects from MindsHub. You'll need to sign in again to keep using Cowork."
-        confirmLabel="Sign out"
-        cancelLabel="Cancel"
-        destructive
-        busy={loggingOut}
-        busyLabel="Signing out…"
-        onConfirm={handleLogout}
-        onClose={() => setLogoutConfirmOpen(false)}
-      />
+      {logoutConfirm}
     </div>
   );
 }
