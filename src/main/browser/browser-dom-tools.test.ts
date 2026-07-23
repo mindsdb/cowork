@@ -5,6 +5,8 @@ import {
   domTypeScript,
   domReadScript,
   domScrollScript,
+  annotateSnapshot,
+  CONSEQUENTIAL_MARK,
   DEFAULT_SNAPSHOT_MAX_ELS,
   MAX_SNAPSHOT_MAX_ELS,
   DEFAULT_READ_MAX_CHARS,
@@ -51,6 +53,12 @@ describe('dom tools script builders', () => {
     // Password inputs keep their secret out of the snapshot text.
     expect(script).toContain("el.type === 'password'");
     expect(script).toContain("(isPassword ? '' : el.value)");
+  });
+
+  it('snapshot marks only EXPLICIT submit buttons (el.type defaults to submit)', () => {
+    const script = domSnapshotScript();
+    expect(script).toContain("el.getAttribute('type')");
+    expect(script).toContain("entry.inputType = 'submit'");
   });
 
   it('domClickScript looks the element up by clamped index and clicks', () => {
@@ -114,5 +122,36 @@ describe('dom tools script builders', () => {
     expect(domScrollScript('bottom')).toContain('scrollHeight');
     expect(domScrollScript('sideways')).toContain('"down"'); // invalid → down
     expect(domScrollScript('down', -50)).toContain('const amount = 0');
+  });
+});
+
+describe('annotateSnapshot', () => {
+  it('prefixes [!] on consequential lines and leaves safe ones untouched', () => {
+    const result = {
+      title: 'T',
+      url: 'https://a.com',
+      v: 1,
+      elements: [
+        { index: 0, tag: 'button', role: null, text: 'Search', bbox: { x: 0, y: 0, w: 10, h: 10 } },
+        { index: 1, tag: 'button', role: null, text: 'Send', bbox: { x: 0, y: 0, w: 10, h: 10 } },
+        { index: 2, tag: 'input', role: null, text: '', inputType: 'submit', bbox: { x: 0, y: 0, w: 10, h: 10 } },
+      ],
+    };
+    const out = annotateSnapshot(result) as typeof result;
+    expect(out.elements[0].text).toBe('Search');
+    expect(out.elements[1].text).toBe(`${CONSEQUENTIAL_MARK} Send`);
+    // Consequential with no text still gets a bare marker.
+    expect(out.elements[2].text).toBe(CONSEQUENTIAL_MARK);
+    // Non-element fields ride along untouched.
+    expect(out.title).toBe('T');
+    expect(out.v).toBe(1);
+  });
+
+  it('passes through results that are not the expected shape', () => {
+    expect(annotateSnapshot(null)).toBe(null);
+    expect(annotateSnapshot('stale')).toBe('stale');
+    expect(annotateSnapshot({ title: 'T' })).toEqual({ title: 'T' });
+    // Non-object elements survive the map untouched.
+    expect(annotateSnapshot({ elements: ['junk', 42] })).toEqual({ elements: ['junk', 42] });
   });
 });

@@ -14,7 +14,7 @@ import * as http from 'http';
 import * as path from 'path';
 import type { BrowserState, TopSite } from '../../shared/browser-types';
 import { BrowserRequestError } from './browser-logic';
-import { DEFAULT_STASH, domClickScript, domReadScript, domScrollScript, domSnapshotScript, domTypeScript } from './browser-dom-tools';
+import { DEFAULT_STASH, annotateSnapshot, domClickScript, domReadScript, domScrollScript, domSnapshotScript, domTypeScript } from './browser-dom-tools';
 
 // Everything the bridge needs from the manager. tabId resolution
 // (default = active tab) happens inside the manager for every method.
@@ -246,7 +246,7 @@ async function route(
   }
 
   if (method === 'GET' && p === '/snapshot') {
-    return actions.runScript(tabId, domSnapshotScript(num(q('maxEls')), elementStash));
+    return annotateSnapshot(await actions.runScript(tabId, domSnapshotScript(num(q('maxEls')), elementStash)));
   }
 
   if (method === 'POST' && p === '/click') {

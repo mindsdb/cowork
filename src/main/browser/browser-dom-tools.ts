@@ -10,6 +10,9 @@
 // so a later click-by-index hits the SAME element even if the DOM re-ordered,
 // and a click/type carrying a stale `v` is refused.
 
+import { classifyControl } from './browser-logic';
+import type { ControlLike } from './browser-logic';
+
 export const DEFAULT_SNAPSHOT_MAX_ELS = 150;
 export const MAX_SNAPSHOT_MAX_ELS = 400;
 export const DEFAULT_READ_MAX_CHARS = 20000;
@@ -80,6 +83,9 @@ export function domSnapshotScript(
       bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
     if (tag === 'a' && el.href) entry.href = el.href;
     if (tag === 'input' || tag === 'textarea' || tag === 'select') entry.inputType = el.type || 'text';
+    // Buttons only when type=submit is EXPLICIT — el.type defaults to
+    // 'submit' on buttons, which would mark every button consequential.
+    if (tag === 'button' && (el.getAttribute('type') || '').toLowerCase() === 'submit') entry.inputType = 'submit';
     els.push(entry);
     refs.push(el);
     el = walker.nextNode();
@@ -89,6 +95,34 @@ export function domSnapshotScript(
   ${stashRef(stash)} = { v: v, els: refs };
   return { title: document.title, url: location.href, v: v, elements: els };
 })()`;
+}
+
+/** Marker stamped on the text of consequential snapshot elements so the
+ *  agent (and later the click gate) sees them on the line: '[!] Send'. */
+export const CONSEQUENTIAL_MARK = '[!]';
+
+/** Post-process a /snapshot result main-side (the page-side script can't
+ *  import the word list): prefix the text of consequential controls with
+ *  [!]. Anything that isn't the expected shape passes through untouched — a
+ *  weird page result must not 500 the bridge. */
+export function annotateSnapshot(result: unknown): unknown {
+  if (!result || typeof result !== 'object') return result;
+  const elements = (result as { elements?: unknown }).elements;
+  if (!Array.isArray(elements)) return result;
+  return {
+    ...(result as Record<string, unknown>),
+    elements: elements.map((el) => {
+      if (!el || typeof el !== 'object') return el;
+      const control = el as ControlLike;
+      if (typeof control.tag !== 'string') return el;
+      if (classifyControl(control) !== 'consequential') return el;
+      const text = typeof control.text === 'string' ? control.text : '';
+      return {
+        ...(el as Record<string, unknown>),
+        text: text ? `${CONSEQUENTIAL_MARK} ${text}` : CONSEQUENTIAL_MARK,
+      };
+    }),
+  };
 }
 
 /** Shared prelude for click/type: resolve the stash, refuse a version

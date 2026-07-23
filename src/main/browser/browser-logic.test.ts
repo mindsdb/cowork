@@ -23,6 +23,8 @@ import {
   sanitizeFaviconUrl,
   dedupeDownloadName,
   nextZoomFactor,
+  classifyControl,
+  CONSEQUENTIAL_TERMS,
   MAX_TABS,
   HISTORY_CAP,
 } from './browser-logic';
@@ -480,5 +482,61 @@ describe('dedupeDownloadName', () => {
 describe('MAX_TABS', () => {
   it('caps the tab count at 50', () => {
     expect(MAX_TABS).toBe(50);
+  });
+});
+
+describe('classifyControl', () => {
+  it('marks submit inputs and buttons consequential regardless of text', () => {
+    expect(classifyControl({ tag: 'input', inputType: 'submit' })).toBe('consequential');
+    expect(classifyControl({ tag: 'input', inputType: 'submit', text: 'Search' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', inputType: 'submit', text: 'Go' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', inputType: 'SUBMIT', text: 'Go' })).toBe('consequential');
+    // submit on a non-control tag is just another element.
+    expect(classifyControl({ tag: 'a', inputType: 'submit', text: 'Go' })).toBe('safe');
+  });
+
+  it('marks every word-list term consequential', () => {
+    for (const term of CONSEQUENTIAL_TERMS) {
+      expect(classifyControl({ tag: 'button', text: term }), term).toBe('consequential');
+    }
+  });
+
+  it('matches terms inside real button copy, case-insensitively, on word boundaries', () => {
+    expect(classifyControl({ tag: 'button', text: 'Send message' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'SEND' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Place Your Order' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Buy now' })).toBe('consequential');
+    expect(classifyControl({ tag: 'a', text: 'Delete this page' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Schedule Send' })).toBe('consequential');
+  });
+
+  it('leaves safe controls and word-boundary near-misses alone', () => {
+    for (const text of [
+      'Search',
+      'Save draft',
+      'Archive',
+      'Sender info',      // 'send' inside a word
+      'Payment methods',  // 'pay' inside a word
+      'Confirmed',        // 'confirm' inside a word
+      'Schedule',         // bare 'schedule' is deliberately not listed
+      'Sign in',
+      '',
+    ]) {
+      expect(classifyControl({ tag: 'button', text }), text).toBe('safe');
+    }
+  });
+
+  it('prefers visible text over aria-label, falling back when text is empty', () => {
+    // Mirrors the snapshot walker's fallback chain (innerText || … || aria-label).
+    expect(classifyControl({ tag: 'button', text: 'Save draft', ariaLabel: 'Send' })).toBe('safe');
+    expect(classifyControl({ tag: 'button', text: '', ariaLabel: 'Delete conversation' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: '   ', ariaLabel: 'Share' })).toBe('consequential');
+  });
+
+  it('treats missing labels and plain inputs as safe', () => {
+    expect(classifyControl({ tag: 'button' })).toBe('safe');
+    expect(classifyControl({ tag: 'input', inputType: 'text' })).toBe('safe');
+    expect(classifyControl({ tag: 'input', inputType: 'password' })).toBe('safe');
+    expect(classifyControl({ tag: 'a', text: 'Read more' })).toBe('safe');
   });
 });

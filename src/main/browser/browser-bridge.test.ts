@@ -273,6 +273,23 @@ describe('bridge DOM endpoints', () => {
     expect(snap.body).toEqual({ title: 'T', url: 'https://a.com', elements: [] });
   });
 
+  it('GET /snapshot annotates consequential elements with [!]', async () => {
+    actions.runScript = vi.fn(async () => ({
+      title: 'T',
+      url: 'https://a.com',
+      v: 1,
+      elements: [
+        { index: 0, tag: 'button', role: null, text: 'Search', bbox: { x: 0, y: 0, w: 10, h: 10 } },
+        { index: 1, tag: 'button', role: null, text: 'Send', bbox: { x: 0, y: 0, w: 10, h: 10 } },
+      ],
+    }));
+    const snap = await request(handle!.port, { path: '/snapshot', token: handle!.token });
+    expect(snap.status).toBe(200);
+    const elements = (snap.body as { elements: Array<{ text: string }> }).elements;
+    expect(elements[0].text).toBe('Search');
+    expect(elements[1].text).toBe('[!] Send');
+  });
+
   it('POST /click runs the click script and waits for settle', async () => {
     actions.runScript = vi.fn(async () => true);
     const res = await request(handle!.port, {

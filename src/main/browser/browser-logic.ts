@@ -477,3 +477,62 @@ export function sanitizeApps(raw: unknown): BrowserApp[] {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Consequential-control classification (snapshot [!] annotation; the click
+// gate consumes the marker later — no behavior change here yet)
+// ---------------------------------------------------------------------------
+
+/** Words whose activation is hard to undo: messages sent, money moved, data
+ *  destroyed, things published. English-only v1 — feed misses back into this
+ *  list rather than special-casing call sites. 'schedule send' but not bare
+ *  'schedule' (every calendar app's nav button — too noisy for a marker). */
+export const CONSEQUENTIAL_TERMS = [
+  'send',
+  'send now',
+  'delete',
+  'remove',
+  'unsubscribe',
+  'pay',
+  'purchase',
+  'buy',
+  'checkout',
+  'place order',
+  'place your order',
+  'confirm',
+  'post',
+  'publish',
+  'share',
+  'transfer',
+  'submit',
+  'schedule send',
+] as const;
+
+/** The snapshot-element fields classification reads (a subset of SnapshotEl
+ *  from shared/browser-types). `text` already folds aria-label in via the
+ *  walker's fallback chain; the separate field is for callers with richer
+ *  element data (and for testing that precedence). */
+export interface ControlLike {
+  tag: string;
+  inputType?: string;
+  text?: string;
+  ariaLabel?: string;
+}
+
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const CONSEQUENTIAL_RE = new RegExp(
+  `\\b(?:${CONSEQUENTIAL_TERMS.map(escapeRe).join('|')})\\b`,
+  'i',
+);
+
+/** 'consequential' when activating the control is hard to undo: submit
+ *  inputs/buttons outright, otherwise a case-insensitive word-boundary match
+ *  of the visible text — falling back to aria-label, mirroring the snapshot
+ *  walker's precedence — against CONSEQUENTIAL_TERMS. */
+export function classifyControl(el: ControlLike): 'consequential' | 'safe' {
+  const type = (el.inputType ?? '').toLowerCase();
+  if ((el.tag === 'input' || el.tag === 'button') && type === 'submit') return 'consequential';
+  const label = (el.text ?? '').trim() || (el.ariaLabel ?? '').trim();
+  return label !== '' && CONSEQUENTIAL_RE.test(label) ? 'consequential' : 'safe';
+}
