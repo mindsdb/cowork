@@ -379,33 +379,33 @@ describe('tabs', () => {
 
   it('downloads are tracked into state with progress and completion', async () => {
     const mgr = await loadManager();
-    const listeners = { updated: null, done: null };
+    const listeners: { updated: (() => void) | null; done: ((...a: unknown[]) => void) | null } = { updated: null, done: null };
     const item = {
       getFilename: () => 'report.pdf',
       getTotalBytes: () => 1000,
       getReceivedBytes: vi.fn(() => 400),
       setSavePath: vi.fn(),
-      on: (ev, fn) => { if (ev === 'updated') listeners.updated = fn; },
-      once: (ev, fn) => { if (ev === 'done') listeners.done = fn; },
+      on: (ev: string, fn: () => void) => { if (ev === 'updated') listeners.updated = fn; },
+      once: (ev: string, fn: (...a: unknown[]) => void) => { if (ev === 'done') listeners.done = fn; },
     };
     h.downloadHandler.fn({}, item);
 
     await flush();
     let s = mgr.getBrowserState();
     expect(s.downloads).toHaveLength(1);
-    expect(s.downloads[0]).toMatchObject({
+    expect(s.downloads![0]).toMatchObject({
       filename: 'report.pdf', state: 'progressing', receivedBytes: 400, totalBytes: 1000,
     });
     expect(item.setSavePath).toHaveBeenCalledWith(expect.stringContaining('report.pdf'));
 
     item.getReceivedBytes = vi.fn(() => 1000);
-    listeners.updated();
+    listeners.updated!();
     await flush();
-    listeners.done({}, 'completed');
+    listeners.done!({}, 'completed');
     await flush();
     s = mgr.getBrowserState();
-    expect(s.downloads[0].state).toBe('completed');
-    expect(s.downloads[0].receivedBytes).toBe(1000);
+    expect(s.downloads![0].state).toBe('completed');
+    expect(s.downloads![0].receivedBytes).toBe(1000);
     expect((await invoke('browser:downloads-list', undefined))).toHaveLength(1);
     await mgr.shutdownBrowser();
   });
