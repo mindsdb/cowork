@@ -21,7 +21,7 @@ function letterOf(name) {
 // (Gmail, Slack, Linear…). Click = find-or-create in the browser (opens the
 // existing tab on that origin, or a fresh pinned tab). Registry + matching
 // live in main (apps.json); this component is pure presentation.
-export default function SidebarApps({ onOpenApp }) {
+export default function SidebarApps({ onOpenApp, rail = false }) {
   const [apps, setApps] = useState([]);
   const [adding, setAdding] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
@@ -106,37 +106,97 @@ export default function SidebarApps({ onOpenApp }) {
 
   const faviconFor = (app) => liveFavicons[app.origin] || app.favicon || null;
 
+  const wellFor = (app, size) => {
+    const fav = faviconFor(app);
+    return fav ? (
+      <img
+        src={fav}
+        alt=""
+        aria-hidden="true"
+        className="sidebar-app__well"
+        style={{ width: size, height: size, borderRadius: 4, objectFit: 'cover' }}
+        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+      />
+    ) : (
+      <span className="sidebar-app__well" aria-hidden="true" style={size !== 18 ? { width: size, height: size, fontSize: size * 0.42 } : undefined}>
+        {letterOf(app.name)}
+      </span>
+    );
+  };
+
+  // Rail mode (collapsed sidebar): icon wells only, no labels.
+  if (rail) {
+    return (
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        paddingBottom: 8, width: '100%',
+      }}>
+        {apps.map((app) => (
+          <Tooltip key={app.id} content={app.name} side="right" delay={300}>
+            <button
+              type="button"
+              className="icon-btn sidebar-app__wellbtn"
+              aria-label={`Open ${app.name}`}
+              onClick={() => onOpenApp(app)}
+              onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, app }); }}
+              style={{ WebkitAppRegion: 'no-drag', padding: 3, borderRadius: 8, flexShrink: 0 }}
+            >
+              {wellFor(app, 26)}
+            </button>
+          </Tooltip>
+        ))}
+        <Tooltip content="Add app" side="right" delay={300}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Add app"
+            onClick={openAdd}
+            style={{ WebkitAppRegion: 'no-drag', flexShrink: 0, color: 'var(--ink-4)' }}
+          >
+            {Ico.plus(13)}
+          </button>
+        </Tooltip>
+
+        {menu && (
+          <Menu
+            open
+            anchor={{ getBoundingClientRect: () => new DOMRect(menu.x, menu.y, 0, 0) }}
+            onClose={() => setMenu(null)}
+            items={[
+              { icon: Ico.settings(14), label: 'Rename…', onClick: () => setRenaming(menu.app) },
+              {
+                icon: Ico.close(14),
+                label: `Remove ${menu.app.name}`,
+                onClick: async () => { await host.browserAppsRemove?.(menu.app.id); refresh(); },
+              },
+            ]}
+          />
+        )}
+
+        <AddAppModal open={adding} suggestions={suggestions} onAdd={add} onClose={() => setAdding(false)} />
+        <RenameAppModal app={renaming} onRename={rename} onClose={() => setRenaming(null)} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ marginTop: 2 }}>
       {apps.length > 0 && (
         <div className="section-label" style={{ padding: '10px 14px 4px' }}>Apps</div>
       )}
-      {apps.map((app) => {
-        const fav = faviconFor(app);
-        return (
-          <button
-            key={app.id}
-            className="nav-item sidebar-app"
-            onClick={() => onOpenApp(app)}
-            onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, app }); }}
-            title={`${app.name} — ${hostOf(app.origin)}`}
-          >
-            {fav ? (
-              <img
-                src={fav}
-                alt=""
-                aria-hidden="true"
-                className="sidebar-app__well"
-                style={{ borderRadius: 4, objectFit: 'cover' }}
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            ) : (
-              <span className="sidebar-app__well" aria-hidden="true">{letterOf(app.name)}</span>
-            )}
-            <span className="nav-row__label" style={{ flex: 1 }}>{app.name}</span>
-          </button>
-        );
-      })}
+      {apps.map((app) => (
+        <button
+          key={app.id}
+          className="nav-item sidebar-app"
+          onClick={() => onOpenApp(app)}
+          onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, app }); }}
+          title={`${app.name} — ${hostOf(app.origin)}`}
+        >
+          {wellFor(app, 18)}
+          <span className="nav-row__label" style={{ flex: 1 }}>{app.name}</span>
+        </button>
+      ))}
 
       <button className="nav-item" onClick={openAdd} title="Pin a web app to the sidebar">
         <span className="nav-row__icon" style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', color: 'var(--ink-4)' }}>

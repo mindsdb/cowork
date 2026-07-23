@@ -3561,13 +3561,14 @@ function AppCore() {
       )}
 
       {/*
-        Floating hamburger — on desktop: visible when sidebar is collapsed
-        (chat route only). On narrow desktop: opens the slide-over sidebar.
+        Floating hamburger — on narrow desktop only: opens the slide-over
+        sidebar. On desktop the collapsed state is now a slim rail with its
+        own expand button, so the old floating button would be a duplicate.
         Suppressed entirely on isMobile — MobileShell has its own hamburger.
       */}
-      {!isMobile && (
+      {!isMobile && isNarrow && (
       <button
-        onClick={() => isNarrow ? setMobileSidebarOpen(true) : setSidebarCollapsed(false)}
+        onClick={() => setMobileSidebarOpen(true)}
         title="Open sidebar"
         className="icon-btn"
         style={{
@@ -3577,13 +3578,9 @@ function AppCore() {
           top: 18, left: host.isWeb ? 18 : 97,
           zIndex: 10,
           WebkitAppRegion: 'no-drag',
-          opacity: isNarrow
-            ? (mobileSidebarOpen ? 0 : 1)
-            : (sidebarCollapsedEffective ? 1 : 0),
-          transform: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'translateX(0)' : 'translateX(-8px)',
-          pointerEvents: (isNarrow ? !mobileSidebarOpen : sidebarCollapsedEffective)
-            ? 'auto' : 'none',
+          opacity: mobileSidebarOpen ? 0 : 1,
+          transform: !mobileSidebarOpen ? 'translateX(0)' : 'translateX(-8px)',
+          pointerEvents: !mobileSidebarOpen ? 'auto' : 'none',
           transition:
             'opacity 280ms cubic-bezier(0.32, 0.72, 0, 1) 120ms, ' +
             'transform 360ms cubic-bezier(0.32, 0.72, 0, 1) 80ms',

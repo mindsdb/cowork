@@ -397,32 +397,32 @@ export default function Sidebar({
         border: '1px solid var(--line)',
         borderRadius: 14,
         boxShadow: 'var(--sh-2)',
-        width: collapsed ? 0 : 'clamp(240px, 24vw, 320px)',
-        opacity: collapsed ? 0 : 1,
-        // Combine a gentle leftward translate with a slight scale so
-        // the sidebar reads as "settling into place" rather than just
-        // sliding. Origin pinned to the left edge so the scale grows
-        // from the dock side; the eye picks up the easing curve
-        // along with the width interpolation for a single coherent
-        // motion. Scale + filter values are subtle on purpose —
-        // they're the difference between "this animated" and
-        // "this animated nicely."
-        transform: collapsed
-          ? 'translateX(-12px) scale(0.985)'
-          : 'translateX(0) scale(1)',
+        // Collapsed ≠ gone: a slim rail keeps the traffic lights a home and
+        // the apps one click away (see CollapsedRail below). Without it the
+        // browser tab strip slides under the macOS window controls.
+        width: collapsed ? 64 : 'clamp(240px, 24vw, 320px)',
+        opacity: 1,
+        transform: 'translateX(0) scale(1)',
         transformOrigin: 'left center',
-        filter: collapsed ? 'blur(6px)' : 'blur(0)',
+        filter: 'blur(0)',
         transition:
           'width 380ms cubic-bezier(0.22, 1, 0.36, 1), ' +
           'opacity 260ms cubic-bezier(0.32, 0.72, 0, 1), ' +
           'transform 420ms cubic-bezier(0.22, 1, 0.36, 1), ' +
           'filter 240ms cubic-bezier(0.32, 0.72, 0, 1)',
         willChange: 'width, opacity, transform, filter',
-        pointerEvents: collapsed ? 'none' : 'auto',
+        pointerEvents: 'auto',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
+      {collapsed ? (
+        <CollapsedRail
+          onExpand={onToggleCollapsed}
+          onOpenApp={(app) => { onNavigate('browser'); host.browserOpenApp?.(app.id); }}
+        />
+      ) : (
+        <>
       {/* Top chrome row: traffic-light pad + collapse/search + ANTON wordmark.
           padding-top reduced from 14 → 9 to bring the buttons + wordmark
           5px upward, so they line up with the macOS traffic lights at
@@ -896,6 +896,43 @@ export default function Sidebar({
         onSelect={(id) => onSelectTask?.(id)}
         onDelete={(id) => onDeleteTask?.(id)}
       />
+        </>
+      )}
     </aside>
+  );
+}
+
+// Slim rail for the collapsed sidebar: the traffic lights keep a home at
+// the top (drag pad), an accent expand button, then the pinned apps as
+// icon wells. This replaces the old width-0 collapse, which let the
+// browser's tab strip slide under the macOS window controls.
+function CollapsedRail({ onExpand, onOpenApp }) {
+  return (
+    <div
+      aria-label="Collapsed sidebar"
+      style={{
+        flex: 1, minHeight: 0,
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Traffic-light pad — OS controls live at ~(20, 24); keep the area
+          clear and draggable. */}
+      <div style={{ height: 44, flexShrink: 0, alignSelf: 'stretch', WebkitAppRegion: 'drag' }} />
+      {typeof onExpand === 'function' && (
+        <button
+          type="button"
+          className="icon-btn sidebar-rail__expand"
+          onClick={onExpand}
+          title={`Expand sidebar  (${shortcut('B')})`}
+          aria-label="Expand sidebar"
+          style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
+        >
+          {Ico.sidebarExpandRight(15)}
+        </button>
+      )}
+      <div style={{ width: 24, height: 1, background: 'var(--line)', margin: '10px 0', flexShrink: 0 }} />
+      <SidebarApps rail onOpenApp={onOpenApp} />
+    </div>
   );
 }
