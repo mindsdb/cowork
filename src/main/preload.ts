@@ -145,6 +145,8 @@ contextBridge.exposeInMainWorld('antontron', {
   browserStopFind: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_STOP_FIND, { tabId }),
   browserReopenClosedTab: () => ipcRenderer.invoke(IPC.BROWSER_REOPEN_CLOSED_TAB),
   browserDownloadsList: () => ipcRenderer.invoke(IPC.BROWSER_DOWNLOADS_LIST),
+  browserSetZoom: (tabId: string, direction: 1 | -1 | 0) =>
+    ipcRenderer.invoke(IPC.BROWSER_SET_ZOOM, { tabId, direction }),
   browserNavigate: (tabId: string, url: string) =>
     ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, { tabId, url }),
   browserGoBack: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_GO_BACK, { tabId }),

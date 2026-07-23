@@ -8,6 +8,7 @@ export interface BrowserTabInfo {
   url: string;                // '' = blank start-page tab
   favicon: string | null;     // data: or https: URL
   pinned: boolean;            // pinned tabs lead the strip and can't be closed
+  zoom?: number;              // per-tab zoom factor (default 1; additive)
   isLoading: boolean;
   loadProgress: number;       // 0..1
   canGoBack: boolean;

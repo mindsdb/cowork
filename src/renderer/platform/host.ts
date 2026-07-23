@@ -767,6 +767,13 @@ export async function browserDownloadsList(): Promise<DownloadInfo[]> {
   return [];
 }
 
+export async function browserSetZoom(tabId: string, direction: 1 | -1 | 0): Promise<{ zoom: number } | { ok: false }> {
+  if (isElectron && typeof bridge.browserSetZoom === 'function') {
+    return bridge.browserSetZoom(tabId, direction);
+  }
+  return { ok: false };
+}
+
 export async function browserNavigate(tabId: string, url: string): Promise<void> {
   if (isElectron && typeof bridge.browserNavigate === 'function') {
     await bridge.browserNavigate(tabId, url);
@@ -891,6 +898,7 @@ export const host = {
   browserStopFind,
   browserReopenClosedTab,
   browserDownloadsList,
+  browserSetZoom,
   browserNavigate,
   browserGoBack,
   browserGoForward,

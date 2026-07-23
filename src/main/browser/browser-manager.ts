@@ -167,7 +167,7 @@ function persistTabs(): void {
     // error/isLoading are runtime-only — never persisted. Full urls (query
     // strings included) are kept here on purpose: session restore must reopen
     // the exact page. history.json stays redacted (origin + path only).
-    tabs: model.tabs.map(({ id, url, title, favicon, pinned }) => ({ id, url, title, favicon, pinned })),
+    tabs: model.tabs.map(({ id, url, title, favicon, pinned, zoom }) => ({ id, url, title, favicon, pinned, zoom: zoom ?? 1 })),
     activeTabId: model.activeTabId,
   };
   writeJsonAtomic(tabsPath(), persisted);
@@ -365,6 +365,7 @@ function ensureView(tabId: string): WebContentsView | null {
   // Never-attached views (background/agent tabs) still need a viewport or
   // capturePage and in-page scripts see a 0x0 page.
   view.setBounds(lastBounds ?? DEFAULT_VIEW_BOUNDS);
+  if ((tab.zoom ?? 1) !== 1) view.webContents.setZoomFactor(tab.zoom ?? 1);
   views.set(tabId, view);
   wireView(tabId, view);
   if (tab.url && logic.isAllowedTabUrl(tab.url)) {
@@ -598,6 +599,21 @@ async function setTabPinned(tabId: string, pinned: boolean): Promise<{ ok: boole
   schedulePush();
   schedulePersist();
   return { ok: true };
+}
+
+/** Per-tab zoom: patch the model (persisted) and apply to the live view. */
+async function setTabZoom(
+  tabId: string | undefined,
+  direction: 1 | -1 | 0,
+): Promise<{ zoom: number } | { ok: false }> {
+  const id = requireTab(tabId);
+  const tab = model.tabs.find((t) => t.id === id);
+  if (!tab) return { ok: false };
+  const zoom = logic.nextZoomFactor(tab.zoom ?? 1, direction);
+  patch(id, { zoom });
+  views.get(id)?.webContents.setZoomFactor(zoom);
+  schedulePersist();
+  return { zoom };
 }
 
 /** ⌘⇧T: reopen the most recently closed tab (fresh load, pin restored). */
@@ -1289,6 +1305,11 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
   ipcMain.handle(IPC.BROWSER_STOP_FIND, (_e, payload: { tabId?: string }) => stopFindInPage(payload?.tabId));
   ipcMain.handle(IPC.BROWSER_REOPEN_CLOSED_TAB, () => reopenClosedTab());
   ipcMain.handle(IPC.BROWSER_DOWNLOADS_LIST, () => listDownloads());
+  ipcMain.handle(IPC.BROWSER_SET_ZOOM, (_e, payload: { tabId?: string; direction?: 1 | -1 | 0 }) =>
+    payload?.direction === 1 || payload?.direction === -1 || payload?.direction === 0
+      ? setTabZoom(payload.tabId, payload.direction)
+      : { ok: false },
+  );
   ipcMain.handle(IPC.BROWSER_NAVIGATE, async (_e, payload: { tabId?: string; url?: string }) => {
     if (!payload?.url) return;
     try {

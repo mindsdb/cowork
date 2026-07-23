@@ -193,6 +193,22 @@ export default function BrowserView() {
         return;
       }
       if (mod && !e.altKey && !e.shiftKey) {
+        // Zoom: ⌘= / ⌘+ in, ⌘- out, ⌘0 reset (Chrome).
+        if ((key === '=' || key === '+') && activeTabId) {
+          e.preventDefault();
+          host.browserSetZoom?.(activeTabId, 1);
+          return;
+        }
+        if (key === '-' && activeTabId) {
+          e.preventDefault();
+          host.browserSetZoom?.(activeTabId, -1);
+          return;
+        }
+        if (key === '0' && activeTabId) {
+          e.preventDefault();
+          host.browserSetZoom?.(activeTabId, 0);
+          return;
+        }
         if (key === 't') { e.preventDefault(); newTab(); }
         else if (key === 'w') { e.preventDefault(); if (activeTabId) closeTab(activeTabId); }
         else if (key === 'r') { e.preventDefault(); if (activeTabId) host.browserReload?.(activeTabId); }

@@ -198,6 +198,26 @@ export default function Omnibox({ tab, inputRef, onSubmit, tabs = [], onActivate
         }}
       />
 
+      {(tab?.zoom ?? 1) !== 1 && (
+        <Tooltip content="Reset zoom to 100% (⌘0)" delay={250}>
+          <button
+            type="button"
+            className="browser-zoom-badge"
+            aria-label={`Zoom ${Math.round((tab.zoom ?? 1) * 100)}% — reset to 100%`}
+            onClick={(e) => { e.stopPropagation(); if (tab?.id) host.browserSetZoom?.(tab.id, 0); }}
+            style={{
+              flex: '0 0 auto', border: 0, borderRadius: 10,
+              background: 'var(--surface-3)', color: 'var(--ink-3)',
+              fontSize: 10.5, fontWeight: 600, fontFamily: 'var(--font-body)',
+              padding: '2px 6px', cursor: 'pointer',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {Math.round((tab.zoom ?? 1) * 100)}%
+          </button>
+        </Tooltip>
+      )}
+
       {open && rows.length > 0 && (
         <div
           id="browser-omnibox-suggestions"

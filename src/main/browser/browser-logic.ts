@@ -76,6 +76,7 @@ export function createTabModel(partial?: Partial<BrowserTabInfo>): BrowserTabInf
     url: '',
     favicon: null,
     pinned: false,
+    zoom: 1,
     isLoading: false,
     loadProgress: 0,
     canGoBack: false,
@@ -304,7 +305,7 @@ export function historyToTopSites(history: HistoryEntry[]): TopSite[] {
 // ---------------------------------------------------------------------------
 
 export interface PersistedTabs {
-  tabs: Array<{ id: string; url: string; title: string; favicon: string | null; pinned: boolean }>;
+  tabs: Array<{ id: string; url: string; title: string; favicon: string | null; pinned: boolean; zoom: number }>;
   activeTabId: string | null;
 }
 
@@ -325,12 +326,14 @@ export function sanitizePersistedTabs(raw: unknown): PersistedTabs | null {
     if (typeof tab.id !== 'string' || !tab.id) continue;
     const url = typeof tab.url === 'string' ? tab.url : '';
     if (!isAllowedTabUrl(url)) continue;
+    const zoomRaw = (tab as { zoom?: unknown }).zoom;
     tabs.push({
       id: tab.id,
       url,
       title: typeof tab.title === 'string' ? tab.title : '',
       favicon: sanitizeFaviconUrl(typeof tab.favicon === 'string' ? tab.favicon : null),
       pinned: (tab as { pinned?: unknown }).pinned === true,
+      zoom: typeof zoomRaw === 'number' && zoomRaw >= 0.25 && zoomRaw <= 5 ? zoomRaw : 1,
     });
   }
   const activeTabId =
@@ -388,6 +391,22 @@ export function dedupeDownloadName(filename: string, exists: (name: string) => b
     if (!exists(candidate)) return candidate;
   }
   return `${base} (${Date.now()})${ext}`; // pathological — still unique-ish
+}
+
+// ---------------------------------------------------------------------------
+// Per-tab zoom (Chrome's steps; main owns them so renderer/main can't drift)
+// ---------------------------------------------------------------------------
+
+export const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+/** Next zoom factor for a direction: +1 in, -1 out, 0 = reset to 100%.
+ *  Unknown current values snap to the nearest step first. */
+export function nextZoomFactor(current: number, direction: 1 | -1 | 0): number {
+  if (direction === 0) return 1;
+  const nearest = ZOOM_STEPS.reduce((best, step) =>
+    Math.abs(step - current) < Math.abs(best - current) ? step : best, ZOOM_STEPS[0]);
+  const idx = ZOOM_STEPS.indexOf(nearest) + direction;
+  return ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx))];
 }
 
 // ---------------------------------------------------------------------------

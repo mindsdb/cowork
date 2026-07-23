@@ -22,6 +22,7 @@ import {
   sanitizeHistory,
   sanitizeFaviconUrl,
   dedupeDownloadName,
+  nextZoomFactor,
   MAX_TABS,
   HISTORY_CAP,
 } from './browser-logic';
@@ -142,14 +143,14 @@ describe('tab model transitions', () => {
     expect(createTabModel().pinned).toBe(false);
     const sanitized = sanitizePersistedTabs({
       tabs: [
-        { id: 'a', url: 'https://a.com', title: 'A', favicon: null, pinned: true },
+        { id: 'a', url: 'https://a.com', title: 'A', favicon: null, pinned: true, zoom: 1 },
         { id: 'b', url: 'https://b.com', title: 'B', favicon: null },
       ],
       activeTabId: 'a',
     });
     expect(sanitized?.tabs).toEqual([
-      { id: 'a', url: 'https://a.com', title: 'A', favicon: null, pinned: true },
-      { id: 'b', url: 'https://b.com', title: 'B', favicon: null, pinned: false },
+      { id: 'a', url: 'https://a.com', title: 'A', favicon: null, pinned: true, zoom: 1 },
+      { id: 'b', url: 'https://b.com', title: 'B', favicon: null, pinned: false, zoom: 1 },
     ]);
   });
 
@@ -347,9 +348,9 @@ describe('persistence validation', () => {
     };
     expect(sanitizePersistedTabs(good)).toEqual({
       tabs: [
-        { id: 'a', url: 'https://a.com', title: 'A', favicon: 'https://a.com/f.ico', pinned: false },
-        { id: 'b', url: 'https://b.com', title: 'B', favicon: null, pinned: false },
-        { id: 'c', url: '', title: '', favicon: null, pinned: false },
+        { id: 'a', url: 'https://a.com', title: 'A', favicon: 'https://a.com/f.ico', pinned: false, zoom: 1 },
+        { id: 'b', url: 'https://b.com', title: 'B', favicon: null, pinned: false, zoom: 1 },
+        { id: 'c', url: '', title: '', favicon: null, pinned: false, zoom: 1 },
       ],
       activeTabId: 'a',
     });
@@ -365,7 +366,7 @@ describe('persistence validation', () => {
   it('sanitizePersistedTabs keeps a valid activeTabId and handles empty tab lists', () => {
     expect(
       sanitizePersistedTabs({ tabs: [{ id: 'a', url: '', title: '', favicon: null }], activeTabId: 'a' }),
-    ).toEqual({ tabs: [{ id: 'a', url: '', title: '', favicon: null, pinned: false }], activeTabId: 'a' });
+    ).toEqual({ tabs: [{ id: 'a', url: '', title: '', favicon: null, pinned: false, zoom: 1 }], activeTabId: 'a' });
     expect(sanitizePersistedTabs({ tabs: [], activeTabId: 'a' })).toEqual({ tabs: [], activeTabId: null });
   });
 
@@ -382,8 +383,8 @@ describe('persistence validation', () => {
     };
     expect(sanitizePersistedTabs(dirty)).toEqual({
       tabs: [
-        { id: 'good', url: 'https://a.com', title: 'A', favicon: null, pinned: false },
-        { id: 'blank', url: '', title: '', favicon: null, pinned: false },
+        { id: 'good', url: 'https://a.com', title: 'A', favicon: null, pinned: false, zoom: 1 },
+        { id: 'blank', url: '', title: '', favicon: null, pinned: false, zoom: 1 },
       ],
       activeTabId: 'good',
     });
@@ -430,6 +431,22 @@ describe('persistence validation', () => {
     ]);
     const huge = Array.from({ length: HISTORY_CAP + 50 }, (_, i) => ({ url: `https://h.com/${i}`, title: '', ts: i }));
     expect(sanitizeHistory(huge)).toHaveLength(HISTORY_CAP);
+  });
+});
+
+describe('nextZoomFactor', () => {
+  it("steps in and out along the Chrome ladder and clamps at the ends", () => {
+    expect(nextZoomFactor(1, 1)).toBe(1.1);
+    expect(nextZoomFactor(1.1, 1)).toBe(1.25);
+    expect(nextZoomFactor(1, -1)).toBe(0.9);
+    expect(nextZoomFactor(0.5, -1)).toBe(0.5); // floor
+    expect(nextZoomFactor(3, 1)).toBe(3); // ceiling
+  });
+
+  it('reset returns 100% and unknown values snap to the nearest step first', () => {
+    expect(nextZoomFactor(1.7, 0)).toBe(1);
+    expect(nextZoomFactor(1.05, 1)).toBe(1.1); // tie snaps to the lower step (1.0), then up
+    expect(nextZoomFactor(1.05, -1)).toBe(0.9); // tie → 1.0, then down
   });
 });
 
