@@ -124,7 +124,12 @@ function liveWindow(): BrowserWindow | null {
 }
 
 export function getBrowserState(): BrowserState {
-  return { ...model, viewVisible: attachedTabId !== null, closedCount: closedStack.length };
+  return {
+    ...model,
+    viewVisible: attachedTabId !== null,
+    closedCount: closedStack.length,
+    downloads: [...downloads],
+  };
 }
 
 interface ClosedTabRecord {
@@ -1155,6 +1160,53 @@ export function getBrowserBridge(): { port: number; token: string } | null {
 // IPC registration + restore
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Downloads shelf: last 10 downloads, newest first (session-only)
+// ---------------------------------------------------------------------------
+
+export interface DownloadInfo {
+  id: string;
+  filename: string;
+  savePath: string;
+  totalBytes: number;
+  receivedBytes: number;
+  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+  startedAt: number;
+}
+
+const downloads: DownloadInfo[] = [];
+let downloadCounter = 0;
+const DOWNLOADS_CAP = 10;
+
+function trackDownload(item: Electron.DownloadItem, savePath: string): void {
+  const info: DownloadInfo = {
+    id: `dl-${++downloadCounter}`,
+    filename: path.basename(savePath),
+    savePath,
+    totalBytes: item.getTotalBytes(),
+    receivedBytes: item.getReceivedBytes(),
+    state: 'progressing',
+    startedAt: Date.now(),
+  };
+  downloads.unshift(info);
+  if (downloads.length > DOWNLOADS_CAP) downloads.pop();
+  schedulePush();
+  item.on('updated', (_e, state) => {
+    info.receivedBytes = item.getReceivedBytes();
+    info.state = state === 'interrupted' ? 'interrupted' : 'progressing';
+    schedulePush();
+  });
+  item.once('done', (_e, state) => {
+    info.receivedBytes = item.getReceivedBytes();
+    info.state = state === 'completed' ? 'completed' : state === 'cancelled' ? 'cancelled' : 'interrupted';
+    schedulePush();
+  });
+}
+
+function listDownloads(): DownloadInfo[] {
+  return downloads;
+}
+
 let tabSessionConfigured = false;
 
 /** One-time hardening of the tabs' session partition: deny every permission
@@ -1172,7 +1224,9 @@ function configureTabSession(): void {
       const name = logic.dedupeDownloadName(item.getFilename(), (candidate) =>
         fs.existsSync(path.join(dir, candidate)),
       );
-      item.setSavePath(path.join(dir, name));
+      const savePath = path.join(dir, name);
+      item.setSavePath(savePath);
+      trackDownload(item, savePath);
     } catch (err) {
       console.warn('[browser] download failed:', err);
     }
@@ -1234,6 +1288,7 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
   );
   ipcMain.handle(IPC.BROWSER_STOP_FIND, (_e, payload: { tabId?: string }) => stopFindInPage(payload?.tabId));
   ipcMain.handle(IPC.BROWSER_REOPEN_CLOSED_TAB, () => reopenClosedTab());
+  ipcMain.handle(IPC.BROWSER_DOWNLOADS_LIST, () => listDownloads());
   ipcMain.handle(IPC.BROWSER_NAVIGATE, async (_e, payload: { tabId?: string; url?: string }) => {
     if (!payload?.url) return;
     try {

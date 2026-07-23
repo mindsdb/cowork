@@ -4,6 +4,7 @@ import { Tooltip } from '../ui';
 import { Toast } from '../ui/Toast';
 import OverflowMenu from '../OverflowMenu';
 import Omnibox from './Omnibox';
+import DownloadShelf from './DownloadShelf';
 import { copyText } from '../../lib/clipboard';
 // Namespace import + typeof guards — see useBrowserState.js.
 import * as host from '../../../platform/host';
@@ -18,12 +19,14 @@ export default function NavRow({
   tab,
   tabs,
   closedCount = 0,
+  downloads = [],
   omniboxRef,
   onNavigate,
   onNewTab,
   onCloseTab,
   onActivateTab,
   onSuggestionsToggle,
+  onShelfToggle,
 }) {
   const hasTab = !!tab;
   const hasUrl = !!tab?.url;
@@ -124,6 +127,8 @@ export default function NavRow({
           onActivateTab={onActivateTab}
           onSuggestionsToggle={onSuggestionsToggle}
         />
+
+        <DownloadShelf downloads={downloads} onToggle={onShelfToggle} />
 
         <OverflowMenu
           items={menuItems}

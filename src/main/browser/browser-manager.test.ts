@@ -377,6 +377,39 @@ describe('tabs', () => {
     await mgr2.shutdownBrowser();
   });
 
+  it('downloads are tracked into state with progress and completion', async () => {
+    const mgr = await loadManager();
+    const listeners = { updated: null, done: null };
+    const item = {
+      getFilename: () => 'report.pdf',
+      getTotalBytes: () => 1000,
+      getReceivedBytes: vi.fn(() => 400),
+      setSavePath: vi.fn(),
+      on: (ev, fn) => { if (ev === 'updated') listeners.updated = fn; },
+      once: (ev, fn) => { if (ev === 'done') listeners.done = fn; },
+    };
+    h.downloadHandler.fn({}, item);
+
+    await flush();
+    let s = mgr.getBrowserState();
+    expect(s.downloads).toHaveLength(1);
+    expect(s.downloads[0]).toMatchObject({
+      filename: 'report.pdf', state: 'progressing', receivedBytes: 400, totalBytes: 1000,
+    });
+    expect(item.setSavePath).toHaveBeenCalledWith(expect.stringContaining('report.pdf'));
+
+    item.getReceivedBytes = vi.fn(() => 1000);
+    listeners.updated();
+    await flush();
+    listeners.done({}, 'completed');
+    await flush();
+    s = mgr.getBrowserState();
+    expect(s.downloads[0].state).toBe('completed');
+    expect(s.downloads[0].receivedBytes).toBe(1000);
+    expect((await invoke('browser:downloads-list', undefined))).toHaveLength(1);
+    await mgr.shutdownBrowser();
+  });
+
   it('reopen-closed-tab pops the stack, restores url+pin, and tracks closedCount', async () => {
     const mgr = await loadManager();
     const { tabId: a } = (await invoke('browser:new-tab', { url: 'https://a.com' })) as { tabId: string };

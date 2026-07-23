@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 // here guards against (web mode keeps them all no-ops anyway).
 import * as host from '../../../platform/host';
 
-export const EMPTY_BROWSER_STATE = { tabs: [], activeTabId: null, viewVisible: false };
+export const EMPTY_BROWSER_STATE = { tabs: [], activeTabId: null, viewVisible: false, closedCount: 0, downloads: [] };
 
 // Last known model, kept at module scope so a route round-trip re-seeds
 // synchronously instead of flashing EMPTY (start-page hero) while the
@@ -19,6 +19,8 @@ function normalizeState(s) {
     tabs: Array.isArray(s.tabs) ? s.tabs : [],
     activeTabId: s.activeTabId ?? null,
     viewVisible: !!s.viewVisible,
+    closedCount: typeof s.closedCount === 'number' ? s.closedCount : 0,
+    downloads: Array.isArray(s.downloads) ? s.downloads : [],
   };
 }
 

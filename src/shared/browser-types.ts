@@ -21,6 +21,17 @@ export interface BrowserState {
   activeTabId: string | null;
   viewVisible: boolean;       // native view currently attached
   closedCount?: number;       // ⌘⇧T stack depth (additive; older renderers ignore)
+  downloads?: DownloadInfo[]; // last 10, newest first (additive)
+}
+
+export interface DownloadInfo {
+  id: string;
+  filename: string;
+  savePath: string;
+  totalBytes: number;
+  receivedBytes: number;
+  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+  startedAt: number;
 }
 
 export interface TopSite {

@@ -89,6 +89,7 @@ export default function BrowserView() {
   const [dockResizing, setDockResizing] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [shelfOpen, setShelfOpen] = useState(false);
   useEffect(() => { try { window.localStorage.setItem('cowork.browser.dock', dockOpen ? 'open' : 'closed'); } catch {} }, [dockOpen]);
   useEffect(() => { try { window.localStorage.setItem('cowork.browser.dockW', String(dockWidth)); } catch {} }, [dockWidth]);
 
@@ -126,7 +127,7 @@ export default function BrowserView() {
   // view never reach the renderer, so the page detaches mid-drag (see
   // AgentDock startDrag) and re-attaches with the final rect on release.
   const nativeVisible = host.isElectron && ready
-    && !showStartPage && !hasError && !occluded && !dockOccludes && !dockResizing && !suggestionsOpen;
+    && !showStartPage && !hasError && !occluded && !dockOccludes && !dockResizing && !suggestionsOpen && !shelfOpen;
 
   const { sendBounds, readRect } = useNativeBounds(placeholderRef, { enabled: nativeVisible });
 
@@ -257,12 +258,14 @@ export default function BrowserView() {
         tab={activeTab}
         tabs={state.tabs}
         closedCount={state.closedCount ?? 0}
+        downloads={state.downloads ?? []}
         omniboxRef={omniboxRef}
         onNavigate={navigateActive}
         onNewTab={() => newTab()}
         onCloseTab={() => { if (activeTabId) closeTab(activeTabId); }}
         onActivateTab={activateTab}
         onSuggestionsToggle={setSuggestionsOpen}
+        onShelfToggle={setShelfOpen}
       />
       <div
         className="browser-progress"

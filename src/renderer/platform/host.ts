@@ -16,6 +16,7 @@
 import type {
   BrowserState,
   ChromeImportResult,
+  DownloadInfo,
   Rect,
   TopSite,
 } from '../../shared/browser-types';
@@ -759,6 +760,13 @@ export async function browserReopenClosedTab(): Promise<{ tabId: string } | { ok
   return { ok: false };
 }
 
+export async function browserDownloadsList(): Promise<DownloadInfo[]> {
+  if (isElectron && typeof bridge.browserDownloadsList === 'function') {
+    return bridge.browserDownloadsList();
+  }
+  return [];
+}
+
 export async function browserNavigate(tabId: string, url: string): Promise<void> {
   if (isElectron && typeof bridge.browserNavigate === 'function') {
     await bridge.browserNavigate(tabId, url);
@@ -882,6 +890,7 @@ export const host = {
   browserFindInPage,
   browserStopFind,
   browserReopenClosedTab,
+  browserDownloadsList,
   browserNavigate,
   browserGoBack,
   browserGoForward,
