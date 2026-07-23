@@ -1,0 +1,85 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render } from '@testing-library/react';
+
+// MarkdownContent pulls in the platform host bridge, the skills store, and
+// the code/table renderers. None are relevant to math rendering, so stub
+// them to keep the test focused on the remark-math + rehype-katex pipeline.
+vi.mock('../../../platform/host', () => ({
+  host: { openExternal: vi.fn() },
+}));
+vi.mock('../../lib/skillsStore', () => ({ useSkillNames: () => new Set() }));
+vi.mock('./MarkdownCode', () => ({
+  MarkdownCode: (props) => <code>{props.children}</code>,
+}));
+vi.mock('./MarkdownTable', () => ({
+  MarkdownTable: (p) => <table {...p} />,
+  TableHead: (p) => <th {...p} />,
+  TableCell: (p) => <td {...p} />,
+  TableRow: (p) => <tr {...p} />,
+  TableHeader: (p) => <thead {...p} />,
+  TableBody: (p) => <tbody {...p} />,
+}));
+
+import { MarkdownContent, _normalizeMathDelimiters } from './MarkdownContent';
+
+describe('_normalizeMathDelimiters', () => {
+  it('rewrites inline \\(…\\) to single-line $$…$$', () => {
+    expect(_normalizeMathDelimiters('where \\(a\\) is real')).toBe('where $$a$$ is real');
+  });
+
+  it('rewrites display \\[…\\] to a fenced $$ block', () => {
+    expect(_normalizeMathDelimiters('\\[ x=1 \\]')).toBe('\n\n$$\nx=1\n$$\n\n');
+  });
+
+  it('handles several inline formulas on one line', () => {
+    expect(_normalizeMathDelimiters('\\(a\\) and \\(b\\)')).toBe('$$a$$ and $$b$$');
+  });
+
+  it('trims whitespace inside the delimiters', () => {
+    expect(_normalizeMathDelimiters('\\(  x = 1  \\)')).toBe('$$x = 1$$');
+  });
+
+  it('leaves fenced code blocks untouched', () => {
+    const src = 'before \\(a\\)\n```\nregex: \\(group\\)\n```\nafter \\[b\\]';
+    const out = _normalizeMathDelimiters(src);
+    expect(out).toContain('```\nregex: \\(group\\)\n```'); // code preserved verbatim
+    expect(out.startsWith('before $$a$$')).toBe(true); // prose still converted
+    expect(out).toContain('$$\nb\n$$'); // display outside the fence converted
+  });
+
+  it('is a no-op when no LaTeX delimiters are present', () => {
+    const src = 'plain text with $5 and $10 of currency';
+    expect(_normalizeMathDelimiters(src)).toBe(src);
+  });
+
+  it('tolerates empty / non-string input', () => {
+    expect(_normalizeMathDelimiters('')).toBe('');
+    expect(_normalizeMathDelimiters(null)).toBe(null);
+    expect(_normalizeMathDelimiters(undefined)).toBe(undefined);
+  });
+});
+
+describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
+  it('renders inline \\(…\\) as KaTeX', () => {
+    const { container } = render(
+      <MarkdownContent text={'where \\(i=\\sqrt{-1}\\) holds'} complete />,
+    );
+    expect(container.querySelector('.katex')).not.toBeNull();
+    expect(container.querySelector('.katex-display')).toBeNull(); // inline, not display
+  });
+
+  it('renders display \\[…\\] as KaTeX display math', () => {
+    const { container } = render(
+      <MarkdownContent text={'\\[ \\operatorname{Re}(s)=\\frac12 \\]'} complete />,
+    );
+    expect(container.querySelector('.katex-display')).not.toBeNull();
+  });
+
+  it('does NOT treat plain-prose currency as math', () => {
+    const { container } = render(
+      <MarkdownContent text={'It costs $5 and then $10 total.'} complete />,
+    );
+    expect(container.querySelector('.katex')).toBeNull();
+    expect(container.textContent).toContain('$5 and then $10');
+  });
+});

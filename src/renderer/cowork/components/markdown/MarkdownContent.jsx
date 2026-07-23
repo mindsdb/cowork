@@ -8,7 +8,9 @@
 import { Children, cloneElement, isValidElement, useEffect, useMemo, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import rehypeKatex from 'rehype-katex';
 
 import { MarkdownCode } from './MarkdownCode';
 import {
@@ -208,6 +210,44 @@ function _normalizeFormFences(text) {
   );
 }
 
+// Our models emit math with LaTeX-style delimiters — `\( … \)` for inline
+// and `\[ … \]` for display — but remark-math only understands the `$`
+// family. Left as-is, CommonMark treats `\(` / `\[` as escaped punctuation
+// and prints the raw TeX (see ENG-989). Rewrite them into the double-dollar
+// form remark-math parses:
+//
+//   inline   \(x\)  →  $$x$$              (single line → KaTeX inline math)
+//   display  \[x\]  →  \n\n$$\nx\n$$\n\n   (own block  → KaTeX display math)
+//
+// We convert to `$$` (not single `$`) on purpose: single-`$` math is
+// disabled in the remark-math options because it collides with plain-prose
+// currency ("$5 and $10" would parse as math). The `\(…\)` form our models
+// emit has no such ambiguity, so nothing is lost.
+//
+// Fenced code blocks are skipped so a code sample that literally contains
+// `\(x\)` / `\[x\]` (a regex, a LaTeX tutorial) isn't rewritten out from
+// under the author.
+export function _normalizeMathDelimiters(text) {
+  if (!text || typeof text !== 'string') return text;
+  // Fast path: nothing to do if neither opening delimiter is present.
+  if (text.indexOf('\\(') === -1 && text.indexOf('\\[') === -1) return text;
+  // Split on ``` fences, keeping them (capturing group) so code stays
+  // verbatim. Even indices are prose; odd indices are the fenced blocks.
+  const segments = text.split(/(```[\s\S]*?```)/g);
+  return segments
+    .map((seg, i) => {
+      if (i % 2 === 1) return seg;
+      return seg
+        // Display first (block-level, higher priority). The trimmed body
+        // sits on its own line between fence markers so remark-math emits a
+        // `math` (display) node rather than inline.
+        .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => `\n\n$$\n${body.trim()}\n$$\n\n`)
+        // Inline stays on one line → remark-math emits an `inlineMath` node.
+        .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => `$$${body.trim()}$$`);
+    })
+    .join('');
+}
+
 // Engram metadata in lessons.md / rules.md / profile.md is encoded
 // as inline HTML comments at the end of each bullet, e.g.
 //   `- CoinGecko rate-limits at 50 req/min <!-- topic:api ts:2026-02-27 -->`.
@@ -337,7 +377,10 @@ export function MarkdownContent({
       const source = variant === 'user' ? _dedentUserText(text) : text;
       const merged = isAssistant ? _mergeInlineCodeLines(source) : source;
       const formNormalized = enableForms ? _normalizeFormFences(merged) : merged;
-      return _renderEngramComments(formNormalized);
+      const withEngrams = _renderEngramComments(formNormalized);
+      // Applied to every variant so a formula pasted into the composer
+      // renders too — not just assistant output.
+      return _normalizeMathDelimiters(withEngrams);
     },
     [text, enableForms, isAssistant, variant],
   );
@@ -348,7 +391,10 @@ export function MarkdownContent({
   // share one Set instead of each allocating their own inside useMemo.
   const skillNames = useSkillNames();
   const remarkPlugins = useMemo(
-    () => [remarkGfm, [remarkSkillMentions, skillNames]],
+    // singleDollarTextMath:false — only `$$…$$` is math, never a lone `$`,
+    // so plain-prose currency ("$5 and $10") is never mis-parsed. See
+    // _normalizeMathDelimiters, which rewrites \(…\)/\[…\] into this form.
+    () => [remarkGfm, [remarkMath, { singleDollarTextMath: false }], [remarkSkillMentions, skillNames]],
     [skillNames],
   );
 
@@ -563,7 +609,12 @@ export function MarkdownContent({
     <div ref={rootRef} className={`${sz.root}${streaming ? ' is-streaming' : ''}`}>
       <Markdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
+        // rehypeKatex runs AFTER rehypeSanitize: sanitize keeps the
+        // `<code class="language-math">` wrappers (code+className is already
+        // allowlisted), then KaTeX replaces them with its rendered markup.
+        // That generated markup is trusted (built from a text-only TeX
+        // source) so it deliberately isn't re-sanitized.
+        rehypePlugins={[[rehypeSanitize, sanitizeSchema], rehypeKatex]}
         components={components}
       >
         {normalized || ''}
