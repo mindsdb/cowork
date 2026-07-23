@@ -37,8 +37,17 @@ function NavItem({ icon, label, active, onClick, badge, comingSoon }) {
 function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelete, onMoveToProject, showTimestamp = true, isActive = false, selected = false, agentLabel }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState(null);
+  const [editing, setEditing] = useState(false);
   const triggerRef = useRef(null);
+  const inputRef = useRef(null);
   const { revealed: showKebab, hoverProps } = useRevealOnHover(menuOpen);
+
+  const submitRename = () => {
+    const next = (inputRef.current?.value ?? '').trim();
+    setEditing(false);
+    if (!next || next === (task.title || '').trim()) return;
+    onRename?.(task.id, next);
+  };
 
   const openMenu = (e) => {
     e.stopPropagation();
@@ -61,6 +70,33 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
       style={{ position: 'relative', display: 'flex' }}
       {...hoverProps}
     >
+      {editing ? (
+        <input
+          ref={inputRef}
+          className="recent-item"
+          defaultValue={task.title || ''}
+          aria-label="Rename task"
+          autoFocus
+          onFocus={(e) => { try { e.target.select(); } catch {} }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); submitRename(); }
+            else if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+          }}
+          onBlur={submitRename}
+          spellCheck={false}
+          autoCapitalize="none"
+          autoCorrect="off"
+          style={{
+            flex: 1, minWidth: 0, cursor: 'text',
+            color: 'var(--ink)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--accent)',
+            outline: 'none',
+          }}
+        />
+      ) : (
       <button className={`recent-item${selected ? ' is-selected' : ''}`} onClick={onClick} aria-label={task.title} style={{ flex: 1, minWidth: 0 }}>
         <span className="recent-row__title" style={{
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -145,6 +181,7 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
           </span>
         </span>
       </button>
+      )}
 
       <TaskMenu
         task={task}
@@ -155,10 +192,8 @@ function RecentItem({ task, onClick, projects, onPin, onUnpin, onRename, onDelet
         onClose={() => setMenuOpen(false)}
         onPin={() => onPin?.(task)}
         onUnpin={() => onUnpin?.(task.id)}
-        onRename={() => {
-          const next = window.prompt('Rename task', task.title || '');
-          if (next != null) onRename?.(task.id, next);
-        }}
+        hideRename={!onRename}
+        onRename={() => setEditing(true)}
         onDelete={() => onDelete?.(task.id)}
         hideMoveToProject={!onMoveToProject}
         onMoveToProject={() => onMoveToProject?.(task)}
