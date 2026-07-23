@@ -49,7 +49,10 @@ function SkillModal({ skill, open, onClose }) {
         onClose={onClose}
       />
       <ModalBody padding="20px 22px">
-        <MarkdownContent text={body} />
+        {/* Opt back into text selection — the app root sets user-select:none. */}
+        <div style={{ userSelect: 'text' }}>
+          <MarkdownContent text={body} />
+        </div>
       </ModalBody>
     </Modal>
   );
