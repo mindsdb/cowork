@@ -49,11 +49,16 @@ export function domSnapshotScript(
   const STASH = ${stashRef(stash)};
   const els = [];
   const refs = [];
-  const nodes = document.querySelectorAll('a,button,input,textarea,select,[role],[onclick],summary');
   const vw = window.innerWidth, vh = window.innerHeight;
   const INTERACTIVE = new Set(['a','button','input','textarea','select','summary']);
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => n.matches('a,button,input,textarea,select,[role],[onclick],summary')
+      ? NodeFilter.FILTER_ACCEPT
+      : NodeFilter.FILTER_SKIP,
+  });
   let scanned = 0;
-  for (const el of nodes) {
+  let el = walker.nextNode();
+  while (el) {
     if (els.length >= MAX || scanned >= SCAN_MAX) break;
     scanned++;
     const tag = el.tagName.toLowerCase();
@@ -67,7 +72,9 @@ export function domSnapshotScript(
     const style = window.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden') continue;
     const index = els.length;
-    const text = (el.innerText || el.value || el.getAttribute('aria-label')
+    // Password fields: never serialize the value — labels only.
+    const isPassword = tag === 'input' && el.type === 'password';
+    const text = (el.innerText || (isPassword ? '' : el.value) || el.getAttribute('aria-label')
       || el.getAttribute('placeholder') || el.getAttribute('title') || '').trim().slice(0, 120);
     const entry = { index, tag, role, text,
       bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
@@ -75,6 +82,7 @@ export function domSnapshotScript(
     if (tag === 'input' || tag === 'textarea' || tag === 'select') entry.inputType = el.type || 'text';
     els.push(entry);
     refs.push(el);
+    el = walker.nextNode();
   }
   const prev = STASH && typeof STASH.v === 'number' ? STASH.v : 0;
   const v = prev + 1;

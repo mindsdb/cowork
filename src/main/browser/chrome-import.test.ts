@@ -143,6 +143,19 @@ describe('importChromeHistory', () => {
     expect(result.error).toContain('unsupported platform');
   });
 
+  it('does not cache an empty failed import (retries stay possible)', async () => {
+    makeProfile();
+    const exec = vi.fn((_c, _a, _o, cb) => cb(new Error('database is locked'), ''));
+    const first = await importChromeHistory(CACHE, {}, deps({ execFileImpl: exec }));
+    expect(first.imported).toBe(0);
+    expect(first.error).toBeTruthy();
+    // No cache written from the failure — a later, working run imports fresh.
+    expect(fs.existsSync(CACHE)).toBe(false);
+    const working = vi.fn(fakeSqlite([{ url: 'https://a.com', title: 'A', visit_count: 2 }]));
+    const second = await importChromeHistory(CACHE, {}, deps({ execFileImpl: working }));
+    expect(second.imported).toBe(1);
+  });
+
   it('treats a corrupt cache file as a miss', async () => {
     makeProfile();
     fs.mkdirSync(path.dirname(CACHE), { recursive: true });

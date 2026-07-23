@@ -389,6 +389,31 @@ describe('persistence validation', () => {
     });
   });
 
+  it('sanitizePersistedTabs caps restored tabs at MAX_TABS', () => {
+    const raw = {
+      tabs: Array.from({ length: MAX_TABS + 20 }, (_, i) => ({
+        id: `t${i}`, url: `https://x${i}.com`, title: `T${i}`, favicon: null,
+      })),
+      activeTabId: 't0',
+    };
+    const sanitized = sanitizePersistedTabs(raw);
+    expect(sanitized?.tabs).toHaveLength(MAX_TABS);
+    expect(sanitized?.tabs.at(-1)?.id).toBe(`t${MAX_TABS - 1}`);
+  });
+
+  it('sanitizeHistory redacts query strings and drops non-redactable rows', () => {
+    const out = sanitizeHistory([
+      { url: 'https://a.com/page?token=secret#frag', title: 'A', ts: 1 },
+      { url: 'file:///etc/passwd', title: 'x', ts: 2 },
+      { url: 'not a url', title: 'y', ts: 3 },
+      { url: 'https://b.com/keep', title: 'B', ts: 4 },
+    ]);
+    expect(out).toEqual([
+      { url: 'https://a.com/page', title: 'A', ts: 1 },
+      { url: 'https://b.com/keep', title: 'B', ts: 4 },
+    ]);
+  });
+
   it('sanitizeHistory drops junk rows and prunes to the cap', () => {
     expect(sanitizeHistory('nope')).toEqual([]);
     expect(
@@ -400,8 +425,8 @@ describe('persistence validation', () => {
         null,
       ]),
     ).toEqual([
-      { url: 'https://a.com', title: 'A', ts: 1 },
-      { url: 'https://b.com', title: '', ts: 0 },
+      { url: 'https://a.com/', title: 'A', ts: 1 },
+      { url: 'https://b.com/', title: '', ts: 0 },
     ]);
     const huge = Array.from({ length: HISTORY_CAP + 50 }, (_, i) => ({ url: `https://h.com/${i}`, title: '', ts: i }));
     expect(sanitizeHistory(huge)).toHaveLength(HISTORY_CAP);
