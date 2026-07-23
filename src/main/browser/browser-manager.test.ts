@@ -388,7 +388,7 @@ describe('tabs', () => {
       on: (ev: string, fn: () => void) => { if (ev === 'updated') listeners.updated = fn; },
       once: (ev: string, fn: (...a: unknown[]) => void) => { if (ev === 'done') listeners.done = fn; },
     };
-    h.downloadHandler.fn({}, item);
+    h.downloadHandler.fn!({}, item);
 
     await flush();
     let s = mgr.getBrowserState();
