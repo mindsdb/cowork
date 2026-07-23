@@ -8,9 +8,11 @@ import {
 
 describe('web apps registry', () => {
   it('appIdForOrigin is stable and slug-safe', () => {
-    expect(appIdForOrigin('https://mail.google.com')).toBe('app-mail.google.com');
-    expect(appIdForOrigin('https://Linear.App')).toBe('app-linear.app');
-    expect(appIdForOrigin('http://localhost:3000')).toBe('app-localhost-3000');
+    expect(appIdForOrigin('https://mail.google.com')).toBe('app-https-mail.google.com');
+    expect(appIdForOrigin('https://Linear.App')).toBe('app-https-linear.app');
+    expect(appIdForOrigin('http://localhost:3000')).toBe('app-http-localhost-3000');
+    // http/https variants of one host are distinct origins — no id collision.
+    expect(appIdForOrigin('http://example.com')).not.toBe(appIdForOrigin('https://example.com'));
   });
 
   it('suggestAppName makes an editable guess', () => {
@@ -38,7 +40,7 @@ describe('web apps registry', () => {
     ]);
     expect(apps).toEqual([
       { id: 'app-x', name: 'X', origin: 'https://x.com', favicon: null, createdAt: 1 },
-      { id: 'app-linear.app', name: 'Linear', origin: 'https://linear.app', favicon: null, createdAt: 0 },
+      { id: 'app-https-linear.app', name: 'Linear', origin: 'https://linear.app', favicon: null, createdAt: 0 },
     ]);
     expect(sanitizeApps(null)).toEqual([]);
     expect(sanitizeApps('nope')).toEqual([]);

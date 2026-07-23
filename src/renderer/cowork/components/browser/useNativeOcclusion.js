@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react';
 // content would be punched through. `.cw-modal-backdrop` / `.cw-modal-popup`
 // are what ui/Modal.jsx (Base UI Dialog) portals into <body>; `.cw-menu` is
 // the house Menu popup (tab context menus, the ⋮ overflow — same problem);
+// the sidebar overlay (narrow) and mobile drawer/scrim are DOM overlays too;
 // the generic role catches non-Modal dialogs.
 // Exported so BrowserView's shortcut handler can stand down while the
 // same overlays own the keyboard.
-export const OVERLAY_SELECTOR = '.cw-modal-backdrop, .cw-modal-popup, .cw-menu, [role="dialog"]';
+export const OVERLAY_SELECTOR =
+  '.cw-modal-backdrop, .cw-modal-popup, .cw-menu, .sidebar-overlay-wrap, .mshell__drawer.is-open, .mshell__scrim.is-open, [role="dialog"]';
 
 function computeOccluded() {
   if (typeof document === 'undefined') return false;

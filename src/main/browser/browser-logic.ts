@@ -319,6 +319,7 @@ export function sanitizePersistedTabs(raw: unknown): PersistedTabs | null {
   if (!Array.isArray(data.tabs)) return null;
   const tabs: PersistedTabs['tabs'] = [];
   for (const t of data.tabs) {
+    if (tabs.length >= MAX_TABS) break; // a corrupt/hand-edited file must not bypass the cap
     if (!t || typeof t !== 'object') continue;
     const tab = t as { id?: unknown; url?: unknown; title?: unknown; favicon?: unknown };
     if (typeof tab.id !== 'string' || !tab.id) continue;
@@ -347,8 +348,12 @@ export function sanitizeHistory(raw: unknown): HistoryEntry[] {
     if (!e || typeof e !== 'object') continue;
     const entry = e as { url?: unknown; title?: unknown; ts?: unknown };
     if (typeof entry.url !== 'string' || !entry.url) continue;
+    const redacted = redactUrlForLog(entry.url);
+    // http(s) only, same invariant recordVisit enforces at write time —
+    // junk, file:, and legacy rows with query strings all collapse here.
+    if (!redacted || !/^https?:\/\//i.test(redacted)) continue;
     out.push({
-      url: entry.url,
+      url: redacted,
       title: typeof entry.title === 'string' ? entry.title : '',
       ts: typeof entry.ts === 'number' ? entry.ts : 0,
     });
@@ -397,10 +402,12 @@ export interface BrowserApp {
   createdAt: number;
 }
 
-/** 'https://mail.google.com' → 'app-mail.google.com'. Stable across launches
- *  so tabs restore against the same app. */
+/** 'https://mail.google.com' → 'app-https-mail.google.com'. Stable across
+ *  launches so tabs restore against the same app. The scheme stays in:
+ *  http:// and https:// variants of one host are different origins and
+ *  must not share an id (they'd collide as duplicate registry keys). */
 export function appIdForOrigin(origin: string): string {
-  return `app-${origin.replace(/^https?:\/\//i, '').replace(/[^a-z0-9.-]+/gi, '-').toLowerCase()}`;
+  return `app-${origin.replace(/^(https?):\/\//i, '$1-').replace(/[^a-z0-9.-]+/gi, '-').toLowerCase()}`;
 }
 
 /** 'https://mail.google.com' → 'Mail google' — editable guess for the add

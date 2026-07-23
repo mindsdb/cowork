@@ -142,6 +142,14 @@ describe('bridge auth + routing', () => {
     expect(again.port).toBe(handle!.port);
     expect(again.token).toBe(handle!.token);
   });
+
+  it('concurrent starts share one server (no leaked bridge)', async () => {
+    await stopBridge();
+    const [a, b] = await Promise.all([startBridge(fakeActions()), startBridge(fakeActions())]);
+    expect(a.port).toBe(b.port);
+    expect(a.token).toBe(b.token);
+    handle = a;
+  });
 });
 
 describe('bridge tab + navigation endpoints', () => {

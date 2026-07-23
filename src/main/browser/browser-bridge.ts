@@ -352,6 +352,8 @@ async function route(
 }
 
 /** Start the bridge. Idempotent — a second call returns the running handle. */
+let starting: Promise<BridgeHandle> | null = null;
+
 export async function startBridge(
   actions: BridgeActions,
   opts: { elementStash?: string } = {},
@@ -359,6 +361,21 @@ export async function startBridge(
   if (running) {
     return { port: running.port, token: running.token, close: stopBridge };
   }
+  // Two callers racing the first listen() must not each open a server —
+  // the loser would leak a live bridge with its own token until exit.
+  if (starting) return starting;
+  starting = startBridgeInner(actions, opts);
+  try {
+    return await starting;
+  } finally {
+    starting = null;
+  }
+}
+
+async function startBridgeInner(
+  actions: BridgeActions,
+  opts: { elementStash?: string },
+): Promise<BridgeHandle> {
   if (opts.elementStash) elementStash = opts.elementStash;
   const token = crypto.randomBytes(32).toString('hex');
 
