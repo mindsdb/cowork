@@ -7,15 +7,26 @@ import { useEffect, useState } from 'react';
 // the house Menu popup (tab context menus, the ⋮ overflow — same problem);
 // the sidebar overlay (narrow) and mobile drawer/scrim are DOM overlays too;
 // the generic role catches non-Modal dialogs.
+// NOTE: tooltips are deliberately NOT here — hiding the view in response to
+// a tooltip OPENING steals focus/state mid-hover and the tooltip dies.
+// Instead the collapsed rail occludes while it is HOVERED (see below), so
+// the view is already gone before any tooltip opens.
 // Exported so BrowserView's shortcut handler can stand down while the
 // same overlays own the keyboard.
 export const OVERLAY_SELECTOR =
   '.cw-modal-backdrop, .cw-modal-popup, .cw-menu, .sidebar-overlay-wrap, .mshell__drawer.is-open, .mshell__scrim.is-open, [role="dialog"]';
 
+const RAIL_SELECTOR = '.app-sidebar.collapsed';
+
 function computeOccluded() {
   if (typeof document === 'undefined') return false;
   if (document.hidden) return true;
-  try { return !!document.body?.querySelector(OVERLAY_SELECTOR); } catch { return false; }
+  try {
+    if (document.body?.querySelector(OVERLAY_SELECTOR)) return true;
+    // Collapsed rail under the pointer: the native view must already be
+    // gone before a rail tooltip opens (hiding on open kills the tooltip).
+    return !!document.body?.querySelector(`${RAIL_SELECTOR}:hover`);
+  } catch { return false; }
 }
 
 // True while something visually occludes the native browser view (a modal,
@@ -45,10 +56,23 @@ export function useNativeOcclusion() {
       }
     });
     mo.observe(document.body, { childList: true, subtree: true });
+    // Hover isn't a mutation: recompute when the pointer moves in or out of
+    // the collapsed rail (capture phase so it works under the native view's
+    // neighbors without depending on bubbling).
+    const onPointerMove = (e) => {
+      const inRail = e.target instanceof Element && !!e.target.closest(RAIL_SELECTOR);
+      if (inRail !== railHoverRef.current) {
+        railHoverRef.current = inRail;
+        update();
+      }
+    };
+    const railHoverRef = { current: false };
+    document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('visibilitychange', update);
     update();
     return () => {
       mo.disconnect();
+      document.removeEventListener('pointermove', onPointerMove, true);
       document.removeEventListener('visibilitychange', update);
     };
   }, []);
