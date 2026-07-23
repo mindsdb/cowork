@@ -128,6 +128,7 @@ export default function TabStrip({
                 <div
                   role="tab"
                   aria-selected={active}
+                  aria-label={label}
                   tabIndex={0}
                   className={`browser-tab browser-tab--pinned${active ? ' is-active' : ''}`}
                   title=""
