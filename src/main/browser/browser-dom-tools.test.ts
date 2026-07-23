@@ -43,6 +43,16 @@ describe('dom tools script builders', () => {
     expect(domSnapshotScript(7.9)).toContain('const MAX = 7;');
   });
 
+  it('snapshot walks incrementally and never serializes password values', () => {
+    const script = domSnapshotScript();
+    // Incremental traversal — no full NodeList allocation on hostile pages.
+    expect(script).toContain('document.createTreeWalker');
+    expect(script).not.toContain("querySelectorAll('a,button,input");
+    // Password inputs keep their secret out of the snapshot text.
+    expect(script).toContain("el.type === 'password'");
+    expect(script).toContain("(isPassword ? '' : el.value)");
+  });
+
   it('domClickScript looks the element up by clamped index and clicks', () => {
     const script = domClickScript(3);
     expect(script).toContain('els[3]');

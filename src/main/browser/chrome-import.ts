@@ -16,8 +16,10 @@ import { parseChromeHistoryRows } from './browser-logic';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SQLITE_TIMEOUT_MS = 10_000;
+// 3000, not 500: the parser caps at 10 rows per domain, so a larger window
+// keeps one chatty origin from crowding every other domain out of the feed.
 const HISTORY_SQL =
-  'SELECT url, title, visit_count FROM urls WHERE url LIKE \'http%\' ORDER BY visit_count DESC LIMIT 500';
+  'SELECT url, title, visit_count FROM urls WHERE url LIKE \'http%\' ORDER BY visit_count DESC LIMIT 3000';
 
 // Injectable for tests — the production defaults hit the real FS/CLI.
 export type ExecFileLike = (
@@ -173,7 +175,9 @@ export async function importChromeHistory(
     }
   }
 
-  writeCache(cachePath, sites, now());
+  // Skip caching a total failure — an empty result WITH an error is not a
+  // valid 24h answer, it's a retry-later state.
+  if (!(sites.length === 0 && firstError)) writeCache(cachePath, sites, now());
   const outcome: ChromeImportOutcome = { imported: sites.length, profiles, sites };
   if (firstError && sites.length === 0) outcome.error = firstError;
   return outcome;
