@@ -334,7 +334,9 @@ export function sanitizeHistory(raw: unknown): HistoryEntry[] {
     const entry = e as { url?: unknown; title?: unknown; ts?: unknown };
     if (typeof entry.url !== 'string' || !entry.url) continue;
     const redacted = redactUrlForLog(entry.url);
-    if (!redacted) continue; // junk or non-http — and legacy rows with query strings collapse here
+    // http(s) only, same invariant recordVisit enforces at write time —
+    // junk, file:, and legacy rows with query strings all collapse here.
+    if (!redacted || !/^https?:\/\//i.test(redacted)) continue;
     out.push({
       url: redacted,
       title: typeof entry.title === 'string' ? entry.title : '',
