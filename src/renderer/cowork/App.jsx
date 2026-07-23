@@ -3762,6 +3762,7 @@ function AppCore() {
         {route === 'task' && currentTask && (
           <ChatView
             task={currentTask}
+            onNavigate={navigate}
             onSend={handleSendInTask}
             onOpenSettings={(section) => { if (section) setSettingsSection(section); setSettingsOpen(true); }}
             queuedMessages={messageQueue[currentTask?.id] || []}

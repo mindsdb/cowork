@@ -303,6 +303,40 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     return { ...state, steps: [...state.steps, step] };
   }
 
+  // Approval card (approve-before-act). approval_requested parks a new card;
+  // approval_resolved updates it in place (same approval id), so a replay
+  // shows the final state without duplicating. The payload is the serialized
+  // approval (camelCase), self-contained like the skill card.
+  if (type === 'response.approval_requested' || type === 'response.approval_resolved') {
+    const ap = (event.approval && typeof event.approval === 'object') ? event.approval : {};
+    const apId = ap.id || '';
+    if (!apId) return state;
+    const desc = (ap.actionDescriptor && typeof ap.actionDescriptor === 'object') ? ap.actionDescriptor : {};
+    const label = desc.summary || desc.appName || (ap.kind === 'auth' ? 'Sign-in' : 'Approval');
+    const existing = state.steps.findIndex((s) => s.badge === 'Approval' && s._approvalId === apId);
+    if (existing >= 0) {
+      const steps = state.steps.slice();
+      steps[existing] = { ...steps[existing], data: { approval: ap } };
+      return { ...state, steps };
+    }
+    const step = {
+      id: `approval-${apId}`,
+      label,
+      badge: 'Approval',
+      icon: 'check',
+      status: 'completed',
+      startedAt: eventTs,
+      completedAt: eventTs,
+      data: { approval: ap },
+      output: null,
+      result: null,
+      _approvalId: apId,
+      _isScratchpad: false,
+      _scratchpadTabId: null,
+    };
+    return { ...state, steps: [...state.steps, step] };
+  }
+
   // Inline skill-draft card. The harness emits this at turn end for a skill the
   // agent BUILT this turn (via skill-creator), detected via the skill-drafts
   // dir diff. A skill is NOT an artifact and is NOT auto-saved — this card lets

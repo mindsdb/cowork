@@ -149,3 +149,36 @@ describe('Sidebar — nav title/logo override', () => {
     expect(screen.getByText('MindsHub')).toBeInTheDocument();
   });
 });
+
+// ---- Needs-You badge (approvals) -----------------------------------------
+const fetchPendingApprovals = vi.hoisted(() => vi.fn(async () => []));
+vi.mock('../api', () => ({ fetchPendingApprovals }));
+
+describe('Sidebar — Needs You badge (approvals)', () => {
+  it('shows the Needs You item with the pending count and selects the first conversation', async () => {
+    fetchPendingApprovals.mockImplementation(async () => [
+      { id: 'ap-1', conversationId: 'conv-9', kind: 'action', status: 'pending' },
+      { id: 'ap-2', conversationId: 'conv-9', kind: 'action', status: 'pending' },
+    ]);
+    const onSelectTask = vi.fn();
+    render(<Sidebar {...baseProps} onSelectTask={onSelectTask} />);
+    const item = await screen.findByRole('button', { name: /Needs You/ });
+    expect(item.textContent).toContain('2');
+    item.click();
+    expect(onSelectTask).toHaveBeenCalledWith('conv-9');
+  });
+
+  it('hides the item when nothing is pending', async () => {
+    fetchPendingApprovals.mockImplementation(async () => []);
+    render(<Sidebar {...baseProps} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('button', { name: /Needs You/ })).toBeNull();
+  });
+
+  it('stays quiet when the server is down', async () => {
+    fetchPendingApprovals.mockImplementation(async () => { throw new Error('network'); });
+    render(<Sidebar {...baseProps} />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('button', { name: /Needs You/ })).toBeNull();
+  });
+});

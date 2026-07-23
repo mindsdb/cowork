@@ -2000,3 +2000,25 @@ export function openCommentsStream(userDir, reportId, since, { onEvent, onError,
   })();
   return ctrl;
 }
+
+// ---- Approvals (approve-before-act) --------------------------------------
+// Parked consequential actions served by cowork-server. The list is cheap
+// and fan-out free (one caller at a time); resolve is idempotent server-side
+// so a double-click never double-sends.
+
+export async function fetchPendingApprovals() {
+  const data = await req('/approvals/?status=pending');
+  return Array.isArray(data?.approvals) ? data.approvals : [];
+}
+
+export async function fetchConversationApprovals(conversationId) {
+  const data = await req(`/approvals/?conversation_id=${encodeURIComponent(conversationId)}`);
+  return Array.isArray(data?.approvals) ? data.approvals : [];
+}
+
+export async function resolveApproval(id, resolution, editedDraft) {
+  return req(`/approvals/${id}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ resolution, edited_draft: editedDraft }),
+  });
+}

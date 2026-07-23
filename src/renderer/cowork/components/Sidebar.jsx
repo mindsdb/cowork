@@ -4,6 +4,7 @@ import { Spinner, Kbd, Tooltip } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import SidebarApps from './SidebarApps';
+import { fetchPendingApprovals } from '../api';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
@@ -205,6 +206,7 @@ export default function Sidebar({
   updateAvailable = null, // { version: string } or null
   onApplyUpdate,
   agentLabel,
+
   // Light/dark theme + 8-bit skin toggles — the sidebar footer hosts
   // both switches (relocated from the old floating bottom-right
   // buttons; see App.jsx). Defaults keep the buttons harmless if a
@@ -236,6 +238,26 @@ export default function Sidebar({
   // to the main-process state push (App doesn't track tabs); the host
   // methods are guarded since they land with the browser workstream and
   // are absent in the web shell anyway (the item itself is Electron-gated).
+  // Needs-You (pending approvals) — Sidebar-owned subscription, same shape
+  // as browserTabCount: boot fetch + 45s poll + focus refetch. Quiet when the
+  // server is down; hidden entirely at zero.
+  const [needsYou, setNeedsYou] = useState({ count: 0, firstConversationId: null });
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const list = await fetchPendingApprovals();
+        if (!alive) return;
+        setNeedsYou({ count: list.length, firstConversationId: list[0]?.conversationId || null });
+      } catch { /* server down — the badge just stays quiet */ }
+    };
+    load();
+    const t = setInterval(load, 45000);
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => { alive = false; clearInterval(t); window.removeEventListener('focus', onFocus); };
+  }, []);
+
   const [browserTabCount, setBrowserTabCount] = useState(0);
   useEffect(() => {
     if (!host.isElectron || typeof host.onBrowserStateChanged !== 'function') return undefined;
@@ -557,6 +579,14 @@ export default function Sidebar({
 
         {/* Primary nav */}
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {needsYou.count > 0 && (
+            <NavItem
+              icon={Ico.sparkle(15)}
+              label="Needs You"
+              onClick={() => needsYou.firstConversationId && onSelectTask?.(needsYou.firstConversationId)}
+              badge={needsYou.count}
+            />
+          )}
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
           <NavItem icon={Ico.clock(15)}   label="Scheduled Tasks" onClick={() => onNavigate('scheduled')} active={activeRoute === 'scheduled'} badge={showCounters ? (scheduledCount || null) : null} />
           <NavItem icon={Ico.sparkle(15)} label="Live Artifacts"  onClick={() => onNavigate('artifacts')} active={activeRoute === 'artifacts'} badge={showCounters ? (artifactsCount || null) : null} />

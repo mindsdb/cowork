@@ -23,6 +23,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
 import SkillCard from '../components/SkillCard';
+import ApprovalCard from '../components/ApprovalCard';
 import { DataVaultFormPanel } from '../components/datavault/DataVaultFormPanel';
 import { getForm as getDataVaultForm, setForm as setDataVaultForm, subscribe as subscribeDataVaultForm, clearForm as clearDataVaultForm } from '../components/datavault/formStore';
 import { FormErrorBoundary } from '../components/datavault/FormErrorBoundary';
@@ -472,6 +473,25 @@ function StepArtifacts({ steps, onOpen, projectPath }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       {artifacts.map((s) => (
         <ArtifactCard key={s.id} artifact={artifactStepToCard(s, projectPath)} onOpen={onOpen} />
+      ))}
+    </div>
+  );
+}
+
+// Renders badge='Approval' steps as inline ApprovalCards — the
+// approve-before-act queue. Auth cards hand their tab to the user via the
+// browser; action cards resolve through the server (idempotent).
+function StepApprovals({ steps, onNavigate }) {
+  const approvals = steps?.filter((s) => s.badge === 'Approval') || [];
+  if (approvals.length === 0) return null;
+  const openTab = (tabId) => {
+    if (tabId) host.browserActivateTab?.(tabId);
+    onNavigate?.('browser');
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+      {approvals.map((s) => (
+        <ApprovalCard key={s.id} approval={s.data?.approval} onOpenTab={openTab} />
       ))}
     </div>
   );
@@ -977,6 +997,7 @@ function ModelUnavailableCard({ time, agentLabel, onOpenSettings, code, failedMo
 
 // ─── Main view ───────────────────────────────────────────────────────────
 export default function ChatView({
+  onNavigate,
   task,
   onSend,
   onBack,
@@ -1730,6 +1751,7 @@ export default function ChatView({
                     />
                   )}
                   <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepApprovals steps={m.steps} onNavigate={onNavigate} />
                   <StepSkills steps={m.steps} />
                 </AnswerTurn>
               );
@@ -1774,6 +1796,7 @@ export default function ChatView({
                   </div>
                 )}
                 <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                <StepApprovals steps={streamingMsg.steps} onNavigate={onNavigate} />
                 <StepSkills steps={streamingMsg.steps} />
               </AnswerTurn>
             ) : isStreaming && (
