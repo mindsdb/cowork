@@ -63,6 +63,7 @@ export function useBoard({ tasks = [] } = {}) {
   const [scheduled, setScheduled] = useState([]);
   const [shippedRaw, setShippedRaw] = useState([]);
   const [expired, setExpired] = useState([]);
+  const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -77,6 +78,10 @@ export function useBoard({ tasks = [] } = {}) {
     setShippedRaw(Array.isArray(resolved) ? resolved : []);
     setExpired(Array.isArray(expiredList) ? expiredList : []);
     setLoading(false);
+    try {
+      // Ambient reliability readout (M4) — never blocks the board.
+      setMetrics(await fetchApprovalMetrics());
+    } catch { /* server down or old build: the row just hides */ }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -93,5 +98,5 @@ export function useBoard({ tasks = [] } = {}) {
   const running = useMemo(() => enrichRunning(runningRaw, tasks), [runningRaw, tasks]);
   const shipped = useMemo(() => groupShipped(shippedRaw), [shippedRaw]);
 
-  return { needsYou, running, scheduled, shipped, expired, loading, refresh };
+  return { needsYou, running, scheduled, shipped, expired, metrics, loading, refresh };
 }

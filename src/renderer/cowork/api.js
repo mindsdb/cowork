@@ -2046,3 +2046,10 @@ export async function fetchExpiredApprovals() {
     return [];
   }
 }
+
+// ---- Approval metrics (M4) ------------------------------------------------
+// The board's headline is a reliability claim — this measures it.
+
+export async function fetchApprovalMetrics() {
+  return req('/metrics/approvals');
+}

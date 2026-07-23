@@ -43,6 +43,7 @@ function board(overrides = {}) {
     scheduled: [],
     expired: [],
     shipped: { today: [], older: [] },
+    metrics: null,
     loading: false,
     refresh: vi.fn(),
     ...overrides,
@@ -344,5 +345,29 @@ describe('MissionControlView — loading', () => {
     render(<MissionControlView />);
     expect(screen.queryByText('Nothing scheduled')).toBeNull();
     expect(screen.queryByText('Work waiting on you')).toBeNull();
+  });
+});
+
+describe('Mission Control — metrics row (M4)', () => {
+  it('renders the measured claim under the headline', () => {
+    useBoard.mockReturnValue(board({
+      metrics: {
+        shipped: 12, needsYou: 3, autonomyRatio: 4,
+        editRate: 0.25, skipRate: 0.125,
+        medianTimeToResolveSeconds: 42,
+        injectionTripwireHits: {}, gateQuality: {},
+      },
+    }));
+    render(<MissionControlView />);
+    const row = screen.getByTestId('metrics-row');
+    expect(row.textContent).toContain('12 shipped · 3 needed you (400% autonomous)');
+    expect(row.textContent).toContain('25% edited · 13% skipped');
+    expect(row.textContent).toContain('resolves in ~42s');
+  });
+
+  it('hides the row when the server has no metrics', () => {
+    useBoard.mockReturnValue(board({ metrics: null }));
+    render(<MissionControlView />);
+    expect(screen.queryByTestId('metrics-row')).toBeNull();
   });
 });

@@ -291,7 +291,7 @@ export default function MissionControlView({
   onUpdateConnectorMute,
   onCreateProject,
 }) {
-  const { needsYou, running, scheduled, shipped, expired, loading } = useBoard({ tasks });
+  const { needsYou, running, scheduled, shipped, expired, metrics, loading } = useBoard({ tasks });
   // Which running conversation (if any) the Peek slide-over is showing.
   const [peekId, setPeekId] = useState(null);
 
@@ -327,9 +327,27 @@ export default function MissionControlView({
         display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
         gap: 24, flexWrap: 'wrap',
       }}>
-        <h1 className="s-h1" style={{ margin: 0, color: 'var(--ink)', flex: '1 1 300px', minWidth: 240 }}>
-          {headline}
-        </h1>
+        <div style={{ flex: '1 1 300px', minWidth: 240 }}>
+          <h1 className="s-h1" style={{ margin: 0, color: 'var(--ink)' }}>
+            {headline}
+          </h1>
+          {/* The claim, measured (M4): quiet readout under the headline —
+              shipped vs needs-you, edit/skip quality, median resolve time.
+              Hidden when the server has no metrics (old build / down). */}
+          {metrics && (metrics.shipped > 0 || metrics.needsYou > 0) && (
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--ink-4)', display: 'flex', gap: 12, flexWrap: 'wrap' }} data-testid="metrics-row">
+              <span>{metrics.shipped} shipped · {metrics.needsYou} needed you{metrics.autonomyRatio != null ? ` (${Math.round(metrics.autonomyRatio * 100)}% autonomous)` : ''}</span>
+              {(metrics.editRate > 0 || metrics.skipRate > 0) && (
+                <span>{Math.round(metrics.editRate * 100)}% edited · {Math.round(metrics.skipRate * 100)}% skipped</span>
+              )}
+              {metrics.medianTimeToResolveSeconds != null && (
+                <span>resolves in ~{metrics.medianTimeToResolveSeconds < 60
+                  ? `${Math.round(metrics.medianTimeToResolveSeconds)}s`
+                  : `${Math.round(metrics.medianTimeToResolveSeconds / 60)}m`}</span>
+              )}
+            </div>
+          )}
+        </div>
         <div style={{ flex: '0 1 440px', minWidth: 280 }}>
           <Composer
             onSend={onSend}
