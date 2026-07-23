@@ -54,6 +54,12 @@ export function domSnapshotScript(
   const refs = [];
   const vw = window.innerWidth, vh = window.innerHeight;
   const INTERACTIVE = new Set(['a','button','input','textarea','select','summary']);
+  // First non-empty label, each candidate trimmed BEFORE falling through —
+  // whitespace-only innerText must not shadow the aria-label.
+  const firstLabel = (...cands) => {
+    for (const c of cands) { const t = (c || '').trim(); if (t) return t; }
+    return '';
+  };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
     acceptNode: (n) => n.matches('a,button,input,textarea,select,[role],[onclick],summary')
       ? NodeFilter.FILTER_ACCEPT
@@ -77,15 +83,21 @@ export function domSnapshotScript(
     const index = els.length;
     // Password fields: never serialize the value — labels only.
     const isPassword = tag === 'input' && el.type === 'password';
-    const text = (el.innerText || (isPassword ? '' : el.value) || el.getAttribute('aria-label')
-      || el.getAttribute('placeholder') || el.getAttribute('title') || '').trim().slice(0, 120);
+    const text = firstLabel(el.innerText, (isPassword ? '' : el.value), el.getAttribute('aria-label'),
+      el.getAttribute('placeholder'), el.getAttribute('title')).slice(0, 120);
     const entry = { index, tag, role, text,
       bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
     if (tag === 'a' && el.href) entry.href = el.href;
+    // aria-label rides along separately so the gate sees BOTH signals.
+    const aria = (el.getAttribute('aria-label') || '').trim();
+    if (aria) entry.ariaLabel = aria.slice(0, 120);
     if (tag === 'input' || tag === 'textarea' || tag === 'select') entry.inputType = el.type || 'text';
-    // Buttons only when type=submit is EXPLICIT — el.type defaults to
-    // 'submit' on buttons, which would mark every button consequential.
-    if (tag === 'button' && (el.getAttribute('type') || '').toLowerCase() === 'submit') entry.inputType = 'submit';
+    // Buttons: explicit type=submit, or a TYPELESS button inside a form (HTML
+    // default-button rule — el.type defaults to 'submit' and Enter submits).
+    if (tag === 'button') {
+      const bt = (el.getAttribute('type') || '').toLowerCase();
+      if (bt === 'submit' || (!bt && el.form)) entry.inputType = 'submit';
+    }
     els.push(entry);
     refs.push(el);
     el = walker.nextNode();
@@ -102,11 +114,13 @@ export function domSnapshotScript(
 export const CONSEQUENTIAL_MARK = '[!]';
 
 /** Post-process a /snapshot result main-side (the page-side script can't
- *  import the word list): prefix the text of consequential controls with
- *  [!] and stamp a machine-readable `consequential: true` — the agent reads
- *  the marker, the approval gate reads the field. Anything that isn't the
- *  expected shape passes through untouched — a weird page result must not
- *  500 the bridge. */
+ *  import the word list): FIRST strip any leading [!] the page put there
+ *  itself (forgery), then re-derive — prefix the text of consequential
+ *  controls with [!] and stamp a machine-readable `consequential: true`.
+ *  Idempotent, and a page can't forge the marker on a safe element. The
+ *  agent reads the marker, the approval gate reads the field. Anything that
+ *  isn't the expected shape passes through untouched — a weird page result
+ *  must not 500 the bridge. */
 export function annotateSnapshot(result: unknown): unknown {
   if (!result || typeof result !== 'object') return result;
   const elements = (result as { elements?: unknown }).elements;
@@ -117,10 +131,12 @@ export function annotateSnapshot(result: unknown): unknown {
       if (!el || typeof el !== 'object') return el;
       const control = el as ControlLike;
       if (typeof control.tag !== 'string') return el;
-      if (classifyControl(control) !== 'consequential') return el;
-      const text = typeof control.text === 'string' ? control.text : '';
+      // Strip forged/previous markers before re-deriving from scratch.
+      const text = (typeof control.text === 'string' ? control.text : '').replace(/^(\[!\]\s*)+/, '');
+      const base = { ...(el as Record<string, unknown>), text };
+      if (classifyControl({ ...control, text }) !== 'consequential') return base;
       return {
-        ...(el as Record<string, unknown>),
+        ...base,
         consequential: true,
         text: text ? `${CONSEQUENTIAL_MARK} ${text}` : CONSEQUENTIAL_MARK,
       };
@@ -131,21 +147,31 @@ export function annotateSnapshot(result: unknown): unknown {
 /** Shared /inspect-* result shaping: garbage page results → {found:false};
  *  otherwise the raw control info + `found: true` + a machine-readable
  *  `consequential` flag, classified main-side via classifyControl (the page
- *  scripts can't import the word list). An inspect-active result may carry
- *  an associated `submit` control — it's classified too and folded into the
- *  top-level flag ("the element OR its submit control is consequential"). */
+ *  scripts can't import the word list). `submitCandidates` from the page
+ *  (compose container / form association) are ALL classified and the worst
+ *  folded in: the first consequential candidate becomes `submit` (attach/
+ *  emoji buttons sit before Send in Slack/Discord composers), and
+ *  `implicitSubmit: true` (single-text-input forms) forces consequential. */
 export function inspectResult(info: unknown): unknown {
   if (!info || typeof info !== 'object') return { found: false };
   const control = info as ControlLike;
   if (typeof control.tag !== 'string') return { found: false };
   const out: Record<string, unknown> = { ...(info as Record<string, unknown>), found: true };
+  delete out.submitCandidates;
   let consequential = classifyControl(control) === 'consequential';
-  const submit = (info as { submit?: unknown }).submit;
-  if (submit && typeof submit === 'object' && typeof (submit as ControlLike).tag === 'string') {
-    const sc = classifyControl(submit as ControlLike) === 'consequential';
-    out.submit = { ...(submit as Record<string, unknown>), consequential: sc };
-    consequential = consequential || sc;
+  const raw = (info as { submitCandidates?: unknown }).submitCandidates;
+  if (Array.isArray(raw)) {
+    const annotated = raw
+      .filter((c): c is Record<string, unknown> =>
+        !!c && typeof c === 'object' && typeof (c as ControlLike).tag === 'string')
+      .map((c) => ({ ...c, consequential: classifyControl(c as unknown as ControlLike) === 'consequential' }));
+    const chosen = annotated.find((a) => a.consequential === true) ?? annotated[0];
+    if (chosen) {
+      out.submit = chosen;
+      if (chosen.consequential === true) consequential = true;
+    }
   }
+  if ((info as { implicitSubmit?: unknown }).implicitSubmit === true) consequential = true;
   out.consequential = consequential;
   return out;
 }
@@ -272,22 +298,40 @@ const INTERACTIVE_SELECTOR = 'a,button,input,textarea,select,summary,[role=butto
 
 /** Page-side control serializer, interpolated into both inspect scripts —
  *  identical shape to the snapshot walker's entries minus the stash index. */
-const INFO_OF = `function infoOf(control) {
+const INFO_OF = `function firstLabel(...cands) {
+  for (const c of cands) { const t = (c || '').trim(); if (t) return t; }
+  return '';
+}
+function infoOf(control) {
   const tag = control.tagName.toLowerCase();
   const role = control.getAttribute('role');
   // Password fields: never serialize the value — labels only.
   const isPassword = tag === 'input' && control.type === 'password';
-  const text = (control.innerText || (isPassword ? '' : control.value) || control.getAttribute('aria-label')
-    || control.getAttribute('placeholder') || control.getAttribute('title') || '').trim().slice(0, 120);
+  // Trim each candidate BEFORE falling through — whitespace-only innerText
+  // must not shadow the aria-label.
+  const text = firstLabel(control.innerText, (isPassword ? '' : control.value), control.getAttribute('aria-label'),
+    control.getAttribute('placeholder'), control.getAttribute('title')).slice(0, 120);
   const r = control.getBoundingClientRect();
   const info = { tag, role, text,
     bbox: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
   if (tag === 'a' && control.href) info.href = control.href;
+  // aria-label rides along separately so the gate sees BOTH signals.
+  const aria = (control.getAttribute('aria-label') || '').trim();
+  if (aria) info.ariaLabel = aria.slice(0, 120);
   if (tag === 'input' || tag === 'textarea' || tag === 'select') info.inputType = control.type || 'text';
-  // Explicit submit buttons only — el.type defaults to 'submit' on buttons.
-  if (tag === 'button' && (control.getAttribute('type') || '').toLowerCase() === 'submit') info.inputType = 'submit';
+  // Buttons: explicit type=submit, or a TYPELESS button inside a form (HTML
+  // default-button rule — el.type defaults to 'submit' and Enter submits).
+  if (tag === 'button') {
+    const bt = (control.getAttribute('type') || '').toLowerCase();
+    if (bt === 'submit' || (!bt && control.form)) info.inputType = 'submit';
+  }
   return info;
 }`;
+
+/** Submit-capable controls (the HTML default-button set: explicit submits,
+ *  image inputs, and typeless buttons — a missing button type defaults to
+ *  submit). Interpolated into the inspect-active script. */
+const SUBMIT_SELECTOR = 'input[type="submit"],input[type="image"],button:not([type]),button[type="submit"]';
 
 /** The control at viewport point (x, y): elementFromPoint, then up to the
  *  nearest interactive control. Raw info, or false when nothing interactive
@@ -307,35 +351,59 @@ export function domInspectPointScript(x: number, y: number): string {
 }
 
 /** The focused control (document.activeElement), or the enclosing
- *  contenteditable compose area when focus is inside one. Raw info, or false
- *  when nothing useful is focused — the bridge shapes the response. */
+ *  contenteditable compose area when focus is inside one. Text-ish fields in
+ *  a form also carry the form's submit association (implicit submission —
+ *  Enter submits from them). Raw info, or false when nothing useful is
+ *  focused — the bridge shapes the response via inspectResult. */
 export function domInspectActiveScript(): string {
   return `(() => {
   ${INFO_OF}
+  const TEXTISH = new Set(['', 'text', 'search', 'url', 'tel', 'email', 'password', 'number']);
+  const isTextish = (el) => {
+    const t = el.tagName.toLowerCase();
+    return t === 'textarea' || (t === 'input' && TEXTISH.has((el.getAttribute('type') || '').toLowerCase()));
+  };
+  const isTextInput = (el) => el.tagName.toLowerCase() === 'input' && isTextish(el);
   const ae = document.activeElement;
   if (!ae || ae === document.body || ae === document.documentElement) return false;
   const control = ae.closest ? ae.closest(${JSON.stringify(INTERACTIVE_SELECTOR)}) : null;
-  if (control) return infoOf(control);
+  if (control) {
+    const info = infoOf(control);
+    // Form association for text-ish fields: the form's default button, or
+    // the single-text-input implicit-submission rule (Enter submits even
+    // without a submit control).
+    const form = control.form;
+    if (form && isTextish(control)) {
+      const defaults = Array.from(form.querySelectorAll(${JSON.stringify(SUBMIT_SELECTOR)}));
+      info.submitCandidates = defaults.slice(0, 5).map(infoOf);
+      if (defaults.length === 0 && control.tagName.toLowerCase() === 'input'
+        && Array.from(form.querySelectorAll('input')).filter(isTextInput).length === 1) {
+        info.implicitSubmit = true;
+      }
+    }
+    return info;
+  }
   if (!ae.isContentEditable) return false;
   // Compose area: report the enclosing contenteditable root, labelled by
   // aria/placeholder/title only — its innerText is the user's draft, not a
   // control label (and would false-positive the consequential word list).
   const root = (ae.closest && ae.closest('[contenteditable]:not([contenteditable="false"])')) || ae;
   const role = root.getAttribute('role');
-  const text = (root.getAttribute('aria-label') || root.getAttribute('placeholder')
-    || root.getAttribute('title') || '').trim().slice(0, 120);
-  // Associated submit control: the same form's submit, else the first
-  // button-ish control in the compose container (walk up <= 3 levels).
-  // Heuristic v1 — Gmail-style compose puts Send next to the editable.
-  let submitEl = null;
+  const text = firstLabel(root.getAttribute('aria-label'), root.getAttribute('placeholder'),
+    root.getAttribute('title')).slice(0, 120);
+  // Associated submit controls: the same form's submits, else ALL button-ish
+  // controls at the first enclosing level that has any (walk up <= 3) — the
+  // bridge classifies every candidate and folds in the worst (attach/emoji
+  // buttons sit before Send in Slack/Discord composers).
+  let candidates = [];
   const form = root.closest ? root.closest('form') : null;
-  if (form) submitEl = form.querySelector('[type="submit"]');
-  if (!submitEl) {
+  if (form) candidates = Array.from(form.querySelectorAll(${JSON.stringify(SUBMIT_SELECTOR)}));
+  if (candidates.length === 0) {
     let host = root.parentElement;
-    for (let i = 0; host && i < 3 && !submitEl; i++, host = host.parentElement) {
-      submitEl = host.querySelector('button,[role="button"],input[type="submit"]');
+    for (let i = 0; host && i < 3 && candidates.length === 0; i++, host = host.parentElement) {
+      candidates = Array.from(host.querySelectorAll('button,[role="button"],input[type="submit"]'));
     }
   }
-  return { tag: 'contenteditable', role, text, submit: submitEl ? infoOf(submitEl) : null };
+  return { tag: 'contenteditable', role, text, submitCandidates: candidates.slice(0, 5).map(infoOf) };
 })()`;
 }

@@ -58,10 +58,21 @@ describe('dom tools script builders', () => {
     expect(script).toContain("(isPassword ? '' : el.value)");
   });
 
-  it('snapshot marks only EXPLICIT submit buttons (el.type defaults to submit)', () => {
+  it('snapshot marks explicit submits AND typeless buttons inside forms', () => {
     const script = domSnapshotScript();
     expect(script).toContain("el.getAttribute('type')");
     expect(script).toContain("entry.inputType = 'submit'");
+    // HTML default-button rule: a typeless <button> with a form owner submits.
+    expect(script).toContain('el.form');
+  });
+
+  it('snapshot trims each label candidate and emits ariaLabel separately', () => {
+    const script = domSnapshotScript();
+    // Whitespace-only innerText must not shadow the aria-label: candidates
+    // are trimmed BEFORE the chain falls through.
+    expect(script).toContain('const firstLabel = (...cands)');
+    expect(script).toContain("firstLabel(el.innerText, (isPassword ? '' : el.value), el.getAttribute('aria-label')");
+    expect(script).toContain('entry.ariaLabel =');
   });
 
   it('domClickScript looks the element up by clamped index and clicks', () => {
@@ -161,6 +172,27 @@ describe('annotateSnapshot', () => {
     // Non-object elements survive the map untouched.
     expect(annotateSnapshot({ elements: ['junk', 42] })).toEqual({ elements: ['junk', 42] });
   });
+
+  it('strips forged [!] markers: safe elements get un-marked, annotation is idempotent', () => {
+    const result = {
+      title: 'T',
+      url: 'https://a.com',
+      v: 1,
+      elements: [
+        // A page forging the marker on a SAFE control loses it.
+        { index: 0, tag: 'button', role: null, text: '[!] Search', bbox: { x: 0, y: 0, w: 10, h: 10 } },
+        // Doubled/padded forgeries are stripped too, then re-derived.
+        { index: 1, tag: 'button', role: null, text: '[!][!]  Send', bbox: { x: 0, y: 0, w: 10, h: 10 } },
+      ],
+    };
+    const out = annotateSnapshot(result) as { elements: Array<{ text: string; consequential?: boolean }> };
+    expect(out.elements[0].text).toBe('Search');
+    expect(out.elements[0].consequential).toBeUndefined();
+    expect(out.elements[1].text).toBe(`${CONSEQUENTIAL_MARK} Send`);
+    expect(out.elements[1].consequential).toBe(true);
+    // Double application doesn't double-mark.
+    expect(annotateSnapshot(out)).toEqual(out);
+  });
 });
 
 describe('inspect script builders', () => {
@@ -181,8 +213,22 @@ describe('inspect script builders', () => {
     expect(script).toContain("tag: 'contenteditable'");
     // The editable's draft is never used as its label — aria/placeholder only.
     expect(script).toContain("root.getAttribute('aria-label')");
-    // Associated submit: same form first, then the compose container.
-    expect(script).toContain("form.querySelector('[type=\"submit\"]')");
+    // Compose association: ALL button-ish candidates at the container level,
+    // not just the first (attach/emoji sit before Send in Slack/Discord).
+    expect(script).toContain("host.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]')");
+  });
+
+  it('domInspectActiveScript associates form submits and the implicit-submission rule', () => {
+    const script = domInspectActiveScript();
+    // Text-ish fields only (Enter submits from them).
+    expect(script).toContain("const TEXTISH = new Set(['', 'text', 'search', 'url', 'tel', 'email', 'password', 'number'])");
+    // Default-button set: explicit submits, image inputs, typeless buttons.
+    expect(script).toContain(
+      JSON.stringify('input[type="submit"],input[type="image"],button:not([type]),button[type="submit"]'),
+    );
+    // Single-text-input form without a default button → implicitSubmit flag.
+    expect(script).toContain('info.implicitSubmit = true');
+    expect(script).toContain('filter(isTextInput).length === 1');
   });
 });
 
@@ -211,7 +257,7 @@ describe('inspectResult', () => {
       tag: 'contenteditable',
       role: 'textbox',
       text: 'Message body',
-      submit: { tag: 'div', role: 'button', text: 'Send' },
+      submitCandidates: [{ tag: 'div', role: 'button', text: 'Send' }],
     }) as { found: boolean; consequential: boolean; submit: { text: string; consequential: boolean } };
     // The compose area itself is safe; its Send control is not.
     expect(out.found).toBe(true);
@@ -219,12 +265,59 @@ describe('inspectResult', () => {
     expect(out.submit).toMatchObject({ text: 'Send', consequential: true });
   });
 
+  it('evaluates ALL candidates and picks the first consequential (Send is not first)', () => {
+    // Slack/Discord composers: attach and emoji buttons precede Send.
+    const out = inspectResult({
+      tag: 'contenteditable',
+      role: 'textbox',
+      text: 'Message',
+      submitCandidates: [
+        { tag: 'button', role: null, text: 'Attach file' },
+        { tag: 'button', role: null, text: 'Emoji' },
+        { tag: 'button', role: null, text: 'Send' },
+      ],
+    }) as { consequential: boolean; submit: { text: string; consequential: boolean }; submitCandidates?: unknown };
+    expect(out.consequential).toBe(true);
+    expect(out.submit).toMatchObject({ text: 'Send', consequential: true });
+    // The raw candidate list is folded away — the gate reads `submit`.
+    expect(out.submitCandidates).toBeUndefined();
+  });
+
+  it('falls back to the first candidate when none is consequential', () => {
+    const out = inspectResult({
+      tag: 'input',
+      role: null,
+      text: 'Notes',
+      inputType: 'text',
+      submitCandidates: [{ tag: 'button', role: null, text: 'Preview' }],
+    }) as { consequential: boolean; submit: { text: string; consequential: boolean } };
+    expect(out.consequential).toBe(false);
+    expect(out.submit).toMatchObject({ text: 'Preview', consequential: false });
+  });
+
+  it('implicitSubmit (single-text-input form) forces consequential', () => {
+    const out = inspectResult({
+      tag: 'input',
+      role: null,
+      text: 'Search mail',
+      inputType: 'text',
+      implicitSubmit: true,
+    }) as { found: boolean; consequential: boolean; implicitSubmit: boolean };
+    expect(out.found).toBe(true);
+    expect(out.consequential).toBe(true);
+    expect(out.implicitSubmit).toBe(true); // rides along for the gate
+  });
+
   it('ignores malformed submit candidates', () => {
-    const out = inspectResult({ tag: 'contenteditable', role: null, text: '', submit: 'junk' }) as {
-      found: boolean; consequential: boolean; submit: unknown;
+    const out = inspectResult({ tag: 'contenteditable', role: null, text: '', submitCandidates: 'junk' }) as {
+      found: boolean; consequential: boolean; submit?: unknown;
     };
     expect(out.found).toBe(true);
     expect(out.consequential).toBe(false);
-    expect(out.submit).toBe('junk'); // passes through untouched
+    expect(out.submit).toBeUndefined();
+    const junk = inspectResult({ tag: 'contenteditable', role: null, text: '', submitCandidates: ['junk', 42] }) as {
+      submit?: unknown;
+    };
+    expect(junk.submit).toBeUndefined();
   });
 });

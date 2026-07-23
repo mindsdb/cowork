@@ -331,7 +331,10 @@ describe('bridge DOM endpoints', () => {
       tag: 'contenteditable',
       role: 'textbox',
       text: 'Message body',
-      submit: { tag: 'div', role: 'button', text: 'Send' },
+      submitCandidates: [
+        { tag: 'button', role: null, text: 'Attach' },
+        { tag: 'div', role: 'button', text: 'Send' },
+      ],
     }));
     const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
     expect(res.body).toMatchObject({ found: true, consequential: true, tag: 'contenteditable', role: 'textbox' });

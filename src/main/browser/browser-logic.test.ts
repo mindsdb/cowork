@@ -509,6 +509,18 @@ describe('classifyControl', () => {
     expect(classifyControl({ tag: 'button', text: 'Buy now' })).toBe('consequential');
     expect(classifyControl({ tag: 'a', text: 'Delete this page' })).toBe('consequential');
     expect(classifyControl({ tag: 'button', text: 'Schedule Send' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Subscribe to updates' })).toBe('consequential');
+    expect(classifyControl({ tag: 'button', text: 'Order now' })).toBe('consequential');
+  });
+
+  it('defeats homoglyph and zero-width evasion (NFKC + Cf strip + lookalike fold)', () => {
+    // Exact strings from the adversarial review.
+    expect(classifyControl({ tag: 'button', text: 'Sеnd' })).toBe('consequential'); // Cyrillic е (U+0435)
+    expect(classifyControl({ tag: 'button', text: 'S\u200bend' })).toBe('consequential'); // zero-width space
+    expect(classifyControl({ tag: 'button', text: 'Ｓｅｎｄ' })).toBe('consequential'); // full-width
+    expect(classifyControl({ tag: 'button', text: 'Рау' })).toBe('consequential'); // Cyrillic Р + у
+    expect(classifyControl({ tag: 'button', text: 'D\u200celete' })).toBe('consequential'); // ZWNJ
+    expect(classifyControl({ tag: 'button', text: 'place\u00ad order' })).toBe('consequential'); // soft hyphen
   });
 
   it('leaves safe controls and word-boundary near-misses alone', () => {
@@ -520,6 +532,7 @@ describe('classifyControl', () => {
       'Payment methods',  // 'pay' inside a word
       'Confirmed',        // 'confirm' inside a word
       'Schedule',         // bare 'schedule' is deliberately not listed
+      'Order history',    // bare 'order' is deliberately not listed
       'Sign in',
       '',
     ]) {

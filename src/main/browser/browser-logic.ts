@@ -486,19 +486,23 @@ export function sanitizeApps(raw: unknown): BrowserApp[] {
 /** Words whose activation is hard to undo: messages sent, money moved, data
  *  destroyed, things published. English-only v1 — feed misses back into this
  *  list rather than special-casing call sites. 'schedule send' but not bare
- *  'schedule' (every calendar app's nav button — too noisy for a marker). */
+ *  'schedule' (every calendar app's nav button — too noisy for a marker);
+ *  'order now' but not bare 'order' ('Order history' is navigation). */
 export const CONSEQUENTIAL_TERMS = [
   'send',
   'send now',
   'delete',
   'remove',
   'unsubscribe',
+  'subscribe',
   'pay',
   'purchase',
   'buy',
+  'buy now',
   'checkout',
   'place order',
   'place your order',
+  'order now',
   'confirm',
   'post',
   'publish',
@@ -526,14 +530,33 @@ const CONSEQUENTIAL_RE = new RegExp(
   'i',
 );
 
+/** Cyrillic chars that render identically to Latin (the classic spoof set).
+ *  NFKC does NOT fold homoglyphs, so they get their own map — extend as new
+ *  lookalike scripts show up in evasion attempts. */
+const LOOKALIKE_FOLD: Record<string, string> = {
+  'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c', 'х': 'x', 'у': 'y',
+  'і': 'i', 'ј': 'j', 'ѕ': 's',
+};
+
+/** Match-normalized label: NFKC (full-width, ligatures), zero-width/format
+ *  chars (Cf) stripped, lowercased, Cyrillic lookalikes folded — so
+ *  'Sеnd' (Cyrillic е), 'S\u200bend' and 'Ｓｅｎｄ' all match 'send'. */
+function normalizeForMatch(label: string): string {
+  return label
+    .normalize('NFKC')
+    .replace(/\p{Cf}/gu, '')
+    .toLowerCase()
+    .replace(/[аеорсхуіјѕ]/g, (ch) => LOOKALIKE_FOLD[ch] ?? ch);
+}
+
 /** 'consequential' when activating the control is hard to undo: submit
- *  inputs/buttons outright, otherwise a case-insensitive word-boundary match
- *  of the visible text — falling back to aria-label, mirroring the snapshot
- *  walker's precedence — against CONSEQUENTIAL_TERMS. */
+ *  inputs/buttons outright, otherwise a word-boundary match of the
+ *  NORMALIZED visible text — falling back to aria-label, mirroring the
+ *  snapshot walker's precedence — against CONSEQUENTIAL_TERMS. */
 export function classifyControl(el: ControlLike): 'consequential' | 'safe' {
   const type = (el.inputType ?? '').toLowerCase();
   if ((el.tag === 'input' || el.tag === 'button') && type === 'submit') return 'consequential';
-  const label = (el.text ?? '').trim() || (el.ariaLabel ?? '').trim();
+  const label = normalizeForMatch((el.text ?? '').trim() || (el.ariaLabel ?? '').trim());
   return label !== '' && CONSEQUENTIAL_RE.test(label) ? 'consequential' : 'safe';
 }
 

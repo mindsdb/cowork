@@ -60,6 +60,8 @@ export interface SnapshotEl {
   text: string;
   href?: string;
   inputType?: string;
+  ariaLabel?: string;   // emitted when the attribute is non-empty (gate reads both signals)
+  consequential?: boolean; // stamped by annotateSnapshot (additive)
   bbox: { x: number; y: number; w: number; h: number };
 }
 
