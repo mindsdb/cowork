@@ -35,6 +35,25 @@ describe('_normalizeMathDelimiters', () => {
     expect(_normalizeMathDelimiters('\\(a\\) and \\(b\\)')).toBe('$$a$$ and $$b$$');
   });
 
+  it('rewrites pandoc-valid single-$ inline math to $$…$$', () => {
+    expect(_normalizeMathDelimiters('plane $s = \\sigma + it$.')).toBe('plane $$s = \\sigma + it$$.');
+    expect(_normalizeMathDelimiters('to $\\zeta(s) = 0$ (x)')).toBe('to $$\\zeta(s) = 0$$ (x)');
+    expect(_normalizeMathDelimiters('the $2\\pi r$ term')).toBe('the $$2\\pi r$$ term'); // leading digit ok
+    expect(_normalizeMathDelimiters('$a$ and $b$')).toBe('$$a$$ and $$b$$');
+  });
+
+  it('leaves currency ($ followed by digit) as literal text', () => {
+    // Single $, no closing → untouched.
+    expect(_normalizeMathDelimiters('a $1 million prize')).toBe('a $1 million prize');
+    // Paired, but the middle $ is followed by a digit → not a valid close.
+    expect(_normalizeMathDelimiters('from $5 to $10 total')).toBe('from $5 to $10 total');
+    expect(_normalizeMathDelimiters('costs $20,000 and $30,000')).toBe('costs $20,000 and $30,000');
+  });
+
+  it('does not disturb existing $$…$$ display pairs', () => {
+    expect(_normalizeMathDelimiters('block $$x = 1$$ here')).toBe('block $$x = 1$$ here');
+  });
+
   it('trims whitespace inside the delimiters', () => {
     expect(_normalizeMathDelimiters('\\(  x = 1  \\)')).toBe('$$x = 1$$');
   });
@@ -47,8 +66,8 @@ describe('_normalizeMathDelimiters', () => {
     expect(out).toContain('$$\nb\n$$'); // display outside the fence converted
   });
 
-  it('is a no-op when no LaTeX delimiters are present', () => {
-    const src = 'plain text with $5 and $10 of currency';
+  it('is a no-op (fast path) when no math delimiters are present', () => {
+    const src = 'plain text with no math at all';
     expect(_normalizeMathDelimiters(src)).toBe(src);
   });
 
@@ -73,6 +92,15 @@ describe('MarkdownContent math rendering (end-to-end pipeline)', () => {
       <MarkdownContent text={'\\[ \\operatorname{Re}(s)=\\frac12 \\]'} complete />,
     );
     expect(container.querySelector('.katex-display')).not.toBeNull();
+  });
+
+  it('renders pandoc-valid single-$ inline math as KaTeX', () => {
+    const { container } = render(
+      <MarkdownContent text={'the complex plane $s = \\sigma + it$.'} complete />,
+    );
+    expect(container.querySelector('.katex')).not.toBeNull();
+    expect(container.querySelector('.katex-display')).toBeNull(); // inline
+    expect(container.textContent).not.toContain('$'); // $ delimiters consumed
   });
 
   it('does NOT treat plain-prose currency as math', () => {

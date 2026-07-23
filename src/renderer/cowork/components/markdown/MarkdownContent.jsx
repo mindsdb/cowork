@@ -210,27 +210,39 @@ function _normalizeFormFences(text) {
   );
 }
 
-// Our models emit math with LaTeX-style delimiters — `\( … \)` for inline
-// and `\[ … \]` for display — but remark-math only understands the `$`
-// family. Left as-is, CommonMark treats `\(` / `\[` as escaped punctuation
-// and prints the raw TeX (see ENG-989). Rewrite them into the double-dollar
-// form remark-math parses:
+// Our models emit math with a few delimiter styles — `\( … \)` and `$ … $`
+// for inline, `\[ … \]` (and `$$ … $$`) for display. remark-math only parses
+// the `$` family, and CommonMark treats `\(` / `\[` as escaped punctuation
+// and prints the raw TeX (see ENG-989). Normalize everything into the
+// double-dollar form remark-math understands:
 //
 //   inline   \(x\)  →  $$x$$              (single line → KaTeX inline math)
 //   display  \[x\]  →  \n\n$$\nx\n$$\n\n   (own block  → KaTeX display math)
+//   inline   $x$    →  $$x$$              (pandoc-guarded, see below)
 //
-// We convert to `$$` (not single `$`) on purpose: single-`$` math is
-// disabled in the remark-math options because it collides with plain-prose
-// currency ("$5 and $10" would parse as math). The `\(…\)` form our models
-// emit has no such ambiguity, so nothing is lost.
+// Single-`$` math stays disabled in the remark-math options — on its own it
+// happily parses "$5 and $10" as a formula. Instead we detect genuine inline
+// `$ … $` here with pandoc's currency rule and rewrite it to `$$ … $$`:
+//   • the opening `$` has a non-space to its right,
+//   • the closing `$` has a non-space to its left and is NOT followed by a
+//     digit, and neither `$` is part of a `$$` display pair.
+// So "$s=\sigma+it$" and "$2\pi r$" render, while "a $1 million prize" and
+// "$20,000 and $30,000" stay literal — the middle `$` is followed by a digit,
+// so it can't close a span.
 //
 // Fenced code blocks are skipped so a code sample that literally contains
-// `\(x\)` / `\[x\]` (a regex, a LaTeX tutorial) isn't rewritten out from
-// under the author.
+// `\(x\)` / `$x$` (a regex, a shell snippet, a LaTeX tutorial) isn't
+// rewritten out from under the author.
 export function _normalizeMathDelimiters(text) {
   if (!text || typeof text !== 'string') return text;
-  // Fast path: nothing to do if neither opening delimiter is present.
-  if (text.indexOf('\\(') === -1 && text.indexOf('\\[') === -1) return text;
+  // Fast path: nothing to do without a `\(`, `\[`, or a `$`.
+  if (
+    text.indexOf('\\(') === -1 &&
+    text.indexOf('\\[') === -1 &&
+    text.indexOf('$') === -1
+  ) {
+    return text;
+  }
   // Split on ``` fences, keeping them (capturing group) so code stays
   // verbatim. Even indices are prose; odd indices are the fenced blocks.
   const segments = text.split(/(```[\s\S]*?```)/g);
@@ -242,8 +254,11 @@ export function _normalizeMathDelimiters(text) {
         // sits on its own line between fence markers so remark-math emits a
         // `math` (display) node rather than inline.
         .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => `\n\n$$\n${body.trim()}\n$$\n\n`)
-        // Inline stays on one line → remark-math emits an `inlineMath` node.
-        .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => `$$${body.trim()}$$`);
+        // Inline \( … \) stays on one line → an `inlineMath` node.
+        .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => `$$${body.trim()}$$`)
+        // Inline $ … $ (pandoc-guarded). The lookarounds skip any `$$`
+        // display pair and the currency cases described above.
+        .replace(/(?<!\$)\$(?!\$)(?=\S)([^$\n]*?\S)\$(?!\$)(?!\d)/g, (_m, body) => `$$${body.trim()}$$`);
     })
     .join('');
 }
@@ -391,9 +406,10 @@ export function MarkdownContent({
   // share one Set instead of each allocating their own inside useMemo.
   const skillNames = useSkillNames();
   const remarkPlugins = useMemo(
-    // singleDollarTextMath:false — only `$$…$$` is math, never a lone `$`,
-    // so plain-prose currency ("$5 and $10") is never mis-parsed. See
-    // _normalizeMathDelimiters, which rewrites \(…\)/\[…\] into this form.
+    // singleDollarTextMath:false — remark-math never parses a lone `$`, so
+    // plain-prose currency ("$5 and $10") is safe. _normalizeMathDelimiters
+    // does the delimiter work instead: it rewrites \(…\), \[…\], and genuine
+    // (pandoc-guarded) $…$ inline math into the `$$…$$` form parsed here.
     () => [remarkGfm, [remarkMath, { singleDollarTextMath: false }], [remarkSkillMentions, skillNames]],
     [skillNames],
   );
