@@ -658,6 +658,16 @@ export async function browserSetVisible(visible: boolean, bounds?: Rect): Promis
   }
 }
 
+// Freeze-frame of the visible tab (JPEG data URL) for overlay backdrops —
+// the collapsed-rail hover hide swaps this in so the page never "vanishes".
+// Null when the tab can't be captured (background tab, web shell).
+export async function browserCaptureSnapshot(tabId?: string): Promise<string | null> {
+  if (isElectron && typeof bridge.browserCaptureSnapshot === 'function') {
+    return bridge.browserCaptureSnapshot(tabId);
+  }
+  return null;
+}
+
 export async function browserSetBounds(rect: Rect): Promise<void> {
   if (isElectron && typeof bridge.browserSetBounds === 'function') {
     await bridge.browserSetBounds(rect);
@@ -884,6 +894,7 @@ export const host = {
   cancelDrivePicker,
   browserGetState,
   browserSetVisible,
+  browserCaptureSnapshot,
   browserSetBounds,
   browserNewTab,
   browserCloseTab,

@@ -9,8 +9,8 @@ import { useEffect, useState } from 'react';
 // the generic role catches non-Modal dialogs.
 // NOTE: tooltips are deliberately NOT here — hiding the view in response to
 // a tooltip OPENING steals focus/state mid-hover and the tooltip dies.
-// Instead the collapsed rail occludes while it is HOVERED (see below), so
-// the view is already gone before any tooltip opens.
+// Rail-hover is reported separately (railHover) so BrowserView can hide
+// onto a freeze-frame with a dwell, instead of blanking the page instantly.
 // Exported so BrowserView's shortcut handler can stand down while the
 // same overlays own the keyboard.
 export const OVERLAY_SELECTOR =
@@ -21,24 +21,22 @@ const RAIL_SELECTOR = '.app-sidebar.collapsed';
 function computeOccluded() {
   if (typeof document === 'undefined') return false;
   if (document.hidden) return true;
-  try {
-    if (document.body?.querySelector(OVERLAY_SELECTOR)) return true;
-    // Collapsed rail under the pointer: the native view must already be
-    // gone before a rail tooltip opens (hiding on open kills the tooltip).
-    return !!document.body?.querySelector(`${RAIL_SELECTOR}:hover`);
-  } catch { return false; }
+  try { return !!document.body?.querySelector(OVERLAY_SELECTOR); } catch { return false; }
 }
 
-// True while something visually occludes the native browser view (a modal,
-// or the whole window being hidden). The caller turns this into
+// occluded: something visually occludes the native browser view (a modal,
+// or the whole window being hidden) — the caller turns this into
 // browserSetVisible(false) for the duration and restores after.
+// railHover: the pointer is over the collapsed sidebar rail. The rail's
+// tooltips can't paint over the native view either, but the hide must be
+// gentle (dwell + freeze-frame), so the caller owns the timing.
 export function useNativeOcclusion() {
-  const [occluded, setOccluded] = useState(computeOccluded);
+  const [state, setState] = useState(() => ({ occluded: computeOccluded(), railHover: false }));
 
   useEffect(() => {
-    const update = () => setOccluded((prev) => {
-      const next = computeOccluded();
-      return prev === next ? prev : next;
+    const update = () => setState((prev) => {
+      const occluded = computeOccluded();
+      return prev.occluded === occluded ? prev : { ...prev, occluded };
     });
     // Only recompute when an added/removed subtree could actually contain
     // an overlay node — chat streaming mutates the DOM constantly and a
@@ -56,15 +54,15 @@ export function useNativeOcclusion() {
       }
     });
     mo.observe(document.body, { childList: true, subtree: true });
-    // Hover isn't a mutation: recompute when the pointer moves in or out of
-    // the collapsed rail (capture phase so it works under the native view's
+    // Hover isn't a mutation: track when the pointer moves in or out of the
+    // collapsed rail (capture phase so it works under the native view's
     // neighbors without depending on bubbling).
     let railHover = false;
     const onPointerMove = (e) => {
       const inRail = e.target instanceof Element && !!e.target.closest(RAIL_SELECTOR);
       if (inRail !== railHover) {
         railHover = inRail;
-        update();
+        setState((prev) => (prev.railHover === inRail ? prev : { ...prev, railHover: inRail }));
       }
     };
     document.addEventListener('pointermove', onPointerMove, true);
@@ -77,5 +75,5 @@ export function useNativeOcclusion() {
     };
   }, []);
 
-  return occluded;
+  return state;
 }

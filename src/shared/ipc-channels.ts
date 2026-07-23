@@ -66,6 +66,7 @@ export const IPC = {
   // Browser
   BROWSER_GET_STATE: 'browser:get-state',
   BROWSER_SET_VISIBLE: 'browser:set-visible',
+  BROWSER_CAPTURE_SNAPSHOT: 'browser:capture-snapshot',
   BROWSER_SET_BOUNDS: 'browser:set-bounds',
   BROWSER_NEW_TAB: 'browser:new-tab',
   BROWSER_CLOSE_TAB: 'browser:close-tab',

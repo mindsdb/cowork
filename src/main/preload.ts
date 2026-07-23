@@ -129,6 +129,8 @@ contextBridge.exposeInMainWorld('antontron', {
   browserGetState: () => ipcRenderer.invoke(IPC.BROWSER_GET_STATE),
   browserSetVisible: (visible: boolean, bounds?: Rect) =>
     ipcRenderer.invoke(IPC.BROWSER_SET_VISIBLE, { visible, bounds }),
+  browserCaptureSnapshot: (tabId?: string) =>
+    ipcRenderer.invoke(IPC.BROWSER_CAPTURE_SNAPSHOT, { tabId }),
   browserSetBounds: (r: Rect) => ipcRenderer.invoke(IPC.BROWSER_SET_BOUNDS, r),
   browserNewTab: (opts?: { url?: string; activate?: boolean }) =>
     ipcRenderer.invoke(IPC.BROWSER_NEW_TAB, opts ?? {}),

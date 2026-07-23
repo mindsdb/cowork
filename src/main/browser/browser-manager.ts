@@ -1101,6 +1101,29 @@ async function capturePng(tabId?: string): Promise<Buffer> {
   return image.toPNG();
 }
 
+// Freeze-frame for the collapsed sidebar rail: rail tooltips can't paint
+// over the native view, so hovering the rail hides it — and the renderer
+// swaps this still in as the placeholder background so the page never
+// "vanishes". Same compositor rules as capturePng (only a visibly attached
+// tab has a frame), but a null — the renderer falls back to a bare hide —
+// beats a thrown error mid-hover.
+async function captureSnapshotDataUrl(tabId?: string): Promise<string | null> {
+  const id = tabId ?? model.activeTabId;
+  if (!id) return null;
+  const win = liveWindow();
+  const view = views.get(id);
+  const visible =
+    !!view && !!win && !win.isDestroyed() && attachedTabId === id && attachedWindow === win;
+  if (!visible) return null;
+  try {
+    const image = await view.webContents.capturePage();
+    if (image.isEmpty()) return null;
+    return `data:image/jpeg;base64,${image.toJPEG(78).toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
 /** Viewport CSS size + pixel scale of the last screenshot — the agent needs
  *  the scale to map screenshot pixels back to click-at CSS coordinates
  *  (Retina captures are 2x). */
@@ -1285,6 +1308,9 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
   ipcMain.handle(IPC.BROWSER_SET_VISIBLE, (_e, payload: { visible?: boolean; bounds?: Rect }) => {
     setVisible(payload?.visible === true, payload?.bounds);
   });
+  ipcMain.handle(IPC.BROWSER_CAPTURE_SNAPSHOT, (_e, payload: { tabId?: string }) =>
+    captureSnapshotDataUrl(payload?.tabId),
+  );
   ipcMain.handle(IPC.BROWSER_SET_BOUNDS, (_e, rect: Rect) => {
     if (rect) setBounds(rect);
   });

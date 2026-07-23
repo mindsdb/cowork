@@ -119,15 +119,38 @@ export default function BrowserView() {
   // away the moment the real tab model lands.
   const showStartPage = ready && (!activeTab || !activeTab.url);
   const hasError = !!activeTab?.error;
-  const occluded = useNativeOcclusion();
+  const { occluded, railHover } = useNativeOcclusion();
   // The narrow drawer can't paint over the OS-level native view, so while
   // it's open the page detaches (same treatment as modal occlusion).
   const dockOccludes = isNarrow && dockOpen;
+  // Rail-hover freeze-frame: the collapsed rail's tooltips can't paint over
+  // the native view either, but hiding straight to a bare background reads
+  // as the page vanishing. After a short dwell (casual fly-bys do nothing)
+  // snapshot the page and hide onto that still; fall back to a bare hide if
+  // the capture can't beat the tooltip's 250ms delay.
+  const [freezeFrame, setFreezeFrame] = useState(null); // data URL | 'bare' | null
+  useEffect(() => {
+    if (!railHover || !host.isElectron || !activeTabId || showStartPage || hasError) {
+      setFreezeFrame(null);
+      return;
+    }
+    let cancelled = false;
+    const dwell = setTimeout(() => {
+      void (async () => {
+        let dataUrl = null;
+        try { dataUrl = await host.browserCaptureSnapshot?.(activeTabId); } catch { dataUrl = null; }
+        if (!cancelled) setFreezeFrame(typeof dataUrl === 'string' && dataUrl ? dataUrl : 'bare');
+      })();
+    }, 120);
+    const fallback = setTimeout(() => { if (!cancelled) setFreezeFrame((f) => f ?? 'bare'); }, 230);
+    return () => { cancelled = true; clearTimeout(dwell); clearTimeout(fallback); };
+  }, [railHover, activeTabId, showStartPage, hasError]);
+  const railHides = railHover && freezeFrame !== null;
   // Same story for the desktop resizer: pointer events over the native
   // view never reach the renderer, so the page detaches mid-drag (see
   // AgentDock startDrag) and re-attaches with the final rect on release.
   const nativeVisible = host.isElectron && ready
-    && !showStartPage && !hasError && !occluded && !dockOccludes && !dockResizing && !suggestionsOpen && !shelfOpen;
+    && !showStartPage && !hasError && !occluded && !railHides && !dockOccludes && !dockResizing && !suggestionsOpen && !shelfOpen;
 
   const { sendBounds, readRect } = useNativeBounds(placeholderRef, { enabled: nativeVisible });
 
@@ -332,10 +355,16 @@ export default function BrowserView() {
           {findOpen && activeTab && <FindBar tabId={activeTabId} onClose={closeFind} />}
           {/* Native view placeholder. MUST stay opaque (--surface): the
               gravity field shows through transparent gaps and the native
-              view above it would look broken. Bounds mirror to main. */}
+              view above it would look broken. Bounds mirror to main. While
+              the rail-hover hide is armed it wears the freeze-frame still,
+              so hiding reads as "page stays, tooltips float" — never as
+              the page vanishing. */}
           <div ref={placeholderRef} style={{
             position: 'relative', flex: 1, minWidth: 0, minHeight: 0,
             background: 'var(--surface)',
+            ...(freezeFrame && freezeFrame !== 'bare'
+              ? { backgroundImage: `url(${freezeFrame})`, backgroundSize: '100% 100%', backgroundRepeat: 'no-repeat' }
+              : {}),
           }}>
             {showStartPage && <StartPage onNavigate={navigateActive} />}
             {hasError && !showStartPage && (

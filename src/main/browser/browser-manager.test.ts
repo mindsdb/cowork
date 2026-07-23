@@ -48,7 +48,7 @@ vi.mock('electron', () => {
     openDevTools = vi.fn();
     inspectElement = vi.fn();
     executeJavaScript = vi.fn(async () => null);
-    capturePage = vi.fn(async () => ({ isEmpty: () => false, toPNG: () => Buffer.from('png') }));
+    capturePage = vi.fn(async () => ({ isEmpty: () => false, toPNG: () => Buffer.from('png'), toJPEG: () => Buffer.from('jpeg') }));
     setZoomFactor = vi.fn();
     isLoading = vi.fn(() => false);
     debugger = {
@@ -207,7 +207,7 @@ describe('registerBrowserHandlers', () => {
   it('registers every browser IPC channel', async () => {
     await loadManager();
     for (const ch of [
-      'browser:get-state', 'browser:set-visible', 'browser:set-bounds', 'browser:new-tab',
+      'browser:get-state', 'browser:set-visible', 'browser:capture-snapshot', 'browser:set-bounds', 'browser:new-tab',
       'browser:close-tab', 'browser:activate-tab', 'browser:pin-tab', 'browser:navigate', 'browser:go-back',
       'browser:go-forward', 'browser:reload', 'browser:stop', 'browser:open-devtools',
       'browser:top-sites', 'browser:import-chrome',
@@ -303,6 +303,22 @@ describe('tabs', () => {
     expect(fakeWc(0).close).not.toHaveBeenCalled();
     expect(h.handlers.has('browser:get-state')).toBe(true);
     expect(b).toBeTruthy();
+  });
+
+  it('capture-snapshot: data URL for the visible tab, null for background/detached', async () => {
+    await loadManager();
+    const { tabId: a } = (await invoke('browser:new-tab', { url: 'https://a.com' })) as { tabId: string };
+    await invoke('browser:new-tab', { url: 'https://b.com' });
+
+    // Nothing attached yet — no compositor frame; null, not a throw.
+    expect(await invoke('browser:capture-snapshot', { tabId: a })).toBeNull();
+
+    await invoke('browser:set-visible', { visible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } });
+    // b is active + attached: captures (default tab = active).
+    const url = (await invoke('browser:capture-snapshot', {})) as string;
+    expect(url).toBe(`data:image/jpeg;base64,${Buffer.from('jpeg').toString('base64')}`);
+    // a is a background tab: null, no throw — the renderer falls back to bare.
+    expect(await invoke('browser:capture-snapshot', { tabId: a })).toBeNull();
   });
 
   it('re-attaches fully when the window instance is recreated (macOS activate)', async () => {

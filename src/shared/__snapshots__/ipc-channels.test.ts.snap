@@ -12,6 +12,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "BROWSER_APPS_LIST": "browser:apps-list",
   "BROWSER_APPS_REMOVE": "browser:apps-remove",
   "BROWSER_APPS_RENAME": "browser:apps-rename",
+  "BROWSER_CAPTURE_SNAPSHOT": "browser:capture-snapshot",
   "BROWSER_CLOSE_TAB": "browser:close-tab",
   "BROWSER_DOWNLOADS_LIST": "browser:downloads-list",
   "BROWSER_FIND_IN_PAGE": "browser:find-in-page",

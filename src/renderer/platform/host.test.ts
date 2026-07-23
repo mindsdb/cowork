@@ -288,6 +288,7 @@ describe('embedded browser bridge', () => {
     await expect(host.browserTopSites()).resolves.toEqual([]);
     await expect(host.browserImportChrome()).resolves.toEqual({ imported: 0, profiles: [], error: 'unsupported' });
     await expect(host.browserSetVisible(true, { x: 0, y: 0, width: 10, height: 10 })).resolves.toBeUndefined();
+    await expect(host.browserCaptureSnapshot('t1')).resolves.toBeNull();
     await expect(host.browserSetBounds({ x: 0, y: 0, width: 1, height: 1 })).resolves.toBeUndefined();
     await expect(host.browserCloseTab('t1')).resolves.toBeUndefined();
     await expect(host.browserActivateTab('t1')).resolves.toBeUndefined();
