@@ -293,6 +293,9 @@ function wireView(tabId: string, view: WebContentsView): void {
     patch(tabId, { url: url ?? '', loadProgress: 0.7, error: null, ...navFlags(wc) });
     if (url) recordVisit(url);
     schedulePersist();
+    // A new origin starts at ITS session zoom (or 1), not this tab's —
+    // re-assert the tab's model zoom over it.
+    applyTabZoomToView(tabId);
   });
 
   wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
@@ -611,9 +614,19 @@ async function setTabZoom(
   if (!tab) return { ok: false };
   const zoom = logic.nextZoomFactor(tab.zoom ?? 1, direction);
   patch(id, { zoom });
-  views.get(id)?.webContents.setZoomFactor(zoom);
+  applyTabZoomToView(id);
   schedulePersist();
   return { zoom };
+}
+
+// Electron's setZoomFactor is per-ORIGIN for the session, not per view —
+// two tabs on one origin share the rendered zoom (Codex on #485). The
+// model is per tab, so re-assert the tab's zoom whenever the view could
+// be showing a different origin's value: activation and full navigation.
+// Always applied (even 1) so a same-origin neighbour's zoom is undone.
+function applyTabZoomToView(tabId: string): void {
+  const tab = model.tabs.find((t) => t.id === tabId);
+  views.get(tabId)?.webContents.setZoomFactor(tab?.zoom ?? 1);
 }
 
 /** ⌘⇧T: reopen the most recently closed tab (fresh load, pin restored). */
@@ -643,6 +656,7 @@ async function activateTabById(tabId: string): Promise<{ ok: boolean }> {
   if (!model.tabs.some((t) => t.id === tabId)) return { ok: false };
   model = logic.activateTab(model, tabId);
   if (wantVisible) attach(tabId);
+  applyTabZoomToView(tabId); // undo any same-origin neighbour's zoom
   schedulePush();
   schedulePersist();
   return { ok: true };

@@ -49,6 +49,7 @@ vi.mock('electron', () => {
     inspectElement = vi.fn();
     executeJavaScript = vi.fn(async () => null);
     capturePage = vi.fn(async () => ({ isEmpty: () => false, toPNG: () => Buffer.from('png') }));
+    setZoomFactor = vi.fn();
     isLoading = vi.fn(() => false);
     debugger = {
       isAttached: vi.fn(() => false),
@@ -505,6 +506,18 @@ describe('tabs', () => {
     expect(await invoke('browser:set-zoom', { tabId, direction: 0 })).toEqual({ zoom: 1 });
     expect(mgr.getBrowserState().tabs[0].zoom).toBe(1);
     expect(await invoke('browser:set-zoom', { tabId, direction: 2 })).toEqual({ ok: false });
+
+    // Re-asserted on activation and full navigation, so a same-origin
+    // neighbour's per-origin zoom can't leak into this tab's rendered view.
+    await invoke('browser:set-zoom', { tabId, direction: 1 }); // 1.1
+    await invoke('browser:new-tab', { url: 'https://a.com/neighbour' });
+    wc.setZoomFactor.mockClear();
+    await invoke('browser:activate-tab', { tabId });
+    expect(wc.setZoomFactor).toHaveBeenCalledWith(1.1);
+    (wc as unknown as { emit: (n: string, ...a: unknown[]) => void })
+      .emit('did-navigate', {}, 'https://a.com/moved');
+    expect(wc.setZoomFactor).toHaveBeenCalledWith(1.1);
+    await invoke('browser:set-zoom', { tabId, direction: 0 }); // back to 1
 
     // Persists through the tabs.json round-trip.
     await invoke('browser:set-zoom', { tabId, direction: 1 });
