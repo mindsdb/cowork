@@ -106,6 +106,7 @@ export default function Omnibox({ tab, inputRef, onSubmit, tabs = [], onActivate
 
   useEffect(() => {
     setSelected(0);
+    pickedRef.current = false;
     setOpenWithParent(focused && rows.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, focused]);
@@ -119,6 +120,12 @@ export default function Omnibox({ tab, inputRef, onSubmit, tabs = [], onActivate
     setOpenWithParent(false);
     ref.current?.blur();
   };
+
+  // Enter activates a suggestion ONLY after an explicit arrow-key pick —
+  // otherwise ⌘L→Enter (reload) and type→Enter (navigate) would activate
+  // whatever row happens to sit at index 0 instead of submitting the
+  // typed text (Codex review on #481). Mouse clicks activate directly.
+  const pickedRef = useRef(false);
 
   return (
     <div
@@ -154,7 +161,7 @@ export default function Omnibox({ tab, inputRef, onSubmit, tabs = [], onActivate
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => { pickedRef.current = false; setDraft(e.target.value); }}
         onFocus={() => {
           setFocused(true);
           setDraft(fullUrl);
@@ -173,11 +180,12 @@ export default function Omnibox({ tab, inputRef, onSubmit, tabs = [], onActivate
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             if (rows.length) {
               e.preventDefault();
+              pickedRef.current = true;
               setSelected((s) => (s + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length);
             }
           } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (open && rows[selected]) { activate(rows[selected]); return; }
+            if (open && pickedRef.current && rows[selected]) { activate(rows[selected]); return; }
             const text = (draft ?? '').trim();
             // An empty submit is a no-op and KEEPS focus (Chrome) —
             // blurring on an accidental Enter strands keyboard users.
