@@ -86,6 +86,14 @@ describe('_normalizeMathDelimiters', () => {
     expect(_normalizeMathDelimiters('p\n\n\\[ x=1 \\]\n\np')).toContain('$$\nx=1\n$$');
   });
 
+  // Finding 2 follow-up: stashing code must not lose the line's real context.
+  // A code span before display math on a container line must not fool the
+  // "own line" test into promoting the formula to a block outside the quote.
+  it('preserves line context across stashed code spans', () => {
+    expect(_normalizeMathDelimiters('> `x` \\[x^2\\]')).toBe('> `x` $$x^2$$');
+    expect(_normalizeMathDelimiters('- `y` \\[z\\]')).toBe('- `y` $$z$$');
+  });
+
   // Finding 3: a currency $ must never be reused as a math opener.
   it('does not pair a currency $ with a later math opener', () => {
     // $5 cannot open (followed by a digit); $x$ still renders on its own.

@@ -212,10 +212,12 @@ function _normalizeFormFences(text) {
 
 // Regions we must never rewrite: fenced code blocks (``` or ~~~) and inline
 // code spans. A message that *documents* LaTeX ("write `$x$` for inline
-// math") has to show its delimiters verbatim, not render them. This misses a
-// few CommonMark corners on purpose — 4+ backtick fences, multi-backtick
-// spans, an unterminated fence mid-stream — since covering them fully would
-// mean re-implementing the parser; the realistic cases are handled.
+// math") has to show its delimiters verbatim, not render them. We stash these
+// behind placeholders (see below) rather than splitting on them, so the
+// conversion still sees each line's real context. This misses a few CommonMark
+// corners on purpose — 4+ backtick fences, multi-backtick spans, an
+// unterminated fence mid-stream — since covering them fully would mean
+// re-implementing the parser; the realistic cases are handled.
 const _MD_CODE_REGION = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
 
 const _isBlankRun = (s) => /^\s*$/.test(s);
@@ -250,15 +252,25 @@ export function _normalizeMathDelimiters(text) {
   ) {
     return text;
   }
-  // Split so code regions (odd indices) pass through untouched.
-  return text
-    .split(_MD_CODE_REGION)
-    .map((seg, i) => (i % 2 === 1 ? seg : _convertMathDelimiters(seg)))
-    .join('');
+  // Stash code regions behind NUL-delimited placeholders so the conversion
+  // runs against the *whole* string — preserving each line's real context
+  // (blockquote `>` / list-item prefixes) that a naive split would fragment
+  // (e.g. "> `x` \[y\]") — while never rewriting code. Placeholders carry no
+  // math delimiter and no newline, so they pass through untouched; the code
+  // is restored verbatim afterwards. NUL can't occur in chat text and never
+  // escapes this function.
+  const code = [];
+  const stashed = text.replace(_MD_CODE_REGION, (m) => {
+    const token = `\u0000${code.length}\u0000`;
+    code.push(m);
+    return token;
+  });
+  const converted = _convertMathDelimiters(stashed);
+  return converted.replace(/\u0000(\d+)\u0000/g, (_m, i) => code[Number(i)]);
 }
 
-function _convertMathDelimiters(seg) {
-  return seg
+function _convertMathDelimiters(text) {
+  return text
     // Display \[ … \]. Only inject a block ($$ on its own lines) when the
     // delimiters already sit on their own line; otherwise the blank lines
     // would pull the math out of an enclosing blockquote / list item, so keep
