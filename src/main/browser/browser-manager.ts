@@ -574,9 +574,13 @@ async function setTabPinned(tabId: string, pinned: boolean): Promise<{ ok: boole
 
 /** ⌘⇧T: reopen the most recently closed tab (fresh load, pin restored). */
 async function reopenClosedTab(): Promise<{ tabId: string } | { ok: false }> {
-  const record = closedStack.pop();
+  const record = closedStack[closedStack.length - 1];
   if (!record) return { ok: false };
+  // Peek, don't pop: newTab throws at MAX_TABS, and a popped record would
+  // be lost — the tab must stay reopenable once the user frees a slot
+  // (Codex review on #482).
   const { tabId } = await newTab({ url: record.url, activate: true });
+  closedStack.pop();
   if (record.pinned) await setTabPinned(tabId, true);
   schedulePush(); // closedCount changed with the pop
   return { tabId };

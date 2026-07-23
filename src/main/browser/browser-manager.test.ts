@@ -410,6 +410,26 @@ describe('tabs', () => {
     await mgr.shutdownBrowser();
   });
 
+  it('reopen at MAX_TABS keeps the closed record for later', async () => {
+    const mgr = await loadManager();
+    await invoke('browser:new-tab', { url: 'https://doomed.com' });
+    await invoke('browser:close-tab', {}); // stack: [doomed]
+    expect(mgr.getBrowserState().closedCount).toBe(1);
+
+    for (let i = 0; i < MAX_TABS; i++) await invoke('browser:new-tab', {});
+    await expect(invoke('browser:reopen-closed-tab', undefined)).rejects.toThrow('tab limit reached');
+    // The record survived the failed reopen — free a slot and it reopens.
+    // (The freed slot is a blank tab; blanks are never recorded.)
+    expect(mgr.getBrowserState().closedCount).toBe(1);
+    await invoke('browser:close-tab', { tabId: mgr.getBrowserState().tabs[0].id });
+    expect(mgr.getBrowserState().closedCount).toBe(1);
+    const res = (await invoke('browser:reopen-closed-tab', undefined)) as { tabId: string };
+    expect(res.tabId).toBeTruthy();
+    expect(mgr.getBrowserState().tabs.some((t) => t.url === 'https://doomed.com')).toBe(true);
+    expect(mgr.getBrowserState().closedCount).toBe(0);
+    await mgr.shutdownBrowser();
+  });
+
   it('apps: add/list/remove round-trips apps.json and openApp finds-or-creates', async () => {
     const mgr = await loadManager();
 
