@@ -16,10 +16,13 @@ const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 // the per-tab actions that don't deserve first-class chrome.
 export default function NavRow({
   tab,
+  tabs,
   omniboxRef,
   onNavigate,
   onNewTab,
   onCloseTab,
+  onActivateTab,
+  onSuggestionsToggle,
 }) {
   const hasTab = !!tab;
   const hasUrl = !!tab?.url;
@@ -105,7 +108,14 @@ export default function NavRow({
           </button>
         </Tooltip>
 
-        <Omnibox tab={tab} inputRef={omniboxRef} onSubmit={onNavigate} />
+        <Omnibox
+          tab={tab}
+          inputRef={omniboxRef}
+          onSubmit={onNavigate}
+          tabs={tabs}
+          onActivateTab={onActivateTab}
+          onSuggestionsToggle={onSuggestionsToggle}
+        />
 
         <OverflowMenu
           items={menuItems}
