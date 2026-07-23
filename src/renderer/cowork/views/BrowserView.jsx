@@ -172,6 +172,25 @@ export default function BrowserView() {
       try { if (document.querySelector(OVERLAY_SELECTOR)) return; } catch {}
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
+      // Tab navigation first (both shift variants): ⌘1-8 = nth tab,
+      // ⌘9 = last tab, Ctrl+Tab / Ctrl+Shift+Tab cycle (Chrome).
+      if (mod && !e.altKey && key === 'tab') {
+        e.preventDefault();
+        const tabs = state.tabs;
+        if (tabs.length > 1) {
+          const i = tabs.findIndex((t) => t.id === activeTabId);
+          const next = tabs[(i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length];
+          if (next) activateTab(next.id);
+        }
+        return;
+      }
+      if (mod && !e.altKey && !e.shiftKey && key >= '1' && key <= '9') {
+        e.preventDefault();
+        const tabs = state.tabs;
+        const idx = key === '9' ? tabs.length - 1 : Number(key) - 1;
+        if (tabs[idx]) activateTab(tabs[idx].id);
+        return;
+      }
       if (mod && !e.altKey && !e.shiftKey) {
         if (key === 't') { e.preventDefault(); newTab(); }
         else if (key === 'w') { e.preventDefault(); if (activeTabId) closeTab(activeTabId); }
@@ -202,7 +221,7 @@ export default function BrowserView() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeTabId, isNarrow, dockOpen, newTab, closeTab]);
+  }, [activeTabId, isNarrow, dockOpen, newTab, closeTab, activateTab, state.tabs]);
 
   const isLoading = !!activeTab?.isLoading;
   const progress = isLoading
