@@ -297,17 +297,22 @@ export default function MobileShell({
         </div>
 
         <nav className="mshell__drawer-body">
-          <button
-            type="button"
-            className={`mshell-row mshell-row--top ${route === 'home' || route === 'task' ? 'is-active' : ''}`}
-            onClick={() => handleNavigate('home')}
-          >
-            <span className="mshell-row__text">
-              <span className="mshell-row__primary">Chat</span>
-              <span className="mshell-row__secondary">Start or continue a conversation</span>
-            </span>
-            <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
-          </button>
+          {/* Wrapped in mshell-accordion so the row divider is a full-width,
+              square border-bottom (matching the section rows) — a border on
+              the rounded row button itself curved oddly at the corners. */}
+          <div className="mshell-accordion">
+            <button
+              type="button"
+              className={`mshell-row mshell-row--top ${route === 'home' || route === 'task' ? 'is-active' : ''}`}
+              onClick={() => handleNavigate('home')}
+            >
+              <span className="mshell-row__text">
+                <span className="mshell-row__primary">Chat</span>
+                <span className="mshell-row__secondary">Start or continue a conversation</span>
+              </span>
+              <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
+            </button>
+          </div>
 
           {SECTIONS.map((section) => {
             const isOpen = openSection === section.key;

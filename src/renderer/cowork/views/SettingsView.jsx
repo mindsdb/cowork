@@ -1357,9 +1357,14 @@ export default function SettingsView({
                 };
                 return (
                   <div key={p.type} className="settings-provider-row" style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 380px auto',
-                    gap: 24,
+                    // Desktop: name | key/status | actions in a 3-col grid.
+                    // Mobile: a compact left-aligned column — the grid stacked
+                    // but kept the status pill + a 30px-wide button column
+                    // right-aligned, floating them into a lot of dead space.
+                    display: mobile ? 'flex' : 'grid',
+                    flexDirection: mobile ? 'column' : undefined,
+                    gridTemplateColumns: mobile ? undefined : '1fr 380px auto',
+                    gap: mobile ? 10 : 24,
                     padding: '16px 0',
                     alignItems: 'flex-start',
                   }}>
@@ -1380,7 +1385,7 @@ export default function SettingsView({
                     {showKeyInput ? (
                       <div style={{ display: 'grid', gap: 6 }}>
                         {ssoMindsHub ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0' }}>
                             {statusPill}
                           </div>
                         ) : (
@@ -1437,7 +1442,7 @@ export default function SettingsView({
                       </div>
                     ) : (
                       // Status pill replaces the key input after a test result
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '5px 0', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: mobile ? 'flex-start' : 'flex-end', padding: '5px 0', gap: 10 }}>
                         {status === 'fail' && friendlyError && (
                           <span style={{ fontSize: 11.5, color: '#E07060' }}>{friendlyError}</span>
                         )}
@@ -1445,8 +1450,8 @@ export default function SettingsView({
                       </div>
                     )}
 
-                    {/* Right: trash + edit buttons */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 30 }}>
+                    {/* Right (desktop) / inline row (mobile): trash + edit */}
+                    <div style={{ display: 'flex', flexDirection: mobile ? 'row' : 'column', gap: 6, width: mobile ? 'auto' : 30 }}>
                       {!PROTECTED_PROVIDER_TYPES.has(p.type) && (
                         <button
                           type="button"
