@@ -6,7 +6,7 @@
  * writes to .env (host.saveSettings) should also call one of these
  * helpers so the DB stays in sync.
  */
-import { BASE } from '../cowork/api';
+import { BASE, authFetch } from '../cowork/api';
 
 // Env-var names (ANTON_FOO_BAR) → backend DB setting keys (foo_bar).
 const ENV_TO_SETTING: Record<string, string> = {
@@ -60,7 +60,7 @@ export async function syncSettingsToDb(lines: string[]): Promise<boolean> {
       }
     }
     try {
-      const res = await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
+      const res = await authFetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: dbValue }),
@@ -123,7 +123,7 @@ export async function syncModelsToDb(lines: string[]): Promise<boolean> {
     const value = line.slice(eq + 1);
     if (!value) continue;
     try {
-      const res = await fetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
+      const res = await authFetch(`${BASE}/settings/${encodeURIComponent(settingKey)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value }),

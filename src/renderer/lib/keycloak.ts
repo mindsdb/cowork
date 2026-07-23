@@ -11,10 +11,14 @@ const redirectUri = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.host}${window.location.pathname}`
   : undefined;
 
+// Web uses the `public-client` (browser redirect + web origins), same as the
+// MindsHub console. `anton-desktop` is the loopback-only PKCE client for the
+// native desktop app (redirectUris http://127.0.0.1:*) and can't serve a
+// browser origin, so it must not be used here.
 const keycloak = new Keycloak({
   url: keycloakUrl,
   realm: 'mindsdb',
-  clientId: 'anton-desktop',
+  clientId: 'public-client',
 });
 
 keycloak.onAuthError = () => {
@@ -33,29 +37,3 @@ export const getAccessToken = async (): Promise<string | null> => {
     return keycloak.token ?? null;
   }
 };
-
-export function scheduleWebTokenRefresh(
-  onNewToken: (token: string) => Promise<void>,
-): () => void {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-
-  function schedule(): void {
-    if (timer) clearTimeout(timer);
-    const exp = keycloak.tokenParsed?.exp;
-    if (!exp) return;
-    const delay = Math.max(exp * 1000 - Date.now() - 60_000, 10_000);
-    timer = setTimeout(async () => {
-      try {
-        const refreshed = await keycloak.updateToken(70);
-        if (refreshed && keycloak.token) await onNewToken(keycloak.token);
-        schedule();
-      } catch {
-        keycloak.clearToken();
-        keycloak.login({ redirectUri: window.location.href });
-      }
-    }, delay);
-  }
-
-  schedule();
-  return () => { if (timer) clearTimeout(timer); };
-}
