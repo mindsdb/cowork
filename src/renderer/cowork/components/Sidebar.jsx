@@ -233,16 +233,18 @@ export default function Sidebar({
   // wordmark; null/empty falls back to the default (text-only, no logo).
   navTitle = null,
   navLogo = null,
+  // Feature flag (settings.missionControl): hides the Mission Control
+  // nav item when false. Default true for this build.
+  missionControl = true,
 }) {
   // Live browser-tab count for the Browser nav badge. Subscribes directly
   // to the main-process state push (App doesn't track tabs); the host
   // methods are guarded since they land with the browser workstream and
   // are absent in the web shell anyway (the item itself is Electron-gated).
-  // Needs-You (pending approvals) — shared subscription (usePendingApprovals):
-  // boot fetch + 45s poll + focus refetch. Quiet when the server is down;
-  // hidden entirely at zero.
-  const { approvals: pendingApprovals, count: needsYouCount } = usePendingApprovals();
-  const needsYou = { count: needsYouCount, firstConversationId: pendingApprovals[0]?.conversationId || null };
+  // Pending approvals — shared subscription (usePendingApprovals): boot
+  // fetch + 45s poll + focus refetch. Quiet when the server is down.
+  // The count rides on the Mission Control nav item as its badge.
+  const { count: needsYouCount } = usePendingApprovals();
 
   const [browserTabCount, setBrowserTabCount] = useState(0);
   useEffect(() => {
@@ -429,6 +431,7 @@ export default function Sidebar({
           onNavigate={onNavigate}
           activeRoute={activeRoute}
           onNewTask={onNewTask}
+          missionControl={missionControl}
         />
       ) : (
         <>
@@ -565,12 +568,17 @@ export default function Sidebar({
 
         {/* Primary nav */}
         <div className="nav-list" style={{ padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {needsYou.count > 0 && (
+          {/* Mission Control — the approvals-driven board. Carries the
+              pending-approvals count as its badge (the job of the old
+              "Needs You" item, which it replaces). Feature-flagged via
+              settings.missionControl. */}
+          {missionControl && (
             <NavItem
-              icon={Ico.sparkle(15)}
-              label="Needs You"
-              onClick={() => needsYou.firstConversationId && onSelectTask?.(needsYou.firstConversationId)}
-              badge={needsYou.count}
+              icon={Ico.grid(15)}
+              label="Mission Control"
+              onClick={() => onNavigate('mission-control')}
+              active={activeRoute === 'mission-control'}
+              badge={needsYouCount > 0 ? needsYouCount : null}
             />
           )}
           <NavItem icon={Ico.folder(15)}  label="Projects"        onClick={() => onNavigate('projects')}  active={activeRoute === 'projects'}  badge={showCounters ? (projectsCount  || null) : null} />
@@ -958,7 +966,7 @@ function RailDivider() {
   return <div style={{ width: 24, height: 1, background: 'var(--line)', margin: '6px 0', flexShrink: 0 }} />;
 }
 
-function CollapsedRail({ onExpand, onOpenApp, onNavigate, activeRoute, onNewTask }) {
+function CollapsedRail({ onExpand, onOpenApp, onNavigate, activeRoute, onNewTask, missionControl = true }) {
   return (
     <div
       aria-label="Collapsed sidebar"
@@ -977,6 +985,9 @@ function CollapsedRail({ onExpand, onOpenApp, onNavigate, activeRoute, onNewTask
       )}
       <RailDivider />
       <RailButton icon={Ico.plus(14)} label="New task" onClick={() => onNewTask?.()} accent />
+      {missionControl && (
+        <RailButton icon={Ico.grid(14)} label="Mission Control" active={activeRoute === 'mission-control'} onClick={() => onNavigate('mission-control')} />
+      )}
       <RailButton icon={Ico.folder(14)} label="Projects" active={activeRoute === 'projects'} onClick={() => onNavigate('projects')} />
       <RailButton icon={Ico.clock(14)} label="Scheduled Tasks" active={activeRoute === 'scheduled'} onClick={() => onNavigate('scheduled')} />
       <RailButton icon={Ico.sparkle(14)} label="Live Artifacts" active={activeRoute === 'artifacts'} onClick={() => onNavigate('artifacts')} />

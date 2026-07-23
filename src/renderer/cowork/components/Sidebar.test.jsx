@@ -150,35 +150,51 @@ describe('Sidebar — nav title/logo override', () => {
   });
 });
 
-// ---- Needs-You badge (approvals) -----------------------------------------
+// ---- Mission Control nav item (approvals badge) --------------------------
 const fetchPendingApprovals = vi.hoisted(() => vi.fn(async () => []));
 vi.mock('../api', () => ({ fetchPendingApprovals }));
 
-describe('Sidebar — Needs You badge (approvals)', () => {
-  it('shows the Needs You item with the pending count and selects the first conversation', async () => {
+describe('Sidebar — Mission Control nav item (approvals badge)', () => {
+  it('shows the item with the pending count as its badge and navigates to the board', async () => {
     fetchPendingApprovals.mockImplementation(async () => [
       { id: 'ap-1', conversationId: 'conv-9', kind: 'action', status: 'pending' },
       { id: 'ap-2', conversationId: 'conv-9', kind: 'action', status: 'pending' },
     ]);
-    const onSelectTask = vi.fn();
-    render(<Sidebar {...baseProps} onSelectTask={onSelectTask} />);
-    const item = await screen.findByRole('button', { name: /Needs You/ });
+    const onNavigate = vi.fn();
+    render(<Sidebar {...baseProps} onNavigate={onNavigate} />);
+    const item = await screen.findByRole('button', { name: 'Mission Control' });
     expect(item.textContent).toContain('2');
     item.click();
-    expect(onSelectTask).toHaveBeenCalledWith('conv-9');
+    expect(onNavigate).toHaveBeenCalledWith('mission-control');
   });
 
-  it('hides the item when nothing is pending', async () => {
+  it('keeps the item visible with no badge when nothing is pending', async () => {
     fetchPendingApprovals.mockImplementation(async () => []);
     render(<Sidebar {...baseProps} />);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByRole('button', { name: /Needs You/ })).toBeNull();
+    const item = await screen.findByRole('button', { name: 'Mission Control' });
+    expect(item.querySelector('.nav-row__badge')).toBeNull();
   });
 
-  it('stays quiet when the server is down', async () => {
+  it('stays quiet (item, no badge) when the server is down', async () => {
     fetchPendingApprovals.mockImplementation(async () => { throw new Error('network'); });
     render(<Sidebar {...baseProps} />);
+    const item = await screen.findByRole('button', { name: 'Mission Control' });
+    expect(item.querySelector('.nav-row__badge')).toBeNull();
+  });
+
+  it('hides the item when the missionControl flag is off', async () => {
+    fetchPendingApprovals.mockImplementation(async () => [
+      { id: 'ap-1', conversationId: 'conv-9', kind: 'action', status: 'pending' },
+    ]);
+    render(<Sidebar {...baseProps} missionControl={false} />);
     await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByRole('button', { name: /Needs You/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mission Control' })).toBeNull();
+  });
+
+  it('marks the item active on the mission-control route', async () => {
+    fetchPendingApprovals.mockImplementation(async () => []);
+    render(<Sidebar {...baseProps} activeRoute="mission-control" />);
+    const item = await screen.findByRole('button', { name: 'Mission Control' });
+    expect(item.className).toContain('active');
   });
 });

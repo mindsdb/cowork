@@ -12,6 +12,7 @@ import MobileShell from './components/MobileShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
 import HomeView from './views/HomeView';
+import MissionControlView from './views/MissionControlView';
 import ChatView from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
@@ -783,6 +784,10 @@ function AppCore() {
     showThemeToggle: true,
     show8bitToggle: true,
     accentVariant: 'aqua',
+    // Feature flag for the Mission Control board. Default on for this
+    // build; the server has no such key, so fetchSettings never
+    // overrides it — flip locally to hide the nav item + route.
+    missionControl: true,
   });
 
   const agentLabel = getAgentLabel(settings);
@@ -1305,7 +1310,7 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize | browser
+  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize | browser | mission-control
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
@@ -3694,6 +3699,7 @@ function AppCore() {
           serverBusy={serverBusy}
           serverBusyKind={serverBusyKind}
           showCounters={settings.showCounters !== false}
+          missionControl={settings.missionControl !== false}
           navTitle={settings.navTitle || null}
           navLogo={settings.navLogo || null}
           updateAvailable={updateStatus?.phase === 'available' ? { version: updateStatus.version } : null}
@@ -3779,6 +3785,34 @@ function AppCore() {
             onShowServerHelp={() => { setSettingsSection('backend'); setSettingsOpen(true); }}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
+          />
+        )}
+
+        {/* Mission Control — approvals-driven supervision board. Composer
+            props mirror HomeView's: sending from the board goes through the
+            same handleSendFromHome new-task flow. */}
+        {route === 'mission-control' && settings.missionControl !== false && (
+          <MissionControlView
+            tasks={tasks}
+            onSelectTask={selectTask}
+            onNavigate={navigate}
+            agentLabel={agentLabel}
+            onSend={handleSendFromHome}
+            project={selectedProject}
+            onProjectChange={setSelectedProject}
+            model={selectedModel}
+            onModelChange={setSelectedModel}
+            projects={projects}
+            models={modelOptions}
+            attachments={composerAttachments}
+            connectors={connectors}
+            onNavigateToConnectors={() => navigate('customize')}
+            onAttachFiles={handleAttachFiles}
+            onAddGoogleDriveFiles={handleAddGoogleDriveFiles}
+            onRemoveAttachment={handleRemoveAttachment}
+            disabledConnections={composerDisabledConnections}
+            onUpdateConnectorMute={handleComposerConnectorMute}
+            onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
           />
         )}
 

@@ -2022,3 +2022,27 @@ export async function resolveApproval(id, resolution, editedDraft) {
     body: JSON.stringify({ resolution, edited_draft: editedDraft }),
   });
 }
+
+// Mission Control board reads. The server list endpoint filters ONE status
+// per call, so "recently resolved" (approved + edited) is merged client-side,
+// sorted newest-first and capped — the board's Shipped column only wants a
+// recent handful. Quiet by design like the pending feed: a down server means
+// empty, not errors.
+export async function fetchResolvedApprovals() {
+  const [approved, edited] = await Promise.all([
+    req('/approvals/?status=approved').catch(() => null),
+    req('/approvals/?status=edited').catch(() => null),
+  ]);
+  const merged = [...(approved?.approvals || []), ...(edited?.approvals || [])];
+  const ts = (a) => Date.parse(a?.resolvedAt || a?.createdAt || '') || 0;
+  return merged.sort((a, b) => ts(b) - ts(a)).slice(0, 10);
+}
+
+export async function fetchExpiredApprovals() {
+  try {
+    const data = await req('/approvals/?status=expired');
+    return Array.isArray(data?.approvals) ? data.approvals : [];
+  } catch {
+    return [];
+  }
+}
