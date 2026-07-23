@@ -774,6 +774,10 @@ export default function CustomizeView({
           const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
           setList(next);
           onConnectionsSyncedRef.current?.(next);
+          // Project files' Context card holds its own Google Drive file
+          // list and has no other way to learn a connection just vanished
+          // (and with it, that connection's _picked_files grant).
+          window.dispatchEvent(new CustomEvent('anton:connections-changed'));
           return;
         }
       }
@@ -782,6 +786,7 @@ export default function CustomizeView({
       const next = Array.isArray(fresh?.connections) ? fresh.connections : [];
       setList(next);
       onConnectionsSyncedRef.current?.(next);
+      window.dispatchEvent(new CustomEvent('anton:connections-changed'));
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[connectors] delete failed', e);
