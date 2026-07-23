@@ -964,9 +964,18 @@ function CollapsedRail({ onExpand, onOpenApp, onNavigate, activeRoute, onNewTask
       <RailButton icon={Ico.folder(14)} label="Projects" active={activeRoute === 'projects'} onClick={() => onNavigate('projects')} />
       <RailButton icon={Ico.clock(14)} label="Scheduled Tasks" active={activeRoute === 'scheduled'} onClick={() => onNavigate('scheduled')} />
       <RailButton icon={Ico.sparkle(14)} label="Live Artifacts" active={activeRoute === 'artifacts'} onClick={() => onNavigate('artifacts')} />
-      <RailButton icon={Ico.globe(14)} label="Browser" active={activeRoute === 'browser'} onClick={() => onNavigate('browser')} />
-      <RailDivider />
-      <SidebarApps rail onOpenApp={onOpenApp} />
+      {/* Browser + web apps are Electron-only (the web shell has no
+          WebContentsView bridge) — gated exactly like the expanded
+          sidebar's NavItem/SidebarApps above (Codex review on #479). */}
+      {host.isElectron && (
+        <RailButton icon={Ico.globe(14)} label="Browser" active={activeRoute === 'browser'} onClick={() => onNavigate('browser')} />
+      )}
+      {host.isElectron && (
+        <>
+          <RailDivider />
+          <SidebarApps rail onOpenApp={onOpenApp} />
+        </>
+      )}
       <div style={{ flex: 1 }} />
       <RailButton icon={Ico.brain(14)} label="Memories" active={activeRoute === 'memory'} onClick={() => onNavigate('memory')} />
       <RailButton icon={Ico.cube(14)} label="Skills library" active={activeRoute === 'skills'} onClick={() => onNavigate('skills')} />
