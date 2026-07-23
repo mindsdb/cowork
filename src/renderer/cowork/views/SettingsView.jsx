@@ -167,18 +167,26 @@ const SettingsLayoutContext = createContext({ mobile: false });
 function SettingsSectionPanel({ children, footer }) {
   const { mobile } = useContext(SettingsLayoutContext);
   if (mobile) {
-    // Natural flow inside the accordion body: no internal scroll or width
-    // cap (the page scrolls and the column is already narrow), and the
-    // footer sits inline at the end rather than as a sticky glass bar.
+    // Natural flow so the whole detail page scrolls (no internal scroll or
+    // width cap). The footer (Save button + status) sticks to the bottom of
+    // the viewport as a full-bleed action bar so it's always reachable on a
+    // long section instead of buried at the end (ENG-990 QA).
     return (
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div>{children}</div>
         {footer && (
           <div style={{
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 1,
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-            padding: '14px 0 2px',
-            marginTop: 12,
+            // Bleed past the .settings-detail 14px gutter to the screen edges
+            // so it reads as a bottom bar, not an inline row.
+            margin: '16px -14px 0',
+            padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
             borderTop: '1px solid var(--border-subtle)',
+            // Opaque so scrolling content is masked behind the bar.
+            background: 'var(--bg)',
           }}>
             {footer}
           </div>
