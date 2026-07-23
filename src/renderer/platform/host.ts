@@ -729,6 +729,29 @@ export async function browserOpenApp(appId: string): Promise<{ tabId: string; cr
   return { error: 'unsupported' };
 }
 
+export interface FindInPageResult {
+  matches: number;
+  activeMatchOrdinal: number;
+}
+
+export async function browserFindInPage(opts: {
+  tabId?: string;
+  text: string;
+  forward?: boolean;
+  findNext?: boolean;
+}): Promise<FindInPageResult | { ok: false }> {
+  if (isElectron && typeof bridge.browserFindInPage === 'function') {
+    return bridge.browserFindInPage(opts);
+  }
+  return { ok: false };
+}
+
+export async function browserStopFind(tabId: string): Promise<void> {
+  if (isElectron && typeof bridge.browserStopFind === 'function') {
+    await bridge.browserStopFind(tabId);
+  }
+}
+
 export async function browserNavigate(tabId: string, url: string): Promise<void> {
   if (isElectron && typeof bridge.browserNavigate === 'function') {
     await bridge.browserNavigate(tabId, url);
@@ -849,6 +872,8 @@ export const host = {
   browserAppsRemove,
   browserAppsRename,
   browserOpenApp,
+  browserFindInPage,
+  browserStopFind,
   browserNavigate,
   browserGoBack,
   browserGoForward,

@@ -4,6 +4,7 @@ import { Button } from '../components/ui';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import TabStrip from '../components/browser/TabStrip';
 import NavRow from '../components/browser/NavRow';
+import FindBar from '../components/browser/FindBar';
 import StartPage from '../components/browser/StartPage';
 import AgentDock from '../components/browser/AgentDock';
 import { useBrowserState } from '../components/browser/useBrowserState';
@@ -86,6 +87,13 @@ export default function BrowserView() {
   const [dockOpen, setDockOpen] = useState(loadDockOpen);
   const [dockWidth, setDockWidth] = useState(loadDockWidth);
   const [dockResizing, setDockResizing] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    if (activeTabId) host.browserStopFind?.(activeTabId);
+  }, [activeTabId]);
+  // Switching tabs closes the bar (and clears the old page's highlights).
+  useEffect(() => { if (findOpen) closeFind(); }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { window.localStorage.setItem('cowork.browser.dock', dockOpen ? 'open' : 'closed'); } catch {} }, [dockOpen]);
   useEffect(() => { try { window.localStorage.setItem('cowork.browser.dockW', String(dockWidth)); } catch {} }, [dockWidth]);
 
@@ -163,6 +171,7 @@ export default function BrowserView() {
           const el = omniboxRef.current;
           if (el) { el.focus(); el.select(); }
         } else if (key === 'j') { e.preventDefault(); setDockOpen((v) => !v); }
+        else if (key === 'f') { e.preventDefault(); setFindOpen(true); }
       } else if (mod && e.shiftKey && !e.altKey && key === 'r') {
         // ⇧⌘R — hard reload. Main normalizes this to a cache-bypassing
         // reload; same bridge call as ⌘R from here.
@@ -254,20 +263,30 @@ export default function BrowserView() {
           background: 'var(--surface)',
         }}
       >
-        {/* Native view placeholder. MUST stay opaque (--surface): the
-            gravity field shows through transparent gaps and the native
-            view above it would look broken. Bounds mirror to main. */}
-        <div ref={placeholderRef} style={{
+        {/* Content column: when the find bar is open it takes a DOM strip
+            at the top and the native view's bounds (mirrored from the inner
+            div) shrink below it — the Chrome layout with no OS-view fight. */}
+        <div style={{
           position: 'relative', minWidth: 0, minHeight: 0,
+          display: 'flex', flexDirection: 'column',
           background: 'var(--surface)',
         }}>
-          {showStartPage && <StartPage onNavigate={navigateActive} />}
-          {hasError && !showStartPage && (
-            <LoadErrorOverlay
-              tab={activeTab}
-              onRetry={() => activeTab && host.browserReload?.(activeTab.id)}
-            />
-          )}
+          {findOpen && activeTab && <FindBar tabId={activeTabId} onClose={closeFind} />}
+          {/* Native view placeholder. MUST stay opaque (--surface): the
+              gravity field shows through transparent gaps and the native
+              view above it would look broken. Bounds mirror to main. */}
+          <div ref={placeholderRef} style={{
+            position: 'relative', flex: 1, minWidth: 0, minHeight: 0,
+            background: 'var(--surface)',
+          }}>
+            {showStartPage && <StartPage onNavigate={navigateActive} />}
+            {hasError && !showStartPage && (
+              <LoadErrorOverlay
+                tab={activeTab}
+                onRetry={() => activeTab && host.browserReload?.(activeTab.id)}
+              />
+            )}
+          </div>
         </div>
         {!isNarrow && (
           <AgentDock

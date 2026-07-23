@@ -646,6 +646,42 @@ function openDevTools(tabId?: string): void {
   views.get(id)?.webContents.openDevTools({ mode: 'detach' });
 }
 
+interface FindResult {
+  matches: number;
+  activeMatchOrdinal: number;
+}
+
+async function findInPage(tabId: string | undefined, opts: { text: string; forward?: boolean; findNext?: boolean }): Promise<FindResult | { ok: false }> {
+  const text = String(opts.text ?? '').trim();
+  if (!text) return { ok: false };
+  const view = views.get(requireTab(tabId));
+  if (!view) return { ok: false };
+  const wc = view.webContents;
+  return new Promise((resolve) => {
+    const requestId = wc.findInPage(text, { forward: opts.forward ?? true, findNext: opts.findNext === true });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onFound = (_e: unknown, result: { requestId: number; matches: number; activeMatchOrdinal: number }) => {
+      if (result.requestId !== requestId) return;
+      wc.removeListener('found-in-page', onFound);
+      if (timer) clearTimeout(timer);
+      resolve({ matches: result.matches, activeMatchOrdinal: result.activeMatchOrdinal });
+    };
+    wc.on('found-in-page', onFound);
+    timer = setTimeout(() => {
+      wc.removeListener('found-in-page', onFound);
+      resolve({ matches: 0, activeMatchOrdinal: 0 });
+    }, 3000);
+    timer.unref?.();
+  });
+}
+
+function stopFindInPage(tabId?: string): { ok: boolean } {
+  const view = views.get(requireTab(tabId));
+  if (!view) return { ok: false };
+  view.webContents.stopFindInPage('clearSelection');
+  return { ok: true };
+}
+
 async function topSites(limit?: number): Promise<TopSite[]> {
   const cowork = logic.historyToTopSites(loadHistory());
   const chrome = await importChromeHistory(chromeCachePath(), { force: false });
@@ -1130,6 +1166,10 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
   ipcMain.handle(IPC.BROWSER_OPEN_APP, (_e, payload: { appId?: string }) =>
     payload?.appId ? openApp(payload.appId) : { error: 'appId required' },
   );
+  ipcMain.handle(IPC.BROWSER_FIND_IN_PAGE, (_e, payload: { tabId?: string; text?: string; forward?: boolean; findNext?: boolean }) =>
+    payload?.text ? findInPage(payload.tabId, { text: payload.text, forward: payload.forward, findNext: payload.findNext }) : { ok: false },
+  );
+  ipcMain.handle(IPC.BROWSER_STOP_FIND, (_e, payload: { tabId?: string }) => stopFindInPage(payload?.tabId));
   ipcMain.handle(IPC.BROWSER_NAVIGATE, async (_e, payload: { tabId?: string; url?: string }) => {
     if (!payload?.url) return;
     try {

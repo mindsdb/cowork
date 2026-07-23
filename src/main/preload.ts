@@ -140,6 +140,9 @@ contextBridge.exposeInMainWorld('antontron', {
   browserAppsRemove: (appId: string) => ipcRenderer.invoke(IPC.BROWSER_APPS_REMOVE, { appId }),
   browserAppsRename: (appId: string, name: string) => ipcRenderer.invoke(IPC.BROWSER_APPS_RENAME, { appId, name }),
   browserOpenApp: (appId: string) => ipcRenderer.invoke(IPC.BROWSER_OPEN_APP, { appId }),
+  browserFindInPage: (opts: { tabId?: string; text: string; forward?: boolean; findNext?: boolean }) =>
+    ipcRenderer.invoke(IPC.BROWSER_FIND_IN_PAGE, opts),
+  browserStopFind: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_STOP_FIND, { tabId }),
   browserNavigate: (tabId: string, url: string) =>
     ipcRenderer.invoke(IPC.BROWSER_NAVIGATE, { tabId, url }),
   browserGoBack: (tabId: string) => ipcRenderer.invoke(IPC.BROWSER_GO_BACK, { tabId }),
