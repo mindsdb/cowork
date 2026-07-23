@@ -1310,7 +1310,9 @@ function AppCore() {
     document.body.classList.toggle('gf-dots-off', settings.showDots === false);
   }, [settings.showDots]);
 
-  const [route, setRoute] = useState('home');         // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize | browser | mission-control
+  // The board is home (M3): Mission Control is the default route while its
+  // flag is on; the old home route stays reachable during absorption step 1.
+  const [route, setRoute] = useState(settings.missionControl !== false ? 'mission-control' : 'home');         // mission-control | home | task | projects | scheduled | schedule-detail | artifacts | channels | customize | browser
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = route;
