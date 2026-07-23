@@ -53,6 +53,9 @@ export default function ApprovalCard({ approval, onOpenTab }) {
   };
 
   const receiptError = resolved?.status === 'failed' && approval.receipt?.error;
+  // Resolved receipts carry a human line (e.g. the digest's "See you at
+  // 9:00.") — render it quietly when present.
+  const receiptNote = resolved?.receipt?.summary || resolved?.receipt?.noted || approval.receipt?.summary || null;
 
   return (
     <>
@@ -93,6 +96,7 @@ export default function ApprovalCard({ approval, onOpenTab }) {
         )}
 
         {error && <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--danger)' }}>{error}</div>}
+        {receiptNote && <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--ok)' }}>{String(receiptNote)}</div>}
 
         {pending && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>

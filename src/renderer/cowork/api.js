@@ -2053,3 +2053,10 @@ export async function fetchExpiredApprovals() {
 export async function fetchApprovalMetrics() {
   return req('/metrics/approvals');
 }
+
+// ---- Onboarding (first-run cascade) ---------------------------------------
+// Idempotent: eligibility re-derives from world state on every call.
+
+export async function ensureOnboarding() {
+  return req('/onboarding/ensure', { method: 'POST' });
+}

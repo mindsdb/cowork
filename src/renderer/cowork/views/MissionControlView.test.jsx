@@ -11,7 +11,8 @@ vi.mock('../components/board/useBoard', () => ({ useBoard }));
 
 const fetchSession = vi.hoisted(() => vi.fn(async () => null));
 const openArtifact = vi.hoisted(() => vi.fn(async () => ({})));
-vi.mock('../api', () => ({ fetchSession, openArtifact }));
+const ensureOnboarding = vi.hoisted(() => vi.fn(async () => ({ seeded: true })));
+vi.mock('../api', () => ({ fetchSession, openArtifact, ensureOnboarding }));
 
 const hostMock = vi.hoisted(() => ({ isElectron: true, isMac: () => false }));
 vi.mock('../../platform/host', () => ({ host: hostMock }));
@@ -35,6 +36,15 @@ vi.mock('../components/ApprovalCard', () => ({
 }));
 
 import MissionControlView from './MissionControlView';
+
+// First-run effects (peek auto-open, ensure-seed, first-ship) are
+// localStorage/sessionStorage-gated — seed them OFF so existing tests stay
+// hermetic; dedicated tests re-arm what they exercise.
+beforeEach(() => {
+  localStorage.setItem('cowork.peekAutoOpened', '1');
+  localStorage.setItem('cowork.firstShipCelebrated', '1');
+  sessionStorage.setItem('cowork.onboardingEnsured', '1');
+});
 
 function board(overrides = {}) {
   return {
@@ -369,5 +379,60 @@ describe('Mission Control — metrics row (M4)', () => {
     useBoard.mockReturnValue(board({ metrics: null }));
     render(<MissionControlView />);
     expect(screen.queryByTestId('metrics-row')).toBeNull();
+  });
+});
+
+describe('Mission Control — first-run effects (O2/O3)', () => {
+  it('auto-opens Peek once on the first Running card', () => {
+    localStorage.removeItem('cowork.peekAutoOpened');
+    fetchSession.mockImplementation(async () => ({ messages: [] }));
+    useBoard.mockReturnValue(board({
+      running: [{ conversationId: 'c1', topic: 'Inbox scan', startedAt: null }],
+    }));
+    render(<MissionControlView />);
+    return waitFor(() => {
+      expect(fetchSession).toHaveBeenCalledWith('c1');
+      expect(localStorage.getItem('cowork.peekAutoOpened')).toBe('1');
+    });
+  });
+
+  it('calls ensureOnboarding once per session', async () => {
+    sessionStorage.removeItem('cowork.onboardingEnsured');
+    ensureOnboarding.mockClear();
+    useBoard.mockReturnValue(board());
+    render(<MissionControlView />);
+    await waitFor(() => expect(ensureOnboarding).toHaveBeenCalledTimes(1));
+    expect(sessionStorage.getItem('cowork.onboardingEnsured')).toBe('1');
+  });
+
+  it('celebrates the first shipped item with highlight + one-time notify', async () => {
+    localStorage.removeItem('cowork.firstShipCelebrated');
+    const notify = vi.fn();
+    hostMock.appNotify = notify;
+    const shippedOne = {
+      id: 'ap-9', conversationId: 'c9', kind: 'action', status: 'approved',
+      actionDescriptor: { summary: 'Box-office sheet' },
+      receipt: { executed: true, summary: '26 rows → B2:G12' },
+      resolvedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+    };
+    useBoard.mockReturnValue(board({
+      shipped: { today: [shippedOne], older: [] },
+      metrics: { shipped: 1, needsYou: 0, autonomyRatio: null, editRate: 0, skipRate: 0, medianTimeToResolveSeconds: null, injectionTripwireHits: {}, gateQuality: {} },
+    }));
+    render(<MissionControlView />);
+    await waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
+    expect(notify.mock.calls[0][0].title).toContain('shipped its first work');
+    expect(localStorage.getItem('cowork.firstShipCelebrated')).toBe('1');
+  });
+
+  it('does not celebrate when the day-two moment already happened', () => {
+    const notify = vi.fn();
+    hostMock.appNotify = notify;
+    useBoard.mockReturnValue(board({
+      shipped: { today: [{ id: 'ap-9', status: 'approved', actionDescriptor: {}, receipt: {}, resolvedAt: new Date().toISOString(), createdAt: '' }], older: [] },
+      metrics: { shipped: 1, needsYou: 0, autonomyRatio: null, editRate: 0, skipRate: 0, medianTimeToResolveSeconds: null, injectionTripwireHits: {}, gateQuality: {} },
+    }));
+    render(<MissionControlView />);
+    expect(notify).not.toHaveBeenCalled();
   });
 });

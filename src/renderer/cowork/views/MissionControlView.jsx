@@ -15,14 +15,14 @@
 // No new design here: PageHeader rhythm for the masthead, CardRow for the
 // column rows, Badge for statuses, CSS-var tokens throughout.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Ico from '../components/Icons';
 import Composer from '../components/Composer';
 import ApprovalCard from '../components/ApprovalCard';
 import { Button, CardRow, Spinner } from '../components/ui';
 import Badge from '../components/ui/Badge';
 import { useBoard } from '../components/board/useBoard';
-import { fetchSession, openArtifact } from '../api';
+import { ensureOnboarding, fetchSession, openArtifact } from '../api';
 import { relativeAge, relativeTime } from '../lib/formatTime';
 import { host } from '../../platform/host';
 
@@ -133,7 +133,7 @@ function artifactName(ref) {
   return s.split('/').filter(Boolean).pop() || s;
 }
 
-function ShippedRow({ approval: a, onClick }) {
+function ShippedRow({ approval: a, celebrate = false, onClick }) {
   const rel = relativeAge(a.resolvedAt || a.createdAt) || 'just now';
   const summary = receiptSummary(a);
   const artifactRef = receiptArtifactRef(a);
@@ -146,8 +146,17 @@ function ShippedRow({ approval: a, onClick }) {
       <span aria-hidden style={{ color: 'var(--ink-4)', display: 'inline-flex', flexShrink: 0, marginTop: 2 }}>{Ico.check(13)}</span>
       <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <span className="s-h3" style={{
-          color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{approvalTitle(a)}</span>
+          color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          {approvalTitle(a)}
+          {celebrate && (
+            <span style={{
+              fontSize: 10, fontWeight: 650, color: 'var(--accent-2)',
+              background: 'var(--accent-bg)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+              borderRadius: 999, padding: '1px 7px', flexShrink: 0,
+            }}>First ship</span>
+          )}
+        </span>
         <span style={{ ...QUIET, fontSize: 11.5 }}>
           {summary || `${a.status === 'edited' ? 'Edited & sent' : 'Approved'} · ${rel}`}
         </span>
@@ -294,6 +303,39 @@ export default function MissionControlView({
   const { needsYou, running, scheduled, shipped, expired, metrics, loading } = useBoard({ tasks });
   // Which running conversation (if any) the Peek slide-over is showing.
   const [peekId, setPeekId] = useState(null);
+
+  // First-run cascade (O2): seed the board's real work once per app session.
+  // The endpoint is idempotent — eligibility re-derives from world state.
+  useEffect(() => {
+    if (sessionStorage.getItem('cowork.onboardingEnsured')) return;
+    sessionStorage.setItem('cowork.onboardingEnsured', '1');
+    ensureOnboarding().catch(() => {}); // a down server must never block the board
+  }, []);
+
+  // The single moment of forced attention: the FIRST Running card auto-opens
+  // Peek once, so the user watches the agent drive their real inbox.
+  useEffect(() => {
+    if (peekId || running.length === 0) return;
+    if (localStorage.getItem('cowork.peekAutoOpened')) return;
+    localStorage.setItem('cowork.peekAutoOpened', '1');
+    setPeekId(running[0].conversationId);
+  }, [running, peekId]);
+
+  // Day-two hook (O3): the first autonomously-Shipped item is celebrated
+  // once — a highlight on the card plus a one-time native notification.
+  const firstShipRef = useRef(false);
+  useEffect(() => {
+    const total = shipped.today.length + shipped.older.length;
+    if (firstShipRef.current || total === 0) return;
+    if (!metrics || (metrics.shipped ?? 0) !== total || total !== 1) return;
+    if (localStorage.getItem('cowork.firstShipCelebrated')) return;
+    firstShipRef.current = true;
+    localStorage.setItem('cowork.firstShipCelebrated', '1');
+    host.appNotify({
+      title: `${agentLabel} shipped its first work`,
+      body: 'While you were away. It’s on the board with its receipt.',
+    });
+  }, [shipped, metrics, agentLabel]);
 
   const n = needsYou.length;
   const headline = n === 0
