@@ -218,7 +218,9 @@ function PeekPanel({ conversationId, topic, agentLabel = 'Anton', onClose, onWat
     <aside
       aria-label={`Peek — ${topic}`}
       style={{
-        position: 'fixed', top: 9, right: 9, bottom: 9, zIndex: 120,
+        // Top offset clears the masthead — the pill and headline stay visible
+        // instead of being covered (the "lone +" bug from review).
+        position: 'fixed', top: 96, right: 9, bottom: 9, zIndex: 120,
         width: 420, maxWidth: 'calc(100vw - 48px)',
         display: 'flex', flexDirection: 'column',
         background: 'var(--surface)', border: '1px solid var(--line)',
@@ -231,7 +233,8 @@ function PeekPanel({ conversationId, topic, agentLabel = 'Anton', onClose, onWat
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="s-h3" style={{
-            color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            color: 'var(--ink)', overflow: 'hidden', wordBreak: 'break-word',
+            display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
           }}>{topic}</div>
           <div style={{ ...QUIET, fontSize: 11.5, marginTop: 2 }}>Read-only peek — open the task to reply</div>
         </div>
@@ -249,7 +252,12 @@ function PeekPanel({ conversationId, topic, agentLabel = 'Anton', onClose, onWat
             <Spinner />
           </div>
         ) : visible.length === 0 ? (
-          <div style={{ ...QUIET, padding: '10px 0' }}>No messages yet — the turn just started.</div>
+          <div style={{
+            ...QUIET, textAlign: 'center', padding: '32px 12px',
+            border: '1px dashed var(--line-2, var(--line))', borderRadius: 10,
+          }}>
+            No messages yet — the turn just started.
+          </div>
         ) : (
           visible.map((m, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -353,6 +361,9 @@ export default function MissionControlView({
       : `${n} things need you. ${agentLabel} has the rest.`;
 
   const shippedCount = shipped.today.length + shipped.older.length;
+  // A paused schedule isn't "scheduled" in any sense the user means — the
+  // column shows live schedules only; the drill-down still carries paused.
+  const activeSchedules = scheduled.filter((s) => s && s.enabled !== false);
 
   // Auth approvals hand their browser tab to the user — same wiring as the
   // chat transcript's StepApprovals.
@@ -436,7 +447,7 @@ export default function MissionControlView({
         <div style={{
           padding: '0 32px 32px',
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
           gap: 20,
           alignItems: 'start',
         }}>
@@ -464,7 +475,8 @@ export default function MissionControlView({
                 style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 12px' }}
               >
                 <span className="s-h3" style={{
-                  color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  color: 'var(--ink)', overflow: 'hidden', wordBreak: 'break-word',
+                  display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
                 }}>{r.topic}</span>
                 <span style={{ ...QUIET, fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <LiveDot />
@@ -494,8 +506,8 @@ export default function MissionControlView({
             ))}
           </Column>
 
-          <Column title="Scheduled" dot="color-mix(in srgb, var(--accent) 45%, #c4b5fd)" count={scheduled.length} isEmpty={scheduled.length === 0} empty="Nothing scheduled">
-            {scheduled.map((s) => (
+          <Column title="Scheduled" dot="color-mix(in srgb, var(--accent) 45%, #c4b5fd)" count={activeSchedules.length} isEmpty={activeSchedules.length === 0} empty="Nothing scheduled">
+            {activeSchedules.map((s) => (
               <Row
                 key={s.id}
                 icon={Ico.clock(13)}

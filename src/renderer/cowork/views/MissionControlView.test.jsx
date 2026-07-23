@@ -149,13 +149,16 @@ describe('MissionControlView — columns', () => {
     expect(screen.getByText('1 approval expired while you were away')).toBeInTheDocument();
   });
 
-  it('marks paused schedules', () => {
+  it('excludes paused schedules from the column (paused ≠ scheduled)', () => {
     useBoard.mockReturnValue(board({
-      scheduled: [{ id: 's1', title: 'Paused digest', cadence: 'weekly', enabled: false }],
+      scheduled: [
+        { id: 's1', title: 'Paused digest', cadence: 'weekly', enabled: false },
+        { id: 's2', title: 'Live digest', cadence: 'daily', enabled: true, nextRunAt: '2026-07-24T08:00:00Z' },
+      ],
     }));
     render(<MissionControlView />);
-    expect(screen.getByText('Paused')).toBeInTheDocument();
-    expect(screen.getByText('Weekly')).toBeInTheDocument();
+    expect(screen.queryByText('Paused digest')).toBeNull();
+    expect(screen.getByText('Live digest')).toBeInTheDocument();
   });
 
   it('groups shipped into Today and Earlier', () => {
