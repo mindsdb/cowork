@@ -4,7 +4,7 @@ import { Spinner, Kbd, Tooltip } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import SidebarApps from './SidebarApps';
-import { fetchPendingApprovals } from '../api';
+import { usePendingApprovals } from './usePendingApprovals';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { host } from '../../platform/host';
 import { relativeAge } from '../lib/formatTime';
@@ -238,25 +238,11 @@ export default function Sidebar({
   // to the main-process state push (App doesn't track tabs); the host
   // methods are guarded since they land with the browser workstream and
   // are absent in the web shell anyway (the item itself is Electron-gated).
-  // Needs-You (pending approvals) — Sidebar-owned subscription, same shape
-  // as browserTabCount: boot fetch + 45s poll + focus refetch. Quiet when the
-  // server is down; hidden entirely at zero.
-  const [needsYou, setNeedsYou] = useState({ count: 0, firstConversationId: null });
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const list = await fetchPendingApprovals();
-        if (!alive) return;
-        setNeedsYou({ count: list.length, firstConversationId: list[0]?.conversationId || null });
-      } catch { /* server down — the badge just stays quiet */ }
-    };
-    load();
-    const t = setInterval(load, 45000);
-    const onFocus = () => load();
-    window.addEventListener('focus', onFocus);
-    return () => { alive = false; clearInterval(t); window.removeEventListener('focus', onFocus); };
-  }, []);
+  // Needs-You (pending approvals) — shared subscription (usePendingApprovals):
+  // boot fetch + 45s poll + focus refetch. Quiet when the server is down;
+  // hidden entirely at zero.
+  const { approvals: pendingApprovals, count: needsYouCount } = usePendingApprovals();
+  const needsYou = { count: needsYouCount, firstConversationId: pendingApprovals[0]?.conversationId || null };
 
   const [browserTabCount, setBrowserTabCount] = useState(0);
   useEffect(() => {

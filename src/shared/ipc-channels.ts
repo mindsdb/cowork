@@ -63,6 +63,10 @@ export const IPC = {
   // hung exchange — leaving the UI stuck on "Sign in" forever).
   MINDSHUB_AUTH_CHANGED: 'mindshub:auth-changed',
 
+  // Native pulse (approvals)
+  APP_NOTIFY: 'app:notify',
+  APP_BADGE_COUNT: 'app:badge-count',
+
   // Browser
   BROWSER_GET_STATE: 'browser:get-state',
   BROWSER_SET_VISIBLE: 'browser:set-visible',

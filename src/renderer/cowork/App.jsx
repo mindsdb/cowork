@@ -7,6 +7,7 @@ import { pickConnectWelcome } from './lib/connectWelcomes';
 // provider setup. The cowork app is mounted by CoworkApp.tsx only after
 // those gates pass, so AppCore renders unconditionally here.
 import Sidebar from './components/Sidebar';
+import { usePendingApprovals, diffNewApprovals } from './components/usePendingApprovals';
 import MobileShell from './components/MobileShell';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Modal, ModalHeader, ModalBody } from './components/ui/Modal';
@@ -744,6 +745,28 @@ export default function App() {
 }
 
 function AppCore() {
+  // Native pulse (approvals, D6): the pending list polls on the shared hook;
+  // NEW ids ping a native notification only while the app is unfocused (the
+  // user can't miss what they're looking at), and the dock badge always
+  // mirrors the count. First load is baseline, never a boot-time storm.
+  const { approvals: pendingApprovals } = usePendingApprovals();
+  const seenApprovalIdsRef = useRef(null);
+  useEffect(() => {
+    const prev = seenApprovalIdsRef.current;
+    const { baseline, fresh, ids } = diffNewApprovals(prev, pendingApprovals);
+    seenApprovalIdsRef.current = ids;
+    host.appBadgeCount(ids.size);
+    if (baseline || fresh.length === 0 || !document.hidden) return;
+    const first = fresh[0];
+    const summary = first.actionDescriptor?.summary
+      || (first.actionDescriptor?.appName ? `Sign in to ${first.actionDescriptor.appName}` : null)
+      || 'A proposal is waiting';
+    host.appNotify({
+      title: `${fresh.length} thing${fresh.length === 1 ? ' needs' : 's need'} you`,
+      body: summary,
+    });
+  }, [pendingApprovals]);
+
   const [settings, setSettings] = useState({
     greeting: "Let's knock something off your list",
     tone: 'balanced',

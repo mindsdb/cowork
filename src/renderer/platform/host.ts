@@ -270,6 +270,23 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   return res.json();
 }
 
+// ---- Native pulse (approvals) --------------------------------------------
+// OS notification + dock badge for pending approvals. Electron-only: the web
+// shell no-ops (a browser tab has its own Notification API story if we ever
+// want it; badges don't exist there at all).
+
+export async function appNotify(payload: { title: string; body?: string }): Promise<void> {
+  if (isElectron && typeof bridge.appNotify === 'function') {
+    await bridge.appNotify(payload);
+  }
+}
+
+export async function appBadgeCount(count: number): Promise<void> {
+  if (isElectron && typeof bridge.appBadgeCount === 'function') {
+    await bridge.appBadgeCount(count);
+  }
+}
+
 export async function readSettings(): Promise<Record<string, string>> {
   if (isElectron && typeof bridge.readSettings === 'function') {
     return bridge.readSettings();
@@ -919,6 +936,8 @@ export const host = {
   browserTopSites,
   browserImportChrome,
   onBrowserStateChanged,
+  appNotify,
+  appBadgeCount,
 };
 
 export default host;

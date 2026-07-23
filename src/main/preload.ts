@@ -125,6 +125,11 @@ contextBridge.exposeInMainWorld('antontron', {
     return () => ipcRenderer.removeListener(IPC.UI_UPDATE_STATUS, listener);
   },
 
+  // Native pulse: approvals needing the user while the app is unfocused.
+  appNotify: (payload: { title: string; body?: string }) =>
+    ipcRenderer.invoke(IPC.APP_NOTIFY, payload),
+  appBadgeCount: (count: number) => ipcRenderer.invoke(IPC.APP_BADGE_COUNT, count),
+
   // Browser (embedded tabs, driven by renderer UI + the agent bridge)
   browserGetState: () => ipcRenderer.invoke(IPC.BROWSER_GET_STATE),
   browserSetVisible: (visible: boolean, bounds?: Rect) =>

@@ -2,7 +2,9 @@
 
 exports[`IPC channel contract > locks the full channel map (a rename here is a breaking protocol change) 1`] = `
 {
+  "APP_BADGE_COUNT": "app:badge-count",
   "APP_GET_PLATFORM": "app:get-platform",
+  "APP_NOTIFY": "app:notify",
   "APP_READY": "app:ready",
   "APP_UI_VERSION": "app:ui-version",
   "AUTH_GET_ACCESS_TOKEN": "auth:get-access-token",

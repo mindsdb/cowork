@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, powerMonitor, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, session, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1199,6 +1199,26 @@ function setupIPC() {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       await shell.openExternal(url);
     }
+  });
+
+  // Native pulse: a parked approval needs the user while the app is
+  // unfocused. Suppression (focused window, Do Not Disturb) is the OS's job;
+  // the renderer decides WHEN to fire.
+  ipcMain.handle(IPC.APP_NOTIFY, async (_event, payload: { title?: string; body?: string }) => {
+    const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
+    if (!title || !Notification.isSupported()) return;
+    try {
+      new Notification({ title, body: typeof payload?.body === 'string' ? payload.body : '' }).show();
+    } catch { /* notification failures are never fatal */ }
+  });
+
+  // Dock badge mirrors the pending count ('' clears it). macOS-only API —
+  // other platforms no-op via the dock guard.
+  ipcMain.handle(IPC.APP_BADGE_COUNT, async (_event, count: number) => {
+    try {
+      const n = typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+      app.dock?.setBadge(n > 0 ? String(n) : '');
+    } catch { /* badge failures are never fatal */ }
   });
 
   // Open a local file/folder in the OS default app (Finder, browser,
