@@ -14,7 +14,7 @@ import * as http from 'http';
 import * as path from 'path';
 import type { BrowserState, TopSite } from '../../shared/browser-types';
 import { BrowserRequestError } from './browser-logic';
-import { DEFAULT_STASH, annotateSnapshot, domClickScript, domReadScript, domScrollScript, domSnapshotScript, domTypeScript } from './browser-dom-tools';
+import { DEFAULT_STASH, annotateSnapshot, domClickScript, domInspectActiveScript, domInspectPointScript, domReadScript, domScrollScript, domSnapshotScript, domTypeScript, inspectResult } from './browser-dom-tools';
 
 // Everything the bridge needs from the manager. tabId resolution
 // (default = active tab) happens inside the manager for every method.
@@ -280,6 +280,20 @@ async function route(
     await actions.runScript(tabId, domScrollScript(direction, num(body.amount)));
     actions.markAgentControlled(tabId);
     return { ok: true };
+  }
+
+  // --- Gate introspection (read-only): what control is at this point / what
+  // has focus — classified main-side so the approval gate can decide.
+
+  if (method === 'POST' && p === '/inspect-point') {
+    const x = num(body.x);
+    const y = num(body.y);
+    if (x === undefined || y === undefined) throw new HttpError(400, 'x and y required');
+    return inspectResult(await actions.runScript(tabId, domInspectPointScript(x, y)));
+  }
+
+  if (method === 'POST' && p === '/inspect-active') {
+    return inspectResult(await actions.runScript(tabId, domInspectActiveScript()));
   }
 
   // --- Trusted input (CDP): for canvas-rendered apps where synthetic events

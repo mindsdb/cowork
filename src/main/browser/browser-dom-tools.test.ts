@@ -5,7 +5,10 @@ import {
   domTypeScript,
   domReadScript,
   domScrollScript,
+  domInspectPointScript,
+  domInspectActiveScript,
   annotateSnapshot,
+  inspectResult,
   CONSEQUENTIAL_MARK,
   DEFAULT_SNAPSHOT_MAX_ELS,
   MAX_SNAPSHOT_MAX_ELS,
@@ -126,7 +129,7 @@ describe('dom tools script builders', () => {
 });
 
 describe('annotateSnapshot', () => {
-  it('prefixes [!] on consequential lines and leaves safe ones untouched', () => {
+  it('marks consequential lines with [!] + a flag and leaves safe ones untouched', () => {
     const result = {
       title: 'T',
       url: 'https://a.com',
@@ -139,9 +142,13 @@ describe('annotateSnapshot', () => {
     };
     const out = annotateSnapshot(result) as typeof result;
     expect(out.elements[0].text).toBe('Search');
+    expect(out.elements[0]).not.toHaveProperty('consequential');
+    // The agent reads the [!] prefix; the approval gate reads the field.
     expect(out.elements[1].text).toBe(`${CONSEQUENTIAL_MARK} Send`);
+    expect((out.elements[1] as { consequential?: boolean }).consequential).toBe(true);
     // Consequential with no text still gets a bare marker.
     expect(out.elements[2].text).toBe(CONSEQUENTIAL_MARK);
+    expect((out.elements[2] as { consequential?: boolean }).consequential).toBe(true);
     // Non-element fields ride along untouched.
     expect(out.title).toBe('T');
     expect(out.v).toBe(1);
@@ -153,5 +160,71 @@ describe('annotateSnapshot', () => {
     expect(annotateSnapshot({ title: 'T' })).toEqual({ title: 'T' });
     // Non-object elements survive the map untouched.
     expect(annotateSnapshot({ elements: ['junk', 42] })).toEqual({ elements: ['junk', 42] });
+  });
+});
+
+describe('inspect script builders', () => {
+  it('domInspectPointScript clamps coordinates and walks up to the nearest control', () => {
+    const script = domInspectPointScript(10.7, 20);
+    expect(script).toContain('document.elementFromPoint(10, 20)');
+    expect(script).toContain('a,button,input,textarea,select,summary,[role=button],[role=link],[onclick]');
+    expect(domInspectPointScript(-5, 999999)).toContain('elementFromPoint(0, 100000)');
+    // Same serializer as the snapshot walker (password masking, submit rule).
+    expect(script).toContain("control.type === 'password'");
+    expect(script).toContain("control.getAttribute('type')");
+  });
+
+  it('domInspectActiveScript covers focused controls and contenteditable compose', () => {
+    const script = domInspectActiveScript();
+    expect(script).toContain('document.activeElement');
+    expect(script).toContain('isContentEditable');
+    expect(script).toContain("tag: 'contenteditable'");
+    // The editable's draft is never used as its label — aria/placeholder only.
+    expect(script).toContain("root.getAttribute('aria-label')");
+    // Associated submit: same form first, then the compose container.
+    expect(script).toContain("form.querySelector('[type=\"submit\"]')");
+  });
+});
+
+describe('inspectResult', () => {
+  it('maps garbage page results to {found:false}', () => {
+    expect(inspectResult(null)).toEqual({ found: false });
+    expect(inspectResult(false)).toEqual({ found: false });
+    expect(inspectResult('stale')).toEqual({ found: false });
+    expect(inspectResult({ text: 'no tag' })).toEqual({ found: false });
+  });
+
+  it('adds found + a machine-readable consequential flag to control info', () => {
+    expect(inspectResult({ tag: 'button', role: null, text: 'Search' })).toEqual({
+      found: true, consequential: false, tag: 'button', role: null, text: 'Search',
+    });
+    expect(inspectResult({ tag: 'button', role: null, text: 'Send' })).toEqual({
+      found: true, consequential: true, tag: 'button', role: null, text: 'Send',
+    });
+    expect(inspectResult({ tag: 'input', role: null, text: '', inputType: 'submit' })).toEqual({
+      found: true, consequential: true, tag: 'input', role: null, text: '', inputType: 'submit',
+    });
+  });
+
+  it('classifies an associated submit control and folds it into the flag', () => {
+    const out = inspectResult({
+      tag: 'contenteditable',
+      role: 'textbox',
+      text: 'Message body',
+      submit: { tag: 'div', role: 'button', text: 'Send' },
+    }) as { found: boolean; consequential: boolean; submit: { text: string; consequential: boolean } };
+    // The compose area itself is safe; its Send control is not.
+    expect(out.found).toBe(true);
+    expect(out.consequential).toBe(true);
+    expect(out.submit).toMatchObject({ text: 'Send', consequential: true });
+  });
+
+  it('ignores malformed submit candidates', () => {
+    const out = inspectResult({ tag: 'contenteditable', role: null, text: '', submit: 'junk' }) as {
+      found: boolean; consequential: boolean; submit: unknown;
+    };
+    expect(out.found).toBe(true);
+    expect(out.consequential).toBe(false);
+    expect(out.submit).toBe('junk'); // passes through untouched
   });
 });

@@ -273,7 +273,7 @@ describe('bridge DOM endpoints', () => {
     expect(snap.body).toEqual({ title: 'T', url: 'https://a.com', elements: [] });
   });
 
-  it('GET /snapshot annotates consequential elements with [!]', async () => {
+  it('GET /snapshot annotates consequential elements with [!] + a flag', async () => {
     actions.runScript = vi.fn(async () => ({
       title: 'T',
       url: 'https://a.com',
@@ -285,9 +285,63 @@ describe('bridge DOM endpoints', () => {
     }));
     const snap = await request(handle!.port, { path: '/snapshot', token: handle!.token });
     expect(snap.status).toBe(200);
-    const elements = (snap.body as { elements: Array<{ text: string }> }).elements;
+    const elements = (snap.body as { elements: Array<{ text: string; consequential?: boolean }> }).elements;
     expect(elements[0].text).toBe('Search');
+    expect(elements[0].consequential).toBeUndefined();
     expect(elements[1].text).toBe('[!] Send');
+    expect(elements[1].consequential).toBe(true);
+  });
+
+  it('POST /inspect-point classifies the control at the point', async () => {
+    actions.runScript = vi.fn(async () => ({
+      tag: 'button', role: null, text: 'Delete', bbox: { x: 1, y: 2, w: 3, h: 4 },
+    }));
+    const res = await request(handle!.port, {
+      path: '/inspect-point', token: handle!.token, body: { x: 10, y: 20 },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ found: true, consequential: true, tag: 'button', text: 'Delete' });
+    expect(actions.runScript).toHaveBeenCalledWith(undefined, expect.stringContaining('elementFromPoint(10, 20)'));
+  });
+
+  it('POST /inspect-point 400s without coordinates and reports found:false on a miss', async () => {
+    const bad = await request(handle!.port, { path: '/inspect-point', token: handle!.token, body: {} });
+    expect(bad.status).toBe(400);
+    actions.runScript = vi.fn(async () => false);
+    const res = await request(handle!.port, {
+      path: '/inspect-point', token: handle!.token, body: { x: 1, y: 2 },
+    });
+    expect(res.body).toEqual({ found: false });
+  });
+
+  it('POST /inspect-active classifies a focused submit control directly', async () => {
+    actions.runScript = vi.fn(async () => ({ tag: 'input', role: null, text: '', inputType: 'submit' }));
+    const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
+    expect(res.body).toMatchObject({ found: true, consequential: true, inputType: 'submit' });
+  });
+
+  it('POST /inspect-active reports a focused text input as found and safe', async () => {
+    actions.runScript = vi.fn(async () => ({ tag: 'input', role: null, text: 'Search mail', inputType: 'text' }));
+    const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
+    expect(res.body).toMatchObject({ found: true, consequential: false, text: 'Search mail' });
+  });
+
+  it('POST /inspect-active folds a compose area’s submit control into the flag', async () => {
+    actions.runScript = vi.fn(async () => ({
+      tag: 'contenteditable',
+      role: 'textbox',
+      text: 'Message body',
+      submit: { tag: 'div', role: 'button', text: 'Send' },
+    }));
+    const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
+    expect(res.body).toMatchObject({ found: true, consequential: true, tag: 'contenteditable', role: 'textbox' });
+    expect((res.body as { submit: unknown }).submit).toMatchObject({ text: 'Send', consequential: true });
+  });
+
+  it('POST /inspect-active reports found:false when nothing is focused', async () => {
+    actions.runScript = vi.fn(async () => false);
+    const res = await request(handle!.port, { path: '/inspect-active', token: handle!.token, body: {} });
+    expect(res.body).toEqual({ found: false });
   });
 
   it('POST /click runs the click script and waits for settle', async () => {
