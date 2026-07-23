@@ -392,31 +392,36 @@ export default function MobileShell({
             );
           })}
 
-          <div className="mshell-divider" role="separator" />
-
-          <button
-            type="button"
-            className="mshell-row"
-            onClick={() => handleNavigate('customize')}
-          >
-            <span className="mshell-row__text">
-              <span className="mshell-row__primary">Connect Apps and Data</span>
-            </span>
-            <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
-          </button>
+          {/* Connect + Settings are top-level nav too, so render them with
+              the same accordion-row markup as the sections above — matching
+              padding, label weight, chevron, and hairline divider — instead
+              of the lighter mshell-row. They don't expand; the chevron is a
+              navigate affordance. The old inset mshell-divider is dropped so
+              the drawer reads as one consistent list (the accordion
+              border-bottom + :last-of-type rule handles separators). */}
+          <div className="mshell-accordion">
+            <button
+              type="button"
+              className="mshell-accordion__head"
+              onClick={() => handleNavigate('customize')}
+            >
+              <span className="mshell-accordion__label">Connect Apps and Data</span>
+              <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+            </button>
+          </div>
           {/* Memories and Skills library are intentionally omitted —
               those surfaces are desktop-focused (file editor, skill
               code editor) and don't read well at phone widths. */}
-          <button
-            type="button"
-            className="mshell-row"
-            onClick={() => handleNavigate('settings')}
-          >
-            <span className="mshell-row__text">
-              <span className="mshell-row__primary">Settings</span>
-            </span>
-            <span className="mshell-row__chev">{Ico.chevronRight(14)}</span>
-          </button>
+          <div className="mshell-accordion">
+            <button
+              type="button"
+              className="mshell-accordion__head"
+              onClick={() => handleNavigate('settings')}
+            >
+              <span className="mshell-accordion__label">Settings</span>
+              <span className="mshell-accordion__chev">{Ico.chevronRight(16)}</span>
+            </button>
+          </div>
         </nav>
       </aside>
     </div>

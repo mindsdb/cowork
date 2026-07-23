@@ -63,13 +63,17 @@ export function patchSavedJson(prevJson, key, value) {
 }
 
 function Section({ title, subtitle, notice, children }) {
+  const { mobile } = useContext(SettingsLayoutContext);
   return (
     <div className="settings-section" style={{
       display: 'grid', gridTemplateColumns: '1fr 320px', gap: 0,
       padding: '16px 0',
       alignItems: 'flex-start',
     }}>
-      <div style={{ paddingRight: 24 }}>
+      {/* On mobile the grid collapses to one column (see the settings media
+          query), so the inter-column gutters (paddingRight/Left: 24) would
+          just indent the stacked label + control for no reason — drop them. */}
+      <div style={{ paddingRight: mobile ? 0 : 24 }}>
         <h3 style={{
           margin: 0, padding: 0,
           fontSize: 14, fontWeight: 600, color: 'var(--text-strong)',
@@ -78,7 +82,7 @@ function Section({ title, subtitle, notice, children }) {
         {subtitle && <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 4 }}>{subtitle}</div>}
         {notice && <div style={{ marginTop: 8 }}>{notice}</div>}
       </div>
-      <div style={{ paddingLeft: 24 }}>{children}</div>
+      <div style={{ paddingLeft: mobile ? 0 : 24 }}>{children}</div>
     </div>
   );
 }
