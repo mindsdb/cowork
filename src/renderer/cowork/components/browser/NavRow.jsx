@@ -17,6 +17,7 @@ const MOD_LABEL = IS_MAC ? '⌘' : 'Ctrl+';
 export default function NavRow({
   tab,
   tabs,
+  closedCount = 0,
   omniboxRef,
   onNavigate,
   onNewTab,
@@ -31,6 +32,13 @@ export default function NavRow({
   const menuItems = [
     { label: 'New tab', icon: Ico.tabPlus(14), hint: `${MOD_LABEL}T`, onClick: onNewTab },
     hasTab && { label: 'Close tab', icon: Ico.close(14), hint: `${MOD_LABEL}W`, onClick: onCloseTab },
+    {
+      label: 'Reopen closed tab',
+      icon: Ico.clock(14),
+      hint: `${MOD_LABEL}⇧T`,
+      disabled: closedCount === 0,
+      onClick: () => host.browserReopenClosedTab?.(),
+    },
     { separator: true },
     {
       label: 'Open in external browser',

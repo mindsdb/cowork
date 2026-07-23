@@ -124,8 +124,20 @@ function liveWindow(): BrowserWindow | null {
 }
 
 export function getBrowserState(): BrowserState {
-  return { ...model, viewVisible: attachedTabId !== null };
+  return { ...model, viewVisible: attachedTabId !== null, closedCount: closedStack.length };
 }
+
+interface ClosedTabRecord {
+  url: string;
+  title: string;
+  favicon: string | null;
+  pinned: boolean;
+}
+
+// Recently closed tabs, newest last (⌘⇧T pops). Session-only by design —
+// tabs.json already handles deliberate session restore.
+const closedStack: ClosedTabRecord[] = [];
+const CLOSED_STACK_CAP = 10;
 
 function schedulePush(): void {
   if (pushTimer) clearTimeout(pushTimer);
@@ -535,6 +547,11 @@ async function closeTab(tabId?: string): Promise<{ ok: boolean }> {
   // unpin first. Applies to agent closes too, or a sloppy agent could kill
   // the user's email tab.
   if (tab.pinned) return { ok: false };
+  // Record it for ⌘⇧T BEFORE the model transition — the URL is gone after.
+  if (tab.url && tab.url !== 'about:blank') {
+    closedStack.push({ url: tab.url, title: tab.title, favicon: tab.favicon, pinned: tab.pinned });
+    if (closedStack.length > CLOSED_STACK_CAP) closedStack.shift();
+  }
   if (attachedTabId === tab.id) detach(); // remove the native view BEFORE destroying it
   const timer = agentTimers.get(tab.id);
   if (timer) clearTimeout(timer);
@@ -553,6 +570,16 @@ async function setTabPinned(tabId: string, pinned: boolean): Promise<{ ok: boole
   schedulePush();
   schedulePersist();
   return { ok: true };
+}
+
+/** ⌘⇧T: reopen the most recently closed tab (fresh load, pin restored). */
+async function reopenClosedTab(): Promise<{ tabId: string } | { ok: false }> {
+  const record = closedStack.pop();
+  if (!record) return { ok: false };
+  const { tabId } = await newTab({ url: record.url, activate: true });
+  if (record.pinned) await setTabPinned(tabId, true);
+  schedulePush(); // closedCount changed with the pop
+  return { tabId };
 }
 
 async function activateTabById(tabId: string): Promise<{ ok: boolean }> {
@@ -1170,6 +1197,7 @@ export function registerBrowserHandlers(getWindow: GetWindow): void {
     payload?.text ? findInPage(payload.tabId, { text: payload.text, forward: payload.forward, findNext: payload.findNext }) : { ok: false },
   );
   ipcMain.handle(IPC.BROWSER_STOP_FIND, (_e, payload: { tabId?: string }) => stopFindInPage(payload?.tabId));
+  ipcMain.handle(IPC.BROWSER_REOPEN_CLOSED_TAB, () => reopenClosedTab());
   ipcMain.handle(IPC.BROWSER_NAVIGATE, async (_e, payload: { tabId?: string; url?: string }) => {
     if (!payload?.url) return;
     try {

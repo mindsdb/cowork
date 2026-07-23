@@ -189,6 +189,10 @@ export default function BrowserView() {
         // reload; same bridge call as ⌘R from here.
         e.preventDefault();
         if (activeTabId) host.browserReload?.(activeTabId);
+      } else if (mod && e.shiftKey && !e.altKey && key === 't') {
+        // ⇧⌘T — reopen the most recently closed tab.
+        e.preventDefault();
+        host.browserReopenClosedTab?.();
       } else if (e.key === 'Escape' && isNarrow && dockOpen) {
         // Drawer dismiss — but not while the user is editing a field
         // (Esc there means revert/blur, handled by the input itself).
@@ -233,6 +237,7 @@ export default function BrowserView() {
       <NavRow
         tab={activeTab}
         tabs={state.tabs}
+        closedCount={state.closedCount ?? 0}
         omniboxRef={omniboxRef}
         onNavigate={navigateActive}
         onNewTab={() => newTab()}

@@ -20,6 +20,7 @@ export interface BrowserState {
   tabs: BrowserTabInfo[];
   activeTabId: string | null;
   viewVisible: boolean;       // native view currently attached
+  closedCount?: number;       // ⌘⇧T stack depth (additive; older renderers ignore)
 }
 
 export interface TopSite {

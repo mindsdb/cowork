@@ -752,6 +752,13 @@ export async function browserStopFind(tabId: string): Promise<void> {
   }
 }
 
+export async function browserReopenClosedTab(): Promise<{ tabId: string } | { ok: false }> {
+  if (isElectron && typeof bridge.browserReopenClosedTab === 'function') {
+    return bridge.browserReopenClosedTab();
+  }
+  return { ok: false };
+}
+
 export async function browserNavigate(tabId: string, url: string): Promise<void> {
   if (isElectron && typeof bridge.browserNavigate === 'function') {
     await bridge.browserNavigate(tabId, url);
@@ -874,6 +881,7 @@ export const host = {
   browserOpenApp,
   browserFindInPage,
   browserStopFind,
+  browserReopenClosedTab,
   browserNavigate,
   browserGoBack,
   browserGoForward,

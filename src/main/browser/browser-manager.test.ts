@@ -377,6 +377,39 @@ describe('tabs', () => {
     await mgr2.shutdownBrowser();
   });
 
+  it('reopen-closed-tab pops the stack, restores url+pin, and tracks closedCount', async () => {
+    const mgr = await loadManager();
+    const { tabId: a } = (await invoke('browser:new-tab', { url: 'https://a.com' })) as { tabId: string };
+    const { tabId: b } = (await invoke('browser:new-tab', { url: 'https://b.com' })) as { tabId: string };
+    await invoke('browser:pin-tab', { tabId: a, pinned: true });
+
+    expect(mgr.getBrowserState().closedCount ?? 0).toBe(0);
+    expect(await invoke('browser:reopen-closed-tab', undefined)).toEqual({ ok: false });
+
+    // Close b (unpinned) then a (via unpin): stack is [b, a], newest popped first.
+    await invoke('browser:close-tab', { tabId: b });
+    expect(mgr.getBrowserState().closedCount).toBe(1);
+    await invoke('browser:pin-tab', { tabId: a, pinned: false });
+    await invoke('browser:close-tab', { tabId: a });
+    expect(mgr.getBrowserState().closedCount).toBe(2);
+    expect(mgr.getBrowserState().tabs).toEqual([]);
+
+    const first = (await invoke('browser:reopen-closed-tab', undefined)) as { tabId: string };
+    let state = mgr.getBrowserState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.tabs[0].url).toBe('https://a.com'); // newest first
+    expect(state.tabs[0].pinned).toBe(false); // was unpinned when closed
+    expect(state.closedCount).toBe(1);
+
+    const second = (await invoke('browser:reopen-closed-tab', undefined)) as { tabId: string };
+    state = mgr.getBrowserState();
+    expect(state.tabs).toHaveLength(2);
+    expect(state.tabs.map((t) => t.url)).toContain('https://b.com');
+    expect(state.closedCount).toBe(0);
+    expect(await invoke('browser:reopen-closed-tab', undefined)).toEqual({ ok: false });
+    await mgr.shutdownBrowser();
+  });
+
   it('apps: add/list/remove round-trips apps.json and openApp finds-or-creates', async () => {
     const mgr = await loadManager();
 
