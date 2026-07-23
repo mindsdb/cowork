@@ -20,6 +20,7 @@ import { Card } from './ui/Card';
 import { Modal, ModalHeader, ModalBody } from './ui/Modal';
 import { MarkdownContent } from './markdown/MarkdownContent';
 import { saveSkillAndSync, useSkills } from '../lib/skillsStore';
+import { deleteSkillDraft } from '../api';
 
 // Trigger a browser save-as for a text file, fully client-side (no server).
 // The event payload already carries the full SKILL.md, so download works
@@ -95,17 +96,23 @@ export default function SkillCard({ skill, projectName }) {
     // A saved skill with this slug → PUT (overwrite, scope included); else POST.
     const exists = Array.isArray(skills) && skills.some((s) => s.id === slug);
 
-    try {
-      await saveSkillAndSync(payload, exists);
+    const markSaved = () => {
       setSaved(true);
       setStatus({ kind: 'ok', text: 'Saved to your skills' });
+      // Sweep the on-disk draft now it lives in the store; fire-and-forget (the
+      // server is idempotent, and a lingering draft must never fail the save UI).
+      if (projectName && slug) deleteSkillDraft(projectName, slug).catch(() => {});
+    };
+
+    try {
+      await saveSkillAndSync(payload, exists);
+      markSaved();
     } catch (err) {
       // Stale list (created since the last fetch): retry as an update, not fail.
       if (!exists && /already exists/i.test(err?.message || '')) {
         try {
           await saveSkillAndSync(payload, true);
-          setSaved(true);
-          setStatus({ kind: 'ok', text: 'Saved to your skills' });
+          markSaved();
         } catch (err2) {
           setStatus({ kind: 'error', text: err2?.message || 'Could not save skill.' });
         }

@@ -1175,6 +1175,12 @@ export async function deleteSkill(label) {
   return req(`/skills/${encodeURIComponent(label)}`, { method: 'DELETE' });
 }
 
+// Sweep a staged skill draft (after Save or dismiss). Idempotent server-side —
+// a missing draft is a no-op — so callers can fire-and-forget.
+export async function deleteSkillDraft(projectName, slug) {
+  return req(`/projects/${enc(projectName)}/skill_drafts/${enc(slug)}`, { method: 'DELETE' });
+}
+
 export async function fetchDatasources() {
   const data = await req('/connectors/connections/');
   return { connections: Array.isArray(data) ? data : [] };
