@@ -5294,7 +5294,11 @@ body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169
   ),
   textarea,
   select,
-  [contenteditable="true"] {
+  [contenteditable="true"],
+  /* Custom Select trigger (a button, not a native <select>) — bump it too so
+     dropdowns match text inputs at the mobile size instead of rendering
+     smaller (ENG-990). */
+  .anton-select-trigger {
     font-size: max(16px, 1em) !important;
   }
 }
