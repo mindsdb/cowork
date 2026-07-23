@@ -164,33 +164,40 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
 // flex-fill / internal scroll / sticky footer on mobile.
 const SettingsLayoutContext = createContext({ mobile: false });
 
-function SettingsSectionPanel({ children, footer }) {
+function SettingsSectionPanel({ children, footer, autoSaved = false }) {
   const { mobile } = useContext(SettingsLayoutContext);
   if (mobile) {
     // Natural flow so the whole detail page scrolls (no internal scroll or
-    // width cap). The footer (Save button + status) sticks to the bottom of
-    // the viewport as a full-bleed action bar so it's always reachable on a
-    // long section instead of buried at the end (ENG-990 QA).
+    // width cap). A sticky full-bleed bottom bar carries the action: the Save
+    // footer when the section has one (always reachable on a long page instead
+    // of buried at the end), or a quiet "saves automatically" note when it
+    // doesn't — so an auto-save section (Appearance) doesn't read as "no way
+    // to save" next to sections with a Save button (ENG-990 QA).
+    const barStyle = {
+      position: 'sticky',
+      bottom: 0,
+      zIndex: 1,
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      // Bleed past the .settings-detail 14px gutter to the screen edges.
+      margin: '16px -14px 0',
+      padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
+      borderTop: '1px solid var(--border-subtle)',
+      // Opaque so scrolling content is masked behind the bar.
+      background: 'var(--bg)',
+    };
     return (
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div>{children}</div>
-        {footer && (
-          <div style={{
-            position: 'sticky',
-            bottom: 0,
-            zIndex: 1,
-            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-            // Bleed past the .settings-detail 14px gutter to the screen edges
-            // so it reads as a bottom bar, not an inline row.
-            margin: '16px -14px 0',
-            padding: '12px 14px calc(12px + env(safe-area-inset-bottom, 0))',
-            borderTop: '1px solid var(--border-subtle)',
-            // Opaque so scrolling content is masked behind the bar.
-            background: 'var(--bg)',
-          }}>
-            {footer}
+        {footer ? (
+          <div style={{ ...barStyle, gap: 10 }}>{footer}</div>
+        ) : autoSaved ? (
+          <div style={{ ...barStyle, color: 'var(--text-muted)', fontSize: 12.5 }}>
+            <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--ok, #3aa876)' }}>
+              {Ico.check ? Ico.check(13) : '✓'}
+            </span>
+            <span>Changes are saved automatically.</span>
           </div>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -1928,7 +1935,9 @@ export default function SettingsView({
     // No Save footer here — every control on this page auto-saves itself
     // (see autoSaveSetting/AutoSaveTag below); a page-wide Save button would
     // be dead weight that always reads "Saved" and never does anything.
-    <SettingsSectionPanel>
+    // `autoSaved` surfaces a quiet "saves automatically" note on mobile so the
+    // page doesn't read as "no way to save" next to Save-button sections.
+    <SettingsSectionPanel autoSaved>
       <CollapsibleGroup title="Appearance">
         <Section title="Style" subtitle="Normal, 8-Bit, or design your own with Custom. Combines with light and dark.">
           <ToggleGroup
