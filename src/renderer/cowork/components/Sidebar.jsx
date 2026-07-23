@@ -401,17 +401,15 @@ export default function Sidebar({
         // the apps one click away (see CollapsedRail below). Without it the
         // browser tab strip slides under the macOS window controls.
         width: collapsed ? 72 : 'clamp(240px, 24vw, 320px)',
+        // transform/filter are non-none constants: they keep the aside its
+        // own stacking context (paints above the main column). Only the
+        // width animates.
         opacity: 1,
         transform: 'translateX(0) scale(1)',
         transformOrigin: 'left center',
         filter: 'blur(0)',
-        transition:
-          'width 380ms cubic-bezier(0.22, 1, 0.36, 1), ' +
-          'opacity 260ms cubic-bezier(0.32, 0.72, 0, 1), ' +
-          'transform 420ms cubic-bezier(0.22, 1, 0.36, 1), ' +
-          'filter 240ms cubic-bezier(0.32, 0.72, 0, 1)',
-        willChange: 'width, opacity, transform, filter',
-        pointerEvents: 'auto',
+        transition: 'width 380ms cubic-bezier(0.22, 1, 0.36, 1)',
+        willChange: 'width',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}
@@ -428,8 +426,8 @@ export default function Sidebar({
         <>
       {/* Top chrome row: traffic-light pad + collapse/search + ANTON wordmark.
           padding-top reduced from 14 → 9 to bring the buttons + wordmark
-          5px upward, so they line up with the macOS traffic lights at
-          their new (x:18, y:22) position. */}
+          5px upward, so they line up with the macOS traffic lights
+          (positioned via trafficLightPosition in src/main/index.ts). */}
       <div
         className="anton-sidebar__chrome drag-region"
         style={{
@@ -916,9 +914,9 @@ function RailButton({ icon, label, active = false, onClick, accent = false }) {
     <Tooltip content={label} side="right" sideOffset={10} delay={250}>
       <button
         type="button"
-        className={`icon-btn sidebar-rail__btn${active ? ' active' : ''}`}
+        className={`icon-btn${active ? ' active' : ''}`}
         aria-label={label}
-        aria-pressed={active || undefined}
+        aria-current={active ? 'page' : undefined}
         onClick={onClick}
         style={{
           WebkitAppRegion: 'no-drag', flexShrink: 0,
@@ -954,8 +952,9 @@ function CollapsedRail({ onExpand, onOpenApp, onNavigate, activeRoute, onNewTask
         overflow: 'hidden',
       }}
     >
-      {/* Traffic-light pad — OS controls live at ~(18, 22); the rail is
-          72px wide so they sit fully INSIDE the panel, not on its corner. */}
+      {/* Traffic-light pad — the OS controls are positioned over this drag
+          region (trafficLightPosition in src/main/index.ts); the 72px rail
+          keeps them fully INSIDE the panel, not on its corner. */}
       <div style={{ height: 40, flexShrink: 0, alignSelf: 'stretch', WebkitAppRegion: 'drag' }} />
       {typeof onExpand === 'function' && (
         <RailButton icon={Ico.sidebarExpandRight(15)} label={`Expand sidebar (${shortcut('B')})`} onClick={onExpand} accent />

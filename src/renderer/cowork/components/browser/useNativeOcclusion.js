@@ -59,14 +59,14 @@ export function useNativeOcclusion() {
     // Hover isn't a mutation: recompute when the pointer moves in or out of
     // the collapsed rail (capture phase so it works under the native view's
     // neighbors without depending on bubbling).
+    let railHover = false;
     const onPointerMove = (e) => {
       const inRail = e.target instanceof Element && !!e.target.closest(RAIL_SELECTOR);
-      if (inRail !== railHoverRef.current) {
-        railHoverRef.current = inRail;
+      if (inRail !== railHover) {
+        railHover = inRail;
         update();
       }
     };
-    const railHoverRef = { current: false };
     document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('visibilitychange', update);
     update();
