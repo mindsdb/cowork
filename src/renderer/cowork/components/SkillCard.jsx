@@ -88,17 +88,14 @@ export default function SkillCard({ skill, projectName }) {
         // would get double-stored inside the body). Download uses skill_md.
         declarative: skill.instructions || '',
         ...(projectName && { projects: [projectName] }),
+        // Re-saving a refined draft overwrites the stored skill (scope included)
+        // instead of 409-ing on the existing slug.
+        upsert: true,
       });
       setSaved(true);
       setStatus({ kind: 'ok', text: 'Saved to your skills' });
     } catch (err) {
-      // A duplicate slug means it's effectively already in the library.
-      if (/already exists/i.test(err?.message || '')) {
-        setSaved(true);
-        setStatus({ kind: 'ok', text: 'Already in your skills' });
-      } else {
-        setStatus({ kind: 'error', text: err?.message || 'Could not save skill.' });
-      }
+      setStatus({ kind: 'error', text: err?.message || 'Could not save skill.' });
     } finally {
       setSaving(false);
     }
