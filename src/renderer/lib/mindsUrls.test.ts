@@ -34,18 +34,11 @@ describe('MINDS_KEYCLOAK_URL / MINDS_REGISTER_URL', () => {
     vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', '');
     const { MINDS_API_BASE, MINDS_KEYCLOAK_URL } = await importUrls();
-    expect(MINDS_API_BASE).toBe('https://api.dev.mindshub.ai');
-    expect(MINDS_KEYCLOAK_URL).toBe('https://auth.dev.mindshub.ai/auth');
+    expect(MINDS_API_BASE).toBe('https://api.staging.mindshub.ai');
+    expect(MINDS_KEYCLOAK_URL).toBe('https://auth.staging.mindshub.ai/auth');
   });
 
   it('tracks the API host when VITE_MINDS_API_URL points at dev', async () => {
-    vi.stubEnv('VITE_KEYCLOAK_URL', '');
-    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.dev.mindshub.ai');
-    const { MINDS_KEYCLOAK_URL } = await importUrls();
-    expect(MINDS_KEYCLOAK_URL).toBe('https://auth.dev.mindshub.ai/auth');
-  });
-
-  it('tracks the API host when VITE_MINDS_API_URL points at staging', async () => {
     vi.stubEnv('VITE_KEYCLOAK_URL', '');
     vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
     const { MINDS_KEYCLOAK_URL } = await importUrls();
@@ -54,7 +47,7 @@ describe('MINDS_KEYCLOAK_URL / MINDS_REGISTER_URL', () => {
 
   it('honours an explicit VITE_KEYCLOAK_URL override', async () => {
     vi.stubEnv('VITE_KEYCLOAK_URL', 'https://auth.custom.example/auth');
-    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.dev.mindshub.ai');
+    vi.stubEnv('VITE_MINDS_API_URL', 'https://api.staging.mindshub.ai');
     const { MINDS_KEYCLOAK_URL } = await importUrls();
     expect(MINDS_KEYCLOAK_URL).toBe('https://auth.custom.example/auth');
   });

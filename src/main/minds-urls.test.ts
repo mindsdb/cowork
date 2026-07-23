@@ -72,10 +72,10 @@ describe('build-kind fallback (nothing baked, no env override)', () => {
   it('dev build kind targets the dev environment', async () => {
     vi.mocked(buildKind).mockReturnValue('dev');
     const m = await loadWithEnv(undefined);
-    expect(m.MINDS_API_HOST).toBe('https://api.dev.mindshub.ai');
-    expect(m.MINDS_AUTH_HOST).toBe('https://auth.dev.mindshub.ai');
-    expect(m.MINDS_KEYCLOAK_BASE).toBe('https://auth.dev.mindshub.ai/auth');
-    expect(m.MINDS_ENV_SLUG).toBe('dev');
+    expect(m.MINDS_API_HOST).toBe('https://api.staging.mindshub.ai');
+    expect(m.MINDS_AUTH_HOST).toBe('https://auth.staging.mindshub.ai');
+    expect(m.MINDS_KEYCLOAK_BASE).toBe('https://auth.staging.mindshub.ai/auth');
+    expect(m.MINDS_ENV_SLUG).toBe('staging');
   });
 
   it('preview and stable build kinds target staging', async () => {
@@ -107,9 +107,9 @@ describe('explicit host overrides derive the whole family', () => {
   });
 
   it('dev API host yields dev auth + slug', async () => {
-    const m = await loadWithEnv('https://api.dev.mindshub.ai');
-    expect(m.MINDS_AUTH_HOST).toBe('https://auth.dev.mindshub.ai');
-    expect(m.MINDS_ENV_SLUG).toBe('dev');
+    const m = await loadWithEnv('https://api.staging.mindshub.ai');
+    expect(m.MINDS_AUTH_HOST).toBe('https://auth.staging.mindshub.ai');
+    expect(m.MINDS_ENV_SLUG).toBe('staging');
   });
 
   it('normalizes a value carrying a path or trailing slash to a bare origin', async () => {

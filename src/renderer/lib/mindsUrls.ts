@@ -8,7 +8,7 @@
 // (staging builds set it; prod builds set the prod host), so this fallback
 // only affects local dev; the built-but-unbaked case still resolves to prod.
 export const MINDS_API_BASE = import.meta.env.VITE_MINDS_API_URL
-  || (import.meta.env.DEV ? 'https://api.dev.mindshub.ai' : 'https://api.mindshub.ai');
+  || (import.meta.env.DEV ? 'https://api.staging.mindshub.ai' : 'https://api.mindshub.ai');
 
 // Keycloak host, derived from the SAME resolved base as everything else
 // (api.X → auth.X) so the login flow (keycloak.ts, which imports
