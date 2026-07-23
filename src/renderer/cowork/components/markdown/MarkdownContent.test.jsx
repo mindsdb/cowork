@@ -38,8 +38,11 @@ describe('_normalizeMathDelimiters', () => {
   it('rewrites pandoc-valid single-$ inline math to $$…$$', () => {
     expect(_normalizeMathDelimiters('plane $s = \\sigma + it$.')).toBe('plane $$s = \\sigma + it$$.');
     expect(_normalizeMathDelimiters('to $\\zeta(s) = 0$ (x)')).toBe('to $$\\zeta(s) = 0$$ (x)');
-    expect(_normalizeMathDelimiters('the $2\\pi r$ term')).toBe('the $$2\\pi r$$ term'); // leading digit ok
     expect(_normalizeMathDelimiters('$a$ and $b$')).toBe('$$a$$ and $$b$$');
+    // Leading-digit single-$ is currency-ambiguous → left literal…
+    expect(_normalizeMathDelimiters('the $2\\pi r$ term')).toBe('the $2\\pi r$ term');
+    // …but the unambiguous \(…\) form always converts, digit or not.
+    expect(_normalizeMathDelimiters('the \\(2\\pi r\\) term')).toBe('the $$2\\pi r$$ term');
   });
 
   it('leaves currency ($ followed by digit) as literal text', () => {
@@ -63,7 +66,31 @@ describe('_normalizeMathDelimiters', () => {
     const out = _normalizeMathDelimiters(src);
     expect(out).toContain('```\nregex: \\(group\\)\n```'); // code preserved verbatim
     expect(out.startsWith('before $$a$$')).toBe(true); // prose still converted
-    expect(out).toContain('$$\nb\n$$'); // display outside the fence converted
+    expect(out).toContain('after $$b$$'); // in-line \[b\] → inline (not block)
+  });
+
+  // ── Review regression tests (PR #486) ──────────────────────────────────
+  // Finding 1: code constructs must survive, not just triple-backtick fences.
+  it('does not rewrite delimiters inside inline code spans or tilde fences', () => {
+    expect(_normalizeMathDelimiters('write `$x$` or `\\(y\\)` for math'))
+      .toBe('write `$x$` or `\\(y\\)` for math');
+    expect(_normalizeMathDelimiters('~~~\n$x$ and \\[y\\]\n~~~'))
+      .toBe('~~~\n$x$ and \\[y\\]\n~~~');
+  });
+
+  // Finding 2: display math must not break out of its Markdown container.
+  it('keeps display math inside blockquotes / list items (inline fallback)', () => {
+    expect(_normalizeMathDelimiters('> \\[x\\]')).toBe('> $$x$$');
+    expect(_normalizeMathDelimiters('- item \\[x\\]')).toBe('- item $$x$$');
+    // Standalone display still becomes a block (→ centered display math).
+    expect(_normalizeMathDelimiters('p\n\n\\[ x=1 \\]\n\np')).toContain('$$\nx=1\n$$');
+  });
+
+  // Finding 3: a currency $ must never be reused as a math opener.
+  it('does not pair a currency $ with a later math opener', () => {
+    // $5 cannot open (followed by a digit); $x$ still renders on its own.
+    expect(_normalizeMathDelimiters('It costs $5;($x$ is the variable).'))
+      .toBe('It costs $5;($$x$$ is the variable).');
   });
 
   it('is a no-op (fast path) when no math delimiters are present', () => {

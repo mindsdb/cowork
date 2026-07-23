@@ -210,29 +210,36 @@ function _normalizeFormFences(text) {
   );
 }
 
-// Our models emit math with a few delimiter styles — `\( … \)` and `$ … $`
-// for inline, `\[ … \]` (and `$$ … $$`) for display. remark-math only parses
-// the `$` family, and CommonMark treats `\(` / `\[` as escaped punctuation
-// and prints the raw TeX (see ENG-989). Normalize everything into the
-// double-dollar form remark-math understands:
+// Regions we must never rewrite: fenced code blocks (``` or ~~~) and inline
+// code spans. A message that *documents* LaTeX ("write `$x$` for inline
+// math") has to show its delimiters verbatim, not render them. This misses a
+// few CommonMark corners on purpose — 4+ backtick fences, multi-backtick
+// spans, an unterminated fence mid-stream — since covering them fully would
+// mean re-implementing the parser; the realistic cases are handled.
+const _MD_CODE_REGION = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/g;
+
+const _isBlankRun = (s) => /^\s*$/.test(s);
+
+// Our models emit math in a few delimiter styles — `\( … \)` and `$ … $`
+// inline, `\[ … \]` and `$$ … $$` display. remark-math only parses the `$`
+// family, and CommonMark eats the backslash in `\(` / `\[` before we ever
+// reach an AST, so these have to be rewritten in the raw text (see ENG-989).
+// Everything becomes the double-dollar form remark-math parses:
 //
-//   inline   \(x\)  →  $$x$$              (single line → KaTeX inline math)
-//   display  \[x\]  →  \n\n$$\nx\n$$\n\n   (own block  → KaTeX display math)
-//   inline   $x$    →  $$x$$              (pandoc-guarded, see below)
+//   inline   \(x\)              →  $$x$$
+//   display  \[x\]  (own line)  →  \n\n$$\nx\n$$\n\n   (block → display math)
+//   display  \[x\]  (in a line) →  $$x$$   (inline → stays in its blockquote /
+//                                           list item instead of breaking out)
+//   inline   $x$                →  $$x$$   (currency-guarded)
 //
-// Single-`$` math stays disabled in the remark-math options — on its own it
-// happily parses "$5 and $10" as a formula. Instead we detect genuine inline
-// `$ … $` here with pandoc's currency rule and rewrite it to `$$ … $$`:
-//   • the opening `$` has a non-space to its right,
-//   • the closing `$` has a non-space to its left and is NOT followed by a
-//     digit, and neither `$` is part of a `$$` display pair.
-// So "$s=\sigma+it$" and "$2\pi r$" render, while "a $1 million prize" and
-// "$20,000 and $30,000" stay literal — the middle `$` is followed by a digit,
-// so it can't close a span.
-//
-// Fenced code blocks are skipped so a code sample that literally contains
-// `\(x\)` / `$x$` (a regex, a shell snippet, a LaTeX tutorial) isn't
-// rewritten out from under the author.
+// `\(…\)` / `\[…\]` are unambiguous, so they always convert. A single `$…$`
+// is not (currency!), so remark-math's own single-`$` parsing stays disabled
+// and we detect it here with pandoc's rule: the opening `$` isn't followed by
+// a digit or space, the closing `$` isn't followed by a digit, and neither
+// `$` belongs to a `$$` pair. So "$s=\sigma+it$" renders while "a $1 million
+// prize", "from $5 to $10", and "$5;($x$ …)" keep their literal dollars.
+// Leading-digit inline like "$2\pi$" stays literal on purpose — write
+// "\(2\pi\)" for that, which is unambiguous.
 export function _normalizeMathDelimiters(text) {
   if (!text || typeof text !== 'string') return text;
   // Fast path: nothing to do without a `\(`, `\[`, or a `$`.
@@ -243,24 +250,31 @@ export function _normalizeMathDelimiters(text) {
   ) {
     return text;
   }
-  // Split on ``` fences, keeping them (capturing group) so code stays
-  // verbatim. Even indices are prose; odd indices are the fenced blocks.
-  const segments = text.split(/(```[\s\S]*?```)/g);
-  return segments
-    .map((seg, i) => {
-      if (i % 2 === 1) return seg;
-      return seg
-        // Display first (block-level, higher priority). The trimmed body
-        // sits on its own line between fence markers so remark-math emits a
-        // `math` (display) node rather than inline.
-        .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => `\n\n$$\n${body.trim()}\n$$\n\n`)
-        // Inline \( … \) stays on one line → an `inlineMath` node.
-        .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => `$$${body.trim()}$$`)
-        // Inline $ … $ (pandoc-guarded). The lookarounds skip any `$$`
-        // display pair and the currency cases described above.
-        .replace(/(?<!\$)\$(?!\$)(?=\S)([^$\n]*?\S)\$(?!\$)(?!\d)/g, (_m, body) => `$$${body.trim()}$$`);
-    })
+  // Split so code regions (odd indices) pass through untouched.
+  return text
+    .split(_MD_CODE_REGION)
+    .map((seg, i) => (i % 2 === 1 ? seg : _convertMathDelimiters(seg)))
     .join('');
+}
+
+function _convertMathDelimiters(seg) {
+  return seg
+    // Display \[ … \]. Only inject a block ($$ on its own lines) when the
+    // delimiters already sit on their own line; otherwise the blank lines
+    // would pull the math out of an enclosing blockquote / list item, so keep
+    // it inline (it renders in place, just not centered).
+    .replace(/\\\[([\s\S]+?)\\\]/g, (m, body, offset, whole) => {
+      const lineStart = whole.lastIndexOf('\n', offset - 1) + 1;
+      const before = whole.slice(lineStart, offset);
+      const after = whole.slice(offset + m.length).split('\n', 1)[0];
+      const standalone = _isBlankRun(before) && _isBlankRun(after);
+      return standalone ? `\n\n$$\n${body.trim()}\n$$\n\n` : `$$${body.trim()}$$`;
+    })
+    // Inline \( … \) → $$…$$ (single line → inline math).
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => `$$${body.trim()}$$`)
+    // Native single-$ inline math, pandoc-guarded (see the block comment).
+    // Lookarounds keep `$$` display pairs and currency dollars untouched.
+    .replace(/(?<!\$)\$(?!\$)(?![\d\s])([^$\n]*?\S)\$(?!\$)(?!\d)/g, (_m, body) => `$$${body.trim()}$$`);
 }
 
 // Engram metadata in lessons.md / rules.md / profile.md is encoded
