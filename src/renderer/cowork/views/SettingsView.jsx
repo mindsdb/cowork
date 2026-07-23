@@ -86,11 +86,19 @@ function Section({ title, subtitle, notice, children }) {
 // Collapsible group of sections. Defaults to open; click the header to
 // toggle. Uses the theme tokens so it reads well in light + dark.
 function CollapsibleGroup({ title, defaultOpen = true, children }) {
+  const { mobile } = useContext(SettingsLayoutContext);
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
   const headingId = useId();
   return (
-    <div style={{
+    <div style={mobile ? {
+      // Flat on mobile: the accordion already frames the section, so the
+      // nested card's border + glass fill + 14px gap just read as redundant
+      // chrome and wasted vertical space once everything is stacked. Groups
+      // separate via their uppercase headers + spacing (grouped-list style)
+      // rather than a card each.
+      marginBottom: 4,
+    } : {
       border: '1px solid var(--border-subtle)',
       borderRadius: 'var(--card-radius)',
       background: 'var(--surface-glass)',
@@ -109,7 +117,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
           aria-controls={panelId}
           style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-            padding: '14px 18px', background: 'transparent', border: 0,
+            padding: mobile ? '12px 2px 8px' : '14px 18px', background: 'transparent', border: 0,
             fontFamily: 'var(--font-sans)', fontSize: 12.5, fontWeight: 600,
             letterSpacing: '0.04em', textTransform: 'uppercase',
             color: 'var(--text-muted)', cursor: 'pointer', textAlign: 'left',
@@ -125,7 +133,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
         </button>
       </h2>
       {open && (
-        <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: '0 18px 8px' }}>{children}</div>
+        <div id={panelId} role="region" aria-labelledby={headingId} style={{ padding: mobile ? '0 2px 4px' : '0 18px 8px' }}>{children}</div>
       )}
     </div>
   );
