@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Ico from './Icons';
-import { Spinner, Kbd } from './ui';
+import { Spinner, Kbd, Tooltip } from './ui';
 import { TaskMenu } from './TaskMenu';
 import RecentsModal from './RecentsModal';
 import SidebarApps from './SidebarApps';
@@ -400,7 +400,7 @@ export default function Sidebar({
         // Collapsed ≠ gone: a slim rail keeps the traffic lights a home and
         // the apps one click away (see CollapsedRail below). Without it the
         // browser tab strip slides under the macOS window controls.
-        width: collapsed ? 64 : 'clamp(240px, 24vw, 320px)',
+        width: collapsed ? 72 : 'clamp(240px, 24vw, 320px)',
         opacity: 1,
         transform: 'translateX(0) scale(1)',
         transformOrigin: 'left center',
@@ -420,6 +420,9 @@ export default function Sidebar({
         <CollapsedRail
           onExpand={onToggleCollapsed}
           onOpenApp={(app) => { onNavigate('browser'); host.browserOpenApp?.(app.id); }}
+          onNavigate={onNavigate}
+          activeRoute={activeRoute}
+          onNewTask={onNewTask}
         />
       ) : (
         <>
@@ -903,36 +906,73 @@ export default function Sidebar({
 }
 
 // Slim rail for the collapsed sidebar: the traffic lights keep a home at
-// the top (drag pad), an accent expand button, then the pinned apps as
-// icon wells. This replaces the old width-0 collapse, which let the
-// browser's tab strip slide under the macOS window controls.
-function CollapsedRail({ onExpand, onOpenApp }) {
+// the top (drag pad), an accent expand button, then the FULL app
+// navigation as icon buttons (labels on hover, per request), the pinned
+// app wells, and Memories/Skills/Settings at the bottom. This replaces
+// the old width-0 collapse, which let the browser's tab strip slide
+// under the macOS window controls.
+function RailButton({ icon, label, active = false, onClick, accent = false }) {
+  return (
+    <Tooltip content={label} side="right" sideOffset={10} delay={250}>
+      <button
+        type="button"
+        className={`icon-btn sidebar-rail__btn${active ? ' active' : ''}`}
+        aria-label={label}
+        aria-pressed={active || undefined}
+        onClick={onClick}
+        style={{
+          WebkitAppRegion: 'no-drag', flexShrink: 0,
+          width: 32, height: 32,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          ...(accent
+            ? {
+                background: 'var(--accent-bg)',
+                color: 'var(--accent-2)',
+                border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                borderRadius: 8,
+              }
+            : {}),
+        }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
+  );
+}
+
+function RailDivider() {
+  return <div style={{ width: 24, height: 1, background: 'var(--line)', margin: '6px 0', flexShrink: 0 }} />;
+}
+
+function CollapsedRail({ onExpand, onOpenApp, onNavigate, activeRoute, onNewTask }) {
   return (
     <div
       aria-label="Collapsed sidebar"
       style={{
         flex: 1, minHeight: 0,
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
         overflow: 'hidden',
       }}
     >
-      {/* Traffic-light pad — OS controls live at ~(20, 24); keep the area
-          clear and draggable. */}
-      <div style={{ height: 44, flexShrink: 0, alignSelf: 'stretch', WebkitAppRegion: 'drag' }} />
+      {/* Traffic-light pad — OS controls live at ~(18, 22); the rail is
+          72px wide so they sit fully INSIDE the panel, not on its corner. */}
+      <div style={{ height: 40, flexShrink: 0, alignSelf: 'stretch', WebkitAppRegion: 'drag' }} />
       {typeof onExpand === 'function' && (
-        <button
-          type="button"
-          className="icon-btn sidebar-rail__expand"
-          onClick={onExpand}
-          title={`Expand sidebar  (${shortcut('B')})`}
-          aria-label="Expand sidebar"
-          style={{ WebkitAppRegion: 'no-drag', flexShrink: 0 }}
-        >
-          {Ico.sidebarExpandRight(15)}
-        </button>
+        <RailButton icon={Ico.sidebarExpandRight(15)} label={`Expand sidebar (${shortcut('B')})`} onClick={onExpand} accent />
       )}
-      <div style={{ width: 24, height: 1, background: 'var(--line)', margin: '10px 0', flexShrink: 0 }} />
+      <RailDivider />
+      <RailButton icon={Ico.plus(14)} label="New task" onClick={() => onNewTask?.()} accent />
+      <RailButton icon={Ico.folder(14)} label="Projects" active={activeRoute === 'projects'} onClick={() => onNavigate('projects')} />
+      <RailButton icon={Ico.clock(14)} label="Scheduled Tasks" active={activeRoute === 'scheduled'} onClick={() => onNavigate('scheduled')} />
+      <RailButton icon={Ico.sparkle(14)} label="Live Artifacts" active={activeRoute === 'artifacts'} onClick={() => onNavigate('artifacts')} />
+      <RailButton icon={Ico.globe(14)} label="Browser" active={activeRoute === 'browser'} onClick={() => onNavigate('browser')} />
+      <RailDivider />
       <SidebarApps rail onOpenApp={onOpenApp} />
+      <div style={{ flex: 1 }} />
+      <RailButton icon={Ico.brain(14)} label="Memories" active={activeRoute === 'memory'} onClick={() => onNavigate('memory')} />
+      <RailButton icon={Ico.cube(14)} label="Skills library" active={activeRoute === 'skills'} onClick={() => onNavigate('skills')} />
+      <RailButton icon={Ico.settings(13)} label="Settings" onClick={() => onNavigate('settings:agent')} />
+      <div style={{ height: 4, flexShrink: 0 }} />
     </div>
   );
 }
