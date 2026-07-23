@@ -25,6 +25,7 @@ import {
   nextZoomFactor,
   classifyControl,
   CONSEQUENTIAL_TERMS,
+  detectsAuthWall,
   MAX_TABS,
   HISTORY_CAP,
 } from './browser-logic';
@@ -538,5 +539,40 @@ describe('classifyControl', () => {
     expect(classifyControl({ tag: 'input', inputType: 'text' })).toBe('safe');
     expect(classifyControl({ tag: 'input', inputType: 'password' })).toBe('safe');
     expect(classifyControl({ tag: 'a', text: 'Read more' })).toBe('safe');
+  });
+});
+
+describe('detectsAuthWall', () => {
+  it('matches every SSO host and its subdomains', () => {
+    expect(detectsAuthWall({ url: 'https://accounts.google.com/signin' })).toBe(true);
+    expect(detectsAuthWall({ url: 'https://login.microsoftonline.com/oauth2/authorize' })).toBe(true);
+    expect(detectsAuthWall({ url: 'https://login.live.com' })).toBe(true);
+    expect(detectsAuthWall({ url: 'https://my-tenant.okta.com/app' })).toBe(true);
+    expect(detectsAuthWall({ url: 'https://deep.my-tenant.okta.com/login' })).toBe(true);
+    expect(detectsAuthWall({ url: 'https://tenant.auth0.com/u/login' })).toBe(true);
+    // Subdomains of the exact hosts count too.
+    expect(detectsAuthWall({ url: 'https://sub.login.live.com' })).toBe(true);
+  });
+
+  it('rejects suffix spoofs, bare wildcard domains, and non-SSO hosts', () => {
+    expect(detectsAuthWall({ url: 'https://accounts.google.com.evil.com' })).toBe(false);
+    expect(detectsAuthWall({ url: 'https://evil-accounts.google.com' })).toBe(false);
+    expect(detectsAuthWall({ url: 'https://notaccounts.google.com' })).toBe(false);
+    expect(detectsAuthWall({ url: 'https://login.microsoftonline.com.evil.com' })).toBe(false);
+    // '*.' entries match subdomains only — the bare domain is not a sign-in.
+    expect(detectsAuthWall({ url: 'https://okta.com' })).toBe(false);
+    expect(detectsAuthWall({ url: 'https://auth0.com' })).toBe(false);
+    expect(detectsAuthWall({ url: 'https://example.com/login' })).toBe(false);
+    expect(detectsAuthWall({ url: 'not a url' })).toBe(false);
+    expect(detectsAuthWall({ url: '' })).toBe(false);
+  });
+
+  it('flags http(s) pages presenting a password field', () => {
+    expect(detectsAuthWall({ url: 'https://example.com/login', hasPasswordField: true })).toBe(true);
+    expect(detectsAuthWall({ url: 'http://localhost:3000/login', hasPasswordField: true })).toBe(true);
+    expect(detectsAuthWall({ url: 'https://example.com', hasPasswordField: false })).toBe(false);
+    // The heuristic is http(s)-only.
+    expect(detectsAuthWall({ url: 'file:///etc/passwd', hasPasswordField: true })).toBe(false);
+    expect(detectsAuthWall({ url: 'ftp://example.com', hasPasswordField: true })).toBe(false);
   });
 });

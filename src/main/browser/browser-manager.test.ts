@@ -267,6 +267,15 @@ describe('tabs', () => {
     expect(mgr.getBrowserState().tabs).toHaveLength(MAX_TABS);
   });
 
+  it('state marks SSO-host tabs needsAuth and leaves normal tabs alone', async () => {
+    const mgr = await loadManager();
+    await invoke('browser:new-tab', { url: 'https://accounts.google.com/signin' });
+    await invoke('browser:new-tab', { url: 'https://example.com' });
+    const [sso, plain] = mgr.getBrowserState().tabs;
+    expect(sso.needsAuth).toBe(true);
+    expect(plain.needsAuth).toBe(false);
+  });
+
   it('set-visible attaches only the active view; bounds clamp to the window', async () => {
     await loadManager();
     const { tabId: a } = (await invoke('browser:new-tab', { url: 'https://a.com' })) as { tabId: string };

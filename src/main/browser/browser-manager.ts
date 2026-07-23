@@ -126,6 +126,10 @@ function liveWindow(): BrowserWindow | null {
 export function getBrowserState(): BrowserState {
   return {
     ...model,
+    // needsAuth derives from the URL's SSO hosts alone — tab state tracks no
+    // page details today. Follow-up: pass hasPasswordField once a page-detail
+    // signal exists; deliberately no new page-inspection machinery here.
+    tabs: model.tabs.map((t) => ({ ...t, needsAuth: logic.detectsAuthWall({ url: t.url }) })),
     viewVisible: attachedTabId !== null,
     closedCount: closedStack.length,
     downloads: [...downloads],

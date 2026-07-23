@@ -15,6 +15,7 @@ export interface BrowserTabInfo {
   canGoForward: boolean;
   error: { code: number; description: string } | null;
   isAgentControlled: boolean; // true while the bridge last drove this tab (recent window)
+  needsAuth?: boolean;        // SSO host / login page: "needs you to sign in" (additive; older renderers ignore)
 }
 
 export interface BrowserState {

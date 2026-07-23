@@ -536,3 +536,50 @@ export function classifyControl(el: ControlLike): 'consequential' | 'safe' {
   const label = (el.text ?? '').trim() || (el.ariaLabel ?? '').trim();
   return label !== '' && CONSEQUENTIAL_RE.test(label) ? 'consequential' : 'safe';
 }
+
+// ---------------------------------------------------------------------------
+// Auth-wall detection (needsAuth on /state tabs)
+// ---------------------------------------------------------------------------
+
+/** SSO login hosts. This list exists so needsAuth tabs can surface as
+ *  "needs you to sign in" instead of the agent floundering on a login page.
+ *  Exact hosts match themselves and any subdomain; '*.'-prefixed entries
+ *  match subdomains only (bare okta.com is a marketing page, not a sign-in).
+ *  Extend freely. */
+export const SSO_HOSTS = [
+  'accounts.google.com',
+  'login.microsoftonline.com',
+  'login.live.com',
+  '*.okta.com',
+  '*.auth0.com',
+] as const;
+
+/** Hostname SUFFIX match against SSO_HOSTS — never substring, so
+ *  evil-accounts.google.com.evil.com can't spoof an entry. */
+function isSsoHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return SSO_HOSTS.some((entry) =>
+    entry.startsWith('*.')
+      ? host.endsWith(`.${entry.slice(2)}`)
+      : host === entry || host.endsWith(`.${entry}`));
+}
+
+/** True when the page is an auth wall: an SSO host, or an http(s) page
+ *  presenting a password field. hasPasswordField defaults to false so
+ *  callers without page-inspection data can match on the URL alone. */
+export function detectsAuthWall({
+  url,
+  hasPasswordField = false,
+}: {
+  url: string;
+  hasPasswordField?: boolean;
+}): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (isSsoHost(parsed.hostname)) return true;
+  return hasPasswordField && (parsed.protocol === 'http:' || parsed.protocol === 'https:');
+}
