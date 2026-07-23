@@ -430,6 +430,35 @@ describe('tabs', () => {
     await mgr.shutdownBrowser();
   });
 
+  it('tab-switch shortcuts reach the app while a page has focus (before-input-event)', async () => {
+    const mgr = await loadManager();
+    const { tabId: a } = (await invoke('browser:new-tab', { url: 'https://a.com' })) as { tabId: string };
+    const { tabId: b } = (await invoke('browser:new-tab', { url: 'https://b.com' })) as { tabId: string };
+    const { tabId: c } = (await invoke('browser:new-tab', { url: 'https://c.com' })) as { tabId: string };
+    // c is active (last created); before-input-event fires per tab view.
+    const prevent = vi.fn();
+    const ev = () => ({ preventDefault: prevent });
+    const wc = fakeWc(2) as unknown as { emit: (name: string, ...args: unknown[]) => void };
+
+    wc.emit('before-input-event', ev(), { type: 'keyDown', key: '1', meta: true });
+    expect(mgr.getBrowserState().activeTabId).toBe(a);
+    expect(prevent).toHaveBeenCalled();
+
+    wc.emit('before-input-event', ev(), { type: 'keyDown', key: 'Tab', control: true });
+    expect(mgr.getBrowserState().activeTabId).toBe(b);
+    wc.emit('before-input-event', ev(), { type: 'keyDown', key: 'Tab', control: true, shift: true });
+    expect(mgr.getBrowserState().activeTabId).toBe(a);
+
+    wc.emit('before-input-event', ev(), { type: 'keyDown', key: '9', meta: true });
+    expect(mgr.getBrowserState().activeTabId).toBe(c);
+
+    // Non-shortcut keys pass through untouched.
+    prevent.mockClear();
+    wc.emit('before-input-event', ev(), { type: 'keyDown', key: 'b' });
+    expect(prevent).not.toHaveBeenCalled();
+    await mgr.shutdownBrowser();
+  });
+
   it('apps: add/list/remove round-trips apps.json and openApp finds-or-creates', async () => {
     const mgr = await loadManager();
 

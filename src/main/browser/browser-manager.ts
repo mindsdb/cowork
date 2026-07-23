@@ -242,6 +242,29 @@ function showContextMenu(tabId: string, wc: WebContents, params: Electron.Contex
 function wireView(tabId: string, view: WebContentsView): void {
   const wc = view.webContents;
 
+  // Page focus must not swallow the tab-strip shortcuts (Codex on #483):
+  // the renderer's keydown only fires while the browser CHROME has focus,
+  // so ⌘1-9 / Ctrl+Tab are mirrored here per tab view. Same semantics:
+  // ⌘1-8 = nth tab, ⌘9 = last, Ctrl(+Shift)+Tab cycles.
+  wc.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const mod = input.meta || input.control;
+    if (!mod || input.alt) return;
+    if (input.key === 'Tab') {
+      event.preventDefault();
+      cycleActiveTab(input.shift ? -1 : 1);
+      return;
+    }
+    if (!input.shift && input.key >= '1' && input.key <= '9') {
+      const idx = input.key === '9' ? model.tabs.length - 1 : Number(input.key) - 1;
+      const target = model.tabs[idx];
+      if (target) {
+        event.preventDefault();
+        void activateTabById(target.id);
+      }
+    }
+  });
+
   wc.on('page-title-updated', (_e, title) => {
     patch(tabId, { title: title ?? '' });
     const tab = model.tabs.find((t) => t.id === tabId);
@@ -584,6 +607,15 @@ async function reopenClosedTab(): Promise<{ tabId: string } | { ok: false }> {
   if (record.pinned) await setTabPinned(tabId, true);
   schedulePush(); // closedCount changed with the pop
   return { tabId };
+}
+
+/** Ctrl(+Shift)+Tab: activate the next/previous tab, wrapping (Chrome). */
+function cycleActiveTab(direction: 1 | -1): void {
+  const tabs = model.tabs;
+  if (tabs.length < 2) return;
+  const i = tabs.findIndex((t) => t.id === model.activeTabId);
+  const next = tabs[(i + direction + tabs.length) % tabs.length];
+  if (next) void activateTabById(next.id);
 }
 
 async function activateTabById(tabId: string): Promise<{ ok: boolean }> {
