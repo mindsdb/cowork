@@ -362,11 +362,8 @@ body[data-theme="dark"] {
   --primary-50: var(--accent-bg);
 }
 
-/* Emphasis in dark mode: bold reads as the brightest ink, italics stay
-   italic. ENG-641: dropped the neon text-shadow glow on emphasis — a dated
-   effect that made every **bold** / *italic* run in markdown fluoresce. With
-   the glow gone, em needs its italic back (it had been flattened to lean on
-   the glow for emphasis). */
+/* Emphasis in dark mode: bold is the brightest ink, italics stay italic.
+   ENG-641: removed the neon glow (text-shadow) that made emphasis fluoresce. */
 body[data-theme="dark"] strong,
 body[data-theme="dark"] b {
   color: var(--ink);
@@ -532,14 +529,9 @@ a[href],
 }
 
 /* ─── Streaming text fade-in ─────────────────────────────────────────────── */
-/* Word-level: individual words fade in as they stream. React reconciliation
-   preserves existing <span> elements (keyed by index) so only newly
-   appended words play the animation.
-   ENG-641: dropped the per-word blur(2px)→0. A momentary blur reads as
-   "not rendered yet" / soft-focus and ripples down a streaming paragraph —
-   louder motion than the calm reveal Claude/Codex use, and against the
-   "quiet motion" principle of the look & feel direction. Opacity-only, and
-   quicker, so words settle in without drawing attention to themselves. */
+/* Word-level: words fade in as they stream. React keeps existing spans
+   (keyed by index) so only newly appended words animate. ENG-641: opacity
+   only, blur removed. */
 @keyframes stream-word-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -548,10 +540,8 @@ a[href],
   animation: stream-word-fade 0.18s ease-out both;
 }
 
-/* Block-level: non-text elements (code blocks, tables, blockquotes, hrs)
-   fade in when they first appear during streaming. Text-bearing elements
-   (p, h1-h3, li) use word-level animation instead. Opacity-only (ENG-641)
-   — dropped the translateY slide so blocks don't jump as they arrive. */
+/* Block-level (code, tables, blockquotes, hrs): fade in on first appearance;
+   text elements use the word-level animation above. Opacity only (ENG-641). */
 @keyframes stream-block-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -4844,21 +4834,9 @@ body[data-theme="dark"] .mshell__drawer-title {
   position: relative;
 }
 .user-turn-bubble {
-  /* De-bubbled (ENG-787 move 01): the right-aligned bordered+shadowed
-     "SMS bubble" is the single most dated element in the chat. Modern AI
-     chat (Claude/Codex) renders the user turn as a quiet tinted block —
-     no hard border, no drop shadow.
-     ENG-641: a flat opaque --surface-3 chip read as heavy + out of place.
-     Dropped it to --surface-2 for a clearly lighter, quieter block. A
-     translucency experiment barely moved it in light mode — surface-3 and
-     the page bg sit only ~14 levels apart, so a tint of a near-bg colour is
-     invisible. --surface-2 is the biggest lighten that stays legible; it
-     reads most clearly in dark mode, where surface-3 was a saturated
-     slate-blue. The light-mode neutral band is narrow, so the fill alone
-     stays subtle there — a hairline (--line) carries the bubble's edge so
-     it reads as a defined block regardless of fill contrast. No shadow
-     stacked on top, so it's a quiet outlined block, not the old SMS bubble
-     (border + shadow + white fill). */
+  /* Quiet outlined block, not an SMS bubble: --surface-2 fill + a --line
+     hairline for the edge (a light fill alone barely separates from the page
+     over the dot field), no shadow. ENG-787 de-bubble, ENG-641 refine. */
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
