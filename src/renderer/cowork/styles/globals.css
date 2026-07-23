@@ -2262,10 +2262,11 @@ body[data-theme="dark"] .btn.default:active {
   background: var(--accent-solid);
   color: var(--accent-solid-ink);
   border: 1px solid var(--accent-solid);
-  /* Brandbook fill: a soft inset top-highlight + a low drop shadow give
-     the button dimension without a glow. (Dark mode overrides this with
-     the luminous-glass treatment below.) */
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 1px 2px rgba(15,16,17,0.10);
+  /* Solid fill with the shared subtle shadow at rest; the accent ring +
+     glow halo appears on hover, matching every other variant's hover
+     signature (no inset/3d drop shadow). Dark mode overrides this with
+     the luminous-glass treatment below. */
+  box-shadow: var(--sh-1);
   font-family: var(--font-sans);
   font-size: 13px;
   letter-spacing: 0;
@@ -2278,8 +2279,7 @@ body[data-theme="dark"] .btn.default:active {
 .btn.primary:hover,
 .btn-primary:hover {
   background: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
-  border-color: color-mix(in srgb, var(--accent-solid) 88%, var(--ink));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 1px 3px rgba(15,16,17,0.14);
+  box-shadow: 0 0 0 1px var(--accent-solid), 0 0 22px var(--glow);
   text-shadow: none;
 }
 .btn.primary:active,
