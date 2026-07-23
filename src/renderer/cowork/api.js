@@ -2060,3 +2060,16 @@ export async function fetchApprovalMetrics() {
 export async function ensureOnboarding() {
   return req('/onboarding/ensure', { method: 'POST' });
 }
+
+// ---- Standing rules (approve-before-act "Always" grants) ------------------
+// Deterministic gate on the server; this shelf is where a grant is visible
+// and revocable. A grant never exists without visible revocation.
+
+export async function fetchRules() {
+  const data = await req('/rules/');
+  return Array.isArray(data?.rules) ? data.rules : [];
+}
+
+export async function revokeRule(id) {
+  return req(`/rules/${id}/revoke`, { method: 'POST' });
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Ico from '../components/Icons';
+import RulesShelf from '../components/RulesShelf';
 import { Message, Button, Card, EmptyState as UiEmptyState } from '../components/ui';
 import { PageHeader as CollectionPageHeader } from '../components/collection';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
@@ -213,6 +214,7 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
         display: 'grid', gridTemplateColumns: '300px 1fr',
         padding: '0 32px 24px', gap: 24,
       }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, overflowY: 'auto' }}>
         <Card padding="snug" flat className="scroll-clean" style={{
           display: 'flex', flexDirection: 'column', gap: 14,
           overflowY: 'auto', minHeight: 0,
@@ -237,6 +239,10 @@ function MemoryView({ data, selected, onSelect, project, setData, setStatus }) {
           ))}
           {totalFiles === 0 && <EmptyState>No memory entries found.</EmptyState>}
         </Card>
+        {/* Standing rules live on the same shelf as Lessons — one mental
+            model of durable authority (approve-before-act, R2). */}
+        <RulesShelf />
+        </div>
         <div className="scroll-clean" style={{
           overflowY: 'auto', minHeight: 0,
         }}>
